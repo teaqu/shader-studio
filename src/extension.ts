@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { parse as parseJSONC } from "jsonc-parser";
 
 export function activate(context: vscode.ExtensionContext) {
 	let panel: vscode.WebviewPanel | undefined;
@@ -8,18 +9,104 @@ export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Shader View", {
 		log: true,
 	});
+	outputChannel.info("Output channel initialized");
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
+		outputChannel.info("sendShaderToWebview called");
 		if (panel && editor?.document.languageId === "glsl") {
+			const code = editor.document.getText();
+			outputChannel.info(`Sending shader code (length: ${code.length})`);
+
+			// Try to load config from a sibling .config.json file
+			let config: any = null;
+			const shaderPath = editor.document.uri.fsPath;
+			const configPath = shaderPath.replace(/\.glsl$/i, ".config.json");
+			if (fs.existsSync(configPath)) {
+				try {
+					const configRaw = fs.readFileSync(configPath, "utf-8");
+					config = parseJSONC(configRaw);
+
+					// Patch image paths for all top-level keys except "version"
+					for (const passName of Object.keys(config)) {
+						if (passName === "version") continue;
+						const pass = config[passName];
+						if (typeof pass !== "object") continue;
+
+						// Patch pass-level "path" (for buffer source files)
+						if (pass.path && typeof pass.path === "string") {
+							const bufferPath = path.isAbsolute(pass.path)
+								? pass.path
+								: path.join(path.dirname(shaderPath), pass.path);
+							if (fs.existsSync(bufferPath)) {
+								const webviewUri = panel.webview.asWebviewUri(
+									vscode.Uri.file(bufferPath),
+								);
+								pass.path = webviewUri.toString();
+								outputChannel.info(
+									`Patched buffer path for ${passName}: ${pass.path}`,
+								);
+							} else {
+								outputChannel.warn(
+									`Buffer source not found for ${passName}: ${bufferPath}`,
+								);
+							}
+						}
+
+						// Patch iChannelN image paths inside "inputs"
+						if (pass.inputs && typeof pass.inputs === "object") {
+							for (const key of Object.keys(pass.inputs)) {
+								const input = pass.inputs[key];
+								if (input.type && input.path) {
+									const imgPath = path.isAbsolute(input.path)
+										? input.path
+										: path.join(path.dirname(shaderPath), input.path);
+									if (fs.existsSync(imgPath)) {
+										const webviewUri = panel.webview.asWebviewUri(
+											vscode.Uri.file(imgPath),
+										);
+										input.path = webviewUri.toString();
+										outputChannel.info(
+											`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
+										);
+									} else {
+										outputChannel.warn(
+											`Image not found for ${passName}.inputs.${key}: ${imgPath}`,
+										);
+									}
+								}
+							}
+						}
+					}
+
+					outputChannel.info(
+						`Loaded config for shader: ${configPath} ${JSON.stringify(config)}`,
+					);
+				} catch (e) {
+					vscode.window.showWarningMessage(
+						`Failed to parse config: ${configPath}`,
+					);
+					config = null;
+				}
+			}
+
+			// After preparing config
 			panel.webview.postMessage({
 				type: "shaderSource",
-				code: editor.document.getText(),
+				code,
+				config,
 			});
+			outputChannel.info("Shader message sent to webview");
+		} else {
+			outputChannel.info(
+				`Panel or editor not ready: panel=${!!panel}, lang=${editor?.document.languageId}`,
+			);
 		}
 	};
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("shader-view.view", () => {
+			outputChannel.info("shader-view.view command executed");
+
 			if (panel) {
 				panel.reveal(vscode.ViewColumn.Beside);
 				sendShaderToWebview(vscode.window.activeTextEditor!);
@@ -36,6 +123,13 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			const workspaceFolders = vscode.workspace.workspaceFolders?.map((f) =>
+				f.uri
+			) ?? [];
+			const shaderDir = vscode.Uri.file(
+				path.dirname(editor.document.uri.fsPath),
+			);
+
 			panel = vscode.window.createWebviewPanel(
 				"shaderToy",
 				"ShaderToy",
@@ -47,9 +141,12 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.Uri.file(
 							path.join(context.extensionPath, "webview-ui", "dist"),
 						),
+						shaderDir,
+						...workspaceFolders,
 					],
 				},
 			);
+			outputChannel.info("Webview panel created");
 
 			panel.webview.onDidReceiveMessage(
 				(message) => {
@@ -68,6 +165,13 @@ export function activate(context: vscode.ExtensionContext) {
 								vscode.window.activeTextEditor.document.uri,
 							);
 						}
+					}
+
+					if (message.type === "debug") {
+						const debugText = message.payload.join
+							? message.payload.join(" ")
+							: message.payload;
+						outputChannel.info(debugText);
 					}
 
 					if (message.type === "error") {
@@ -122,6 +226,7 @@ export function activate(context: vscode.ExtensionContext) {
 					return `${attr}="${uri}"`;
 				},
 			);
+			outputChannel.info("Webview HTML set");
 
 			// Send shader on first load
 			setTimeout(() => sendShaderToWebview(editor), 200);
