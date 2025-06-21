@@ -6,9 +6,12 @@
   let program: WebGLProgram | null = null;
   let resLoc: WebGLUniformLocation;
   let timeLoc: WebGLUniformLocation;
+  let mouseLoc: WebGLUniformLocation;
   let tex: WebGLTexture;
   let fragShaderSrc = '';
   let running = false;
+  let mouse = [0, 0, 0, 0];
+  let isMouseDown = false;
 
   function wrapShaderToyCode(code: string): string {
     code = code.replace(/vec3\s+([a-zA-Z0-9_]+)\s*=\s*iResolution\s*;/g, 'vec3 $1 = vec3(iResolution, 1.0);');
@@ -18,12 +21,15 @@
       .map(ch => `uniform sampler2D ${ch};`)
       .join('\n');
 
+    const injectMouse = !/uniform\s+vec4\s+iMouse\s*;/.test(code) ? `uniform vec4 iMouse;\n` : '';
+
     return `#version 300 es
     precision highp float;
 
     uniform vec2 iResolution;
     uniform float iTime;
     ${injectChannels}
+    ${injectMouse}
 
     out vec4 fragColor;
 
@@ -40,8 +46,8 @@
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
       const err = gl.getShaderInfoLog(shader);
-      console.error("\ud83d\udea9 Shader compile error:\n", err);
-      console.error("\ud83d\udcdd Shader source:\n" + src);
+      console.error("🚩 Shader compile error:\n", err);
+      console.error("📝 Shader source:\n" + src);
       return null;
     }
     return shader;
@@ -63,7 +69,7 @@
     gl.linkProgram(newProgram);
 
     if (!gl.getProgramParameter(newProgram, gl.LINK_STATUS)) {
-      console.error("\ud83e\uddf8 Shader link error:\n", gl.getProgramInfoLog(newProgram));
+      console.error("🧨 Shader link error:\n", gl.getProgramInfoLog(newProgram));
       return false;
     }
 
@@ -82,6 +88,7 @@
 
     resLoc = gl.getUniformLocation(program, 'iResolution')!;
     timeLoc = gl.getUniformLocation(program, 'iTime')!;
+    mouseLoc = gl.getUniformLocation(program, 'iMouse')!;
 
     for (let i = 0; i < 4; i++) {
       const chanLoc = gl.getUniformLocation(program, `iChannel${i}`);
@@ -103,6 +110,7 @@
     gl.useProgram(program);
     gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
     gl.uniform1f(timeLoc, time * 0.001);
+    gl.uniform4fv(mouseLoc, mouse);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     requestAnimationFrame(draw);
   }
@@ -116,7 +124,7 @@
   onMount(() => {
     gl = glCanvas.getContext('webgl2')!;
     if (!gl) {
-      console.error("\u274c WebGL2 not supported");
+      console.error("❌ WebGL2 not supported");
       return;
     }
 
@@ -124,16 +132,33 @@
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
 
+    glCanvas.addEventListener('mousedown', () => {
+      isMouseDown = true;
+    });
+
+    glCanvas.addEventListener('mouseup', () => {
+      isMouseDown = false;
+    });
+
+    glCanvas.addEventListener('mousemove', (e) => {
+      if (!isMouseDown) return;
+      const rect = glCanvas.getBoundingClientRect();
+      mouse[0] = e.clientX - rect.left;
+      mouse[1] = glCanvas.height - (e.clientY - rect.top);
+      mouse[2] = mouse[0];
+      mouse[3] = mouse[1];
+    });
+
     window.addEventListener('message', (event) => {
       const { type, code } = event.data;
       if (type === 'shaderSource') {
         fragShaderSrc = code;
         const success = compileAndLinkShader(fragShaderSrc);
         if (success) {
-          console.log("\u2705 Shader compiled and linked");
+          console.log("✅ Shader compiled and linked");
           startRenderLoop();
         } else {
-          console.warn("\u26a0\ufe0f Shader failed to compile, skipping render loop");
+          console.warn("⚠️ Shader failed to compile, skipping render loop");
         }
       }
     });
