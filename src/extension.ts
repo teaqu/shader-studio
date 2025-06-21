@@ -4,6 +4,8 @@ import * as fs from "fs";
 
 export function activate(context: vscode.ExtensionContext) {
 	let panel: vscode.WebviewPanel | undefined;
+	const isDevMode = process.env.NODE_ENV === "dev";
+
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		if (panel && editor?.document.languageId === "glsl") {
@@ -22,7 +24,11 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			const editor = vscode.window.activeTextEditor;
+				const editor = vscode.window.activeTextEditor ??
+				vscode.window.visibleTextEditors.find((e) =>
+					e.document.languageId === "glsl" ||
+					e.document.fileName.endsWith(".glsl")
+				);
 			if (!editor) {
 				vscode.window.showErrorMessage("No active GLSL file selected");
 				return;
@@ -96,6 +102,20 @@ export function activate(context: vscode.ExtensionContext) {
 			sendShaderToWebview(vscode.window.activeTextEditor);
 		}
 	});
+	// ✅ Auto-open panel in dev mode
+	if (isDevMode) {
+		// Close all empty editor groups (usually left from webview reloads)
+		const layout = vscode.window.tabGroups.all;
+
+		for (const group of layout) {
+			if (group.tabs.length === 0) {
+				vscode.window.tabGroups.close(group);
+			}
+		}
+
+		// Then open the panel cleanly
+		vscode.commands.executeCommand("shader-view.view");
+	}
 }
 
 export function deactivate() {}

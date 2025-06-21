@@ -15,7 +15,25 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+			"preLaunchTask": "${defaultBuildTask}",
+			"env": {
+				"NODE_ENV": "prod"
+			}
+		},
+		{
+			"name": "Run Extension Dev",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/**/*.js"
+			],
+			"preLaunchTask": "${defaultBuildTask}",
+			"env": {
+				"NODE_ENV": "dev"
+			}
 		}
 	]
 }
