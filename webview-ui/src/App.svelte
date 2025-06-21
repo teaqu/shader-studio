@@ -12,6 +12,9 @@
   let running = false;
   let mouse = [0, 0, 0, 0];
   let isMouseDown = false;
+  
+  const vscode = acquireVsCodeApi();
+  vscode.postMessage({ type: 'log', payload: ['Hello from Svelte!'] });
 
   function wrapShaderToyCode(code: string): string {
     code = code.replace(/vec3\s+([a-zA-Z0-9_]+)\s*=\s*iResolution\s*;/g, 'vec3 $1 = vec3(iResolution, 1.0);');
@@ -45,9 +48,19 @@
     gl.shaderSource(shader, src);
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      const err = gl.getShaderInfoLog(shader);
-      console.error("🚩 Shader compile error:\n", err);
-      console.error("📝 Shader source:\n" + src);
+      let err = gl.getShaderInfoLog(shader) ?? "";
+      // Adjust line numbers so mainImage is line 0
+      const BOILERPLATE_LINES = 14; // Set this to the number of lines before user code
+      err = err.replace(/ERROR: 0:(\d+):/g, (m, p1) => {
+        const userLine = Math.max(0, parseInt(p1, 10) - BOILERPLATE_LINES);
+        return `ERROR: 0:${userLine}:`;
+      });
+
+      // remove new line character at the end
+      err = err.slice(0, -1);
+
+
+      vscode.postMessage({ type: 'error', payload: [`${err}`] });
       return null;
     }
     return shader;
@@ -69,7 +82,7 @@
     gl.linkProgram(newProgram);
 
     if (!gl.getProgramParameter(newProgram, gl.LINK_STATUS)) {
-      console.error("🧨 Shader link error:\n", gl.getProgramInfoLog(newProgram));
+      vscode.postMessage({ type: 'error', payload: [`🧨 Shader link error:\n${gl.getProgramInfoLog(newProgram)}`] });
       return false;
     }
 
@@ -124,7 +137,7 @@
   onMount(() => {
     gl = glCanvas.getContext('webgl2')!;
     if (!gl) {
-      console.error("❌ WebGL2 not supported");
+      vscode.postMessage({ type: 'error', payload: ['❌ WebGL2 not supported'] });
       return;
     }
 
@@ -155,10 +168,8 @@
         fragShaderSrc = code;
         const success = compileAndLinkShader(fragShaderSrc);
         if (success) {
-          console.log("✅ Shader compiled and linked");
+          vscode.postMessage({ type: 'log', payload: ['Shader compiled and linked'] });
           startRenderLoop();
-        } else {
-          console.warn("⚠️ Shader failed to compile, skipping render loop");
         }
       }
     });

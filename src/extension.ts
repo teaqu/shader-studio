@@ -5,7 +5,9 @@ import * as fs from "fs";
 export function activate(context: vscode.ExtensionContext) {
 	let panel: vscode.WebviewPanel | undefined;
 	const isDevMode = process.env.NODE_ENV === "dev";
-
+	const outputChannel = vscode.window.createOutputChannel("Shader View", {
+		log: true,
+	});
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		if (panel && editor?.document.languageId === "glsl") {
@@ -24,7 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-				const editor = vscode.window.activeTextEditor ??
+			const editor = vscode.window.activeTextEditor ??
 				vscode.window.visibleTextEditors.find((e) =>
 					e.document.languageId === "glsl" ||
 					e.document.fileName.endsWith(".glsl")
@@ -47,6 +49,55 @@ export function activate(context: vscode.ExtensionContext) {
 						),
 					],
 				},
+			);
+
+			panel.webview.onDidReceiveMessage(
+				(message) => {
+					if (message.type === "log") {
+						const logText = message.payload.join
+							? message.payload.join(" ")
+							: message.payload;
+						outputChannel.info(logText); // <-- Use info for normal logs
+
+						// 🟢 Clear errors if shader compiled successfully
+						if (
+							logText.includes("Shader compiled and linked") &&
+							vscode.window.activeTextEditor?.document.languageId === "glsl"
+						) {
+							diagnosticCollection.delete(
+								vscode.window.activeTextEditor.document.uri,
+							);
+						}
+					}
+
+					if (message.type === "error") {
+						const errorText = message.payload.join
+							? message.payload.join(" ")
+							: message.payload;
+						outputChannel.error(errorText); // <-- Use error for errors
+
+						// Try to extract GLSL error line (e.g., ERROR: 0:29: ...)
+						const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
+						const editor = vscode.window.activeTextEditor;
+						if (match && editor && editor.document.languageId === "glsl") {
+							const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
+							const range = editor.document.lineAt(lineNum).range;
+
+							// Set diagnostic
+							const diagnostic = new vscode.Diagnostic(
+								range,
+								errorText,
+								vscode.DiagnosticSeverity.Error,
+							);
+							diagnosticCollection.set(editor.document.uri, [diagnostic]);
+						} else if (editor) {
+							// Clear diagnostics if no error
+							diagnosticCollection.delete(editor.document.uri);
+						}
+					}
+				},
+				undefined,
+				context.subscriptions,
 			);
 
 			const htmlPath = path.join(
@@ -116,6 +167,11 @@ export function activate(context: vscode.ExtensionContext) {
 		// Then open the panel cleanly
 		vscode.commands.executeCommand("shader-view.view");
 	}
+
+	const diagnosticCollection = vscode.languages.createDiagnosticCollection(
+		"shader-view",
+	);
+	context.subscriptions.push(diagnosticCollection);
 }
 
 export function deactivate() {}
