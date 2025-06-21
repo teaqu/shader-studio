@@ -118,6 +118,8 @@
       err = err.slice(0, -1);
       vscode.postMessage({ type: 'error', payload: [`${err}`] });
       return null;
+    } else {
+      vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
     }
     return shader;
   }
