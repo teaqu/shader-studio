@@ -283,16 +283,16 @@
 
     window.addEventListener('keydown', (e) => {
       if (e.keyCode < 256) {
-        keyboardState[e.keyCode] = 255;
-        vscode.postMessage({ type: 'debug', payload: [`KeyDown: code=${e.keyCode}`] });
+        if (keyboardState[e.keyCode] !== 255) {
+          keyboardState[e.keyCode] = 255;
+          vscode.postMessage({ type: 'debug', payload: [`KeyDown: code=${e.keyCode}`] });
+        } else {
+                    keyboardState[e.keyCode] = 0;
+
+        }
       }
     });
-    window.addEventListener('keyup', (e) => {
-      if (e.keyCode < 256) {
-        keyboardState[e.keyCode] = 0;
-        vscode.postMessage({ type: 'debug', payload: [`KeyUp: code=${e.keyCode}`] });
-      }
-    });
+   
 
     window.addEventListener('message', async (event) => {
       const { type, code, config } = event.data;
