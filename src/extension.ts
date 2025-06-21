@@ -9,13 +9,13 @@ export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Shader View", {
 		log: true,
 	});
-	outputChannel.info("Output channel initialized");
+	outputChannel.debug("Output channel initialized");
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
-		outputChannel.info("sendShaderToWebview called");
+		outputChannel.debug("sendShaderToWebview called");
 		if (panel && editor?.document.languageId === "glsl") {
 			const code = editor.document.getText();
-			outputChannel.info(`Sending shader code (length: ${code.length})`);
+			outputChannel.debug(`Sending shader code (length: ${code.length})`);
 
 			// Try to load config from a sibling .config.json file
 			let config: any = null;
@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
 									vscode.Uri.file(bufferPath),
 								);
 								pass.path = webviewUri.toString();
-								outputChannel.info(
+								outputChannel.debug(
 									`Patched buffer path for ${passName}: ${pass.path}`,
 								);
 							} else {
@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
 											vscode.Uri.file(imgPath),
 										);
 										input.path = webviewUri.toString();
-										outputChannel.info(
+										outputChannel.debug(
 											`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
 										);
 									} else {
@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 					}
 
-					outputChannel.info(
+					outputChannel.debug(
 						`Loaded config for shader: ${configPath} ${JSON.stringify(config)}`,
 					);
 				} catch (e) {
@@ -95,9 +95,9 @@ export function activate(context: vscode.ExtensionContext) {
 				code,
 				config,
 			});
-			outputChannel.info("Shader message sent to webview");
+			outputChannel.debug("Shader message sent to webview");
 		} else {
-			outputChannel.info(
+			outputChannel.warn(
 				`Panel or editor not ready: panel=${!!panel}, lang=${editor?.document.languageId}`,
 			);
 		}
@@ -171,7 +171,7 @@ export function activate(context: vscode.ExtensionContext) {
 						const debugText = message.payload.join
 							? message.payload.join(" ")
 							: message.payload;
-						outputChannel.info(debugText);
+						outputChannel.debug(debugText);
 					}
 
 					if (message.type === "error") {
@@ -226,7 +226,7 @@ export function activate(context: vscode.ExtensionContext) {
 					return `${attr}="${uri}"`;
 				},
 			);
-			outputChannel.info("Webview HTML set");
+			outputChannel.debug("Webview HTML set");
 
 			// Send shader on first load
 			setTimeout(() => sendShaderToWebview(editor), 200);
