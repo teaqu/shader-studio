@@ -118,112 +118,12 @@
       err = err.slice(0, -1);
       vscode.postMessage({ type: 'error', payload: [`${err}`] });
       return null;
-    } else {
-      vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
     }
     return shader;
   }
 
-  // --- Accept config from extension and bind textures accordingly ---
-  async function compileAndLinkShader(code: string, config: any): Promise<boolean> {
-    const vs = createShader(gl, gl.VERTEX_SHADER, `#version 300 es
-      in vec2 position;
-      void main() {
-        gl_Position = vec4(position, 0.0, 1.0);
-      }
-    `);
-    const fs = createShader(gl, gl.FRAGMENT_SHADER, wrapShaderToyCode(code));
-    if (!vs || !fs) return false;
-
-    const newProgram = gl.createProgram()!;
-    gl.attachShader(newProgram, vs);
-    gl.attachShader(newProgram, fs);
-    gl.linkProgram(newProgram);
-
-    if (!gl.getProgramParameter(newProgram, gl.LINK_STATUS)) {
-      vscode.postMessage({ type: 'error', payload: [`🧨 Shader link error:\n${gl.getProgramInfoLog(newProgram)}`] });
-      return false;
-    }
-
-    program = newProgram;
-    gl.useProgram(program);
-
-    const posLoc = gl.getAttribLocation(program, 'position');
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-      -1, -1, 1, -1, -1, 1,
-      -1, 1, 1, -1, 1, 1
-    ]), gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(posLoc);
-    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-
-    resLoc = gl.getUniformLocation(program, 'iResolution')!;
-    timeLoc = gl.getUniformLocation(program, 'iTime')!;
-    mouseLoc = gl.getUniformLocation(program, 'iMouse')!;
-    frameLoc = gl.getUniformLocation(program, 'iFrame')!;
-
-    // --- Bind channel textures from config ---
-    // Use "Image" as the main pass inputs
-    const imageInputs = config?.Image?.inputs ?? config?.inputs ?? {};
-
-    for (let i = 0; i < 4; i++) {
-      const chanLoc = gl.getUniformLocation(program, `iChannel${i}`);
-      let texToBind = tex;
-      if (imageInputs[`iChannel${i}`]) {
-        const input = imageInputs[`iChannel${i}`];
-        vscode.postMessage({ type: 'debug', payload: [`Config for iChannel${i}: ${JSON.stringify(input)}`] });
-        if (input.type === 'image' && input.path) {
-          try {
-            vscode.postMessage({ type: 'debug', payload: [`Loading texture for iChannel${i} from: ${input.path}`] });
-            texToBind = await loadTextureFromUrl(gl, input.path, {
-              filter: input.filter,
-              wrap: input.wrap,
-              vflip: input.vflip
-            });
-            vscode.postMessage({ type: 'debug', payload: [`Texture loaded for iChannel${i}`] });
-          } catch (err) {
-            vscode.postMessage({ type: 'error', payload: [`Failed to load texture for iChannel${i}: ${input.path}`] });
-            texToBind = tex;
-          }
-        } else if (input.type === 'keyboard') {
-          vscode.postMessage({ type: 'debug', payload: [`Binding keyboard texture for iChannel${i}`] });
-          updateKeyboardTexture(gl);
-          texToBind = keyboardTexture!;
-        }
-        // You can add more input types here (e.g., buffer, keyboard)
-      } else {
-        vscode.postMessage({ type: 'debug', payload: [`No config for iChannel${i}, using default texture`] });
-      }
-      channelTextures[i] = texToBind;
-      if (chanLoc) {
-        gl.activeTexture(gl.TEXTURE0 + i);
-        gl.bindTexture(gl.TEXTURE_2D, texToBind);
-        gl.uniform1i(chanLoc, i);
-      }
-    }
-
-    return true;
-  }
-
   let frame = 0;
   let frameLoc: WebGLUniformLocation;
-
-  function draw(time: number) {
-    if (!running || !program) return;
-
-    updateKeyboardTexture(gl);
-
-    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
-    gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
-    gl.uniform1f(timeLoc, time * 0.001);
-    gl.uniform4fv(mouseLoc, mouse);
-    gl.uniform1i(frameLoc, frame++);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    requestAnimationFrame(draw);
-  }
 
   function startRenderLoop() {
     if (running) return;
@@ -287,8 +187,7 @@
           keyboardState[e.keyCode] = 255;
           vscode.postMessage({ type: 'debug', payload: [`KeyDown: code=${e.keyCode}`] });
         } else {
-                    keyboardState[e.keyCode] = 0;
-
+          keyboardState[e.keyCode] = 0;
         }
       }
     });
@@ -340,9 +239,11 @@
           };
 
           if (pass.name !== "Image") {
-            const { tex, fb } = createBufferTarget(gl, glCanvas.width, glCanvas.height);
-            passTextures[pass.name] = tex;
-            passFramebuffers[pass.name] = fb;
+            passBuffers[pass.name] = createPingPongBuffers(gl, glCanvas.width, glCanvas.height);
+            // Store the initial texture reference
+            passTextures[pass.name] = passBuffers[pass.name].front.tex;
+          } else {
+            vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
           }
         }
 
@@ -375,6 +276,14 @@
   let passTextures: Record<string, WebGLTexture> = {};
   let passFramebuffers: Record<string, WebGLFramebuffer> = {};
 
+  // Add these declarations near the other state variables
+  type BufferPair = {
+    front: { tex: WebGLTexture, fb: WebGLFramebuffer },
+    back: { tex: WebGLTexture, fb: WebGLFramebuffer }
+  };
+
+  let passBuffers: Record<string, BufferPair> = {};
+
   function buildPasses(config: any) {
     passes = [];
     // If config is missing or has no passes, create a default Image pass
@@ -405,6 +314,7 @@
     }
   }
 
+
   async function fetchShaderSource(url: string): Promise<string> {
     const res = await fetch(url);
     return await res.text();
@@ -426,6 +336,13 @@
     return { tex, fb };
   }
 
+  function createPingPongBuffers(gl: WebGL2RenderingContext, width: number, height: number): BufferPair {
+    return {
+      front: createBufferTarget(gl, width, height),
+      back: createBufferTarget(gl, width, height)
+    };
+  }
+
   let imageTextureCache: Record<string, WebGLTexture> = {};
   let passUniforms: Record<string, { resLoc: WebGLUniformLocation, timeLoc: WebGLUniformLocation, mouseLoc: WebGLUniformLocation, frameLoc: WebGLUniformLocation }> = {};
 
@@ -436,7 +353,9 @@
     for (const pass of passes) {
       if (pass.name === "Image") continue;
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, passFramebuffers[pass.name]);
+      const buffers = passBuffers[pass.name];
+      // Render to the back buffer
+      gl.bindFramebuffer(gl.FRAMEBUFFER, buffers.back.fb);
       gl.viewport(0, 0, glCanvas.width, glCanvas.height);
       gl.useProgram(passPrograms[pass.name]);
 
@@ -457,8 +376,14 @@
           } else if (input.type && input.type.toLowerCase() === 'keyboard') {
             updateKeyboardTexture(gl);
             texToBind = keyboardTexture!;
-          } else if (input.type && input.type.toLowerCase() === 'buffer' && input.source) {
-            texToBind = passTextures[input.source];
+          } else if (input.type && input.type.toLowerCase() === 'buffer') {
+            if (input.source === pass.name) {
+              // If reading from self, use the front buffer
+              texToBind = buffers.front.tex;
+            } else {
+              // If reading from another buffer, use its current texture
+              texToBind = passTextures[input.source];
+            }
           }
         }
         if (chanLoc) {
@@ -476,6 +401,13 @@
       gl.uniform1i(uniforms.frameLoc, frame++);
 
       gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Swap front and back buffers
+      const temp = buffers.front;
+      buffers.front = buffers.back;
+      buffers.back = temp;
+      // Update the texture reference for other passes to use
+      passTextures[pass.name] = buffers.front.tex;
     }
 
     // --- Render final Image pass to screen ---
@@ -523,6 +455,16 @@
     }
 
     requestAnimationFrame(multipassDraw);
+  }
+
+  function cleanup() {
+    for (const [passName, buffers] of Object.entries(passBuffers)) {
+      gl.deleteFramebuffer(buffers.front.fb);
+      gl.deleteFramebuffer(buffers.back.fb);
+      gl.deleteTexture(buffers.front.tex);
+      gl.deleteTexture(buffers.back.tex);
+    }
+    passBuffers = {};
   }
 </script>
 
