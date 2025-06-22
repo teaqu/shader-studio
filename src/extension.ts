@@ -15,6 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
 		outputChannel.debug("sendShaderToWebview called");
 		if (panel && editor?.document.languageId === "glsl") {
 			const code = editor.document.getText();
+			const name = path.basename(editor.document.uri.fsPath); // <-- Add this line
 			outputChannel.debug(`Sending shader code (length: ${code.length})`);
 
 			// Try to load config from a sibling .config.json file
@@ -94,6 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
 				type: "shaderSource",
 				code,
 				config,
+				name,
 			});
 			outputChannel.debug("Shader message sent to webview");
 		} else {

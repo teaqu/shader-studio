@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { piRenderer } from './lib/pilibs/src/piRenderer';
-  import { piCreateFPSCounter, getRealTime } from './lib/pilibs/src/piWebUtils';
+  import { getRealTime, piCreateFPSCounter } from './lib/pilibs/src/piWebUtils';
 
   // --- Core State ---
   let glCanvas: HTMLCanvasElement;
@@ -9,8 +9,6 @@
   let initialized = false;
   let running = false;
   let frame = 0;
-  let fps = 0;
-  let fpsCounter: any;
   let mouse = new Float32Array([0, 0, 0, 0]);
   let isMouseDown = false;
   let keyHeld = new Uint8Array(256);
@@ -18,6 +16,9 @@
   let keyToggled = new Uint8Array(256);
   let keyboardBuffer = new Uint8Array(256 * 3); // Combined buffer for texture upload
   const vscode = acquireVsCodeApi();
+  let shaderName = '';
+  let fpsCounter = piCreateFPSCounter();
+  let currentFPS = 0;
 
   // --- piLibs Resource State ---
   let keyboardTexture: any = null;
@@ -34,6 +35,7 @@
   let passBuffers: Record<string, { front: any, back: any }> = {};
   let imageTextureCache: Record<string, any> = {};
   let isHandlingMessage = false;
+  let currentShaderRenderID = 0;
 
   // --- ShaderToy Compatibility ---
   function wrapShaderToyCode(code: string): { wrappedCode: string, headerLineCount: number } {
@@ -81,9 +83,6 @@ void main() {
         vscode.postMessage({ type: 'error', payload: ['❌ piRenderer could not initialize'] });
         return;
       }
-
-      fpsCounter = piCreateFPSCounter();
-      fpsCounter.Reset(getRealTime());
 
       defaultTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 1, 1, renderer.TEXFMT.C4I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, new Uint8Array([0, 0, 0, 255]));
 
@@ -285,7 +284,13 @@ void main() {
   }
 
   async function handleShaderMessage(event: MessageEvent) {
-    const { type, code, config } = event.data;
+    const { type, code, config, name } = event.data;
+        currentShaderRenderID++;
+
+    if (shaderName !== name) {
+      shaderName = name;
+      cleanup();
+    }
     if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
 
     isHandlingMessage = true;
@@ -388,8 +393,6 @@ void main() {
       imageTextureCache = newImageTextureCache;
       for (const key in oldImageTextureCache) renderer.DestroyTexture(oldImageTextureCache[key]);
 
-      // frame = 0; // Do not reset frame to preserve state in shaders that use iFrame
-      if (fpsCounter) fpsCounter.Reset(getRealTime());
       running = true;
       requestAnimationFrame(render);
     } finally {
@@ -415,14 +418,20 @@ void main() {
     passShaders = {};
     passBuffers = {};
     imageTextureCache = {};
+    frame = 0;
+    currentShaderRenderID++;
   }
 
   // --- Render Loop using piRenderer ---
-  function render(time: number) {
-    if (!running) return;
+  function render(time: number, renderID = currentShaderRenderID) {
+  if (!running || renderID !== currentShaderRenderID) return;
 
-    if (fpsCounter && fpsCounter.Count(time)) {
-        fps = fpsCounter.GetFPS();
+    if (frame === 0) {
+      fpsCounter.Reset(time);
+    }
+
+    if (fpsCounter.Count(time)) {
+      currentFPS = fpsCounter.GetFPS();
     }
 
     const res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
@@ -450,7 +459,7 @@ void main() {
     keyPressed.fill(0);
 
     frame++;
-    requestAnimationFrame(render);
+    requestAnimationFrame((t) => render(t, renderID)); // ✅ forward renderID
   }
 
   function drawPass(pass: PassConfig, target: any, uniforms: {res: Float32Array, time: number, mouse: Float32Array, frame: number}) {
@@ -505,8 +514,9 @@ void main() {
         <canvas bind:this={glCanvas}></canvas>
     </div>
     <div class="stats-bar">
-        {glCanvas?.width}x{glCanvas?.height}
-    </div>
+  {glCanvas?.width}x{glCanvas?.height} |
+  {currentFPS.toFixed(1)} FPS
+</div>
 </div>
 
 <style>
