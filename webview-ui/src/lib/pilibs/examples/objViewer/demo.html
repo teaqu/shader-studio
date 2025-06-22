@@ -1,0 +1,51 @@
+<html>
+
+<head>
+<title>3D Model Demo</title>
+<meta name="Keywords" content="webgl, glsl, piLibs">
+<meta name="Description" content="demo">
+<meta name="Author" content="Inigo Quilez">
+<link rel="stylesheet" type="text/css" href="demo.css" />
+
+<script src="../../lib/piLibs.js"></script>
+<script src="henryMesh.js"></script>
+<script src="ssPiece.js"></script>
+<script src="demo.js"></script>
+
+<script> 
+var gDemo = null;
+function myInit()
+{
+    gDemo = new Demo("demogl");
+    if (!gDemo.mCreated)
+    {
+        alert("Could not create movie!");
+        return;
+    }
+ 
+    gDemo.startRendering();
+}
+
+function myPause()
+{
+    gDemo.pauseResume();
+}
+</script> 
+
+</head> 
+
+<body onload="myInit()"> 
+    <div>
+        <canvas id="demogl" width="1280" height="720" style="width:1280px;height:720px"></canvas>
+        <br/>
+        <div id="timeline" style="height:24px;background-color:#808080;"> 
+            <div id="myFrame" style="left:0px;position:absolute">0.00 s</div>
+            <div id="myTime" style="left:80px;position:absolute">0.00 s</div>
+            <div id="myFramerate" style="left:180px; position: absolute;">0.0 fps</div>
+            <div id="myPause" style="left:280px; position: absolute;cursor:pointer" onclick="myPause()">Pause</div>
+        </div> 
+        <br/>
+        Asset downloadwed from the open sourced "Henry" short film <a href="https://www.oculus.com/story-studio/blog/how-the-sausage-is-made-henry-trailer/">https://www.oculus.com/story-studio/blog/how-the-sausage-is-made-henry-trailer/</a>
+    </div>
+</body> 
+</html>

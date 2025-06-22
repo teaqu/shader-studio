@@ -1,0 +1,35 @@
+<html>
+
+<head>
+    <title>Flames Demo</title>
+    <meta name="Keywords" content="webgl, glsl, inigo quilez, quilez, piLibs">
+    <meta name="Description" content="Flames Demo">
+    <meta name="Author" content="Inigo Quilez">
+    <link rel="stylesheet" type="text/css" href="demo.css?v=1" />
+
+    <script src="../../lib/piLibs.js"></script>
+    <script src="demo.js"></script>
+    <script>
+        var gDemo = null;
+        function pageInit()
+        {
+            piDisableTouch();
+
+            gDemo = new Demo("demoCanvas");
+            if (!gDemo.mCreated)
+            {
+                alert( "Could not create Flames!" );
+                return;
+            }
+        }
+    </script>
+</head>
+
+
+<body onload="pageInit()">
+    <canvas id="demoCanvas"></canvas>
+    <div id="title">Flames!</div>
+    <div id="fpsCounter"></div>
+</body>
+
+</html>
