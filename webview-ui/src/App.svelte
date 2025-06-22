@@ -320,4 +320,4 @@
   }
 </script>
 
-<canvas bind:this={glCanvas} width={800} height={600} style="background-color: black; width: 100%; height: 100%;"></canvas>
+<canvas bind:this={glCanvas} width={1500} height={844} style="background-color: black; width: 100%; height: 100%;"></canvas>
