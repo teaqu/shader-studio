@@ -120,14 +120,33 @@ void main() {
       window.addEventListener('keyup', onKeyUp);
       window.addEventListener('message', handleShaderMessage);
 
-      const resizeObserver = new ResizeObserver(entries => {
-          if (!entries || !entries.length) return;
-          const { width, height } = entries[0].contentRect;
-          updateCanvasSize(width, height);
-      });
-      resizeObserver.observe(glCanvas);
+     const container = glCanvas.parentElement!;
+    function resizeCanvasToFit16x9() {
+      const container = glCanvas.parentElement!;
+      const styles = getComputedStyle(container);
+      const paddingX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
 
-      updateCanvasSize(glCanvas.clientWidth, glCanvas.clientHeight);
+      const w = container.clientWidth - paddingX;
+      const h = container.clientHeight;
+      const aspect = 16 / 9;
+
+      let newWidth, newHeight;
+      if (w / h > aspect) {
+        newHeight = h;
+        newWidth = h * aspect;
+      } else {
+        newWidth = w;
+        newHeight = w / aspect;
+      }
+
+      glCanvas.style.width = `${newWidth}px`;
+      glCanvas.style.height = `${newHeight}px`;
+      updateCanvasSize(newWidth, newHeight);
+    }
+
+    const resizeObserver = new ResizeObserver(resizeCanvasToFit16x9);
+    resizeObserver.observe(container);
+    resizeCanvasToFit16x9();
       
       initialized = true;
       vscode.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
@@ -508,18 +527,15 @@ void main() {
     }
 
     .canvas-container {
-        flex-grow: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-        padding: 0 2rem;
+      flex-grow: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      padding: 0 2rem;
     }
 
     canvas {
-        width: 100%;
-        max-height: 100%;
-        aspect-ratio: 16 / 9;
         display: block;
         background-color: black;
     }
