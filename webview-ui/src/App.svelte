@@ -144,21 +144,63 @@ void main() {
         return;
     }
 
+    const oldPassBuffers = passBuffers;
+    passBuffers = {};
+
+    // Create a temporary shader to copy buffer contents.
+    const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    const fs = `
+        precision highp float;
+        out vec4 fragColor;
+        uniform sampler2D srcTex;
+        uniform vec3 iResolution;
+        void main() {
+            vec2 uv = gl_FragCoord.xy / iResolution.xy;
+            fragColor = texture(srcTex, uv);
+        }
+    `;
+    const copyShader = renderer.CreateShader(vs, fs);
+
     glCanvas.width = newWidth;
     glCanvas.height = newHeight;
 
-    for (const key in passBuffers) {
-        renderer.DestroyRenderTarget(passBuffers[key].front);
-        renderer.DestroyRenderTarget(passBuffers[key].back);
-        renderer.DestroyTexture(passBuffers[key].front.mTex0);
-        renderer.DestroyTexture(passBuffers[key].back.mTex0);
-    }
-    passBuffers = {};
-
     for (const pass of passes) {
         if (pass.name !== "Image") {
-            passBuffers[pass.name] = createPingPongBuffers(glCanvas.width, glCanvas.height);
+            const newBuffers = createPingPongBuffers(newWidth, newHeight);
+            // If there was an old buffer for this pass, copy its content to preserve state.
+            if (oldPassBuffers[pass.name] && copyShader && copyShader.mResult) {
+                renderer.AttachShader(copyShader);
+                const posLoc = renderer.GetAttribLocation(copyShader, 'position');
+                renderer.SetShaderTextureUnit('srcTex', 0);
+
+                // Copy the 'front' buffer which holds the previous frame's state.
+                renderer.SetRenderTarget(newBuffers.front);
+                renderer.SetViewport([0, 0, newWidth, newHeight]);
+                renderer.SetShaderConstant3FV("iResolution", new Float32Array([newWidth, newHeight, newWidth / newHeight]));
+                renderer.AttachTextures(1, oldPassBuffers[pass.name].front.mTex0);
+                renderer.DrawUnitQuad_XY(posLoc);
+            }
+            passBuffers[pass.name] = newBuffers;
         }
+    }
+
+    if (copyShader) renderer.DestroyShader(copyShader);
+
+    // Clean up the old, now unused, buffers.
+    for (const key in oldPassBuffers) {
+        renderer.DestroyRenderTarget(oldPassBuffers[key].front);
+        renderer.DestroyRenderTarget(oldPassBuffers[key].back);
+        renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
+        renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
+    }
+
+     // Redraw the final image pass to prevent a black screen flicker.
+    const imagePass = passes.find(p => p.name === "Image");
+    if (imagePass && running) {
+        const res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
+        const t = (performance.now()) * 0.001;
+        const uniforms = { res, time: t, mouse, frame };
+        drawPass(imagePass, null, uniforms);
     }
   }
 
@@ -317,58 +359,13 @@ void main() {
 
     const res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
     const t = time * 0.001;
-
-    const drawPass = (pass: PassConfig, target: any) => {
-      const shader = passShaders[pass.name];
-      if (!shader) return;
-
-      if (target) {
-        renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
-      } else {
-        renderer.SetViewport([0, 0, glCanvas.width, glCanvas.height]);
-      }
-
-      renderer.SetRenderTarget(target);
-      renderer.AttachShader(shader);
-
-      renderer.SetShaderConstant3FV("iResolution", res);
-      renderer.SetShaderConstant1F("iTime", t);
-      renderer.SetShaderConstant4FV("iMouse", mouse);
-      renderer.SetShaderConstant1I("iFrame", frame);
-
-      let texturesToBind = [defaultTexture, defaultTexture, defaultTexture, defaultTexture];
-      for (let i = 0; i < 4; i++) {
-        const input = pass.inputs[`iChannel${i}`];
-        if (input) {
-          if (input.type === 'image' && input.path) {
-            texturesToBind[i] = imageTextureCache[input.path] || defaultTexture;
-          } else if (input.type === 'keyboard') {
-            updateKeyboardTexture();
-            texturesToBind[i] = keyboardTexture || defaultTexture;
-          } else if (input.type === 'buffer') {
-            if (input.source === pass.name) {
-              texturesToBind[i] = passBuffers[pass.name].front.mTex0;
-            } else if (passBuffers[input.source]) {
-              texturesToBind[i] = passBuffers[input.source].front.mTex0;
-            }
-          }
-        }
-      }
-      renderer.AttachTextures(4, texturesToBind[0], texturesToBind[1], texturesToBind[2], texturesToBind[3]);
-      renderer.SetShaderTextureUnit('iChannel0', 0);
-      renderer.SetShaderTextureUnit('iChannel1', 1);
-      renderer.SetShaderTextureUnit('iChannel2', 2);
-      renderer.SetShaderTextureUnit('iChannel3', 3);
-
-      const posLoc = renderer.GetAttribLocation(shader, 'position');
-      renderer.DrawUnitQuad_XY(posLoc);
-    };
+    const uniforms = { res, time: t, mouse, frame };
 
     // --- Render all buffer passes ---
     for (const pass of passes) {
       if (pass.name === "Image") continue;
       const buffers = passBuffers[pass.name];
-      drawPass(pass, buffers.back);
+      drawPass(pass, buffers.back, uniforms);
       
       const temp = buffers.front;
       buffers.front = buffers.back;
@@ -378,7 +375,7 @@ void main() {
     // --- Render final Image pass to screen ---
     const imagePass = passes.find(p => p.name === "Image");
     if (imagePass) {
-      drawPass(imagePass, null);
+      drawPass(imagePass, null, uniforms);
     }
 
     // Clear the "just pressed" state for the next frame
@@ -386,6 +383,52 @@ void main() {
 
     frame++;
     requestAnimationFrame(render);
+  }
+
+  function drawPass(pass: PassConfig, target: any, uniforms: {res: Float32Array, time: number, mouse: Float32Array, frame: number}) {
+    const shader = passShaders[pass.name];
+    if (!shader) return;
+
+    if (target) {
+      renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
+    } else {
+      renderer.SetViewport([0, 0, glCanvas.width, glCanvas.height]);
+    }
+
+    renderer.SetRenderTarget(target);
+    renderer.AttachShader(shader);
+
+    renderer.SetShaderConstant3FV("iResolution", uniforms.res);
+    renderer.SetShaderConstant1F("iTime", uniforms.time);
+    renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
+    renderer.SetShaderConstant1I("iFrame", uniforms.frame);
+
+    let texturesToBind = [defaultTexture, defaultTexture, defaultTexture, defaultTexture];
+    for (let i = 0; i < 4; i++) {
+      const input = pass.inputs[`iChannel${i}`];
+      if (input) {
+        if (input.type === 'image' && input.path) {
+          texturesToBind[i] = imageTextureCache[input.path] || defaultTexture;
+        } else if (input.type === 'keyboard') {
+          updateKeyboardTexture();
+          texturesToBind[i] = keyboardTexture || defaultTexture;
+        } else if (input.type === 'buffer') {
+          if (input.source === pass.name) {
+            texturesToBind[i] = passBuffers[pass.name].front.mTex0;
+          } else if (passBuffers[input.source]) {
+            texturesToBind[i] = passBuffers[input.source].front.mTex0;
+          }
+        }
+      }
+    }
+    renderer.AttachTextures(4, texturesToBind[0], texturesToBind[1], texturesToBind[2], texturesToBind[3]);
+    renderer.SetShaderTextureUnit('iChannel0', 0);
+    renderer.SetShaderTextureUnit('iChannel1', 1);
+    renderer.SetShaderTextureUnit('iChannel2', 2);
+    renderer.SetShaderTextureUnit('iChannel3', 3);
+
+    const posLoc = renderer.GetAttribLocation(shader, 'position');
+    renderer.DrawUnitQuad_XY(posLoc);
   }
 </script>
 
