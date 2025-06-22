@@ -177,7 +177,7 @@
       const shader = renderer.CreateShader(vs, fs);
       if (!shader.mResult) {
         const err = shader.mInfo.replace(/ERROR: 0:(\d+):/g, (m, p1) => {
-            const userLine = Math.max(0, parseInt(p1, 10) - renderer.GetShaderHeaderLines(1));
+            const userLine = Math.max(0, parseInt(p1, 10) - renderer.GetShaderHeaderLines(1)) - 15.0;
             return `ERROR: 0:${userLine}:`;
         });
         vscode.postMessage({ type: 'error', payload: [`${err}`] });
