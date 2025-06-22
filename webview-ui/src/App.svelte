@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { piRenderer } from './lib/pilibs/src/piRenderer';
+  import { piCreateFPSCounter, getRealTime } from './lib/pilibs/src/piWebUtils';
 
   // --- Core State ---
   let glCanvas: HTMLCanvasElement;
   let renderer: any;
   let running = false;
   let frame = 0;
+  let fps = 0;
+  let fpsCounter: any;
   let mouse = new Float32Array([0, 0, 0, 0]);
   let isMouseDown = false;
   let keyHeld = new Uint8Array(256);
@@ -70,7 +73,28 @@
       return;
     }
 
+    fpsCounter = piCreateFPSCounter();
+    fpsCounter.Reset(getRealTime());
+
     defaultTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 1, 1, renderer.TEXFMT.C4I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, new Uint8Array([0, 0, 0, 255]));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.keyCode >= 256) return;
+      // If key was not previously held, it's a "just pressed" event
+      if (keyHeld[e.keyCode] === 0) {
+        keyPressed[e.keyCode] = 255;
+        // Toggle state only changes on initial press
+        keyToggled[e.keyCode] = keyToggled[e.keyCode] === 255 ? 0 : 255;
+      }
+      // Set key as held
+      keyHeld[e.keyCode] = 255;
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.keyCode >= 256) return;
+      // Unset key as held
+      keyHeld[e.keyCode] = 0;
+    };
 
     glCanvas.addEventListener('mousedown', () => { isMouseDown = true; });
     glCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
@@ -83,23 +107,8 @@
       mouse[3] = mouse[1];
     });
 
-    window.addEventListener('keydown', (e) => {
-      if (e.keyCode >= 256) return;
-      // If key was not previously held, it's a "just pressed" event
-      if (keyHeld[e.keyCode] === 0) {
-        keyPressed[e.keyCode] = 255;
-        // Toggle state only changes on initial press
-        keyToggled[e.keyCode] = keyToggled[e.keyCode] === 255 ? 0 : 255;
-      }
-      // Set key as held
-      keyHeld[e.keyCode] = 255;
-    });
-
-    window.addEventListener('keyup', (e) => {
-      if (e.keyCode >= 256) return;
-      // Unset key as held
-      keyHeld[e.keyCode] = 0;
-    });
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     window.addEventListener('message', handleShaderMessage);
     vscode.postMessage({ type: 'debug', payload: ['Svelte with piLibs loaded'] });
@@ -252,6 +261,10 @@
   function render(time: number) {
     if (!running) return;
 
+    if (fpsCounter && fpsCounter.Count(time)) {
+        fps = fpsCounter.GetFPS();
+    }
+
     const res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
     const t = time * 0.001;
 
@@ -320,4 +333,52 @@
   }
 </script>
 
-<canvas bind:this={glCanvas} width={1500} height={844} style="background-color: black; width: 100%; height: 100%;"></canvas>
+<div class="canvas-container">
+    <canvas bind:this={glCanvas} width={1500} height={844}></canvas>
+    <div class="stats-overlay">
+        {Math.round(fps)} FPS
+    </div>
+</div>
+
+<style>
+    :global(html, body) {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+        width: 100%;
+    }
+
+    .canvas-container {
+        position: relative;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 0 2rem;
+    }
+
+    canvas {
+        /* This ensures the canvas fits within the container while maintaining a 16:9 ratio */
+        width: 100%;
+        height: 100%;
+        max-width: calc(100vh * 16 / 9);
+        max-height: calc(100vw * 9 / 16);
+        display: block;
+        background-color: black;
+    }
+
+     .stats-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        color: white;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px 10px;
+        font-family: monospace;
+        font-size: 14px;
+        text-align: left;
+        pointer-events: none; /* So it doesn't block mouse events on the canvas */
+    }
+</style>
