@@ -1,6 +1,35 @@
 # shader-view README
 
-This is the README for your extension "shader-view". After writing up a brief description, we recommend including the following sections.
+Shadertoy extension for vscode.
+
+Add config same dir as shader like so:
+shadername.config.json
+```json
+{
+  "Image": {
+    "inputs": {
+      "iChannel0": {
+        "source": "BufferA",
+        "type": "buffer"
+      }
+    }
+  },
+  "BufferA": {
+    "path": "buffer_name.glsl",
+    "inputs": {
+      "iChannel0": {
+        "source": "BufferA",
+        "type": "buffer"
+      },
+      "iChannel1": {
+        "type": "keyboard"
+      }
+    }
+  },
+}
+```
+
+Currntly supports uniforms iTime, iFrame, iMouse and iResolution. 
 
 ## Features
 
