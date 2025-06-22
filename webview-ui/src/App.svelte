@@ -6,6 +6,7 @@
   // --- Core State ---
   let glCanvas: HTMLCanvasElement;
   let renderer: any;
+  let initialized = false;
   let running = false;
   let frame = 0;
   let fps = 0;
@@ -34,7 +35,7 @@
   let imageTextureCache: Record<string, any> = {};
 
   // --- ShaderToy Compatibility ---
-  function wrapShaderToyCode(code: string): string {
+  function wrapShaderToyCode(code: string): { wrappedCode: string, headerLineCount: number } {
     const injectChannels = ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3']
       .filter(ch => !new RegExp(`uniform\\s+sampler2D\\s+${ch}\\s*;`).test(code))
       .map(ch => `uniform sampler2D ${ch};`)
@@ -42,7 +43,7 @@
     const injectMouse = !/uniform\s+vec4\s+iMouse\s*;/.test(code) ? `uniform vec4 iMouse;\n` : '';
     const injectFrame = !/uniform\s+int\s+iFrame\s*;/.test(code) ? `uniform int iFrame;\n` : '';
 
-    return `
+    const header = `
     precision highp float;
     out vec4 fragColor;
 
@@ -50,69 +51,116 @@
     uniform float iTime;
     ${injectChannels}
     ${injectMouse}
-    ${injectFrame}
+    ${injectFrame}`;
 
-    ${code}
+    const wrappedCode = `${header}
 
-    void main() {
-      mainImage(fragColor, gl_FragCoord.xy);
-    }`;
+${code}
+
+void main() {
+  mainImage(fragColor, gl_FragCoord.xy);
+}`;
+
+    const headerLineCount = (header.match(/\n/g) || []).length + 2;
+    return { wrappedCode, headerLineCount };
   }
 
   // --- Main Setup ---
-  onMount(() => {
+  onMount(async () => {
     const gl = glCanvas.getContext('webgl2');
     if (!gl) {
       vscode.postMessage({ type: 'error', payload: ['❌ WebGL2 not supported'] });
       return;
     }
 
-    renderer = piRenderer();
-    if (!renderer.Initialize(gl)) {
-      vscode.postMessage({ type: 'error', payload: ['❌ piRenderer could not initialize'] });
-      return;
+    try {
+      renderer = piRenderer();
+      const success = await renderer.Initialize(gl);
+      if (!success) {
+        vscode.postMessage({ type: 'error', payload: ['❌ piRenderer could not initialize'] });
+        return;
+      }
+
+      fpsCounter = piCreateFPSCounter();
+      fpsCounter.Reset(getRealTime());
+
+      defaultTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 1, 1, renderer.TEXFMT.C4I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, new Uint8Array([0, 0, 0, 255]));
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.keyCode >= 256) return;
+        // If key was not previously held, it's a "just pressed" event
+        if (keyHeld[e.keyCode] === 0) {
+          keyPressed[e.keyCode] = 255;
+          // Toggle state only changes on initial press
+          keyToggled[e.keyCode] = keyToggled[e.keyCode] === 255 ? 0 : 255;
+        }
+        // Set key as held
+        keyHeld[e.keyCode] = 255;
+      };
+
+      const onKeyUp = (e: KeyboardEvent) => {
+        if (e.keyCode >= 256) return;
+        // Unset key as held
+        keyHeld[e.keyCode] = 0;
+      };
+
+      glCanvas.addEventListener('mousedown', () => { isMouseDown = true; });
+      glCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
+      glCanvas.addEventListener('mousemove', (e) => {
+        if (!isMouseDown) return;
+        const rect = glCanvas.getBoundingClientRect();
+        mouse[0] = e.clientX - rect.left;
+        mouse[1] = glCanvas.height - (e.clientY - rect.top);
+        mouse[2] = mouse[0];
+        mouse[3] = mouse[1];
+      });
+
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      window.addEventListener('message', handleShaderMessage);
+
+      const resizeObserver = new ResizeObserver(entries => {
+          if (!entries || !entries.length) return;
+          const { width, height } = entries[0].contentRect;
+          updateCanvasSize(width, height);
+      });
+      resizeObserver.observe(glCanvas);
+
+      updateCanvasSize(glCanvas.clientWidth, glCanvas.clientHeight);
+      
+      initialized = true;
+      vscode.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
+
+    } catch (err) {
+        vscode.postMessage({ type: 'error', payload: ['❌ Renderer initialization failed:', err.message] });
+    }
+  });
+
+  function updateCanvasSize(width: number, height: number) {
+    const newWidth = Math.round(width);
+    const newHeight = Math.round(height);
+
+    if (!renderer || (glCanvas.width === newWidth && glCanvas.height === newHeight)) {
+        return;
     }
 
-    fpsCounter = piCreateFPSCounter();
-    fpsCounter.Reset(getRealTime());
+    glCanvas.width = newWidth;
+    glCanvas.height = newHeight;
 
-    defaultTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 1, 1, renderer.TEXFMT.C4I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, new Uint8Array([0, 0, 0, 255]));
+    for (const key in passBuffers) {
+        renderer.DestroyRenderTarget(passBuffers[key].front);
+        renderer.DestroyRenderTarget(passBuffers[key].back);
+        renderer.DestroyTexture(passBuffers[key].front.mTex0);
+        renderer.DestroyTexture(passBuffers[key].back.mTex0);
+    }
+    passBuffers = {};
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.keyCode >= 256) return;
-      // If key was not previously held, it's a "just pressed" event
-      if (keyHeld[e.keyCode] === 0) {
-        keyPressed[e.keyCode] = 255;
-        // Toggle state only changes on initial press
-        keyToggled[e.keyCode] = keyToggled[e.keyCode] === 255 ? 0 : 255;
-      }
-      // Set key as held
-      keyHeld[e.keyCode] = 255;
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.keyCode >= 256) return;
-      // Unset key as held
-      keyHeld[e.keyCode] = 0;
-    };
-
-    glCanvas.addEventListener('mousedown', () => { isMouseDown = true; });
-    glCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
-    glCanvas.addEventListener('mousemove', (e) => {
-      if (!isMouseDown) return;
-      const rect = glCanvas.getBoundingClientRect();
-      mouse[0] = e.clientX - rect.left;
-      mouse[1] = glCanvas.height - (e.clientY - rect.top);
-      mouse[2] = mouse[0];
-      mouse[3] = mouse[1];
-    });
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-
-    window.addEventListener('message', handleShaderMessage);
-    vscode.postMessage({ type: 'debug', payload: ['Svelte with piLibs loaded'] });
-  });
+    for (const pass of passes) {
+        if (pass.name !== "Image") {
+            passBuffers[pass.name] = createPingPongBuffers(glCanvas.width, glCanvas.height);
+        }
+    }
+  }
 
   // --- Resource Management using piRenderer ---
 
@@ -176,7 +224,7 @@
 
   async function handleShaderMessage(event: MessageEvent) {
     const { type, code, config } = event.data;
-    if (type !== 'shaderSource') return;
+    if (type !== 'shaderSource' || !initialized) return;
 
     running = false;
     cleanup();
@@ -206,11 +254,12 @@
 
     const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
     for (const pass of passes) {
-      const fs = wrapShaderToyCode(pass.shaderSrc);
+      const { wrappedCode: fs, headerLineCount: svelteHeaderLines } = wrapShaderToyCode(pass.shaderSrc);
       const shader = renderer.CreateShader(vs, fs);
       if (!shader.mResult) {
         const err = shader.mInfo.replace(/ERROR: 0:(\d+):/g, (m, p1) => {
-            const userLine = Math.max(0, parseInt(p1, 10) - renderer.GetShaderHeaderLines(1)) - 15.0;
+            const totalHeaderLines = renderer.GetShaderHeaderLines(1) + svelteHeaderLines;
+            const userLine = Math.max(1, parseInt(p1, 10) - totalHeaderLines);
             return `ERROR: 0:${userLine}:`;
         });
         vscode.postMessage({ type: 'error', payload: [`${err}`] });
@@ -233,6 +282,7 @@
     }
 
     frame = 0;
+    if (fpsCounter) fpsCounter.Reset(getRealTime());
     running = true;
     requestAnimationFrame(render);
   }
@@ -271,6 +321,12 @@
     const drawPass = (pass: PassConfig, target: any) => {
       const shader = passShaders[pass.name];
       if (!shader) return;
+
+      if (target) {
+        renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
+      } else {
+        renderer.SetViewport([0, 0, glCanvas.width, glCanvas.height]);
+      }
 
       renderer.SetRenderTarget(target);
       renderer.AttachShader(shader);
@@ -333,10 +389,12 @@
   }
 </script>
 
-<div class="canvas-container">
-    <canvas bind:this={glCanvas} width={1500} height={844}></canvas>
-    <div class="stats-overlay">
-        {Math.round(fps)} FPS
+<div class="main-container">
+    <div class="canvas-container">
+        <canvas bind:this={glCanvas}></canvas>
+    </div>
+    <div class="stats-bar">
+        {Math.round(fps)} FPS | {glCanvas?.width}x{glCanvas?.height}
     </div>
 </div>
 
@@ -347,38 +405,41 @@
         overflow: hidden;
         height: 100%;
         width: 100%;
+        display: flex;
+    }
+
+    .main-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
     }
 
     .canvas-container {
-        position: relative;
-        height: 100%;
+        flex-grow: 1;
         display: flex;
         justify-content: center;
         align-items: center;
+        overflow: hidden;
         padding: 0 2rem;
     }
 
     canvas {
-        /* This ensures the canvas fits within the container while maintaining a 16:9 ratio */
         width: 100%;
-        height: 100%;
-        max-width: calc(100vh * 16 / 9);
-        max-height: calc(100vw * 9 / 16);
+        max-height: 100%;
+        aspect-ratio: 16 / 9;
         display: block;
         background-color: black;
     }
 
-     .stats-overlay {
+    .stats-bar {
+        color: white;
+        background-color: #252526;
+        padding: 4px 10px;
+        font-family: monospace;
+        font-size: 12px;
+        border-top: 1px solid #333;
         position: absolute;
         bottom: 0;
-        left: 0;
-        right: 0;
-        color: white;
-        background-color: rgba(0, 0, 0, 0.5);
-        padding: 5px 10px;
-        font-family: monospace;
-        font-size: 14px;
-        text-align: left;
-        pointer-events: none; /* So it doesn't block mouse events on the canvas */
     }
 </style>
