@@ -486,7 +486,7 @@ void main() {
         <canvas bind:this={glCanvas}></canvas>
     </div>
     <div class="stats-bar">
-        {Math.round(fps)} FPS | {glCanvas?.width}x{glCanvas?.height}
+        {glCanvas?.width}x{glCanvas?.height}
     </div>
 </div>
 
