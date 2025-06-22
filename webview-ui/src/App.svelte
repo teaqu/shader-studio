@@ -9,7 +9,10 @@
   let frame = 0;
   let mouse = new Float32Array([0, 0, 0, 0]);
   let isMouseDown = false;
-  let keyboardState = new Uint8Array(256);
+  let keyHeld = new Uint8Array(256);
+  let keyPressed = new Uint8Array(256);
+  let keyToggled = new Uint8Array(256);
+  let keyboardBuffer = new Uint8Array(256 * 3); // Combined buffer for texture upload
   const vscode = acquireVsCodeApi();
 
   // --- piLibs Resource State ---
@@ -81,10 +84,21 @@
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.keyCode < 256) {
-        keyboardState[e.keyCode] = keyboardState[e.keyCode] === 255 ? 0 : 255;
-        vscode.postMessage({ type: 'debug', payload: [`KeyDown: code=${e.keyCode}`] });
+      if (e.keyCode >= 256) return;
+      // If key was not previously held, it's a "just pressed" event
+      if (keyHeld[e.keyCode] === 0) {
+        keyPressed[e.keyCode] = 255;
+        // Toggle state only changes on initial press
+        keyToggled[e.keyCode] = keyToggled[e.keyCode] === 255 ? 0 : 255;
       }
+      // Set key as held
+      keyHeld[e.keyCode] = 255;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.keyCode >= 256) return;
+      // Unset key as held
+      keyHeld[e.keyCode] = 0;
     });
 
     window.addEventListener('message', handleShaderMessage);
@@ -120,10 +134,20 @@
   }
 
   function updateKeyboardTexture() {
+    // Combine the three states into one buffer for uploading
+    // Row 0: Held states
+    keyboardBuffer.set(keyHeld, 0);
+    // Row 1: Pressed states
+    keyboardBuffer.set(keyPressed, 256);
+    // Row 2: Toggled states
+    keyboardBuffer.set(keyToggled, 512);
+
     if (!keyboardTexture) {
-      keyboardTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 256, 1, renderer.TEXFMT.C1I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, keyboardState);
+      // Create a 256x3 texture, where each row corresponds to a state
+      keyboardTexture = renderer.CreateTexture(renderer.TEXTYPE.T2D, 256, 3, renderer.TEXFMT.C1I8, renderer.FILTER.NONE, renderer.TEXWRP.CLAMP, keyboardBuffer);
     } else {
-      renderer.UpdateTexture(keyboardTexture, 0, 0, 256, 1, keyboardState);
+      // Update the entire texture
+      renderer.UpdateTexture(keyboardTexture, 0, 0, 256, 3, keyboardBuffer);
     }
   }
 
@@ -287,6 +311,9 @@
     if (imagePass) {
       drawPass(imagePass, null);
     }
+
+    // Clear the "just pressed" state for the next frame
+    keyPressed.fill(0);
 
     frame++;
     requestAnimationFrame(render);
