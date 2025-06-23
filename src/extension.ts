@@ -156,9 +156,8 @@ export function activate(context: vscode.ExtensionContext) {
 						const logText = message.payload.join
 							? message.payload.join(" ")
 							: message.payload;
-						outputChannel.info(logText); // <-- Use info for normal logs
+						outputChannel.info(logText);
 
-						// 🟢 Clear errors if shader compiled successfully
 						if (
 							logText.includes("Shader compiled and linked") &&
 							vscode.window.activeTextEditor?.document.languageId === "glsl"
@@ -177,10 +176,11 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 
 					if (message.type === "error") {
-						const errorText = message.payload.join
+						let errorText = message.payload.join
 							? message.payload.join(" ")
 							: message.payload;
-						outputChannel.error(errorText); // <-- Use error for errors
+						errorText = errorText.slice(0, -1);
+						outputChannel.error(errorText);
 
 						// Try to extract GLSL error line (e.g., ERROR: 0:29: ...)
 						const match = errorText.match(/ERROR:\s*\d+:(\d+):/);

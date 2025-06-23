@@ -412,6 +412,7 @@ void main() {
       for (const key in oldImageTextureCache) renderer.DestroyTexture(oldImageTextureCache[key]);
 
       running = true;
+      vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
       requestAnimationFrame(render);
     } finally {
       isHandlingMessage = false;
