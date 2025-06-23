@@ -104,16 +104,34 @@ void main() {
         keyHeld[e.keyCode] = 0;
       };
 
-      glCanvas.addEventListener('mousedown', () => { isMouseDown = true; });
-      glCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
-      glCanvas.addEventListener('mousemove', (e) => {
+      const onMouseDown = (e: MouseEvent) => {
+        isMouseDown = true;
+        const rect = glCanvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / rect.width * glCanvas.width);
+        const y = Math.floor(glCanvas.height - (e.clientY - rect.top) / rect.height * glCanvas.height);
+        mouse[0] = x;
+        mouse[1] = y;
+        mouse[2] = x;
+        mouse[3] = y;
+      };
+
+      const onMouseMove = (e: MouseEvent) => {
         if (!isMouseDown) return;
         const rect = glCanvas.getBoundingClientRect();
-        mouse[0] = e.clientX - rect.left;
-        mouse[1] = glCanvas.height - (e.clientY - rect.top);
-        mouse[2] = mouse[0];
-        mouse[3] = mouse[1];
-      });
+        mouse[0] = Math.floor((e.clientX - rect.left) / rect.width * glCanvas.width);
+        mouse[1] = Math.floor(glCanvas.height - (e.clientY - rect.top) / rect.height * glCanvas.height);
+      };
+
+      const onMouseUp = () => {
+        isMouseDown = false;
+        // Negate z and w to indicate mouse is up, following ShaderToy convention.
+        mouse[2] = -Math.abs(mouse[2]);
+        mouse[3] = -Math.abs(mouse[3]);
+      };
+
+      glCanvas.addEventListener('mousedown', onMouseDown);
+      glCanvas.addEventListener('mouseup', onMouseUp);
+      glCanvas.addEventListener('mousemove', onMouseMove);
 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
