@@ -14,96 +14,114 @@ export function activate(context: vscode.ExtensionContext) {
 	let isLocked = false;
 	let lockedFilePath: string | undefined = undefined;
 
+	let lastSent = { code: "", config: "", name: "" };
+	let sendTimeout: NodeJS.Timeout | null = null;
+
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
-		outputChannel.debug("sendShaderToWebview called");
-		if (panel && editor?.document.languageId === "glsl") {
-			const code = editor.document.getText();
-			const name = path.basename(editor.document.uri.fsPath); // <-- Add this line
-			outputChannel.debug(`Sending shader code (length: ${code.length})`);
+		if (!panel || editor?.document.languageId !== "glsl") return;
 
-			// Try to load config from a sibling .config.json file
-			let config: any = null;
-			const shaderPath = editor.document.uri.fsPath;
-			const configPath = shaderPath.replace(/\.glsl$/i, ".config.json");
-			if (fs.existsSync(configPath)) {
-				try {
-					const configRaw = fs.readFileSync(configPath, "utf-8");
-					config = parseJSONC(configRaw);
+		const code = editor.document.getText();
+		const name = path.basename(editor.document.uri.fsPath);
 
-					// Patch image paths for all top-level keys except "version"
-					for (const passName of Object.keys(config)) {
-						if (passName === "version") continue;
-						const pass = config[passName];
-						if (typeof pass !== "object") continue;
+		// Try to load config from a sibling .config.json file
+		let config: any = null;
+		const shaderPath = editor.document.uri.fsPath;
+		const configPath = shaderPath.replace(/\.glsl$/i, ".config.json");
+		if (fs.existsSync(configPath)) {
+			try {
+				const configRaw = fs.readFileSync(configPath, "utf-8");
+				config = parseJSONC(configRaw);
 
-						// Patch pass-level "path" (for buffer source files)
-						if (pass.path && typeof pass.path === "string") {
-							const bufferPath = path.isAbsolute(pass.path)
-								? pass.path
-								: path.join(path.dirname(shaderPath), pass.path);
-							if (fs.existsSync(bufferPath)) {
-								const webviewUri = panel.webview.asWebviewUri(
-									vscode.Uri.file(bufferPath),
-								);
-								pass.path = webviewUri.toString();
-								outputChannel.debug(
-									`Patched buffer path for ${passName}: ${pass.path}`,
-								);
-							} else {
-								outputChannel.warn(
-									`Buffer source not found for ${passName}: ${bufferPath}`,
-								);
-							}
+				// Patch image paths for all top-level keys except "version"
+				for (const passName of Object.keys(config)) {
+					if (passName === "version") continue;
+					const pass = config[passName];
+					if (typeof pass !== "object") continue;
+
+					// Patch pass-level "path" (for buffer source files)
+					if (pass.path && typeof pass.path === "string") {
+						const bufferPath = path.isAbsolute(pass.path)
+							? pass.path
+							: path.join(path.dirname(shaderPath), pass.path);
+						if (fs.existsSync(bufferPath)) {
+							const webviewUri = panel.webview.asWebviewUri(
+								vscode.Uri.file(bufferPath),
+							);
+							pass.path = webviewUri.toString();
+							outputChannel.debug(
+								`Patched buffer path for ${passName}: ${pass.path}`,
+							);
+						} else {
+							outputChannel.warn(
+								`Buffer source not found for ${passName}: ${bufferPath}`,
+							);
 						}
+					}
 
-						// Patch iChannelN image paths inside "inputs"
-						if (pass.inputs && typeof pass.inputs === "object") {
-							for (const key of Object.keys(pass.inputs)) {
-								const input = pass.inputs[key];
-								if (input.type && input.path) {
-									const imgPath = path.isAbsolute(input.path)
-										? input.path
-										: path.join(path.dirname(shaderPath), input.path);
-									if (fs.existsSync(imgPath)) {
-										const webviewUri = panel.webview.asWebviewUri(
-											vscode.Uri.file(imgPath),
-										);
-										input.path = webviewUri.toString();
-										outputChannel.debug(
-											`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
-										);
-									} else {
-										outputChannel.warn(
-											`Image not found for ${passName}.inputs.${key}: ${imgPath}`,
-										);
-									}
+					// Patch iChannelN image paths inside "inputs"
+					if (pass.inputs && typeof pass.inputs === "object") {
+						for (const key of Object.keys(pass.inputs)) {
+							const input = pass.inputs[key];
+							if (input.type && input.path) {
+								const imgPath = path.isAbsolute(input.path)
+									? input.path
+									: path.join(path.dirname(shaderPath), input.path);
+								if (fs.existsSync(imgPath)) {
+									const webviewUri = panel.webview.asWebviewUri(
+										vscode.Uri.file(imgPath),
+									);
+									input.path = webviewUri.toString();
+									outputChannel.debug(
+										`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
+									);
+								} else {
+									outputChannel.warn(
+										`Image not found for ${passName}.inputs.${key}: ${imgPath}`,
+									);
 								}
 							}
 						}
 					}
-
-					outputChannel.debug(
-						`Loaded config for shader: ${configPath} ${JSON.stringify(config)}`,
-					);
-				} catch (e) {
-					vscode.window.showWarningMessage(
-						`Failed to parse config: ${configPath}`,
-					);
-					config = null;
 				}
-			}
 
-			// After preparing config
-			panel.webview.postMessage({
-				type: "shaderSource",
-				code,
-				config,
-				name,
-				isLocked,
-			});
-			outputChannel.debug("Shader message sent to webview");
+				outputChannel.debug(
+					`Loaded config for shader: ${configPath} ${JSON.stringify(config)}`,
+				);
+			} catch (e) {
+				vscode.window.showWarningMessage(
+					`Failed to parse config: ${configPath}`,
+				);
+				config = null;
+			}
 		}
+		const configStr = JSON.stringify(config);
+
+		// Only send if something changed
+		if (
+			lastSent.code === code &&
+			lastSent.config === configStr &&
+			lastSent.name === name
+		) {
+			return;
+		}
+		lastSent = { code, config: configStr, name };
+
+		outputChannel.debug("sendShaderToWebview called");
+		outputChannel.debug(`Sending shader code (length: ${code.length})`);
+		panel.webview.postMessage({
+			type: "shaderSource",
+			code,
+			config,
+			name,
+			isLocked,
+		});
+		outputChannel.debug("Shader message sent to webview");
 	};
+
+	function debouncedSendShaderToWebview(editor: vscode.TextEditor) {
+		if (sendTimeout) clearTimeout(sendTimeout);
+		sendTimeout = setTimeout(() => sendShaderToWebview(editor), 100);
+	}
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("shader-view.view", () => {
