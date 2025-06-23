@@ -19,6 +19,7 @@
   let shaderName = '';
   let fpsCounter = piCreateFPSCounter();
   let currentFPS = 0;
+  let lastEvent: MessageEvent | null = null;
 
   // --- piLibs Resource State ---
   let keyboardTexture: any = null;
@@ -302,13 +303,19 @@ void main() {
   }
 
   async function handleShaderMessage(event: MessageEvent) {
-    const { type, code, config, name } = event.data;
+    let { type, code, config, name, isLocked } = event.data;
         currentShaderRenderID++;
+
+    if (isLocked && lastEvent !== null && lastEvent.data.name !== name) {
+      handleShaderMessage(lastEvent);
+      return;
+    }
 
     if (shaderName !== name) {
       shaderName = name;
       cleanup();
     }
+    
     if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
 
     isHandlingMessage = true;
@@ -414,6 +421,7 @@ void main() {
       running = true;
       vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
       requestAnimationFrame(render);
+      lastEvent = event;
     } finally {
       isHandlingMessage = false;
     }

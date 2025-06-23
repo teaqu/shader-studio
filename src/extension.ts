@@ -16,13 +16,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		outputChannel.debug("sendShaderToWebview called");
-		if (
-			isLocked && lockedFilePath &&
-			editor.document.uri.fsPath !== lockedFilePath
-		) {
-			outputChannel.debug("View is locked; ignoring file change.");
-			return;
-		}
 		if (panel && editor?.document.languageId === "glsl") {
 			const code = editor.document.getText();
 			const name = path.basename(editor.document.uri.fsPath); // <-- Add this line
@@ -106,6 +99,7 @@ export function activate(context: vscode.ExtensionContext) {
 				code,
 				config,
 				name,
+				isLocked,
 			});
 			outputChannel.debug("Shader message sent to webview");
 		}
@@ -257,6 +251,10 @@ export function activate(context: vscode.ExtensionContext) {
 			} else {
 				lockedFilePath = undefined;
 				vscode.window.showInformationMessage("Shader View unlocked.");
+				// If unlocked, send the current shader
+				if (vscode.window.activeTextEditor) {
+					sendShaderToWebview(vscode.window.activeTextEditor);
+				}
 			}
 		}),
 	);
