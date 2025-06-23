@@ -98,10 +98,6 @@ export function activate(context: vscode.ExtensionContext) {
 				name,
 			});
 			outputChannel.debug("Shader message sent to webview");
-		} else {
-			outputChannel.warn(
-				`Panel or editor not ready: panel=${!!panel}, lang=${editor?.document.languageId}`,
-			);
 		}
 	};
 
