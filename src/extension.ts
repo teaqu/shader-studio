@@ -11,8 +11,18 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	outputChannel.debug("Output channel initialized");
 
+	let isLocked = false;
+	let lockedFilePath: string | undefined = undefined;
+
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		outputChannel.debug("sendShaderToWebview called");
+		if (
+			isLocked && lockedFilePath &&
+			editor.document.uri.fsPath !== lockedFilePath
+		) {
+			outputChannel.debug("View is locked; ignoring file change.");
+			return;
+		}
 		if (panel && editor?.document.languageId === "glsl") {
 			const code = editor.document.getText();
 			const name = path.basename(editor.document.uri.fsPath); // <-- Add this line
@@ -236,6 +246,21 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand("shader-view.toggleLock", () => {
+			isLocked = !isLocked;
+			if (isLocked && vscode.window.activeTextEditor) {
+				lockedFilePath = vscode.window.activeTextEditor.document.uri.fsPath;
+				vscode.window.showInformationMessage(
+					"Shader View locked to current file.",
+				);
+			} else {
+				lockedFilePath = undefined;
+				vscode.window.showInformationMessage("Shader View unlocked.");
+			}
+		}),
+	);
+
 	// 🔁 Update shader code on file change
 	const watcher = vscode.workspace.createFileSystemWatcher("**/*.glsl");
 	watcher.onDidChange((uri) => {
@@ -252,8 +277,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// ⌨️ Update shader as it's edited (optional)
 	vscode.workspace.onDidChangeTextDocument((event) => {
-		if (event.document === vscode.window.activeTextEditor?.document) {
-			sendShaderToWebview(vscode.window.activeTextEditor);
+		const editor = vscode.window.activeTextEditor;
+		if (editor && event.document === editor.document) {
+			sendShaderToWebview(editor);
 		}
 	});
 	// ✅ Auto-open panel in dev mode

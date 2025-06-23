@@ -17,7 +17,11 @@
     "commands": [
       {
         "command": "shader-view.view",
-        "title": "View Shader in ShaderToy Panel"
+        "title": "Shader View: ShaderToy Panel"
+      },
+      {
+        "command": "shader-view.toggleLock",
+        "title": "Shader View: Toggle Lock"
       }
     ]
   },
