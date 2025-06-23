@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let isLocked = false;
 	let lockedFilePath: string | undefined = undefined;
 
-	let lastSent = { code: "", config: "", name: "" };
+	let lastSent = { code: "", config: "", name: "", isLocked: false };
 	let sendTimeout: NodeJS.Timeout | null = null;
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
@@ -100,11 +100,12 @@ export function activate(context: vscode.ExtensionContext) {
 		if (
 			lastSent.code === code &&
 			lastSent.config === configStr &&
-			lastSent.name === name
+			lastSent.name === name &&
+			lastSent.isLocked === isLocked
 		) {
 			return;
 		}
-		lastSent = { code, config: configStr, name };
+		lastSent = { code, config: configStr, name, isLocked: isLocked };
 
 		outputChannel.debug("sendShaderToWebview called");
 		outputChannel.debug(`Sending shader code (length: ${code.length})`);
