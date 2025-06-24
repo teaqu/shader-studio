@@ -303,129 +303,123 @@ void main() {
   }
 
   async function handleShaderMessage(event: MessageEvent) {
-    let { type, code, config, name, isLocked } = event.data;
-        currentShaderRenderID++;
+    
+  let { type, code, config, name, buffers = {} } = event.data;
+  currentShaderRenderID++;
 
-    if (isLocked && lastEvent !== null && lastEvent.data.name !== name) {
-      handleShaderMessage(lastEvent);
+  if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
+
+  if (shaderName !== name) {
+    shaderName = name;
+    cleanup();
+  }
+  
+  isHandlingMessage = true;
+  try {
+    running = false;
+
+    // Keep track of old resources to clean up later by creating shallow copies
+    const oldPassShaders = { ...passShaders };
+    const oldPassBuffers = { ...passBuffers };
+    const oldImageTextureCache = { ...imageTextureCache };
+
+    // Prepare for the new state
+    let newPasses: PassConfig[] = [];
+    let newPassShaders: Record<string, any> = {};
+    let newPassBuffers: Record<string, any> = {};
+    let newImageTextureCache: Record<string, any> = {};
+    let hasError = false;
+
+    const usedConfig = config ?? {};
+    const passNames = usedConfig ? Object.keys(usedConfig).filter(k => k !== "version") : [];
+
+    if (passNames.length === 0) {
+      newPasses.push({ name: "Image", shaderSrc: code, inputs: {}, path: undefined });
+    } else {
+      for (const passName of passNames) {
+        const pass = usedConfig[passName];
+        // Use buffer content from the message if available, otherwise use main shader code
+        const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
+        
+        newPasses.push({
+          name: passName,
+          shaderSrc, 
+          inputs: pass.inputs ?? {},
+          path: pass.path,
+        });
+      }
+    }
+
+
+    const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    for (const pass of newPasses) {
+      const { wrappedCode: fs, headerLineCount: svelteHeaderLines } = wrapShaderToyCode(pass.shaderSrc);
+      const shader = renderer.CreateShader(vs, fs);
+      if (!shader.mResult) {
+        hasError = true;
+        const err = shader.mInfo.replace(/ERROR: 0:(\d+):/g, (m, p1) => {
+            const totalHeaderLines = renderer.GetShaderHeaderLines(1) + svelteHeaderLines;
+            const userLine = Math.max(1, parseInt(p1, 10) - totalHeaderLines);
+            return `ERROR: 0:${userLine}:`;
+        });
+        vscode.postMessage({ type: 'error', payload: [`${pass.name}: ${err}`] });
+        break; 
+      }
+      newPassShaders[pass.name] = shader;
+
+      if (pass.name !== "Image") {
+        if (oldPassBuffers[pass.name]) {
+          newPassBuffers[pass.name] = oldPassBuffers[pass.name];
+          delete oldPassBuffers[pass.name];
+        } else {
+          newPassBuffers[pass.name] = createPingPongBuffers(glCanvas.width, glCanvas.height);
+        }
+      }
+    }
+
+    if (hasError) {
+      for (const key in newPassShaders) renderer.DestroyShader(newPassShaders[key]);
+      running = true;
+      requestAnimationFrame(render);
       return;
     }
 
-    if (shaderName !== name) {
-      shaderName = name;
-      cleanup();
+    passes = newPasses;
+    passShaders = newPassShaders;
+    passBuffers = newPassBuffers;
+
+    for (const key in oldPassShaders) renderer.DestroyShader(oldPassShaders[key]);
+    for (const key in oldPassBuffers) {
+      renderer.DestroyRenderTarget(oldPassBuffers[key].front);
+      renderer.DestroyRenderTarget(oldPassBuffers[key].back);
+      renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
+      renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
     }
-    
-    if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
 
-    isHandlingMessage = true;
-    try {
-      running = false;
-
-      // Keep track of old resources to clean up later by creating shallow copies
-      const oldPassShaders = { ...passShaders };
-      const oldPassBuffers = { ...passBuffers };
-      const oldImageTextureCache = { ...imageTextureCache };
-
-      // Prepare for the new state
-      let newPasses: PassConfig[] = [];
-      let newPassShaders: Record<string, any> = {};
-      let newPassBuffers: Record<string, any> = {};
-      let newImageTextureCache: Record<string, any> = {};
-      let hasError = false;
-
-      const usedConfig = config ?? {};
-      const passNames = usedConfig ? Object.keys(usedConfig).filter(k => k !== "version") : [];
-
-      if (passNames.length === 0) {
-        newPasses.push({ name: "Image", shaderSrc: code, inputs: {}, path: undefined });
-      } else {
-        for (const passName of passNames) {
-          const pass = usedConfig[passName];
-          newPasses.push({
-            name: passName,
-            shaderSrc: pass.path ? "" : code,
-            inputs: pass.inputs ?? {},
-            path: pass.path,
-          });
-        }
-      }
-
-      for (const pass of newPasses) {
-        if (pass.path) {
-          pass.shaderSrc = await fetchShaderSource(pass.path);
-        }
-      }
-
-      const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-      for (const pass of newPasses) {
-        const { wrappedCode: fs, headerLineCount: svelteHeaderLines } = wrapShaderToyCode(pass.shaderSrc);
-        const shader = renderer.CreateShader(vs, fs);
-        if (!shader.mResult) {
-          hasError = true;
-          const err = shader.mInfo.replace(/ERROR: 0:(\d+):/g, (m, p1) => {
-              const totalHeaderLines = renderer.GetShaderHeaderLines(1) + svelteHeaderLines;
-              const userLine = Math.max(1, parseInt(p1, 10) - totalHeaderLines);
-              return `ERROR: 0:${userLine}:`;
-          });
-          vscode.postMessage({ type: 'error', payload: [`${pass.name}: ${err}`] });
-          break; 
-        }
-        newPassShaders[pass.name] = shader;
-
-        if (pass.name !== "Image") {
-          if (oldPassBuffers[pass.name]) {
-            newPassBuffers[pass.name] = oldPassBuffers[pass.name];
-            delete oldPassBuffers[pass.name];
+    for (const pass of passes) {
+      for (let i = 0; i < 4; i++) {
+        const input = pass.inputs[`iChannel${i}`];
+        if (input && input.type === 'image' && input.path) {
+          if (oldImageTextureCache[input.path]) {
+            newImageTextureCache[input.path] = oldImageTextureCache[input.path];
+            delete oldImageTextureCache[input.path];
           } else {
-            newPassBuffers[pass.name] = createPingPongBuffers(glCanvas.width, glCanvas.height);
+            newImageTextureCache[input.path] = await loadTextureFromUrl(input.path, input.opts);
           }
         }
       }
-
-      if (hasError) {
-        for (const key in newPassShaders) renderer.DestroyShader(newPassShaders[key]);
-        running = true;
-        requestAnimationFrame(render);
-        return;
-      }
-
-      passes = newPasses;
-      passShaders = newPassShaders;
-      passBuffers = newPassBuffers;
-
-      for (const key in oldPassShaders) renderer.DestroyShader(oldPassShaders[key]);
-      for (const key in oldPassBuffers) {
-        renderer.DestroyRenderTarget(oldPassBuffers[key].front);
-        renderer.DestroyRenderTarget(oldPassBuffers[key].back);
-        renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
-        renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
-      }
-
-      for (const pass of passes) {
-        for (let i = 0; i < 4; i++) {
-          const input = pass.inputs[`iChannel${i}`];
-          if (input && input.type === 'image' && input.path) {
-            if (oldImageTextureCache[input.path]) {
-              newImageTextureCache[input.path] = oldImageTextureCache[input.path];
-              delete oldImageTextureCache[input.path];
-            } else {
-              newImageTextureCache[input.path] = await loadTextureFromUrl(input.path, input.opts);
-            }
-          }
-        }
-      }
-      imageTextureCache = newImageTextureCache;
-      for (const key in oldImageTextureCache) renderer.DestroyTexture(oldImageTextureCache[key]);
-
-      running = true;
-      vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
-      requestAnimationFrame(render);
-      lastEvent = event;
-    } finally {
-      isHandlingMessage = false;
     }
+    imageTextureCache = newImageTextureCache;
+    for (const key in oldImageTextureCache) renderer.DestroyTexture(oldImageTextureCache[key]);
+
+    running = true;
+    vscode.postMessage({ type: 'log', payload: [`Shader compiled and linked`] });
+    requestAnimationFrame(render);
+    lastEvent = event;
+  } finally {
+    isHandlingMessage = false;
   }
+}
 
   function cleanup() {
     running = false;

@@ -12,81 +12,184 @@ export function activate(context: vscode.ExtensionContext) {
 	outputChannel.debug("Output channel initialized");
 
 	let isLocked = false;
-	let lockedFilePath: string | undefined = undefined;
+	let lockedEditor: vscode.TextEditor | undefined = undefined;
 
-	let lastSent = { code: "", config: "", name: "", isLocked: false };
+	// In your lastSent, add tracking for individual buffers
+	let lastSent = {
+		code: "",
+		config: "",
+		name: "",
+		isLocked: false,
+		// Removing bufferHashes
+	};
+
 	let sendTimeout: NodeJS.Timeout | null = null;
+
+	const getEditorByPath = (
+		filePath: string,
+		callback?: (editor: vscode.TextEditor | undefined) => void,
+	): vscode.TextEditor | undefined => {
+		// Check if file exists first
+		if (!fs.existsSync(filePath)) {
+			outputChannel.error(`File not found: ${filePath}`);
+			if (callback) callback(undefined);
+			return undefined;
+		}
+
+		// Try to find among visible editors
+		const editors = vscode.window.visibleTextEditors.filter(
+			(editor) => editor.document.uri.fsPath === filePath,
+		);
+		const editor = editors.length > 0 ? editors[0] : undefined;
+
+		if (editor) {
+			outputChannel.debug(`Found open editor for file: ${filePath}`);
+			if (callback) callback(editor);
+			return editor;
+		}
+
+		// Try to find the document in memory before opening
+		const documents = vscode.workspace.textDocuments;
+		const existingDoc = documents.find((doc) => doc.fileName === filePath);
+
+		if (existingDoc) {
+			outputChannel.debug(`Found document in memory for: ${filePath}`);
+		}
+
+		outputChannel.debug(
+			`Returning undefined for now, editor will open asynchronously: ${filePath}`,
+		);
+		return undefined;
+	};
+
+	// Create a cache for shader content
+	const contentCache = new Map<
+		string,
+		{ timestamp: number; content: string }
+	>();
+
+	// Keep track of buffer files referenced by each shader
+	const shaderBuffersMap = new Map<string, Set<string>>();
 
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		if (!panel || editor?.document.languageId !== "glsl") return;
 
+		if (
+			isLocked && lockedEditor &&
+			editor.document.uri.fsPath !== lockedEditor.document.uri.fsPath
+		) {
+			editor = lockedEditor; // Use the locked editor if set
+		}
+
 		const code = editor.document.getText();
 		const name = path.basename(editor.document.uri.fsPath);
+		const shaderPath = editor.document.uri.fsPath;
 
 		// Try to load config from a sibling .config.json file
 		let config: any = null;
-		const shaderPath = editor.document.uri.fsPath;
 		const configPath = shaderPath.replace(/\.glsl$/i, ".config.json");
+
+		// Collect buffer contents
+		const buffers: Record<string, string> = {};
+		// Removed bufferHashes
+
 		if (fs.existsSync(configPath)) {
 			try {
+				// Use the latest config from disk
 				const configRaw = fs.readFileSync(configPath, "utf-8");
 				config = parseJSONC(configRaw);
 
-				// Patch image paths for all top-level keys except "version"
-				for (const passName of Object.keys(config)) {
-					if (passName === "version") continue;
-					const pass = config[passName];
-					if (typeof pass !== "object") continue;
+				// Process buffers
+				if (config) {
+					for (const passName of Object.keys(config)) {
+						if (passName === "version") continue;
+						const pass = config[passName];
+						if (typeof pass !== "object") continue;
 
-					// Patch pass-level "path" (for buffer source files)
-					if (pass.path && typeof pass.path === "string") {
-						const bufferPath = path.isAbsolute(pass.path)
-							? pass.path
-							: path.join(path.dirname(shaderPath), pass.path);
-						if (fs.existsSync(bufferPath)) {
+						// Patch pass-level "path" (for buffer source files)
+						if (pass.path && typeof pass.path === "string") {
+							const bufferPath = path.isAbsolute(pass.path)
+								? pass.path
+								: path.join(path.dirname(shaderPath), pass.path);
+
+							// Check if we have this buffer in memory first
+							const bufferDoc = vscode.workspace.textDocuments.find(
+								(doc) => doc.fileName === bufferPath,
+							);
+
+							// log buffer loading
+							outputChannel.debug(
+								`Processing buffer for pass ${passName}: ${bufferPath}`,
+							);
+							// log filenames
+							outputChannel.debug(
+								`Buffer file name: ${path.basename(bufferPath)}`,
+							);
+
+							if (bufferDoc) {
+								// Get content from memory directly
+								const bufferContent = bufferDoc.getText();
+
+								// output code
+								outputChannel.debug(
+									bufferContent,
+								);
+
+								buffers[passName] = bufferContent;
+
+								outputChannel.debug(
+									`Loaded buffer content from memory for ${passName}`,
+								);
+							} else if (fs.existsSync(bufferPath)) {
+								// Read buffer file content from disk
+								try {
+									const bufferContent = fs.readFileSync(bufferPath, "utf-8");
+									buffers[passName] = bufferContent;
+
+									// Removed hash calculation
+									outputChannel.debug(
+										`Loaded buffer content from disk for ${passName}: ${bufferPath}`,
+									);
+								} catch (e) {
+									outputChannel.warn(
+										`Failed to read buffer content for ${passName}: ${bufferPath}`,
+									);
+								}
+							}
+
+							// Always update webview URI (doesn't affect performance)
 							const webviewUri = panel.webview.asWebviewUri(
 								vscode.Uri.file(bufferPath),
 							);
 							pass.path = webviewUri.toString();
-							outputChannel.debug(
-								`Patched buffer path for ${passName}: ${pass.path}`,
-							);
-						} else {
-							outputChannel.warn(
-								`Buffer source not found for ${passName}: ${bufferPath}`,
-							);
 						}
-					}
 
-					// Patch iChannelN image paths inside "inputs"
-					if (pass.inputs && typeof pass.inputs === "object") {
-						for (const key of Object.keys(pass.inputs)) {
-							const input = pass.inputs[key];
-							if (input.type && input.path) {
-								const imgPath = path.isAbsolute(input.path)
-									? input.path
-									: path.join(path.dirname(shaderPath), input.path);
-								if (fs.existsSync(imgPath)) {
-									const webviewUri = panel.webview.asWebviewUri(
-										vscode.Uri.file(imgPath),
-									);
-									input.path = webviewUri.toString();
-									outputChannel.debug(
-										`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
-									);
-								} else {
-									outputChannel.warn(
-										`Image not found for ${passName}.inputs.${key}: ${imgPath}`,
-									);
+						// Process inputs similar to original code
+						if (pass.inputs && typeof pass.inputs === "object") {
+							for (const key of Object.keys(pass.inputs)) {
+								const input = pass.inputs[key];
+								if (input.type && input.path) {
+									const imgPath = path.isAbsolute(input.path)
+										? input.path
+										: path.join(path.dirname(shaderPath), input.path);
+									if (fs.existsSync(imgPath)) {
+										const webviewUri = panel.webview.asWebviewUri(
+											vscode.Uri.file(imgPath),
+										);
+										input.path = webviewUri.toString();
+										outputChannel.debug(
+											`Patched image path for ${passName}.inputs.${key}: ${input.path}`,
+										);
+									} else {
+										outputChannel.warn(
+											`Image not found for ${passName}.inputs.${key}: ${imgPath}`,
+										);
+									}
 								}
 							}
 						}
 					}
 				}
-
-				outputChannel.debug(
-					`Loaded config for shader: ${configPath} ${JSON.stringify(config)}`,
-				);
 			} catch (e) {
 				vscode.window.showWarningMessage(
 					`Failed to parse config: ${configPath}`,
@@ -94,35 +197,55 @@ export function activate(context: vscode.ExtensionContext) {
 				config = null;
 			}
 		}
+
+		// This builds a map of which buffers are used by which shaders
+		if (config) {
+			// Record which buffer files are used by this shader
+			const bufferFiles = new Set<string>();
+
+			for (const passName of Object.keys(config)) {
+				if (passName === "version") continue;
+				const pass = config[passName];
+				if (typeof pass !== "object") continue;
+
+				if (pass.path && typeof pass.path === "string") {
+					const bufferPath = path.isAbsolute(pass.path)
+						? pass.path
+						: path.join(path.dirname(shaderPath), pass.path);
+
+					bufferFiles.add(bufferPath);
+				}
+			}
+
+			// Update our tracking map
+			shaderBuffersMap.set(shaderPath, bufferFiles);
+		}
+
+		// Calculate hashes or use stringified versions with minimal whitespace to detect changes
 		const configStr = JSON.stringify(config);
 
-		// Only send if something changed
-		if (
-			lastSent.code === code &&
-			lastSent.config === configStr &&
-			lastSent.name === name &&
-			lastSent.isLocked === isLocked
-		) {
-			return;
-		}
-		lastSent = { code, config: configStr, name, isLocked: isLocked };
+		// Always update the shader - no change detection
+		outputChannel.debug(`Sending shader update (${name})`);
+		outputChannel.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
 
-		outputChannel.debug("sendShaderToWebview called");
-		outputChannel.debug(`Sending shader code (length: ${code.length})`);
+		// Update lastSent for potential future use
+		lastSent = {
+			code,
+			config: configStr,
+			name,
+			isLocked,
+		};
+
 		panel.webview.postMessage({
 			type: "shaderSource",
 			code,
 			config,
 			name,
 			isLocked,
+			buffers,
 		});
 		outputChannel.debug("Shader message sent to webview");
 	};
-
-	function debouncedSendShaderToWebview(editor: vscode.TextEditor) {
-		if (sendTimeout) clearTimeout(sendTimeout);
-		sendTimeout = setTimeout(() => sendShaderToWebview(editor), 100);
-	}
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("shader-view.view", () => {
@@ -263,12 +386,12 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("shader-view.toggleLock", () => {
 			isLocked = !isLocked;
 			if (isLocked && vscode.window.activeTextEditor) {
-				lockedFilePath = vscode.window.activeTextEditor.document.uri.fsPath;
+				lockedEditor = vscode.window.activeTextEditor;
 				vscode.window.showInformationMessage(
 					"Shader View locked to current file.",
 				);
 			} else {
-				lockedFilePath = undefined;
+				lockedEditor = undefined;
 				vscode.window.showInformationMessage("Shader View unlocked.");
 				// If unlocked, send the current shader
 				if (vscode.window.activeTextEditor) {
@@ -278,24 +401,24 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// 🔁 Update shader code on file change
-	const watcher = vscode.workspace.createFileSystemWatcher("**/*.glsl");
-	watcher.onDidChange((uri) => {
-		if (vscode.window.activeTextEditor?.document.uri.fsPath === uri.fsPath) {
-			sendShaderToWebview(vscode.window.activeTextEditor);
-		}
-	});
-	context.subscriptions.push(watcher);
-
 	// 🧭 Update shader when switching active editor
 	vscode.window.onDidChangeActiveTextEditor((editor) => {
 		if (editor) sendShaderToWebview(editor);
 	});
 
-	// ⌨️ Update shader as it's edited (optional)
+	// ⌨️ Update shader as it's edited
 	vscode.workspace.onDidChangeTextDocument((event) => {
 		const editor = vscode.window.activeTextEditor;
-		if (editor && event.document === editor.document) {
+
+		// Only process GLSL files
+		if (
+			event.document.languageId !== "glsl" &&
+			!event.document.fileName.endsWith(".glsl")
+		) {
+			return;
+		}
+
+		if (editor) {
 			sendShaderToWebview(editor);
 		}
 	});
@@ -321,3 +444,15 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
+// Add a simple hash function
+function computeSimpleHash(content: string): string {
+	// A simple hash function that's fast but effective enough for change detection
+	let hash = 0;
+	for (let i = 0; i < content.length; i++) {
+		const char = content.charCodeAt(i);
+		hash = ((hash << 5) - hash) + char;
+		hash = hash & hash; // Convert to 32bit integer
+	}
+	return hash.toString(36);
+}
