@@ -159,7 +159,9 @@ void main() {
 
       glCanvas.style.width = `${newWidth}px`;
       glCanvas.style.height = `${newHeight}px`;
-      updateCanvasSize(newWidth, newHeight);
+      // Set internal resolution based on devicePixelRatio for high-DPI rendering
+      const scaleFactor = window.devicePixelRatio;
+      updateCanvasSize(newWidth * scaleFactor, newHeight * scaleFactor);
     }
 
     const resizeObserver = new ResizeObserver(resizeCanvasToFit16x9);
@@ -182,6 +184,9 @@ void main() {
         return;
     }
 
+    glCanvas.width = newWidth;
+    glCanvas.height = newHeight;
+
     const oldPassBuffers = passBuffers;
     passBuffers = {};
 
@@ -198,9 +203,6 @@ void main() {
         }
     `;
     const copyShader = renderer.CreateShader(vs, fs);
-
-    glCanvas.width = newWidth;
-    glCanvas.height = newHeight;
 
     for (const pass of passes) {
         if (pass.name !== "Image") {
