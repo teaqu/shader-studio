@@ -74,6 +74,13 @@ export function activate(context: vscode.ExtensionContext) {
 	const sendShaderToWebview = (editor: vscode.TextEditor) => {
 		if (!panel || editor?.document.languageId !== "glsl") return;
 
+		if (
+			isLocked && lockedEditor &&
+			editor.document.uri.fsPath !== lockedEditor.document.uri.fsPath
+		) {
+			editor = lockedEditor; // Use the locked editor if set
+		}
+
 		const code = editor.document.getText();
 
 		// Ignore GLSL files that do not contain mainImage
