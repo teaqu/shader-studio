@@ -20,6 +20,12 @@
   let fpsCounter = piCreateFPSCounter();
   let currentFPS = 0;
   let lastEvent: MessageEvent | null = null;
+  let uniforms = {
+    res: new Float32Array([0, 0, 0]),
+    time: 0,
+    mouse: new Float32Array([0, 0, 0, 0]),
+    frame: 0
+  };
 
   // --- piLibs Resource State ---
   let keyboardTexture: any = null;
@@ -447,7 +453,7 @@ void main() {
 
   // --- Render Loop using piRenderer ---
   function render(time: number, renderID = currentShaderRenderID) {
-  if (!running || renderID !== currentShaderRenderID) return;
+    if (!running || renderID !== currentShaderRenderID) return;
 
     if (frame === 0) {
       fpsCounter.Reset(time);
@@ -457,9 +463,10 @@ void main() {
       currentFPS = fpsCounter.GetFPS();
     }
 
-    const res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
-    const t = time * 0.001;
-    const uniforms = { res, time: t, mouse, frame };
+    uniforms.res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
+    uniforms.time = time * 0.001;
+    uniforms.mouse = mouse;
+    uniforms.frame = frame;
 
     // --- Render all buffer passes ---
     for (const pass of passes) {
@@ -536,9 +543,39 @@ void main() {
     <div class="canvas-container">
         <canvas bind:this={glCanvas}></canvas>
     </div>
-    <div class="stats-bar">
-  {glCanvas?.width}x{glCanvas?.height} |
-  {currentFPS.toFixed(1)} FPS
+<div class="menu-bar">
+  <div class="left-group">
+    <!-- <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <rect x="2" y="5" width="2" height="14" />
+    <path d="M20 5L8 12L20 19V5Z" />
+  </svg></button>
+    <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <rect x="6" y="5" width="4" height="14" />
+    <rect x="14" y="5" width="4" height="14" />
+  </svg></button>
+    <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M8 5v14l11-7z" />
+  </svg></button> -->
+   <div class="menu-title">{uniforms.time.toFixed(2)}</div>
+    <div class="menu-title">{currentFPS.toFixed(1)} FPS</div>
+    <div class="menu-title">{glCanvas?.width} x {glCanvas?.height}</div>
+  </div>
+  <div class="right-group">
+    <!-- <button>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+    </svg>
+    </button>
+    <button>
+       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+    </button> -->
+  </div>
 </div>
 </div>
 
@@ -565,7 +602,7 @@ void main() {
       justify-content: center;
       align-items: center;
       overflow: hidden;
-      padding: 0 2rem;
+      /* padding: 0 2rem; */
     }
 
     canvas {
@@ -573,14 +610,45 @@ void main() {
         background-color: black;
     }
 
-    .stats-bar {
-        color: white;
-        background-color: #252526;
-        padding: 4px 10px;
-        font-family: monospace;
-        font-size: 12px;
-        border-top: 1px solid #333;
-        position: absolute;
-        bottom: 0;
-    }
+  .menu-bar {
+    background-color: var(--vscode-sideBar-background);
+    color: var(--vscode-sideBar-foreground);
+    padding: 0.4rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--vscode-panel-border);
+  }
+
+  .left-group, .right-group {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  .menu-title {
+    font-size: var(--vscode-font-size, 13px);
+    font-family: var(--vscode-font-family, sans-serif);
+    font-weight: var(--vscode-font-weight, normal);
+    color: var(--vscode-editor-foreground);
+    user-select: none;
+  }
+
+  button {
+    all: unset;
+    cursor: pointer;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    color: var(--vscode-editor-foreground);
+  }
+
+  button:hover {
+    background-color: var(--vscode-list-hoverBackground);
+  }
+
+  .status-text {
+    font-size: var(--vscode-font-size, 12px);
+    opacity: 0.7;
+    user-select: none;
+  }
 </style>
