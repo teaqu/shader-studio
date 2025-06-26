@@ -8,6 +8,9 @@
   let renderer: any;
   let initialized = false;
   let running = false;
+  let paused = false;
+  let pausedTime = 0;
+  let lastRealTime = 0;
   let frame = 0;
   let mouse = new Float32Array([0, 0, 0, 0]);
   let isMouseDown = false;
@@ -43,6 +46,20 @@
   let imageTextureCache: Record<string, any> = {};
   let isHandlingMessage = false;
   let currentShaderRenderID = 0;
+
+  // --- Pause/Resume Functions ---
+  function togglePause() {
+    if (paused) {
+      // Resume: calculate how long we were paused and adjust the offset
+      const currentTime = performance.now() * 0.001;
+      pausedTime += currentTime - lastRealTime;
+      paused = false;
+    } else {
+      // Pause: record the current time
+      lastRealTime = performance.now() * 0.001;
+      paused = true;
+    }
+  }
 
   // --- ShaderToy Compatibility ---
   function wrapShaderToyCode(code: string): { wrappedCode: string, headerLineCount: number } {
@@ -464,7 +481,7 @@ void main() {
     }
 
     uniforms.res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
-    uniforms.time = time * 0.001;
+    uniforms.time = paused ? lastRealTime - pausedTime : (time * 0.001) - pausedTime;
     uniforms.mouse = mouse;
     uniforms.frame = frame;
 
@@ -545,17 +562,18 @@ void main() {
     </div>
 <div class="menu-bar">
   <div class="left-group">
-    <!-- <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="2" y="5" width="2" height="14" />
-    <path d="M20 5L8 12L20 19V5Z" />
-  </svg></button>
-    <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="6" y="5" width="4" height="14" />
-    <rect x="14" y="5" width="4" height="14" />
-  </svg></button>
-    <button> <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M8 5v14l11-7z" />
-  </svg></button> -->
+    <button on:click={togglePause}>
+      {#if paused}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      {:else}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="5" width="4" height="14" />
+          <rect x="14" y="5" width="4" height="14" />
+        </svg>
+      {/if}
+    </button>
    <div class="menu-title">{uniforms.time.toFixed(2)}</div>
     <div class="menu-title">{currentFPS.toFixed(1)} FPS</div>
     <div class="menu-title">{glCanvas?.width} x {glCanvas?.height}</div>
@@ -564,16 +582,16 @@ void main() {
     <!-- <button>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-    </svg>
-    </button>
-    <button>
-       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+      </svg>
+      </button>
+      <button>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
     </button> -->
   </div>
 </div>
