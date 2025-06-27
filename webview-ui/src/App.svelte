@@ -11,6 +11,7 @@
   let paused = false;
   let pausedTime = 0;
   let lastRealTime = 0;
+  let resetTime = 0;
   let frame = 0;
   let mouse = new Float32Array([0, 0, 0, 0]);
   let isMouseDown = false;
@@ -55,7 +56,7 @@
       pausedTime += currentTime - lastRealTime;
       paused = false;
     } else {
-      // Pause: record the current time
+      // Pause: record the current time (absolute time, not relative to resetTime)
       lastRealTime = performance.now() * 0.001;
       paused = true;
     }
@@ -446,6 +447,16 @@ void main() {
   }
 }
 
+function reset() {
+    if (!initialized) return;
+    cleanup();
+    if (lastEvent) {
+      handleShaderMessage(lastEvent);
+    } else {
+      vscode.postMessage({ type: 'error', payload: ['❌ No shader to reset'] });
+    }
+  }
+
   function cleanup() {
     running = false;
     for (const key in passShaders) renderer.DestroyShader(passShaders[key]);
@@ -466,6 +477,23 @@ void main() {
     imageTextureCache = {};
     frame = 0;
     currentShaderRenderID++;
+    
+    const currentTime = performance.now() * 0.001;
+    resetTime = currentTime;
+    pausedTime = 0;
+    
+    if (paused) {
+      lastRealTime = resetTime;
+    } else {
+      lastRealTime = 0;
+    }
+    
+    uniforms = {
+      res: new Float32Array([0, 0, 0]),
+      time: 0,
+      mouse: new Float32Array([0, 0, 0, 0]),
+      frame: 0
+    };
   }
 
   // --- Render Loop using piRenderer ---
@@ -481,7 +509,7 @@ void main() {
     }
 
     uniforms.res = new Float32Array([glCanvas.width, glCanvas.height, glCanvas.width / glCanvas.height]);
-    uniforms.time = paused ? lastRealTime - pausedTime : (time * 0.001) - pausedTime;
+    uniforms.time = paused ? (lastRealTime - resetTime) - pausedTime : (time * 0.001 - resetTime) - pausedTime;
     uniforms.mouse = mouse;
     uniforms.frame = frame;
 
@@ -562,6 +590,12 @@ void main() {
     </div>
 <div class="menu-bar">
   <div class="left-group">
+    <button on:click={reset}> 
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="2" y="5" width="2" height="14" />
+        <path d="M20 5L8 12L20 19V5Z" />
+      </svg>
+    </button>
     <button on:click={togglePause}>
       {#if paused}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -663,10 +697,10 @@ void main() {
   button:hover {
     background-color: var(--vscode-list-hoverBackground);
   }
-
+/* 
   .status-text {
     font-size: var(--vscode-font-size, 12px);
     opacity: 0.7;
     user-select: none;
-  }
+  } */
 </style>
