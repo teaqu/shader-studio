@@ -336,7 +336,6 @@ void main() {
   async function handleShaderMessage(event: MessageEvent) {
     
   let { type, code, config, name, buffers = {}, isLocked: incomingLocked } = event.data;
-  console.log(incomingLocked)
   currentShaderRenderID++;
 
   if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
@@ -667,11 +666,14 @@ function reset() {
       align-items: center;
       overflow: hidden;
       /* padding: 0 2rem; */
+      width: 100%;
+      height: 100%;
     }
 
     canvas {
         display: block;
         background-color: black;
+        
     }
 
   .menu-bar {
