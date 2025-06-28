@@ -3,3 +3,8 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+
+# Compiled JavaScript files from TypeScript (Vite handles TS compilation)
+webview-ui/src/**/*.js
+webview-ui/src/**/*.js.map
+!webview-ui/src/lib/pilibs/**/*.js

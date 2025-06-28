@@ -24,8 +24,12 @@ a:hover {
 
 body {
   margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
   display: flex;
-  place-items: center;
+  place-items: stretch;
   min-width: 320px;
   min-height: 100vh;
   background: transparent;
@@ -41,10 +45,11 @@ h1 {
 }
 
 #app {
-  margin: 0 auto;
+  margin: 0;
   height: 100%;
   width: 100%;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
 }
 
 button {
@@ -65,6 +70,140 @@ button:hover {
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Shader View App Styles */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  display: flex;
+}
+
+.main-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-container {
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+canvas {
+  display: block;
+  background-color: black;
+  outline: none;
+}
+
+.menu-bar {
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  padding: 0.4rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--vscode-panel-border);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000; /* Ensure it stays on top */
+}
+
+.left-group, .right-group {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.menu-title {
+  font-size: var(--vscode-font-size, 13px);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-weight: var(--vscode-font-weight, normal);
+  color: var(--vscode-editor-foreground);
+  user-select: none;
+}
+
+/* Override button styles for menu bar buttons */
+.menu-bar button {
+  all: unset;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+}
+
+.menu-bar button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+/* ErrorDisplay Component */
+.error-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.error-content {
+  background-color: var(--vscode-notifications-background);
+  border: 1px solid var(--vscode-notifications-border);
+  border-radius: 6px;
+  padding: 1.5rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.error-content h3 {
+  margin: 0 0 1rem 0;
+  color: var(--vscode-errorForeground);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.error-message {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background-color: var(--vscode-inputValidation-errorBackground);
+  border-left: 3px solid var(--vscode-inputValidation-errorBorder);
+  color: var(--vscode-inputValidation-errorForeground);
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-dismiss {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.error-dismiss:hover {
+  background-color: var(--vscode-button-hoverBackground);
 }
 
 @media (prefers-color-scheme: light) {
