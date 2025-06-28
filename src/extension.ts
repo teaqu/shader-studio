@@ -13,6 +13,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	let isLocked = false;
 	let lockedEditor: vscode.TextEditor | undefined = undefined;
+	let currentlyPreviewedEditor: vscode.TextEditor | undefined = undefined;
 
 	// In your lastSent, add tracking for individual buffers
 	let lastSent = {
@@ -81,11 +82,16 @@ export function activate(context: vscode.ExtensionContext) {
 			editor = lockedEditor; // Use the locked editor if set
 		}
 
+		// Track the currently previewed editor
+		currentlyPreviewedEditor = editor;
+
 		const code = editor.document.getText();
 
 		// Ignore GLSL files that do not contain mainImage
 		if (!code.includes("mainImage")) {
-			vscode.window.showWarningMessage("GLSL file ignored: missing mainImage function.");
+			vscode.window.showWarningMessage(
+				"GLSL file ignored: missing mainImage function.",
+			);
 			return;
 		}
 
@@ -350,6 +356,10 @@ export function activate(context: vscode.ExtensionContext) {
 							diagnosticCollection.delete(editor.document.uri);
 						}
 					}
+
+					if (message.type === "toggleLock") {
+						vscode.commands.executeCommand("shader-view.toggleLock");
+					}
 				},
 				undefined,
 				context.subscriptions,
@@ -392,16 +402,53 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("shader-view.toggleLock", () => {
 			isLocked = !isLocked;
-			if (isLocked && vscode.window.activeTextEditor) {
-				lockedEditor = vscode.window.activeTextEditor;
-				vscode.window.showInformationMessage(
-					"Shader View locked to current file.",
-				);
+			if (isLocked && currentlyPreviewedEditor) {
+				lockedEditor = currentlyPreviewedEditor;
+				sendShaderToWebview(currentlyPreviewedEditor);
 			} else {
 				lockedEditor = undefined;
-				vscode.window.showInformationMessage("Shader View unlocked.");
-				// If unlocked, send the current shader
-				if (vscode.window.activeTextEditor) {
+				// If unlocked, find the most recently accessed GLSL file
+				const glslTabs = vscode.window.tabGroups.all
+					.flatMap((group) => group.tabs)
+					.filter((tab) => {
+						if (tab.input instanceof vscode.TabInputText) {
+							const uri = tab.input.uri;
+							return uri.fsPath.endsWith(".glsl") ||
+								vscode.workspace.textDocuments.find((doc) =>
+									doc.uri.fsPath === uri.fsPath && doc.languageId === "glsl"
+								);
+						}
+						return false;
+					})
+					.sort((a, b) => {
+						// Sort by most recently active (activeTab first, then by tab order)
+						if (a.isActive) return -1;
+						if (b.isActive) return 1;
+						return 0;
+					});
+
+				if (
+					glslTabs.length > 0 &&
+					glslTabs[0].input instanceof vscode.TabInputText
+				) {
+					// Find the editor for the most recent GLSL tab
+					const mostRecentGlslUri = glslTabs[0].input.uri;
+					const mostRecentEditor = vscode.window.visibleTextEditors.find(
+						(editor) => editor.document.uri.fsPath === mostRecentGlslUri.fsPath,
+					);
+
+					if (mostRecentEditor) {
+						sendShaderToWebview(mostRecentEditor);
+					} else if (
+						vscode.window.activeTextEditor?.document.languageId === "glsl"
+					) {
+						// Fallback to active editor if it's GLSL
+						sendShaderToWebview(vscode.window.activeTextEditor);
+					}
+				} else if (
+					vscode.window.activeTextEditor?.document.languageId === "glsl"
+				) {
+					// Fallback to active editor if it's GLSL
 					sendShaderToWebview(vscode.window.activeTextEditor);
 				}
 			}

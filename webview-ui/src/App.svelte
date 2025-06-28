@@ -24,6 +24,7 @@
   let fpsCounter = piCreateFPSCounter();
   let currentFPS = 0;
   let lastEvent: MessageEvent | null = null;
+  let isLocked = false;
   let uniforms = {
     res: new Float32Array([0, 0, 0]),
     time: 0,
@@ -60,6 +61,10 @@
       lastRealTime = performance.now() * 0.001;
       paused = true;
     }
+  }
+
+  function toggleLock() {
+    vscode.postMessage({ type: 'toggleLock' });
   }
 
   // --- ShaderToy Compatibility ---
@@ -330,10 +335,16 @@ void main() {
 
   async function handleShaderMessage(event: MessageEvent) {
     
-  let { type, code, config, name, buffers = {} } = event.data;
+  let { type, code, config, name, buffers = {}, isLocked: incomingLocked } = event.data;
+  console.log(incomingLocked)
   currentShaderRenderID++;
 
   if (type !== 'shaderSource' || !initialized || isHandlingMessage) return;
+
+  // Update lock state from extension
+  if (incomingLocked !== undefined) {
+    isLocked = incomingLocked;
+  }
 
   if (shaderName !== name) {
     shaderName = name;
@@ -613,20 +624,21 @@ function reset() {
     <div class="menu-title">{glCanvas?.width} x {glCanvas?.height}</div>
   </div>
   <div class="right-group">
-    <!-- <button>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    <button on:click={toggleLock}>
+      {#if isLocked}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="currentColor" stroke="none" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+      {:else}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
         <path d="M7 11V7a5 5 0 0 1 9.9-1" />
       </svg>
-      </button>
-      <button>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </svg>
-    </button> -->
+      {/if}
+    </button>
   </div>
 </div>
 </div>
@@ -670,6 +682,11 @@ function reset() {
     justify-content: space-between;
     align-items: center;
     border-top: 1px solid var(--vscode-panel-border);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000; /* Ensure it stays on top */
   }
 
   .left-group, .right-group {
