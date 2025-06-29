@@ -177,70 +177,73 @@ export class RenderManager {
   }
 
   public resizePassBuffers(
-    passes: any[],
-    newWidth: number,
-    newHeight: number,
-  ): Record<string, { front: any; back: any }> {
-    const oldPassBuffers = this.passBuffers;
-    const newPassBuffers: Record<string, { front: any; back: any }> = {};
+  passes: any[],
+  newWidth: number,
+  newHeight: number,
+): Record<string, { front: any; back: any }> {
+  const oldPassBuffers = this.passBuffers;
+  const newPassBuffers: Record<string, { front: any; back: any }> = {};
 
-    // Create a temporary shader to copy buffer contents.
-    const vs =
-      `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const fs = `
-            precision highp float;
-            out vec4 fragColor;
-            uniform sampler2D srcTex;
-            uniform vec3 iResolution;
-            void main() {
-                vec2 uv = gl_FragCoord.xy / iResolution.xy;
-                fragColor = texture(srcTex, uv);
-            }
-        `;
-    const copyShader = this.renderer.CreateShader(vs, fs);
+  const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+  const fs = `
+    precision highp float;
+    out vec4 fragColor;
+    uniform sampler2D srcTex;
+    uniform vec2 oldRes;
+    void main() {
+        vec2 uv = gl_FragCoord.xy / oldRes;
+        fragColor = texture(srcTex, uv);
+    }
+  `;
+  const copyShader = this.renderer.CreateShader(vs, fs);
 
-    for (const pass of passes) {
-      if (pass.name !== "Image") {
-        const newBuffers = this.createPingPongBuffers(newWidth, newHeight);
-        // If there was an old buffer for this pass, copy its content to preserve state.
-        if (oldPassBuffers[pass.name] && copyShader && copyShader.mResult) {
-          this.renderer.AttachShader(copyShader);
-          const posLoc = this.renderer.GetAttribLocation(
-            copyShader,
-            "position",
-          );
-          this.renderer.SetShaderTextureUnit("srcTex", 0);
-
-          // Copy the 'front' buffer which holds the previous frame's state.
-          this.renderer.SetRenderTarget(newBuffers.front);
-          this.renderer.SetViewport([0, 0, newWidth, newHeight]);
-          this.renderer.SetShaderConstant3FV(
-            "iResolution",
-            new Float32Array([newWidth, newHeight, newWidth / newHeight]),
-          );
-          this.renderer.AttachTextures(
-            1,
-            oldPassBuffers[pass.name].front.mTex0,
-          );
-          this.renderer.DrawUnitQuad_XY(posLoc);
-        }
-        newPassBuffers[pass.name] = newBuffers;
+  for (const pass of passes) {
+    if (pass.name !== "Image") {
+      const newBuffers = this.createPingPongBuffers(newWidth, newHeight);
+      let oldWidth = 0, oldHeight = 0;
+      if (oldPassBuffers[pass.name]) {
+        oldWidth = oldPassBuffers[pass.name].front.width;
+        oldHeight = oldPassBuffers[pass.name].front.height;
       }
+      if (oldPassBuffers[pass.name] && copyShader && copyShader.mResult) {
+        this.renderer.AttachShader(copyShader);
+        const posLoc = this.renderer.GetAttribLocation(
+          copyShader,
+          "position",
+        );
+        this.renderer.SetShaderTextureUnit("srcTex", 0);
+
+        // Only copy the valid old region (ShaderToy style)
+        this.renderer.SetRenderTarget(newBuffers.front);
+        // Set viewport to old buffer size!
+        this.renderer.SetViewport([0, 0, oldWidth, oldHeight]);
+        this.renderer.SetShaderConstant2FV(
+          "iResolution",
+          new Float32Array([oldWidth, oldHeight])
+        );
+        this.renderer.AttachTextures(
+          1,
+          oldPassBuffers[pass.name].front.mTex0,
+        );
+        this.renderer.DrawUnitQuad_XY(posLoc);
+      }
+      newPassBuffers[pass.name] = newBuffers;
     }
-
-    if (copyShader) this.renderer.DestroyShader(copyShader);
-
-    // Clean up the old, now unused, buffers.
-    for (const key in oldPassBuffers) {
-      this.renderer.DestroyRenderTarget(oldPassBuffers[key].front);
-      this.renderer.DestroyRenderTarget(oldPassBuffers[key].back);
-      this.renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
-      this.renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
-    }
-
-    this.passBuffers = newPassBuffers;
-    return newPassBuffers;
   }
+
+  if (copyShader) this.renderer.DestroyShader(copyShader);
+
+  // Clean up the old, now unused, buffers.
+  for (const key in oldPassBuffers) {
+    this.renderer.DestroyRenderTarget(oldPassBuffers[key].front);
+    this.renderer.DestroyRenderTarget(oldPassBuffers[key].back);
+    this.renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
+    this.renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
+  }
+
+  this.passBuffers = newPassBuffers;
+  return newPassBuffers;
+}
 
   public drawPass(
     pass: any,
