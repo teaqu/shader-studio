@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { WebviewManager } from "./webview/WebviewManager";
-import { LockManager } from "./lock/LockManager";
-import { ShaderProcessor } from "./shader/ShaderProcessor";
+import { LockManager } from "./LockManager";
+import { ShaderProcessor } from "./ShaderProcessor";
 
 export function activate(context: vscode.ExtensionContext) {
 	const isDevMode = process.env.NODE_ENV === "dev";
