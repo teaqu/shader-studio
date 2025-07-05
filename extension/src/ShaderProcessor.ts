@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
+import { MessageSender } from "./communication/MessageSender";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
@@ -10,10 +11,10 @@ export class ShaderProcessor {
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
-    panel: vscode.WebviewPanel,
+    messenger: MessageSender,
     isLocked: boolean = false,
   ): void {
-    if (!panel || editor?.document.languageId !== "glsl") return;
+    if (!messenger || editor?.document.languageId !== "glsl") return;
 
     const code = editor.document.getText();
 
@@ -43,7 +44,7 @@ export class ShaderProcessor {
 
         // Process buffers
         if (config) {
-          this.processBuffers(config, shaderPath, panel, buffers);
+          this.processBuffers(config, shaderPath, messenger, buffers);
         }
       } catch (e) {
         vscode.window.showWarningMessage(
@@ -64,7 +65,7 @@ export class ShaderProcessor {
       `Sending ${Object.keys(buffers).length} buffer(s)`,
     );
 
-    panel.webview.postMessage({
+    messenger.send({
       type: "shaderSource",
       code,
       config,
@@ -78,7 +79,7 @@ export class ShaderProcessor {
   private processBuffers(
     config: any,
     shaderPath: string,
-    panel: vscode.WebviewPanel,
+    messenger: MessageSender,
     buffers: Record<string, string>,
   ): void {
     for (const passName of Object.keys(config)) {
@@ -88,12 +89,12 @@ export class ShaderProcessor {
 
       // Process pass-level "path" (for buffer source files)
       if (pass.path && typeof pass.path === "string") {
-        this.processBufferPath(pass, passName, shaderPath, panel, buffers);
+        this.processBufferPath(pass, passName, shaderPath, messenger, buffers);
       }
 
       // Process inputs
       if (pass.inputs && typeof pass.inputs === "object") {
-        this.processInputs(pass, passName, shaderPath, panel);
+        this.processInputs(pass, passName, shaderPath, messenger);
       }
     }
   }
@@ -102,7 +103,7 @@ export class ShaderProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
-    panel: vscode.WebviewPanel,
+    messenger: MessageSender,
     buffers: Record<string, string>,
   ): void {
     const bufferPath = path.isAbsolute(pass.path)
@@ -142,16 +143,16 @@ export class ShaderProcessor {
       }
     }
 
-    // Always update webview URI
-    const webviewUri = panel.webview.asWebviewUri(vscode.Uri.file(bufferPath));
-    pass.path = webviewUri.toString();
+    // Always update client URI (webview URI for panel, or file path for web server)
+    const clientUri = messenger.convertUriForClient(bufferPath);
+    pass.path = clientUri;
   }
 
   private processInputs(
     pass: any,
     passName: string,
     shaderPath: string,
-    panel: vscode.WebviewPanel,
+    messenger: MessageSender,
   ): void {
     for (const key of Object.keys(pass.inputs)) {
       const input = pass.inputs[key];
@@ -160,10 +161,8 @@ export class ShaderProcessor {
           ? input.path
           : path.join(path.dirname(shaderPath), input.path);
         if (fs.existsSync(imgPath)) {
-          const webviewUri = panel.webview.asWebviewUri(
-            vscode.Uri.file(imgPath),
-          );
-          input.path = webviewUri.toString();
+          const clientUri = messenger.convertUriForClient(imgPath);
+          input.path = clientUri;
           this.outputChannel.debug(
             `Patched image path for ${passName}.inputs.${key}: ${input.path}`,
           );
