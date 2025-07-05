@@ -2,6 +2,13 @@
 
 Shadertoy extension for vscode.
 
+## Project Structure
+
+- `/extension/` - VS Code extension source code
+- `/ui/` - Svelte-based UI for the shader viewer
+
+## Configuration
+
 Add config same dir as shader like so: shadername.config.json
 
 ```json

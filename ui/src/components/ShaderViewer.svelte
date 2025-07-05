@@ -1,15 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { piCreateFPSCounter } from '../lib/pilibs/src/piWebUtils';
-  import { AppInitializer, type ManagerInstances } from '../managers/AppInitializer';
-  import { RenderController } from '../managers/RenderController';
-  import ShaderCanvas from './ShaderCanvas.svelte';
-  import MenuBar from './MenuBar.svelte';
-  import ErrorDisplay from './ErrorDisplay.svelte';
+  import { onMount } from "svelte";
+  import { piCreateFPSCounter } from "../../vendor/pilibs/src/piWebUtils";
+  import {
+    AppInitializer,
+    type ManagerInstances,
+  } from "../managers/AppInitializer";
+  import { RenderController } from "../managers/RenderController";
+  import ShaderCanvas from "./ShaderCanvas.svelte";
+  import MenuBar from "./MenuBar.svelte";
+  import ErrorDisplay from "./ErrorDisplay.svelte";
 
   // Callback props instead of event dispatcher
-  export let onInitialized: (data: { managers: ManagerInstances, renderController: RenderController }) => void = () => {};
-  
+  export let onInitialized: (data: {
+    managers: ManagerInstances;
+    renderController: RenderController;
+  }) => void = () => {};
+
   // --- Core State ---
   let glCanvas: HTMLCanvasElement;
   let initialized = false;
@@ -23,7 +29,7 @@
   // --- Managers and Controllers ---
   let managers: ManagerInstances | null = null;
   let renderController: RenderController | null = null;
-  
+
   const vscode = acquireVsCodeApi();
   const fpsCounter = piCreateFPSCounter();
   const appInitializer = new AppInitializer(vscode, fpsCounter);
@@ -34,7 +40,7 @@
     await initializeApp();
   }
 
-  function handleCanvasResize(data: { width: number, height: number }) {
+  function handleCanvasResize(data: { width: number; height: number }) {
     if (!renderController || !initialized) return;
     const { width, height } = data;
     canvasWidth = Math.round(width);
@@ -74,15 +80,15 @@
     try {
       managers = await appInitializer.initializeManagers(glCanvas);
       if (!managers) {
-        addError('Failed to initialize managers');
+        addError("Failed to initialize managers");
         return;
       }
 
       renderController = new RenderController(managers, vscode, glCanvas);
-      
+
       // Set up message listener
-      window.addEventListener('message', handleShaderMessage);
-      
+      window.addEventListener("message", handleShaderMessage);
+
       // Set up FPS update interval (less frequent than render loop)
       let fpsUpdateCounter = 0;
       const fpsUpdateInterval = setInterval(() => {
@@ -91,14 +97,14 @@
         }
         fpsUpdateCounter++;
         // Stop updating FPS if not initialized after some time
-        if (fpsUpdateCounter > 600 && !initialized) { // 60 seconds
+        if (fpsUpdateCounter > 600 && !initialized) {
+          // 60 seconds
           clearInterval(fpsUpdateInterval);
         }
       }, 100); // Update FPS 10 times per second instead of every frame
-      
+
       initialized = true;
       onInitialized({ managers, renderController });
-
     } catch (err) {
       addError(`Initialization failed: ${err}`);
     }
@@ -106,7 +112,7 @@
 
   async function handleShaderMessage(event: MessageEvent) {
     if (!renderController || !initialized) return;
-    
+
     try {
       await renderController.handleShaderMessage(event, (locked) => {
         isLocked = locked;
@@ -119,7 +125,7 @@
   function addError(message: string) {
     errors = [...errors, message];
     showErrors = true;
-    vscode.postMessage({ type: 'error', payload: [message] });
+    vscode.postMessage({ type: "error", payload: [message] });
   }
 
   // Reactive values for managers
@@ -128,12 +134,12 @@
 </script>
 
 <div class="main-container">
-  <ShaderCanvas 
+  <ShaderCanvas
     {inputManager}
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
   />
-  <MenuBar 
+  <MenuBar
     {timeManager}
     {currentFPS}
     {canvasWidth}
@@ -143,7 +149,7 @@
     onTogglePause={handleTogglePause}
     onToggleLock={handleToggleLock}
   />
-  <ErrorDisplay 
+  <ErrorDisplay
     {errors}
     isVisible={showErrors}
     onDismiss={handleErrorDismiss}

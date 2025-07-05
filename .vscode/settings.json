@@ -1,3 +1,11 @@
 // Place your settings in this file to overwrite default and user settings.
 {
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "typescript.validate.enable": true,
+  "search.exclude": {
+    "**/ui/vendor/**": true
+  },
+  "files.watcherExclude": {
+    "**/ui/vendor/**": true
+  }
 }

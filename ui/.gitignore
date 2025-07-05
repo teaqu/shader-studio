@@ -23,8 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 
-# Compiled JavaScript files from TypeScript (Vite handles TS compilation)
-# Exclude compiled JS files but keep pilibs source JS files
-rc/**/*.js
 src/**/*.js.map
-!src/lib/pilibs/**/*.js
