@@ -41,7 +41,7 @@ export class WebviewManager {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.file(
-            path.join(this.context.extensionPath, "webview-ui", "dist"),
+            path.join(this.context.extensionPath, "../ui", "dist"),
           ),
           shaderDir,
           ...workspaceFolders,
@@ -141,7 +141,7 @@ export class WebviewManager {
 
     const htmlPath = path.join(
       this.context.extensionPath,
-      "webview-ui",
+      "../ui",
       "dist",
       "index.html",
     );
@@ -153,7 +153,7 @@ export class WebviewManager {
         const cleaned = file.replace(/^\\|^\//, "");
         const filePath = path.join(
           this.context.extensionPath,
-          "webview-ui",
+          "../ui",
           "dist",
           cleaned,
         );

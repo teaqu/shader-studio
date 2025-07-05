@@ -1,17 +1,3 @@
 // Place your settings in this file to overwrite default and user settings.
 {
-	"files.exclude": {
-		"out": false, // set this to true to hide the "out" folder with the compiled JS files
-		"webview-ui/src/**/*.js": true, // hide compiled JS files from TypeScript
-		"webview-ui/src/**/*.js.map": true // hide source map files
-	},
-	"search.exclude": {
-		"out": true, // set this to false to include "out" folder in search results
-		"webview-ui/src/**/*.js": true, // exclude compiled JS files from search
-		"webview-ui/src/**/*.js.map": true // exclude source map files from search
-	},
-	// Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-	"typescript.tsc.autoDetect": "off",
-	// Disable TypeScript compilation for webview-ui (Vite handles it)
-	"typescript.preferences.includePackageJsonAutoImports": "off"
 }
