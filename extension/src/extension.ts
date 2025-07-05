@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { WebviewManager } from "./webview/WebviewManager";
+import { WebviewManager } from "./WebviewManager";
 import { LockManager } from "./LockManager";
 import { ShaderProcessor } from "./ShaderProcessor";
 

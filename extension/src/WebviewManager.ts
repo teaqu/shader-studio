@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { ShaderProcessor } from "../ShaderProcessor";
+import { ShaderProcessor } from "./ShaderProcessor";
 
 export class WebviewManager {
   private panel: vscode.WebviewPanel | undefined;
