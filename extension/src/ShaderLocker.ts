@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 
-export class LockManager {
+export class ShaderLocker {
   private isLocked = false;
   private lockedEditor: vscode.TextEditor | undefined = undefined;
   private currentlyPreviewedEditor: vscode.TextEditor | undefined = undefined;

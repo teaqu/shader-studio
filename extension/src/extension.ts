@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import { ShaderViewController } from "./ShaderViewController";
+import { ShaderExtension } from "./app/ShaderExtension";
+
+let shaderExtension: ShaderExtension | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	const isDevMode = process.env.NODE_ENV === "dev";
@@ -13,17 +15,29 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(diagnosticCollection);
 
-	// Initialize the main controller
-	const controller = new ShaderViewController(
-		context,
-		outputChannel,
-		diagnosticCollection,
-	);
+	try {
+		// Initialize the main extension
+		shaderExtension = new ShaderExtension(
+			context,
+			outputChannel,
+			diagnosticCollection,
+		);
 
-	// Auto-open panel in dev mode
-	if (isDevMode) {
-		controller.initializeDevMode();
+		// Auto-open panel in dev mode
+		if (isDevMode) {
+			shaderExtension.initializeDevMode();
+		}
+
+		outputChannel.info("Shader View extension activated successfully");
+	} catch (error) {
+		outputChannel.error(`Failed to activate Shader View extension: ${error}`);
+		vscode.window.showErrorMessage(`Shader View activation failed: ${error}`);
 	}
 }
 
-export function deactivate() {}
+export function deactivate() {
+	if (shaderExtension) {
+		shaderExtension.dispose();
+		shaderExtension = undefined;
+	}
+}

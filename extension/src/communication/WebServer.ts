@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { ShaderProcessor } from "./ShaderProcessor";
-import { MessageSender } from "./communication/MessageSender";
+import { ShaderProcessor } from "../ShaderProcessor";
+import { MessageSender } from "./MessageSender";
 
-export class WebServerManager {
+export class WebServer {
   private messenger: MessageSender | undefined;
   private shaderProcessor: ShaderProcessor;
 
@@ -16,13 +16,14 @@ export class WebServerManager {
   }
 
   public startWebServer(): void {
+    // will create an actual webserver at some when ready...
+
     if (this.messenger) {
       this.outputChannel.info("Web server already running");
       return;
     }
 
     try {
-      // Create messenger with WebSocket server
       this.messenger = new MessageSender(
         this.outputChannel,
         this.diagnosticCollection,

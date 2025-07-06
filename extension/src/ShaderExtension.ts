@@ -3,7 +3,7 @@ import { PanelManager } from "./communication/PanelManager";
 import { WebServer } from "./communication/WebServer";
 import { ShaderLocker } from "./ShaderLocker";
 
-export class ShaderViewController {
+export class ShaderExtension {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private shaderLocker: ShaderLocker;
@@ -93,6 +93,13 @@ export class ShaderViewController {
     }
   }
 
+  public dispose(): void {
+    // Clean up resources when extension is deactivated
+    this.webServer.stopWebServer();
+    this.outputChannel.info("Shader extension disposed");
+  }
+
+  // Dev mode initialization
   public initializeDevMode(): void {
     // Close all empty editor groups (usually left from webview reloads)
     const layout = vscode.window.tabGroups.all;
@@ -107,32 +114,16 @@ export class ShaderViewController {
     vscode.commands.executeCommand("shader-view.view");
   }
 
-  // Web server management methods
-  public startWebServer(): void {
+  // Public API for external access (if needed)
+  public startWebSocketServer(): void {
     this.webServer.startWebServer();
   }
 
-  public stopWebServer(): void {
+  public stopWebSocketServer(): void {
     this.webServer.stopWebServer();
   }
 
-  public sendShaderToWebServer(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    this.webServer.sendShaderToWebServer(editor, isLocked);
-  }
-
-  public sendShaderToBoth(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    // Send to panel if it exists
-    if (this.panelManager.getPanel()) {
-      this.panelManager.sendShaderToWebview(editor, isLocked);
-    }
-
-    // Send to web server if it's running
-    if (this.webServer.isRunning()) {
-      this.webServer.sendShaderToWebServer(editor, isLocked);
-    }
-  }
-
-  public isWebServerRunning(): boolean {
+  public isWebSocketServerRunning(): boolean {
     return this.webServer.isRunning();
   }
 }
