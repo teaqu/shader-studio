@@ -1,8 +1,8 @@
 <script lang="ts">
-  import ShaderViewer from './lib/ShaderViewer.svelte';
+  import ShaderViewer from "./components/ShaderViewer.svelte";
 
   function handleAppInitialized(data: any) {
-    console.log('Shader viewer initialized successfully', data);
+    console.log("Shader viewer initialized successfully", data);
   }
 </script>
 
