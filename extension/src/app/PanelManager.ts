@@ -2,17 +2,18 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { ShaderProcessor } from "./ShaderProcessor";
-import { MessageSender } from "./communication/MessageSender";
+import { MessageTransporter } from "./communication/MessageTransporter";
+import { WebviewTransport } from "./communication/WebviewTransport";
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
-  private messenger: MessageSender | undefined;
+  private messenger: MessageTransporter | undefined;
   private shaderProcessor: ShaderProcessor;
 
   constructor(
     private context: vscode.ExtensionContext,
+    private messageTransporter: MessageTransporter,
     private outputChannel: vscode.LogOutputChannel,
-    private diagnosticCollection: vscode.DiagnosticCollection,
   ) {
     this.shaderProcessor = new ShaderProcessor(outputChannel);
   }
@@ -49,12 +50,11 @@ export class PanelManager {
       },
     );
 
-    // Create messenger with the panel and message handler
-    this.messenger = new MessageSender(
-      this.outputChannel,
-      this.diagnosticCollection,
-      this.panel
-    );
+    // Add webview transport to the shared message transporter
+    const webviewTransport = new WebviewTransport(this.panel);
+    this.messageTransporter.addTransport(webviewTransport);
+    
+    this.messenger = this.messageTransporter;
 
     this.setupWebviewHtml();
 

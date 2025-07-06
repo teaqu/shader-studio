@@ -1,16 +1,17 @@
 import * as vscode from "vscode";
 import { ShaderProcessor } from "./ShaderProcessor";
-import { MessageSender } from "./communication/MessageSender";
+import { MessageTransporter } from "./communication/MessageTransporter";
+import { WebSocketTransport } from "./communication/WebSocketTransport";
 
 export class WebServer {
-  private messenger: MessageSender | undefined;
+  private messenger: MessageTransporter | undefined;
   private shaderProcessor: ShaderProcessor;
+  private wsPort: number = 8080;
 
   constructor(
     private context: vscode.ExtensionContext,
+    private messageTransporter: MessageTransporter,
     private outputChannel: vscode.LogOutputChannel,
-    private diagnosticCollection: vscode.DiagnosticCollection,
-    private wsPort: number = 8080,
   ) {
     this.shaderProcessor = new ShaderProcessor(outputChannel);
   }
@@ -24,12 +25,11 @@ export class WebServer {
     }
 
     try {
-      this.messenger = new MessageSender(
-        this.outputChannel,
-        this.diagnosticCollection,
-        undefined, // no panel
-        this.wsPort
-      );
+      // Add WebSocket transport to the shared message transporter
+      const wsTransport = new WebSocketTransport(this.wsPort);
+      this.messageTransporter.addTransport(wsTransport);
+      
+      this.messenger = this.messageTransporter;
 
       this.outputChannel.info(`WebSocket server started on port ${this.wsPort}`);
     } catch (error) {

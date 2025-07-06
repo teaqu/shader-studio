@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
-import { MessageSender } from "./communication/MessageSender";
+import { MessageTransporter } from "./communication/MessageTransporter";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
@@ -11,7 +11,7 @@ export class ShaderProcessor {
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
-    messenger: MessageSender,
+    messenger: MessageTransporter,
     isLocked: boolean = false,
   ): void {
     if (!messenger || editor?.document.languageId !== "glsl") return;
@@ -79,7 +79,7 @@ export class ShaderProcessor {
   private processBuffers(
     config: any,
     shaderPath: string,
-    messenger: MessageSender,
+    messenger: MessageTransporter,
     buffers: Record<string, string>,
   ): void {
     for (const passName of Object.keys(config)) {
@@ -103,7 +103,7 @@ export class ShaderProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
-    messenger: MessageSender,
+    messenger: MessageTransporter,
     buffers: Record<string, string>,
   ): void {
     const bufferPath = path.isAbsolute(pass.path)
@@ -152,7 +152,7 @@ export class ShaderProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
-    messenger: MessageSender,
+    messenger: MessageTransporter,
   ): void {
     for (const key of Object.keys(pass.inputs)) {
       const input = pass.inputs[key];

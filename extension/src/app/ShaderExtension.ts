@@ -2,11 +2,13 @@ import * as vscode from "vscode";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
 import { ShaderLocker } from "./ShaderLocker";
+import { MessageTransporter } from "./communication/MessageTransporter";
 
 export class ShaderExtension {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private shaderLocker: ShaderLocker;
+  private messageTransporter: MessageTransporter;
   private context: vscode.ExtensionContext;
   private outputChannel: vscode.LogOutputChannel;
 
@@ -14,13 +16,15 @@ export class ShaderExtension {
     context: vscode.ExtensionContext,
     outputChannel: vscode.LogOutputChannel,
     diagnosticCollection: vscode.DiagnosticCollection,
-    wsPort: number = 8080,
   ) {
     this.context = context;
     this.outputChannel = outputChannel;
     
-    this.panelManager = new PanelManager(context, outputChannel, diagnosticCollection);
-    this.webServer = new WebServer(context, outputChannel, diagnosticCollection, wsPort);
+    // Create centralized message transporter
+    this.messageTransporter = new MessageTransporter(outputChannel, diagnosticCollection);
+    
+    this.panelManager = new PanelManager(context, this.messageTransporter, outputChannel);
+    this.webServer = new WebServer(context, this.messageTransporter, outputChannel);
     this.shaderLocker = new ShaderLocker(outputChannel, (editor) => this.sendShaderCallback(editor));
     
     this.registerCommands();
@@ -125,5 +129,9 @@ export class ShaderExtension {
 
   public isWebSocketServerRunning(): boolean {
     return this.webServer.isRunning();
+  }
+
+  public getMessageTransporter(): MessageTransporter {
+    return this.messageTransporter;
   }
 }
