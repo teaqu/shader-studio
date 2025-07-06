@@ -13,11 +13,6 @@ export class MessageTransporter {
     this.messageHandler = new MessageHandler(outputChannel, diagnosticCollection);
   }
 
-  private handleMessage(message: any): void {
-    // Process message only once, regardless of which transport received it
-    this.messageHandler.handleMessage(message);
-  }
-
   send(message: any): void {
     // Send to all transports
     this.transports.forEach(transport => transport.send(message));
@@ -34,7 +29,7 @@ export class MessageTransporter {
 
   addTransport(transport: MessageTransport): void {
     this.transports.push(transport);
-    transport.onMessage((message) => this.handleMessage(message));
+    transport.onMessage((message) => this.messageHandler.handleMessage(message));
   }
 
   removeTransport(transport: MessageTransport): void {
