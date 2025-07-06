@@ -31,6 +31,24 @@ export class ShaderExtension {
     this.registerEventHandlers();
   }
 
+  public initializeDevMode(): void {
+    const layout = vscode.window.tabGroups.all;
+
+    for (const group of layout) {
+      if (group.tabs.length === 0) {
+        vscode.window.tabGroups.close(group);
+      }
+    }
+
+    vscode.commands.executeCommand("shader-view.view");
+  }
+
+  public dispose(): void {
+    // Clean up resources when extension is deactivated
+    this.webServer.stopWebServer();
+    this.outputChannel.info("Shader extension disposed");
+  }
+
   private registerCommands(): void {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.view", () => {
@@ -97,41 +115,4 @@ export class ShaderExtension {
     }
   }
 
-  public dispose(): void {
-    // Clean up resources when extension is deactivated
-    this.webServer.stopWebServer();
-    this.outputChannel.info("Shader extension disposed");
-  }
-
-  // Dev mode initialization
-  public initializeDevMode(): void {
-    // Close all empty editor groups (usually left from webview reloads)
-    const layout = vscode.window.tabGroups.all;
-
-    for (const group of layout) {
-      if (group.tabs.length === 0) {
-        vscode.window.tabGroups.close(group);
-      }
-    }
-
-    // Then open the panel cleanly
-    vscode.commands.executeCommand("shader-view.view");
-  }
-
-  // Public API for external access (if needed)
-  public startWebSocketServer(): void {
-    this.webServer.startWebServer();
-  }
-
-  public stopWebSocketServer(): void {
-    this.webServer.stopWebServer();
-  }
-
-  public isWebSocketServerRunning(): boolean {
-    return this.webServer.isRunning();
-  }
-
-  public getMessageTransporter(): MessageTransporter {
-    return this.messageTransporter;
-  }
 }

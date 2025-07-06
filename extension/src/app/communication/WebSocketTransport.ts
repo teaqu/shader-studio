@@ -25,7 +25,7 @@ export class WebSocketTransport implements MessageTransport {
     });
   }
 
-  send(message: any): void {
+  public send(message: any): void {
     const str = JSON.stringify(message);
     for (const client of this.wsClients) {
       if (client.readyState === WebSocket.OPEN) {
@@ -34,12 +34,12 @@ export class WebSocketTransport implements MessageTransport {
     }
   }
 
-  convertUriForClient(filePath: string): string {
+  public convertUriForClient(filePath: string): string {
     // For web server, return the file path as-is or convert to appropriate URL
     return filePath;
   }
 
-  close(): void {
+  public close(): void {
     // Close all client connections
     for (const client of this.wsClients) {
       client.close();
@@ -50,7 +50,7 @@ export class WebSocketTransport implements MessageTransport {
     this.wsServer.close();
   }
 
-  onMessage(handler: (message: any) => void): void {
+  public onMessage(handler: (message: any) => void): void {
     this.messageHandler = handler;
   }
 }

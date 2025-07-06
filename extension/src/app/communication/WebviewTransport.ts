@@ -12,19 +12,19 @@ export class WebviewTransport implements MessageTransport {
     );
   }
 
-  send(message: any): void {
+  public send(message: any): void {
     this.panel.webview.postMessage(message);
   }
 
-  convertUriForClient(filePath: string): string {
+  public convertUriForClient(filePath: string): string {
     return this.panel.webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
   }
 
-  close(): void {
+  public close(): void {
     // Panel disposal is handled externally
   }
 
-  onMessage(handler: (message: any) => void): void {
+  public onMessage(handler: (message: any) => void): void {
     this.messageHandler = handler;
   }
 }
