@@ -3,7 +3,7 @@ import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
 import { ShaderLocker } from "./ShaderLocker";
 import { ShaderProcessor } from "./ShaderProcessor";
-import { MessageTransporter } from "./communication/MessageTransporter";
+import { Messenger } from "./communication/Messenger";
 import { Logger } from "./services/Logger";
 
 export class ShaderExtension {
@@ -11,9 +11,9 @@ export class ShaderExtension {
   private webServer: WebServer;
   private shaderLocker: ShaderLocker;
   private shaderProcessor: ShaderProcessor;
-  private messageTransporter: MessageTransporter;
+  private messenger: Messenger;
   private context: vscode.ExtensionContext;
-  private logger!: Logger; // Initialize in constructor
+  private logger!: Logger;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -25,11 +25,10 @@ export class ShaderExtension {
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
     
-    this.messageTransporter = new MessageTransporter(outputChannel, diagnosticCollection);
-    
-    this.shaderProcessor = new ShaderProcessor(this.messageTransporter);
-    this.panelManager = new PanelManager(context, this.messageTransporter, this.shaderProcessor);
-    this.webServer = new WebServer(context, this.messageTransporter, this.shaderProcessor);
+    this.messenger = new Messenger(outputChannel, diagnosticCollection);
+    this.shaderProcessor = new ShaderProcessor(this.messenger);
+    this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor);
+    this.webServer = new WebServer(context, this.messenger, this.shaderProcessor);
     this.shaderLocker = new ShaderLocker((editor: vscode.TextEditor) => this.sendShaderCallback(editor));
     
     this.registerCommands();

@@ -2,14 +2,14 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
-import { MessageTransporter } from "./communication/MessageTransporter";
+import { Messenger } from "./communication/Messenger";
 import { Logger } from "./services/Logger";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
   private logger = Logger.getInstance();
 
-  constructor(private messenger: MessageTransporter) {}
+  constructor(private messenger: Messenger) {}
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
