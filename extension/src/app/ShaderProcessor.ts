@@ -7,14 +7,18 @@ import { MessageTransporter } from "./communication/MessageTransporter";
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
 
-  constructor(private outputChannel: vscode.LogOutputChannel) {}
+  constructor(
+    private outputChannel: vscode.LogOutputChannel,
+    private messenger: MessageTransporter,
+  ) {}
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
-    messenger: MessageTransporter,
     isLocked: boolean = false,
   ): void {
-    if (!messenger || editor?.document.languageId !== "glsl") return;
+    if (!this.messenger || editor?.document.languageId !== "glsl") {
+      return;
+    }
 
     const code = editor.document.getText();
 
@@ -44,7 +48,7 @@ export class ShaderProcessor {
 
         // Process buffers
         if (config) {
-          this.processBuffers(config, shaderPath, messenger, buffers);
+          this.processBuffers(config, shaderPath, buffers);
         }
       } catch (e) {
         vscode.window.showWarningMessage(
@@ -65,7 +69,7 @@ export class ShaderProcessor {
       `Sending ${Object.keys(buffers).length} buffer(s)`,
     );
 
-    messenger.send({
+    this.messenger.send({
       type: "shaderSource",
       code,
       config,
@@ -79,22 +83,24 @@ export class ShaderProcessor {
   private processBuffers(
     config: any,
     shaderPath: string,
-    messenger: MessageTransporter,
     buffers: Record<string, string>,
   ): void {
     for (const passName of Object.keys(config)) {
-      if (passName === "version") continue;
+      if (passName === "version") {
+        continue;
+      }
       const pass = config[passName];
-      if (typeof pass !== "object") continue;
-
+      if (typeof pass !== "object") {
+        continue;
+      }
       // Process pass-level "path" (for buffer source files)
       if (pass.path && typeof pass.path === "string") {
-        this.processBufferPath(pass, passName, shaderPath, messenger, buffers);
+        this.processBufferPath(pass, passName, shaderPath, buffers);
       }
 
       // Process inputs
       if (pass.inputs && typeof pass.inputs === "object") {
-        this.processInputs(pass, passName, shaderPath, messenger);
+        this.processInputs(pass, passName, shaderPath);
       }
     }
   }
@@ -103,7 +109,6 @@ export class ShaderProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
-    messenger: MessageTransporter,
     buffers: Record<string, string>,
   ): void {
     const bufferPath = path.isAbsolute(pass.path)
@@ -144,7 +149,7 @@ export class ShaderProcessor {
     }
 
     // Always update client URI (webview URI for panel, or file path for web server)
-    const clientUri = messenger.convertUriForClient(bufferPath);
+    const clientUri = this.messenger.convertUriForClient(bufferPath);
     pass.path = clientUri;
   }
 
@@ -152,7 +157,6 @@ export class ShaderProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
-    messenger: MessageTransporter,
   ): void {
     for (const key of Object.keys(pass.inputs)) {
       const input = pass.inputs[key];
@@ -161,7 +165,7 @@ export class ShaderProcessor {
           ? input.path
           : path.join(path.dirname(shaderPath), input.path);
         if (fs.existsSync(imgPath)) {
-          const clientUri = messenger.convertUriForClient(imgPath);
+          const clientUri = this.messenger.convertUriForClient(imgPath);
           input.path = clientUri;
           this.outputChannel.debug(
             `Patched image path for ${passName}.inputs.${key}: ${input.path}`,
@@ -179,10 +183,13 @@ export class ShaderProcessor {
     const bufferFiles = new Set<string>();
 
     for (const passName of Object.keys(config)) {
-      if (passName === "version") continue;
+      if (passName === "version") {
+        continue;
+      }
       const pass = config[passName];
-      if (typeof pass !== "object") continue;
-
+      if (typeof pass !== "object") {
+        continue;
+      }
       if (pass.path && typeof pass.path === "string") {
         const bufferPath = path.isAbsolute(pass.path)
           ? pass.path

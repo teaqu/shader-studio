@@ -8,15 +8,13 @@ import { WebviewTransport } from "./communication/WebviewTransport";
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
   private messenger: MessageTransporter | undefined;
-  private shaderProcessor: ShaderProcessor;
 
   constructor(
     private context: vscode.ExtensionContext,
     private messageTransporter: MessageTransporter,
     private outputChannel: vscode.LogOutputChannel,
-  ) {
-    this.shaderProcessor = new ShaderProcessor(outputChannel);
-  }
+    private shaderProcessor: ShaderProcessor,
+  ) {}
 
   public getPanel(): vscode.WebviewPanel | undefined {
     return this.panel;
@@ -25,7 +23,7 @@ export class PanelManager {
   public createWebviewPanel(editor: vscode.TextEditor): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Beside);
-      this.shaderProcessor.sendShaderToWebview(editor, this.messenger!);
+      this.shaderProcessor.sendShaderToWebview(editor);
       return;
     }
 
@@ -60,7 +58,7 @@ export class PanelManager {
 
     // Send shader on first load
     setTimeout(
-      () => this.shaderProcessor.sendShaderToWebview(editor, this.messenger!),
+      () => this.shaderProcessor.sendShaderToWebview(editor),
       200,
     );
 
@@ -75,12 +73,14 @@ export class PanelManager {
 
   public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
     if (this.messenger) {
-      this.shaderProcessor.sendShaderToWebview(editor, this.messenger, isLocked);
+      this.shaderProcessor.sendShaderToWebview(editor, isLocked);
     }
   }
 
   private setupWebviewHtml(): void {
-    if (!this.panel) return;
+    if (!this.panel) {
+      return;
+    }
 
     const htmlPath = path.join(
       this.context.extensionPath,

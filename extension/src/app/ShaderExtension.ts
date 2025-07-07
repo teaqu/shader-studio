@@ -2,12 +2,14 @@ import * as vscode from "vscode";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
 import { ShaderLocker } from "./ShaderLocker";
+import { ShaderProcessor } from "./ShaderProcessor";
 import { MessageTransporter } from "./communication/MessageTransporter";
 
 export class ShaderExtension {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private shaderLocker: ShaderLocker;
+  private shaderProcessor: ShaderProcessor;
   private messageTransporter: MessageTransporter;
   private context: vscode.ExtensionContext;
   private outputChannel: vscode.LogOutputChannel;
@@ -23,7 +25,8 @@ export class ShaderExtension {
     // Create centralized message transporter
     this.messageTransporter = new MessageTransporter(outputChannel, diagnosticCollection);
     
-    this.panelManager = new PanelManager(context, this.messageTransporter, outputChannel);
+    this.shaderProcessor = new ShaderProcessor(outputChannel, this.messageTransporter);
+    this.panelManager = new PanelManager(context, this.messageTransporter, outputChannel, this.shaderProcessor);
     this.webServer = new WebServer(context, this.messageTransporter, outputChannel);
     this.shaderLocker = new ShaderLocker(outputChannel, (editor) => this.sendShaderCallback(editor));
     
@@ -78,7 +81,9 @@ export class ShaderExtension {
   private registerEventHandlers(): void {
     // Update shader when switching active editor
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
 
       // Check for auto-lock behavior
       if (this.shaderLocker.shouldAutoLock(editor)) {
