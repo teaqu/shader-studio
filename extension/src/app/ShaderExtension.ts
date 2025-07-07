@@ -26,8 +26,8 @@ export class ShaderExtension {
     this.messageTransporter = new MessageTransporter(outputChannel, diagnosticCollection);
     
     this.shaderProcessor = new ShaderProcessor(outputChannel, this.messageTransporter);
-    this.panelManager = new PanelManager(context, this.messageTransporter, outputChannel, this.shaderProcessor);
-    this.webServer = new WebServer(context, this.messageTransporter, outputChannel);
+    this.panelManager = new PanelManager(context, outputChannel, this.messageTransporter, this.shaderProcessor);
+    this.webServer = new WebServer(context, outputChannel, this.messageTransporter, this.shaderProcessor);
     this.shaderLocker = new ShaderLocker(outputChannel, (editor) => this.sendShaderCallback(editor));
     
     this.registerCommands();

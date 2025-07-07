@@ -5,16 +5,14 @@ import { WebSocketTransport } from "./communication/WebSocketTransport";
 
 export class WebServer {
   private messenger: MessageTransporter | undefined;
-  private shaderProcessor: ShaderProcessor;
   private wsPort: number = 8080;
 
   constructor(
     private context: vscode.ExtensionContext,
-    private messageTransporter: MessageTransporter,
     private outputChannel: vscode.LogOutputChannel,
-  ) {
-    this.shaderProcessor = new ShaderProcessor(outputChannel);
-  }
+    private messageTransporter: MessageTransporter,
+    private shaderProcessor: ShaderProcessor,
+  ) {}
 
   public startWebServer(): void {
     // will create an actual webserver at some when ready...
@@ -47,7 +45,7 @@ export class WebServer {
 
   public sendShaderToWebServer(editor: vscode.TextEditor, isLocked: boolean = false): void {
     if (this.messenger) {
-      this.shaderProcessor.sendShaderToWebview(editor, this.messenger, isLocked);
+      this.shaderProcessor.sendShaderToWebview(editor, isLocked);
       this.outputChannel.info("Shader sent to web server clients");
     } else {
       this.outputChannel.warn("Web server not running");

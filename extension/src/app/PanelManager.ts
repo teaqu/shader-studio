@@ -11,8 +11,8 @@ export class PanelManager {
 
   constructor(
     private context: vscode.ExtensionContext,
-    private messageTransporter: MessageTransporter,
     private outputChannel: vscode.LogOutputChannel,
+    private messageTransporter: MessageTransporter,
     private shaderProcessor: ShaderProcessor,
   ) {}
 
