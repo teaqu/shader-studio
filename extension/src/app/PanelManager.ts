@@ -4,17 +4,20 @@ import * as fs from "fs";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { MessageTransporter } from "./communication/MessageTransporter";
 import { WebviewTransport } from "./communication/WebviewTransport";
+import { Logger } from "./services/Logger";
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
   private messenger: MessageTransporter | undefined;
+  private logger!: Logger; // Initialize when accessed
 
   constructor(
     private context: vscode.ExtensionContext,
-    private outputChannel: vscode.LogOutputChannel,
     private messageTransporter: MessageTransporter,
     private shaderProcessor: ShaderProcessor,
-  ) {}
+  ) {
+    this.logger = Logger.getInstance();
+  }
 
   public getPanel(): vscode.WebviewPanel | undefined {
     return this.panel;
@@ -68,7 +71,7 @@ export class PanelManager {
       this.messenger = undefined;
     });
 
-    this.outputChannel.info("Webview panel created");
+    this.logger.info("Webview panel created");
   }
 
   public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
@@ -104,6 +107,6 @@ export class PanelManager {
         return `${attr}="${uri}"`;
       },
     );
-    this.outputChannel.debug("Webview HTML set");
+    this.logger.debug("Webview HTML set");
   }
 }

@@ -3,14 +3,13 @@ import * as path from "path";
 import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
 import { MessageTransporter } from "./communication/MessageTransporter";
+import { Logger } from "./services/Logger";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
+  private logger = Logger.getInstance();
 
-  constructor(
-    private outputChannel: vscode.LogOutputChannel,
-    private messenger: MessageTransporter,
-  ) {}
+  constructor(private messenger: MessageTransporter) {}
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
@@ -64,8 +63,8 @@ export class ShaderProcessor {
     }
 
     // Always update the shader - no change detection
-    this.outputChannel.debug(`Sending shader update (${name})`);
-    this.outputChannel.debug(
+    this.logger.debug(`Sending shader update (${name})`);
+    this.logger.debug(
       `Sending ${Object.keys(buffers).length} buffer(s)`,
     );
 
@@ -77,7 +76,7 @@ export class ShaderProcessor {
       isLocked,
       buffers,
     });
-    this.outputChannel.debug("Shader message sent to webview");
+    this.logger.debug("Shader message sent to webview");
   }
 
   private processBuffers(
@@ -120,17 +119,17 @@ export class ShaderProcessor {
       (doc) => doc.fileName === bufferPath,
     );
 
-    this.outputChannel.debug(
+    this.logger.debug(
       `Processing buffer for pass ${passName}: ${bufferPath}`,
     );
-    this.outputChannel.debug(`Buffer file name: ${path.basename(bufferPath)}`);
+    this.logger.debug(`Buffer file name: ${path.basename(bufferPath)}`);
 
     if (bufferDoc) {
       // Get content from memory directly
       const bufferContent = bufferDoc.getText();
-      this.outputChannel.debug(bufferContent);
+      this.logger.debug(bufferContent);
       buffers[passName] = bufferContent;
-      this.outputChannel.debug(
+      this.logger.debug(
         `Loaded buffer content from memory for ${passName}`,
       );
     } else if (fs.existsSync(bufferPath)) {
@@ -138,11 +137,11 @@ export class ShaderProcessor {
       try {
         const bufferContent = fs.readFileSync(bufferPath, "utf-8");
         buffers[passName] = bufferContent;
-        this.outputChannel.debug(
+        this.logger.debug(
           `Loaded buffer content from disk for ${passName}: ${bufferPath}`,
         );
       } catch (e) {
-        this.outputChannel.warn(
+        this.logger.warn(
           `Failed to read buffer content for ${passName}: ${bufferPath}`,
         );
       }
@@ -167,11 +166,11 @@ export class ShaderProcessor {
         if (fs.existsSync(imgPath)) {
           const clientUri = this.messenger.convertUriForClient(imgPath);
           input.path = clientUri;
-          this.outputChannel.debug(
+          this.logger.debug(
             `Patched image path for ${passName}.inputs.${key}: ${input.path}`,
           );
         } else {
-          this.outputChannel.warn(
+          this.logger.warn(
             `Image not found for ${passName}.inputs.${key}: ${imgPath}`,
           );
         }

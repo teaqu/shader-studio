@@ -1,15 +1,18 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { Logger } from "./services/Logger";
 
 export class ShaderLocker {
   private isLocked = false;
   private lockedEditor: vscode.TextEditor | undefined = undefined;
   private currentlyPreviewedEditor: vscode.TextEditor | undefined = undefined;
+  private logger!: Logger;
 
   constructor(
-    private outputChannel: vscode.LogOutputChannel,
     private sendShaderCallback: (editor: vscode.TextEditor) => void,
-  ) {}
+  ) {
+    this.logger = Logger.getInstance();
+  }
 
   public getIsLocked(): boolean {
     return this.isLocked;
@@ -92,8 +95,12 @@ export class ShaderLocker {
       })
       .sort((a, b) => {
         // Sort by most recently active (activeTab first, then by tab order)
-        if (a.isActive) return -1;
-        if (b.isActive) return 1;
+        if (a.isActive) {
+          return -1;
+        }
+        if (b.isActive) {
+          return 1;
+        }
         return 0;
       });
 

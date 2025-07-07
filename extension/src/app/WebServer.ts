@@ -2,23 +2,26 @@ import * as vscode from "vscode";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { MessageTransporter } from "./communication/MessageTransporter";
 import { WebSocketTransport } from "./communication/WebSocketTransport";
+import { Logger } from "./services/Logger";
 
 export class WebServer {
   private messenger: MessageTransporter | undefined;
   private wsPort: number = 8080;
+  private logger!: Logger;
 
   constructor(
     private context: vscode.ExtensionContext,
-    private outputChannel: vscode.LogOutputChannel,
     private messageTransporter: MessageTransporter,
     private shaderProcessor: ShaderProcessor,
-  ) {}
+  ) {
+    this.logger = Logger.getInstance();
+  }
 
   public startWebServer(): void {
     // will create an actual webserver at some when ready...
 
     if (this.messenger) {
-      this.outputChannel.info("Web server already running");
+      this.logger.info("Web server already running");
       return;
     }
 
@@ -29,9 +32,9 @@ export class WebServer {
       
       this.messenger = this.messageTransporter;
 
-      this.outputChannel.info(`WebSocket server started on port ${this.wsPort}`);
+      this.logger.info(`WebSocket server started on port ${this.wsPort}`);
     } catch (error) {
-      this.outputChannel.error(`Failed to start WebSocket server: ${error}`);
+      this.logger.error(`Failed to start WebSocket server: ${error}`);
     }
   }
 
@@ -39,16 +42,16 @@ export class WebServer {
     if (this.messenger) {
       this.messenger.close();
       this.messenger = undefined;
-      this.outputChannel.info("WebSocket server stopped");
+      this.logger.info("WebSocket server stopped");
     }
   }
 
   public sendShaderToWebServer(editor: vscode.TextEditor, isLocked: boolean = false): void {
     if (this.messenger) {
       this.shaderProcessor.sendShaderToWebview(editor, isLocked);
-      this.outputChannel.info("Shader sent to web server clients");
+      this.logger.info("Shader sent to web server clients");
     } else {
-      this.outputChannel.warn("Web server not running");
+      this.logger.warn("Web server not running");
     }
   }
 
