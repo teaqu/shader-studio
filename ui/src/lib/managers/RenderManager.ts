@@ -1,4 +1,4 @@
-import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
+import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 
 export class RenderManager {
   private renderer: any;

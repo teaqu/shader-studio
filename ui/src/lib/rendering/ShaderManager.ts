@@ -2,7 +2,7 @@ import type { PassConfig } from "./ResourceManager";
 import type { RenderManager } from "./RenderManager";
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
-import type { TimeManager } from "./TimeManager";
+import type { TimeManager } from "../input/TimeManager";
 
 export class ShaderManager {
   private passes: PassConfig[] = [];

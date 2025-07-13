@@ -1,9 +1,9 @@
 import type { ManagerInstances } from "./AppInitializer";
-import type { TimeManager } from "./TimeManager";
-import type { InputManager } from "./InputManager";
-import type { RenderManager } from "./RenderManager";
-import type { ShaderManager } from "./ShaderManager";
-import type { RenderLoopManager } from "./RenderLoopManager";
+import type { TimeManager } from "../input/TimeManager";
+import type { InputManager } from "../input/InputManager";
+import type { RenderManager } from "../rendering/RenderManager";
+import type { ShaderManager } from "../rendering/ShaderManager";
+import type { RenderLoopManager } from "../rendering/RenderLoopManager";
 
 export class RenderController {
   private managers: ManagerInstances;

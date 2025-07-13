@@ -1,10 +1,10 @@
-import { RenderManager } from "./RenderManager";
-import { ShaderCompiler } from "./ShaderCompiler";
-import { ResourceManager } from "./ResourceManager";
-import { TimeManager } from "./TimeManager";
-import { InputManager } from "./InputManager";
-import { ShaderManager } from "./ShaderManager";
-import { RenderLoopManager } from "./RenderLoopManager";
+import { RenderManager } from "../rendering/RenderManager";
+import { ShaderCompiler } from "../rendering/ShaderCompiler";
+import { ResourceManager } from "../rendering/ResourceManager";
+import { TimeManager } from "../input/TimeManager";
+import { InputManager } from "../input/InputManager";
+import { ShaderManager } from "../rendering/ShaderManager";
+import { RenderLoopManager } from "../rendering/RenderLoopManager";
 
 export interface ManagerInstances {
   renderManager: RenderManager;

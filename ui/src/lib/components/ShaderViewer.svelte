@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { piCreateFPSCounter } from "../../vendor/pilibs/src/piWebUtils";
+  import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
   import {
     AppInitializer,
     type ManagerInstances,
-  } from "../managers/AppInitializer";
-  import { RenderController } from "../managers/RenderController";
+  } from "../core/AppInitializer";
+  import { RenderController } from "../core/RenderController";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
