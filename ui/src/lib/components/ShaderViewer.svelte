@@ -21,7 +21,7 @@
   let canvasHeight = 0;
 
   // --- Main Controller ---
-  let shaderView: ShaderView | null = null;
+  let shaderView: ShaderView;
   let timeManager: any = null;
   let inputManager: any = null;
 
@@ -34,32 +34,30 @@
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
-    if (!shaderView || !initialized) return;
+    if (!initialized) return;
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    shaderView.handleCanvasResize(width, height);
+    shaderView!.handleCanvasResize(width, height);
   }
 
   function handleReset() {
-    if (!shaderView || !initialized) return;
+    if (!initialized) return;
     shaderView.handleReset(() => {
-      if (shaderView) {
-        const lastEvent = shaderView.getLastShaderEvent();
-        if (lastEvent) {
-          handleShaderMessage(lastEvent);
-        }
+      const lastEvent = shaderView!.getLastShaderEvent();
+      if (lastEvent) {
+        handleShaderMessage(lastEvent);
       }
     });
   }
 
   function handleTogglePause() {
-    if (!shaderView || !initialized) return;
+    if (!initialized) return;
     shaderView.handleTogglePause();
   }
 
   function handleToggleLock() {
-    if (!shaderView || !initialized) return;
+    if (!initialized) return;
     shaderView.handleToggleLock();
   }
 
@@ -72,7 +70,7 @@
   async function initializeApp() {
     try {
       shaderView = new ShaderView(vscode);
-      
+
       const success = await shaderView.initialize(glCanvas);
       if (!success) {
         addError("Failed to initialize shader view");
@@ -82,25 +80,11 @@
       // Set up message listener
       window.addEventListener("message", handleShaderMessage);
 
-      // Set up FPS update interval (less frequent than render loop)
-      let fpsUpdateCounter = 0;
-      const fpsUpdateInterval = setInterval(() => {
-        if (shaderView) {
-          currentFPS = shaderView.getCurrentFPS();
-        }
-        fpsUpdateCounter++;
-        // Stop updating FPS if not initialized after some time
-        if (fpsUpdateCounter > 600 && !initialized) {
-          // 60 seconds
-          clearInterval(fpsUpdateInterval);
-        }
-      }, 100); // Update FPS 10 times per second instead of every frame
-
-      initialized = true;
-      
       timeManager = shaderView.getTimeManager();
       inputManager = shaderView.getInputManager();
-      
+
+      initialized = true;
+
       onInitialized({ shaderView });
     } catch (err) {
       addError(`Initialization failed: ${err}`);
@@ -108,7 +92,7 @@
   }
 
   async function handleShaderMessage(event: MessageEvent) {
-    if (!shaderView || !initialized) return;
+    if (!initialized) return;
 
     try {
       await shaderView.handleShaderMessage(event, (locked) => {
@@ -125,6 +109,16 @@
     vscode.postMessage({ type: "error", payload: [message] });
   }
 
+  // Reactive FPS update using onMount interval
+  onMount(() => {
+    const fpsInterval = setInterval(() => {
+      if (initialized && shaderView) {
+        currentFPS = shaderView.getCurrentFPS();
+      }
+    }, 100);
+
+    return () => clearInterval(fpsInterval);
+  });
 </script>
 
 <div class="main-container">
@@ -133,7 +127,7 @@
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
   />
-  {#if initialized && timeManager}
+  {#if initialized}
     <MenuBar
       {timeManager}
       {currentFPS}
