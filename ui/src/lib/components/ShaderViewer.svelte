@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ShaderView } from "../core/ShaderView";
+  import { ShaderView } from "../ShaderView";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
