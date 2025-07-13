@@ -4,7 +4,7 @@ import { ResourceManager } from "../rendering/ResourceManager";
 import { TimeManager } from "../input/TimeManager";
 import { InputManager } from "../input/InputManager";
 import { ShaderManager } from "../rendering/ShaderManager";
-import { RenderLooper } from "../rendering/RenderLooper";
+import { RenderLoop } from "../rendering/RenderLoop";
 
 export class ShaderView {
   private vscode: any;
@@ -17,7 +17,7 @@ export class ShaderView {
   private timeManager: TimeManager | null = null;
   private inputManager: InputManager | null = null;
   private shaderManager: ShaderManager | null = null;
-  private renderLoopManager: RenderLooper | null = null;
+  private renderLoopManager: RenderLoop | null = null;
 
   constructor(vscode: any) {
     this.vscode = vscode;
@@ -58,7 +58,7 @@ export class ShaderView {
         this.timeManager,
         this.vscode,
       );
-      this.renderLoopManager = new RenderLooper(
+      this.renderLoopManager = new RenderLoop(
         this.timeManager,
         this.inputManager,
         this.renderManager,
@@ -182,7 +182,7 @@ export class ShaderView {
     return this.shaderManager;
   }
 
-  getRenderLooper(): RenderLooper | null {
+  getRenderLoop(): RenderLoop | null {
     return this.renderLoopManager;
   }
 

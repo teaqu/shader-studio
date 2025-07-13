@@ -1,7 +1,7 @@
 import type { PassConfig } from "./ResourceManager";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
 
-export class RenderLooper {
+export class RenderLoop {
   private running = false;
   private fpsCounter: any;
   private currentFPS = 0;
