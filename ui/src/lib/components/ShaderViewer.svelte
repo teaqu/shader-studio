@@ -23,6 +23,8 @@
 
   // --- Main Controller ---
   let shaderView: ShaderView | null = null;
+  let timeManager: any = null;
+  let inputManager: any = null;
 
   const vscode = acquireVsCodeApi();
   const fpsCounter = piCreateFPSCounter();
@@ -72,7 +74,7 @@
   async function initializeApp() {
     try {
       shaderView = new ShaderView(vscode, fpsCounter);
-      
+
       const success = await shaderView.initialize(glCanvas);
       if (!success) {
         addError("Failed to initialize shader view");
@@ -95,6 +97,9 @@
           clearInterval(fpsUpdateInterval);
         }
       }, 100); // Update FPS 10 times per second instead of every frame
+
+      timeManager = shaderView.getTimeManager();
+      inputManager = shaderView.getInputManager();
 
       initialized = true;
       onInitialized({ shaderView });
@@ -120,10 +125,6 @@
     showErrors = true;
     vscode.postMessage({ type: "error", payload: [message] });
   }
-
-  // Reactive values for managers
-  $: timeManager = shaderView?.getTimeManager();
-  $: inputManager = shaderView?.getInputManager();
 </script>
 
 <div class="main-container">
