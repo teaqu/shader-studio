@@ -9,6 +9,8 @@ export class ResourceManager {
   private imageTextureCache: Record<string, any> = {};
   private passBuffers: Record<string, { front: any; back: any }> = {};
   private passShaders: Record<string, any> = {};
+  private keyboardTexture: any = null;
+  private keyboardBuffer = new Uint8Array(256 * 3);
   private renderer: any = null;
 
   public getImageTextureCache(): Record<string, any> {
@@ -107,6 +109,48 @@ export class ResourceManager {
     this.imageTextureCache = newImageTextureCache;
     return this.imageTextureCache;
   }
+  public updateKeyboardTexture(
+    keyHeld: Uint8Array,
+    keyPressed: Uint8Array,
+    keyToggled: Uint8Array,
+  ): void {
+    if (!this.renderer) return;
+    
+    // Combine the three states into one buffer for uploading
+    // Row 0: Held states
+    this.keyboardBuffer.set(keyHeld, 0);
+    // Row 1: Pressed states
+    this.keyboardBuffer.set(keyPressed, 256);
+    // Row 2: Toggled states
+    this.keyboardBuffer.set(keyToggled, 512);
+    
+    if (!this.keyboardTexture) {
+      // Create a 256x3 texture, where each row corresponds to a state
+      this.keyboardTexture = this.renderer.CreateTexture(
+        this.renderer.TEXTYPE.T2D,
+        256,
+        3,
+        this.renderer.TEXFMT.C1I8,
+        this.renderer.FILTER.NONE,
+        this.renderer.TEXWRP.CLAMP,
+        this.keyboardBuffer,
+      );
+    } else {
+      // Update the entire texture
+      this.renderer.UpdateTexture(
+        this.keyboardTexture,
+        0,
+        0,
+        256,
+        3,
+        this.keyboardBuffer,
+      );
+    }
+  }
+
+  public getKeyboardTexture(): any {
+    return this.keyboardTexture;
+  }
 
   public cleanup(renderManager: any): void {
     // Clean up shaders
@@ -125,6 +169,12 @@ export class ResourceManager {
     // Clean up image textures
     for (const key in this.imageTextureCache) {
       renderManager.destroyTexture(this.imageTextureCache[key]);
+    }
+
+    // Clean up keyboard texture
+    if (this.keyboardTexture) {
+      renderManager.destroyTexture(this.keyboardTexture);
+      this.keyboardTexture = null;
     }
 
     // Reset all collections

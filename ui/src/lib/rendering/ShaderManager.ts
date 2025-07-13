@@ -74,12 +74,12 @@ export class ShaderManager {
           const imageCache = this.resourceManager.getImageTextureCache();
           textureBindings[i] = imageCache[input.path] || defaultTexture;
         } else if (input.type === "keyboard") {
-          this.renderManager.updateKeyboardTexture(
+          this.resourceManager.updateKeyboardTexture(
             inputManager.getKeyHeld(),
             inputManager.getKeyPressed(),
             inputManager.getKeyToggled(),
           );
-          textureBindings[i] = this.renderManager.getKeyboardTexture() ||
+          textureBindings[i] = this.resourceManager.getKeyboardTexture() ||
             defaultTexture;
         } else if (input.type === "buffer") {
           if (input.source === pass.name) {

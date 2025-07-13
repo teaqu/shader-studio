@@ -3,8 +3,6 @@ import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 export class RenderManager {
   private renderer: any;
   private defaultTexture: any = null;
-  private keyboardTexture: any = null;
-  private keyboardBuffer = new Uint8Array(256 * 3);
   private glCanvas: HTMLCanvasElement | null = null;
   private passBuffers: Record<string, { front: any; back: any }> = {};
 
@@ -38,47 +36,6 @@ export class RenderManager {
 
   public getDefaultTexture(): any {
     return this.defaultTexture;
-  }
-
-  public updateKeyboardTexture(
-    keyHeld: Uint8Array,
-    keyPressed: Uint8Array,
-    keyToggled: Uint8Array,
-  ): void {
-    // Combine the three states into one buffer for uploading
-    // Row 0: Held states
-    this.keyboardBuffer.set(keyHeld, 0);
-    // Row 1: Pressed states
-    this.keyboardBuffer.set(keyPressed, 256);
-    // Row 2: Toggled states
-    this.keyboardBuffer.set(keyToggled, 512);
-
-    if (!this.keyboardTexture) {
-      // Create a 256x3 texture, where each row corresponds to a state
-      this.keyboardTexture = this.renderer.CreateTexture(
-        this.renderer.TEXTYPE.T2D,
-        256,
-        3,
-        this.renderer.TEXFMT.C1I8,
-        this.renderer.FILTER.NONE,
-        this.renderer.TEXWRP.CLAMP,
-        this.keyboardBuffer,
-      );
-    } else {
-      // Update the entire texture
-      this.renderer.UpdateTexture(
-        this.keyboardTexture,
-        0,
-        0,
-        256,
-        3,
-        this.keyboardBuffer,
-      );
-    }
-  }
-
-  public getKeyboardTexture(): any {
-    return this.keyboardTexture;
   }
 
   public createPingPongBuffers(width: number, height: number) {
@@ -319,10 +276,5 @@ export class RenderManager {
       this.renderer.DestroyTexture(this.passBuffers[key].back.mTex0);
     }
     this.passBuffers = {};
-
-    if (this.keyboardTexture) {
-      this.renderer.DestroyTexture(this.keyboardTexture);
-      this.keyboardTexture = null;
-    }
   }
 }
