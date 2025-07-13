@@ -8,9 +8,7 @@ import { RenderLoopManager } from "../rendering/RenderLoopManager";
 
 export class ShaderView {
   private vscode: any;
-  private fpsCounter: any;
   private glCanvas: HTMLCanvasElement | null = null;
-  private renderLoopActive = false;
   
   // Manager instances
   private renderManager: RenderManager | null = null;
@@ -21,9 +19,8 @@ export class ShaderView {
   private shaderManager: ShaderManager | null = null;
   private renderLoopManager: RenderLoopManager | null = null;
 
-  constructor(vscode: any, fpsCounter: any) {
+  constructor(vscode: any) {
     this.vscode = vscode;
-    this.fpsCounter = fpsCounter;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -39,7 +36,6 @@ export class ShaderView {
     }
 
     try {
-      // Initialize managers
       this.renderManager = new RenderManager();
       const success = await this.renderManager.initialize(gl, glCanvas);
       if (!success) {
@@ -62,7 +58,13 @@ export class ShaderView {
         this.timeManager,
         this.vscode,
       );
-      this.renderLoopManager = new RenderLoopManager(this.fpsCounter);
+      this.renderLoopManager = new RenderLoopManager(
+        this.timeManager,
+        this.inputManager,
+        this.renderManager,
+        this.shaderManager,
+        this.glCanvas,
+      );
 
       this.vscode.postMessage({
         type: "debug",
@@ -99,23 +101,7 @@ export class ShaderView {
       p.name === "Image"
     );
     if (imagePass && this.renderLoopManager.isRunning()) {
-      const uniforms = this.timeManager.getUniforms(
-        this.glCanvas.width,
-        this.glCanvas.height,
-        this.inputManager.getMouse(),
-      );
-      const shader = this.shaderManager.getPassShaders()[imagePass.name];
-      const textureBindings = this.shaderManager.getTextureBindings(
-        imagePass,
-        this.inputManager,
-      );
-      this.renderManager.drawPass(
-        imagePass,
-        null,
-        uniforms,
-        shader,
-        textureBindings,
-      );
+      this.renderLoopManager.renderSinglePass(imagePass);
     }
   }
 
@@ -133,9 +119,8 @@ export class ShaderView {
       onLockChange,
     );
 
-    if (result.running && !this.renderLoopActive) {
-      this.renderLoopManager.setRunning(true);
-      this.startRenderLoop();
+    if (result.running && !this.renderLoopManager.isRunning()) {
+      this.renderLoopManager.startRenderLoop();
     }
 
     return result;
@@ -166,42 +151,9 @@ export class ShaderView {
     this.vscode.postMessage({ type: "toggleLock" });
   }
 
-  // Render loop management
-  private startRenderLoop(): void {
-    this.renderLoopActive = true;
-
-    const render = (time: number) => {
-      if (!this.renderLoopActive || !this.glCanvas) return;
-
-      if (!this.renderLoopManager || !this.shaderManager || !this.timeManager || 
-          !this.inputManager || !this.renderManager) {
-        this.renderLoopActive = false;
-        return;
-      }
-
-      this.renderLoopManager.render(
-        time,
-        this.timeManager,
-        this.inputManager,
-        this.renderManager,
-        this.shaderManager,
-        this.glCanvas,
-      );
-
-      if (this.renderLoopManager.isRunning()) {
-        requestAnimationFrame(render);
-      } else {
-        this.renderLoopActive = false;
-      }
-    };
-
-    requestAnimationFrame(render);
-  }
-
   stopRenderLoop(): void {
-    this.renderLoopActive = false;
     if (this.renderLoopManager) {
-      this.renderLoopManager.setRunning(false);
+      this.renderLoopManager.stopRenderLoop();
     }
   }
 
@@ -234,24 +186,11 @@ export class ShaderView {
     return this.renderLoopManager;
   }
 
-  // Utility methods
   getCurrentFPS(): number {
     return this.renderLoopManager?.getCurrentFPS() || 0;
   }
 
   getLastShaderEvent(): MessageEvent | null {
     return this.shaderManager?.getLastEvent() || null;
-  }
-
-  isInitialized(): boolean {
-    return !!(
-      this.renderManager &&
-      this.shaderCompiler &&
-      this.resourceManager &&
-      this.timeManager &&
-      this.inputManager &&
-      this.shaderManager &&
-      this.renderLoopManager
-    );
   }
 }

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
   import { ShaderView } from "../core/ShaderView";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
@@ -27,7 +26,6 @@
   let inputManager: any = null;
 
   const vscode = acquireVsCodeApi();
-  const fpsCounter = piCreateFPSCounter();
 
   // --- Event Handlers ---
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
@@ -73,8 +71,8 @@
   // --- Initialization ---
   async function initializeApp() {
     try {
-      shaderView = new ShaderView(vscode, fpsCounter);
-
+      shaderView = new ShaderView(vscode);
+      
       const success = await shaderView.initialize(glCanvas);
       if (!success) {
         addError("Failed to initialize shader view");
@@ -98,10 +96,11 @@
         }
       }, 100); // Update FPS 10 times per second instead of every frame
 
+      initialized = true;
+      
       timeManager = shaderView.getTimeManager();
       inputManager = shaderView.getInputManager();
-
-      initialized = true;
+      
       onInitialized({ shaderView });
     } catch (err) {
       addError(`Initialization failed: ${err}`);
@@ -125,6 +124,7 @@
     showErrors = true;
     vscode.postMessage({ type: "error", payload: [message] });
   }
+
 </script>
 
 <div class="main-container">
@@ -133,16 +133,18 @@
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
   />
-  <MenuBar
-    {timeManager}
-    {currentFPS}
-    {canvasWidth}
-    {canvasHeight}
-    {isLocked}
-    onReset={handleReset}
-    onTogglePause={handleTogglePause}
-    onToggleLock={handleToggleLock}
-  />
+  {#if initialized && timeManager}
+    <MenuBar
+      {timeManager}
+      {currentFPS}
+      {canvasWidth}
+      {canvasHeight}
+      {isLocked}
+      onReset={handleReset}
+      onTogglePause={handleTogglePause}
+      onToggleLock={handleToggleLock}
+    />
+  {/if}
   <ErrorDisplay
     {errors}
     isVisible={showErrors}
