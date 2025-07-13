@@ -23,23 +23,25 @@ export class InputManager {
 
   public setupEventListeners(canvas: HTMLCanvasElement): void {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.keyCode >= 256) return;
+      const keyIndex = this.getKeyIndex(e);
+      if (keyIndex >= 256) return;
       // If key was not previously held, it's a "just pressed" event
-      if (this.keyHeld[e.keyCode] === 0) {
-        this.keyPressed[e.keyCode] = 255;
+      if (this.keyHeld[keyIndex] === 0) {
+        this.keyPressed[keyIndex] = 255;
         // Toggle state only changes on initial press
-        this.keyToggled[e.keyCode] = this.keyToggled[e.keyCode] === 255
+        this.keyToggled[keyIndex] = this.keyToggled[keyIndex] === 255
           ? 0
           : 255;
       }
       // Set key as held
-      this.keyHeld[e.keyCode] = 255;
+      this.keyHeld[keyIndex] = 255;
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.keyCode >= 256) return;
+      const keyIndex = this.getKeyIndex(e);
+      if (keyIndex >= 256) return;
       // Unset key as held
-      this.keyHeld[e.keyCode] = 0;
+      this.keyHeld[keyIndex] = 0;
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -83,5 +85,10 @@ export class InputManager {
 
   public clearPressed(): void {
     this.keyPressed.fill(0);
+  }
+
+  private getKeyIndex(e: KeyboardEvent): number {
+    // Will keep deprciated keyCode for compatibility with shadertoy for now
+    return e.keyCode;
   }
 }
