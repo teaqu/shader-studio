@@ -3,6 +3,7 @@ import type { RenderManager } from "./RenderManager";
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import type { TimeManager } from "../input/TimeManager";
+import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 
 export class ShaderManager {
   private passes: PassConfig[] = [];
@@ -165,7 +166,7 @@ export class ShaderManager {
         );
         if (!shader.mResult) {
           hasError = true;
-          const err = this.shaderCompiler.formatShaderError(
+          const err = ShaderErrorFormatter.formatShaderError(
             shader.mInfo,
             this.renderManager.getRenderer(),
             svelteHeaderLines,
