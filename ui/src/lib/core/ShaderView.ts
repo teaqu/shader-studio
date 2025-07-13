@@ -181,8 +181,6 @@ export class ShaderView {
 
       this.renderLoopManager.render(
         time,
-        this.shaderManager.getCurrentShaderRenderID(),
-        this.shaderManager.getCurrentShaderRenderID(),
         this.timeManager,
         this.inputManager,
         this.renderManager,

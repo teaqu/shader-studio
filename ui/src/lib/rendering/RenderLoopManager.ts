@@ -23,15 +23,13 @@ export class RenderLoopManager {
 
   public render(
     time: number,
-    renderID: number,
-    currentShaderRenderID: number,
     timeManager: any,
     inputManager: any,
     renderManager: any,
     shaderManager: any,
     glCanvas: HTMLCanvasElement,
   ): void {
-    if (!this.running || renderID !== currentShaderRenderID) return;
+    if (!this.running) return;
 
     if (timeManager.getFrame() === 0) {
       this.fpsCounter.Reset(time);
