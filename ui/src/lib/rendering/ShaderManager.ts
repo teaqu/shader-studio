@@ -184,7 +184,7 @@ export class ShaderManager {
             newPassBuffers[pass.name] = oldPassBuffers[pass.name];
             delete oldPassBuffers[pass.name];
           } else {
-            newPassBuffers[pass.name] = this.renderManager
+            newPassBuffers[pass.name] = this.resourceManager
               .createPingPongBuffers(
                 this.renderManager.getCanvas()?.width || 800,
                 this.renderManager.getCanvas()?.height || 600,
@@ -231,7 +231,6 @@ export class ShaderManager {
 
   public cleanup(): void {
     this.resourceManager.cleanup(this.renderManager);
-    this.renderManager.cleanup();
     this.timeManager.cleanup(); // Reset the time manager
     this.currentShaderRenderID++;
 

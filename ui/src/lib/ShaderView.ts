@@ -84,12 +84,12 @@ export class ShaderView {
   // Canvas and rendering methods
   handleCanvasResize(width: number, height: number): void {
     if (!this.renderManager || !this.shaderManager || !this.renderLoopManager || 
-        !this.timeManager || !this.inputManager || !this.glCanvas) {
+        !this.timeManager || !this.inputManager || !this.glCanvas || !this.resourceManager) {
       return;
     }
 
     this.renderManager.updateCanvasSize(width, height);
-    const newBuffers = this.renderManager.resizePassBuffers(
+    const newBuffers = this.resourceManager.resizePassBuffers(
       this.shaderManager.getPasses(),
       Math.round(width),
       Math.round(height),
