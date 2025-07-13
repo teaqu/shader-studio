@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ShaderExtension } from "./app/ShaderExtension";
+import { ShaderExtension } from "./app/ShaderView";
 
 let shaderExtension: ShaderExtension | undefined;
 

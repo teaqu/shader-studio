@@ -2,20 +2,20 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { ShaderProcessor } from "./ShaderProcessor";
-import { MessageTransporter } from "./communication/MessageTransporter";
+import { Messenger } from "./communication/Messenger";
 import { WebviewTransport } from "./communication/WebviewTransport";
+import { Logger } from "./services/Logger";
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
-  private messenger: MessageTransporter | undefined;
-  private shaderProcessor: ShaderProcessor;
+  private logger!: Logger; // Initialize when accessed
 
   constructor(
     private context: vscode.ExtensionContext,
-    private messageTransporter: MessageTransporter,
-    private outputChannel: vscode.LogOutputChannel,
+    private messenger: Messenger,
+    private shaderProcessor: ShaderProcessor,
   ) {
-    this.shaderProcessor = new ShaderProcessor(outputChannel);
+    this.logger = Logger.getInstance();
   }
 
   public getPanel(): vscode.WebviewPanel | undefined {
@@ -25,7 +25,7 @@ export class PanelManager {
   public createWebviewPanel(editor: vscode.TextEditor): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Beside);
-      this.shaderProcessor.sendShaderToWebview(editor, this.messenger!);
+      this.shaderProcessor.sendShaderToWebview(editor);
       return;
     }
 
@@ -52,35 +52,33 @@ export class PanelManager {
 
     // Add webview transport to the shared message transporter
     const webviewTransport = new WebviewTransport(this.panel);
-    this.messageTransporter.addTransport(webviewTransport);
-    
-    this.messenger = this.messageTransporter;
+    this.messenger.addTransport(webviewTransport);
 
     this.setupWebviewHtml();
 
     // Send shader on first load
     setTimeout(
-      () => this.shaderProcessor.sendShaderToWebview(editor, this.messenger!),
+      () => this.shaderProcessor.sendShaderToWebview(editor),
       200,
     );
 
     // Dispose handler
     this.panel.onDidDispose(() => {
       this.panel = undefined;
-      this.messenger = undefined;
+      // Note: messenger is shared, don't set to undefined
     });
 
-    this.outputChannel.info("Webview panel created");
+    this.logger.info("Webview panel created");
   }
 
   public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    if (this.messenger) {
-      this.shaderProcessor.sendShaderToWebview(editor, this.messenger, isLocked);
-    }
+    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
   }
 
   private setupWebviewHtml(): void {
-    if (!this.panel) return;
+    if (!this.panel) {
+      return;
+    }
 
     const htmlPath = path.join(
       this.context.extensionPath,
@@ -104,6 +102,6 @@ export class PanelManager {
         return `${attr}="${uri}"`;
       },
     );
-    this.outputChannel.debug("Webview HTML set");
+    this.logger.debug("Webview HTML set");
   }
 }

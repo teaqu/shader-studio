@@ -2,15 +2,18 @@ import * as vscode from "vscode";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
 import { ShaderLocker } from "./ShaderLocker";
-import { MessageTransporter } from "./communication/MessageTransporter";
+import { ShaderProcessor } from "./ShaderProcessor";
+import { Messenger } from "./communication/Messenger";
+import { Logger } from "./services/Logger";
 
 export class ShaderExtension {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private shaderLocker: ShaderLocker;
-  private messageTransporter: MessageTransporter;
+  private shaderProcessor: ShaderProcessor;
+  private messenger: Messenger;
   private context: vscode.ExtensionContext;
-  private outputChannel: vscode.LogOutputChannel;
+  private logger!: Logger;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -18,14 +21,15 @@ export class ShaderExtension {
     diagnosticCollection: vscode.DiagnosticCollection,
   ) {
     this.context = context;
-    this.outputChannel = outputChannel;
     
-    // Create centralized message transporter
-    this.messageTransporter = new MessageTransporter(outputChannel, diagnosticCollection);
+    Logger.initialize(outputChannel);
+    this.logger = Logger.getInstance();
     
-    this.panelManager = new PanelManager(context, this.messageTransporter, outputChannel);
-    this.webServer = new WebServer(context, this.messageTransporter, outputChannel);
-    this.shaderLocker = new ShaderLocker(outputChannel, (editor) => this.sendShaderCallback(editor));
+    this.messenger = new Messenger(outputChannel, diagnosticCollection);
+    this.shaderProcessor = new ShaderProcessor(this.messenger);
+    this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor);
+    this.webServer = new WebServer(context, this.messenger, this.shaderProcessor);
+    this.shaderLocker = new ShaderLocker((editor: vscode.TextEditor) => this.sendShaderCallback(editor));
     
     this.registerCommands();
     this.registerEventHandlers();
@@ -46,13 +50,13 @@ export class ShaderExtension {
   public dispose(): void {
     // Clean up resources when extension is deactivated
     this.webServer.stopWebServer();
-    this.outputChannel.info("Shader extension disposed");
+    this.logger.info("Shader extension disposed");
   }
 
   private registerCommands(): void {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.view", () => {
-        this.outputChannel.info("shader-view.view command executed");
+        this.logger.info("shader-view.view command executed");
 
         const editor = vscode.window.activeTextEditor ??
           vscode.window.visibleTextEditors.find((e) =>
@@ -78,7 +82,9 @@ export class ShaderExtension {
   private registerEventHandlers(): void {
     // Update shader when switching active editor
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
 
       // Check for auto-lock behavior
       if (this.shaderLocker.shouldAutoLock(editor)) {

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { MessageHandler } from "./MessageHandler";
 import { MessageTransport } from "./MessageTransport";
 
-export class MessageTransporter {
+export class Messenger {
   private messageHandler: MessageHandler;
   private transports: MessageTransport[] = [];
 
