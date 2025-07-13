@@ -1,8 +1,8 @@
-import type { PassConfig } from "./ResourceManager";
 import type { WebGLRenderer } from "./WebGLRenderer";
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
+import type { PassConfig } from "../domain/PassConfig";
 
 /**
  * Manages the shader pipeline: pass compilation, resource allocation, and state management.

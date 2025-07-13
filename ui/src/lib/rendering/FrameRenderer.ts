@@ -1,8 +1,8 @@
-import type { PassConfig } from "./ResourceManager";
 import type { WebGLRenderer } from "./WebGLRenderer";
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
+import type { PassConfig } from "../domain/PassConfig";
 
 export class FrameRenderer {
   private running = false;

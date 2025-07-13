@@ -1,11 +1,5 @@
+import type { PassConfig } from "../domain/PassConfig";
 import type { WebGLRenderer } from "./WebGLRenderer";
-
-export type PassConfig = {
-  name: string;
-  shaderSrc: string;
-  inputs: Record<string, any>;
-  path?: string;
-};
 
 export class ResourceManager {
   private imageTextureCache: Record<string, any> = {};

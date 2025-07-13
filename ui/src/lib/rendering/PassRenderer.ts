@@ -1,6 +1,6 @@
-import type { PassConfig } from "./ResourceManager";
 import type { WebGLRenderer } from "./WebGLRenderer";
 import type { ResourceManager } from "./ResourceManager";
+import type { PassConfig } from "../domain/PassConfig";
 
 /**
  * Handles the actual rendering of shader passes.
