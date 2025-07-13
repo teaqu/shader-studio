@@ -49,6 +49,7 @@ export class ShaderView {
       this.shaderCompiler = new ShaderCompiler();
       this.resourceManager = new ResourceManager();
       this.resourceManager.setRenderer(this.renderManager.getRenderer());
+      this.resourceManager.setShaderCompiler(this.shaderCompiler);
       this.timeManager = new TimeManager();
       this.inputManager = new InputManager();
       this.shaderManager = new ShaderManager(

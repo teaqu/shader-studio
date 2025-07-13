@@ -49,6 +49,7 @@ export class ShaderView {
       this.shaderCompiler = new ShaderCompiler();
       this.resourceManager = new ResourceManager();
       this.resourceManager.setRenderer(this.renderManager.getRenderer());
+      this.resourceManager.setShaderCompiler(this.shaderCompiler);
       this.timeManager = new TimeManager();
       this.inputManager = new InputManager();
       this.shaderManager = new ShaderManager(
@@ -84,12 +85,12 @@ export class ShaderView {
   // Canvas and rendering methods
   handleCanvasResize(width: number, height: number): void {
     if (!this.renderManager || !this.shaderManager || !this.renderLoopManager || 
-        !this.timeManager || !this.inputManager || !this.glCanvas) {
+        !this.timeManager || !this.inputManager || !this.glCanvas || !this.resourceManager) {
       return;
     }
 
     this.renderManager.updateCanvasSize(width, height);
-    const newBuffers = this.renderManager.resizePassBuffers(
+    const newBuffers = this.resourceManager.resizePassBuffers(
       this.shaderManager.getPasses(),
       Math.round(width),
       Math.round(height),

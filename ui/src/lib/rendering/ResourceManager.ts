@@ -12,6 +12,7 @@ export class ResourceManager {
   private keyboardTexture: any = null;
   private keyboardBuffer = new Uint8Array(256 * 3);
   private renderer: any = null;
+  private shaderCompiler: any = null;
 
   public getImageTextureCache(): Record<string, any> {
     return this.imageTextureCache;
@@ -41,6 +42,10 @@ export class ResourceManager {
 
   public setRenderer(renderer: any): void {
     this.renderer = renderer;
+  }
+
+  public setShaderCompiler(shaderCompiler: any): void {
+    this.shaderCompiler = shaderCompiler;
   }
 
   public createPingPongBuffers(width: number, height: number) {
@@ -98,21 +103,14 @@ export class ResourceManager {
     if (!this.renderer) {
       throw new Error("Renderer not set");
     }
+    if (!this.shaderCompiler) {
+      throw new Error("ShaderCompiler not set");
+    }
 
     const oldPassBuffers = this.passBuffers;
     const newPassBuffers: Record<string, { front: any; back: any }> = {};
 
-    const vs =
-      `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const fs = `
-    precision highp float;
-    uniform sampler2D srcTex;
-    out vec4 fragColor;
-    void main() {
-      fragColor = texture(srcTex, gl_FragCoord.xy / vec2(textureSize(srcTex, 0)));
-    }
-  `;
-    const copyShader = this.renderer.CreateShader(vs, fs);
+    const copyShader = this.shaderCompiler.createCopyShader(this.renderer);
 
     for (const pass of passes) {
       if (pass.name !== "Image") {

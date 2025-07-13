@@ -37,6 +37,19 @@ void main() {
     return { wrappedCode, headerLineCount };
   }
 
+  public createCopyShader(renderer: any): any {
+    const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    const fs = `
+    precision highp float;
+    uniform sampler2D srcTex;
+    out vec4 fragColor;
+    void main() {
+      fragColor = texture(srcTex, gl_FragCoord.xy / vec2(textureSize(srcTex, 0)));
+    }
+  `;
+    return renderer.CreateShader(vs, fs);
+  }
+
   public compileShader(renderer: any, shaderSrc: string): any {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
