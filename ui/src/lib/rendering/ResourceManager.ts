@@ -1,3 +1,5 @@
+import type { WebGLRenderer } from "./WebGLRenderer";
+
 export type PassConfig = {
   name: string;
   shaderSrc: string;
@@ -291,28 +293,28 @@ export class ResourceManager {
     return this.keyboardTexture;
   }
 
-  public cleanup(renderManager: any): void {
+  public cleanup(webglRenderer: WebGLRenderer): void {
     // Clean up shaders
     for (const key in this.passShaders) {
-      renderManager.destroyShader(this.passShaders[key]);
+      webglRenderer.destroyShader(this.passShaders[key]);
     }
 
     // Clean up buffers
     for (const key in this.passBuffers) {
-      renderManager.destroyRenderTarget(this.passBuffers[key].front);
-      renderManager.destroyRenderTarget(this.passBuffers[key].back);
-      renderManager.destroyTexture(this.passBuffers[key].front.mTex0);
-      renderManager.destroyTexture(this.passBuffers[key].back.mTex0);
+      webglRenderer.destroyRenderTarget(this.passBuffers[key].front);
+      webglRenderer.destroyRenderTarget(this.passBuffers[key].back);
+      webglRenderer.destroyTexture(this.passBuffers[key].front.mTex0);
+      webglRenderer.destroyTexture(this.passBuffers[key].back.mTex0);
     }
 
     // Clean up image textures
     for (const key in this.imageTextureCache) {
-      renderManager.destroyTexture(this.imageTextureCache[key]);
+      webglRenderer.destroyTexture(this.imageTextureCache[key]);
     }
 
     // Clean up keyboard texture
     if (this.keyboardTexture) {
-      renderManager.destroyTexture(this.keyboardTexture);
+      webglRenderer.destroyTexture(this.keyboardTexture);
       this.keyboardTexture = null;
     }
 

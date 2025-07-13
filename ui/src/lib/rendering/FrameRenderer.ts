@@ -1,7 +1,10 @@
 import type { PassConfig } from "./ResourceManager";
+import type { WebGLRenderer } from "./WebGLRenderer";
+import type { ShaderPipeline } from "./ShaderPipeline";
+import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
 
-export class RenderLoop {
+export class FrameRenderer {
   private running = false;
   private fpsCounter: any;
   private currentFPS = 0;
@@ -9,22 +12,25 @@ export class RenderLoop {
   // Injected dependencies
   private timeManager: any;
   private inputManager: any;
-  private renderManager: any;
-  private shaderManager: any;
+  private webglRenderer: WebGLRenderer;
+  private shaderPipeline: ShaderPipeline;
+  private passRenderer: PassRenderer;
   private glCanvas: HTMLCanvasElement;
 
   constructor(
     timeManager: any,
     inputManager: any,
-    renderManager: any,
-    shaderManager: any,
+    webglRenderer: WebGLRenderer,
+    shaderPipeline: ShaderPipeline,
+    passRenderer: PassRenderer,
     glCanvas: HTMLCanvasElement,
   ) {
     this.fpsCounter = piCreateFPSCounter();
     this.timeManager = timeManager;
     this.inputManager = inputManager;
-    this.renderManager = renderManager;
-    this.shaderManager = shaderManager;
+    this.webglRenderer = webglRenderer;
+    this.shaderPipeline = shaderPipeline;
+    this.passRenderer = passRenderer;
     this.glCanvas = glCanvas;
   }
 
@@ -78,24 +84,25 @@ export class RenderLoop {
       this.glCanvas.height,
       this.inputManager.getMouse(),
     );
-    const passes = this.shaderManager.getPasses();
-    const passShaders = this.shaderManager.getPassShaders();
-    const passBuffers = this.shaderManager.getPassBuffers();
+    const passes = this.shaderPipeline.getPasses();
+    const passShaders = this.shaderPipeline.getPassShaders();
+    const passBuffers = this.shaderPipeline.getPassBuffers();
 
     // --- Render all buffer passes ---
     for (const pass of passes) {
       if (pass.name === "Image") continue;
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-      const textureBindings = this.shaderManager.getTextureBindings(
+      const textureBindings = this.passRenderer.getTextureBindings(
         pass,
         this.inputManager,
+        passBuffers,
       );
-      this.renderManager.drawPass(
+      this.passRenderer.renderPass(
         pass,
         buffers.back,
-        uniforms,
         shader,
+        uniforms,
         textureBindings,
       );
 
@@ -108,15 +115,16 @@ export class RenderLoop {
     const imagePass = passes.find((p: PassConfig) => p.name === "Image");
     if (imagePass) {
       const shader = passShaders[imagePass.name];
-      const textureBindings = this.shaderManager.getTextureBindings(
+      const textureBindings = this.passRenderer.getTextureBindings(
         imagePass,
         this.inputManager,
+        passBuffers,
       );
-      this.renderManager.drawPass(
+      this.passRenderer.renderPass(
         imagePass,
         null,
-        uniforms,
         shader,
+        uniforms,
         textureBindings,
       );
     }
@@ -133,9 +141,13 @@ export class RenderLoop {
       this.glCanvas.height,
       this.inputManager.getMouse(),
     );
-    const shader = this.shaderManager.getPassShaders()[pass.name];
-    const textureBindings = this.shaderManager.getTextureBindings(pass, this.inputManager);
+    const shader = this.shaderPipeline.getPassShaders()[pass.name];
+    const textureBindings = this.passRenderer.getTextureBindings(
+      pass, 
+      this.inputManager,
+      this.shaderPipeline.getPassBuffers(),
+    );
     
-    this.renderManager.drawPass(pass, null, uniforms, shader, textureBindings);
+    this.passRenderer.renderPass(pass, null, shader, uniforms, textureBindings);
   }
 }

@@ -1,6 +1,10 @@
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 
-export class RenderManager {
+/**
+ * Low-level WebGL operations wrapper around piRenderer.
+ * Handles primitive rendering, resource management, and viewport setup.
+ */
+export class WebGLRenderer {
   private renderer: any;
   private defaultTexture: any = null;
   private glCanvas: HTMLCanvasElement | null = null;
@@ -79,15 +83,24 @@ export class RenderManager {
     this.glCanvas.height = newHeight;
   }
 
-  public drawPass(
-    pass: any,
+  /**
+   * Renders a quad with the given shader and uniforms.
+   * This is a low-level primitive rendering operation.
+   */
+  public renderQuad(
     target: any,
-    uniforms: any,
     shader: any,
+    uniforms: {
+      res: number[];
+      time: number;
+      mouse: number[];
+      frame: number;
+    },
     textureBindings: any[],
   ): void {
     if (!shader) return;
 
+    // Set viewport
     if (target) {
       this.renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
     } else {
@@ -99,14 +112,17 @@ export class RenderManager {
       ]);
     }
 
+    // Set render target and shader
     this.renderer.SetRenderTarget(target);
     this.renderer.AttachShader(shader);
 
+    // Set uniforms
     this.renderer.SetShaderConstant3FV("iResolution", uniforms.res);
     this.renderer.SetShaderConstant1F("iTime", uniforms.time);
     this.renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
 
+    // Bind textures
     this.renderer.AttachTextures(
       4,
       textureBindings[0],
@@ -119,6 +135,7 @@ export class RenderManager {
     this.renderer.SetShaderTextureUnit("iChannel2", 2);
     this.renderer.SetShaderTextureUnit("iChannel3", 3);
 
+    // Draw quad
     const posLoc = this.renderer.GetAttribLocation(shader, "position");
     this.renderer.DrawUnitQuad_XY(posLoc);
   }

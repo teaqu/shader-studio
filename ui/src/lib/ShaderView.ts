@@ -1,23 +1,27 @@
-import { RenderManager } from "./rendering/RenderManager";
+import { WebGLRenderer } from "./rendering/WebGLRenderer";
 import { ShaderCompiler } from "./rendering/ShaderCompiler";
 import { ResourceManager } from "./rendering/ResourceManager";
 import { TimeManager } from "./input/TimeManager";
 import { InputManager } from "./input/InputManager";
-import { ShaderManager } from "./rendering/ShaderManager";
-import { RenderLoop } from "./rendering/RenderLoop";
+import { ShaderPipeline } from "./rendering/ShaderPipeline";
+import { ShaderMessageHandler } from "./communication/ShaderMessageHandler";
+import { PassRenderer } from "./rendering/PassRenderer";
+import { FrameRenderer } from "./rendering/FrameRenderer";
 
 export class ShaderView {
   private vscode: any;
   private glCanvas: HTMLCanvasElement | null = null;
   
   // Manager instances
-  private renderManager: RenderManager | null = null;
+  private webglRenderer: WebGLRenderer | null = null;
   private shaderCompiler: ShaderCompiler | null = null;
   private resourceManager: ResourceManager | null = null;
   private timeManager: TimeManager | null = null;
   private inputManager: InputManager | null = null;
-  private shaderManager: ShaderManager | null = null;
-  private renderLoopManager: RenderLoop | null = null;
+  private shaderPipeline: ShaderPipeline | null = null;
+  private shaderMessageHandler: ShaderMessageHandler | null = null;
+  private passRenderer: PassRenderer | null = null;
+  private renderLoopManager: FrameRenderer | null = null;
 
   constructor(vscode: any) {
     this.vscode = vscode;
@@ -36,8 +40,8 @@ export class ShaderView {
     }
 
     try {
-      this.renderManager = new RenderManager();
-      const success = await this.renderManager.initialize(gl, glCanvas);
+      this.webglRenderer = new WebGLRenderer();
+      const success = await this.webglRenderer.initialize(gl, glCanvas);
       if (!success) {
         this.vscode.postMessage({
           type: "error",
@@ -48,22 +52,34 @@ export class ShaderView {
 
       this.shaderCompiler = new ShaderCompiler();
       this.resourceManager = new ResourceManager();
-      this.resourceManager.setRenderer(this.renderManager.getRenderer());
+      this.resourceManager.setRenderer(this.webglRenderer.getRenderer());
       this.resourceManager.setShaderCompiler(this.shaderCompiler);
       this.timeManager = new TimeManager();
       this.inputManager = new InputManager();
-      this.shaderManager = new ShaderManager(
-        this.renderManager,
+      
+      this.shaderPipeline = new ShaderPipeline(
+        this.webglRenderer,
         this.shaderCompiler,
         this.resourceManager,
+      );
+      
+      this.shaderMessageHandler = new ShaderMessageHandler(
+        this.shaderPipeline,
         this.timeManager,
         this.vscode,
       );
-      this.renderLoopManager = new RenderLoop(
+      
+      this.passRenderer = new PassRenderer(
+        this.webglRenderer,
+        this.resourceManager,
+      );
+      
+      this.renderLoopManager = new FrameRenderer(
         this.timeManager,
         this.inputManager,
-        this.renderManager,
-        this.shaderManager,
+        this.webglRenderer,
+        this.shaderPipeline,
+        this.passRenderer,
         this.glCanvas,
       );
 
@@ -84,21 +100,21 @@ export class ShaderView {
 
   // Canvas and rendering methods
   handleCanvasResize(width: number, height: number): void {
-    if (!this.renderManager || !this.shaderManager || !this.renderLoopManager || 
+    if (!this.webglRenderer || !this.shaderPipeline || !this.renderLoopManager || 
         !this.timeManager || !this.inputManager || !this.glCanvas || !this.resourceManager) {
       return;
     }
 
-    this.renderManager.updateCanvasSize(width, height);
+    this.webglRenderer.updateCanvasSize(width, height);
     const newBuffers = this.resourceManager.resizePassBuffers(
-      this.shaderManager.getPasses(),
+      this.shaderPipeline.getPasses(),
       Math.round(width),
       Math.round(height),
     );
-    this.shaderManager.setPassBuffers(newBuffers);
+    this.shaderPipeline.setPassBuffers(newBuffers);
 
     // Redraw the final image pass to prevent a black screen flicker.
-    const imagePass = this.shaderManager.getPasses().find((p) =>
+    const imagePass = this.shaderPipeline.getPasses().find((p) =>
       p.name === "Image"
     );
     if (imagePass && this.renderLoopManager.isRunning()) {
@@ -111,11 +127,11 @@ export class ShaderView {
     event: MessageEvent,
     onLockChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
-    if (!this.shaderManager || !this.renderLoopManager) {
+    if (!this.shaderMessageHandler || !this.renderLoopManager) {
       return { running: false };
     }
 
-    const result = await this.shaderManager.handleShaderMessage(
+    const result = await this.shaderMessageHandler.handleShaderMessage(
       event,
       onLockChange,
     );
@@ -128,11 +144,11 @@ export class ShaderView {
   }
 
   handleReset(onComplete?: () => void): void {
-    if (!this.shaderManager) {
+    if (!this.shaderMessageHandler) {
       return;
     }
 
-    this.shaderManager.reset(() => {
+    this.shaderMessageHandler.reset(() => {
       if (onComplete) {
         onComplete();
       }
@@ -159,8 +175,8 @@ export class ShaderView {
   }
 
   // Getter methods for managers (for components that need direct access)
-  getRenderManager(): RenderManager | null {
-    return this.renderManager;
+  getWebGLRenderer(): WebGLRenderer | null {
+    return this.webglRenderer;
   }
 
   getShaderCompiler(): ShaderCompiler | null {
@@ -179,11 +195,19 @@ export class ShaderView {
     return this.inputManager;
   }
 
-  getShaderManager(): ShaderManager | null {
-    return this.shaderManager;
+  getShaderPipeline(): ShaderPipeline | null {
+    return this.shaderPipeline;
   }
 
-  getRenderLoop(): RenderLoop | null {
+  getShaderMessageHandler(): ShaderMessageHandler | null {
+    return this.shaderMessageHandler;
+  }
+
+  getPassRenderer(): PassRenderer | null {
+    return this.passRenderer;
+  }
+
+  getFrameRenderer(): FrameRenderer | null {
     return this.renderLoopManager;
   }
 
@@ -192,6 +216,6 @@ export class ShaderView {
   }
 
   getLastShaderEvent(): MessageEvent | null {
-    return this.shaderManager?.getLastEvent() || null;
+    return this.shaderMessageHandler?.getLastEvent() || null;
   }
 }
