@@ -1,4 +1,6 @@
 export class ShaderCompiler {
+  constructor(private renderer: any) {}
+
   public wrapShaderToyCode(
     code: string,
   ): { wrappedCode: string; headerLineCount: number } {
@@ -37,7 +39,7 @@ void main() {
     return { wrappedCode, headerLineCount };
   }
 
-  public createCopyShader(renderer: any): any {
+  public createCopyShader(): any {
     const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
     const fs = `
     precision highp float;
@@ -47,13 +49,13 @@ void main() {
       fragColor = texture(srcTex, gl_FragCoord.xy / vec2(textureSize(srcTex, 0)));
     }
   `;
-    return renderer.CreateShader(vs, fs);
+    return this.renderer.CreateShader(vs, fs);
   }
 
-  public compileShader(renderer: any, shaderSrc: string): any {
+  public compileShader(shaderSrc: string): any {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
     const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc);
-    return renderer.CreateShader(vs, fs);
+    return this.renderer.CreateShader(vs, fs);
   }
 }

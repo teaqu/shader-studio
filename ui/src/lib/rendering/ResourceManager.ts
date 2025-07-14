@@ -1,5 +1,4 @@
 import type { PassConfig } from "../domain/PassConfig";
-import type { WebGLRenderer } from "./WebGLRenderer";
 
 export class ResourceManager {
   private imageTextureCache: Record<string, any> = {};
@@ -7,19 +6,36 @@ export class ResourceManager {
   private passShaders: Record<string, any> = {};
   private keyboardTexture: any = null;
   private keyboardBuffer = new Uint8Array(256 * 3);
-  private renderer: any = null;
-  private shaderCompiler: any = null;
+  private defaultTexture: any = null;
+
+  constructor(
+    private renderer: any,
+    private shaderCompiler: any
+  ) {
+    // Create default texture when renderer is provided
+    if (renderer) {
+      this.defaultTexture = this.renderer.CreateTexture(
+        this.renderer.TEXTYPE.T2D,
+        1,
+        1,
+        this.renderer.TEXFMT.C4I8,
+        this.renderer.FILTER.NONE,
+        this.renderer.TEXWRP.CLAMP,
+        new Uint8Array([0, 0, 0, 255]),
+      );
+    }
+  }
 
   public getImageTextureCache(): Record<string, any> {
     return this.imageTextureCache;
   }
 
-  public setImageTextureCache(cache: Record<string, any>): void {
-    this.imageTextureCache = cache;
-  }
-
   public getPassBuffers(): Record<string, { front: any; back: any }> {
     return this.passBuffers;
+  }
+
+  public getPassShaders(): Record<string, any> {
+    return this.passShaders;
   }
 
   public setPassBuffers(
@@ -28,20 +44,8 @@ export class ResourceManager {
     this.passBuffers = buffers;
   }
 
-  public getPassShaders(): Record<string, any> {
-    return this.passShaders;
-  }
-
   public setPassShaders(shaders: Record<string, any>): void {
     this.passShaders = shaders;
-  }
-
-  public setRenderer(renderer: any): void {
-    this.renderer = renderer;
-  }
-
-  public setShaderCompiler(shaderCompiler: any): void {
-    this.shaderCompiler = shaderCompiler;
   }
 
   public createPingPongBuffers(width: number, height: number) {
@@ -106,7 +110,7 @@ export class ResourceManager {
     const oldPassBuffers = this.passBuffers;
     const newPassBuffers: Record<string, { front: any; back: any }> = {};
 
-    const copyShader = this.shaderCompiler.createCopyShader(this.renderer);
+    const copyShader = this.shaderCompiler.createCopyShader();
 
     for (const pass of passes) {
       if (pass.name !== "Image") {
@@ -127,38 +131,37 @@ export class ResourceManager {
             newBuffers.front.mTex0.mYres,
           );
 
-          // FRONT
-          this.renderer.SetRenderTarget(newBuffers.front);
-          this.renderer.SetViewport([0, 0, minWidth, minHeight]);
-          this.renderer.AttachShader(copyShader);
-          const posLoc = this.renderer.GetAttribLocation(
+          // Copy FRONT buffer
+          this.copyTexture(
+            oldFront,
+            newBuffers.front,
             copyShader,
-            "position",
+            minWidth,
+            minHeight
           );
-          this.renderer.SetShaderTextureUnit("srcTex", 0);
-          this.renderer.AttachTextures(1, oldFront);
-          this.renderer.DrawUnitQuad_XY(posLoc);
 
-          // BACK
-          this.renderer.SetRenderTarget(newBuffers.back);
-          this.renderer.SetViewport([0, 0, minWidth, minHeight]);
-          this.renderer.AttachShader(copyShader);
-          this.renderer.SetShaderTextureUnit("srcTex", 0);
-          this.renderer.AttachTextures(1, oldBack);
-          this.renderer.DrawUnitQuad_XY(posLoc);
-        } else {
-          this.renderer.SetRenderTarget(newBuffers.front);
-          this.renderer.SetViewport([0, 0, newWidth, newHeight]);
-          this.renderer.AttachShader(copyShader);
-          const posLoc = this.renderer.GetAttribLocation(
+          // Copy BACK buffer
+          this.copyTexture(
+            oldBack,
+            newBuffers.back,
             copyShader,
-            "position",
+            minWidth,
+            minHeight
           );
-          this.renderer.DrawUnitQuad_XY(posLoc);
-          this.renderer.SetRenderTarget(newBuffers.back);
-          this.renderer.SetViewport([0, 0, newWidth, newHeight]);
-          this.renderer.AttachShader(copyShader);
-          this.renderer.DrawUnitQuad_XY(posLoc);
+        } else {
+          // Clear new buffers for passes without existing data
+          this.clearRenderTarget(
+            newBuffers.front,
+            copyShader,
+            newWidth,
+            newHeight
+          );
+          this.clearRenderTarget(
+            newBuffers.back,
+            copyShader,
+            newWidth,
+            newHeight
+          );
         }
         newPassBuffers[pass.name] = newBuffers;
       }
@@ -287,34 +290,117 @@ export class ResourceManager {
     return this.keyboardTexture;
   }
 
-  public cleanup(webglRenderer: WebGLRenderer): void {
-    // Clean up shaders
-    for (const key in this.passShaders) {
-      webglRenderer.destroyShader(this.passShaders[key]);
-    }
+  public getDefaultTexture(): any {
+    return this.defaultTexture;
+  }
 
-    // Clean up buffers
-    for (const key in this.passBuffers) {
-      webglRenderer.destroyRenderTarget(this.passBuffers[key].front);
-      webglRenderer.destroyRenderTarget(this.passBuffers[key].back);
-      webglRenderer.destroyTexture(this.passBuffers[key].front.mTex0);
-      webglRenderer.destroyTexture(this.passBuffers[key].back.mTex0);
-    }
+  public cleanup(): void {
+    if (!this.renderer) return;
+
+    // Clean up using the consolidated cleanup method
+    this.cleanupShadersAndBuffers(this.passShaders, this.passBuffers);
 
     // Clean up image textures
     for (const key in this.imageTextureCache) {
-      webglRenderer.destroyTexture(this.imageTextureCache[key]);
+      this.destroyTexture(this.imageTextureCache[key]);
     }
 
     // Clean up keyboard texture
     if (this.keyboardTexture) {
-      webglRenderer.destroyTexture(this.keyboardTexture);
+      this.destroyTexture(this.keyboardTexture);
       this.keyboardTexture = null;
+    }
+
+    // Clean up default texture
+    if (this.defaultTexture) {
+      this.destroyTexture(this.defaultTexture);
+      this.defaultTexture = null;
     }
 
     // Reset all collections
     this.passShaders = {};
     this.passBuffers = {};
     this.imageTextureCache = {};
+  }
+
+  public destroyTexture(texture: any): void {
+    if (texture && this.renderer) {
+      this.renderer.DestroyTexture(texture);
+    }
+  }
+
+  public destroyShader(shader: any): void {
+    if (shader && this.renderer) {
+      this.renderer.DestroyShader(shader);
+    }
+  }
+
+  public destroyRenderTarget(renderTarget: any): void {
+    if (renderTarget && this.renderer) {
+      this.renderer.DestroyRenderTarget(renderTarget);
+    }
+  }
+
+  /**
+   * Cleanup shader and buffer resources in bulk.
+   * Used when replacing shader pipeline resources.
+   */
+  public cleanupShadersAndBuffers(
+    oldShaders: Record<string, any>,
+    oldBuffers: Record<string, { front: any; back: any }>
+  ): void {
+    // Cleanup old shaders
+    for (const key in oldShaders) {
+      this.destroyShader(oldShaders[key]);
+    }
+    
+    // Cleanup old buffers
+    for (const key in oldBuffers) {
+      this.destroyRenderTarget(oldBuffers[key].front);
+      this.destroyRenderTarget(oldBuffers[key].back);
+      this.destroyTexture(oldBuffers[key].front.mTex0);
+      this.destroyTexture(oldBuffers[key].back.mTex0);
+    }
+  }
+
+  /**
+   * Copies a texture to a render target with specific viewport dimensions.
+   */
+  private copyTexture(
+    sourceTexture: any,
+    targetRenderTarget: any,
+    copyShader: any,
+    width: number,
+    height: number
+  ): void {
+    if (!sourceTexture || !copyShader) return;
+
+    this.renderer.SetRenderTarget(targetRenderTarget);
+    this.renderer.SetViewport([0, 0, width, height]);
+    this.renderer.AttachShader(copyShader);
+    this.renderer.SetShaderTextureUnit("srcTex", 0);
+    this.renderer.AttachTextures(1, sourceTexture, null, null, null);
+    
+    const posLoc = this.renderer.GetAttribLocation(copyShader, "position");
+    this.renderer.DrawUnitQuad_XY(posLoc);
+  }
+
+  /**
+   * Clears a render target by drawing a fullscreen quad with a copy shader (effectively clearing).
+   */
+  private clearRenderTarget(
+    renderTarget: any,
+    copyShader: any,
+    width: number,
+    height: number
+  ): void {
+    if (!copyShader) return;
+
+    this.renderer.SetRenderTarget(renderTarget);
+    this.renderer.SetViewport([0, 0, width, height]);
+    this.renderer.AttachShader(copyShader);
+    
+    const posLoc = this.renderer.GetAttribLocation(copyShader, "position");
+    this.renderer.DrawUnitQuad_XY(posLoc);
   }
 }

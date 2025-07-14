@@ -1,4 +1,4 @@
-import { WebGLRenderer } from "./rendering/WebGLRenderer";
+import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
 import { ShaderCompiler } from "./rendering/ShaderCompiler";
 import { ResourceManager } from "./rendering/ResourceManager";
 import { TimeManager } from "./input/TimeManager";
@@ -11,9 +11,9 @@ import { FrameRenderer } from "./rendering/FrameRenderer";
 export class ShaderView {
   private vscode: any;
   private glCanvas: HTMLCanvasElement | null = null;
+  private renderer: any = null;
   
   // Manager instances
-  private webglRenderer: WebGLRenderer | null = null;
   private shaderCompiler: ShaderCompiler | null = null;
   private resourceManager: ResourceManager | null = null;
   private timeManager: TimeManager | null = null;
@@ -40,8 +40,9 @@ export class ShaderView {
     }
 
     try {
-      this.webglRenderer = new WebGLRenderer();
-      const success = await this.webglRenderer.initialize(gl, glCanvas);
+      // Initialize renderer
+      this.renderer = piRenderer();
+      const success = await this.renderer.Initialize(gl);
       if (!success) {
         this.vscode.postMessage({
           type: "error",
@@ -50,17 +51,19 @@ export class ShaderView {
         return false;
       }
 
-      this.shaderCompiler = new ShaderCompiler();
-      this.resourceManager = new ResourceManager();
-      this.resourceManager.setRenderer(this.webglRenderer.getRenderer());
-      this.resourceManager.setShaderCompiler(this.shaderCompiler);
+      // Initialize canvas manager
+      // Canvas is now passed directly to components that need it
+
+      this.shaderCompiler = new ShaderCompiler(this.renderer);
+      this.resourceManager = new ResourceManager(this.renderer, this.shaderCompiler);
       this.timeManager = new TimeManager();
       this.inputManager = new InputManager();
       
       this.shaderPipeline = new ShaderPipeline(
-        this.webglRenderer,
+        glCanvas,
         this.shaderCompiler,
         this.resourceManager,
+        this.renderer,
       );
       
       this.shaderMessageHandler = new ShaderMessageHandler(
@@ -70,17 +73,17 @@ export class ShaderView {
       );
       
       this.passRenderer = new PassRenderer(
-        this.webglRenderer,
+        glCanvas,
         this.resourceManager,
+        this.renderer,
       );
       
       this.renderLoopManager = new FrameRenderer(
         this.timeManager,
         this.inputManager,
-        this.webglRenderer,
         this.shaderPipeline,
         this.passRenderer,
-        this.glCanvas,
+        glCanvas,
       );
 
       this.vscode.postMessage({
@@ -100,12 +103,19 @@ export class ShaderView {
 
   // Canvas and rendering methods
   handleCanvasResize(width: number, height: number): void {
-    if (!this.webglRenderer || !this.shaderPipeline || !this.renderLoopManager || 
-        !this.timeManager || !this.inputManager || !this.glCanvas || !this.resourceManager) {
+    if (!this.glCanvas || !this.shaderPipeline || !this.renderLoopManager || 
+        !this.timeManager || !this.inputManager || !this.resourceManager) {
       return;
     }
 
-    this.webglRenderer.updateCanvasSize(width, height);
+    // Update canvas size inline
+    const newWidth = Math.round(width);
+    const newHeight = Math.round(height);
+
+    if (this.glCanvas.width !== newWidth || this.glCanvas.height !== newHeight) {
+      this.glCanvas.width = newWidth;
+      this.glCanvas.height = newHeight;
+    }
     const newBuffers = this.resourceManager.resizePassBuffers(
       this.shaderPipeline.getPasses(),
       Math.round(width),
@@ -175,8 +185,12 @@ export class ShaderView {
   }
 
   // Getter methods for managers (for components that need direct access)
-  getWebGLRenderer(): WebGLRenderer | null {
-    return this.webglRenderer;
+  getCanvas(): HTMLCanvasElement | null {
+    return this.glCanvas;
+  }
+
+  getRenderer(): any {
+    return this.renderer;
   }
 
   getShaderCompiler(): ShaderCompiler | null {

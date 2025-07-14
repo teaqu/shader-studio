@@ -1,4 +1,3 @@
-import type { WebGLRenderer } from "./WebGLRenderer";
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
@@ -12,7 +11,6 @@ export class FrameRenderer {
   // Injected dependencies
   private timeManager: any;
   private inputManager: any;
-  private webglRenderer: WebGLRenderer;
   private shaderPipeline: ShaderPipeline;
   private passRenderer: PassRenderer;
   private glCanvas: HTMLCanvasElement;
@@ -20,7 +18,6 @@ export class FrameRenderer {
   constructor(
     timeManager: any,
     inputManager: any,
-    webglRenderer: WebGLRenderer,
     shaderPipeline: ShaderPipeline,
     passRenderer: PassRenderer,
     glCanvas: HTMLCanvasElement,
@@ -28,7 +25,6 @@ export class FrameRenderer {
     this.fpsCounter = piCreateFPSCounter();
     this.timeManager = timeManager;
     this.inputManager = inputManager;
-    this.webglRenderer = webglRenderer;
     this.shaderPipeline = shaderPipeline;
     this.passRenderer = passRenderer;
     this.glCanvas = glCanvas;
@@ -93,17 +89,13 @@ export class FrameRenderer {
       if (pass.name === "Image") continue;
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-      const textureBindings = this.passRenderer.getTextureBindings(
-        pass,
-        this.inputManager,
-        passBuffers,
-      );
       this.passRenderer.renderPass(
         pass,
         buffers.back,
         shader,
         uniforms,
-        textureBindings,
+        this.inputManager,
+        passBuffers,
       );
 
       const temp = buffers.front;
@@ -115,17 +107,13 @@ export class FrameRenderer {
     const imagePass = passes.find((p: PassConfig) => p.name === "Image");
     if (imagePass) {
       const shader = passShaders[imagePass.name];
-      const textureBindings = this.passRenderer.getTextureBindings(
-        imagePass,
-        this.inputManager,
-        passBuffers,
-      );
       this.passRenderer.renderPass(
         imagePass,
         null,
         shader,
         uniforms,
-        textureBindings,
+        this.inputManager,
+        passBuffers,
       );
     }
 
@@ -142,12 +130,14 @@ export class FrameRenderer {
       this.inputManager.getMouse(),
     );
     const shader = this.shaderPipeline.getPassShaders()[pass.name];
-    const textureBindings = this.passRenderer.getTextureBindings(
+    
+    this.passRenderer.renderPass(
       pass, 
+      null, 
+      shader, 
+      uniforms, 
       this.inputManager,
       this.shaderPipeline.getPassBuffers(),
     );
-    
-    this.passRenderer.renderPass(pass, null, shader, uniforms, textureBindings);
   }
 }

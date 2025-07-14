@@ -1,4 +1,3 @@
-import type { WebGLRenderer } from "./WebGLRenderer";
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
@@ -12,20 +11,23 @@ export class ShaderPipeline {
   private passes: PassConfig[] = [];
   private passShaders: Record<string, any> = {};
   private passBuffers: Record<string, { front: any; back: any }> = {};
-  private webglRenderer: WebGLRenderer;
+  private canvas: HTMLCanvasElement;
   private shaderCompiler: ShaderCompiler;
   private resourceManager: ResourceManager;
+  private renderer: any;
   private currentShaderRenderID = 0;
   private shaderName = "";
 
   constructor(
-    webglRenderer: WebGLRenderer,
+    canvas: HTMLCanvasElement,
     shaderCompiler: ShaderCompiler,
     resourceManager: ResourceManager,
+    renderer: any,
   ) {
-    this.webglRenderer = webglRenderer;
+    this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
     this.resourceManager = resourceManager;
+    this.renderer = renderer;
   }
 
   public getPasses(): PassConfig[] {
@@ -115,20 +117,19 @@ export class ShaderPipeline {
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc);
       const shader = this.shaderCompiler.compileShader(
-        this.webglRenderer.getRenderer(),
         pass.shaderSrc,
       );
       
       if (!shader.mResult) {
         const err = ShaderErrorFormatter.formatShaderError(
           shader.mInfo,
-          this.webglRenderer.getRenderer(),
+          this.renderer,
           svelteHeaderLines,
         );
         
         // Clean up partially compiled shaders
         for (const key in newPassShaders) {
-          this.webglRenderer.destroyShader(newPassShaders[key]);
+          this.resourceManager.destroyShader(newPassShaders[key]);
         }
         
         return {
@@ -147,8 +148,8 @@ export class ShaderPipeline {
         } else {
           newPassBuffers[pass.name] = this.resourceManager
             .createPingPongBuffers(
-              this.webglRenderer.getCanvas()?.width || 800,
-              this.webglRenderer.getCanvas()?.height || 600,
+              this.canvas.width || 800,
+              this.canvas.height || 600,
             );
         }
       }
@@ -160,15 +161,7 @@ export class ShaderPipeline {
     this.passBuffers = newPassBuffers;
 
     // Cleanup old resources
-    for (const key in oldPassShaders) {
-      this.webglRenderer.destroyShader(oldPassShaders[key]);
-    }
-    for (const key in oldPassBuffers) {
-      this.webglRenderer.destroyRenderTarget(oldPassBuffers[key].front);
-      this.webglRenderer.destroyRenderTarget(oldPassBuffers[key].back);
-      this.webglRenderer.destroyTexture(oldPassBuffers[key].front.mTex0);
-      this.webglRenderer.destroyTexture(oldPassBuffers[key].back.mTex0);
-    }
+    this.resourceManager.cleanupShadersAndBuffers(oldPassShaders, oldPassBuffers);
 
     // Load image textures
     await this.resourceManager.loadImageTextures(this.passes);
@@ -177,7 +170,7 @@ export class ShaderPipeline {
   }
 
   public cleanup(): void {
-    this.resourceManager.cleanup(this.webglRenderer);
+    this.resourceManager.cleanup();
     this.currentShaderRenderID++;
 
     this.passes = [];
