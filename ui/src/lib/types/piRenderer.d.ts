@@ -1,5 +1,4 @@
 export interface PiRenderer {
-  // Constants
   CLEAR: {
     Color: number;
     Zbuffer: number;
@@ -82,13 +81,13 @@ export interface PiRenderer {
   CreateMipmaps(te: PiTexture): void;
   UpdateTexture(tex: PiTexture, x0: number, y0: number, xres: number, yres: number, buffer: ArrayBuffer | Uint8Array): void;
   UpdateTextureFromImage(tex: PiTexture, image: HTMLImageElement): void;
-  DestroyTexture(te: PiTexture): void;
+  DestroyTexture(te: PiTexture | null): void;
   AttachTextures(num: number, t0?: PiTexture | null, t1?: PiTexture | null, t2?: PiTexture | null, t3?: PiTexture | null): void;
   DettachTextures(): void;
   
   // Render target methods
   CreateRenderTarget(color0: PiTexture | null, color1: PiTexture | null, color2: PiTexture | null, color3: PiTexture | null, depth: PiTexture | null, wantZbuffer: boolean): PiRenderTarget | null;
-  DestroyRenderTarget(tex: PiRenderTarget): void;
+  DestroyRenderTarget(tex: PiRenderTarget | null): void;
   SetRenderTarget(tex: PiRenderTarget | null): void;
   CreateRenderTargetNew(wantColor0: boolean, wantZbuffer: boolean, xres: number, yres: number, samples: number): PiRenderTarget | null;
   CreateRenderTargetCubeMap(color0: PiTexture | null, depth: PiTexture | null, wantZbuffer: boolean): PiRenderTarget | null;
@@ -105,7 +104,7 @@ export interface PiRenderer {
   CreateShader(vsSource: string, fsSource: string): PiShader | null;
   AttachShader(shader: PiShader | null): void;
   DetachShader(): void;
-  DestroyShader(tex: PiShader): void;
+  DestroyShader(tex: PiShader | null): void;
   GetAttribLocation(shader: PiShader, name: string): number;
   SetShaderConstantLocation(shader: PiShader, name: string): WebGLUniformLocation | null;
   SetShaderConstantMat4F(uname: string, params: number[], istranspose: boolean): boolean;

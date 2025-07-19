@@ -1,7 +1,7 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { PassConfig } from "../domain/PassConfig";
+import type { PassConfig, PassBuffers } from "../models";
 import type { PiRenderer } from "../types/piRenderer";
 
 /**
@@ -11,7 +11,7 @@ import type { PiRenderer } from "../types/piRenderer";
 export class ShaderPipeline {
   private passes: PassConfig[] = [];
   private passShaders: Record<string, any> = {};
-  private passBuffers: Record<string, { front: any; back: any }> = {};
+  private passBuffers: PassBuffers = {};
   private canvas: HTMLCanvasElement;
   private shaderCompiler: ShaderCompiler;
   private resourceManager: ResourceManager;
@@ -39,12 +39,12 @@ export class ShaderPipeline {
     return this.passShaders;
   }
 
-  public getPassBuffers(): Record<string, { front: any; back: any }> {
+  public getPassBuffers(): PassBuffers {
     return this.passBuffers;
   }
 
   public setPassBuffers(
-    buffers: Record<string, { front: any; back: any }>,
+    buffers: PassBuffers,
   ): void {
     this.passBuffers = buffers;
   }
@@ -121,12 +121,12 @@ export class ShaderPipeline {
         pass.shaderSrc,
       );
       
-      if (!shader.mResult) {
-        const err = ShaderErrorFormatter.formatShaderError(
+      if (!shader || !shader.mResult) {
+        const err = shader ? ShaderErrorFormatter.formatShaderError(
           shader.mInfo,
           this.renderer,
           svelteHeaderLines,
-        );
+        ) : "Failed to compile shader";
         
         // Clean up partially compiled shaders
         for (const key in newPassShaders) {

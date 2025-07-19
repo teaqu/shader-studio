@@ -1,4 +1,4 @@
-import type { PiRenderer } from "../types/piRenderer";
+import type { PiRenderer, PiShader } from "../types/piRenderer";
 
 export class ShaderCompiler {
   constructor(private renderer: PiRenderer) {}
@@ -41,7 +41,7 @@ void main() {
     return { wrappedCode, headerLineCount };
   }
 
-  public createCopyShader(): any {
+  public createCopyShader(): PiShader | null {
     const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
     const fs = `
     precision highp float;
@@ -54,7 +54,7 @@ void main() {
     return this.renderer.CreateShader(vs, fs);
   }
 
-  public compileShader(shaderSrc: string): any {
+  public compileShader(shaderSrc: string): PiShader | null {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
     const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc);

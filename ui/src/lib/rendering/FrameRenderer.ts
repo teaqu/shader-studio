@@ -1,7 +1,9 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
-import type { PassConfig } from "../domain/PassConfig";
+import type { PassConfig } from "../models";
+import type { TimeManager } from "../input/TimeManager";
+import type { InputManager } from "../input/InputManager";
 
 export class FrameRenderer {
   private running = false;
@@ -9,15 +11,15 @@ export class FrameRenderer {
   private currentFPS = 0;
   
   // Injected dependencies
-  private timeManager: any;
-  private inputManager: any;
+  private timeManager: TimeManager;
+  private inputManager: InputManager;
   private shaderPipeline: ShaderPipeline;
   private passRenderer: PassRenderer;
   private glCanvas: HTMLCanvasElement;
 
   constructor(
-    timeManager: any,
-    inputManager: any,
+    timeManager: TimeManager,
+    inputManager: InputManager,
     shaderPipeline: ShaderPipeline,
     passRenderer: PassRenderer,
     glCanvas: HTMLCanvasElement,

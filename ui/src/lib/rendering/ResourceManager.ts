@@ -1,60 +1,54 @@
-import type { PassConfig } from "../domain/PassConfig";
-import type { PiRenderer } from "../types/piRenderer";
+import type { PassConfig, PassBuffers } from "../models";
+import type { PiRenderer, PiTexture, PiRenderTarget, PiShader } from "../types/piRenderer";
 import type { ShaderCompiler } from "./ShaderCompiler";
 
 export class ResourceManager {
-  private imageTextureCache: Record<string, any> = {};
-  private passBuffers: Record<string, { front: any; back: any }> = {};
-  private passShaders: Record<string, any> = {};
-  private keyboardTexture: any = null;
+  private imageTextureCache: Record<string, PiTexture> = {};
+  private passBuffers: PassBuffers = {};
+  private passShaders: Record<string, PiShader> = {};
+  private keyboardTexture: PiTexture | null = null;
   private keyboardBuffer = new Uint8Array(256 * 3);
-  private defaultTexture: any = null;
+  private defaultTexture: PiTexture | null = null;
 
   constructor(
     private renderer: PiRenderer,
     private shaderCompiler: ShaderCompiler
   ) {
     // Create default texture when renderer is provided
-    if (renderer) {
-      this.defaultTexture = this.renderer.CreateTexture(
-        this.renderer.TEXTYPE.T2D,
-        1,
-        1,
-        this.renderer.TEXFMT.C4I8,
-        this.renderer.FILTER.NONE,
-        this.renderer.TEXWRP.CLAMP,
-        new Uint8Array([0, 0, 0, 255]),
-      );
-    }
+    this.defaultTexture = this.renderer.CreateTexture(
+      this.renderer.TEXTYPE.T2D,
+      1,
+      1,
+      this.renderer.TEXFMT.C4I8,
+      this.renderer.FILTER.NONE,
+      this.renderer.TEXWRP.CLAMP,
+      new Uint8Array([0, 0, 0, 255]),
+    );
   }
 
   public getImageTextureCache(): Record<string, any> {
     return this.imageTextureCache;
   }
 
-  public getPassBuffers(): Record<string, { front: any; back: any }> {
+  public getPassBuffers(): PassBuffers {
     return this.passBuffers;
   }
 
-  public getPassShaders(): Record<string, any> {
+  public getPassShaders(): Record<string, PiShader> {
     return this.passShaders;
   }
 
   public setPassBuffers(
-    buffers: Record<string, { front: any; back: any }>,
+    buffers: PassBuffers,
   ): void {
     this.passBuffers = buffers;
   }
 
-  public setPassShaders(shaders: Record<string, any>): void {
+  public setPassShaders(shaders: Record<string, PiShader>): void {
     this.passShaders = shaders;
   }
 
   public createPingPongBuffers(width: number, height: number) {
-    if (!this.renderer) {
-      throw new Error("Renderer not set");
-    }
-
     // In WebGL2, linear filtering on float textures is a standard feature.
     const filter = this.renderer.FILTER.LINEAR;
 
@@ -98,19 +92,16 @@ export class ResourceManager {
   }
 
   public resizePassBuffers(
-    passes: any[],
+    passes: PassConfig[],
     newWidth: number,
     newHeight: number,
-  ): Record<string, { front: any; back: any }> {
-    if (!this.renderer) {
-      throw new Error("Renderer not set");
-    }
+  ): PassBuffers {
     if (!this.shaderCompiler) {
       throw new Error("ShaderCompiler not set");
     }
 
     const oldPassBuffers = this.passBuffers;
-    const newPassBuffers: Record<string, { front: any; back: any }> = {};
+    const newPassBuffers: PassBuffers = {};
 
     const copyShader = this.shaderCompiler.createCopyShader();
 
@@ -121,35 +112,37 @@ export class ResourceManager {
 
         if (oldPassBuffers[pass.name] && newBuffers.front?.mTex0 && newBuffers.back?.mTex0) {
           // --- 2. Copy from old to new ---
-          const oldFront = oldPassBuffers[pass.name].front.mTex0;
-          const oldBack = oldPassBuffers[pass.name].back.mTex0;
+          const oldFront = oldPassBuffers[pass.name]?.front?.mTex0;
+          const oldBack = oldPassBuffers[pass.name]?.back?.mTex0;
 
-          const minWidth = Math.min(
-            oldFront.mXres,
-            newBuffers.front.mTex0.mXres,
-          );
-          const minHeight = Math.min(
-            oldFront.mYres,
-            newBuffers.front.mTex0.mYres,
-          );
+          if (oldFront && oldBack) {
+            const minWidth = Math.min(
+              oldFront.mXres,
+              newBuffers.front.mTex0.mXres,
+            );
+            const minHeight = Math.min(
+              oldFront.mYres,
+              newBuffers.front.mTex0.mYres,
+            );
 
-          // Copy FRONT buffer
-          this.copyTexture(
-            oldFront,
-            newBuffers.front,
-            copyShader,
-            minWidth,
-            minHeight
-          );
+            // Copy FRONT buffer
+            this.copyTexture(
+              oldFront,
+              newBuffers.front,
+              copyShader,
+              minWidth,
+              minHeight
+            );
 
-          // Copy BACK buffer
-          this.copyTexture(
-            oldBack,
-            newBuffers.back,
-            copyShader,
-            minWidth,
-            minHeight
-          );
+            // Copy BACK buffer
+            this.copyTexture(
+              oldBack,
+              newBuffers.back,
+              copyShader,
+              minWidth,
+              minHeight
+            );
+          }
         } else {
           // Clear new buffers for passes without existing data
           this.clearRenderTarget(
@@ -172,12 +165,7 @@ export class ResourceManager {
     if (copyShader) this.renderer.DestroyShader(copyShader);
 
     // === 4. Destroy old buffers/textures *after* copying is complete ===
-    for (const key in oldPassBuffers) {
-      this.renderer.DestroyRenderTarget(oldPassBuffers[key].front);
-      this.renderer.DestroyRenderTarget(oldPassBuffers[key].back);
-      this.renderer.DestroyTexture(oldPassBuffers[key].front.mTex0);
-      this.renderer.DestroyTexture(oldPassBuffers[key].back.mTex0);
-    }
+    this.cleanupShadersAndBuffers({}, oldPassBuffers);
 
     this.passBuffers = newPassBuffers;
     return newPassBuffers;
@@ -228,7 +216,7 @@ export class ResourceManager {
             newImageTextureCache[input.path] =
               this.imageTextureCache[input.path];
             delete this.imageTextureCache[input.path];
-          } else if (this.renderer) {
+          } else {
             newImageTextureCache[input.path] = await this.loadTextureFromUrl(
               input.path,
               this.renderer,
@@ -241,9 +229,7 @@ export class ResourceManager {
 
     // Clean up old unused textures
     for (const key in this.imageTextureCache) {
-      if (this.renderer) {
-        this.renderer.DestroyTexture(this.imageTextureCache[key]);
-      }
+      this.renderer.DestroyTexture(this.imageTextureCache[key]);
     }
 
     this.imageTextureCache = newImageTextureCache;
@@ -254,18 +240,11 @@ export class ResourceManager {
     keyPressed: Uint8Array,
     keyToggled: Uint8Array,
   ): void {
-    if (!this.renderer) return;
-    
-    // Combine the three states into one buffer for uploading
-    // Row 0: Held states
     this.keyboardBuffer.set(keyHeld, 0);
-    // Row 1: Pressed states
     this.keyboardBuffer.set(keyPressed, 256);
-    // Row 2: Toggled states
     this.keyboardBuffer.set(keyToggled, 512);
     
     if (!this.keyboardTexture) {
-      // Create a 256x3 texture, where each row corresponds to a state
       this.keyboardTexture = this.renderer.CreateTexture(
         this.renderer.TEXTYPE.T2D,
         256,
@@ -288,11 +267,11 @@ export class ResourceManager {
     }
   }
 
-  public getKeyboardTexture(): any {
+  public getKeyboardTexture(): PiTexture | null {
     return this.keyboardTexture;
   }
 
-  public getDefaultTexture(): any {
+  public getDefaultTexture(): PiTexture | null {
     return this.defaultTexture;
   }
 
@@ -325,31 +304,27 @@ export class ResourceManager {
     this.imageTextureCache = {};
   }
 
-  public destroyTexture(texture: any): void {
-    if (texture && this.renderer) {
+  public destroyTexture(texture: PiTexture | null): void {
+    if (texture) {
       this.renderer.DestroyTexture(texture);
     }
   }
 
-  public destroyShader(shader: any): void {
-    if (shader && this.renderer) {
+  public destroyShader(shader: PiShader | null): void {
+    if (shader) {
       this.renderer.DestroyShader(shader);
     }
   }
 
-  public destroyRenderTarget(renderTarget: any): void {
-    if (renderTarget && this.renderer) {
+  public destroyRenderTarget(renderTarget: PiRenderTarget | null): void {
+    if (renderTarget) {
       this.renderer.DestroyRenderTarget(renderTarget);
     }
   }
 
-  /**
-   * Cleanup shader and buffer resources in bulk.
-   * Used when replacing shader pipeline resources.
-   */
   public cleanupShadersAndBuffers(
-    oldShaders: Record<string, any>,
-    oldBuffers: Record<string, { front: any; back: any }>
+    oldShaders: Record<string, PiShader | null>,
+    oldBuffers: PassBuffers
   ): void {
     // Cleanup old shaders
     for (const key in oldShaders) {
@@ -358,10 +333,19 @@ export class ResourceManager {
     
     // Cleanup old buffers
     for (const key in oldBuffers) {
-      this.destroyRenderTarget(oldBuffers[key].front);
-      this.destroyRenderTarget(oldBuffers[key].back);
-      this.destroyTexture(oldBuffers[key].front.mTex0);
-      this.destroyTexture(oldBuffers[key].back.mTex0);
+      const buffer = oldBuffers[key];
+      if (buffer?.front) {
+        this.destroyRenderTarget(buffer.front);
+        if (buffer.front.mTex0) {
+          this.destroyTexture(buffer.front.mTex0);
+        }
+      }
+      if (buffer?.back) {
+        this.destroyRenderTarget(buffer.back);
+        if (buffer.back.mTex0) {
+          this.destroyTexture(buffer.back.mTex0);
+        }
+      }
     }
   }
 
