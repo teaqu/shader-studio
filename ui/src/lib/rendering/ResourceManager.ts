@@ -30,24 +30,6 @@ export class ResourceManager {
     return this.imageTextureCache;
   }
 
-  public getPassBuffers(): PassBuffers {
-    return this.passBuffers;
-  }
-
-  public getPassShaders(): Record<string, PiShader> {
-    return this.passShaders;
-  }
-
-  public setPassBuffers(
-    buffers: PassBuffers,
-  ): void {
-    this.passBuffers = buffers;
-  }
-
-  public setPassShaders(shaders: Record<string, PiShader>): void {
-    this.passShaders = shaders;
-  }
-
   public createPingPongBuffers(width: number, height: number) {
     // In WebGL2, linear filtering on float textures is a standard feature.
     const filter = this.renderer.FILTER.LINEAR;
@@ -235,6 +217,7 @@ export class ResourceManager {
     this.imageTextureCache = newImageTextureCache;
     return this.imageTextureCache;
   }
+
   public updateKeyboardTexture(
     keyHeld: Uint8Array,
     keyPressed: Uint8Array,
@@ -283,18 +266,18 @@ export class ResourceManager {
 
     // Clean up image textures
     for (const key in this.imageTextureCache) {
-      this.destroyTexture(this.imageTextureCache[key]);
+      this.renderer.DestroyTexture(this.imageTextureCache[key]);
     }
 
     // Clean up keyboard texture
     if (this.keyboardTexture) {
-      this.destroyTexture(this.keyboardTexture);
+      this.renderer.DestroyTexture(this.keyboardTexture);
       this.keyboardTexture = null;
     }
 
     // Clean up default texture
     if (this.defaultTexture) {
-      this.destroyTexture(this.defaultTexture);
+      this.renderer.DestroyTexture(this.defaultTexture);
       this.defaultTexture = null;
     }
 
@@ -304,46 +287,28 @@ export class ResourceManager {
     this.imageTextureCache = {};
   }
 
-  public destroyTexture(texture: PiTexture | null): void {
-    if (texture) {
-      this.renderer.DestroyTexture(texture);
-    }
-  }
-
-  public destroyShader(shader: PiShader | null): void {
-    if (shader) {
-      this.renderer.DestroyShader(shader);
-    }
-  }
-
-  public destroyRenderTarget(renderTarget: PiRenderTarget | null): void {
-    if (renderTarget) {
-      this.renderer.DestroyRenderTarget(renderTarget);
-    }
-  }
-
   public cleanupShadersAndBuffers(
     oldShaders: Record<string, PiShader | null>,
     oldBuffers: PassBuffers
   ): void {
     // Cleanup old shaders
     for (const key in oldShaders) {
-      this.destroyShader(oldShaders[key]);
+      this.renderer.DestroyShader(oldShaders[key]);
     }
     
     // Cleanup old buffers
     for (const key in oldBuffers) {
       const buffer = oldBuffers[key];
       if (buffer?.front) {
-        this.destroyRenderTarget(buffer.front);
+        this.renderer.DestroyRenderTarget(buffer.front);
         if (buffer.front.mTex0) {
-          this.destroyTexture(buffer.front.mTex0);
+          this.renderer.DestroyTexture(buffer.front.mTex0);
         }
       }
       if (buffer?.back) {
-        this.destroyRenderTarget(buffer.back);
+        this.renderer.DestroyRenderTarget(buffer.back);
         if (buffer.back.mTex0) {
-          this.destroyTexture(buffer.back.mTex0);
+          this.renderer.DestroyTexture(buffer.back.mTex0);
         }
       }
     }

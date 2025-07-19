@@ -130,7 +130,7 @@ export class ShaderPipeline {
         
         // Clean up partially compiled shaders
         for (const key in newPassShaders) {
-          this.resourceManager.destroyShader(newPassShaders[key]);
+          this.renderer.DestroyShader(newPassShaders[key]);
         }
         
         return {
