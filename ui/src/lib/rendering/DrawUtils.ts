@@ -1,3 +1,5 @@
+import type { PiRenderer } from "../types/piRenderer";
+
 /**
  * Low-level drawing utilities for WebGL rendering.
  * Contains primitive rendering operations like renderQuad, copyTexture, etc.
@@ -8,7 +10,7 @@
  * This is a low-level primitive rendering operation.
  */
 export function renderQuad(
-  renderer: any,
+  renderer: PiRenderer,
   glCanvas: HTMLCanvasElement | null,
   target: any,
   shader: any,
@@ -61,7 +63,7 @@ export function renderQuad(
  * Copies a texture to a render target with specific viewport dimensions.
  */
 export function copyTexture(
-  renderer: any,
+  renderer: PiRenderer,
   sourceTexture: any,
   targetRenderTarget: any,
   copyShader: any,
@@ -84,7 +86,7 @@ export function copyTexture(
  * Clears a render target by drawing a fullscreen quad with a copy shader (effectively clearing).
  */
 export function clearRenderTarget(
-  renderer: any,
+  renderer: PiRenderer,
   renderTarget: any,
   copyShader: any,
   width: number,

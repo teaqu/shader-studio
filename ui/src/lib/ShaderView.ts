@@ -7,21 +7,22 @@ import { ShaderPipeline } from "./rendering/ShaderPipeline";
 import { ShaderMessageHandler } from "./communication/ShaderMessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
 import { FrameRenderer } from "./rendering/FrameRenderer";
+import type { PiRenderer } from "./types/piRenderer";
 
 export class ShaderView {
   private vscode: any;
   private glCanvas: HTMLCanvasElement | null = null;
-  private renderer: any = null;
+  private renderer!: PiRenderer;
   
   // Manager instances
-  private shaderCompiler: ShaderCompiler | null = null;
-  private resourceManager: ResourceManager | null = null;
-  private timeManager: TimeManager | null = null;
-  private inputManager: InputManager | null = null;
-  private shaderPipeline: ShaderPipeline | null = null;
-  private shaderMessageHandler: ShaderMessageHandler | null = null;
-  private passRenderer: PassRenderer | null = null;
-  private renderLoopManager: FrameRenderer | null = null;
+  private shaderCompiler!: ShaderCompiler;
+  private resourceManager!: ResourceManager;
+  private timeManager!: TimeManager;
+  private inputManager!: InputManager;
+  private shaderPipeline!: ShaderPipeline;
+  private shaderMessageHandler!: ShaderMessageHandler;
+  private passRenderer!: PassRenderer;
+  private renderLoopManager!: FrameRenderer;
 
   constructor(vscode: any) {
     this.vscode = vscode;
@@ -42,7 +43,7 @@ export class ShaderView {
     try {
       // Initialize renderer
       this.renderer = piRenderer();
-      const success = await this.renderer.Initialize(gl);
+      const success = this.renderer.Initialize(gl);
       if (!success) {
         this.vscode.postMessage({
           type: "error",
@@ -103,8 +104,7 @@ export class ShaderView {
 
   // Canvas and rendering methods
   handleCanvasResize(width: number, height: number): void {
-    if (!this.glCanvas || !this.shaderPipeline || !this.renderLoopManager || 
-        !this.timeManager || !this.inputManager || !this.resourceManager) {
+    if (!this.glCanvas) {
       return;
     }
 
@@ -137,10 +137,6 @@ export class ShaderView {
     event: MessageEvent,
     onLockChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
-    if (!this.shaderMessageHandler || !this.renderLoopManager) {
-      return { running: false };
-    }
-
     const result = await this.shaderMessageHandler.handleShaderMessage(
       event,
       onLockChange,
@@ -154,10 +150,6 @@ export class ShaderView {
   }
 
   handleReset(onComplete?: () => void): void {
-    if (!this.shaderMessageHandler) {
-      return;
-    }
-
     this.shaderMessageHandler.reset(() => {
       if (onComplete) {
         onComplete();
@@ -167,10 +159,6 @@ export class ShaderView {
 
   // Control methods
   handleTogglePause(): void {
-    if (!this.timeManager) {
-      return;
-    }
-
     this.timeManager.togglePause();
   }
 
@@ -179,9 +167,7 @@ export class ShaderView {
   }
 
   stopRenderLoop(): void {
-    if (this.renderLoopManager) {
-      this.renderLoopManager.stopRenderLoop();
-    }
+    this.renderLoopManager.stopRenderLoop();
   }
 
   // Getter methods for managers (for components that need direct access)
@@ -189,47 +175,47 @@ export class ShaderView {
     return this.glCanvas;
   }
 
-  getRenderer(): any {
+  getRenderer(): PiRenderer {
     return this.renderer;
   }
 
-  getShaderCompiler(): ShaderCompiler | null {
+  getShaderCompiler(): ShaderCompiler {
     return this.shaderCompiler;
   }
 
-  getResourceManager(): ResourceManager | null {
+  getResourceManager(): ResourceManager {
     return this.resourceManager;
   }
 
-  getTimeManager(): TimeManager | null {
+  getTimeManager(): TimeManager {
     return this.timeManager;
   }
 
-  getInputManager(): InputManager | null {
+  getInputManager(): InputManager {
     return this.inputManager;
   }
 
-  getShaderPipeline(): ShaderPipeline | null {
+  getShaderPipeline(): ShaderPipeline {
     return this.shaderPipeline;
   }
 
-  getShaderMessageHandler(): ShaderMessageHandler | null {
+  getShaderMessageHandler(): ShaderMessageHandler {
     return this.shaderMessageHandler;
   }
 
-  getPassRenderer(): PassRenderer | null {
+  getPassRenderer(): PassRenderer {
     return this.passRenderer;
   }
 
-  getFrameRenderer(): FrameRenderer | null {
+  getFrameRenderer(): FrameRenderer {
     return this.renderLoopManager;
   }
 
   getCurrentFPS(): number {
-    return this.renderLoopManager?.getCurrentFPS() || 0;
+    return this.renderLoopManager.getCurrentFPS();
   }
 
   getLastShaderEvent(): MessageEvent | null {
-    return this.shaderMessageHandler?.getLastEvent() || null;
+    return this.shaderMessageHandler.getLastEvent();
   }
 }

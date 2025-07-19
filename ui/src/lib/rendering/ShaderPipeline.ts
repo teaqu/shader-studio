@@ -2,6 +2,7 @@ import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 import type { PassConfig } from "../domain/PassConfig";
+import type { PiRenderer } from "../types/piRenderer";
 
 /**
  * Manages the shader pipeline: pass compilation, resource allocation, and state management.
@@ -14,7 +15,7 @@ export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
   private shaderCompiler: ShaderCompiler;
   private resourceManager: ResourceManager;
-  private renderer: any;
+  private renderer: PiRenderer;
   private currentShaderRenderID = 0;
   private shaderName = "";
 
@@ -22,7 +23,7 @@ export class ShaderPipeline {
     canvas: HTMLCanvasElement,
     shaderCompiler: ShaderCompiler,
     resourceManager: ResourceManager,
-    renderer: any,
+    renderer: PiRenderer,
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;

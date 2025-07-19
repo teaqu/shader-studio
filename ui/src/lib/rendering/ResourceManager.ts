@@ -1,4 +1,6 @@
 import type { PassConfig } from "../domain/PassConfig";
+import type { PiRenderer } from "../types/piRenderer";
+import type { ShaderCompiler } from "./ShaderCompiler";
 
 export class ResourceManager {
   private imageTextureCache: Record<string, any> = {};
@@ -9,8 +11,8 @@ export class ResourceManager {
   private defaultTexture: any = null;
 
   constructor(
-    private renderer: any,
-    private shaderCompiler: any
+    private renderer: PiRenderer,
+    private shaderCompiler: ShaderCompiler
   ) {
     // Create default texture when renderer is provided
     if (renderer) {
@@ -117,7 +119,7 @@ export class ResourceManager {
         // === 1. Create new buffers ===
         const newBuffers = this.createPingPongBuffers(newWidth, newHeight);
 
-        if (oldPassBuffers[pass.name]) {
+        if (oldPassBuffers[pass.name] && newBuffers.front?.mTex0 && newBuffers.back?.mTex0) {
           // --- 2. Copy from old to new ---
           const oldFront = oldPassBuffers[pass.name].front.mTex0;
           const oldBack = oldPassBuffers[pass.name].back.mTex0;

@@ -22,6 +22,10 @@ export class PanelManager {
     return this.panel;
   }
 
+  private createWebviewPanel(editor: vscode.TextEditor): void {
+    this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
+  }
+
   public createShaderView(): void {
     const editor = vscode.window.activeTextEditor ??
       vscode.window.visibleTextEditors.find((e) =>
@@ -44,14 +48,6 @@ export class PanelManager {
       // Fallback to default behavior (beside current)
       this.createWebviewPanel(editor);
     }
-  }
-
-  public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
-  }
-
-  private createWebviewPanel(editor: vscode.TextEditor): void {
-    this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }
 
   private createWebviewPanelInColumn(editor: vscode.TextEditor, viewColumn: vscode.ViewColumn): void {
@@ -101,6 +97,10 @@ export class PanelManager {
     });
 
     this.logger.info("Webview panel created");
+  }
+
+  public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
+    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
   }
 
   private setupWebviewHtml(): void {

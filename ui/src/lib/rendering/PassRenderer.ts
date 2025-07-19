@@ -1,5 +1,6 @@
 import type { ResourceManager } from "./ResourceManager";
 import type { PassConfig } from "../domain/PassConfig";
+import type { PiRenderer } from "../types/piRenderer";
 
 /**
  * Handles the actual rendering of shader passes.
@@ -8,12 +9,12 @@ import type { PassConfig } from "../domain/PassConfig";
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
   private resourceManager: ResourceManager;
-  private renderer: any;
+  private renderer: PiRenderer;
 
   constructor(
     canvas: HTMLCanvasElement,
     resourceManager: ResourceManager,
-    renderer: any,
+    renderer: PiRenderer,
   ) {
     this.canvas = canvas;
     this.resourceManager = resourceManager;

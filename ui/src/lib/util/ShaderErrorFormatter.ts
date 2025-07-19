@@ -1,3 +1,5 @@
+import type { PiRenderer } from "../types/piRenderer";
+
 export class ShaderErrorFormatter {
   /**
    * Formats shader compilation errors by adjusting line numbers to match user code
@@ -10,7 +12,7 @@ export class ShaderErrorFormatter {
    */
   public static formatShaderError(
     error: string,
-    renderer: any,
+    renderer: PiRenderer,
     headerLineCount: number,
   ): string {
     return error.replace(/ERROR: 0:(\d+):/g, (m: any, p1: any) => {

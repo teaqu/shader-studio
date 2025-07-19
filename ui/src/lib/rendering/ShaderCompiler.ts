@@ -1,5 +1,7 @@
+import type { PiRenderer } from "../types/piRenderer";
+
 export class ShaderCompiler {
-  constructor(private renderer: any) {}
+  constructor(private renderer: PiRenderer) {}
 
   public wrapShaderToyCode(
     code: string,
