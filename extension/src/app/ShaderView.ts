@@ -36,14 +36,6 @@ export class ShaderExtension {
   }
 
   public initializeDevMode(): void {
-    const layout = vscode.window.tabGroups.all;
-
-    for (const group of layout) {
-      if (group.tabs.length === 0) {
-        vscode.window.tabGroups.close(group);
-      }
-    }
-
     vscode.commands.executeCommand("shader-view.view");
   }
 
@@ -57,18 +49,7 @@ export class ShaderExtension {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.view", () => {
         this.logger.info("shader-view.view command executed");
-
-        const editor = vscode.window.activeTextEditor ??
-          vscode.window.visibleTextEditors.find((e) =>
-            e.document.languageId === "glsl" ||
-            e.document.fileName.endsWith(".glsl")
-          );
-        if (!editor) {
-          vscode.window.showErrorMessage("No active GLSL file selected");
-          return;
-        }
-
-        this.panelManager.createWebviewPanel(editor);
+        this.panelManager.createShaderView();
       }),
     );
 

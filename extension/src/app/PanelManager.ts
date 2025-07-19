@@ -22,9 +22,41 @@ export class PanelManager {
     return this.panel;
   }
 
-  public createWebviewPanel(editor: vscode.TextEditor): void {
+  public createShaderView(): void {
+    const editor = vscode.window.activeTextEditor ??
+      vscode.window.visibleTextEditors.find((e) =>
+        e.document.languageId === "glsl" ||
+        e.document.fileName.endsWith(".glsl")
+      );
+    if (!editor) {
+      vscode.window.showErrorMessage("No active GLSL file selected");
+      return;
+    }
+
+    // Check for empty tab groups first
+    const layout = vscode.window.tabGroups.all;
+    const emptyGroup = layout.find(group => group.tabs.length === 0);
+    
+    if (emptyGroup) {
+      // Open in the first empty group found
+      this.createWebviewPanelInColumn(editor, emptyGroup.viewColumn);
+    } else {
+      // Fallback to default behavior (beside current)
+      this.createWebviewPanel(editor);
+    }
+  }
+
+  public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
+    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
+  }
+
+  private createWebviewPanel(editor: vscode.TextEditor): void {
+    this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
+  }
+
+  private createWebviewPanelInColumn(editor: vscode.TextEditor, viewColumn: vscode.ViewColumn): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Beside);
+      this.panel.reveal(viewColumn);
       this.shaderProcessor.sendShaderToWebview(editor);
       return;
     }
@@ -36,7 +68,7 @@ export class PanelManager {
     this.panel = vscode.window.createWebviewPanel(
       "shaderToy",
       "ShaderToy",
-      vscode.ViewColumn.Beside,
+      viewColumn,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -69,10 +101,6 @@ export class PanelManager {
     });
 
     this.logger.info("Webview panel created");
-  }
-
-  public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
   }
 
   private setupWebviewHtml(): void {
