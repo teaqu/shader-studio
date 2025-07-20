@@ -1,8 +1,10 @@
 import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
 import { ShaderCompiler } from "./rendering/ShaderCompiler";
 import { ResourceManager } from "./rendering/ResourceManager";
+import { BufferManager } from "./rendering/BufferManager";
 import { TimeManager } from "./input/TimeManager";
-import { InputManager } from "./input/InputManager";
+import { KeyboardManager } from "./input/KeyboardManager";
+import { MouseManager } from "./input/MouseManager";
 import { ShaderPipeline } from "./rendering/ShaderPipeline";
 import { ShaderMessageHandler } from "./communication/ShaderMessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
@@ -14,11 +16,12 @@ export class ShaderView {
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
   
-  // Manager instances
   private shaderCompiler!: ShaderCompiler;
   private resourceManager!: ResourceManager;
+  private bufferManager!: BufferManager;
   private timeManager!: TimeManager;
-  private inputManager!: InputManager;
+  private keyboardManager!: KeyboardManager;
+  private mouseManager!: MouseManager;
   private shaderPipeline!: ShaderPipeline;
   private shaderMessageHandler!: ShaderMessageHandler;
   private passRenderer!: PassRenderer;
@@ -52,39 +55,44 @@ export class ShaderView {
         return false;
       }
 
-      // Initialize canvas manager
-      // Canvas is now passed directly to components that need it
-
       this.shaderCompiler = new ShaderCompiler(this.renderer);
-      this.resourceManager = new ResourceManager(this.renderer, this.shaderCompiler);
+      this.resourceManager = new ResourceManager(this.renderer);
+      this.bufferManager = new BufferManager(this.renderer);
       this.timeManager = new TimeManager();
-      this.inputManager = new InputManager();
+      this.keyboardManager = new KeyboardManager();
+      this.mouseManager = new MouseManager();
       
       this.shaderPipeline = new ShaderPipeline(
         glCanvas,
         this.shaderCompiler,
         this.resourceManager,
         this.renderer,
-      );
-      
-      this.shaderMessageHandler = new ShaderMessageHandler(
-        this.shaderPipeline,
-        this.timeManager,
-        this.vscode,
+        this.bufferManager,
       );
       
       this.passRenderer = new PassRenderer(
         glCanvas,
         this.resourceManager,
+        this.bufferManager,
         this.renderer,
+        this.keyboardManager,
       );
       
       this.renderLoopManager = new FrameRenderer(
         this.timeManager,
-        this.inputManager,
+        this.keyboardManager,
+        this.mouseManager,
         this.shaderPipeline,
+        this.bufferManager,
         this.passRenderer,
         glCanvas,
+      );
+      
+      this.shaderMessageHandler = new ShaderMessageHandler(
+        this.shaderPipeline,
+        this.timeManager,
+        this.renderLoopManager,
+        this.vscode,
       );
 
       this.vscode.postMessage({
@@ -102,13 +110,11 @@ export class ShaderView {
     }
   }
 
-  // Canvas and rendering methods
-  handleCanvasResize(width: number, height: number): void {
+  public handleCanvasResize(width: number, height: number): void {
     if (!this.glCanvas) {
       return;
     }
 
-    // Update canvas size inline
     const newWidth = Math.round(width);
     const newHeight = Math.round(height);
 
@@ -116,37 +122,27 @@ export class ShaderView {
       this.glCanvas.width = newWidth;
       this.glCanvas.height = newHeight;
     }
-    const newBuffers = this.resourceManager.resizePassBuffers(
-      this.shaderPipeline.getPasses(),
-      Math.round(width),
-      Math.round(height),
+
+    this.bufferManager.resizeBuffers(
+      newWidth,
+      newHeight,
     );
-    this.shaderPipeline.setPassBuffers(newBuffers);
 
     // Redraw the final image pass to prevent a black screen flicker.
-    const imagePass = this.shaderPipeline.getPasses().find((p) =>
-      p.name === "Image"
-    );
+    const imagePass = this.shaderPipeline.getPass("Image");
     if (imagePass && this.renderLoopManager.isRunning()) {
       this.renderLoopManager.renderSinglePass(imagePass);
     }
   }
 
-  // Shader handling methods
   async handleShaderMessage(
     event: MessageEvent,
     onLockChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
-    const result = await this.shaderMessageHandler.handleShaderMessage(
+    return await this.shaderMessageHandler.handleShaderMessage(
       event,
       onLockChange,
     );
-
-    if (result.running && !this.renderLoopManager.isRunning()) {
-      this.renderLoopManager.startRenderLoop();
-    }
-
-    return result;
   }
 
   handleReset(onComplete?: () => void): void {
@@ -157,7 +153,6 @@ export class ShaderView {
     });
   }
 
-  // Control methods
   handleTogglePause(): void {
     this.timeManager.togglePause();
   }
@@ -170,45 +165,16 @@ export class ShaderView {
     this.renderLoopManager.stopRenderLoop();
   }
 
-  // Getter methods for managers (for components that need direct access)
-  getCanvas(): HTMLCanvasElement | null {
-    return this.glCanvas;
-  }
-
-  getRenderer(): PiRenderer {
-    return this.renderer;
-  }
-
-  getShaderCompiler(): ShaderCompiler {
-    return this.shaderCompiler;
-  }
-
-  getResourceManager(): ResourceManager {
-    return this.resourceManager;
-  }
-
   getTimeManager(): TimeManager {
     return this.timeManager;
   }
 
-  getInputManager(): InputManager {
-    return this.inputManager;
+  getKeyboardManager(): KeyboardManager {
+    return this.keyboardManager;
   }
 
-  getShaderPipeline(): ShaderPipeline {
-    return this.shaderPipeline;
-  }
-
-  getShaderMessageHandler(): ShaderMessageHandler {
-    return this.shaderMessageHandler;
-  }
-
-  getPassRenderer(): PassRenderer {
-    return this.passRenderer;
-  }
-
-  getFrameRenderer(): FrameRenderer {
-    return this.renderLoopManager;
+  getMouseManager(): MouseManager {
+    return this.mouseManager;
   }
 
   getCurrentFPS(): number {
@@ -217,5 +183,15 @@ export class ShaderView {
 
   getLastShaderEvent(): MessageEvent | null {
     return this.shaderMessageHandler.getLastEvent();
+  }
+
+  dispose(): void {
+    // Clean up resources
+    if (this.bufferManager) {
+      this.bufferManager.dispose();
+    }
+    if (this.renderLoopManager) {
+      this.renderLoopManager.stopRenderLoop();
+    }
   }
 }

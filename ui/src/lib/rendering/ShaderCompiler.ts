@@ -41,19 +41,6 @@ void main() {
     return { wrappedCode, headerLineCount };
   }
 
-  public createCopyShader(): PiShader | null {
-    const vs = `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const fs = `
-    precision highp float;
-    uniform sampler2D srcTex;
-    out vec4 fragColor;
-    void main() {
-      fragColor = texture(srcTex, gl_FragCoord.xy / vec2(textureSize(srcTex, 0)));
-    }
-  `;
-    return this.renderer.CreateShader(vs, fs);
-  }
-
   public compileShader(shaderSrc: string): PiShader | null {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;

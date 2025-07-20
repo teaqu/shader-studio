@@ -1,5 +1,6 @@
 import type { ShaderPipeline } from "../rendering/ShaderPipeline";
 import type { TimeManager } from "../input/TimeManager";
+import type { FrameRenderer } from "../rendering/FrameRenderer";
 
 /**
  * Handles communication with VS Code extension for shader updates.
@@ -8,6 +9,7 @@ import type { TimeManager } from "../input/TimeManager";
 export class ShaderMessageHandler {
   private shaderPipeline: ShaderPipeline;
   private timeManager: TimeManager;
+  private frameRenderer: FrameRenderer;
   private vscode: any;
   private isHandlingMessage = false;
   private lastEvent: MessageEvent | null = null;
@@ -15,10 +17,12 @@ export class ShaderMessageHandler {
   constructor(
     shaderPipeline: ShaderPipeline,
     timeManager: TimeManager,
+    frameRenderer: FrameRenderer,
     vscode: any,
   ) {
     this.shaderPipeline = shaderPipeline;
     this.timeManager = timeManager;
+    this.frameRenderer = frameRenderer;
     this.vscode = vscode;
   }
 
@@ -64,6 +68,12 @@ export class ShaderMessageHandler {
         payload: ["Shader compiled and linked"],
       });
       this.lastEvent = event;
+
+      // Start render loop if not already running
+      if (!this.frameRenderer.isRunning()) {
+        this.frameRenderer.startRenderLoop();
+      }
+
       return { running: true };
     } finally {
       this.isHandlingMessage = false;

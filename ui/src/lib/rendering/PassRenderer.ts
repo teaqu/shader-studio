@@ -1,34 +1,39 @@
 import type { ResourceManager } from "./ResourceManager";
-import type { PassConfig, PassUniforms, PassBuffers } from "../models";
+import type { BufferManager } from "./BufferManager";
+import type { Pass, PassUniforms } from "../models";
 import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "../types/piRenderer";
-import type { InputManager } from "../input/InputManager";
+import type { KeyboardManager } from "../input/KeyboardManager";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
   private resourceManager: ResourceManager;
+  private bufferManager: BufferManager;
   private renderer: PiRenderer;
+  private keyboardManager: KeyboardManager;
 
   constructor(
     canvas: HTMLCanvasElement,
     resourceManager: ResourceManager,
+    bufferManager: BufferManager,
     renderer: PiRenderer,
+    keyboardManager: KeyboardManager,
   ) {
     this.canvas = canvas;
     this.resourceManager = resourceManager;
+    this.bufferManager = bufferManager;
     this.renderer = renderer;
+    this.keyboardManager = keyboardManager;
   }
 
   public renderPass(
-    pass: PassConfig,
+    passConfig: Pass,
     target: PiRenderTarget | null,
     shader: PiShader | null,
     uniforms: PassUniforms,
-    inputManager: InputManager,
-    passBuffers: PassBuffers,
   ): void {
     if (!shader) return;
 
-    const textureBindings = this.getTextureBindings(pass, inputManager, passBuffers);
+    const textureBindings = this.getTextureBindings(passConfig);
 
     // Set viewport
     if (target?.mTex0) {
@@ -63,11 +68,10 @@ export class PassRenderer {
 
 
   private getTextureBindings(
-    pass: PassConfig,
-    inputManager: InputManager,
-    passBuffers: PassBuffers,
+    passConfig: Pass,
   ): (PiTexture | null)[] {
     const defaultTexture = this.resourceManager.getDefaultTexture();
+    const passBuffers = this.bufferManager.getPassBuffers();
     let textureBindings: (PiTexture | null)[] = [
       defaultTexture,
       defaultTexture,
@@ -76,22 +80,22 @@ export class PassRenderer {
     ];
 
     for (let i = 0; i < 4; i++) {
-      const input = pass.inputs[`iChannel${i}`];
+      const input = passConfig.inputs[`iChannel${i}`];
       if (input) {
         if (input.type === "image" && input.path) {
           const imageCache = this.resourceManager.getImageTextureCache();
           textureBindings[i] = imageCache[input.path] || defaultTexture;
         } else if (input.type === "keyboard") {
           this.resourceManager.updateKeyboardTexture(
-            inputManager.getKeyHeld(),
-            inputManager.getKeyPressed(),
-            inputManager.getKeyToggled(),
+            this.keyboardManager.getKeyHeld(),
+            this.keyboardManager.getKeyPressed(),
+            this.keyboardManager.getKeyToggled(),
           );
           textureBindings[i] = this.resourceManager.getKeyboardTexture() ||
             defaultTexture;
         } else if (input.type === "buffer") {
-          if (input.source === pass.name) {
-            textureBindings[i] = passBuffers[pass.name]?.front?.mTex0 || defaultTexture;
+          if (input.source === passConfig.name) {
+            textureBindings[i] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
           } else if (passBuffers[input.source]) {
             textureBindings[i] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
           }

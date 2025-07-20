@@ -1,9 +1,11 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
+import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
-import type { PassConfig } from "../models";
+import type { Pass } from "../models";
 import type { TimeManager } from "../input/TimeManager";
-import type { InputManager } from "../input/InputManager";
+import type { KeyboardManager } from "../input/KeyboardManager";
+import type { MouseManager } from "../input/MouseManager";
 
 export class FrameRenderer {
   private running = false;
@@ -11,22 +13,28 @@ export class FrameRenderer {
   private currentFPS = 0;
   
   private timeManager: TimeManager;
-  private inputManager: InputManager;
+  private keyboardManager: KeyboardManager;
+  private mouseManager: MouseManager;
   private shaderPipeline: ShaderPipeline;
+  private bufferManager: BufferManager;
   private passRenderer: PassRenderer;
   private glCanvas: HTMLCanvasElement;
 
   constructor(
     timeManager: TimeManager,
-    inputManager: InputManager,
-    shaderPipeline: ShaderPipeline,
+    keyboardManager: KeyboardManager,
+    mouseManager: MouseManager,
+    pipeline: ShaderPipeline,
+    bufferManager: BufferManager,
     passRenderer: PassRenderer,
-    glCanvas: HTMLCanvasElement,
+    glCanvas: HTMLCanvasElement
   ) {
     this.fpsCounter = piCreateFPSCounter();
     this.timeManager = timeManager;
-    this.inputManager = inputManager;
-    this.shaderPipeline = shaderPipeline;
+    this.keyboardManager = keyboardManager;
+    this.mouseManager = mouseManager;
+    this.shaderPipeline = pipeline;
+    this.bufferManager = bufferManager;
     this.passRenderer = passRenderer;
     this.glCanvas = glCanvas;
   }
@@ -41,6 +49,19 @@ export class FrameRenderer {
 
   public getCurrentFPS(): number {
     return this.currentFPS;
+  }
+
+  private getUniforms(): any {
+    return {
+      res: new Float32Array([
+        this.glCanvas.width,
+        this.glCanvas.height,
+        this.glCanvas.width / this.glCanvas.height,
+      ]),
+      time: this.timeManager.getCurrentTime(performance.now()),
+      mouse: this.mouseManager.getMouse(),
+      frame: this.timeManager.getFrame(),
+    };
   }
 
   public startRenderLoop(): void {
@@ -76,18 +97,16 @@ export class FrameRenderer {
       this.currentFPS = this.fpsCounter.GetFPS();
     }
 
-    const uniforms = this.timeManager.getUniforms(
-      this.glCanvas.width,
-      this.glCanvas.height,
-      this.inputManager.getMouse(),
-    );
+    const uniforms = this.getUniforms();
     const passes = this.shaderPipeline.getPasses();
     const passShaders = this.shaderPipeline.getPassShaders();
-    const passBuffers = this.shaderPipeline.getPassBuffers();
+    const passBuffers = this.bufferManager.getPassBuffers();
 
-    // --- Render all buffer passes ---
     for (const pass of passes) {
-      if (pass.name === "Image") continue;
+      if (pass.name === "Image") {
+        continue;
+      }
+
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
       this.passRenderer.renderPass(
@@ -95,8 +114,6 @@ export class FrameRenderer {
         buffers.back,
         shader,
         uniforms,
-        this.inputManager,
-        passBuffers,
       );
 
       const temp = buffers.front;
@@ -104,8 +121,7 @@ export class FrameRenderer {
       buffers.back = temp;
     }
 
-    // --- Render final Image pass to screen ---
-    const imagePass = passes.find((p: PassConfig) => p.name === "Image");
+    const imagePass = passes.find((p: Pass) => p.name === "Image");
     if (imagePass) {
       const shader = passShaders[imagePass.name];
       this.passRenderer.renderPass(
@@ -113,32 +129,22 @@ export class FrameRenderer {
         null,
         shader,
         uniforms,
-        this.inputManager,
-        passBuffers,
       );
     }
 
-    // Clear the "just pressed" state for the next frame
-    this.inputManager.clearPressed();
-
+    this.keyboardManager.clearPressed();
     this.timeManager.incrementFrame();
   }
 
-  public renderSinglePass(pass: PassConfig): void {
-    const uniforms = this.timeManager.getUniforms(
-      this.glCanvas.width,
-      this.glCanvas.height,
-      this.inputManager.getMouse(),
-    );
-    const shader = this.shaderPipeline.getPassShaders()[pass.name];
+  public renderSinglePass(pass: Pass): void {
+    const uniforms = this.getUniforms();
+    const shader = this.shaderPipeline.getPassShader(pass.name) || null;
     
     this.passRenderer.renderPass(
       pass, 
       null, 
       shader, 
       uniforms, 
-      this.inputManager,
-      this.shaderPipeline.getPassBuffers(),
     );
   }
 }

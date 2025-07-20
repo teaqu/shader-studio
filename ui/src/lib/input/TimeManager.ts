@@ -52,21 +52,4 @@ export class TimeManager {
   public incrementFrame(): void {
     this.frame++;
   }
-
-  public getUniforms(
-    canvasWidth: number,
-    canvasHeight: number,
-    mouse: Float32Array,
-  ): any {
-    return {
-      res: new Float32Array([
-        canvasWidth,
-        canvasHeight,
-        canvasWidth / canvasHeight,
-      ]),
-      time: this.getCurrentTime(performance.now()),
-      mouse: mouse,
-      frame: this.frame,
-    };
-  }
 }

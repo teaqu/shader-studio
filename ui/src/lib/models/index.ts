@@ -1,3 +1,4 @@
-export type { PassConfig } from "./PassConfig";
+export type { Pass } from "./Pass";
 export type { PassUniforms } from "./PassUniforms";
-export type { PassBuffers } from "./PassBuffers";
+export type { Buffer, Buffers } from "./Buffer";
+export type { CompilationResult } from "./CompilationResult";

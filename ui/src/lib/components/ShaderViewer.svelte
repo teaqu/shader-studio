@@ -1,16 +1,14 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { ShaderView } from "../ShaderView";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
 
-  // Callback props instead of event dispatcher
   export let onInitialized: (data: {
     shaderView: ShaderView;
   }) => void = () => {};
 
-  // --- Core State ---
   let glCanvas: HTMLCanvasElement;
   let initialized = false;
   let isLocked = false;
@@ -20,14 +18,13 @@
   let canvasWidth = 0;
   let canvasHeight = 0;
 
-  // --- Main Controller ---
   let shaderView: ShaderView;
   let timeManager: any = null;
-  let inputManager: any = null;
+  let keyboardManager: any = null;
+  let mouseManager: any = null;
 
   const vscode = acquireVsCodeApi();
 
-  // --- Event Handlers ---
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
     await initializeApp();
@@ -66,7 +63,6 @@
     errors = [];
   }
 
-  // --- Initialization ---
   async function initializeApp() {
     try {
       shaderView = new ShaderView(vscode);
@@ -77,11 +73,11 @@
         return;
       }
 
-      // Set up message listener
       window.addEventListener("message", handleShaderMessage);
 
       timeManager = shaderView.getTimeManager();
-      inputManager = shaderView.getInputManager();
+      keyboardManager = shaderView.getKeyboardManager();
+      mouseManager = shaderView.getMouseManager();
 
       initialized = true;
 
@@ -109,7 +105,6 @@
     vscode.postMessage({ type: "error", payload: [message] });
   }
 
-  // Reactive FPS update using onMount interval
   onMount(() => {
     const fpsInterval = setInterval(() => {
       if (initialized && shaderView) {
@@ -119,11 +114,19 @@
 
     return () => clearInterval(fpsInterval);
   });
+
+  // Clean up resources when component is destroyed
+  onDestroy(() => {
+    if (shaderView) {
+      shaderView.dispose();
+    }
+  });
 </script>
 
 <div class="main-container">
   <ShaderCanvas
-    {inputManager}
+    {keyboardManager}
+    {mouseManager}
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
   />

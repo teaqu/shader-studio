@@ -1,16 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   
-  export let inputManager: any;
+  export let keyboardManager: any;
+  export let mouseManager: any;
   
-  // Callback props instead of event dispatchers
   export let onCanvasReady: (canvas: HTMLCanvasElement) => void = () => {};
   export let onCanvasResize: (data: { width: number, height: number }) => void = () => {};
   
   let glCanvas: HTMLCanvasElement;
   
   onMount(() => {
-    // Setup resize handling
     const container = glCanvas.parentElement!;
     
     function resizeCanvasToFit16x9() {
@@ -33,7 +32,6 @@
 
       glCanvas.style.width = `${newWidth}px`;
       glCanvas.style.height = `${newHeight}px`;
-      // Set internal resolution based on devicePixelRatio for high-DPI rendering
       const scaleFactor = window.devicePixelRatio;
       onCanvasResize({ width: newWidth * scaleFactor, height: newHeight * scaleFactor });
     }
@@ -41,25 +39,21 @@
     const resizeObserver = new ResizeObserver(resizeCanvasToFit16x9);
     resizeObserver.observe(container);
     resizeCanvasToFit16x9();
-
-    // Setup input handling when canvas is ready
     setupInputHandling();
-
-    // Notify parent that canvas is ready
     onCanvasReady(glCanvas);
   });
 
   function setupInputHandling() {
-    if (inputManager && glCanvas) {
-      inputManager.setupEventListeners(glCanvas);
+    if (keyboardManager && mouseManager && glCanvas) {
+      keyboardManager.setupEventListeners(glCanvas);
+      mouseManager.setupEventListeners(glCanvas);
       // Make canvas focusable for keyboard events
       glCanvas.tabIndex = 0;
       glCanvas.focus();
     }
   }
 
-  // Re-setup input handling when inputManager changes
-  $: if (inputManager && glCanvas) {
+  $: if (keyboardManager && mouseManager && glCanvas) {
     setupInputHandling();
   }
 </script>

@@ -1,48 +1,59 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { PassConfig, PassBuffers } from "../models";
-import type { PiRenderer } from "../types/piRenderer";
+import type { Pass, Buffer, Buffers, CompilationResult } from "../models";
+import type { PiRenderer, PiShader } from "../types/piRenderer";
+import type { BufferManager } from "./BufferManager";
 
 export class ShaderPipeline {
-  private passes: PassConfig[] = [];
-  private passShaders: Record<string, any> = {};
-  private passBuffers: PassBuffers = {};
   private canvas: HTMLCanvasElement;
   private shaderCompiler: ShaderCompiler;
   private resourceManager: ResourceManager;
   private renderer: PiRenderer;
+  private bufferManager: BufferManager;
   private currentShaderRenderID = 0;
   private shaderName = "";
+  private passes: Pass[] = [];
+  private passShaders: Record<string, PiShader> = {};
 
   constructor(
     canvas: HTMLCanvasElement,
     shaderCompiler: ShaderCompiler,
     resourceManager: ResourceManager,
     renderer: PiRenderer,
+    bufferManager: BufferManager,
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
     this.resourceManager = resourceManager;
     this.renderer = renderer;
+    this.bufferManager = bufferManager;
   }
 
-  public getPasses(): PassConfig[] {
+  public getPasses(): Pass[] {
     return this.passes;
   }
 
-  public getPassShaders(): Record<string, any> {
+  public getPass(passName: string): Pass | undefined {
+    return this.passes.find(pass => pass.name === passName);
+  }
+
+  public getPassShaders(): Record<string, PiShader> {
     return this.passShaders;
   }
 
-  public getPassBuffers(): PassBuffers {
-    return this.passBuffers;
+  public getPassShader(passName: string): PiShader | undefined {
+    return this.passShaders[passName];
+  }
+
+  public getPassBuffers(): Buffers {
+    return this.bufferManager.getPassBuffers();
   }
 
   public setPassBuffers(
-    buffers: PassBuffers,
+    buffers: Buffers,
   ): void {
-    this.passBuffers = buffers;
+    this.bufferManager.setPassBuffers(buffers);
   }
 
   public getCurrentShaderRenderID(): number {
@@ -58,61 +69,75 @@ export class ShaderPipeline {
     config: any,
     name: string,
     buffers: Record<string, string> = {},
-  ): Promise<{
-    success: boolean;
-    error?: string;
-  }> {
+  ): Promise<CompilationResult> {
+    this.prepareNewCompilation(name);
+    
+    this.buildPasses(code, config, buffers);
+    const compilation = await this.compileShaders();
+    
+    if (!compilation.success) {
+      return compilation;
+    }
+    
+    await this.updateResources();
+    return { success: true };
+  }
+
+  private prepareNewCompilation(name: string): void {
     this.currentShaderRenderID++;
 
     if (this.shaderName !== name) {
       this.shaderName = name;
       this.cleanup();
     }
+  }
 
-    // Keep track of old resources to clean up later
-    const oldPassShaders = { ...this.passShaders };
-    const oldPassBuffers = { ...this.passBuffers };
-
-    // Prepare for the new state
-    let newPasses: PassConfig[] = [];
-    let newPassShaders: Record<string, any> = {};
-    let newPassBuffers: Record<string, any> = {};
-
+  private buildPasses(
+    code: string,
+    config: any,
+    buffers: Record<string, string>
+  ): void {
     const usedConfig = config ?? {};
     const passNames = usedConfig
       ? Object.keys(usedConfig).filter((k) => k !== "version")
       : [];
 
-    // Build pass configurations
     if (passNames.length === 0) {
-      newPasses.push({
+      this.passes = [{
         name: "Image",
         shaderSrc: code,
         inputs: {},
         path: undefined,
-      });
-    } else {
-      for (const passName of passNames) {
-        const pass = usedConfig[passName];
-        const shaderSrc = buffers[passName] ||
-          (passName === "Image" ? code : "");
-
-        newPasses.push({
-          name: passName,
-          shaderSrc,
-          inputs: pass.inputs ?? {},
-          path: pass.path,
-        });
-      }
+      }];
+      return;
     }
 
+    this.passes = passNames.map(passName => {
+      const pass = usedConfig[passName];
+      const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
+
+      return {
+        name: passName,
+        shaderSrc,
+        inputs: pass.inputs ?? {},
+        path: pass.path,
+      };
+    });
+  }
+
+  private async compileShaders(): Promise<CompilationResult> {
+    // Keep track of old resources to clean up later
+    const oldPassShaders = { ...this.passShaders };
+    const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
+
+    const newPassShaders: Record<string, PiShader> = {};
+    const newPassBuffers: Record<string, any> = {};
+
     // Compile shaders
-    for (const pass of newPasses) {
+    for (const pass of this.passes) {
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc);
-      const shader = this.shaderCompiler.compileShader(
-        pass.shaderSrc,
-      );
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc);
       
       if (!shader || !shader.mResult) {
         const err = shader ? ShaderErrorFormatter.formatShaderError(
@@ -122,9 +147,7 @@ export class ShaderPipeline {
         ) : "Failed to compile shader";
         
         // Clean up partially compiled shaders
-        for (const key in newPassShaders) {
-          this.renderer.DestroyShader(newPassShaders[key]);
-        }
+        this.cleanupPartialShaders(newPassShaders);
         
         return {
           success: false,
@@ -133,6 +156,7 @@ export class ShaderPipeline {
       }
       
       newPassShaders[pass.name] = shader;
+      this.passShaders[pass.name] = shader;
 
       // Create buffers for non-Image passes
       if (pass.name !== "Image") {
@@ -140,7 +164,7 @@ export class ShaderPipeline {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];
         } else {
-          newPassBuffers[pass.name] = this.resourceManager
+          newPassBuffers[pass.name] = this.bufferManager
             .createPingPongBuffers(
               this.canvas.width || 800,
               this.canvas.height || 600,
@@ -149,24 +173,55 @@ export class ShaderPipeline {
       }
     }
 
-    // Update state
-    this.passes = newPasses;
-    this.passShaders = newPassShaders;
-    this.passBuffers = newPassBuffers;
+    this.bufferManager.setPassBuffers(newPassBuffers);
 
-    this.resourceManager.cleanupShadersAndBuffers(oldPassShaders, oldPassBuffers);
-
-    await this.resourceManager.loadImageTextures(this.passes);
+    // Clean up old resources
+    for (const key in oldPassShaders) {
+      const shader = oldPassShaders[key];
+      if (shader) {
+        this.renderer.DestroyShader(shader);
+      }
+    }
+    this.bufferManager.cleanupBuffers(oldPassBuffers);
 
     return { success: true };
   }
 
+  private async updateResources(): Promise<void> {
+    for (const pass of this.passes) {
+      for (let i = 0; i < 4; i++) { // 4 channels (iChannel0-3)
+        const input = pass.inputs[`iChannel${i}`];
+        if (input?.type === "image" && input.path) {
+          await this.resourceManager.loadImageTexture(input.path, input.opts || {});
+        }
+      }
+    }
+  }
+
+  private cleanupPartialShaders(shaders: Record<string, PiShader>): void {
+    for (const key in shaders) {
+      this.renderer.DestroyShader(shaders[key]);
+    }
+  }
+
   public cleanup(): void {
     this.resourceManager.cleanup();
+    this.cleanupShaders();
     this.currentShaderRenderID++;
+  }
 
-    this.passes = [];
-    this.passShaders = {};
-    this.passBuffers = {};
+  private cleanupShaders(shaders?: Record<string, PiShader | null>): void {
+    const shadersToCleanup = shaders || this.passShaders;
+    
+    for (const key in shadersToCleanup) {
+      const shader = shadersToCleanup[key];
+      if (shader) {
+        this.renderer.DestroyShader(shader);
+      }
+    }
+
+    if (!shaders) {
+      this.passShaders = {};
+    }
   }
 }
