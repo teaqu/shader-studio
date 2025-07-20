@@ -57,7 +57,6 @@ export class PassRenderer {
     this.renderer.SetShaderTextureUnit("iChannel2", 2);
     this.renderer.SetShaderTextureUnit("iChannel3", 3);
 
-    // Draw quad
     const posLoc = this.renderer.GetAttribLocation(shader, "position");
     this.renderer.DrawUnitQuad_XY(posLoc);
   }

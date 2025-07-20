@@ -314,9 +314,6 @@ export class ResourceManager {
     }
   }
 
-  /**
-   * Copies a texture to a render target with specific viewport dimensions.
-   */
   private copyTexture(
     sourceTexture: any,
     targetRenderTarget: any,
@@ -336,9 +333,6 @@ export class ResourceManager {
     this.renderer.DrawUnitQuad_XY(posLoc);
   }
 
-  /**
-   * Clears a render target by drawing a fullscreen quad with a copy shader (effectively clearing).
-   */
   private clearRenderTarget(
     renderTarget: any,
     copyShader: any,

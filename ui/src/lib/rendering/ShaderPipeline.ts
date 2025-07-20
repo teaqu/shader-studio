@@ -4,10 +4,6 @@ import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 import type { PassConfig, PassBuffers } from "../models";
 import type { PiRenderer } from "../types/piRenderer";
 
-/**
- * Manages the shader pipeline: pass compilation, resource allocation, and state management.
- * This class knows about the structure of multi-pass shaders but doesn't handle rendering.
- */
 export class ShaderPipeline {
   private passes: PassConfig[] = [];
   private passShaders: Record<string, any> = {};
@@ -57,9 +53,6 @@ export class ShaderPipeline {
     return this.shaderName;
   }
 
-  /**
-   * Compile and setup a new shader pipeline from source code and configuration.
-   */
   public async compileShaderPipeline(
     code: string,
     config: any,
@@ -161,10 +154,8 @@ export class ShaderPipeline {
     this.passShaders = newPassShaders;
     this.passBuffers = newPassBuffers;
 
-    // Cleanup old resources
     this.resourceManager.cleanupShadersAndBuffers(oldPassShaders, oldPassBuffers);
 
-    // Load image textures
     await this.resourceManager.loadImageTextures(this.passes);
 
     return { success: true };

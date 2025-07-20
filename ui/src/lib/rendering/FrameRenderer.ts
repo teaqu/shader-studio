@@ -10,7 +10,6 @@ export class FrameRenderer {
   private fpsCounter: any;
   private currentFPS = 0;
   
-  // Injected dependencies
   private timeManager: TimeManager;
   private inputManager: InputManager;
   private shaderPipeline: ShaderPipeline;
