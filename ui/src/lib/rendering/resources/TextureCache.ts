@@ -16,10 +16,6 @@ export class TextureCache {
     this.initializeDefaultTexture();
   }
 
-  // =============================================================================
-  // Public Interface
-  // =============================================================================
-
   public getImageTextureCache(): Record<string, PiTexture> {
     return this.imageTextureCache;
   }
@@ -73,10 +69,6 @@ export class TextureCache {
     this.cleanupImageTextures();
     this.cleanupDefaultTexture();
   }
-
-  // =============================================================================
-  // Private Methods
-  // =============================================================================
 
   private initializeDefaultTexture(): void {
     this.defaultTexture = this.renderer.CreateTexture(

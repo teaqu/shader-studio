@@ -35,7 +35,6 @@ export class PassRenderer {
 
     const textureBindings = this.getTextureBindings(passConfig);
 
-    // Set viewport
     if (target?.mTex0) {
       this.renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
     } else if (this.canvas) {

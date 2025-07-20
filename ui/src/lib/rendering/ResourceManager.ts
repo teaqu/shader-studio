@@ -43,7 +43,6 @@ export class ResourceManager {
       return texture;
     } catch (error) {
       console.error(`Failed to load texture from ${path}:`, error);
-      // Use default texture as fallback
       const defaultTexture = this.textureCache.getDefaultTexture();
       if (defaultTexture) {
         this.textureCache.cacheTexture(path, defaultTexture);

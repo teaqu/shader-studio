@@ -44,7 +44,6 @@ export class ShaderView {
     }
 
     try {
-      // Initialize renderer
       this.renderer = piRenderer();
       const success = this.renderer.Initialize(gl);
       if (!success) {

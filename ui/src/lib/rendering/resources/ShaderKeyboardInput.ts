@@ -11,10 +11,6 @@ export class ShaderKeyboardInput {
 
   constructor(private readonly renderer: PiRenderer) {}
 
-  // =============================================================================
-  // Public Interface
-  // =============================================================================
-
   public getKeyboardTexture(): PiTexture | null {
     return this.keyboardTexture;
   }
@@ -39,10 +35,6 @@ export class ShaderKeyboardInput {
       this.keyboardTexture = null;
     }
   }
-
-  // =============================================================================
-  // Private Methods
-  // =============================================================================
 
   private updateKeyboardBuffer(
     keyHeld: Uint8Array,

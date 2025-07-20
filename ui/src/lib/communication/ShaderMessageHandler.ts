@@ -2,10 +2,6 @@ import type { ShaderPipeline } from "../rendering/ShaderPipeline";
 import type { TimeManager } from "../input/TimeManager";
 import type { FrameRenderer } from "../rendering/FrameRenderer";
 
-/**
- * Handles communication with VS Code extension for shader updates.
- * Focuses solely on message processing and delegating to the pipeline.
- */
 export class ShaderMessageHandler {
   private shaderPipeline: ShaderPipeline;
   private timeManager: TimeManager;

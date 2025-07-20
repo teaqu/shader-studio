@@ -1,7 +1,7 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { Pass, Buffer, Buffers, CompilationResult } from "../models";
+import type { Pass, Buffers, CompilationResult } from "../models";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 
