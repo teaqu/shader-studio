@@ -22,6 +22,18 @@
       {
         "command": "shader-view.toggleLock",
         "title": "Shader View: Toggle Lock"
+      },
+      {
+        "command": "shader-view.startWebServer",
+        "title": "Shader View: Start Web Server"
+      },
+      {
+        "command": "shader-view.stopWebServer",
+        "title": "Shader View: Stop Web Server"
+      },
+      {
+        "command": "shader-view.showWebServerMenu",
+        "title": "Shader View: Web Server Menu"
       }
     ]
   },

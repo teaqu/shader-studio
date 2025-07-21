@@ -16,17 +16,22 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(diagnosticCollection);
 
 	try {
-		// Initialize the main extension
 		shaderExtension = new ShaderExtension(
 			context,
 			outputChannel,
 			diagnosticCollection,
 		);
 
-		// Auto-open panel in dev mode
 		if (isDevMode) {
 			shaderExtension.initializeDevMode();
 		}
+
+		setTimeout(() => {
+			if (shaderExtension) {
+				outputChannel.info("Auto-starting web server for debugging...");
+				vscode.commands.executeCommand("shader-view.startWebServer");
+			}
+		}, 2000);
 
 		outputChannel.info("Shader View extension activated successfully");
 	} catch (error) {

@@ -4,24 +4,30 @@ export class MessageHandler {
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     private diagnosticCollection: vscode.DiagnosticCollection,
-  ) {}
+  ) { }
 
   public handleMessage(message: any): void {
-    switch (message.type) {
-      case "log":
-        this.handleLogMessage(message);
-        break;
-      case "debug":
-        this.handleDebugMessage(message);
-        break;
-      case "error":
-        this.handleErrorMessage(message);
-        break;
-      case "toggleLock":
-        this.handleToggleLock();
-        break;
-      default:
-        this.outputChannel.debug(`Unknown message type: ${message.type}`);
+    try {
+      switch (message.type) {
+        case "log":
+          this.handleLogMessage(message);
+          break;
+        case "debug":
+          this.handleDebugMessage(message);
+          break;
+        case "error":
+          this.handleErrorMessage(message);
+          break;
+        case "toggleLock":
+          this.handleToggleLock();
+          break;
+        default:
+          this.outputChannel.debug(`Unknown message type: ${message.type}`);
+      }
+    } catch (error) {
+      console.error('MessageHandler: Error processing message:', error);
+      console.error('Message:', message);
+      this.outputChannel.error(`Message handling error: ${error}`);
     }
   }
 
@@ -55,14 +61,12 @@ export class MessageHandler {
     errorText = errorText.slice(0, -1);
     this.outputChannel.error(errorText);
 
-    // Try to extract GLSL error line (e.g., ERROR: 0:29: ...)
     const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
     const editor = vscode.window.activeTextEditor;
     if (match && editor && editor.document.languageId === "glsl") {
       const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
       const range = editor.document.lineAt(lineNum).range;
 
-      // Set diagnostic
       const diagnostic = new vscode.Diagnostic(
         range,
         errorText,
@@ -70,7 +74,6 @@ export class MessageHandler {
       );
       this.diagnosticCollection.set(editor.document.uri, [diagnostic]);
     } else if (editor) {
-      // Clear diagnostics if no error
       this.diagnosticCollection.delete(editor.document.uri);
     }
   }

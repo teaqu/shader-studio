@@ -6,13 +6,14 @@ import { TimeManager } from "./input/TimeManager";
 import { KeyboardManager } from "./input/KeyboardManager";
 import { MouseManager } from "./input/MouseManager";
 import { ShaderPipeline } from "./rendering/ShaderPipeline";
-import { ShaderMessageHandler } from "./communication/ShaderMessageHandler";
+import { MessageHandler } from "./transport/MessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
 import { FrameRenderer } from "./rendering/FrameRenderer";
 import type { PiRenderer } from "./types/piRenderer";
+import type { Transport } from "./transport/Transport";
 
 export class ShaderView {
-  private vscode: any;
+  private transport: Transport;
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
   
@@ -23,12 +24,12 @@ export class ShaderView {
   private keyboardManager!: KeyboardManager;
   private mouseManager!: MouseManager;
   private shaderPipeline!: ShaderPipeline;
-  private shaderMessageHandler!: ShaderMessageHandler;
+  private messageHandler!: MessageHandler;
   private passRenderer!: PassRenderer;
   private renderLoopManager!: FrameRenderer;
 
-  constructor(vscode: any) {
-    this.vscode = vscode;
+  constructor(transport: Transport) {
+    this.transport = transport;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -36,7 +37,7 @@ export class ShaderView {
     
     const gl = glCanvas.getContext("webgl2");
     if (!gl) {
-      this.vscode.postMessage({
+      this.transport.postMessage({
         type: "error",
         payload: ["❌ WebGL2 not supported"],
       });
@@ -47,7 +48,7 @@ export class ShaderView {
       this.renderer = piRenderer();
       const success = this.renderer.Initialize(gl);
       if (!success) {
-        this.vscode.postMessage({
+        this.transport.postMessage({
           type: "error",
           payload: ["❌ piRenderer could not initialize"],
         });
@@ -87,21 +88,21 @@ export class ShaderView {
         glCanvas,
       );
       
-      this.shaderMessageHandler = new ShaderMessageHandler(
+      this.messageHandler = new MessageHandler(
         this.shaderPipeline,
         this.timeManager,
         this.renderLoopManager,
-        this.vscode,
+        this.transport,
       );
 
-      this.vscode.postMessage({
+      this.transport.postMessage({
         type: "debug",
         payload: ["Svelte with piLibs initialized"],
       });
 
       return true;
     } catch (err) {
-      this.vscode.postMessage({
+      this.transport.postMessage({
         type: "error",
         payload: ["❌ Renderer initialization failed:", err],
       });
@@ -138,14 +139,14 @@ export class ShaderView {
     event: MessageEvent,
     onLockChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
-    return await this.shaderMessageHandler.handleShaderMessage(
+    return await this.messageHandler.handleShaderMessage(
       event,
       onLockChange,
     );
   }
 
   handleReset(onComplete?: () => void): void {
-    this.shaderMessageHandler.reset(() => {
+    this.messageHandler.reset(() => {
       if (onComplete) {
         onComplete();
       }
@@ -157,7 +158,7 @@ export class ShaderView {
   }
 
   handleToggleLock(): void {
-    this.vscode.postMessage({ type: "toggleLock" });
+    this.transport.postMessage({ type: "toggleLock" });
   }
 
   stopRenderLoop(): void {
@@ -181,7 +182,7 @@ export class ShaderView {
   }
 
   getLastShaderEvent(): MessageEvent | null {
-    return this.shaderMessageHandler.getLastEvent();
+    return this.messageHandler.getLastEvent();
   }
 
   dispose(): void {

@@ -1,21 +1,25 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  
+  import { onMount } from "svelte";
+
   export let keyboardManager: any;
   export let mouseManager: any;
-  
+
   export let onCanvasReady: (canvas: HTMLCanvasElement) => void = () => {};
-  export let onCanvasResize: (data: { width: number, height: number }) => void = () => {};
-  
+  export let onCanvasResize: (data: {
+    width: number;
+    height: number;
+  }) => void = () => {};
+
   let glCanvas: HTMLCanvasElement;
-  
+
   onMount(() => {
     const container = glCanvas.parentElement!;
-    
+
     function resizeCanvasToFit16x9() {
       const container = glCanvas.parentElement!;
       const styles = getComputedStyle(container);
-      const paddingX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const paddingX =
+        parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
 
       const w = container.clientWidth - paddingX;
       const h = container.clientHeight;
@@ -32,8 +36,13 @@
 
       glCanvas.style.width = `${newWidth}px`;
       glCanvas.style.height = `${newHeight}px`;
+
+      // Render at full device pixel ratio resolution
       const scaleFactor = window.devicePixelRatio;
-      onCanvasResize({ width: newWidth * scaleFactor, height: newHeight * scaleFactor });
+      const renderWidth = Math.floor(newWidth * scaleFactor);
+      const renderHeight = Math.floor(newHeight * scaleFactor);
+
+      onCanvasResize({ width: renderWidth, height: renderHeight });
     }
 
     const resizeObserver = new ResizeObserver(resizeCanvasToFit16x9);

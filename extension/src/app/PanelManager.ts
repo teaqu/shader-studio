@@ -5,6 +5,7 @@ import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./communication/Messenger";
 import { WebviewTransport } from "./communication/WebviewTransport";
 import { Logger } from "./services/Logger";
+import { ShaderUtils } from "./util/ShaderUtils";
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
@@ -27,7 +28,7 @@ export class PanelManager {
   }
 
   public createShaderView(): void {
-    const editor = vscode.window.activeTextEditor ??
+    const editor = ShaderUtils.getActiveGLSLEditor() ??
       vscode.window.visibleTextEditors.find((e) =>
         e.document.languageId === "glsl" ||
         e.document.fileName.endsWith(".glsl")
@@ -37,15 +38,12 @@ export class PanelManager {
       return;
     }
 
-    // Check for empty tab groups first
     const layout = vscode.window.tabGroups.all;
     const emptyGroup = layout.find(group => group.tabs.length === 0);
-    
+
     if (emptyGroup) {
-      // Open in the first empty group found
       this.createWebviewPanelInColumn(editor, emptyGroup.viewColumn);
     } else {
-      // Fallback to default behavior (beside current)
       this.createWebviewPanel(editor);
     }
   }
@@ -84,16 +82,14 @@ export class PanelManager {
 
     this.setupWebviewHtml();
 
-    // Send shader on first load
     setTimeout(
       () => this.shaderProcessor.sendShaderToWebview(editor),
       200,
     );
 
-    // Dispose handler
     this.panel.onDidDispose(() => {
+      this.messenger.removeTransport(webviewTransport);
       this.panel = undefined;
-      // Note: messenger is shared, don't set to undefined
     });
 
     this.logger.info("Webview panel created");

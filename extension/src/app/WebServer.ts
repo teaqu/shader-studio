@@ -1,13 +1,20 @@
 import * as vscode from "vscode";
+import * as http from "http";
+import * as fs from "fs";
+import * as path from "path";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./communication/Messenger";
 import { WebSocketTransport } from "./communication/WebSocketTransport";
 import { Logger } from "./services/Logger";
 
 export class WebServer {
-  private wsPort: number = 8080;
+  private wsPort: number = 51472;
+  private httpPort: number = 3000;
   private logger!: Logger;
   private isServerRunning = false;
+  private httpServer: http.Server | null = null;
+  private wsTransport: WebSocketTransport | null = null;
+  private statusBarItem: vscode.StatusBarItem | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -15,34 +22,136 @@ export class WebServer {
     private shaderProcessor: ShaderProcessor,
   ) {
     this.logger = Logger.getInstance();
+    this.createStatusBarItem();
+  }
+
+  private createStatusBarItem(): void {
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    this.statusBarItem.command = 'shader-view.showWebServerMenu';
+    this.statusBarItem.tooltip = 'Shader View Web Server - Click for options';
+    this.context.subscriptions.push(this.statusBarItem);
+  }
+
+  private updateStatusBarItem(): void {
+    if (!this.statusBarItem) {
+      return;
+    }
+
+    if (this.isServerRunning) {
+      this.statusBarItem.text = "$(broadcast) Shader Server";
+      this.statusBarItem.backgroundColor = undefined;
+      this.statusBarItem.show();
+    } else {
+      this.statusBarItem.hide();
+    }
   }
 
   public startWebServer(): void {
-    // will create an actual webserver at some when ready...
-
     if (this.isServerRunning) {
       this.logger.info("Web server already running");
       return;
     }
 
     try {
-      // Add WebSocket transport to the shared message transporter
-      const wsTransport = new WebSocketTransport(this.wsPort);
-      this.messenger.addTransport(wsTransport);
-      
-      this.isServerRunning = true;
+      this.logger.info(`Starting WebSocket server on port ${this.wsPort}`);
 
+      this.wsTransport = new WebSocketTransport(this.wsPort);
+      this.messenger.addTransport(this.wsTransport);
+      this.logger.info("WebSocket transport added to messenger");
+
+      this.startHttpServer();
+
+      this.isServerRunning = true;
+      this.updateStatusBarItem();
       this.logger.info(`WebSocket server started on port ${this.wsPort}`);
+      this.logger.info(`HTTP server started on port ${this.httpPort}`);
     } catch (error) {
-      this.logger.error(`Failed to start WebSocket server: ${error}`);
+      this.logger.error(`Failed to start web server: ${error}`);
+      this.isServerRunning = false;
+      if (this.wsTransport) {
+        this.wsTransport.close();
+        this.wsTransport = null;
+      }
+      throw error;
     }
+  }
+
+  private startHttpServer(): void {
+    if (this.httpServer) {
+      this.logger.warn("HTTP server already exists, closing previous instance");
+      this.httpServer.close();
+    }
+
+    const workspaceUri = vscode.Uri.joinPath(this.context.extensionUri, '..');
+    const uiDistPath = vscode.Uri.joinPath(workspaceUri, 'ui', 'dist').fsPath;
+
+    this.httpServer = http.createServer((req, res) => {
+      let filePath = path.join(uiDistPath, req.url === '/' ? 'index.html' : req.url || '');
+
+      const resolvedPath = path.resolve(filePath);
+      const resolvedDistPath = path.resolve(uiDistPath);
+      if (!resolvedPath.startsWith(resolvedDistPath)) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
+
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('File not found');
+          return;
+        }
+
+        const ext = path.extname(filePath);
+        let contentType = 'text/html';
+        switch (ext) {
+          case '.js':
+            contentType = 'application/javascript';
+            break;
+          case '.css':
+            contentType = 'text/css';
+            break;
+          case '.json':
+            contentType = 'application/json';
+            break;
+          case '.png':
+            contentType = 'image/png';
+            break;
+          case '.jpg':
+          case '.jpeg':
+            contentType = 'image/jpeg';
+            break;
+        }
+
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+      });
+    });
+
+    this.httpServer.listen(this.httpPort, () => {
+      this.logger.info(`HTTP server listening on port ${this.httpPort}`);
+    });
+
+    this.httpServer.on('error', (error) => {
+      this.logger.error(`HTTP server error: ${error}`);
+    });
   }
 
   public stopWebServer(): void {
     if (this.isServerRunning) {
-      this.messenger.close();
+      if (this.wsTransport) {
+        this.messenger.removeTransport(this.wsTransport);
+        this.wsTransport.close();
+        this.wsTransport = null;
+      }
+      if (this.httpServer) {
+        this.httpServer.close();
+        this.httpServer = null;
+      }
       this.isServerRunning = false;
-      this.logger.info("WebSocket server stopped");
+      this.updateStatusBarItem();
+      this.logger.info("WebSocket and HTTP servers stopped");
     }
   }
 
@@ -57,5 +166,50 @@ export class WebServer {
 
   public isRunning(): boolean {
     return this.isServerRunning;
+  }
+
+  public getHttpUrl(): string {
+    return `http://localhost:${this.httpPort}`;
+  }
+
+  public async showWebServerMenu(): Promise<void> {
+    const items = [
+      {
+        label: '$(globe) Open in Browser',
+        description: `${this.getHttpUrl()}`,
+        action: 'open'
+      },
+      {
+        label: '$(copy) Copy URL',
+        description: 'Copy server URL to clipboard',
+        action: 'copy'
+      },
+      {
+        label: '$(stop-circle) Stop Server',
+        description: 'Stop the Shader View web server',
+        action: 'stop'
+      }
+    ];
+
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Shader View Web Server Options',
+      title: `Web Server Running on ${this.getHttpUrl()}`
+    });
+
+    if (selected) {
+      switch (selected.action) {
+        case 'open':
+          await vscode.env.openExternal(vscode.Uri.parse(this.getHttpUrl()));
+          break;
+        case 'copy':
+          await vscode.env.clipboard.writeText(this.getHttpUrl());
+          vscode.window.showInformationMessage('Server URL copied to clipboard');
+          break;
+        case 'stop':
+          this.stopWebServer();
+          vscode.window.showInformationMessage('Shader View web server stopped');
+          break;
+      }
+    }
   }
 }

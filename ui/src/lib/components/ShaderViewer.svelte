@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { ShaderView } from "../ShaderView";
+  import { createTransport } from "../transport/TransportFactory";
+  import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
@@ -19,11 +21,10 @@
   let canvasHeight = 0;
 
   let shaderView: ShaderView;
+  let transport: Transport;
   let timeManager: any = null;
   let keyboardManager: any = null;
   let mouseManager: any = null;
-
-  const vscode = acquireVsCodeApi();
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -65,7 +66,10 @@
 
   async function initializeApp() {
     try {
-      shaderView = new ShaderView(vscode);
+      // Create the appropriate transport
+      transport = createTransport();
+
+      shaderView = new ShaderView(transport);
 
       const success = await shaderView.initialize(glCanvas);
       if (!success) {
@@ -73,7 +77,7 @@
         return;
       }
 
-      window.addEventListener("message", handleShaderMessage);
+      transport.onMessage(handleShaderMessage);
 
       timeManager = shaderView.getTimeManager();
       keyboardManager = shaderView.getKeyboardManager();
@@ -95,14 +99,23 @@
         isLocked = locked;
       });
     } catch (err) {
-      addError(`Shader message handling failed: ${err}`);
+      const errorMsg = `Shader message handling failed: ${err}`;
+      console.error("ShaderViewer: Error in handleShaderMessage:", err);
+      console.error(
+        "ShaderViewer: Error stack:",
+        err instanceof Error ? err.stack : "No stack",
+      );
+      console.error("ShaderViewer: Event data:", event.data);
+      addError(errorMsg);
     }
   }
 
   function addError(message: string) {
     errors = [...errors, message];
     showErrors = true;
-    vscode.postMessage({ type: "error", payload: [message] });
+    if (transport) {
+      transport.postMessage({ type: "error", payload: [message] });
+    }
   }
 
   onMount(() => {
@@ -115,10 +128,12 @@
     return () => clearInterval(fpsInterval);
   });
 
-  // Clean up resources when component is destroyed
   onDestroy(() => {
     if (shaderView) {
       shaderView.dispose();
+    }
+    if (transport) {
+      transport.dispose();
     }
   });
 </script>

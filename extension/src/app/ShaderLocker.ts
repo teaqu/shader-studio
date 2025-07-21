@@ -54,9 +54,7 @@ export class ShaderLocker {
   }
 
   public shouldAutoLock(newEditor: vscode.TextEditor): boolean {
-    // If we're not locked and there's a currently previewed editor
     if (!this.isLocked && this.currentlyPreviewedEditor) {
-      // If the new active editor is not a GLSL file, auto-lock to the currently previewed editor
       if (
         newEditor.document.languageId !== "glsl" &&
         !newEditor.document.fileName.endsWith(".glsl")
@@ -64,13 +62,12 @@ export class ShaderLocker {
         this.isLocked = true;
         this.lockedEditor = this.currentlyPreviewedEditor;
         vscode.window.showInformationMessage(
-          `Shader View auto-locked to ${
-            path.basename(
-              this.currentlyPreviewedEditor.document.uri.fsPath,
-            )
+          `Shader View auto-locked to ${path.basename(
+            this.currentlyPreviewedEditor.document.uri.fsPath,
+          )
           }.`,
         );
-        return true; // Indicate that auto-lock occurred
+        return true;
       }
     }
     return false;
@@ -94,7 +91,6 @@ export class ShaderLocker {
         return false;
       })
       .sort((a, b) => {
-        // Sort by most recently active (activeTab first, then by tab order)
         if (a.isActive) {
           return -1;
         }
@@ -107,7 +103,6 @@ export class ShaderLocker {
     if (
       glslTabs.length > 0 && glslTabs[0].input instanceof vscode.TabInputText
     ) {
-      // Find the editor for the most recent GLSL tab
       const mostRecentGlslUri = glslTabs[0].input.uri;
       const mostRecentEditor = vscode.window.visibleTextEditors.find(
         (editor) => editor.document.uri.fsPath === mostRecentGlslUri.fsPath,
@@ -118,11 +113,9 @@ export class ShaderLocker {
       } else if (
         vscode.window.activeTextEditor?.document.languageId === "glsl"
       ) {
-        // Fallback to active editor if it's GLSL
         this.sendShaderCallback(vscode.window.activeTextEditor);
       }
     } else if (vscode.window.activeTextEditor?.document.languageId === "glsl") {
-      // Fallback to active editor if it's GLSL
       this.sendShaderCallback(vscode.window.activeTextEditor);
     }
   }

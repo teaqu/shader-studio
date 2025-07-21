@@ -13,11 +13,24 @@ export class WebviewTransport implements MessageTransport {
   }
 
   public send(message: any): void {
-    this.panel.webview.postMessage(message);
+    try {
+      if (this.panel.webview) {
+        this.panel.webview.postMessage(message);
+      }
+    } catch (error) {
+      console.log('Webview transport: panel disposed, message not sent');
+    }
   }
 
   public convertUriForClient(filePath: string): string {
-    return this.panel.webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
+    try {
+      if (this.panel.webview) {
+        return this.panel.webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
+      }
+      return filePath;
+    } catch (error) {
+      return filePath;
+    }
   }
 
   public close(): void {

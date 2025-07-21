@@ -14,12 +14,33 @@ export class Messenger {
   }
 
   public send(message: any): void {
-    // Send to all transports
-    this.transports.forEach(transport => transport.send(message));
+    try {
+      const messageStr = JSON.stringify(message);
+      const messageSize = new Blob([messageStr]).size;
+
+      if (message.type === 'shader') {
+        console.log(`Messenger: Sending shader message (${messageSize} bytes) to ${this.transports.length} transports`);
+        if (message.payload && message.payload.code) {
+          console.log(`Messenger: Shader code length: ${message.payload.code.length} characters`);
+        }
+      } else {
+        console.log(`Messenger: Sending ${message.type} (${messageSize} bytes) to ${this.transports.length} transports`);
+      }
+
+      // Send to all transports
+      this.transports.forEach((transport, index) => {
+        try {
+          transport.send(message);
+        } catch (error) {
+          console.error(`Messenger: Error sending to transport ${index}:`, error);
+        }
+      });
+    } catch (error) {
+      console.error('Messenger: Error in send method:', error);
+    }
   }
 
   public convertUriForClient(filePath: string): string {
-    // Use the first transport's URI conversion, or could be made context-aware
     return this.transports[0]?.convertUriForClient(filePath) || filePath;
   }
 
