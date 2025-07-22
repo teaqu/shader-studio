@@ -18,3 +18,8 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Electron build output
+/electron/out/
+/electron/out/make/
+/electron/ui/

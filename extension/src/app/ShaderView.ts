@@ -4,17 +4,21 @@ import { WebServer } from "./WebServer";
 import { ShaderLocker } from "./ShaderLocker";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./communication/Messenger";
+import { WebSocketTransport } from "./communication/WebSocketTransport";
 import { Logger } from "./services/Logger";
 import { ShaderUtils } from "./util/ShaderUtils";
+import { ElectronLauncher } from "./ElectronLauncher";
 
 export class ShaderExtension {
   private panelManager: PanelManager;
   private webServer: WebServer;
+  private webSocketTransport: WebSocketTransport | null = null;
   private shaderLocker: ShaderLocker;
   private shaderProcessor: ShaderProcessor;
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
   private logger!: Logger;
+  private electronLauncher: ElectronLauncher;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -31,6 +35,9 @@ export class ShaderExtension {
     this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor);
     this.webServer = new WebServer(context, this.messenger, this.shaderProcessor);
     this.shaderLocker = new ShaderLocker((editor: vscode.TextEditor) => this.sendShaderCallback(editor));
+    this.electronLauncher = new ElectronLauncher(context, this.logger);
+
+    this.startWebSocketTransport();
 
     this.registerCommands();
     this.registerEventHandlers();
@@ -42,7 +49,22 @@ export class ShaderExtension {
 
   public dispose(): void {
     this.webServer.stopWebServer();
+    if (this.webSocketTransport) {
+      this.messenger.removeTransport(this.webSocketTransport);
+      this.webSocketTransport.close();
+      this.webSocketTransport = null;
+    }
     this.logger.info("Shader extension disposed");
+  }
+
+  private startWebSocketTransport(): void {
+    try {
+      this.webSocketTransport = new WebSocketTransport(51472);
+      this.messenger.addTransport(this.webSocketTransport);
+      this.logger.info("WebSocket transport started");
+    } catch (error) {
+      this.logger.error(`Failed to start WebSocket transport: ${error}`);
+    }
   }
 
   private async startWebServer(): Promise<void> {
@@ -238,34 +260,7 @@ export class ShaderExtension {
   }
 
   private async openInElectron(): Promise<void> {
-    try {
-
-      const path = await import('path');
-
-      this.logger.info(`Attempting to launch Electron (always on top) with URL: http://localhost:3000`);
-
-      const extensionDir = path.dirname(this.context.extensionUri.fsPath);
-      const extensionSubDir = path.join(extensionDir, 'extension');
-      const localElectronPath = path.join(extensionSubDir, 'node_modules', '.bin', 'electron');
-      const launcherScript = path.join(extensionSubDir, 'src', 'electron', 'electron-launch.js');
-      this.logger.info(`Checking Electron binary at: ${localElectronPath}`);
-      this.logger.info(`Checking launcher script at: ${launcherScript}`);
-      this.logger.info(`Terminal working directory: ${extensionSubDir}`);
-
-      const terminal = vscode.window.createTerminal({
-        name: 'Open in Electron',
-        cwd: extensionSubDir,
-        hideFromUser: true
-      });
-      terminal.sendText(`"${localElectronPath}" "${launcherScript}" http://localhost:3000`);
-
-      this.logger.info('Opened VS Code terminal to launch Electron with always-on-top.');
-      vscode.window.showInformationMessage('Opened terminal to launch Electron (always on top) for http://localhost:3000');
-
-    } catch (error) {
-      this.logger.error(`Failed to launch Electron: ${error}`);
-      vscode.window.showErrorMessage(`Failed to launch Electron: ${error}`);
-    }
+    await this.electronLauncher.launch();
   }
 
 }

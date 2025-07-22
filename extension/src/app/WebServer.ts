@@ -4,17 +4,14 @@ import * as fs from "fs";
 import * as path from "path";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./communication/Messenger";
-import { WebSocketTransport } from "./communication/WebSocketTransport";
 import { Logger } from "./services/Logger";
 import { ShaderViewStatusBar } from "./ShaderViewStatusBar";
 
 export class WebServer {
-  private wsPort: number = 51472;
   private httpPort: number = 3000;
   private logger!: Logger;
   private isServerRunning = false;
   private httpServer: http.Server | null = null;
-  private wsTransport: WebSocketTransport | null = null;
   private statusBar: ShaderViewStatusBar;
 
   constructor(
@@ -33,25 +30,16 @@ export class WebServer {
     }
 
     try {
-      this.logger.info(`Starting WebSocket server on port ${this.wsPort}`);
-
-      this.wsTransport = new WebSocketTransport(this.wsPort);
-      this.messenger.addTransport(this.wsTransport);
-      this.logger.info("WebSocket transport added to messenger");
+      this.logger.info(`Starting HTTP server on port ${this.httpPort}`);
 
       this.startHttpServer();
 
       this.isServerRunning = true;
       this.statusBar.updateServerStatus(true, this.httpPort);
-      this.logger.info(`WebSocket server started on port ${this.wsPort}`);
       this.logger.info(`HTTP server started on port ${this.httpPort}`);
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
       this.isServerRunning = false;
-      if (this.wsTransport) {
-        this.wsTransport.close();
-        this.wsTransport = null;
-      }
       throw error;
     }
   }
@@ -120,11 +108,6 @@ export class WebServer {
 
   public stopWebServer(): void {
     if (this.isServerRunning) {
-      if (this.wsTransport) {
-        this.messenger.removeTransport(this.wsTransport);
-        this.wsTransport.close();
-        this.wsTransport = null;
-      }
       if (this.httpServer) {
         this.httpServer.close();
         this.httpServer = null;

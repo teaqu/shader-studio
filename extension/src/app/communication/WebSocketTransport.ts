@@ -1,7 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { MessageTransport } from "./MessageTransport";
-import * as vscode from "vscode";
-import * as path from "path";
 import { ShaderUtils } from "../util/ShaderUtils";
 
 export class WebSocketTransport implements MessageTransport {

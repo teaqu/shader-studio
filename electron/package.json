@@ -1,0 +1,23 @@
+{
+  "name": "shader-view-electron",
+  "version": "1.0.0",
+  "main": "electron-launch.js",
+  "private": true,
+  "dependencies": {
+  },
+  "scripts": {
+    "start": "electron electron-launch.js",
+    "build-ui": "cd ../ui && rm -rf dist && npx vite build --base ./ && cp -r dist/* ../electron/ui/",
+    "prebuild": "npm run build-ui",
+    "package": "npm run build-ui && npx electron-forge package",
+    "make": "npm run build-ui && npx electron-forge make"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-deb": "^7.8.1",
+    "@electron-forge/maker-dmg": "^7.8.1",
+    "@electron-forge/maker-rpm": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1"
+  }
+}
