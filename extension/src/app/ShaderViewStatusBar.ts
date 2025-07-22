@@ -59,6 +59,11 @@ export class ShaderViewStatusBar {
             description: 'Show the Shader View panel',
             action: 'show-panel'
         });
+        items.push({
+            label: '$(device-desktop) Open in Electron',
+            description: 'Launch Electron app pointing to localhost:3000',
+            action: 'open-electron'
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Shader View Actions',
@@ -81,6 +86,9 @@ export class ShaderViewStatusBar {
                     break;
                 case 'show-panel':
                     await vscode.commands.executeCommand('shader-view.view');
+                    break;
+                case 'open-electron':
+                    await vscode.commands.executeCommand('shader-view.openInElectron');
                     break;
             }
         }
