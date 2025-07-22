@@ -46,6 +46,8 @@ export class PassRenderer {
 
     this.renderer.SetShaderConstant3FV("iResolution", uniforms.res);
     this.renderer.SetShaderConstant1F("iTime", uniforms.time);
+    this.renderer.SetShaderConstant1F("iTimeDelta", uniforms.timeDelta);
+    this.renderer.SetShaderConstant1F("iFrameRate", uniforms.frameRate);
     this.renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
 

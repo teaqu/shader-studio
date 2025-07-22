@@ -11,7 +11,8 @@ export class FrameRenderer {
   private running = false;
   private fpsCounter: any;
   private currentFPS = 0;
-  
+  private currentFrameTime = 0;
+
   private timeManager: TimeManager;
   private keyboardManager: KeyboardManager;
   private mouseManager: MouseManager;
@@ -58,7 +59,9 @@ export class FrameRenderer {
         this.glCanvas.height,
         this.glCanvas.width / this.glCanvas.height,
       ]),
-      time: this.timeManager.getCurrentTime(performance.now()),
+      time: this.timeManager.getCurrentTime(this.currentFrameTime),
+      timeDelta: this.timeManager.getDeltaTime(),
+      frameRate: this.currentFPS, // Use the existing FPS counter
       mouse: this.mouseManager.getMouse(),
       frame: this.timeManager.getFrame(),
     };
@@ -66,7 +69,7 @@ export class FrameRenderer {
 
   public startRenderLoop(): void {
     if (this.running) return; // Already running
-    
+
     this.running = true;
 
     const render = (time: number) => {
@@ -89,13 +92,17 @@ export class FrameRenderer {
   public render(time: number): void {
     if (!this.running) return;
 
+    this.currentFrameTime = time;
+
     if (this.timeManager.getFrame() === 0) {
       this.fpsCounter.Reset(time);
     }
 
-    if (this.fpsCounter.Count(time)) {
+    if (!this.timeManager.isPaused() && this.fpsCounter.Count(time)) {
       this.currentFPS = this.fpsCounter.GetFPS();
     }
+
+    this.timeManager.updateFrame(time);
 
     const uniforms = this.getUniforms();
     const passes = this.shaderPipeline.getPasses();
@@ -133,18 +140,21 @@ export class FrameRenderer {
     }
 
     this.keyboardManager.clearPressed();
-    this.timeManager.incrementFrame();
+
+    if (!this.timeManager.isPaused()) {
+      this.timeManager.incrementFrame();
+    }
   }
 
   public renderSinglePass(pass: Pass): void {
     const uniforms = this.getUniforms();
     const shader = this.shaderPipeline.getPassShader(pass.name) || null;
-    
+
     this.passRenderer.renderPass(
-      pass, 
-      null, 
-      shader, 
-      uniforms, 
+      pass,
+      null,
+      shader,
+      uniforms,
     );
   }
 }

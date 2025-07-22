@@ -1,7 +1,7 @@
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 
 export class ShaderCompiler {
-  constructor(private renderer: PiRenderer) {}
+  constructor(private renderer: PiRenderer) { }
 
   public wrapShaderToyCode(
     code: string,
@@ -18,6 +18,12 @@ export class ShaderCompiler {
     const injectFrame = !/uniform\s+int\s+iFrame\s*;/.test(code)
       ? `uniform int iFrame;\n`
       : "";
+    const injectTimeDelta = !/uniform\s+float\s+iTimeDelta\s*;/.test(code)
+      ? `uniform float iTimeDelta;\n`
+      : "";
+    const injectFrameRate = !/uniform\s+float\s+iFrameRate\s*;/.test(code)
+      ? `uniform float iFrameRate;\n`
+      : "";
 
     const header = `
     precision highp float;
@@ -25,6 +31,8 @@ export class ShaderCompiler {
 
     uniform vec3 iResolution;
     uniform float iTime;
+    ${injectTimeDelta}
+    ${injectFrameRate}
     ${injectChannels}
     ${injectMouse}
     ${injectFrame}`;
