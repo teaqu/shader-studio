@@ -3,7 +3,6 @@
   import { currentTheme, toggleTheme } from "../stores/themeStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   
-  // Import SVG assets
   import resetIcon from '../../assets/reset.svg?raw';
   import playIcon from '../../assets/play.svg?raw';
   import pauseIcon from '../../assets/pause.svg?raw';
