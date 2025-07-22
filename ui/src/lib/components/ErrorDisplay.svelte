@@ -2,7 +2,6 @@
   export let errors: string[] = [];
   export let isVisible: boolean = false;
   
-  // Callback prop instead of event dispatcher
   export let onDismiss: () => void = () => {};
   
   function handleDismiss() {
