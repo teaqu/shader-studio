@@ -60,8 +60,8 @@ export class PanelManager {
     const shaderDir = vscode.Uri.file(path.dirname(editor.document.uri.fsPath));
 
     this.panel = vscode.window.createWebviewPanel(
-      "shaderToy",
-      "ShaderToy",
+      "shaderView",
+      "Shader View",
       viewColumn,
       {
         enableScripts: true,

@@ -6,6 +6,7 @@ import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./communication/Messenger";
 import { WebSocketTransport } from "./communication/WebSocketTransport";
 import { Logger } from "./services/Logger";
+import { ShaderViewStatusBar } from "./ShaderViewStatusBar";
 
 export class WebServer {
   private wsPort: number = 51472;
@@ -14,7 +15,7 @@ export class WebServer {
   private isServerRunning = false;
   private httpServer: http.Server | null = null;
   private wsTransport: WebSocketTransport | null = null;
-  private statusBarItem: vscode.StatusBarItem | null = null;
+  private statusBar: ShaderViewStatusBar;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -22,28 +23,7 @@ export class WebServer {
     private shaderProcessor: ShaderProcessor,
   ) {
     this.logger = Logger.getInstance();
-    this.createStatusBarItem();
-  }
-
-  private createStatusBarItem(): void {
-    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    this.statusBarItem.command = 'shader-view.showWebServerMenu';
-    this.statusBarItem.tooltip = 'Shader View Web Server - Click for options';
-    this.context.subscriptions.push(this.statusBarItem);
-  }
-
-  private updateStatusBarItem(): void {
-    if (!this.statusBarItem) {
-      return;
-    }
-
-    if (this.isServerRunning) {
-      this.statusBarItem.text = "$(broadcast) Shader Server";
-      this.statusBarItem.backgroundColor = undefined;
-      this.statusBarItem.show();
-    } else {
-      this.statusBarItem.hide();
-    }
+    this.statusBar = new ShaderViewStatusBar(context);
   }
 
   public startWebServer(): void {
@@ -62,7 +42,7 @@ export class WebServer {
       this.startHttpServer();
 
       this.isServerRunning = true;
-      this.updateStatusBarItem();
+      this.statusBar.updateServerStatus(true, this.httpPort);
       this.logger.info(`WebSocket server started on port ${this.wsPort}`);
       this.logger.info(`HTTP server started on port ${this.httpPort}`);
     } catch (error) {
@@ -150,7 +130,7 @@ export class WebServer {
         this.httpServer = null;
       }
       this.isServerRunning = false;
-      this.updateStatusBarItem();
+      this.statusBar.updateServerStatus(false);
       this.logger.info("WebSocket and HTTP servers stopped");
     }
   }
@@ -170,6 +150,10 @@ export class WebServer {
 
   public getHttpUrl(): string {
     return `http://localhost:${this.httpPort}`;
+  }
+
+  public getStatusBar(): ShaderViewStatusBar {
+    return this.statusBar;
   }
 
   public async showWebServerMenu(): Promise<void> {

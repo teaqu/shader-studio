@@ -46,7 +46,7 @@ export class ShaderExtension {
     this.logger.info("Shader extension disposed");
   }
 
-  private async startWebServerAndOpenBrowser(): Promise<void> {
+  private async startWebServer(): Promise<void> {
     try {
       this.webServer.startWebServer();
 
@@ -62,11 +62,8 @@ export class ShaderExtension {
         await this.buildUI();
       }
 
-      const httpUrl = this.webServer.getHttpUrl();
-      await vscode.env.openExternal(vscode.Uri.parse(httpUrl));
-
       vscode.window.showInformationMessage(
-        `Shader View web server started on ${httpUrl}. Check the status bar to stop it.`
+        `Shader View web server started.`
       );
 
       const activeEditor = ShaderUtils.getActiveGLSLEditor();
@@ -76,6 +73,37 @@ export class ShaderExtension {
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
       vscode.window.showErrorMessage(`Failed to start Shader View web server: ${error}`);
+    }
+  }
+
+  private async openInBrowser(): Promise<void> {
+    if (!this.webServer.isRunning()) {
+      vscode.window.showWarningMessage('Web server is not running. Start the server first.');
+      return;
+    }
+
+    try {
+      const httpUrl = this.webServer.getHttpUrl();
+      await vscode.env.openExternal(vscode.Uri.parse(httpUrl));
+    } catch (error) {
+      this.logger.error(`Failed to open browser: ${error}`);
+      vscode.window.showErrorMessage(`Failed to open browser: ${error}`);
+    }
+  }
+
+  private async copyServerUrl(): Promise<void> {
+    if (!this.webServer.isRunning()) {
+      vscode.window.showWarningMessage('Web server is not running. Start the server first.');
+      return;
+    }
+
+    try {
+      const httpUrl = this.webServer.getHttpUrl();
+      await vscode.env.clipboard.writeText(httpUrl);
+      vscode.window.showInformationMessage(`Server URL copied to clipboard: ${httpUrl}`);
+    } catch (error) {
+      this.logger.error(`Failed to copy URL: ${error}`);
+      vscode.window.showErrorMessage(`Failed to copy URL: ${error}`);
     }
   }
 
@@ -111,7 +139,21 @@ export class ShaderExtension {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.startWebServer", () => {
         this.logger.info("shader-view.startWebServer command executed");
-        this.startWebServerAndOpenBrowser();
+        this.startWebServer();
+      }),
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.openInBrowser", () => {
+        this.logger.info("shader-view.openInBrowser command executed");
+        this.openInBrowser();
+      }),
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.copyServerUrl", () => {
+        this.logger.info("shader-view.copyServerUrl command executed");
+        this.copyServerUrl();
       }),
     );
 
@@ -127,6 +169,13 @@ export class ShaderExtension {
       vscode.commands.registerCommand("shader-view.showWebServerMenu", () => {
         this.logger.info("shader-view.showWebServerMenu command executed");
         this.webServer.showWebServerMenu();
+      }),
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.showShaderViewMenu", () => {
+        this.logger.info("shader-view.showShaderViewMenu command executed");
+        this.webServer.getStatusBar().showShaderViewMenu();
       }),
     );
   }
