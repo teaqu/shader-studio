@@ -60,8 +60,8 @@ export class ShaderViewStatusBar {
             action: 'show-panel'
         });
         items.push({
-            label: '$(device-desktop) Open in Electron',
-            description: 'Launch Electron app pointing to localhost:3000',
+            label: '$(device-desktop) Open in new window',
+            description: 'Launch Shader View in it\'s own window',
             action: 'open-electron'
         });
 
