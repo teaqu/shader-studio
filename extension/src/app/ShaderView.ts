@@ -33,7 +33,7 @@ export class ShaderExtension {
     this.messenger = new Messenger(outputChannel, diagnosticCollection);
     this.shaderProcessor = new ShaderProcessor(this.messenger);
     this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor);
-    this.webServer = new WebServer(context, this.messenger, this.shaderProcessor);
+    this.webServer = new WebServer(context);
     this.shaderLocker = new ShaderLocker((editor: vscode.TextEditor) => this.sendShaderCallback(editor));
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
@@ -43,11 +43,7 @@ export class ShaderExtension {
     this.registerEventHandlers();
   }
 
-  public initializeDevMode(): void {
-    // Development mode initialization - WebSocket transport is already started
-    // Web server can be started manually via command palette
-    this.logger.info("Development mode initialized - WebSocket transport running for Electron");
-  }
+  public initializeDevMode(): void { }
 
   public dispose(): void {
     this.webServer.stopWebServer();
@@ -90,8 +86,8 @@ export class ShaderExtension {
       );
 
       const activeEditor = ShaderUtils.getActiveGLSLEditor();
-      if (activeEditor && this.webServer.isRunning()) {
-        this.webServer.sendShaderToWebServer(activeEditor, this.shaderLocker.getIsLocked());
+      if (activeEditor) {
+        this.shaderProcessor.sendShaderToWebview(activeEditor, this.shaderLocker.getIsLocked());
       }
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
@@ -246,19 +242,7 @@ export class ShaderExtension {
   private performShaderUpdate(editor: vscode.TextEditor): void {
     const finalEditor = this.shaderLocker.shouldUseLocked(editor);
     this.shaderLocker.setCurrentlyPreviewedEditor(finalEditor);
-
-    const panel = this.panelManager.getPanel();
-    if (panel) {
-      this.panelManager.sendShaderToWebview(finalEditor, this.shaderLocker.getIsLocked());
-      this.logger.info("Shader sent to webview panel");
-    }
-
-    if (this.webServer.isRunning()) {
-      this.webServer.sendShaderToWebServer(finalEditor, this.shaderLocker.getIsLocked());
-      this.logger.info("Shader sent to web server");
-    }
-
-    this.logger.info(`Shader update: Panel=${!!panel}, WebServer=${this.webServer.isRunning()}`);
+    this.shaderProcessor.sendShaderToWebview(finalEditor, this.shaderLocker.getIsLocked());
   }
 
   private async openInElectron(): Promise<void> {

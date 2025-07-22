@@ -2,8 +2,6 @@ import * as vscode from "vscode";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
-import { ShaderProcessor } from "./ShaderProcessor";
-import { Messenger } from "./communication/Messenger";
 import { Logger } from "./services/Logger";
 import { ShaderViewStatusBar } from "./ShaderViewStatusBar";
 
@@ -16,8 +14,6 @@ export class WebServer {
 
   constructor(
     private context: vscode.ExtensionContext,
-    private messenger: Messenger,
-    private shaderProcessor: ShaderProcessor,
   ) {
     this.logger = Logger.getInstance();
     this.statusBar = new ShaderViewStatusBar(context);
@@ -115,15 +111,6 @@ export class WebServer {
       this.isServerRunning = false;
       this.statusBar.updateServerStatus(false);
       this.logger.info("WebSocket and HTTP servers stopped");
-    }
-  }
-
-  public sendShaderToWebServer(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    if (this.isServerRunning) {
-      this.shaderProcessor.sendShaderToWebview(editor, isLocked);
-      this.logger.info("Shader sent to web server clients");
-    } else {
-      this.logger.warn("Web server not running");
     }
   }
 

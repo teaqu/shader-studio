@@ -95,10 +95,6 @@ export class PanelManager {
     this.logger.info("Webview panel created");
   }
 
-  public sendShaderToWebview(editor: vscode.TextEditor, isLocked: boolean = false): void {
-    this.shaderProcessor.sendShaderToWebview(editor, isLocked);
-  }
-
   private setupWebviewHtml(): void {
     if (!this.panel) {
       return;
