@@ -13,6 +13,48 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-theme="light"] {
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #000000;
+  --vscode-sideBar-background: #f8f8f8;
+  --vscode-sideBar-foreground: #1f1f1f;
+  --vscode-panel-border: #e5e5e5;
+  --vscode-list-hoverBackground: #e8e8e8;
+  --vscode-button-background: #005fb8;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #0258a8;
+  --vscode-button-hoverBorder: #005fb8;
+  --vscode-textLink-foreground: #005fb8;
+  --vscode-textLink-activeForeground: #0258a8;
+  --vscode-notifications-background: #ffffff;
+  --vscode-notifications-border: #e5e5e5;
+  --vscode-errorForeground: #a1260d;
+  --vscode-inputValidation-errorBackground: #f1d8d8;
+  --vscode-inputValidation-errorBorder: #a1260d;
+  --vscode-inputValidation-errorForeground: #a1260d;
+}
+
+:root[data-theme="dark"] {
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editor-foreground: #d4d4d4;
+  --vscode-sideBar-background: #252526;
+  --vscode-sideBar-foreground: #cccccc;
+  --vscode-panel-border: #2b2b2b;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-button-background: #0e639c;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #1177bb;
+  --vscode-button-hoverBorder: #0078d4;
+  --vscode-textLink-foreground: #0078d4;
+  --vscode-textLink-activeForeground: #1177bb;
+  --vscode-notifications-background: #2d2d2d;
+  --vscode-notifications-border: #2b2b2b;
+  --vscode-errorForeground: #f48771;
+  --vscode-inputValidation-errorBackground: #5a1d1d;
+  --vscode-inputValidation-errorBorder: #f48771;
+  --vscode-inputValidation-errorForeground: #f48771;
+}
+
 a {
   font-weight: 500;
   color: var(--vscode-textLink-foreground);
@@ -204,17 +246,4 @@ canvas {
 
 .error-dismiss:hover {
   background-color: var(--vscode-button-hoverBackground);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: var(--vscode-editor-foreground);
-    background-color: var(--vscode-editor-background);
-  }
-  a:hover {
-    color: var(--vscode-textLink-activeForeground);
-  }
-  button {
-    background-color: var(--vscode-button-background);
-  }
 }
