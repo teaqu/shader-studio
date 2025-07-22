@@ -10,13 +10,13 @@ import { MessageHandler } from "./transport/MessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
 import { FrameRenderer } from "./rendering/FrameRenderer";
 import type { PiRenderer } from "./types/piRenderer";
-import type { Transport } from "./transport/Transport";
+import type { Transport } from "./transport/MessageTransport";
 
 export class ShaderView {
   private transport: Transport;
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
-  
+
   private shaderCompiler!: ShaderCompiler;
   private resourceManager!: ResourceManager;
   private bufferManager!: BufferManager;
@@ -34,7 +34,7 @@ export class ShaderView {
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
     this.glCanvas = glCanvas;
-    
+
     const gl = glCanvas.getContext("webgl2");
     if (!gl) {
       this.transport.postMessage({
@@ -61,7 +61,7 @@ export class ShaderView {
       this.timeManager = new TimeManager();
       this.keyboardManager = new KeyboardManager();
       this.mouseManager = new MouseManager();
-      
+
       this.shaderPipeline = new ShaderPipeline(
         glCanvas,
         this.shaderCompiler,
@@ -69,7 +69,7 @@ export class ShaderView {
         this.renderer,
         this.bufferManager,
       );
-      
+
       this.passRenderer = new PassRenderer(
         glCanvas,
         this.resourceManager,
@@ -77,7 +77,7 @@ export class ShaderView {
         this.renderer,
         this.keyboardManager,
       );
-      
+
       this.renderLoopManager = new FrameRenderer(
         this.timeManager,
         this.keyboardManager,
@@ -87,7 +87,7 @@ export class ShaderView {
         this.passRenderer,
         glCanvas,
       );
-      
+
       this.messageHandler = new MessageHandler(
         this.shaderPipeline,
         this.timeManager,
