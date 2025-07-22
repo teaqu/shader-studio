@@ -10,12 +10,17 @@
   import sunIcon from '../../assets/sun.svg?raw';
   import lockIcon from '../../assets/lock.svg?raw';
   import unlockIcon from '../../assets/unlock.svg?raw';
+  import fullscreenIcon from '../../assets/fullscreen.svg?raw';
+  
+  // Import piWebUtils functions
+  import { piRequestFullScreen, piIsFullScreen, piExitFullScreen } from '../../../vendor/pilibs/src/piWebUtils.js';
 
   export let timeManager: any;
   export let currentFPS: number;
   export let canvasWidth: number = 0;
   export let canvasHeight: number = 0;
   export let isLocked: boolean = false;
+  export let canvasElement: HTMLCanvasElement | null = null;
 
   export let onReset: () => void = () => {};
   export let onTogglePause: () => void = () => {};
@@ -26,6 +31,7 @@
   let isPaused = false;
   let theme: 'light' | 'dark' = 'light';
   let showThemeButton = false;
+  let showFullscreenButton = false;
 
   onMount(() => {
     timeUpdateInterval = setInterval(() => {
@@ -37,6 +43,7 @@
     }, 16);
 
     showThemeButton = !isVSCodeEnvironment();
+    showFullscreenButton = !isVSCodeEnvironment();
 
     const unsubscribe = currentTheme.subscribe(value => {
       theme = value;
@@ -55,6 +62,29 @@
 
   function handleThemeToggle() {
     toggleTheme();
+  }
+
+  function handleFullscreenToggle() {
+    // For true canvas-only fullscreen like Shadertoy, target the canvas container
+    if (canvasElement) {
+      // Find the .canvas-container parent element
+      let container = canvasElement.parentElement;
+      
+      // Look for the canvas-container class specifically
+      while (container && !container.classList.contains('canvas-container')) {
+        container = container.parentElement;
+      }
+      
+      if (container && container.classList.contains('canvas-container')) {
+        piRequestFullScreen(container);
+      } else {
+        // Fallback to canvas parent if container not found
+        piRequestFullScreen(canvasElement.parentElement || canvasElement);
+      }
+    } else {
+      // Fallback to document element if no canvas
+      piRequestFullScreen(null);
+    }
   }
 </script>
 
@@ -91,5 +121,10 @@
         {@html unlockIcon}
       {/if}
     </button>
+    {#if showFullscreenButton}
+      <button on:click={handleFullscreenToggle} aria-label="Toggle fullscreen">
+        {@html fullscreenIcon}
+      </button>
+    {/if}
   </div>
 </div>

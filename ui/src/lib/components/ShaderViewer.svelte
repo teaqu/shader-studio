@@ -152,6 +152,7 @@
       {canvasWidth}
       {canvasHeight}
       {isLocked}
+      canvasElement={glCanvas}
       onReset={handleReset}
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}

@@ -141,6 +141,31 @@ html, body {
   height: calc(100% - 30px); /* Subtract menubar height */
 }
 
+/* Fullscreen styles for canvas container */
+.canvas-container:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+}
+
+.canvas-container:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+}
+
+.canvas-container:-moz-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+}
+
+.canvas-container:-ms-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+}
+
 canvas {
   display: block;
   background-color: black;
