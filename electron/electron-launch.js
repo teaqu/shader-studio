@@ -21,6 +21,14 @@ function createMenu() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Reload',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            win.webContents.reload();
+          }
+        },
+        { type: 'separator' },
         { role: 'quit' }
       ]
     }
