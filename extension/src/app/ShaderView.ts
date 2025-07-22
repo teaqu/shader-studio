@@ -44,7 +44,9 @@ export class ShaderExtension {
   }
 
   public initializeDevMode(): void {
-    vscode.commands.executeCommand("shader-view.view");
+    // Development mode initialization - WebSocket transport is already started
+    // Web server can be started manually via command palette
+    this.logger.info("Development mode initialized - WebSocket transport running for Electron");
   }
 
   public dispose(): void {

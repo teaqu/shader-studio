@@ -26,13 +26,6 @@ export function activate(context: vscode.ExtensionContext) {
 			shaderExtension.initializeDevMode();
 		}
 
-		setTimeout(() => {
-			if (shaderExtension) {
-				outputChannel.info("Auto-starting web server for debugging...");
-				vscode.commands.executeCommand("shader-view.startWebServer");
-			}
-		}, 2000);
-
 		outputChannel.info("Shader View extension activated successfully");
 	} catch (error) {
 		outputChannel.error(`Failed to activate Shader View extension: ${error}`);
