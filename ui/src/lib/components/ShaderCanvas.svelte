@@ -37,7 +37,6 @@
       glCanvas.style.width = `${newWidth}px`;
       glCanvas.style.height = `${newHeight}px`;
 
-      // Render at full device pixel ratio resolution
       const scaleFactor = window.devicePixelRatio;
       const renderWidth = Math.floor(newWidth * scaleFactor);
       const renderHeight = Math.floor(newHeight * scaleFactor);
