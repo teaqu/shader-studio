@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { aspectRatioStore, type AspectRatioMode } from "../stores/aspectRatioStore";
+  import { qualityStore, type QualityMode } from "../stores/qualityStore";
+  import { AspectRatioCalculator } from "../util/AspectRatioCalculator";
 
   export let keyboardManager: any;
   export let mouseManager: any;
+  export let zoomLevel: number = 1.0;
 
   export let onCanvasReady: (canvas: HTMLCanvasElement) => void = () => {};
   export let onCanvasResize: (data: {
@@ -11,44 +15,52 @@
   }) => void = () => {};
 
   let glCanvas: HTMLCanvasElement;
+  let currentAspectMode: AspectRatioMode = '16:9';
+  let currentQuality: QualityMode = 'HD';
+  let aspectRatioCalculator: AspectRatioCalculator;
+  let resizeCanvasToFitAspectRatio: () => void;
 
   onMount(() => {
     const container = glCanvas.parentElement!;
+    aspectRatioCalculator = new AspectRatioCalculator(container);
 
-    function resizeCanvasToFit16x9() {
-      const container = glCanvas.parentElement!;
-      const styles = getComputedStyle(container);
-      const paddingX =
-        parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+    resizeCanvasToFitAspectRatio = () => {
+      const result = aspectRatioCalculator.calculate(
+        currentAspectMode,
+        currentQuality,
+        zoomLevel
+      );
 
-      const w = container.clientWidth - paddingX;
-      const h = container.clientHeight;
-      const aspect = 16 / 9;
+      glCanvas.style.width = `${result.visualWidth}px`;
+      glCanvas.style.height = `${result.visualHeight}px`;
 
-      let newWidth, newHeight;
-      if (w / h > aspect) {
-        newHeight = h;
-        newWidth = h * aspect;
-      } else {
-        newWidth = w;
-        newHeight = w / aspect;
-      }
+      onCanvasResize({ 
+        width: result.renderWidth, 
+        height: result.renderHeight 
+      });
+    };
 
-      glCanvas.style.width = `${newWidth}px`;
-      glCanvas.style.height = `${newHeight}px`;
-
-      const scaleFactor = window.devicePixelRatio;
-      const renderWidth = Math.floor(newWidth * scaleFactor);
-      const renderHeight = Math.floor(newHeight * scaleFactor);
-
-      onCanvasResize({ width: renderWidth, height: renderHeight });
-    }
-
-    const resizeObserver = new ResizeObserver(resizeCanvasToFit16x9);
+    const resizeObserver = new ResizeObserver(resizeCanvasToFitAspectRatio);
     resizeObserver.observe(container);
-    resizeCanvasToFit16x9();
+    
+    const unsubscribeAspectRatio = aspectRatioStore.subscribe(state => {
+      currentAspectMode = state.mode;
+      resizeCanvasToFitAspectRatio();
+    });
+    
+    const unsubscribeQuality = qualityStore.subscribe(state => {
+      currentQuality = state.mode;
+      resizeCanvasToFitAspectRatio();
+    });
+    
+    resizeCanvasToFitAspectRatio();
     setupInputHandling();
     onCanvasReady(glCanvas);
+    
+    return () => {
+      unsubscribeAspectRatio();
+      unsubscribeQuality();
+    };
   });
 
   function setupInputHandling() {
@@ -63,6 +75,11 @@
 
   $: if (keyboardManager && mouseManager && glCanvas) {
     setupInputHandling();
+  }
+
+  // React to zoom level changes
+  $: if (glCanvas && zoomLevel && resizeCanvasToFitAspectRatio) {
+    resizeCanvasToFitAspectRatio();
   }
 </script>
 

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { currentTheme, toggleTheme } from "../stores/themeStore";
+  import { aspectRatioStore, getAspectRatioLabel, type AspectRatioMode } from "../stores/aspectRatioStore";
+  import { qualityStore, getQualityLabel, type QualityMode } from "../stores/qualityStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   
   import resetIcon from '../../assets/reset.svg?raw';
@@ -12,7 +14,6 @@
   import unlockIcon from '../../assets/unlock.svg?raw';
   import fullscreenIcon from '../../assets/fullscreen.svg?raw';
   
-  // Import piWebUtils functions
   import { piRequestFullScreen, piIsFullScreen, piExitFullScreen } from '../../../vendor/pilibs/src/piWebUtils.js';
 
   export let timeManager: any;
@@ -25,6 +26,9 @@
   export let onReset: () => void = () => {};
   export let onTogglePause: () => void = () => {};
   export let onToggleLock: () => void = () => {};
+  export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
+  export let onQualityChange: (mode: QualityMode) => void = () => {};
+  export let onZoomChange: (zoom: number) => void = () => {};
 
   let currentTime = 0.0;
   let timeUpdateInterval: ReturnType<typeof setInterval>;
@@ -32,12 +36,15 @@
   let theme: 'light' | 'dark' = 'light';
   let showThemeButton = false;
   let showFullscreenButton = false;
+  let currentAspectRatio: AspectRatioMode = '16:9';
+  let currentQuality: QualityMode = 'HD';
+  let showResolutionMenu = false;
+  let zoomLevel = 1.0;
 
   onMount(() => {
     timeUpdateInterval = setInterval(() => {
       if (timeManager) {
         currentTime = timeManager.getCurrentTime(performance.now());
-        // Update pause state reactively
         isPaused = timeManager.isPaused();
       }
     }, 16);
@@ -45,12 +52,22 @@
     showThemeButton = !isVSCodeEnvironment();
     showFullscreenButton = !isVSCodeEnvironment();
 
-    const unsubscribe = currentTheme.subscribe(value => {
+    const unsubscribeTheme = currentTheme.subscribe(value => {
       theme = value;
     });
 
+    const unsubscribeAspectRatio = aspectRatioStore.subscribe(state => {
+      currentAspectRatio = state.mode;
+    });
+
+    const unsubscribeQuality = qualityStore.subscribe(state => {
+      currentQuality = state.mode;
+    });
+
     return () => {
-      unsubscribe();
+      unsubscribeTheme();
+      unsubscribeAspectRatio();
+      unsubscribeQuality();
     };
   });
 
@@ -65,12 +82,9 @@
   }
 
   function handleFullscreenToggle() {
-    // For true canvas-only fullscreen like Shadertoy, target the canvas container
     if (canvasElement) {
-      // Find the .canvas-container parent element
       let container = canvasElement.parentElement;
       
-      // Look for the canvas-container class specifically
       while (container && !container.classList.contains('canvas-container')) {
         container = container.parentElement;
       }
@@ -78,15 +92,44 @@
       if (container && container.classList.contains('canvas-container')) {
         piRequestFullScreen(container);
       } else {
-        // Fallback to canvas parent if container not found
         piRequestFullScreen(canvasElement.parentElement || canvasElement);
       }
     } else {
-      // Fallback to document element if no canvas
       piRequestFullScreen(null);
     }
   }
+
+  function handleResolutionClick() {
+    showResolutionMenu = !showResolutionMenu;
+  }
+
+  function handleAspectRatioSelect(mode: AspectRatioMode) {
+    aspectRatioStore.setMode(mode);
+    onAspectRatioChange(mode);
+  }
+
+  function handleQualitySelect(mode: QualityMode) {
+    qualityStore.setMode(mode);
+    onQualityChange(mode);
+  }
+
+  function handleZoomChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    zoomLevel = parseFloat(target.value);
+    onZoomChange(zoomLevel);
+  }
+
+  function handleClickOutside(event: MouseEvent) {
+    if (showResolutionMenu) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.resolution-menu-container')) {
+        showResolutionMenu = false;
+      }
+    }
+  }
 </script>
+
+<svelte:window on:click={handleClickOutside} />
 
 <div class="menu-bar">
   <div class="left-group">
@@ -100,9 +143,90 @@
         {@html pauseIcon}
       {/if}
     </button>
-    <div class="menu-title">{currentTime.toFixed(2)}</div>
-    <div class="menu-title">{currentFPS.toFixed(1)} FPS</div>
-    <div class="menu-title">{canvasWidth} × {canvasHeight}</div>
+    <div class="menu-title fixed-width">{currentTime.toFixed(2)}</div>
+    <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
+    <div class="resolution-menu-container">
+      <button class="menu-title resolution-button" on:click={handleResolutionClick} aria-label="Change resolution settings">
+        {canvasWidth} × {canvasHeight}
+      </button>
+      {#if showResolutionMenu}
+        <div class="resolution-menu">
+          <div class="resolution-section">
+            <h4>Quality</h4>
+            <button 
+              class="resolution-option" 
+              class:active={currentQuality === 'HD'}
+              on:click={() => handleQualitySelect('HD')}
+            >
+              HD (High Quality)
+            </button>
+            <button 
+              class="resolution-option" 
+              class:active={currentQuality === 'SD'}
+              on:click={() => handleQualitySelect('SD')}
+            >
+              SD (Low Quality)
+            </button>
+          </div>
+          
+          <div class="resolution-section">
+            <h4>Aspect Ratio</h4>
+            <button 
+              class="resolution-option" 
+              class:active={currentAspectRatio === '16:9'}
+              on:click={() => handleAspectRatioSelect('16:9')}
+            >
+              16:9 (Widescreen)
+            </button>
+            <button 
+              class="resolution-option" 
+              class:active={currentAspectRatio === '4:3'}
+              on:click={() => handleAspectRatioSelect('4:3')}
+            >
+              4:3 (Standard)
+            </button>
+            <button 
+              class="resolution-option" 
+              class:active={currentAspectRatio === '1:1'}
+              on:click={() => handleAspectRatioSelect('1:1')}
+            >
+              1:1 (Square)
+            </button>
+            <button 
+              class="resolution-option" 
+              class:active={currentAspectRatio === 'fill'}
+              on:click={() => handleAspectRatioSelect('fill')}
+            >
+              Fill Container
+            </button>
+            <button 
+              class="resolution-option" 
+              class:active={currentAspectRatio === 'auto'}
+              on:click={() => handleAspectRatioSelect('auto')}
+            >
+              Auto (Screen Ratio)
+            </button>
+          </div>
+          
+          <div class="resolution-section">
+            <h4>Zoom</h4>
+            <div class="zoom-control">
+              <label for="zoom-slider">Zoom: {zoomLevel.toFixed(1)}x</label>
+              <input 
+                id="zoom-slider"
+                type="range" 
+                min="0.1" 
+                max="3.0" 
+                step="0.1" 
+                bind:value={zoomLevel}
+                on:input={handleZoomChange}
+                class="zoom-slider"
+              />
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
   </div>
   <div class="right-group">
     {#if showThemeButton}

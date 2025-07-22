@@ -3,6 +3,8 @@
   import { ShaderView } from "../ShaderView";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
+  import type { AspectRatioMode } from "../stores/aspectRatioStore";
+  import type { QualityMode } from "../stores/qualityStore";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
@@ -19,6 +21,7 @@
   let currentFPS = 0;
   let canvasWidth = 0;
   let canvasHeight = 0;
+  let zoomLevel = 1.0;
 
   let shaderView: ShaderView;
   let transport: Transport;
@@ -59,6 +62,18 @@
     shaderView.handleToggleLock();
   }
 
+  function handleAspectRatioChange(mode: AspectRatioMode) {
+    console.log('Aspect ratio changed to:', mode);
+  }
+
+  function handleQualityChange(mode: QualityMode) {
+    console.log('Quality changed to:', mode);
+  }
+
+  function handleZoomChange(zoom: number) {
+    zoomLevel = zoom;
+  }
+
   function handleErrorDismiss() {
     showErrors = false;
     errors = [];
@@ -66,7 +81,6 @@
 
   async function initializeApp() {
     try {
-      // Create the appropriate transport
       transport = createTransport();
 
       shaderView = new ShaderView(transport);
@@ -142,6 +156,7 @@
   <ShaderCanvas
     {keyboardManager}
     {mouseManager}
+    {zoomLevel}
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
   />
@@ -156,6 +171,9 @@
       onReset={handleReset}
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}
+      onAspectRatioChange={handleAspectRatioChange}
+      onQualityChange={handleQualityChange}
+      onZoomChange={handleZoomChange}
     />
   {/if}
   <ErrorDisplay
