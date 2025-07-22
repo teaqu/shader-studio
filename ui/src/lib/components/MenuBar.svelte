@@ -154,57 +154,57 @@
           <div class="resolution-section">
             <h4>Quality</h4>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title"
               class:active={currentQuality === 'HD'}
               on:click={() => handleQualitySelect('HD')}
             >
-              HD (High Quality)
+              HD
             </button>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title"
               class:active={currentQuality === 'SD'}
               on:click={() => handleQualitySelect('SD')}
             >
-              SD (Low Quality)
+              SD
             </button>
           </div>
           
           <div class="resolution-section">
             <h4>Aspect Ratio</h4>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title" 
               class:active={currentAspectRatio === '16:9'}
               on:click={() => handleAspectRatioSelect('16:9')}
             >
-              16:9 (Widescreen)
+              16:9
             </button>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title" 
               class:active={currentAspectRatio === '4:3'}
               on:click={() => handleAspectRatioSelect('4:3')}
             >
-              4:3 (Standard)
+              4:3
             </button>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title" 
               class:active={currentAspectRatio === '1:1'}
               on:click={() => handleAspectRatioSelect('1:1')}
             >
-              1:1 (Square)
+              1:1
             </button>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title" 
               class:active={currentAspectRatio === 'fill'}
               on:click={() => handleAspectRatioSelect('fill')}
             >
-              Fill Container
+              Fill
             </button>
             <button 
-              class="resolution-option" 
+              class="resolution-option menu-title" 
               class:active={currentAspectRatio === 'auto'}
               on:click={() => handleAspectRatioSelect('auto')}
             >
-              Auto (Screen Ratio)
+              Auto
             </button>
           </div>
           
