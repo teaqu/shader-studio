@@ -53,26 +53,6 @@ export class ShaderLocker {
     }
   }
 
-  public shouldAutoLock(newEditor: vscode.TextEditor): boolean {
-    if (!this.isLocked && this.currentlyPreviewedEditor) {
-      if (
-        newEditor.document.languageId !== "glsl" &&
-        !newEditor.document.fileName.endsWith(".glsl")
-      ) {
-        this.isLocked = true;
-        this.lockedEditor = this.currentlyPreviewedEditor;
-        vscode.window.showInformationMessage(
-          `Shader View auto-locked to ${path.basename(
-            this.currentlyPreviewedEditor.document.uri.fsPath,
-          )
-          }.`,
-        );
-        return true;
-      }
-    }
-    return false;
-  }
-
   private findAndSwitchToRecentGlslFile(): void {
     // Find the most recently accessed GLSL file
     const glslTabs = vscode.window.tabGroups.all

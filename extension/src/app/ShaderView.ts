@@ -207,10 +207,6 @@ export class ShaderExtension {
         return;
       }
 
-      if (this.shaderLocker.shouldAutoLock(editor)) {
-        return;
-      }
-
       this.sendShaderCallback(editor);
     });
 
