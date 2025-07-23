@@ -112,9 +112,9 @@ app.whenReady().then(() => {
   
   let iconPath;
   if (process.platform === 'darwin') {
-    iconPath = path.join(__dirname, 'icon.icns');
+    iconPath = path.join(__dirname, 'assets', 'icon.icns');
   } else {
-    iconPath = path.join(__dirname, 'icon.png');
+    iconPath = path.join(__dirname, 'assets', 'icon.png');
   }
   const icon = nativeImage.createFromPath(iconPath);
 
