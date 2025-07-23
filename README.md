@@ -1,6 +1,8 @@
 # shader-view README
 
-Shadertoy extension for vscode.
+A fast shadertoy viewer for vscode with hot reloading.
+
+![screenshot](assets/screenshot.png)
 
 ## Project Structure
 
