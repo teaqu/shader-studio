@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, nativeImage, nativeTheme } = require('electron');
 const path = require('path');
 
 let win;
@@ -19,6 +19,36 @@ function createMenu() {
             alwaysOnTop = menuItem.checked;
             win.setAlwaysOnTop(alwaysOnTop);
           }
+        },
+        { type: 'separator' },
+        {
+          label: 'Theme',
+          submenu: [
+            {
+              label: 'Auto',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'system',
+              click: () => {
+                nativeTheme.themeSource = 'system';
+              }
+            },
+            {
+              label: 'Light',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'light',
+              click: () => {
+                nativeTheme.themeSource = 'light';
+              }
+            },
+            {
+              label: 'Dark',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'dark',
+              click: () => {
+                nativeTheme.themeSource = 'dark';
+              }
+            }
+          ]
         },
         { type: 'separator' },
         {
