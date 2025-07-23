@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, nativeImage, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, nativeImage, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -108,10 +108,8 @@ function createMenu() {
 app.whenReady().then(() => {
   loadSettings();
   
-  // Apply saved theme
   nativeTheme.themeSource = settings.theme;
   
-  // Use .icns for macOS, .png for others
   let iconPath;
   if (process.platform === 'darwin') {
     iconPath = path.join(__dirname, 'icon.icns');
@@ -120,7 +118,6 @@ app.whenReady().then(() => {
   }
   const icon = nativeImage.createFromPath(iconPath);
 
-  // Set dock icon for macOS
   if (process.platform === 'darwin' && icon.isEmpty() === false) {
     app.dock.setIcon(icon);
   }
@@ -151,10 +148,8 @@ app.whenReady().then(() => {
     saveSettings();
   });
 
-  // Load the UI files locally instead of from localhost:3000
   const uiPath = path.join(__dirname, 'ui', 'index.html');
   
-  // For development, we can also enable dev tools
   if (process.env.NODE_ENV === 'development') {
     win.webContents.openDevTools();
   }
