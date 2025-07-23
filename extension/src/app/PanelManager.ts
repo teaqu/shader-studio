@@ -2,8 +2,8 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { ShaderProcessor } from "./ShaderProcessor";
-import { Messenger } from "./communication/Messenger";
-import { WebviewTransport } from "./communication/WebviewTransport";
+import { Messenger } from "./transport/Messenger";
+import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { ShaderUtils } from "./util/ShaderUtils";
 
