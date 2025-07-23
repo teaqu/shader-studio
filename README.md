@@ -1,4 +1,4 @@
-# shader-view README
+# shader-view
 
 A fast shadertoy viewer for vscode with hot reloading.
 
@@ -8,6 +8,7 @@ A fast shadertoy viewer for vscode with hot reloading.
 
 - `/extension/` - VS Code extension source code
 - `/ui/` - Svelte-based UI for the shader viewer
+- `/electron/` - Shader View window mode using Electron.
 
 ## Configuration
 
