@@ -21,24 +21,4 @@ export class ShaderUtils {
         return null;
     }
 
-    public static getCurrentShaderInfo(isLocked: boolean = false): ShaderInfo | null {
-        const activeEditor = this.getActiveGLSLEditor();
-        if (!activeEditor) {
-            return null;
-        }
-
-        const shaderContent = activeEditor.document.getText();
-        return {
-            type: 'shaderSource',
-            code: shaderContent,
-            name: path.basename(activeEditor.document.fileName),
-            config: null,
-            isLocked,
-            buffers: {}
-        };
-    }
-
-    public static hasActiveGLSLFile(): boolean {
-        return this.getActiveGLSLEditor() !== null;
-    }
 }

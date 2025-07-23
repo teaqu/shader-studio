@@ -1,13 +1,14 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { MessageTransport } from "./MessageTransport";
 import { ShaderUtils } from "../util/ShaderUtils";
+import { ShaderProcessor } from "../ShaderProcessor";
 
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private messageHandler?: (message: any) => void;
 
-  constructor(port: number) {
+  constructor(port: number, private shaderProcessor?: ShaderProcessor) {
     try {
       this.wsServer = new WebSocketServer({
         port,
@@ -75,23 +76,18 @@ export class WebSocketTransport implements MessageTransport {
 
   private sendCurrentShaderToNewClient(ws: WebSocket): void {
     try {
-      const shaderInfo = ShaderUtils.getCurrentShaderInfo();
-      if (shaderInfo) {
-        ws.send(JSON.stringify(shaderInfo));
-        console.log('WebSocket: Current shader sent to new client');
-      } else {
-        const message = {
-          type: 'welcome',
-          payload: ['Connected to VSCode Shader View - No active GLSL file']
-        };
-        ws.send(JSON.stringify(message));
-        console.log('WebSocket: No active shader, sent welcome message');
+      const activeEditor = ShaderUtils.getActiveGLSLEditor();
+
+      if (activeEditor && this.shaderProcessor) {
+        setTimeout(() => {
+          this.shaderProcessor!.sendShaderToWebview(activeEditor, false);
+        }, 100);
+        console.log('WebSocket: Requested current shader to be sent to new client');
       }
     } catch (error) {
       console.error('WebSocket: Error sending current shader to new client:', error);
     }
   }
-
   public send(message: any): void {
     let str;
     try {

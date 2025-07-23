@@ -6,7 +6,6 @@ import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./transport/Messenger";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
-import { ShaderUtils } from "./util/ShaderUtils";
 import { ElectronLauncher } from "./ElectronLauncher";
 
 export class ShaderExtension {
@@ -57,7 +56,7 @@ export class ShaderExtension {
 
   private startWebSocketTransport(): void {
     try {
-      this.webSocketTransport = new WebSocketTransport(51472);
+      this.webSocketTransport = new WebSocketTransport(51472, this.shaderProcessor);
       this.messenger.addTransport(this.webSocketTransport);
       this.logger.info("WebSocket transport started");
     } catch (error) {
@@ -85,10 +84,6 @@ export class ShaderExtension {
         `Shader View web server started.`
       );
 
-      const activeEditor = ShaderUtils.getActiveGLSLEditor();
-      if (activeEditor) {
-        this.shaderProcessor.sendShaderToWebview(activeEditor, this.shaderLocker.getIsLocked());
-      }
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
       vscode.window.showErrorMessage(`Failed to start Shader View web server: ${error}`);
