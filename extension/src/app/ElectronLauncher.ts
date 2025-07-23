@@ -19,11 +19,11 @@ export class ElectronLauncher {
 
       const extensionDir = path.dirname(this.context.extensionUri.fsPath);
       const electronDir = path.join(extensionDir, 'electron');
-      
+
       // Check if we're in development mode by looking for electron dev dependencies
       const electronBinary = path.join(electronDir, 'node_modules', '.bin', 'electron');
       const launcherScript = path.join(electronDir, 'electron-launch.js');
-      
+
       let isDevelopment = false;
       try {
         await fs.promises.access(electronBinary);
@@ -46,8 +46,8 @@ export class ElectronLauncher {
   }
 
   private async launchDevelopmentMode(
-    electronDir: string, 
-    electronBinary: string, 
+    electronDir: string,
+    electronBinary: string,
     launcherScript: string
   ): Promise<void> {
     this.logger.info(`Using development Electron binary at: ${electronBinary}`);
@@ -61,7 +61,6 @@ export class ElectronLauncher {
     terminal.sendText(`"${electronBinary}" "${launcherScript}"`);
 
     this.logger.info('Opened VS Code terminal to launch Electron with always-on-top.');
-    vscode.window.showInformationMessage('Opened terminal to launch Electron (always on top) with local UI');
   }
 
   private async launchProductionMode(electronDir: string): Promise<void> {
@@ -89,12 +88,12 @@ export class ElectronLauncher {
       try {
         await fs.promises.access(appPath);
         this.logger.info(`Launching packaged app from: ${appPath}`);
-        
+
         const terminal = vscode.window.createTerminal({
           name: 'Open in Electron',
           hideFromUser: true
         });
-        
+
         if (platform === 'darwin') {
           terminal.sendText(`open "${appPath}"`);
         } else {
