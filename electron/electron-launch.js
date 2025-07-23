@@ -1,10 +1,41 @@
 const { app, BrowserWindow, Menu, ipcMain, nativeImage, nativeTheme } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let win;
-let alwaysOnTop = process.argv.includes('--alwaysOnTop');
+let settings = {
+  alwaysOnTop: process.argv.includes('--alwaysOnTop'),
+  theme: 'system',
+  windowBounds: {
+    width: 800,
+    height: 600,
+    x: undefined,
+    y: undefined
+  }
+};
+
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
 app.setName('Shader View');
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      settings = { ...settings, ...savedSettings };
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+}
 
 function createMenu() {
   const template = [
@@ -14,10 +45,11 @@ function createMenu() {
         {
           label: 'Always on Top',
           type: 'checkbox',
-          checked: alwaysOnTop,
+          checked: settings.alwaysOnTop,
           click: (menuItem) => {
-            alwaysOnTop = menuItem.checked;
-            win.setAlwaysOnTop(alwaysOnTop);
+            settings.alwaysOnTop = menuItem.checked;
+            win.setAlwaysOnTop(settings.alwaysOnTop);
+            saveSettings();
           }
         },
         { type: 'separator' },
@@ -27,25 +59,31 @@ function createMenu() {
             {
               label: 'Auto',
               type: 'radio',
-              checked: nativeTheme.themeSource === 'system',
+              checked: settings.theme === 'system',
               click: () => {
+                settings.theme = 'system';
                 nativeTheme.themeSource = 'system';
+                saveSettings();
               }
             },
             {
               label: 'Light',
               type: 'radio',
-              checked: nativeTheme.themeSource === 'light',
+              checked: settings.theme === 'light',
               click: () => {
+                settings.theme = 'light';
                 nativeTheme.themeSource = 'light';
+                saveSettings();
               }
             },
             {
               label: 'Dark',
               type: 'radio',
-              checked: nativeTheme.themeSource === 'dark',
+              checked: settings.theme === 'dark',
               click: () => {
+                settings.theme = 'dark';
                 nativeTheme.themeSource = 'dark';
+                saveSettings();
               }
             }
           ]
@@ -68,6 +106,11 @@ function createMenu() {
 }
 
 app.whenReady().then(() => {
+  loadSettings();
+  
+  // Apply saved theme
+  nativeTheme.themeSource = settings.theme;
+  
   // Use .icns for macOS, .png for others
   let iconPath;
   if (process.platform === 'darwin') {
@@ -83,9 +126,11 @@ app.whenReady().then(() => {
   }
 
   win = new BrowserWindow({
-    width: 800,
-    height: 600,
-    alwaysOnTop,
+    width: settings.windowBounds.width,
+    height: settings.windowBounds.height,
+    x: settings.windowBounds.x,
+    y: settings.windowBounds.y,
+    alwaysOnTop: settings.alwaysOnTop,
     frame: true,
     title: 'Shader View',
     icon: icon.isEmpty() ? undefined : icon,
@@ -93,6 +138,17 @@ app.whenReady().then(() => {
       nodeIntegration: true,
       contextIsolation: false
     }
+  });
+
+  // Save window bounds when they change
+  win.on('resize', () => {
+    settings.windowBounds = win.getBounds();
+    saveSettings();
+  });
+
+  win.on('move', () => {
+    settings.windowBounds = win.getBounds();
+    saveSettings();
   });
 
   // Load the UI files locally instead of from localhost:3000
