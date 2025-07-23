@@ -20,9 +20,8 @@ export class ElectronLauncher {
       const extensionDir = path.dirname(this.context.extensionUri.fsPath);
       const electronDir = path.join(extensionDir, 'electron');
 
-      // Check if we're in development mode by looking for electron dev dependencies
       const electronBinary = path.join(electronDir, 'node_modules', '.bin', 'electron');
-      const launcherScript = path.join(electronDir, 'electron-launch.js');
+      const launcherScript = path.join(electronDir, 'dist', 'electron-launch.js');
 
       let isDevelopment = false;
       try {

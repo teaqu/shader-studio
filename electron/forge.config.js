@@ -1,6 +1,6 @@
 module.exports = {
   packagerConfig: {
-    icon: 'icon', // Electron Forge will use icon.icns for macOS and icon.ico for Windows
+    icon: 'assets/icon',
     name: 'Shader View',
     overwrite: true
   },
@@ -9,7 +9,7 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: {
         name: 'Shader View',
-        icon: 'icon.icns',
+        icon: 'assets/icon.icns',
         overwrite: true
       }
     },
