@@ -16,7 +16,6 @@ suite('PanelManager Test Suite', () => {
     setup(() => {
         sandbox = sinon.createSandbox();
 
-        // Mock extension context
         mockContext = {
             extensionPath: path.join(__dirname, 'mock-extension'),
             globalState: {} as any,
@@ -25,7 +24,6 @@ suite('PanelManager Test Suite', () => {
             asAbsolutePath: (relativePath: string) => path.join(__dirname, 'mock-extension', relativePath),
         } as any;
 
-        // Mock messenger and shader processor
         mockMessenger = {
             addTransport: sandbox.stub(),
             removeTransport: sandbox.stub(),
