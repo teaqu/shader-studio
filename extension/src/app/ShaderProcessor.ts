@@ -9,7 +9,7 @@ export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
   private logger = Logger.getInstance();
 
-  constructor(private messenger: Messenger) {}
+  constructor(private messenger: Messenger) { }
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
@@ -32,9 +32,8 @@ export class ShaderProcessor {
     const name = path.basename(editor.document.uri.fsPath);
     const shaderPath = editor.document.uri.fsPath;
 
-    // Try to load config from a sibling .config.json file
     let config: any = null;
-    const configPath = shaderPath.replace(/\.glsl$/i, ".config.json");
+    const configPath = shaderPath.replace(/\.glsl$/i, ".sv.json");
 
     // Collect buffer contents
     const buffers: Record<string, string> = {};

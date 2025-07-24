@@ -12,7 +12,7 @@ A fast shadertoy viewer for vscode with hot reloading.
 
 ## Configuration
 
-Add config same dir as shader like so: shadername.config.json
+Add config same dir as shader like so: shadername.sv.json
 
 ```json
 {
