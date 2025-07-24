@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Shader View Configuration",
+  "description": "Configuration file for Shader View extension (.sv.json)",
+  "type": "object",
+  "required": ["version", "Image"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version"
+    },
+    "Image": {
+      "$ref": "#/definitions/ImagePass"
+    },
+    "BufferA": {
+      "$ref": "#/definitions/BufferPass"
+    },
+    "BufferB": {
+      "$ref": "#/definitions/BufferPass"
+    },
+    "BufferC": {
+      "$ref": "#/definitions/BufferPass"
+    },
+    "BufferD": {
+      "$ref": "#/definitions/BufferPass"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "ImagePass": {
+      "type": "object",
+      "description": "Main image pass configuration",
+      "properties": {
+        "inputs": {
+          "$ref": "#/definitions/PassInputs"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BufferPass": {
+      "type": "object",
+      "description": "Buffer pass configuration",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the buffer GLSL file (relative or absolute)"
+        },
+        "inputs": {
+          "$ref": "#/definitions/PassInputs"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PassInputs": {
+      "type": "object",
+      "description": "Input channels for a pass",
+      "properties": {
+        "iChannel0": {
+          "$ref": "#/definitions/ConfigInput"
+        },
+        "iChannel1": {
+          "$ref": "#/definitions/ConfigInput"
+        },
+        "iChannel2": {
+          "$ref": "#/definitions/ConfigInput"
+        },
+        "iChannel3": {
+          "$ref": "#/definitions/ConfigInput"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConfigInput": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["buffer", "texture", "keyboard"],
+          "description": "Type of input"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["BufferA", "BufferB", "BufferC", "BufferD"],
+          "description": "Source buffer name (required when type is 'buffer')"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to texture file (required when type is 'texture')"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "buffer"
+              }
+            }
+          },
+          "then": {
+            "required": ["source"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "texture"
+              }
+            }
+          },
+          "then": {
+            "required": ["path"]
+          }
+        }
+      ]
+    }
+  }
+}

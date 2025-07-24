@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import type { ShaderConfig } from "../../models/ShaderConfig";
 
 export interface ShaderInfo {
     type: string;
     code: string;
     name: string;
-    config: any;
+    config: ShaderConfig | null;
     isLocked: boolean;
     buffers: Record<string, string>;
 }

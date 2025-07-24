@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
+import type { ShaderConfig } from "../models/ShaderConfig";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
@@ -32,7 +33,7 @@ export class ShaderProcessor {
     const name = path.basename(editor.document.uri.fsPath);
     const shaderPath = editor.document.uri.fsPath;
 
-    let config: any = null;
+    let config: ShaderConfig | null = null;
     const configPath = shaderPath.replace(/\.glsl$/i, ".sv.json");
 
     // Collect buffer contents
@@ -79,7 +80,7 @@ export class ShaderProcessor {
   }
 
   private processBuffers(
-    config: any,
+    config: ShaderConfig,
     shaderPath: string,
     buffers: Record<string, string>,
   ): void {
@@ -87,7 +88,7 @@ export class ShaderProcessor {
       if (passName === "version") {
         continue;
       }
-      const pass = config[passName];
+      const pass = (config as any)[passName];
       if (typeof pass !== "object") {
         continue;
       }
@@ -177,14 +178,14 @@ export class ShaderProcessor {
     }
   }
 
-  private updateShaderBuffersMap(config: any, shaderPath: string): void {
+  private updateShaderBuffersMap(config: ShaderConfig, shaderPath: string): void {
     const bufferFiles = new Set<string>();
 
     for (const passName of Object.keys(config)) {
       if (passName === "version") {
         continue;
       }
-      const pass = config[passName];
+      const pass = (config as any)[passName];
       if (typeof pass !== "object") {
         continue;
       }

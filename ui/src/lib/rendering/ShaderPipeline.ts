@@ -1,7 +1,7 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult } from "../models";
+import type { Pass, Buffers, CompilationResult, ShaderConfig } from "../models";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 
@@ -66,7 +66,7 @@ export class ShaderPipeline {
 
   public async compileShaderPipeline(
     code: string,
-    config: any,
+    config: ShaderConfig | null,
     name: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
@@ -94,7 +94,7 @@ export class ShaderPipeline {
 
   private buildPasses(
     code: string,
-    config: any,
+    config: ShaderConfig | null,
     buffers: Record<string, string>
   ): void {
     const usedConfig = config ?? {};
@@ -113,7 +113,7 @@ export class ShaderPipeline {
     }
 
     this.passes = passNames.map(passName => {
-      const pass = usedConfig[passName];
+      const pass = (usedConfig as any)[passName];
       const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
       return {
