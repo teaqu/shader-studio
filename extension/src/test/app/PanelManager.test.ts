@@ -149,6 +149,31 @@ suite('PanelManager Test Suite', () => {
         assert.strictEqual(panelManager.getPanel(), mockWebviewPanel);
     });
 
+    test('createShaderView creates new panel each time', () => {
+        // Given
+        const mockWebviewPanel1 = createMockWebviewPanel();
+        const mockWebviewPanel2 = createMockWebviewPanel();
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel')
+            .onFirstCall().returns(mockWebviewPanel1 as any)
+            .onSecondCall().returns(mockWebviewPanel2 as any);
+        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+        sandbox.stub(vscode.window, 'tabGroups').value({
+            all: [{ tabs: [], viewColumn: vscode.ViewColumn.One }]
+        });
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+        const fs = require('fs');
+        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+        // When
+        panelManager.createShaderView();
+        panelManager.createShaderView();
+
+        // Then
+        assert.strictEqual(createWebviewPanelStub.callCount, 2);
+        assert.strictEqual(panelManager.getPanel(), mockWebviewPanel2);
+    });
+
     test('localResourceRoots includes correct paths', () => {
         // Given
         const workspaceFolders = [vscode.Uri.file('/mock/workspace')];

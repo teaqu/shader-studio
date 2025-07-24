@@ -45,14 +45,6 @@ export class PanelManager {
   }
 
   private createWebviewPanelInColumn(editor: vscode.TextEditor | undefined, viewColumn: vscode.ViewColumn): void {
-    if (this.panel) {
-      this.panel.reveal(viewColumn);
-      if (editor) {
-        this.shaderProcessor.sendShaderToWebview(editor);
-      }
-      return;
-    }
-
     const workspaceFolders =
       vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
     const shaderDir = editor ?
