@@ -47,16 +47,16 @@ Currently supports uniforms:
 - ✅ `iMouse` - mouse pixel coordinates
 - ✅ `iResolution` - viewport resolution (in pixels)
 - ✅ `iChannel0-3` - input channels (textures, buffers, keyboard)
+- ✅ `iDate` - current date (year, month, day, time in seconds)
 
 ## Not Yet Supported (from Shadertoy)
 
-- ❌ `iChannelTime[4]` - channel playback time (for video inputs)
-- ❌ `iChannelResolution[4]` - channel resolution for each input
-- ❌ `samplerCube iChannelX` - cubemap texture support
-- ❌ `iDate` - current date (year, month, day, time in seconds)
-- ❌ `iSampleRate` - sound sample rate (typically 44100)
-- ❌ Video texture inputs
-- ❌ Audio/sound inputs
-- ❌ Webcam inputs
-- ❌ Volume/microphone inputs
-- ❌ VR/AR inputs
+- `iChannelTime[4]` - channel playback time (for video inputs)
+- `iChannelResolution[4]` - channel resolution for each input
+- `samplerCube iChannelX` - cubemap texture support
+- `iSampleRate` - sound sample rate (typically 44100)
+- Video texture inputs
+- Audio/sound inputs
+- Webcam inputs
+- Volume/microphone inputs
+- VR/AR inputs

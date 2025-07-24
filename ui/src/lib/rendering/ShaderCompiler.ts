@@ -24,6 +24,9 @@ export class ShaderCompiler {
     const injectFrameRate = !/uniform\s+float\s+iFrameRate\s*;/.test(code)
       ? `uniform float iFrameRate;\n`
       : "";
+    const injectDate = !/uniform\s+vec4\s+iDate\s*;/.test(code)
+      ? `uniform vec4 iDate;\n`
+      : "";
 
     const header = `
     precision highp float;
@@ -35,7 +38,8 @@ export class ShaderCompiler {
     ${injectFrameRate}
     ${injectChannels}
     ${injectMouse}
-    ${injectFrame}`;
+    ${injectFrame}
+    ${injectDate}`;
 
     const wrappedCode = `${header}
 

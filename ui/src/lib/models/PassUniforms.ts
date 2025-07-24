@@ -5,4 +5,5 @@ export interface PassUniforms {
   frameRate: number;
   mouse: number[];
   frame: number;
+  date: number[];
 }

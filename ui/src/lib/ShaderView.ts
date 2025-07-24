@@ -2,7 +2,7 @@ import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
 import { ShaderCompiler } from "./rendering/ShaderCompiler";
 import { ResourceManager } from "./rendering/ResourceManager";
 import { BufferManager } from "./rendering/BufferManager";
-import { TimeManager } from "./input/TimeManager";
+import { TimeManager } from "./util/TimeManager";
 import { KeyboardManager } from "./input/KeyboardManager";
 import { MouseManager } from "./input/MouseManager";
 import { ShaderPipeline } from "./rendering/ShaderPipeline";

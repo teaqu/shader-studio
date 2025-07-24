@@ -1,5 +1,5 @@
 import type { ShaderPipeline } from "../rendering/ShaderPipeline";
-import type { TimeManager } from "../input/TimeManager";
+import type { TimeManager } from "../util/TimeManager";
 import type { FrameRenderer } from "../rendering/FrameRenderer";
 import type { Transport } from "./MessageTransport";
 

@@ -3,7 +3,7 @@ import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
 import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
 import type { Pass } from "../models";
-import type { TimeManager } from "../input/TimeManager";
+import type { TimeManager } from "../util/TimeManager";
 import type { KeyboardManager } from "../input/KeyboardManager";
 import type { MouseManager } from "../input/MouseManager";
 
@@ -61,9 +61,10 @@ export class FrameRenderer {
       ]),
       time: this.timeManager.getCurrentTime(this.currentFrameTime),
       timeDelta: this.timeManager.getDeltaTime(),
-      frameRate: this.currentFPS, // Use the existing FPS counter
+      frameRate: this.currentFPS,
       mouse: this.mouseManager.getMouse(),
       frame: this.timeManager.getFrame(),
+      date: this.timeManager.getCurrentDate(),
     };
   }
 

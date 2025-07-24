@@ -50,6 +50,7 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iFrameRate", uniforms.frameRate);
     this.renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
+    this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
 
     this.renderer.AttachTextures(
       4,
