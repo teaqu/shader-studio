@@ -23,7 +23,7 @@ export class PanelManager {
     return this.panel;
   }
 
-  private createWebviewPanel(editor: vscode.TextEditor): void {
+  private createWebviewPanel(editor: vscode.TextEditor | undefined): void {
     this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }
 
@@ -33,10 +33,6 @@ export class PanelManager {
         e.document.languageId === "glsl" ||
         e.document.fileName.endsWith(".glsl")
       );
-    if (!editor) {
-      vscode.window.showErrorMessage("No active GLSL file selected");
-      return;
-    }
 
     const layout = vscode.window.tabGroups.all;
     const emptyGroup = layout.find(group => group.tabs.length === 0);
@@ -48,16 +44,20 @@ export class PanelManager {
     }
   }
 
-  private createWebviewPanelInColumn(editor: vscode.TextEditor, viewColumn: vscode.ViewColumn): void {
+  private createWebviewPanelInColumn(editor: vscode.TextEditor | undefined, viewColumn: vscode.ViewColumn): void {
     if (this.panel) {
       this.panel.reveal(viewColumn);
-      this.shaderProcessor.sendShaderToWebview(editor);
+      if (editor) {
+        this.shaderProcessor.sendShaderToWebview(editor);
+      }
       return;
     }
 
     const workspaceFolders =
       vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
-    const shaderDir = vscode.Uri.file(path.dirname(editor.document.uri.fsPath));
+    const shaderDir = editor ?
+      vscode.Uri.file(path.dirname(editor.document.uri.fsPath)) :
+      (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
     this.panel = vscode.window.createWebviewPanel(
       "shaderView",
@@ -82,10 +82,12 @@ export class PanelManager {
 
     this.setupWebviewHtml();
 
-    setTimeout(
-      () => this.shaderProcessor.sendShaderToWebview(editor),
-      200,
-    );
+    if (editor) {
+      setTimeout(
+        () => this.shaderProcessor.sendShaderToWebview(editor),
+        200,
+      );
+    }
 
     this.panel.onDidDispose(() => {
       this.messenger.removeTransport(webviewTransport);
