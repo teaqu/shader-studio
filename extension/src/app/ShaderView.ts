@@ -52,42 +52,14 @@ export class ShaderView {
   }
 
   private startWebSocketTransport(): void {
-    try {
-      const config = vscode.workspace.getConfiguration('shaderView');
-      const webSocketPort = config.get<number>('webSocketPort') || 51472;
-
-      this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
-      this.messenger.addTransport(this.webSocketTransport);
-      this.logger.info(`WebSocket transport started on port ${webSocketPort}`);
-    } catch (error) {
-      this.logger.error(`Failed to start WebSocket transport: ${error}`);
-    }
+    const config = vscode.workspace.getConfiguration('shaderView');
+    const webSocketPort = config.get<number>('webSocketPort') || 51472;
+    this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
+    this.messenger.addTransport(this.webSocketTransport);
   }
 
   private async startWebServer(): Promise<void> {
-    try {
-      this.webServer.startWebServer();
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const workspaceUri = vscode.Uri.joinPath(this.context.extensionUri, '..');
-      const uiPath = vscode.Uri.joinPath(workspaceUri, 'ui', 'dist', 'index.html');
-
-      try {
-        await vscode.workspace.fs.stat(uiPath);
-      } catch {
-        vscode.window.showInformationMessage('Building UI for web server...');
-        await this.buildUI();
-      }
-
-      vscode.window.showInformationMessage(
-        `Shader View web server started.`
-      );
-
-    } catch (error) {
-      this.logger.error(`Failed to start web server: ${error}`);
-      vscode.window.showErrorMessage(`Failed to start Shader View web server: ${error}`);
-    }
+    this.webServer.startWebServer();
   }
 
   private async openInBrowser(): Promise<void> {
@@ -119,21 +91,6 @@ export class ShaderView {
       this.logger.error(`Failed to copy URL: ${error}`);
       vscode.window.showErrorMessage(`Failed to copy URL: ${error}`);
     }
-  }
-
-  private async buildUI(): Promise<void> {
-    const workspaceUri = vscode.Uri.joinPath(this.context.extensionUri, '..');
-    const uiDirectory = vscode.Uri.joinPath(workspaceUri, 'ui');
-
-    const terminal = vscode.window.createTerminal({
-      name: 'Shader View Build',
-      cwd: uiDirectory.fsPath
-    });
-
-    terminal.sendText('npm run build');
-    terminal.show();
-
-    await new Promise(resolve => setTimeout(resolve, 10000));
   }
 
   private registerCommands(): void {
@@ -169,7 +126,6 @@ export class ShaderView {
       vscode.commands.registerCommand("shader-view.stopWebServer", () => {
         this.logger.info("shader-view.stopWebServer command executed");
         this.webServer.stopWebServer();
-        vscode.window.showInformationMessage("Shader View web server stopped");
       }),
     );
 
