@@ -9,7 +9,7 @@ import { ShaderUtils } from "./util/ShaderUtils";
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
-  private logger!: Logger; // Initialize when accessed
+  private logger!: Logger;
 
   constructor(
     private context: vscode.ExtensionContext,

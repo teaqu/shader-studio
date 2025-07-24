@@ -73,6 +73,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.101.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
@@ -80,6 +81,7 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.25.1",
+    "sinon": "^21.0.0",
     "typescript": "^5.8.3"
   },
   "dependencies": {
