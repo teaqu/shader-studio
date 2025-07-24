@@ -1,18 +1,16 @@
 import * as vscode from "vscode";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
-import { ShaderLocker } from "./ShaderLocker";
 import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./transport/Messenger";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
 import { ElectronLauncher } from "./ElectronLauncher";
 
-export class ShaderExtension {
+export class ShaderView {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
-  private shaderLocker: ShaderLocker;
   private shaderProcessor: ShaderProcessor;
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
@@ -33,7 +31,6 @@ export class ShaderExtension {
     this.shaderProcessor = new ShaderProcessor(this.messenger);
     this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor);
     this.webServer = new WebServer(context);
-    this.shaderLocker = new ShaderLocker((editor: vscode.TextEditor) => this.sendShaderCallback(editor));
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
     this.startWebSocketTransport();
@@ -58,7 +55,7 @@ export class ShaderExtension {
     try {
       const config = vscode.workspace.getConfiguration('shaderView');
       const webSocketPort = config.get<number>('webSocketPort') || 51472;
-      
+
       this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
       this.messenger.addTransport(this.webSocketTransport);
       this.logger.info(`WebSocket transport started on port ${webSocketPort}`);
@@ -148,12 +145,6 @@ export class ShaderExtension {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.toggleLock", () => {
-        this.shaderLocker.toggleLock();
-      }),
-    );
-
-    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.startWebServer", () => {
         this.logger.info("shader-view.startWebServer command executed");
         this.startWebServer();
@@ -210,7 +201,7 @@ export class ShaderExtension {
         return;
       }
 
-      this.sendShaderCallback(editor);
+      this.performShaderUpdate(editor);
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
@@ -224,19 +215,13 @@ export class ShaderExtension {
       }
 
       if (editor) {
-        this.sendShaderCallback(editor);
+        this.performShaderUpdate(editor);
       }
     });
   }
 
-  private sendShaderCallback(editor: vscode.TextEditor): void {
-    this.performShaderUpdate(editor);
-  }
-
   private performShaderUpdate(editor: vscode.TextEditor): void {
-    const finalEditor = this.shaderLocker.shouldUseLocked(editor);
-    this.shaderLocker.setCurrentlyPreviewedEditor(finalEditor);
-    this.shaderProcessor.sendShaderToWebview(finalEditor, this.shaderLocker.getIsLocked());
+    this.shaderProcessor.sendShaderToWebview(editor);
   }
 
   private async openInElectron(): Promise<void> {

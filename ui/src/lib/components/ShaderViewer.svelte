@@ -60,6 +60,7 @@
   function handleToggleLock() {
     if (!initialized) return;
     shaderView.handleToggleLock();
+    isLocked = shaderView.getIsLocked();
   }
 
   function handleAspectRatioChange(mode: AspectRatioMode) {
@@ -109,9 +110,9 @@
     if (!initialized) return;
 
     try {
-      await shaderView.handleShaderMessage(event, (locked) => {
-        isLocked = locked;
-      });
+      await shaderView.handleShaderMessage(event);
+      // Update the UI lock state to reflect the current state
+      isLocked = shaderView.getIsLocked();
     } catch (err) {
       const errorMsg = `Shader message handling failed: ${err}`;
       console.error("ShaderViewer: Error in handleShaderMessage:", err);

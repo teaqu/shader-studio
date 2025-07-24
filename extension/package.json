@@ -20,10 +20,6 @@
         "title": "Shader View: ShaderToy Panel"
       },
       {
-        "command": "shader-view.toggleLock",
-        "title": "Shader View: Toggle Lock"
-      },
-      {
         "command": "shader-view.startWebServer",
         "title": "Shader View: Start Web Server"
       },

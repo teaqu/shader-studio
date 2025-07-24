@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { ShaderExtension } from "./app/ShaderView";
+import { ShaderView } from "./app/ShaderView";
 
-let shaderExtension: ShaderExtension | undefined;
+let shaderExtension: ShaderView | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	const isDevMode = process.env.NODE_ENV === "dev";
@@ -16,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(diagnosticCollection);
 
 	try {
-		shaderExtension = new ShaderExtension(
+		shaderExtension = new ShaderView(
 			context,
 			outputChannel,
 			diagnosticCollection,

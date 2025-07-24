@@ -80,7 +80,7 @@ export class WebSocketTransport implements MessageTransport {
 
       if (activeEditor && this.shaderProcessor) {
         setTimeout(() => {
-          this.shaderProcessor!.sendShaderToWebview(activeEditor, false);
+          this.shaderProcessor!.sendShaderToWebview(activeEditor);
         }, 100);
         console.log('WebSocket: Requested current shader to be sent to new client');
       }

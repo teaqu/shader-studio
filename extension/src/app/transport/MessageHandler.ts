@@ -18,9 +18,6 @@ export class MessageHandler {
         case "error":
           this.handleErrorMessage(message);
           break;
-        case "toggleLock":
-          this.handleToggleLock();
-          break;
         default:
           this.outputChannel.debug(`Unknown message type: ${message.type}`);
       }
@@ -76,9 +73,5 @@ export class MessageHandler {
     } else if (editor) {
       this.diagnosticCollection.delete(editor.document.uri);
     }
-  }
-
-  private handleToggleLock(): void {
-    vscode.commands.executeCommand("shader-view.toggleLock");
   }
 }

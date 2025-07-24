@@ -1,6 +1,13 @@
 # Dependencies
 node_modules/
 
+# Build artifacts
+dist/
+out/
+
+# Coverage reports
+coverage/
+
 # VS Code
 .vscode/
 !.vscode/tasks.json

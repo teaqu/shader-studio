@@ -29,22 +29,15 @@ export class MessageHandler {
 
   public async handleShaderMessage(
     event: MessageEvent,
-    onLockStateChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
     try {
-      let { type, code, config, name, buffers = {}, isLocked: incomingLocked } =
-        event.data;
+      let { type, code, config, name, buffers = {} } = event.data;
 
       console.log('MessageHandler: Processing shader message:', { type, name, codeLength: code?.length });
 
       if (type !== "shaderSource" || this.isHandlingMessage) {
         console.log('MessageHandler: Ignoring message - wrong type or already handling');
         return { running: false };
-      }
-
-      // Update lock state from extension
-      if (incomingLocked !== undefined) {
-        onLockStateChange(incomingLocked);
       }
 
       this.isHandlingMessage = true;
@@ -67,13 +60,13 @@ export class MessageHandler {
         }
 
         console.log('MessageHandler: Compilation successful');
-        
+
         // Send log message in the format the WebSocket server expects
         this.transport.postMessage({
           type: "log",
           payload: ["Shader compiled and linked"], // Array format expected by server
         });
-        
+
         this.lastEvent = event;
 
         // Start render loop if not already running
@@ -91,9 +84,9 @@ export class MessageHandler {
       console.error('MessageHandler: Fatal error in handleShaderMessage:', err);
       console.error('MessageHandler: Error stack:', err instanceof Error ? err.stack : 'No stack');
       console.error('MessageHandler: Event data:', event.data);
-      
+
       this.isHandlingMessage = false;
-      
+
       // Try to send error message, but don't throw if this fails too
       try {
         this.transport.postMessage({
@@ -103,7 +96,7 @@ export class MessageHandler {
       } catch (transportErr) {
         console.error('MessageHandler: Failed to send error message:', transportErr);
       }
-      
+
       return { running: false };
     }
   }
@@ -111,7 +104,7 @@ export class MessageHandler {
   public reset(onReset?: () => void): void {
     this.shaderPipeline.cleanup();
     this.timeManager.cleanup();
-    
+
     if (this.lastEvent && onReset) {
       onReset();
     } else {

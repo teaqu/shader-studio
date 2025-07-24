@@ -9,6 +9,7 @@ import { ShaderPipeline } from "./rendering/ShaderPipeline";
 import { MessageHandler } from "./transport/MessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
 import { FrameRenderer } from "./rendering/FrameRenderer";
+import { ShaderLocker } from "./util/ShaderLocker";
 import type { PiRenderer } from "./types/piRenderer";
 import type { Transport } from "./transport/MessageTransport";
 
@@ -27,9 +28,11 @@ export class ShaderView {
   private messageHandler!: MessageHandler;
   private passRenderer!: PassRenderer;
   private renderLoopManager!: FrameRenderer;
+  private shaderLocker!: ShaderLocker;
 
   constructor(transport: Transport) {
     this.transport = transport;
+    this.shaderLocker = new ShaderLocker();
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -137,12 +140,19 @@ export class ShaderView {
 
   async handleShaderMessage(
     event: MessageEvent,
-    onLockChange: (locked: boolean) => void,
   ): Promise<{ running: boolean }> {
-    return await this.messageHandler.handleShaderMessage(
-      event,
-      onLockChange,
-    );
+    const currentShaderName = event.data?.name;
+
+    if (!this.shaderLocker.shouldProcessShader(currentShaderName)) {
+      return { running: this.renderLoopManager.isRunning() };
+    }
+
+    const result = await this.messageHandler.handleShaderMessage(event);
+    if (result.running && currentShaderName) {
+      this.shaderLocker.updateLockedShader(currentShaderName);
+    }
+
+    return result;
   }
 
   handleReset(onComplete?: () => void): void {
@@ -158,7 +168,13 @@ export class ShaderView {
   }
 
   handleToggleLock(): void {
-    this.transport.postMessage({ type: "toggleLock" });
+    const lastEvent = this.messageHandler.getLastEvent();
+    const currentShaderName = lastEvent?.data?.name;
+    this.shaderLocker.toggleLock(currentShaderName);
+  }
+
+  getIsLocked(): boolean {
+    return this.shaderLocker.getIsLocked();
   }
 
   stopRenderLoop(): void {

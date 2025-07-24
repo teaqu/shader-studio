@@ -14,7 +14,6 @@ export class ShaderProcessor {
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
-    isLocked: boolean = false,
   ): void {
     if (!this.messenger || editor?.document.languageId !== "glsl") {
       return;
@@ -73,7 +72,6 @@ export class ShaderProcessor {
       code,
       config,
       name,
-      isLocked,
       buffers,
     });
     this.logger.debug("Shader message sent to webview");
