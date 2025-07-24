@@ -40,14 +40,14 @@ Add config same dir as shader like so: shadername.config.json
 ```
 
 Currently supports uniforms:
-- ✅ `iTime` - shader playback time (in seconds)
-- ✅ `iTimeDelta` - render time (time since last frame, in seconds)
-- ✅ `iFrameRate` - shader frame rate (frames per second)
-- ✅ `iFrame` - shader playback frame number
-- ✅ `iMouse` - mouse pixel coordinates
-- ✅ `iResolution` - viewport resolution (in pixels)
-- ✅ `iChannel0-3` - input channels (textures, buffers, keyboard)
-- ✅ `iDate` - current date (year, month, day, time in seconds)
+- `iTime` - shader playback time (in seconds)
+- `iTimeDelta` - render time (time since last frame, in seconds)
+- `iFrameRate` - shader frame rate (frames per second)
+- `iFrame` - shader playback frame number
+- `iMouse` - mouse pixel coordinates
+- `iResolution` - viewport resolution (in pixels)
+- `iChannel0-3` - input channels (textures, buffers, keyboard)
+- `iDate` - current date (year, month, day, time in seconds)
 
 ## Not Yet Supported (from Shadertoy)
 
