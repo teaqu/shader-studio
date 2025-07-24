@@ -6,7 +6,6 @@ import { Logger } from "./services/Logger";
 import { ShaderViewStatusBar } from "./ShaderViewStatusBar";
 
 export class WebServer {
-  private httpPort: number = 3000;
   private logger!: Logger;
   private isServerRunning = false;
   private httpServer: http.Server | null = null;
@@ -19,20 +18,27 @@ export class WebServer {
     this.statusBar = new ShaderViewStatusBar(context);
   }
 
+  private getWebServerPort(): number {
+    const config = vscode.workspace.getConfiguration('shaderView');
+    return config.get<number>('webServerPort') || 3000;
+  }
+
   public startWebServer(): void {
     if (this.isServerRunning) {
       this.logger.info("Web server already running");
       return;
     }
 
-    try {
-      this.logger.info(`Starting HTTP server on port ${this.httpPort}`);
+    const httpPort = this.getWebServerPort();
 
-      this.startHttpServer();
+    try {
+      this.logger.info(`Starting HTTP server on port ${httpPort}`);
+
+      this.startHttpServer(httpPort);
 
       this.isServerRunning = true;
-      this.statusBar.updateServerStatus(true, this.httpPort);
-      this.logger.info(`HTTP server started on port ${this.httpPort}`);
+      this.statusBar.updateServerStatus(true, httpPort);
+      this.logger.info(`HTTP server started on port ${httpPort}`);
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
       this.isServerRunning = false;
@@ -40,7 +46,7 @@ export class WebServer {
     }
   }
 
-  private startHttpServer(): void {
+  private startHttpServer(httpPort: number): void {
     if (this.httpServer) {
       this.logger.warn("HTTP server already exists, closing previous instance");
       this.httpServer.close();
@@ -93,8 +99,8 @@ export class WebServer {
       });
     });
 
-    this.httpServer.listen(this.httpPort, () => {
-      this.logger.info(`HTTP server listening on port ${this.httpPort}`);
+    this.httpServer.listen(httpPort, () => {
+      this.logger.info(`HTTP server listening on port ${httpPort}`);
     });
 
     this.httpServer.on('error', (error) => {
@@ -119,7 +125,8 @@ export class WebServer {
   }
 
   public getHttpUrl(): string {
-    return `http://localhost:${this.httpPort}`;
+    const httpPort = this.getWebServerPort();
+    return `http://localhost:${httpPort}`;
   }
 
   public getStatusBar(): ShaderViewStatusBar {

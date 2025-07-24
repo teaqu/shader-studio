@@ -56,9 +56,12 @@ export class ShaderExtension {
 
   private startWebSocketTransport(): void {
     try {
-      this.webSocketTransport = new WebSocketTransport(51472, this.shaderProcessor);
+      const config = vscode.workspace.getConfiguration('shaderView');
+      const webSocketPort = config.get<number>('webSocketPort') || 51472;
+      
+      this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
       this.messenger.addTransport(this.webSocketTransport);
-      this.logger.info("WebSocket transport started");
+      this.logger.info(`WebSocket transport started on port ${webSocketPort}`);
     } catch (error) {
       this.logger.error(`Failed to start WebSocket transport: ${error}`);
     }
