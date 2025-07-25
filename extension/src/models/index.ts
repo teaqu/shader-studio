@@ -1,1 +1,1 @@
-export type { ShaderConfig, ConfigPass, ConfigInput } from "./ShaderConfig";
+// Re-exports removed - use @shader-view/types directly instead

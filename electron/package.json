@@ -7,19 +7,17 @@
     "build": "tsc",
     "dev": "tsc && electron dist/electron-launch.js",
     "start": "npm run build && electron dist/electron-launch.js",
-    "build-ui": "cd ../ui && rm -rf dist && npx vite build --base ./ && cp -r dist/* ../electron/ui/",
-    "prebuild": "npm run build-ui",
-    "package": "npm run build-ui && npm run build && npx electron-forge package",
-    "make": "npm run build-ui && npm run build && npx electron-forge make"
+    "build-ui": "cd ../ui && npm run build -- --base ./",
+    "copy-ui": "rimraf ui && npm run build-ui && xcopy ..\\ui\\dist ui\\ /s /i",
+    "prebuild": "npm run copy-ui",
+    "package": "npm run copy-ui && npm run build && npx electron-forge package",
+    "make": "npm run copy-ui && npm run build && npx electron-forge make"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.1",
     "@electron-forge/maker-deb": "^7.8.1",
     "@electron-forge/maker-dmg": "^7.8.1",
     "@electron-forge/maker-rpm": "^7.8.1",
-    "@electron-forge/maker-zip": "^7.8.1",
-    "@types/node": "^24.1.0",
-    "electron": "^30.0.0",
-    "typescript": "^5.8.3"
+    "@electron-forge/maker-zip": "^7.8.1"
   }
 }

@@ -1,4 +1,4 @@
-import type { BufferPass, ImagePass, ConfigInput } from './types/ShaderConfig';
+import type { BufferPass, ImagePass, ConfigInput } from '@shader-view/types';
 
 export class BufferConfig {
   private bufferName: string;

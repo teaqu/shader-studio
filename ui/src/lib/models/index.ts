@@ -4,9 +4,10 @@ export type { Buffer, Buffers } from "./Buffer";
 export type { CompilationResult } from "./CompilationResult";
 export type { 
   ShaderConfig, 
-  ConfigPass, 
+  ImagePass, 
+  BufferPass, 
   ConfigInput, 
   BufferConfigInput, 
   TextureConfigInput, 
   KeyboardConfigInput 
-} from "./ShaderConfig";
+} from "@shader-view/types";

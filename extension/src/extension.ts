@@ -22,10 +22,6 @@ export function activate(context: vscode.ExtensionContext) {
 			diagnosticCollection,
 		);
 
-		if (isDevMode) {
-			shaderExtension.initializeDevMode();
-		}
-
 		outputChannel.info("Shader View extension activated successfully");
 	} catch (error) {
 		outputChannel.error(`Failed to activate Shader View extension: ${error}`);

@@ -5,6 +5,7 @@ import * as sinon from 'sinon';
 import { PanelManager } from '../../app/PanelManager';
 import { Messenger } from '../../app/transport/Messenger';
 import { ShaderProcessor } from '../../app/ShaderProcessor';
+import { Logger } from '../../app/services/Logger';
 
 suite('PanelManager Test Suite', () => {
     let panelManager: PanelManager;
@@ -15,6 +16,15 @@ suite('PanelManager Test Suite', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
+
+        const mockOutputChannel = {
+            info: sandbox.stub(),
+            debug: sandbox.stub(),
+            warn: sandbox.stub(),
+            error: sandbox.stub(),
+            dispose: sandbox.stub(),
+        } as any;
+        Logger.initialize(mockOutputChannel);
 
         mockContext = {
             extensionPath: path.join(__dirname, 'mock-extension'),
@@ -94,8 +104,9 @@ suite('PanelManager Test Suite', () => {
         assert.ok(webviewOptions.localResourceRoots && webviewOptions.localResourceRoots.length >= 2);
 
         const localRoots = webviewOptions.localResourceRoots;
+        const mockWorkspaceUri = vscode.Uri.file('/mock/workspace');
         const hasWorkspaceRoot = localRoots?.some((root: vscode.Uri) =>
-            root.fsPath === '/mock/workspace'
+            root.toString() === mockWorkspaceUri.toString()
         );
         assert.ok(hasWorkspaceRoot);
         assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);

@@ -1,4 +1,4 @@
-import type { ShaderConfig, ConfigPass, ImagePass } from './types/ShaderConfig';
+import type { ShaderConfig, BufferPass, ImagePass } from '@shader-view/types';
 
 export class ConfigEditor {
     private config: ShaderConfig | null = null;
@@ -130,7 +130,7 @@ export class ConfigEditor {
     updateBufferPath(bufferName: string, path: string): boolean {
         if (!this.config) return false;
 
-        const currentBuffer = this.config[bufferName as keyof ShaderConfig] as ConfigPass;
+        const currentBuffer = this.config[bufferName as keyof ShaderConfig] as BufferPass;
         if (!currentBuffer) return false;
 
         const updatedConfig = {
@@ -147,7 +147,7 @@ export class ConfigEditor {
     /**
      * Update an entire buffer configuration
      */
-    updateBuffer(bufferName: string, bufferConfig: ConfigPass): boolean {
+    updateBuffer(bufferName: string, bufferConfig: BufferPass): boolean {
         if (!this.config) return false;
 
         const updatedConfig = {
@@ -217,10 +217,10 @@ export class ConfigEditor {
   }    /**
      * Get buffer configuration
      */
-    getBuffer(bufferName: string): ConfigPass | null {
+    getBuffer(bufferName: string): BufferPass | ImagePass | null {
         if (!this.config) return null;
         const buffer = this.config[bufferName as keyof ShaderConfig];
-        return (buffer && typeof buffer === 'object') ? buffer as ConfigPass : null;
+        return (buffer && typeof buffer === 'object') ? buffer as BufferPass | ImagePass : null;
     }
 
     /**

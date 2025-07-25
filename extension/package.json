@@ -55,14 +55,14 @@
           "default": 3000,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Port number for the HTTP web server"
+          "description": "Port number for the HTTP web server (default from monorepo config)"
         },
         "shaderView.webSocketPort": {
           "type": "number",
           "default": 51472,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Port number for the WebSocket server"
+          "description": "Port number for the WebSocket server (default from monorepo config)"
         }
       }
     },
@@ -74,16 +74,16 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+    "pretest": "npm run build && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.101.0",
     "@types/ws": "^8.18.1",
@@ -91,12 +91,10 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.25.1",
-    "sinon": "^21.0.0",
-    "typescript": "^5.8.3"
+    "sinon": "^21.0.0"
   },
   "dependencies": {
-    "electron": "^37.2.3",
+    "@shader-view/types": "*",
     "jsonc-parser": "^3.3.1",
     "ws": "^8.18.3"
   }

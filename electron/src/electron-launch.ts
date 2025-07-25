@@ -132,7 +132,7 @@ app.whenReady().then(() => {
     const icon = nativeImage.createFromPath(iconPath);
 
     if (process.platform === 'darwin' && !icon.isEmpty()) {
-        app.dock.setIcon(icon);
+        app.dock?.setIcon(icon);
     }
 
     win = new BrowserWindow({

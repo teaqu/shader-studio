@@ -40,13 +40,16 @@ export class ShaderView {
     // Register custom editor for .sv.json files
     this.configEditorProvider = ConfigEditorProvider.register(context, this.shaderProcessor);
 
+    // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
 
     this.registerCommands();
     this.registerEventHandlers();
   }
 
-  public initializeDevMode(): void { }
+  public isDevelopmentMode(): boolean {
+    return this.context.extensionMode === vscode.ExtensionMode.Development;
+  }
 
   public dispose(): void {
     this.webServer.stopWebServer();
@@ -61,9 +64,19 @@ export class ShaderView {
 
   private startWebSocketTransport(): void {
     const config = vscode.workspace.getConfiguration('shaderView');
-    const webSocketPort = config.get<number>('webSocketPort') || 51472;
-    this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
-    this.messenger.addTransport(this.webSocketTransport);
+    let webSocketPort = config.get<number>('webSocketPort') || 51472;
+    
+    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+      webSocketPort = 51473;
+      this.logger.debug(`Using test port ${webSocketPort} for WebSocket during tests`);
+    }
+
+    try {
+      this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor);
+      this.messenger.addTransport(this.webSocketTransport);
+    } catch (error) {
+      this.logger.error(`Failed to start WebSocket transport: ${error}`);
+    }
   }
 
   private async startWebServer(): Promise<void> {
