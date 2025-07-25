@@ -42,12 +42,10 @@
   let zoomLevel = 1.0;
 
   onMount(() => {
-    timeUpdateInterval = setInterval(() => {
-      if (timeManager) {
-        currentTime = timeManager.getCurrentTime(performance.now());
-        isPaused = timeManager.isPaused();
-      }
-    }, 16);
+    if (timeManager) {
+      currentTime = timeManager.getCurrentTime(performance.now());
+      isPaused = timeManager.isPaused();
+    }
 
     showThemeButton = !isVSCodeEnvironment();
     showFullscreenButton = !isVSCodeEnvironment();
