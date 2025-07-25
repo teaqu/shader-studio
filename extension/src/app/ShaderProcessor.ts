@@ -155,9 +155,12 @@ export class ShaderProcessor {
     passName: string,
     shaderPath: string,
   ): void {
+    if (!pass.inputs) {
+      return;
+    }
     for (const key of Object.keys(pass.inputs)) {
       const input = pass.inputs[key];
-      if (input.type && input.path) {
+      if (input.type === "texture" && input.path) {
         const imgPath = path.isAbsolute(input.path)
           ? input.path
           : path.join(path.dirname(shaderPath), input.path);

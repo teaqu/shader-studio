@@ -1,10 +1,5 @@
 import type { PiRenderer, PiTexture } from "../../types/piRenderer";
-
-interface TextureLoadOptions {
-  filter?: "linear" | "nearest" | "mipmap";
-  wrap?: "repeat" | "clamp";
-  vflip?: boolean;
-}
+import type { TextureConfigInput } from "../../models/ShaderConfig";
 
 export class TextureCache {
   private static readonly DEFAULT_TEXTURE_COLOR = new Uint8Array([0, 0, 0, 255]);
@@ -26,7 +21,7 @@ export class TextureCache {
 
   public async loadTextureFromUrl(
     url: string,
-    options: TextureLoadOptions = {}
+    options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
   ): Promise<PiTexture> {
     return new Promise((resolve, reject) => {
       const image = new window.Image();
@@ -82,7 +77,7 @@ export class TextureCache {
     );
   }
 
-  private createTextureFromImage(image: HTMLImageElement, options: TextureLoadOptions): PiTexture {
+  private createTextureFromImage(image: HTMLImageElement, options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>>): PiTexture {
     const filter = this.getFilterFromOptions(options.filter);
     const wrap = this.getWrapFromOptions(options.wrap);
     const vflip = options.vflip ?? true;

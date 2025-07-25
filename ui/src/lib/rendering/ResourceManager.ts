@@ -1,6 +1,7 @@
 import type { PiRenderer, PiTexture } from "../types/piRenderer";
 import { TextureCache } from "./resources/TextureCache";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
+import type { TextureConfigInput } from "../models/ShaderConfig";
 
 export class ResourceManager {
   private readonly textureCache: TextureCache;
@@ -27,7 +28,7 @@ export class ResourceManager {
 
   public async loadImageTexture(
     path: string, 
-    opts: any = {}
+    opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
   ): Promise<PiTexture | null> {
     const cachedTexture = this.textureCache.removeCachedTexture(path);
     

@@ -191,8 +191,13 @@ export class ShaderPipeline {
     for (const pass of this.passes) {
       for (let i = 0; i < 4; i++) { // 4 channels (iChannel0-3)
         const input = pass.inputs[`iChannel${i}`];
-        if (input?.type === "image" && input.path) {
-          await this.resourceManager.loadImageTexture(input.path, input.opts || {});
+        if (input?.type === "texture" && input.path) {
+          const textureOptions = {
+            filter: input.filter,
+            wrap: input.wrap,
+            vflip: input.vflip
+          };
+          await this.resourceManager.loadImageTexture(input.path, textureOptions);
         }
       }
     }

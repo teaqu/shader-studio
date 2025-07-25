@@ -9,7 +9,7 @@
 
   let bufferConfig: BufferConfig;
 
-  $: bufferConfig = new BufferConfig(bufferName, config as BufferPass, onUpdate);
+  $: bufferConfig = new BufferConfig(bufferName, config, onUpdate);
   
   // Make the path reactive to prop changes
   $: currentPath = 'path' in config ? config.path : '';
@@ -75,11 +75,56 @@
   function updateInputPath(channel: string, e: Event) {
     const target = e.target as HTMLInputElement;
     if (target && bufferConfig) {
-      bufferConfig.updateInputChannelPartial(channel, { 
-        type: 'texture',
-        path: target.value 
-      });
-      config = bufferConfig.getConfig();
+      const currentInput = bufferConfig.getInputChannel(channel);
+      if (currentInput && currentInput.type === 'texture') {
+        bufferConfig.updateInputChannelPartial(channel, { 
+          ...currentInput,
+          path: target.value 
+        });
+        config = bufferConfig.getConfig();
+      }
+    }
+  }
+
+  function updateTextureFilter(channel: string, e: Event) {
+    const target = e.target as HTMLSelectElement;
+    if (target && bufferConfig) {
+      const currentInput = bufferConfig.getInputChannel(channel);
+      if (currentInput && currentInput.type === 'texture') {
+        bufferConfig.updateInputChannelPartial(channel, { 
+          ...currentInput,
+          filter: target.value as "linear" | "nearest" | "mipmap" | undefined
+        });
+        config = bufferConfig.getConfig();
+      }
+    }
+  }
+
+  function updateTextureWrap(channel: string, e: Event) {
+    const target = e.target as HTMLSelectElement;
+    if (target && bufferConfig) {
+      const currentInput = bufferConfig.getInputChannel(channel);
+      if (currentInput && currentInput.type === 'texture') {
+        bufferConfig.updateInputChannelPartial(channel, { 
+          ...currentInput,
+          wrap: target.value as "repeat" | "clamp" | undefined
+        });
+        config = bufferConfig.getConfig();
+      }
+    }
+  }
+
+  function updateTextureVFlip(channel: string, e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target && bufferConfig) {
+      const currentInput = bufferConfig.getInputChannel(channel);
+      if (currentInput && currentInput.type === 'texture') {
+        bufferConfig.updateInputChannelPartial(channel, { 
+          ...currentInput,
+          vflip: target.checked
+        });
+        config = bufferConfig.getConfig();
+      }
     }
   }
 
@@ -200,6 +245,45 @@
                       required
                     />
                   </div>
+                  
+                  <div class="input-group">
+                    <label for="filter-{channelName}">Filter:</label>
+                    <select 
+                      id="filter-{channelName}"
+                      value={input.filter || 'mipmap'}
+                      on:change={(e) => updateTextureFilter(channelName, e)}
+                      class="input-select"
+                    >
+                      <option value="mipmap">Mipmap (default)</option>
+                      <option value="linear">Linear</option>
+                      <option value="nearest">Nearest</option>
+                    </select>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label for="wrap-{channelName}">Wrap:</label>
+                    <select 
+                      id="wrap-{channelName}"
+                      value={input.wrap || 'repeat'}
+                      on:change={(e) => updateTextureWrap(channelName, e)}
+                      class="input-select"
+                    >
+                      <option value="repeat">Repeat (default)</option>
+                      <option value="clamp">Clamp</option>
+                    </select>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label for="vflip-{channelName}">Vertical Flip:</label>
+                    <input 
+                      id="vflip-{channelName}"
+                      type="checkbox"
+                      checked={input.vflip ?? true}
+                      on:change={(e) => updateTextureVFlip(channelName, e)}
+                      class="input-checkbox"
+                    />
+                    <span class="checkbox-label">Flip texture vertically (default: checked)</span>
+                  </div>
                 {/if}
                 
                 {#if input.type === 'keyboard'}
@@ -300,5 +384,29 @@
 
   .dropdown-item:hover {
     background: var(--vscode-list-hoverBackground);
+  }
+
+  .input-text, .input-select {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #ccc);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #fff);
+    color: var(--vscode-input-foreground, #333);
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .input-text:focus, .input-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+  .input-checkbox {
+    margin-right: 8px;
+  }
+
+  .checkbox-label {
+    font-size: 14px;
+    color: var(--vscode-input-foreground, #333);
   }
 </style>

@@ -74,47 +74,59 @@
     "ConfigInput": {
       "type": "object",
       "required": ["type"],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": ["buffer", "texture", "keyboard"],
-          "description": "Type of input"
-        },
-        "source": {
-          "type": "string",
-          "enum": ["BufferA", "BufferB", "BufferC", "BufferD"],
-          "description": "Source buffer name (required when type is 'buffer')"
-        },
-        "path": {
-          "type": "string",
-          "description": "Path to texture file (required when type is 'texture')"
-        }
-      },
-      "additionalProperties": false,
-      "allOf": [
+      "oneOf": [
         {
-          "if": {
-            "properties": {
-              "type": {
-                "const": "buffer"
-              }
+          "type": "object",
+          "required": ["type", "source"],
+          "properties": {
+            "type": {
+              "const": "buffer"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["BufferA", "BufferB", "BufferC", "BufferD"],
+              "description": "Source buffer name"
             }
           },
-          "then": {
-            "required": ["source"]
-          }
+          "additionalProperties": false
         },
         {
-          "if": {
-            "properties": {
-              "type": {
-                "const": "texture"
-              }
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "texture"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to texture file"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest", "mipmap"],
+              "description": "Texture filtering mode"
+            },
+            "wrap": {
+              "type": "string",
+              "enum": ["repeat", "clamp"],
+              "description": "Texture wrap mode"
+            },
+            "vflip": {
+              "type": "boolean",
+              "description": "Whether to flip texture vertically"
             }
           },
-          "then": {
-            "required": ["path"]
-          }
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "const": "keyboard"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     }

@@ -6,6 +6,9 @@ export interface BufferConfigInput {
 export interface TextureConfigInput {
     type: 'texture';
     path: string;
+    filter?: "linear" | "nearest" | "mipmap";
+    wrap?: "repeat" | "clamp";
+    vflip?: boolean;
 }
 
 export interface KeyboardConfigInput {
