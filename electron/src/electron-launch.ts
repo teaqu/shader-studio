@@ -50,6 +50,13 @@ function saveSettings(): void {
     }
 }
 
+function updateWindowBackground(): void {
+    if (win) {
+        const backgroundColor = nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff';
+        win.setBackgroundColor(backgroundColor);
+    }
+}
+
 function createMenu(): void {
     const template: Electron.MenuItemConstructorOptions[] = [
         {
@@ -76,6 +83,7 @@ function createMenu(): void {
                             click: () => {
                                 settings.theme = 'system';
                                 nativeTheme.themeSource = 'system';
+                                updateWindowBackground();
                                 saveSettings();
                             }
                         },
@@ -86,6 +94,7 @@ function createMenu(): void {
                             click: () => {
                                 settings.theme = 'light';
                                 nativeTheme.themeSource = 'light';
+                                updateWindowBackground();
                                 saveSettings();
                             }
                         },
@@ -96,6 +105,7 @@ function createMenu(): void {
                             click: () => {
                                 settings.theme = 'dark';
                                 nativeTheme.themeSource = 'dark';
+                                updateWindowBackground();
                                 saveSettings();
                             }
                         }
@@ -144,6 +154,7 @@ app.whenReady().then(() => {
         frame: true,
         title: 'Shader View',
         icon: icon.isEmpty() ? undefined : icon,
+        backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff',
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
@@ -169,6 +180,11 @@ app.whenReady().then(() => {
     win.loadFile(uiPath);
 
     createMenu();
+
+    // Listen for system theme changes
+    nativeTheme.on('updated', () => {
+        updateWindowBackground();
+    });
 });
 
 app.on('window-all-closed', () => app.quit());
