@@ -46,13 +46,12 @@
       currentTime = timeManager.getCurrentTime(performance.now());
       isPaused = timeManager.isPaused();
       
-      // Set up interval to update time continuously
       timeUpdateInterval = setInterval(() => {
         if (timeManager) {
           currentTime = timeManager.getCurrentTime(performance.now());
           isPaused = timeManager.isPaused();
         }
-      }, 16); // Update every 16ms (~60fps) for smooth time display
+      }, 16);
     }
 
     showThemeButton = !isVSCodeEnvironment();

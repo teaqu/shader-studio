@@ -71,14 +71,14 @@ export class ShaderPipeline {
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
     this.prepareNewCompilation(name);
-    
+
     this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders();
-    
+
     if (!compilation.success) {
       return compilation;
     }
-    
+
     await this.updateResources();
     return { success: true };
   }
@@ -138,23 +138,23 @@ export class ShaderPipeline {
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc);
       const shader = this.shaderCompiler.compileShader(pass.shaderSrc);
-      
+
       if (!shader || !shader.mResult) {
         const err = shader ? ShaderErrorFormatter.formatShaderError(
           shader.mInfo,
           this.renderer,
           svelteHeaderLines,
         ) : "Failed to compile shader";
-        
+
         // Clean up partially compiled shaders
         this.cleanupPartialShaders(newPassShaders);
-        
+
         return {
           success: false,
           error: `${pass.name}: ${err}`,
         };
       }
-      
+
       newPassShaders[pass.name] = shader;
       this.passShaders[pass.name] = shader;
 
@@ -212,12 +212,13 @@ export class ShaderPipeline {
   public cleanup(): void {
     this.resourceManager.cleanup();
     this.cleanupShaders();
+    this.bufferManager.dispose();
     this.currentShaderRenderID++;
   }
 
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {
     const shadersToCleanup = shaders || this.passShaders;
-    
+
     for (const key in shadersToCleanup) {
       const shader = shadersToCleanup[key];
       if (shader) {
