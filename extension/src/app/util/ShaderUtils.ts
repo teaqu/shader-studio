@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import type { ShaderConfig } from "../../models/ShaderConfig";
+import type { ShaderConfig } from "@shader-view/types";
 
 export interface ShaderInfo {
     type: string;

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import type { ShaderConfig } from "../models/ShaderConfig";
+import type { ShaderConfig } from "@shader-view/types";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();

@@ -34,6 +34,10 @@
       {
         "command": "shader-view.generateConfig",
         "title": "Shader View: Generate Config for GLSL File"
+      },
+      {
+        "command": "shader-view.toggleConfigView",
+        "title": "Shader View: Toggle JSON/UI View"
       }
     ],
     "customEditors": [

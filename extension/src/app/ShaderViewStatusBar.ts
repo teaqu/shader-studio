@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export class ShaderViewStatusBar {
     private statusBarItem: vscode.StatusBarItem;
+    private configToggleStatusBarItem: vscode.StatusBarItem;
     private isServerRunning: boolean = false;
 
     constructor(private context: vscode.ExtensionContext) {
@@ -13,6 +14,34 @@ export class ShaderViewStatusBar {
         this.statusBarItem.command = 'shader-view.showShaderViewMenu';
         this.statusBarItem.show();
         this.context.subscriptions.push(this.statusBarItem);
+
+        this.configToggleStatusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            99
+        );
+        this.configToggleStatusBarItem.command = 'shader-view.toggleConfigView';
+        this.context.subscriptions.push(this.configToggleStatusBarItem);
+
+        this.context.subscriptions.push(
+            vscode.window.onDidChangeActiveTextEditor(() => {
+                this.updateConfigToggleVisibility();
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.window.tabGroups.onDidChangeTabs(() => {
+                this.updateConfigToggleVisibility();
+            })
+        );
+
+        this.context.subscriptions.push(
+            vscode.window.tabGroups.onDidChangeTabGroups(() => {
+                this.updateConfigToggleVisibility();
+            })
+        );
+
+        // Initial update
+        this.updateConfigToggleVisibility();
     }
 
     public updateServerStatus(isRunning: boolean, port?: number) {
@@ -94,7 +123,43 @@ export class ShaderViewStatusBar {
         }
     }
 
+    public refreshConfigToggle() {
+        this.updateConfigToggleVisibility();
+    }
+
+    private updateConfigToggleVisibility() {
+        const activeEditor = vscode.window.activeTextEditor;
+        const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        
+        let isSvJsonFile = false;
+        let isCustomEditor = false;
+        
+        if (activeEditor && activeEditor.document.fileName.endsWith('.sv.json')) {
+            isSvJsonFile = true;
+            isCustomEditor = false;
+        } else if (currentTab?.input instanceof vscode.TabInputCustom && 
+                   (currentTab.input as vscode.TabInputCustom).viewType === 'shader-view.configEditor') {
+            isSvJsonFile = true;
+            isCustomEditor = true;
+        }
+        
+        if (isSvJsonFile) {
+            if (isCustomEditor) {
+                this.configToggleStatusBarItem.text = "$(file-code) JSON";
+                this.configToggleStatusBarItem.tooltip = "Click to view/edit JSON directly";
+            } else {
+                this.configToggleStatusBarItem.text = "$(symbol-misc) UI";
+                this.configToggleStatusBarItem.tooltip = "Click to use visual config editor";
+            }
+            
+            this.configToggleStatusBarItem.show();
+        } else {
+            this.configToggleStatusBarItem.hide();
+        }
+    }
+
     public dispose() {
         this.statusBarItem.dispose();
+        this.configToggleStatusBarItem.dispose();
     }
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { ConfigEditor } from '../ConfigEditor';
-  import type { ShaderConfig } from '../types/ShaderConfig';
+  import type { ShaderConfig, BufferPass } from '../types/ShaderConfig';
   import BufferConfig from './BufferConfig.svelte';
   import Preview from './Preview.svelte';
 
@@ -100,9 +100,8 @@
 
 <div class="config-editor">
   <div class="header">
-    <h1>Shader Configuration Editor</h1>
-    <p>Visual editor for .sv.json shader configuration files</p>
-    <p class="subtitle">To edit the JSON directly, right-click the file in Explorer → "Open With..." → "Text Editor"</p>
+    <h1>Shader Configuration</h1>
+    <p class="subtitle">Click the "JSON" button in the status bar to edit the raw JSON directly</p>
   </div>
 
   {#if error}
@@ -160,7 +159,6 @@
       <!-- Tab Content -->
       <div class="tab-content">
         {#if activeTab === 'Image'}
-          <!-- Image Configuration -->
           {#if activeTabConfig}
             <BufferConfig 
               bufferName={activeTab} 
@@ -172,21 +170,17 @@
             />
           {/if}
         {:else}
-          <!-- Buffer Configuration -->
           {#if activeTabConfig && activeTab !== 'Image'}
             <BufferConfig 
               bufferName={activeTab} 
               config={activeTabConfig} 
               onUpdate={(bufferName, updatedConfig) => {
-                configEditor?.updateBuffer(bufferName, updatedConfig);
+                configEditor?.updateBuffer(bufferName, updatedConfig as BufferPass);
               }} 
             />
           {/if}
         {/if}
       </div>
-
-      <!-- Configuration Preview -->
-      <Preview {config} />
     </div>
   {:else if !error}
     <div class="loading">

@@ -177,6 +177,13 @@ export class ShaderView {
         this.openInElectron();
       }),
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.toggleConfigView", () => {
+        this.logger.info("shader-view.toggleConfigView command executed");
+        this.toggleConfigView();
+      }),
+    );
   }
 
   private registerEventHandlers(): void {
@@ -279,6 +286,48 @@ export class ShaderView {
 
   private async openInElectron(): Promise<void> {
     await this.electronLauncher.launch();
+  }
+
+  private async toggleConfigView(): Promise<void> {
+    const activeEditor = vscode.window.activeTextEditor;
+    const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    
+    // Check if we have a .sv.json file either in text editor or custom editor
+    let documentUri: vscode.Uri | undefined;
+    let isCustomEditor = false;
+    
+    if (activeEditor && activeEditor.document.fileName.endsWith('.sv.json')) {
+      // Text editor with .sv.json file
+      documentUri = activeEditor.document.uri;
+      isCustomEditor = false;
+    } else if (currentTab?.input instanceof vscode.TabInputCustom && 
+               (currentTab.input as vscode.TabInputCustom).viewType === 'shader-view.configEditor') {
+      // Custom editor for .sv.json file
+      documentUri = (currentTab.input as vscode.TabInputCustom).uri;
+      isCustomEditor = true;
+    }
+    
+    if (!documentUri) {
+      return;
+    }
+
+    try {
+      if (isCustomEditor) {
+        // Switch to text editor
+        await vscode.commands.executeCommand('vscode.openWith', documentUri, 'default');
+      } else {
+        // Switch to custom editor
+        await vscode.commands.executeCommand('vscode.openWith', documentUri, 'shader-view.configEditor');
+      }
+
+      // Refresh the status bar toggle button after a short delay
+      setTimeout(() => {
+        this.webServer.getStatusBar().refreshConfigToggle();
+      }, 100);
+    } catch (error) {
+      this.logger.error(`Failed to toggle config view: ${error}`);
+      vscode.window.showErrorMessage(`Failed to toggle view: ${error}`);
+    }
   }
 
 }

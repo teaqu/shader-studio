@@ -1,18 +1,25 @@
 <script lang="ts">
-  import { BufferConfig } from '../BufferConfig';
-  import type { BufferPass, ImagePass, ConfigInput } from '../types/ShaderConfig';
+  import { BufferConfig } from "../BufferConfig";
+  import type {
+    BufferPass,
+    ImagePass,
+    ConfigInput,
+  } from "../types/ShaderConfig";
 
   export let bufferName: string;
   export let config: BufferPass | ImagePass;
-  export let onUpdate: (bufferName: string, config: BufferPass | ImagePass) => void;
+  export let onUpdate: (
+    bufferName: string,
+    config: BufferPass | ImagePass,
+  ) => void;
   export let isImagePass: boolean = false;
 
   let bufferConfig: BufferConfig;
 
   $: bufferConfig = new BufferConfig(bufferName, config, onUpdate);
-  
+
   // Make the path reactive to prop changes
-  $: currentPath = 'path' in config ? config.path : '';
+  $: currentPath = "path" in config ? config.path : "";
 
   function updatePath(event: Event) {
     const target = event.target as HTMLInputElement;
@@ -23,8 +30,8 @@
 
   function addSpecificChannel(channel: string) {
     const newInput: ConfigInput = {
-      type: 'buffer',
-      source: 'BufferA'
+      type: "buffer",
+      source: "BufferA",
     };
     bufferConfig.addInputChannel(channel, newInput);
     config = bufferConfig.getConfig();
@@ -38,25 +45,25 @@
   function updateInputType(channel: string, e: Event) {
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
-      const newType = target.value as 'buffer' | 'texture' | 'keyboard';
-      
+      const newType = target.value as "buffer" | "texture" | "keyboard";
+
       // When changing type, we need to provide appropriate default values
-      if (newType === 'buffer') {
-        bufferConfig.updateInputChannelPartial(channel, { 
-          type: 'buffer',
-          source: 'BufferA' 
+      if (newType === "buffer") {
+        bufferConfig.updateInputChannelPartial(channel, {
+          type: "buffer",
+          source: "BufferA",
         });
-      } else if (newType === 'texture') {
-        bufferConfig.updateInputChannelPartial(channel, { 
-          type: 'texture',
-          path: '' 
+      } else if (newType === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
+          type: "texture",
+          path: "",
         });
       } else {
-        bufferConfig.updateInputChannelPartial(channel, { 
-          type: 'keyboard' 
+        bufferConfig.updateInputChannelPartial(channel, {
+          type: "keyboard",
         });
       }
-      
+
       config = bufferConfig.getConfig();
     }
   }
@@ -64,9 +71,9 @@
   function updateInputSource(channel: string, e: Event) {
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
-      bufferConfig.updateInputChannelPartial(channel, { 
-        type: 'buffer',
-        source: target.value as 'BufferA' | 'BufferB' | 'BufferC' | 'BufferD'
+      bufferConfig.updateInputChannelPartial(channel, {
+        type: "buffer",
+        source: target.value as "BufferA" | "BufferB" | "BufferC" | "BufferD",
       });
       config = bufferConfig.getConfig();
     }
@@ -76,10 +83,10 @@
     const target = e.target as HTMLInputElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === 'texture') {
-        bufferConfig.updateInputChannelPartial(channel, { 
+      if (currentInput && currentInput.type === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
-          path: target.value 
+          path: target.value,
         });
         config = bufferConfig.getConfig();
       }
@@ -90,10 +97,10 @@
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === 'texture') {
-        bufferConfig.updateInputChannelPartial(channel, { 
+      if (currentInput && currentInput.type === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
-          filter: target.value as "linear" | "nearest" | "mipmap" | undefined
+          filter: target.value as "linear" | "nearest" | "mipmap" | undefined,
         });
         config = bufferConfig.getConfig();
       }
@@ -104,10 +111,10 @@
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === 'texture') {
-        bufferConfig.updateInputChannelPartial(channel, { 
+      if (currentInput && currentInput.type === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
-          wrap: target.value as "repeat" | "clamp" | undefined
+          wrap: target.value as "repeat" | "clamp" | undefined,
         });
         config = bufferConfig.getConfig();
       }
@@ -118,10 +125,10 @@
     const target = e.target as HTMLInputElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === 'texture') {
-        bufferConfig.updateInputChannelPartial(channel, { 
+      if (currentInput && currentInput.type === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
-          vflip: target.checked
+          vflip: target.checked,
         });
         config = bufferConfig.getConfig();
       }
@@ -132,15 +139,16 @@
 </script>
 
 <div class="buffer-config">
+  <h2 class="buffer-name">{bufferName}</h2>
+
   <div class="buffer-details">
-    <div class="config-item">
-      <h2>{bufferName} Configuration</h2>
-      {#if !isImagePass}
+    {#if !isImagePass}
+      <div class="config-item">
         <div class="input-group">
           <label for="path-{bufferName}">Path:</label>
-          <input 
+          <input
             id="path-{bufferName}"
-            type="text" 
+            type="text"
             value={currentPath}
             on:input={updatePath}
             class="config-input"
@@ -148,28 +156,26 @@
             placeholder=""
           />
         </div>
-      {/if}
-      
-      {#if !validation.isValid}
-        <div class="validation-errors">
-          {#each validation.errors as error}
-            <p class="error-message">{error}</p>
-          {/each}
-        </div>
-      {/if}
-    </div>
+
+        {#if !validation.isValid}
+          <div class="validation-errors">
+            {#each validation.errors as error}
+              <p class="error-message">{error}</p>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <div class="config-item">
       <div class="section-header">
         <h3>Input Channels</h3>
         {#if bufferConfig && bufferConfig.getAvailableChannels().length > 0}
           <div class="add-channel-dropdown">
-            <button class="action-btn">
-              + Add Channel
-            </button>
+            <button class="action-btn"> + Add Channel </button>
             <div class="dropdown-content">
               {#each bufferConfig.getAvailableChannels() as channel}
-                <button 
+                <button
                   class="dropdown-item"
                   on:click={() => addSpecificChannel(channel)}
                 >
@@ -180,17 +186,20 @@
           </div>
         {/if}
       </div>
-      
-      <p class="item-count">{bufferConfig?.getInputChannelCount() || 0} channels configured</p>
-      
+
+      <p class="item-count">
+        {bufferConfig?.getInputChannelCount() || 0} channels configured
+      </p>
+
       <div class="item-list">
-        {#each ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'] as channelName}
-          {@const input = config.inputs?.[channelName as keyof typeof config.inputs]}
+        {#each ["iChannel0", "iChannel1", "iChannel2", "iChannel3"] as channelName}
+          {@const input =
+            config.inputs?.[channelName as keyof typeof config.inputs]}
           {#if input}
             <div class="item-card">
               <div class="item-header">
                 <span class="item-name">{channelName}</span>
-                <button 
+                <button
                   class="remove-btn"
                   on:click={() => removeInputChannel(channelName)}
                   title="Remove {channelName}"
@@ -198,11 +207,11 @@
                   ×
                 </button>
               </div>
-              
+
               <div class="item-config">
                 <div class="input-group">
                   <label for="type-{channelName}">Type:</label>
-                  <select 
+                  <select
                     id="type-{channelName}"
                     value={input.type}
                     on:change={(e) => updateInputType(channelName, e)}
@@ -213,11 +222,11 @@
                     <option value="keyboard">Keyboard</option>
                   </select>
                 </div>
-                
-                {#if input.type === 'buffer'}
+
+                {#if input.type === "buffer"}
                   <div class="input-group">
                     <label for="source-{channelName}">Source:</label>
-                    <select 
+                    <select
                       id="source-{channelName}"
                       value={input.source}
                       on:change={(e) => updateInputSource(channelName, e)}
@@ -231,11 +240,11 @@
                     </select>
                   </div>
                 {/if}
-                
-                {#if input.type === 'texture'}
+
+                {#if input.type === "texture"}
                   <div class="input-group">
                     <label for="path-{channelName}">Path:</label>
-                    <input 
+                    <input
                       id="path-{channelName}"
                       type="text"
                       value={input.path}
@@ -245,12 +254,12 @@
                       required
                     />
                   </div>
-                  
+
                   <div class="input-group">
                     <label for="filter-{channelName}">Filter:</label>
-                    <select 
+                    <select
                       id="filter-{channelName}"
-                      value={input.filter || 'mipmap'}
+                      value={input.filter || "mipmap"}
                       on:change={(e) => updateTextureFilter(channelName, e)}
                       class="input-select"
                     >
@@ -259,12 +268,12 @@
                       <option value="nearest">Nearest</option>
                     </select>
                   </div>
-                  
+
                   <div class="input-group">
                     <label for="wrap-{channelName}">Wrap:</label>
-                    <select 
+                    <select
                       id="wrap-{channelName}"
-                      value={input.wrap || 'repeat'}
+                      value={input.wrap || "repeat"}
                       on:change={(e) => updateTextureWrap(channelName, e)}
                       class="input-select"
                     >
@@ -272,34 +281,40 @@
                       <option value="clamp">Clamp</option>
                     </select>
                   </div>
-                  
+
                   <div class="input-group">
                     <label for="vflip-{channelName}">Vertical Flip:</label>
-                    <input 
+                    <input
                       id="vflip-{channelName}"
                       type="checkbox"
                       checked={input.vflip ?? true}
                       on:change={(e) => updateTextureVFlip(channelName, e)}
                       class="input-checkbox"
                     />
-                    <span class="checkbox-label">Flip texture vertically (default: checked)</span>
+                    <span class="checkbox-label"
+                      >Flip texture vertically (default: checked)</span
+                    >
                   </div>
                 {/if}
-                
-                {#if input.type === 'keyboard'}
+
+                {#if input.type === "keyboard"}
                   <div class="input-group">
-                    <span class="input-note">Keyboard input (no additional configuration needed)</span>
+                    <span class="input-note"
+                      >Keyboard input (no additional configuration needed)</span
+                    >
                   </div>
                 {/if}
               </div>
             </div>
           {/if}
         {/each}
-        
+
         {#if (bufferConfig?.getInputChannelCount() || 0) === 0}
           <div class="empty-state">
             <p>No input channels configured</p>
-            <p class="hint">Add channels to connect this buffer to other buffers or textures</p>
+            <p class="hint">
+              Add channels to connect this buffer to other buffers or textures
+            </p>
           </div>
         {/if}
       </div>
@@ -308,6 +323,9 @@
 </div>
 
 <style>
+  .buffer-name {
+    margin-top: 0;
+  }
   .buffer-config {
     padding: 0;
   }
@@ -315,7 +333,7 @@
   .buffer-details {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 12px;
   }
 
   .config-item {
@@ -386,7 +404,8 @@
     background: var(--vscode-list-hoverBackground);
   }
 
-  .input-text, .input-select {
+  .input-text,
+  .input-select {
     padding: 8px 12px;
     border: 1px solid var(--vscode-input-border, #ccc);
     border-radius: 4px;
@@ -396,7 +415,8 @@
     width: 100%;
   }
 
-  .input-text:focus, .input-select:focus {
+  .input-text:focus,
+  .input-select:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
   }

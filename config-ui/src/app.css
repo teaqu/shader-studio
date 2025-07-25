@@ -22,7 +22,9 @@ body {
   box-sizing: border-box;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -65,7 +67,6 @@ body {
 .tab-navigation {
   display: flex;
   align-items: center;
-  margin-bottom: 20px;
   border-bottom: 1px solid var(--vscode-panel-border, #e0e0e0);
   gap: 2px;
 }
@@ -100,6 +101,9 @@ body {
   background: var(--vscode-tab-activeBackground, #fff);
   color: var(--vscode-tab-activeForeground, #333);
   border-bottom-color: var(--vscode-tab-activeBorder, #007acc);
+  border-bottom-width: 3px;
+  font-weight: 600;
+  box-shadow: 0 -2px 0 0 var(--vscode-tab-activeBorder, #007acc);
 }
 
 .remove-tab-btn {
