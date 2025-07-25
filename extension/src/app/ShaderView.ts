@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
 import { ShaderProcessor } from "./ShaderProcessor";
@@ -6,6 +8,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
 import { ElectronLauncher } from "./ElectronLauncher";
+import { ConfigEditorProvider } from "./ConfigEditorProvider";
 
 export class ShaderView {
   private panelManager: PanelManager;
@@ -16,6 +19,7 @@ export class ShaderView {
   private context: vscode.ExtensionContext;
   private logger!: Logger;
   private electronLauncher: ElectronLauncher;
+  private configEditorProvider: vscode.Disposable;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -33,6 +37,9 @@ export class ShaderView {
     this.webServer = new WebServer(context);
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
+    // Register custom editor for .sv.json files
+    this.configEditorProvider = ConfigEditorProvider.register(context, this.shaderProcessor);
+
     this.startWebSocketTransport();
 
     this.registerCommands();
@@ -48,6 +55,7 @@ export class ShaderView {
       this.webSocketTransport.close();
       this.webSocketTransport = null;
     }
+    this.configEditorProvider.dispose();
     this.logger.info("Shader extension disposed");
   }
 
@@ -137,6 +145,13 @@ export class ShaderView {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.generateConfig", () => {
+        this.logger.info("shader-view.generateConfig command executed");
+        this.generateConfig();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.showShaderViewMenu", () => {
         this.logger.info("shader-view.showShaderViewMenu command executed");
         this.webServer.getStatusBar().showShaderViewMenu();
@@ -174,6 +189,75 @@ export class ShaderView {
         this.performShaderUpdate(editor);
       }
     });
+  }
+
+  private async generateConfig(): Promise<void> {
+    try {
+      // Get the active editor
+      const activeEditor = vscode.window.activeTextEditor;
+
+      // If no active editor, ask user to select a GLSL file
+      let glslFilePath: string;
+      if (!activeEditor || !activeEditor.document.fileName.endsWith('.glsl')) {
+        const fileUri = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          filters: {
+            'GLSL Files': ['glsl']
+          },
+          title: 'Select GLSL file to generate config for'
+        });
+
+        if (!fileUri || fileUri.length === 0) {
+          return; // User cancelled
+        }
+
+        glslFilePath = fileUri[0].fsPath;
+      } else {
+        glslFilePath = activeEditor.document.fileName;
+      }
+
+      // Get the base name without extension
+      const baseName = path.basename(glslFilePath, '.glsl');
+      const dirName = path.dirname(glslFilePath);
+
+      // Create the config file path
+      const configFilePath = path.join(dirName, `${baseName}.sv.json`);
+
+      // Check if config file already exists
+      if (fs.existsSync(configFilePath)) {
+        const overwrite = await vscode.window.showWarningMessage(
+          `Config file ${baseName}.sv.json already exists. Overwrite?`,
+          'Yes', 'No'
+        );
+        if (overwrite !== 'Yes') {
+          return;
+        }
+      }
+
+      // Create base config
+      const relativeGlslPath = path.relative(dirName, glslFilePath).replace(/\\/g, '/');
+      const baseConfig = {
+        version: "1.0",
+        Image: {
+          inputs: {}
+        }
+      };
+
+      // Write the config file
+      fs.writeFileSync(configFilePath, JSON.stringify(baseConfig, null, 2));
+
+      // Open the config file
+      const configUri = vscode.Uri.file(configFilePath);
+      await vscode.commands.executeCommand('vscode.open', configUri);
+
+      vscode.window.showInformationMessage(`Generated config file: ${baseName}.sv.json`);
+
+    } catch (error) {
+      this.logger.error(`Failed to generate config: ${error}`);
+      vscode.window.showErrorMessage(`Failed to generate config: ${error}`);
+    }
   }
 
   private performShaderUpdate(editor: vscode.TextEditor): void {

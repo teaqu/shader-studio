@@ -30,6 +30,21 @@
       {
         "command": "shader-view.showWebServerMenu",
         "title": "Shader View: Web Server Menu"
+      },
+      {
+        "command": "shader-view.generateConfig",
+        "title": "Shader View: Generate Config for GLSL File"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "shader-view.configEditor",
+        "displayName": "Shader Config Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.sv.json"
+          }
+        ]
       }
     ],
     "configuration": {

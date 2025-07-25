@@ -84,7 +84,7 @@ export class PassRenderer {
     for (let i = 0; i < 4; i++) {
       const input = passConfig.inputs[`iChannel${i}`];
       if (input) {
-        if (input.type === "image" && input.path) {
+        if (input.type === "texture" && input.path) {
           const imageCache = this.resourceManager.getImageTextureCache();
           textureBindings[i] = imageCache[input.path] || defaultTexture;
         } else if (input.type === "keyboard") {
