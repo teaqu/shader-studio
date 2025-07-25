@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { currentTheme, toggleTheme } from "../stores/themeStore";
-  import { aspectRatioStore, getAspectRatioLabel, type AspectRatioMode } from "../stores/aspectRatioStore";
-  import { qualityStore, getQualityLabel, type QualityMode } from "../stores/qualityStore";
+  import { aspectRatioStore, type AspectRatioMode } from "../stores/aspectRatioStore";
+  import { qualityStore, type QualityMode } from "../stores/qualityStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   
   import resetIcon from '../../assets/reset.svg?raw';
@@ -14,7 +14,7 @@
   import unlockIcon from '../../assets/unlock.svg?raw';
   import fullscreenIcon from '../../assets/fullscreen.svg?raw';
   
-  import { piRequestFullScreen, piIsFullScreen, piExitFullScreen } from '../../../vendor/pilibs/src/piWebUtils.js';
+  import { piRequestFullScreen } from '../../../vendor/pilibs/src/piWebUtils.js';
 
   export let timeManager: any;
   export let currentFPS: number;
@@ -31,7 +31,7 @@
   export let onZoomChange: (zoom: number) => void = () => {};
 
   let currentTime = 0.0;
-  let timeUpdateInterval: ReturnType<typeof setInterval>;
+  let timeUpdateHandle: number | null = null;
   let isPaused = false;
   let theme: 'light' | 'dark' = 'light';
   let showThemeButton = false;
@@ -46,12 +46,15 @@
       currentTime = timeManager.getCurrentTime(performance.now());
       isPaused = timeManager.isPaused();
       
-      timeUpdateInterval = setInterval(() => {
+      const updateTime = () => {
         if (timeManager) {
           currentTime = timeManager.getCurrentTime(performance.now());
           isPaused = timeManager.isPaused();
         }
-      }, 16);
+        timeUpdateHandle = requestAnimationFrame(updateTime);
+      };
+      
+      timeUpdateHandle = requestAnimationFrame(updateTime);
     }
 
     showThemeButton = !isVSCodeEnvironment();
@@ -70,8 +73,8 @@
     });
 
     return () => {
-      if (timeUpdateInterval) {
-        clearInterval(timeUpdateInterval);
+      if (timeUpdateHandle !== null) {
+        cancelAnimationFrame(timeUpdateHandle);
       }
       unsubscribeTheme();
       unsubscribeAspectRatio();
@@ -80,8 +83,8 @@
   });
 
   onDestroy(() => {
-    if (timeUpdateInterval) {
-      clearInterval(timeUpdateInterval);
+    if (timeUpdateHandle !== null) {
+      cancelAnimationFrame(timeUpdateHandle);
     }
   });
 
