@@ -10,32 +10,27 @@ export class ElectronLauncher {
     this.logger = logger;
   }
 
-  public async launch(): Promise<void> {
+  public async launch(isDevelopment: boolean): Promise<void> {
     try {
       const path = await import('path');
-      const fs = await import('fs');
 
       this.logger.info(`Attempting to launch Electron (always on top) with local UI`);
 
-      const extensionDir = path.dirname(this.context.extensionUri.fsPath);
-      const electronDir = path.join(extensionDir, 'electron');
-
-      const electronBinary = path.join(electronDir, 'node_modules', '.bin', 'electron');
+      const extensionDir = this.context.extensionUri.fsPath;
+      const rootDir = path.dirname(extensionDir);
+      const electronDir = path.join(rootDir, 'electron');
       const launcherScript = path.join(electronDir, 'dist', 'electron-launch.js');
 
-      let isDevelopment = false;
-      try {
-        await fs.promises.access(electronBinary);
-        isDevelopment = true;
-        this.logger.info('Development mode detected - using electron from node_modules');
-      } catch {
-        this.logger.info('Production mode detected - looking for packaged app');
-      }
-
       if (isDevelopment) {
-        await this.launchDevelopmentMode(electronDir, electronBinary, launcherScript);
+        await this.launchDevelopmentMode(electronDir, launcherScript);
       } else {
-        await this.launchProductionMode(electronDir);
+        try {
+          await this.launchProductionMode(electronDir);
+        } catch (productionError) {
+          this.logger.warn(`Production mode failed: ${productionError}`);
+          this.logger.info('Falling back to development mode...');
+          await this.launchDevelopmentMode(electronDir, launcherScript);
+        }
       }
 
     } catch (error) {
@@ -46,18 +41,16 @@ export class ElectronLauncher {
 
   private async launchDevelopmentMode(
     electronDir: string,
-    electronBinary: string,
     launcherScript: string
   ): Promise<void> {
-    this.logger.info(`Using development Electron binary at: ${electronBinary}`);
-    this.logger.info(`Using launcher script at: ${launcherScript}`);
+    this.logger.info('Development mode detected - using npx electron');
 
     const terminal = vscode.window.createTerminal({
       name: 'Open in Electron',
       cwd: electronDir,
       hideFromUser: true
     });
-    terminal.sendText(`"${electronBinary}" "${launcherScript}"`);
+    terminal.sendText(`npx electron "${launcherScript}"`);
 
     this.logger.info('Opened VS Code terminal to launch Electron with always-on-top.');
   }

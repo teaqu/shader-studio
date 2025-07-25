@@ -285,7 +285,7 @@ export class ShaderView {
   }
 
   private async openInElectron(): Promise<void> {
-    await this.electronLauncher.launch();
+    await this.electronLauncher.launch(this.isDevelopmentMode());
   }
 
   private async toggleConfigView(): Promise<void> {
