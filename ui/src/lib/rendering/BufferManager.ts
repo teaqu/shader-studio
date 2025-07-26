@@ -52,9 +52,9 @@ export class BufferManager {
       }
     }
 
-    this.cleanupBuffers(oldBuffers);
     this.buffers = newBuffers;
-  }
+    this.cleanupBuffers(oldBuffers);
+  } 
 
   public getPassBuffers(): Buffers {
     return this.buffers;
@@ -67,11 +67,6 @@ export class BufferManager {
   public dispose(): void {
     this.cleanupBuffers(this.buffers);
     this.buffers = {};
-    
-    if (this.copyShader) {
-      this.renderer.DestroyShader(this.copyShader);
-      this.copyShader = null;
-    }
   }
 
   private createCopyShader(): PiShader | null {
@@ -184,7 +179,7 @@ export class BufferManager {
     this.renderer.DestroyRenderTarget(renderTarget);
   }
 
-  private clearRenderTarget(
+  private clearRenderTarget( 
     renderTarget: PiRenderTarget | null,
     width: number,
     height: number
@@ -195,3 +190,4 @@ export class BufferManager {
     this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 0]);
   }
 }
+ 
