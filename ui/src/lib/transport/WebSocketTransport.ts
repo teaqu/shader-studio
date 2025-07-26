@@ -26,6 +26,8 @@ export class WebSocketTransport implements Transport {
         this.connected = true;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
+        
+        this.sendClientInfo();
       };
 
       this.ws.onmessage = (event) => {
@@ -82,6 +84,20 @@ export class WebSocketTransport implements Transport {
       this.connect();
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000);
     }, this.reconnectDelay);
+  }
+
+  private sendClientInfo(): void {
+    const isElectron = !!(window as any).electronAPI || 
+                       !!(window as any).require || 
+                       (typeof process !== 'undefined' && process.versions?.electron);
+    
+    this.postMessage({
+      type: 'clientInfo',
+      isElectron: isElectron,
+      userAgent: navigator.userAgent
+    });
+    
+    console.log(`WebSocket: Sent client info - isElectron: ${isElectron}`);
   }
 
   postMessage(message: any): void {

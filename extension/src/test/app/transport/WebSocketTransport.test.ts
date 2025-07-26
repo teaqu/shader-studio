@@ -135,4 +135,99 @@ suite('WebSocketTransport Test Suite', () => {
         
         assert.strictEqual(transport.hasActiveClients(), false);
     });
+
+    suite('convertUriForClient', () => {
+        let vscodeConfigStub: sinon.SinonStub;
+        let mockConfig: any;
+
+        setup(() => {
+            transport = new WebSocketTransport(51481, mockShaderProcessor, mockGlslFileTracker);
+            
+            mockConfig = {
+                get: sandbox.stub().withArgs('webServerPort').returns(3000)
+            };
+            vscodeConfigStub = sandbox.stub(require('vscode').workspace, 'getConfiguration').returns(mockConfig);
+        });
+
+        test('converts Windows path to file:// URL for Electron client', () => {
+            const filePath = 'C:\\path\\to\\texture.png';
+            const result = transport.convertUriForClient(filePath, 'electron');
+            
+            assert.strictEqual(result, 'file://C:/path/to/texture.png');
+        });
+
+        test('converts Unix path to file:// URL for Electron client', () => {
+            const filePath = '/path/to/texture.png';
+            const result = transport.convertUriForClient(filePath, 'electron');
+            
+            assert.strictEqual(result, 'file:///path/to/texture.png');
+        });
+
+        test('converts Windows path to HTTP URL for browser client', () => {
+            const filePath = 'C:\\path\\to\\texture.png';
+            const result = transport.convertUriForClient(filePath, 'browser');
+            
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+        });
+
+        test('converts Unix path to HTTP URL for browser client', () => {
+            const filePath = '/path/to/texture.png';
+            const result = transport.convertUriForClient(filePath, 'browser');
+            
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+        });
+
+        test('uses custom port for browser client', () => {
+            mockConfig.get.withArgs('webServerPort').returns(8080);
+            const filePath = 'C:\\path\\to\\texture.png';
+            const result = transport.convertUriForClient(filePath, 'browser');
+            
+            assert.strictEqual(result, `http://localhost:8080/textures/${encodeURIComponent(filePath)}`);
+        });
+
+        test('defaults to browser client type when not specified', () => {
+            const filePath = 'C:\\path\\to\\texture.png';
+            const result = transport.convertUriForClient(filePath);
+            
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+        });
+
+        test('returns unchanged path for non-local file paths', () => {
+            const httpUrl = 'http://example.com/texture.png';
+            const result = transport.convertUriForClient(httpUrl, 'browser');
+            
+            assert.strictEqual(result, httpUrl);
+        });
+
+        test('returns unchanged path for already converted file:// URLs', () => {
+            const fileUrl = 'file://C:/path/to/texture.png';
+            const result = transport.convertUriForClient(fileUrl, 'electron');
+            
+            assert.strictEqual(result, fileUrl);
+        });
+
+        test('handles paths with spaces correctly for browser client', () => {
+            const filePath = 'C:\\path\\with spaces\\texture.png';
+            const result = transport.convertUriForClient(filePath, 'browser');
+            
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+            assert.ok(result.includes('with%20spaces'));
+        });
+
+        test('handles paths with special characters correctly for browser client', () => {
+            const filePath = 'C:\\path\\with&special#chars\\texture.png';
+            const result = transport.convertUriForClient(filePath, 'browser');
+            
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+            assert.ok(result.includes('%26') && result.includes('%23'));
+        });
+
+        test('handles relative paths correctly', () => {
+            const relativePath = 'relative/path/texture.png';
+            const result = transport.convertUriForClient(relativePath, 'browser');
+            
+            // Should return unchanged since it doesn't match the local file pattern
+            assert.strictEqual(result, relativePath);
+        });
+    });
 });

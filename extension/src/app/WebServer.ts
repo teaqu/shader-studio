@@ -56,6 +56,21 @@ export class WebServer {
     const uiDistPath = vscode.Uri.joinPath(workspaceUri, 'ui', 'dist').fsPath;
 
     this.httpServer = http.createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+
+      if (req.url?.startsWith('/textures/')) {
+        this.handleTextureRequest(req, res);
+        return;
+      }
+
       let filePath = path.join(uiDistPath, req.url === '/' ? 'index.html' : req.url || '');
 
       const resolvedPath = path.resolve(filePath);
@@ -105,6 +120,65 @@ export class WebServer {
 
     this.httpServer.on('error', (error) => {
       this.logger.error(`HTTP server error: ${error}`);
+    });
+  }
+
+  private handleTextureRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (!req.url) {
+      res.writeHead(400);
+      res.end('Bad Request');
+      return;
+    }
+
+    const encodedPath = req.url.replace('/textures/', '');
+    const texturePath = decodeURIComponent(encodedPath);
+    
+    if (!fs.existsSync(texturePath)) {
+      res.writeHead(404);
+      res.end('Texture not found');
+      return;
+    }
+
+    const stats = fs.statSync(texturePath);
+    if (!stats.isFile()) {
+      res.writeHead(403);
+      res.end('Invalid texture path');
+      return;
+    }
+
+    fs.readFile(texturePath, (err, data) => {
+      if (err) {
+        this.logger.error(`Failed to read texture file ${texturePath}: ${err}`);
+        res.writeHead(404);
+        res.end('Texture file not found');
+        return;
+      }
+
+      const ext = path.extname(texturePath).toLowerCase();
+      let contentType = 'image/png';
+      switch (ext) {
+        case '.jpg':
+        case '.jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case '.png':
+          contentType = 'image/png';
+          break;
+        case '.gif':
+          contentType = 'image/gif';
+          break;
+        case '.bmp':
+          contentType = 'image/bmp';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      res.writeHead(200, { 
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600'
+      });
+      res.end(data);
     });
   }
 
