@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BufferManager } from '../lib/rendering/BufferManager';
-import type { PiRenderer, PiShader, PiTexture, PiRenderTarget } from '../lib/types/piRenderer';
-import type { Buffer, Buffers } from '../lib/models';
+import type { PiRenderer } from '../lib/types/piRenderer';
 
 // Mock renderer implementation
 const createMockRenderer = (): PiRenderer => {
