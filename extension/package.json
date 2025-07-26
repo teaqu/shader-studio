@@ -48,7 +48,8 @@
           {
             "filenamePattern": "*.sv.json"
           }
-        ]
+        ],
+        "priority": "option"
       }
     ],
     "configuration": {
