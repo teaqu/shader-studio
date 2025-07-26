@@ -40,10 +40,6 @@ export class Messenger {
     }
   }
 
-  public convertUriForClient(filePath: string): string {
-    return this.transports[0]?.convertUriForClient(filePath) || filePath;
-  }
-
   public close(): void {
     this.transports.forEach(transport => transport.close());
   }

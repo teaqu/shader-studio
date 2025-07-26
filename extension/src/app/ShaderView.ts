@@ -209,10 +209,8 @@ export class ShaderView {
 
   private async generateConfig(): Promise<void> {
     try {
-      // Get the active editor
       const activeEditor = vscode.window.activeTextEditor;
 
-      // If no active editor, ask user to select a GLSL file
       let glslFilePath: string;
       if (!activeEditor || !activeEditor.document.fileName.endsWith('.glsl')) {
         const fileUri = await vscode.window.showOpenDialog({

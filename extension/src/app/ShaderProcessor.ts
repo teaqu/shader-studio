@@ -145,9 +145,7 @@ export class ShaderProcessor {
       }
     }
 
-    // Always update client URI (webview URI for panel, or file path for web server)
-    const clientUri = this.messenger.convertUriForClient(bufferPath);
-    pass.path = clientUri;
+    pass.path = bufferPath;
   }
 
   private processInputs(
@@ -164,11 +162,11 @@ export class ShaderProcessor {
         const imgPath = path.isAbsolute(input.path)
           ? input.path
           : path.join(path.dirname(shaderPath), input.path);
+        
         if (fs.existsSync(imgPath)) {
-          const clientUri = this.messenger.convertUriForClient(imgPath);
-          input.path = clientUri;
+          input.path = imgPath;
           this.logger.debug(
-            `Patched image path for ${passName}.inputs.${key}: ${input.path}`,
+            `Resolved image path for ${passName}.inputs.${key}: ${imgPath}`,
           );
         } else {
           this.logger.warn(

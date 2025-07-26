@@ -5,7 +5,6 @@ export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
   private panels: Set<vscode.WebviewPanel> = new Set();
 
-
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
     
@@ -26,6 +25,10 @@ export class WebviewTransport implements MessageTransport {
   }
 
   public send(message: any): void {
+    if (message.type === "shaderSource" && message.config) {
+      message = this.processConfigPaths(message);
+    }
+
     let sentCount = 0;
     const totalPanels = this.panels.size;
 
@@ -48,8 +51,38 @@ export class WebviewTransport implements MessageTransport {
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
+  private processConfigPaths(message: any): any {
+    const processedMessage = JSON.parse(JSON.stringify(message));
+    const config = processedMessage.config;
+
+    if (!config) {
+      return processedMessage;
+    }
+
+    for (const passName of Object.keys(config)) {
+      if (passName === "version") {
+        continue;
+      }
+      
+      const pass = config[passName];
+      if (typeof pass !== "object") {
+        continue;
+      }
+
+      if (pass.inputs && typeof pass.inputs === "object") {
+        for (const key of Object.keys(pass.inputs)) {
+          const input = pass.inputs[key];
+          if (input.type === "texture" && input.path) {
+            input.path = this.convertUriForClient(input.path);
+          }
+        }
+      }
+    }
+
+    return processedMessage;
+  }
+
   public convertUriForClient(filePath: string): string {
-    // Use the first available panel for URI conversion
     const firstPanel = this.panels.values().next().value;
     try {
       if (firstPanel?.webview) {

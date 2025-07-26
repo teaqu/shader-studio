@@ -116,11 +116,6 @@ export class WebSocketTransport implements MessageTransport {
     console.log(`WebSocket: Sent to ${sentCount}/${totalClients} clients`);
   }
 
-  public convertUriForClient(filePath: string): string {
-    // For web server, return the file path as-is or convert to appropriate URL
-    return filePath;
-  }
-
   public close(): void {
     for (const client of this.wsClients) {
       client.close();

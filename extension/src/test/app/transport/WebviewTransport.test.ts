@@ -181,18 +181,136 @@ suite('WebviewTransport Test Suite', () => {
     test('convertUriForClient uses first available panel', () => {
         transport = new WebviewTransport();
         
-        // Should return original path when no panels
         const filePath = '/test/path/file.txt';
         assert.strictEqual(transport.convertUriForClient(filePath), filePath);
         
         transport.addPanel(mockPanel as any);
         
-        // Should use webview.asWebviewUri when panel available
         const expectedUri = vscode.Uri.file('/mock/uri');
         mockWebview.asWebviewUri.returns(expectedUri);
         
         const result = transport.convertUriForClient(filePath);
         assert.strictEqual(result, expectedUri.toString());
         sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(filePath));
+    });
+
+    test('send processes shader config paths correctly', () => {
+        transport = new WebviewTransport();
+        transport.addPanel(mockPanel as any);
+        
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-texture.png');
+        mockWebview.asWebviewUri.returns(mockUri);
+        
+        const originalMessage = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                pass1: {
+                    inputs: {
+                        texture1: {
+                            type: 'texture',
+                            path: '/absolute/path/to/texture.png'
+                        },
+                        uniform1: {
+                            type: 'float',
+                            value: 1.0
+                        }
+                    }
+                }
+            }
+        };
+        
+        transport.send(originalMessage);
+        
+        sinon.assert.calledOnce(mockWebview.postMessage);
+        const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+        
+        assert.strictEqual(sentMessage.type, 'shaderSource');
+        assert.strictEqual(sentMessage.config.pass1.inputs.texture1.path, mockUri.toString());
+        assert.strictEqual(sentMessage.config.pass1.inputs.uniform1.value, 1.0);
+        
+        assert.strictEqual(originalMessage.config.pass1.inputs.texture1.path, '/absolute/path/to/texture.png');
+    });
+
+    test('send handles config without inputs', () => {
+        transport = new WebviewTransport();
+        transport.addPanel(mockPanel as any);
+        
+        const message = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                pass1: {
+                }
+            }
+        };
+        
+        assert.doesNotThrow(() => {
+            transport.send(message);
+        });
+        
+        sinon.assert.calledOnce(mockWebview.postMessage);
+    });
+
+    test('send handles message without config', () => {
+        transport = new WebviewTransport();
+        transport.addPanel(mockPanel as any);
+        
+        const message = {
+            type: 'shaderSource',
+            code: 'shader code'
+        };
+        
+        transport.send(message);
+        
+        sinon.assert.calledWith(mockWebview.postMessage, message);
+    });
+
+    test('send handles non-shader messages unchanged', () => {
+        transport = new WebviewTransport();
+        transport.addPanel(mockPanel as any);
+        
+        const message = {
+            type: 'other',
+            data: 'test data'
+        };
+        
+        transport.send(message);
+        
+        sinon.assert.calledWith(mockWebview.postMessage, message);
+    });
+
+    test('processConfigPaths handles multiple texture inputs', () => {
+        transport = new WebviewTransport();
+        transport.addPanel(mockPanel as any);
+        
+        const mockUri1 = vscode.Uri.parse('vscode-webview://webview-panel/texture1.png');
+        const mockUri2 = vscode.Uri.parse('vscode-webview://webview-panel/texture2.jpg');
+        
+        mockWebview.asWebviewUri
+            .onFirstCall().returns(mockUri1)
+            .onSecondCall().returns(mockUri2);
+        
+        const message = {
+            type: 'shaderSource',
+            config: {
+                pass1: {
+                    inputs: {
+                        texture1: { type: 'texture', path: '/path/to/texture1.png' },
+                        texture2: { type: 'texture', path: '/path/to/texture2.jpg' },
+                        nonTexture: { type: 'float', value: 1.0 }
+                    }
+                }
+            }
+        };
+        
+        transport.send(message);
+        
+        const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+        assert.strictEqual(sentMessage.config.pass1.inputs.texture1.path, mockUri1.toString());
+        assert.strictEqual(sentMessage.config.pass1.inputs.texture2.path, mockUri2.toString());
+        assert.strictEqual(sentMessage.config.pass1.inputs.nonTexture.value, 1.0);
     });
 });
