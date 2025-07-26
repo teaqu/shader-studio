@@ -26,11 +26,15 @@ export interface BufferPass {
     inputs?: Partial<Record<`iChannel${0 | 1 | 2 | 3}`, ConfigInput>>;
 }
 
-export interface ShaderConfig {
-    version: string;
+export interface ShaderPasses {
     Image: ImagePass;
     BufferA?: BufferPass;
     BufferB?: BufferPass;
     BufferC?: BufferPass;
     BufferD?: BufferPass;
+}
+
+export interface ShaderConfig {
+    version: string;
+    passes: ShaderPasses;
 }

@@ -3,30 +3,41 @@
   "title": "Shader View Configuration",
   "description": "Configuration file for Shader View extension (.sv.json)",
   "type": "object",
-  "required": ["version", "Image"],
+  "required": ["version", "passes"],
   "properties": {
     "version": {
       "type": "string",
       "description": "Configuration version"
     },
-    "Image": {
-      "$ref": "#/definitions/ImagePass"
-    },
-    "BufferA": {
-      "$ref": "#/definitions/BufferPass"
-    },
-    "BufferB": {
-      "$ref": "#/definitions/BufferPass"
-    },
-    "BufferC": {
-      "$ref": "#/definitions/BufferPass"
-    },
-    "BufferD": {
-      "$ref": "#/definitions/BufferPass"
+    "passes": {
+      "$ref": "#/definitions/ShaderPasses"
     }
   },
   "additionalProperties": false,
   "definitions": {
+    "ShaderPasses": {
+      "type": "object",
+      "description": "Shader passes configuration",
+      "required": ["Image"],
+      "properties": {
+        "Image": {
+          "$ref": "#/definitions/ImagePass"
+        },
+        "BufferA": {
+          "$ref": "#/definitions/BufferPass"
+        },
+        "BufferB": {
+          "$ref": "#/definitions/BufferPass"
+        },
+        "BufferC": {
+          "$ref": "#/definitions/BufferPass"
+        },
+        "BufferD": {
+          "$ref": "#/definitions/BufferPass"
+        }
+      },
+      "additionalProperties": false
+    },
     "ImagePass": {
       "type": "object",
       "description": "Main image pass configuration",

@@ -206,15 +206,13 @@ suite('WebviewTransport Test Suite', () => {
             code: 'shader code',
             config: {
                 version: '1.0',
-                pass1: {
-                    inputs: {
-                        texture1: {
-                            type: 'texture',
-                            path: '/absolute/path/to/texture.png'
-                        },
-                        uniform1: {
-                            type: 'float',
-                            value: 1.0
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'texture',
+                                path: '/absolute/path/to/texture.png'
+                            }
                         }
                     }
                 }
@@ -227,10 +225,9 @@ suite('WebviewTransport Test Suite', () => {
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
         
         assert.strictEqual(sentMessage.type, 'shaderSource');
-        assert.strictEqual(sentMessage.config.pass1.inputs.texture1.path, mockUri.toString());
-        assert.strictEqual(sentMessage.config.pass1.inputs.uniform1.value, 1.0);
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockUri.toString());
         
-        assert.strictEqual(originalMessage.config.pass1.inputs.texture1.path, '/absolute/path/to/texture.png');
+        assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
     test('send handles config without inputs', () => {
@@ -242,7 +239,10 @@ suite('WebviewTransport Test Suite', () => {
             code: 'shader code',
             config: {
                 version: '1.0',
-                pass1: {
+                passes: {
+                    Image: {
+                        // No inputs
+                    }
                 }
             }
         };
@@ -296,11 +296,13 @@ suite('WebviewTransport Test Suite', () => {
         const message = {
             type: 'shaderSource',
             config: {
-                pass1: {
-                    inputs: {
-                        texture1: { type: 'texture', path: '/path/to/texture1.png' },
-                        texture2: { type: 'texture', path: '/path/to/texture2.jpg' },
-                        nonTexture: { type: 'float', value: 1.0 }
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: 'texture', path: '/path/to/texture1.png' },
+                            iChannel1: { type: 'texture', path: '/path/to/texture2.jpg' }
+                        }
                     }
                 }
             }
@@ -309,8 +311,7 @@ suite('WebviewTransport Test Suite', () => {
         transport.send(message);
         
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-        assert.strictEqual(sentMessage.config.pass1.inputs.texture1.path, mockUri1.toString());
-        assert.strictEqual(sentMessage.config.pass1.inputs.texture2.path, mockUri2.toString());
-        assert.strictEqual(sentMessage.config.pass1.inputs.nonTexture.value, 1.0);
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockUri1.toString());
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockUri2.toString());
     });
 });

@@ -54,23 +54,25 @@ The extension provides a visual editor for `.sv.json` files. When you open a `.s
 ```json
 {
   "version": "1.0",
-  "Image": {
-    "inputs": {
-      "iChannel0": {
-        "source": "BufferA",
-        "type": "buffer"
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "source": "BufferA",
+          "type": "buffer"
+        }
       }
-    }
-  },
-  "BufferA": {
-    "path": "buffer_name.glsl",
-    "inputs": {
-      "iChannel0": {
-        "source": "BufferA",
-        "type": "buffer"
-      },
-      "iChannel1": {
-        "type": "keyboard"
+    },
+    "BufferA": {
+      "path": "buffer_name.glsl",
+      "inputs": {
+        "iChannel0": {
+          "source": "BufferA",
+          "type": "buffer"
+        },
+        "iChannel1": {
+          "type": "keyboard"
+        }
       }
     }
   }

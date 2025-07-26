@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
+import type { ShaderConfig } from "@shader-view/types";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
@@ -51,28 +52,27 @@ export class WebviewTransport implements MessageTransport {
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
-  private processConfigPaths(message: any): any {
+  private processConfigPaths(message: { type: string; config: ShaderConfig; [key: string]: any }): typeof message {
+    // Clone the message to avoid modifying the original
     const processedMessage = JSON.parse(JSON.stringify(message));
     const config = processedMessage.config;
 
-    if (!config) {
+    if (!config?.passes) {
       return processedMessage;
     }
 
-    for (const passName of Object.keys(config)) {
-      if (passName === "version") {
-        continue;
-      }
-      
-      const pass = config[passName];
-      if (typeof pass !== "object") {
+    // Process all passes in the passes object
+    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+      const pass = config.passes[passName];
+      if (!pass || typeof pass !== "object") {
         continue;
       }
 
+      // Process inputs for texture paths
       if (pass.inputs && typeof pass.inputs === "object") {
         for (const key of Object.keys(pass.inputs)) {
-          const input = pass.inputs[key];
-          if (input.type === "texture" && input.path) {
+          const input = pass.inputs[key as keyof typeof pass.inputs];
+          if (input && input.type === "texture" && input.path) {
             input.path = this.convertUriForClient(input.path);
           }
         }

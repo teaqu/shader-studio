@@ -82,16 +82,17 @@ export class ShaderProcessor {
     shaderPath: string,
     buffers: Record<string, string>,
   ): void {
-    for (const passName of Object.keys(config)) {
-      if (passName === "version") {
-        continue;
-      }
-      const pass = (config as any)[passName];
-      if (typeof pass !== "object") {
+    if (!config.passes) {
+      return;
+    }
+
+    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+      const pass = config.passes[passName];
+      if (!pass || typeof pass !== "object") {
         continue;
       }
       // Process pass-level "path" (for buffer source files)
-      if (pass.path && typeof pass.path === "string") {
+      if ('path' in pass && pass.path && typeof pass.path === "string") {
         this.processBufferPath(pass, passName, shaderPath, buffers);
       }
 
@@ -180,15 +181,17 @@ export class ShaderProcessor {
   private updateShaderBuffersMap(config: ShaderConfig, shaderPath: string): void {
     const bufferFiles = new Set<string>();
 
-    for (const passName of Object.keys(config)) {
-      if (passName === "version") {
+    if (!config.passes) {
+      this.shaderBuffersMap.set(shaderPath, bufferFiles);
+      return;
+    }
+
+    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+      const pass = config.passes[passName];
+      if (!pass || typeof pass !== "object") {
         continue;
       }
-      const pass = (config as any)[passName];
-      if (typeof pass !== "object") {
-        continue;
-      }
-      if (pass.path && typeof pass.path === "string") {
+      if ('path' in pass && pass.path && typeof pass.path === "string") {
         const bufferPath = path.isAbsolute(pass.path)
           ? pass.path
           : path.join(path.dirname(shaderPath), pass.path);

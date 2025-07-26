@@ -97,9 +97,8 @@ export class ShaderPipeline {
     config: ShaderConfig | null,
     buffers: Record<string, string>
   ): void {
-    const usedConfig = config ?? {};
-    const passNames = usedConfig
-      ? Object.keys(usedConfig).filter((k) => k !== "version")
+    const passNames = config?.passes
+      ? Object.keys(config.passes)
       : [];
 
     if (passNames.length === 0) {
@@ -113,14 +112,14 @@ export class ShaderPipeline {
     }
 
     this.passes = passNames.map(passName => {
-      const pass = (usedConfig as any)[passName];
+      const pass = config?.passes?.[passName as keyof typeof config.passes];
       const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
       return {
         name: passName,
         shaderSrc,
-        inputs: pass.inputs ?? {},
-        path: pass.path,
+        inputs: pass?.inputs ?? {},
+        path: pass?.path,
       };
     });
   }

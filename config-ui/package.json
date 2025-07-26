@@ -12,7 +12,12 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/svelte": "^5.2.8",
+    "@testing-library/user-event": "^14.6.1"
+  },
   "dependencies": {
     "@shader-view/types": "*"
   }

@@ -254,8 +254,10 @@ export class ShaderView {
       const relativeGlslPath = path.relative(dirName, glslFilePath).replace(/\\/g, '/');
       const baseConfig = {
         version: "1.0",
-        Image: {
-          inputs: {}
+        passes: {
+          Image: {
+            inputs: {}
+          }
         }
       };
 

@@ -55,8 +55,10 @@ export class ConfigEditor {
                 // Initialize with default config structure
                 const defaultConfig: ShaderConfig = {
                     version: "1.0",
-                    Image: {
-                        inputs: {}
+                    passes: {
+                        Image: {
+                            inputs: {}
+                        }
                     }
                 };
                 console.log('Using default config');
@@ -81,9 +83,12 @@ export class ConfigEditor {
         if (bufferName) {
             const updatedConfig = {
                 ...this.config,
-                [bufferName]: {
-                    path: `${bufferName.toLowerCase()}.glsl`,
-                    inputs: {}
+                passes: {
+                    ...this.config.passes,
+                    [bufferName]: {
+                        path: `${bufferName.toLowerCase()}.glsl`,
+                        inputs: {}
+                    }
                 }
             };
             this.updateConfig(updatedConfig);
@@ -99,13 +104,16 @@ export class ConfigEditor {
         if (!this.config) return false;
 
         // Check if buffer already exists
-        if (this.config[bufferName as keyof ShaderConfig]) return false;
+        if (this.config.passes[bufferName as keyof typeof this.config.passes]) return false;
 
         const updatedConfig = {
             ...this.config,
-            [bufferName]: {
-                path: '',
-                inputs: {}
+            passes: {
+                ...this.config.passes,
+                [bufferName]: {
+                    path: '',
+                    inputs: {}
+                }
             }
         };
         this.updateConfig(updatedConfig);
@@ -118,8 +126,13 @@ export class ConfigEditor {
     removeBuffer(bufferName: string): boolean {
         if (!this.config) return false;
 
-        const updatedConfig = { ...this.config };
-        delete updatedConfig[bufferName as keyof ShaderConfig];
+        const updatedPasses = { ...this.config.passes };
+        delete updatedPasses[bufferName as keyof typeof updatedPasses];
+        
+        const updatedConfig = {
+            ...this.config,
+            passes: updatedPasses
+        };
         this.updateConfig(updatedConfig);
         return true;
     }
@@ -130,14 +143,17 @@ export class ConfigEditor {
     updateBufferPath(bufferName: string, path: string): boolean {
         if (!this.config) return false;
 
-        const currentBuffer = this.config[bufferName as keyof ShaderConfig] as BufferPass;
+        const currentBuffer = this.config.passes[bufferName as keyof typeof this.config.passes] as BufferPass;
         if (!currentBuffer) return false;
 
         const updatedConfig = {
             ...this.config,
-            [bufferName]: {
-                ...currentBuffer,
-                path
+            passes: {
+                ...this.config.passes,
+                [bufferName]: {
+                    ...currentBuffer,
+                    path
+                }
             }
         };
         this.updateConfig(updatedConfig);
@@ -152,7 +168,10 @@ export class ConfigEditor {
 
         const updatedConfig = {
             ...this.config,
-            [bufferName]: bufferConfig
+            passes: {
+                ...this.config.passes,
+                [bufferName]: bufferConfig
+            }
         };
         this.updateConfig(updatedConfig);
         return true;
@@ -166,7 +185,10 @@ export class ConfigEditor {
 
         const updatedConfig = {
             ...this.config,
-            Image: imageConfig
+            passes: {
+                ...this.config.passes,
+                Image: imageConfig
+            }
         };
         this.updateConfig(updatedConfig);
         return true;
@@ -193,7 +215,7 @@ export class ConfigEditor {
         if (!this.config) return 'BufferA';
 
         const buffers = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-        return buffers.find(buffer => !this.config![buffer as keyof ShaderConfig]) || null;
+        return buffers.find(buffer => !this.config!.passes[buffer as keyof typeof this.config.passes]) || null;
     }
 
   /**
@@ -207,7 +229,7 @@ export class ConfigEditor {
     console.log('getBufferList: config is:', this.config);
     const result = ['BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
       buffer => {
-        const exists = !!this.config![buffer as keyof ShaderConfig];
+        const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
         console.log(`getBufferList: ${buffer} exists?`, exists);
         return exists;
       }
@@ -219,7 +241,7 @@ export class ConfigEditor {
      */
     getBuffer(bufferName: string): BufferPass | ImagePass | null {
         if (!this.config) return null;
-        const buffer = this.config[bufferName as keyof ShaderConfig];
+        const buffer = this.config.passes[bufferName as keyof typeof this.config.passes];
         return (buffer && typeof buffer === 'object') ? buffer as BufferPass | ImagePass : null;
     }
 
@@ -263,7 +285,7 @@ export class ConfigEditor {
         }
 
         const buffers = this.getBufferList();
-        const imageInputs = Object.keys(this.config.Image.inputs || {}).length;
+        const imageInputs = Object.keys(this.config.passes.Image.inputs || {}).length;
         const totalInputs = buffers.reduce((total, bufferName) => {
             const buffer = this.getBuffer(bufferName);
             return total + Object.keys(buffer?.inputs || {}).length;
