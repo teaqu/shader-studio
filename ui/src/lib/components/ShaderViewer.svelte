@@ -52,6 +52,11 @@
     });
   }
 
+  function handleRefresh() {
+    if (!initialized) return;
+    shaderView.handleRefresh();
+  }
+
   function handleTogglePause() {
     if (!initialized) return;
     shaderView.handleTogglePause();
@@ -170,6 +175,7 @@
       {isLocked}
       canvasElement={glCanvas}
       onReset={handleReset}
+      onRefresh={handleRefresh}
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}
       onAspectRatioChange={handleAspectRatioChange}

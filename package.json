@@ -27,20 +27,23 @@
     "watch:extension": "npm run watch -w extension"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1",
-    "typescript": "^5.8.3",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^24.0.15",
-    "vite": "^6.3.5",
-    "vitest": "^3.2.4",
+    "@typescript-eslint/eslint-plugin": "^8.14.0",
+    "@typescript-eslint/parser": "^8.14.0",
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
-    "eslint": "^9.25.1",
     "electron": "^37.2.4",
-    "@sveltejs/vite-plugin-svelte": "^5.0.3",
-    "@tsconfig/svelte": "^5.0.4",
-    "svelte": "^5.28.1",
-    "svelte-check": "^4.1.6",
-    "jsdom": "^26.1.0"
+    "eslint": "^9.25.1",
+    "eslint-plugin-svelte": "^2.46.0",
+    "globals": "^15.12.0",
+    "jsdom": "^26.1.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.14.0",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18.0.0",

@@ -1,7 +1,7 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig } from "../models";
+import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass } from "../models";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 
@@ -12,7 +12,7 @@ export class ShaderPipeline {
   private renderer: PiRenderer;
   private bufferManager: BufferManager;
   private currentShaderRenderID = 0;
-  private shaderName = "";
+  private shaderPath = "";
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
 
@@ -28,6 +28,10 @@ export class ShaderPipeline {
     this.resourceManager = resourceManager;
     this.renderer = renderer;
     this.bufferManager = bufferManager;
+  }
+
+  private isBufferPass(pass: any): pass is BufferPass {
+    return pass && typeof pass === 'object' && typeof pass.path === 'string';
   }
 
   public getPasses(): Pass[] {
@@ -60,17 +64,17 @@ export class ShaderPipeline {
     return this.currentShaderRenderID;
   }
 
-  public getShaderName(): string {
-    return this.shaderName;
+  public getShaderPath(): string {
+    return this.shaderPath;
   }
 
   public async compileShaderPipeline(
     code: string,
     config: ShaderConfig | null,
-    name: string,
+    path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
-    this.prepareNewCompilation(name);
+    this.prepareNewCompilation(path);
 
     this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders();
@@ -83,11 +87,11 @@ export class ShaderPipeline {
     return { success: true };
   }
 
-  private prepareNewCompilation(name: string): void {
+  private prepareNewCompilation(path: string): void {
     this.currentShaderRenderID++;
 
-    if (this.shaderName !== name) {
-      this.shaderName = name;
+    if (this.shaderPath !== path) {
+      this.shaderPath = path;
       this.cleanup();
     }
   }
@@ -119,7 +123,7 @@ export class ShaderPipeline {
         name: passName,
         shaderSrc,
         inputs: pass?.inputs ?? {},
-        path: pass?.path,
+        path: this.isBufferPass(pass) ? pass.path : undefined,
       };
     });
   }

@@ -17,5 +17,8 @@ export default defineConfig({
         'src/vscode.d.ts'
       ]
     }
+  },
+  resolve: {
+    conditions: process.env.VITEST ? ['browser'] : undefined,
   }
 });

@@ -443,3 +443,74 @@ canvas {
   cursor: pointer;
   border: none;
 }
+
+/* Options Menu Styles */
+.options-menu-container {
+  position: relative;
+}
+
+.options-menu-button {
+  all: unset;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.options-menu-button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.options-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  background-color: var(--vscode-notifications-background);
+  border: 1px solid var(--vscode-notifications-border);
+  border-radius: 6px;
+  padding: 0.5rem 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  animation: options-menu-appear 0.2s ease-out;
+}
+
+.options-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: none;
+  border: none;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 13px);
+  font-family: var(--vscode-font-family, sans-serif);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.options-menu-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.options-menu-item span {
+  flex: 1;
+}
+
+@keyframes options-menu-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

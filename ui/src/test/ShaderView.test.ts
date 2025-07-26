@@ -59,7 +59,7 @@ describe('ShaderView locker integration', () => {
 
         it('then should toggle lock state', () => {
             const mockEvent = {
-                data: { name: 'test.glsl' }
+                data: { path: 'test.glsl' }
             } as MessageEvent;
 
             vi.spyOn(shaderView as any, 'messageHandler', 'get').mockReturnValue({
@@ -83,7 +83,7 @@ describe('ShaderView locker integration', () => {
             const mockEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'test.glsl',
+                    path: 'test.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}
@@ -103,7 +103,7 @@ describe('ShaderView locker integration', () => {
             const mockEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'test.glsl',
+                    path: 'test.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}
@@ -128,7 +128,7 @@ describe('ShaderView locker integration', () => {
             const firstEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'first.glsl',
+                    path: 'first.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}
@@ -138,7 +138,7 @@ describe('ShaderView locker integration', () => {
             const secondEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'second.glsl',
+                    path: 'second.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}
@@ -166,7 +166,7 @@ describe('ShaderView locker integration', () => {
             const firstEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'first.glsl',
+                    path: 'first.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}
@@ -176,7 +176,7 @@ describe('ShaderView locker integration', () => {
             const secondEvent = {
                 data: {
                     type: 'shaderSource',
-                    name: 'second.glsl',
+                    path: 'second.glsl',
                     code: 'void mainImage() {}',
                     config: null,
                     buffers: {}

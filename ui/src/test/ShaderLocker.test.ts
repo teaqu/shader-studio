@@ -15,8 +15,8 @@ describe('ShaderLocker', () => {
             expect(shaderLocker.getIsLocked()).toBe(false);
         });
 
-        it('then should have no locked shader name', () => {
-            expect(shaderLocker.getLockedShaderName()).toBe(null);
+        it('then should have no locked shader path', () => {
+            expect(shaderLocker.getLockedShaderPath()).toBe(null);
         });
 
         it('then should process any shader', () => {
@@ -26,20 +26,20 @@ describe('ShaderLocker', () => {
     });
 
     describe('when toggling lock from unlocked state', () => {
-        it('then should lock with shader name', () => {
+        it('then should lock with shader path', () => {
             shaderLocker.toggleLock('test.glsl');
 
             expect(shaderLocker.getIsLocked()).toBe(true);
-            expect(shaderLocker.getLockedShaderName()).toBe('test.glsl');
-            expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader: test.glsl');
+            expect(shaderLocker.getLockedShaderPath()).toBe('test.glsl');
+            expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader at path: test.glsl');
         });
 
-        it('then should lock without shader name', () => {
+        it('then should lock without shader path', () => {
             shaderLocker.toggleLock();
 
             expect(shaderLocker.getIsLocked()).toBe(true);
-            expect(shaderLocker.getLockedShaderName()).toBe(null);
-            expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader: unknown');
+            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader at path: unknown');
         });
     });
 
@@ -51,7 +51,7 @@ describe('ShaderLocker', () => {
             shaderLocker.toggleLock();
 
             expect(shaderLocker.getIsLocked()).toBe(false);
-            expect(shaderLocker.getLockedShaderName()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(null);
             expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Unlocked');
         });
     });
@@ -88,19 +88,19 @@ describe('ShaderLocker', () => {
     });
 
     describe('when updating locked shader', () => {
-        it('then should update shader name if locked', () => {
+        it('then should update shader path if locked', () => {
             shaderLocker.toggleLock('original.glsl');
 
             shaderLocker.updateLockedShader('updated.glsl');
 
-            expect(shaderLocker.getLockedShaderName()).toBe('updated.glsl');
+            expect(shaderLocker.getLockedShaderPath()).toBe('updated.glsl');
             expect(shaderLocker.getIsLocked()).toBe(true);
         });
 
-        it('then should not update shader name if not locked', () => {
+        it('then should not update shader path if not locked', () => {
             shaderLocker.updateLockedShader('test.glsl');
 
-            expect(shaderLocker.getLockedShaderName()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(null);
             expect(shaderLocker.getIsLocked()).toBe(false);
         });
     });
@@ -109,15 +109,15 @@ describe('ShaderLocker', () => {
         it('then should handle lock/unlock cycles correctly', () => {
             shaderLocker.toggleLock('shader1.glsl');
             expect(shaderLocker.getIsLocked()).toBe(true);
-            expect(shaderLocker.getLockedShaderName()).toBe('shader1.glsl');
+            expect(shaderLocker.getLockedShaderPath()).toBe('shader1.glsl');
 
             shaderLocker.toggleLock();
             expect(shaderLocker.getIsLocked()).toBe(false);
-            expect(shaderLocker.getLockedShaderName()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(null);
 
             shaderLocker.toggleLock('shader2.glsl');
             expect(shaderLocker.getIsLocked()).toBe(true);
-            expect(shaderLocker.getLockedShaderName()).toBe('shader2.glsl');
+            expect(shaderLocker.getLockedShaderPath()).toBe('shader2.glsl');
         });
 
         it('then should maintain state when updating locked shader', () => {

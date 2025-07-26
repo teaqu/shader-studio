@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shader-view/types";
 
 export class MessageHandler {
   constructor(
@@ -6,7 +7,7 @@ export class MessageHandler {
     private diagnosticCollection: vscode.DiagnosticCollection,
   ) { }
 
-  public handleMessage(message: any): void {
+  public handleMessage(message: MessageEvent): void {
     try {
       switch (message.type) {
         case "log":
@@ -18,6 +19,9 @@ export class MessageHandler {
         case "error":
           this.handleErrorMessage(message);
           break;
+        case "refresh":
+          this.handleRefreshMessage(message);
+          break;
         default:
           this.outputChannel.debug(`Unknown message type: ${message.type}`);
       }
@@ -28,8 +32,8 @@ export class MessageHandler {
     }
   }
 
-  private handleLogMessage(message: any): void {
-    const logText = message.payload.join
+  private handleLogMessage(message: LogMessage): void {
+    const logText = Array.isArray(message.payload) 
       ? message.payload.join(" ")
       : message.payload;
     this.outputChannel.info(logText);
@@ -44,15 +48,15 @@ export class MessageHandler {
     }
   }
 
-  private handleDebugMessage(message: any): void {
-    const debugText = message.payload.join
+  private handleDebugMessage(message: DebugMessage): void {
+    const debugText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
     this.outputChannel.debug(debugText);
   }
 
-  private handleErrorMessage(message: any): void {
-    let errorText = message.payload.join
+  private handleErrorMessage(message: ErrorMessage): void {
+    let errorText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
     errorText = errorText.slice(0, -1);
@@ -72,6 +76,19 @@ export class MessageHandler {
       this.diagnosticCollection.set(editor.document.uri, [diagnostic]);
     } else if (editor) {
       this.diagnosticCollection.delete(editor.document.uri);
+    }
+  }
+
+  private handleRefreshMessage(message: RefreshMessage): void {
+    this.outputChannel.info("Refresh request received from UI");
+    
+    const shaderPath = message.payload?.path;
+    if (shaderPath) {
+      this.outputChannel.info(`Requesting refresh for shader at path: ${shaderPath}`);
+      vscode.commands.executeCommand('shader-view.refreshSpecificShaderByPath', shaderPath);
+    } else {
+      this.outputChannel.info("Requesting refresh for current/active shader");
+      vscode.commands.executeCommand('shader-view.refreshCurrentShader');
     }
   }
 }

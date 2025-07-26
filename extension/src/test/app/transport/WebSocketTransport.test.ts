@@ -8,10 +8,23 @@ suite('WebSocketTransport Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
     let mockWsServer: sinon.SinonStubbedInstance<WebSocketServer>;
     let mockWsClient: sinon.SinonStubbedInstance<WebSocket>;
+    let mockShaderProcessor: any;
+    let mockGlslFileTracker: any;
 
     setup(() => {
         sandbox = sinon.createSandbox();
         
+        mockShaderProcessor = {
+            sendShaderToWebview: sandbox.stub()
+        };
+
+        mockGlslFileTracker = {
+            getActiveOrLastViewedGLSLEditor: sandbox.stub().returns(null),
+            isGlslEditor: sandbox.stub().returns(false),
+            setLastViewedGlslFile: sandbox.stub(),
+            getLastViewedGlslFile: sandbox.stub().returns(null)
+        } as any;
+
         mockWsServer = {
             on: sandbox.stub(),
             close: sandbox.stub(),
@@ -54,12 +67,12 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false when no clients connected', () => {
-        transport = new WebSocketTransport(51475);
+        transport = new WebSocketTransport(51475, mockShaderProcessor, mockGlslFileTracker);
         assert.strictEqual(transport.hasActiveClients(), false);
     });
 
     test('hasActiveClients returns true when clients are connected', () => {
-        transport = new WebSocketTransport(51476);
+        transport = new WebSocketTransport(51476, mockShaderProcessor, mockGlslFileTracker);
         
         // Simulate client connection by accessing private wsClients
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
@@ -69,7 +82,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false after all clients disconnect', () => {
-        transport = new WebSocketTransport(51477);
+        transport = new WebSocketTransport(51477, mockShaderProcessor, mockGlslFileTracker);
         
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);
@@ -82,7 +95,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns true with multiple clients', () => {
-        transport = new WebSocketTransport(51478);
+        transport = new WebSocketTransport(51478, mockShaderProcessor, mockGlslFileTracker);
         
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         const mockClient2 = { ...mockWsClient } as any;
@@ -100,7 +113,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('send method handles no clients gracefully', () => {
-        transport = new WebSocketTransport(51479);
+        transport = new WebSocketTransport(51479, mockShaderProcessor, mockGlslFileTracker);
         
         assert.strictEqual(transport.hasActiveClients(), false);
         
@@ -111,7 +124,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('close method clears all clients', () => {
-        transport = new WebSocketTransport(51480);
+        transport = new WebSocketTransport(51480, mockShaderProcessor, mockGlslFileTracker);
         
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);

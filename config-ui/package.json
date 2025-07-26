@@ -13,10 +13,12 @@
     "test:coverage": "vitest --coverage"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/svelte": "^5.2.8",
-    "@testing-library/user-event": "^14.6.1"
+    "@testing-library/user-event": "^14.5.2",
+    "svelte": "^5.28.1",
+    "svelte-check": "^4.0.8"
   },
   "dependencies": {
     "@shader-view/types": "*"

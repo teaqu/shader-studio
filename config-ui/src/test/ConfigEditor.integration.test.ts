@@ -25,7 +25,7 @@ describe('ConfigEditor Integration Tests', () => {
     render(ConfigEditor);
     
     expect(screen.getByText('Loading configuration...')).toBeInTheDocument();
-    expect(screen.getByText('Config Editor')).toBeInTheDocument();
+    expect(screen.getByText('Shader Configuration')).toBeInTheDocument();
   });
 
   it('should display error message when config loading fails', async () => {

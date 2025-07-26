@@ -12,6 +12,7 @@ import { FrameRenderer } from "./rendering/FrameRenderer";
 import { ShaderLocker } from "./util/ShaderLocker";
 import type { PiRenderer } from "./types/piRenderer";
 import type { Transport } from "./transport/MessageTransport";
+import type { ErrorMessage, DebugMessage } from "@shader-view/types";
 
 export class ShaderView {
   private transport: Transport;
@@ -40,10 +41,11 @@ export class ShaderView {
 
     const gl = glCanvas.getContext("webgl2");
     if (!gl) {
-      this.transport.postMessage({
+      const errorMessage: ErrorMessage = {
         type: "error",
         payload: ["❌ WebGL2 not supported"],
-      });
+      };
+      this.transport.postMessage(errorMessage);
       return false;
     }
 
@@ -51,10 +53,11 @@ export class ShaderView {
       this.renderer = piRenderer();
       const success = this.renderer.Initialize(gl);
       if (!success) {
-        this.transport.postMessage({
+        const errorMessage: ErrorMessage = {
           type: "error",
           payload: ["❌ piRenderer could not initialize"],
-        });
+        };
+        this.transport.postMessage(errorMessage);
         return false;
       }
 
@@ -98,17 +101,19 @@ export class ShaderView {
         this.transport,
       );
 
-      this.transport.postMessage({
+      const debugMessage: DebugMessage = {
         type: "debug",
         payload: ["Svelte with piLibs initialized"],
-      });
+      };
+      this.transport.postMessage(debugMessage);
 
       return true;
     } catch (err) {
-      this.transport.postMessage({
+      const errorMessage: ErrorMessage = {
         type: "error",
-        payload: ["❌ Renderer initialization failed:", err],
-      });
+        payload: ["❌ Renderer initialization failed:", String(err)],
+      };
+      this.transport.postMessage(errorMessage);
       return false;
     }
   }
@@ -141,15 +146,15 @@ export class ShaderView {
   async handleShaderMessage(
     event: MessageEvent,
   ): Promise<{ running: boolean }> {
-    const currentShaderName = event.data?.name;
+    const currentShaderPath = event.data?.path;
 
-    if (!this.shaderLocker.shouldProcessShader(currentShaderName)) {
+    if (!this.shaderLocker.shouldProcessShader(currentShaderPath)) {
       return { running: this.renderLoopManager.isRunning() };
     }
 
     const result = await this.messageHandler.handleShaderMessage(event);
-    if (result.running && currentShaderName) {
-      this.shaderLocker.updateLockedShader(currentShaderName);
+    if (result.running && currentShaderPath) {
+      this.shaderLocker.updateLockedShader(currentShaderPath);
     }
 
     return result;
@@ -163,14 +168,28 @@ export class ShaderView {
     });
   }
 
+  handleRefresh(): void {
+    const isLocked = this.shaderLocker.getIsLocked();
+    
+    if (isLocked) {
+      const lockedShaderPath = this.shaderLocker.getLockedShaderPath();
+      console.log('ShaderView: Refreshing locked shader at path:', lockedShaderPath);
+      
+      this.messageHandler.refresh(lockedShaderPath || undefined);
+    } else {
+      console.log('ShaderView: Refreshing current shader');
+      this.messageHandler.refresh();
+    }
+  }
+
   handleTogglePause(): void {
     this.timeManager.togglePause();
   }
 
   handleToggleLock(): void {
     const lastEvent = this.messageHandler.getLastEvent();
-    const currentShaderName = lastEvent?.data?.name;
-    this.shaderLocker.toggleLock(currentShaderName);
+    const currentShaderPath = lastEvent?.data?.path;
+    this.shaderLocker.toggleLock(currentShaderPath);
   }
 
   getIsLocked(): boolean {

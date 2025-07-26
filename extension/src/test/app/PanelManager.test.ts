@@ -43,7 +43,14 @@ suite('PanelManager Test Suite', () => {
             sendShaderToWebview: sandbox.stub(),
         } as any;
 
-        panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProcessor);
+        const mockGlslFileTracker = {
+            getActiveOrLastViewedGLSLEditor: sandbox.stub().returns(null),
+            isGlslEditor: sandbox.stub().returns(false),
+            setLastViewedGlslFile: sandbox.stub(),
+            getLastViewedGlslFile: sandbox.stub().returns(null)
+        } as any;
+
+        panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProcessor, mockGlslFileTracker);
     });
 
     teardown(() => {

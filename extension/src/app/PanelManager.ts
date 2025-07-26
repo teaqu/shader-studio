@@ -5,7 +5,7 @@ import { ShaderProcessor } from "./ShaderProcessor";
 import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
-import { ShaderUtils } from "./util/ShaderUtils";
+import { GlslFileTracker } from "./GlslFileTracker";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -16,6 +16,7 @@ export class PanelManager {
     private context: vscode.ExtensionContext,
     private messenger: Messenger,
     private shaderProcessor: ShaderProcessor,
+    private glslFileTracker: GlslFileTracker,
   ) {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
@@ -30,16 +31,12 @@ export class PanelManager {
     return Array.from(this.panels);
   }
 
-  private createWebviewPanel(editor: vscode.TextEditor | undefined): void {
+  private createWebviewPanel(editor: vscode.TextEditor | null): void {
     this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }
 
   public createShaderView(): void {
-    const editor = ShaderUtils.getActiveGLSLEditor() ??
-      vscode.window.visibleTextEditors.find((e) =>
-        e.document.languageId === "glsl" ||
-        e.document.fileName.endsWith(".glsl")
-      );
+    const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
 
     const layout = vscode.window.tabGroups.all;
     const emptyGroup = layout.find(group => group.tabs.length === 0);
@@ -51,7 +48,7 @@ export class PanelManager {
     }
   }
 
-  private createWebviewPanelInColumn(editor: vscode.TextEditor | undefined, viewColumn: vscode.ViewColumn): void {
+  private createWebviewPanelInColumn(editor: vscode.TextEditor | null, viewColumn: vscode.ViewColumn): void {
     const workspaceFolders =
       vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
     const shaderDir = editor ?

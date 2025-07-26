@@ -1,27 +1,12 @@
 import { vi } from 'vitest';
+import '@testing-library/jest-dom';
 
-Object.defineProperty(window, 'HTMLCanvasElement', {
-  value: class HTMLCanvasElement {
-    width = 800;
-    height = 600;
-    
-    getBoundingClientRect() {
-      return {
-        left: 0,
-        top: 0,
-        width: this.width,
-        height: this.height,
-        right: this.width,
-        bottom: this.height
-      };
-    }
-    
-    addEventListener = vi.fn();
-    removeEventListener = vi.fn();
-  }
-});
+// Mock VS Code API
+(global as any).acquireVsCodeApi = vi.fn(() => ({
+  postMessage: vi.fn(),
+  getState: vi.fn(() => ({})),
+  setState: vi.fn()
+}));
 
-if (!window.addEventListener) {
-  window.addEventListener = vi.fn();
-  window.removeEventListener = vi.fn();
-}
+// Mock window.piRequestFullScreen for our fullscreen tests
+(global as any).piRequestFullScreen = vi.fn();

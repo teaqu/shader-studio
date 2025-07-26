@@ -1,44 +1,44 @@
 export class ShaderLocker {
     private isLocked = false;
-    private lockedShaderName: string | null = null;
+    private lockedShaderPath: string | null = null;
 
     public getIsLocked(): boolean {
         return this.isLocked;
     }
 
-    public getLockedShaderName(): string | null {
-        return this.lockedShaderName;
+    public getLockedShaderPath(): string | null {
+        return this.lockedShaderPath;
     }
 
-    public toggleLock(currentShaderName?: string): void {
+    public toggleLock(currentShaderPath?: string): void {
         this.isLocked = !this.isLocked;
 
         if (this.isLocked) {
-            this.lockedShaderName = currentShaderName || null;
-            console.log(`ShaderLocker: Locked to shader: ${this.lockedShaderName || 'unknown'}`);
+            this.lockedShaderPath = currentShaderPath || null;
+            console.log(`ShaderLocker: Locked to shader at path: ${this.lockedShaderPath || 'unknown'}`);
         } else {
-            this.lockedShaderName = null;
+            this.lockedShaderPath = null;
             console.log('ShaderLocker: Unlocked');
         }
     }
 
-    public shouldProcessShader(incomingShaderName: string): boolean {
-        if (!this.isLocked || !this.lockedShaderName) {
+    public shouldProcessShader(incomingShaderPath: string): boolean {
+        if (!this.isLocked || !this.lockedShaderPath) {
             return true;
         }
 
-        const shouldProcess = incomingShaderName === this.lockedShaderName;
+        const shouldProcess = incomingShaderPath === this.lockedShaderPath;
 
         if (!shouldProcess) {
-            console.log(`ShaderLocker: Ignoring shader ${incomingShaderName} - locked to ${this.lockedShaderName}`);
+            console.log(`ShaderLocker: Ignoring shader ${incomingShaderPath} - locked to ${this.lockedShaderPath}`);
         }
 
         return shouldProcess;
     }
 
-    public updateLockedShader(shaderName: string): void {
+    public updateLockedShader(shaderPath: string): void {
         if (this.isLocked) {
-            this.lockedShaderName = shaderName;
+            this.lockedShaderPath = shaderPath;
         }
     }
 }

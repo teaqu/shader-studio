@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import type { ShaderConfig } from "@shader-view/types";
+import type { ShaderConfig, ShaderSourceMessage } from "@shader-view/types";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
@@ -29,7 +29,6 @@ export class ShaderProcessor {
       return;
     }
 
-    const name = path.basename(editor.document.uri.fsPath);
     const shaderPath = editor.document.uri.fsPath;
 
     let config: ShaderConfig | null = null;
@@ -62,18 +61,20 @@ export class ShaderProcessor {
     }
 
     // Always update the shader - no change detection
-    this.logger.debug(`Sending shader update (${name})`);
+    this.logger.debug(`Sending shader update for ${shaderPath}`);
     this.logger.debug(
       `Sending ${Object.keys(buffers).length} buffer(s)`,
     );
 
-    this.messenger.send({
+    const message: ShaderSourceMessage = {
       type: "shaderSource",
       code,
       config,
-      name,
+      path: shaderPath,
       buffers,
-    });
+    };
+
+    this.messenger.send(message);
     this.logger.debug("Shader message sent to webview");
   }
 

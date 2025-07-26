@@ -1,20 +1,25 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { currentTheme, toggleTheme } from "../stores/themeStore";
-  import { aspectRatioStore, type AspectRatioMode } from "../stores/aspectRatioStore";
+  import {
+    aspectRatioStore,
+    type AspectRatioMode,
+  } from "../stores/aspectRatioStore";
   import { qualityStore, type QualityMode } from "../stores/qualityStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
-  
-  import resetIcon from '../../assets/reset.svg?raw';
-  import playIcon from '../../assets/play.svg?raw';
-  import pauseIcon from '../../assets/pause.svg?raw';
-  import moonIcon from '../../assets/moon.svg?raw';
-  import sunIcon from '../../assets/sun.svg?raw';
-  import lockIcon from '../../assets/lock.svg?raw';
-  import unlockIcon from '../../assets/unlock.svg?raw';
-  import fullscreenIcon from '../../assets/fullscreen.svg?raw';
-  
-  import { piRequestFullScreen } from '../../../vendor/pilibs/src/piWebUtils.js';
+
+  import resetIcon from "../../assets/reset.svg?raw";
+  import refreshIcon from "../../assets/refresh.svg?raw";
+  import playIcon from "../../assets/play.svg?raw";
+  import pauseIcon from "../../assets/pause.svg?raw";
+  import moonIcon from "../../assets/moon.svg?raw";
+  import sunIcon from "../../assets/sun.svg?raw";
+  import lockIcon from "../../assets/lock.svg?raw";
+  import unlockIcon from "../../assets/unlock.svg?raw";
+  import fullscreenIcon from "../../assets/fullscreen.svg?raw";
+  import menuIcon from "../../assets/menu.svg?raw";
+
+  import { piRequestFullScreen } from "../../../vendor/pilibs/src/piWebUtils.js";
 
   export let timeManager: any;
   export let currentFPS: number;
@@ -24,6 +29,7 @@
   export let canvasElement: HTMLCanvasElement | null = null;
 
   export let onReset: () => void = () => {};
+  export let onRefresh: () => void = () => {};
   export let onTogglePause: () => void = () => {};
   export let onToggleLock: () => void = () => {};
   export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
@@ -33,19 +39,20 @@
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
   let isPaused = false;
-  let theme: 'light' | 'dark' = 'light';
+  let theme: "light" | "dark" = "light";
   let showThemeButton = false;
   let showFullscreenButton = false;
-  let currentAspectRatio: AspectRatioMode = '16:9';
-  let currentQuality: QualityMode = 'HD';
+  let currentAspectRatio: AspectRatioMode = "16:9";
+  let currentQuality: QualityMode = "HD";
   let showResolutionMenu = false;
+  let showOptionsMenu = false;
   let zoomLevel = 1.0;
 
   onMount(() => {
     if (timeManager) {
       currentTime = timeManager.getCurrentTime(performance.now());
       isPaused = timeManager.isPaused();
-      
+
       const updateTime = () => {
         if (timeManager) {
           currentTime = timeManager.getCurrentTime(performance.now());
@@ -53,22 +60,22 @@
         }
         timeUpdateHandle = requestAnimationFrame(updateTime);
       };
-      
+
       timeUpdateHandle = requestAnimationFrame(updateTime);
     }
 
     showThemeButton = !isVSCodeEnvironment();
     showFullscreenButton = !isVSCodeEnvironment();
 
-    const unsubscribeTheme = currentTheme.subscribe(value => {
+    const unsubscribeTheme = currentTheme.subscribe((value) => {
       theme = value;
     });
 
-    const unsubscribeAspectRatio = aspectRatioStore.subscribe(state => {
+    const unsubscribeAspectRatio = aspectRatioStore.subscribe((state) => {
       currentAspectRatio = state.mode;
     });
 
-    const unsubscribeQuality = qualityStore.subscribe(state => {
+    const unsubscribeQuality = qualityStore.subscribe((state) => {
       currentQuality = state.mode;
     });
 
@@ -88,19 +95,26 @@
     }
   });
 
-  function handleThemeToggle() {
+  function handleThemeToggle(event: MouseEvent) {
+    event.stopPropagation();
     toggleTheme();
+  }
+
+  function handleRefresh(event: MouseEvent) {
+    event.stopPropagation();
+    showOptionsMenu = false;
+    onRefresh();
   }
 
   function handleFullscreenToggle() {
     if (canvasElement) {
       let container = canvasElement.parentElement;
-      
-      while (container && !container.classList.contains('canvas-container')) {
+
+      while (container && !container.classList.contains("canvas-container")) {
         container = container.parentElement;
       }
-      
-      if (container && container.classList.contains('canvas-container')) {
+
+      if (container && container.classList.contains("canvas-container")) {
         piRequestFullScreen(container);
       } else {
         piRequestFullScreen(canvasElement.parentElement || canvasElement);
@@ -112,6 +126,12 @@
 
   function handleResolutionClick() {
     showResolutionMenu = !showResolutionMenu;
+    showOptionsMenu = false;
+  }
+
+  function handleOptionsClick() {
+    showOptionsMenu = !showOptionsMenu;
+    showResolutionMenu = false;
   }
 
   function handleAspectRatioSelect(mode: AspectRatioMode) {
@@ -130,12 +150,25 @@
     onZoomChange(zoomLevel);
   }
 
+  function handleToggleLock() {
+    // Check if we're currently locked (before toggling)
+    const wasLocked = isLocked;
+    onToggleLock();
+    // If we were locked and now unlocking, refresh
+    if (wasLocked) {
+      onRefresh();
+    }
+  }
+
   function handleClickOutside(event: MouseEvent) {
-    if (showResolutionMenu) {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.resolution-menu-container')) {
-        showResolutionMenu = false;
-      }
+    const target = event.target as HTMLElement;
+
+    if (showResolutionMenu && !target.closest(".resolution-menu-container")) {
+      showResolutionMenu = false;
+    }
+
+    if (showOptionsMenu && !target.closest(".options-menu-container")) {
+      showOptionsMenu = false;
     }
   }
 </script>
@@ -157,78 +190,82 @@
     <div class="menu-title fixed-width">{currentTime.toFixed(2)}</div>
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
-      <button class="menu-title resolution-button" on:click={handleResolutionClick} aria-label="Change resolution settings">
+      <button
+        class="menu-title resolution-button"
+        on:click={handleResolutionClick}
+        aria-label="Change resolution settings"
+      >
         {canvasWidth} × {canvasHeight}
       </button>
       {#if showResolutionMenu}
         <div class="resolution-menu">
           <div class="resolution-section">
             <h4>Quality</h4>
-            <button 
+            <button
               class="resolution-option menu-title"
-              class:active={currentQuality === 'HD'}
-              on:click={() => handleQualitySelect('HD')}
+              class:active={currentQuality === "HD"}
+              on:click={() => handleQualitySelect("HD")}
             >
               HD
             </button>
-            <button 
+            <button
               class="resolution-option menu-title"
-              class:active={currentQuality === 'SD'}
-              on:click={() => handleQualitySelect('SD')}
+              class:active={currentQuality === "SD"}
+              on:click={() => handleQualitySelect("SD")}
             >
               SD
             </button>
           </div>
-          
+
           <div class="resolution-section">
             <h4>Aspect Ratio</h4>
-            <button 
-              class="resolution-option menu-title" 
-              class:active={currentAspectRatio === '16:9'}
-              on:click={() => handleAspectRatioSelect('16:9')}
+            <button
+              class="resolution-option menu-title"
+              class:active={currentAspectRatio === "16:9"}
+              on:click={() => handleAspectRatioSelect("16:9")}
             >
               16:9
             </button>
-            <button 
-              class="resolution-option menu-title" 
-              class:active={currentAspectRatio === '4:3'}
-              on:click={() => handleAspectRatioSelect('4:3')}
+            <button
+              class="resolution-option menu-title"
+              class:active={currentAspectRatio === "4:3"}
+              on:click={() => handleAspectRatioSelect("4:3")}
             >
               4:3
             </button>
-            <button 
-              class="resolution-option menu-title" 
-              class:active={currentAspectRatio === '1:1'}
-              on:click={() => handleAspectRatioSelect('1:1')}
+            <button
+              class="resolution-option menu-title"
+              class:active={currentAspectRatio === "1:1"}
+              on:click={() => handleAspectRatioSelect("1:1")}
             >
               1:1
             </button>
-            <button 
-              class="resolution-option menu-title" 
-              class:active={currentAspectRatio === 'fill'}
-              on:click={() => handleAspectRatioSelect('fill')}
+            <button
+              class="resolution-option menu-title"
+              class:active={currentAspectRatio === "fill"}
+              on:click={() => handleAspectRatioSelect("fill")}
             >
               Fill
             </button>
-            <button 
-              class="resolution-option menu-title" 
-              class:active={currentAspectRatio === 'auto'}
-              on:click={() => handleAspectRatioSelect('auto')}
+            <button
+              class="resolution-option menu-title"
+              class:active={currentAspectRatio === "auto"}
+              on:click={() => handleAspectRatioSelect("auto")}
             >
               Auto
             </button>
           </div>
-          
+
           <div class="resolution-section">
             <h4>Zoom</h4>
             <div class="zoom-control">
               <label for="zoom-slider">Zoom: {zoomLevel.toFixed(1)}x</label>
-              <input 
+              <input
                 id="zoom-slider"
-                type="range" 
-                min="0.1" 
-                max="3.0" 
-                step="0.1" 
+                type="range"
+                min="0.1"
+                max="3.0"
+                step="0.1"
                 bind:value={zoomLevel}
                 on:input={handleZoomChange}
                 class="zoom-slider"
@@ -240,26 +277,58 @@
     </div>
   </div>
   <div class="right-group">
-    {#if showThemeButton}
-      <button on:click={handleThemeToggle} aria-label="Toggle theme">
-        {#if theme === 'light'}
-          {@html moonIcon}
-        {:else}
-          {@html sunIcon}
-        {/if}
-      </button>
-    {/if}
-    <button on:click={onToggleLock} aria-label="Toggle lock">
+    <button on:click={handleToggleLock} aria-label="Toggle lock">
       {#if isLocked}
         {@html lockIcon}
       {:else}
         {@html unlockIcon}
       {/if}
     </button>
-    {#if showFullscreenButton}
-      <button on:click={handleFullscreenToggle} aria-label="Toggle fullscreen">
-        {@html fullscreenIcon}
+    <div class="options-menu-container">
+      <button
+        on:click={handleOptionsClick}
+        aria-label="Open options menu"
+        class="options-menu-button"
+      >
+        {@html menuIcon}
       </button>
-    {/if}
+      {#if showOptionsMenu}
+        <div class="options-menu">
+          <button
+            class="options-menu-item"
+            on:click={handleRefresh}
+            aria-label="Refresh shader"
+          >
+            {@html refreshIcon}
+            <span>Refresh</span>
+          </button>
+          {#if showThemeButton}
+            <button
+              class="options-menu-item"
+              on:click={handleThemeToggle}
+              aria-label="Toggle theme"
+            >
+              {#if theme === "light"}
+                {@html moonIcon}
+                <span>Dark Mode</span>
+              {:else}
+                {@html sunIcon}
+                <span>Light Mode</span>
+              {/if}
+            </button>
+          {/if}
+          {#if showFullscreenButton}
+            <button
+              class="options-menu-item"
+              on:click={handleFullscreenToggle}
+              aria-label="Toggle fullscreen"
+            >
+              {@html fullscreenIcon}
+              <span>Fullscreen</span>
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
 </div>

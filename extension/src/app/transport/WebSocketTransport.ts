@@ -1,14 +1,16 @@
 import { WebSocket, WebSocketServer } from "ws";
+import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import { ShaderUtils } from "../util/ShaderUtils";
+import type { ShaderConfig } from "@shader-view/types";
 import { ShaderProcessor } from "../ShaderProcessor";
+import { GlslFileTracker } from "../GlslFileTracker";
 
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private messageHandler?: (message: any) => void;
 
-  constructor(port: number, private shaderProcessor?: ShaderProcessor) {
+  constructor(port: number, private shaderProcessor: ShaderProcessor, private glslFileTracker: GlslFileTracker) {
     try {
       this.wsServer = new WebSocketServer({
         port,
@@ -76,9 +78,9 @@ export class WebSocketTransport implements MessageTransport {
 
   private sendCurrentShaderToNewClient(ws: WebSocket): void {
     try {
-      const activeEditor = ShaderUtils.getActiveGLSLEditor();
+      const activeEditor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
 
-      if (activeEditor && this.shaderProcessor) {
+      if (activeEditor) {
         setTimeout(() => {
           this.shaderProcessor!.sendShaderToWebview(activeEditor);
         }, 100);
@@ -88,6 +90,7 @@ export class WebSocketTransport implements MessageTransport {
       console.error('WebSocket: Error sending current shader to new client:', error);
     }
   }
+
   public send(message: any): void {
     let str;
     try {

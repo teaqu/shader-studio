@@ -2,6 +2,7 @@ import type { ShaderPipeline } from "../rendering/ShaderPipeline";
 import type { TimeManager } from "../util/TimeManager";
 import type { FrameRenderer } from "../rendering/FrameRenderer";
 import type { Transport } from "./MessageTransport";
+import type { LogMessage, ErrorMessage, RefreshMessage, ShaderSourceMessage } from "@shader-view/types";
 
 export class MessageHandler {
   private shaderPipeline: ShaderPipeline;
@@ -31,9 +32,9 @@ export class MessageHandler {
     event: MessageEvent,
   ): Promise<{ running: boolean }> {
     try {
-      let { type, code, config, name, buffers = {} } = event.data;
+      let { type, code, config, path, buffers = {} } = event.data as ShaderSourceMessage;
 
-      console.log('MessageHandler: Processing shader message:', { type, name, codeLength: code?.length });
+      console.log('MessageHandler: Processing shader message:', { type, path, codeLength: code?.length });
 
       if (type !== "shaderSource" || this.isHandlingMessage) {
         console.log('MessageHandler: Ignoring message - wrong type or already handling');
@@ -46,26 +47,28 @@ export class MessageHandler {
         const result = await this.shaderPipeline.compileShaderPipeline(
           code,
           config,
-          name,
+          path,
           buffers,
         );
 
         if (!result.success) {
           console.log('MessageHandler: Compilation failed:', result.error);
-          this.transport.postMessage({
+          const errorMessage: ErrorMessage = {
             type: "error",
-            payload: [result.error],
-          });
+            payload: [result.error || "Unknown compilation error"],
+          };
+          this.transport.postMessage(errorMessage);
           return { running: true };
         }
 
         console.log('MessageHandler: Compilation successful');
 
         // Send log message in the format the WebSocket server expects
-        this.transport.postMessage({
+        const logMessage: LogMessage = {
           type: "log",
           payload: ["Shader compiled and linked"], // Array format expected by server
-        });
+        };
+        this.transport.postMessage(logMessage);
 
         this.lastEvent = event;
 
@@ -89,10 +92,11 @@ export class MessageHandler {
 
       // Try to send error message, but don't throw if this fails too
       try {
-        this.transport.postMessage({
+        const errorMessage: ErrorMessage = {
           type: "error",
           payload: [`Fatal shader processing error: ${err}`],
-        });
+        };
+        this.transport.postMessage(errorMessage);
       } catch (transportErr) {
         console.error('MessageHandler: Failed to send error message:', transportErr);
       }
@@ -108,10 +112,23 @@ export class MessageHandler {
     if (this.lastEvent && onReset) {
       onReset();
     } else {
-      this.transport.postMessage({
+      const errorMessage: ErrorMessage = {
         type: "error",
         payload: ["❌ No shader to reset"],
-      });
+      };
+      this.transport.postMessage(errorMessage);
     }
+  }
+
+  public refresh(path?: string): void {
+    console.log('MessageHandler: Refresh requested', path ? `for shader: ${path}` : '(current)');
+    
+    const refreshMessage: RefreshMessage = {
+      type: "refresh",
+      payload: {
+        path: path
+      }
+    };
+    this.transport.postMessage(refreshMessage);
   }
 }
