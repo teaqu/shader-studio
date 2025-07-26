@@ -59,4 +59,8 @@ export class Messenger {
       this.transports.splice(index, 1);
     }
   }
+
+  public hasActiveClients(): boolean {
+    return this.transports.some(transport => transport.hasActiveClients());
+  }
 }

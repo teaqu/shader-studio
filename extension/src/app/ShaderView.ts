@@ -53,11 +53,7 @@ export class ShaderView {
 
   public dispose(): void {
     this.webServer.stopWebServer();
-    if (this.webSocketTransport) {
-      this.messenger.removeTransport(this.webSocketTransport);
-      this.webSocketTransport.close();
-      this.webSocketTransport = null;
-    }
+    this.messenger.close();
     this.configEditorProvider.dispose();
     this.logger.info("Shader extension disposed");
   }
@@ -188,27 +184,27 @@ export class ShaderView {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) {
-        return;
+      if (editor && this.isGlslEditor(editor)) {
+        this.performShaderUpdate(editor);
       }
-
-      this.performShaderUpdate(editor);
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
       const editor = vscode.window.activeTextEditor;
-
-      if (
-        event.document.languageId !== "glsl" &&
-        !event.document.fileName.endsWith(".glsl")
-      ) {
-        return;
-      }
-
-      if (editor) {
+      if (editor && this.isGlslEditor(editor)) {
         this.performShaderUpdate(editor);
       }
     });
+  }
+
+  private isGlslEditor(editor: vscode.TextEditor): boolean {
+    return editor.document.languageId === "glsl" && editor.document.fileName.endsWith(".glsl");
+  }
+
+  private performShaderUpdate(editor: vscode.TextEditor): void {
+    if (this.messenger.hasActiveClients()) {
+      this.shaderProcessor.sendShaderToWebview(editor);
+    }
   }
 
   private async generateConfig(): Promise<void> {
@@ -278,10 +274,6 @@ export class ShaderView {
       this.logger.error(`Failed to generate config: ${error}`);
       vscode.window.showErrorMessage(`Failed to generate config: ${error}`);
     }
-  }
-
-  private performShaderUpdate(editor: vscode.TextEditor): void {
-    this.shaderProcessor.sendShaderToWebview(editor);
   }
 
   private async openInElectron(): Promise<void> {

@@ -8,8 +8,9 @@ import { Logger } from "./services/Logger";
 import { ShaderUtils } from "./util/ShaderUtils";
 
 export class PanelManager {
-  private panel: vscode.WebviewPanel | undefined;
+  private panels: Set<vscode.WebviewPanel> = new Set();
   private logger!: Logger;
+  private webviewTransport: WebviewTransport;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -17,10 +18,16 @@ export class PanelManager {
     private shaderProcessor: ShaderProcessor,
   ) {
     this.logger = Logger.getInstance();
+    this.webviewTransport = new WebviewTransport();
+    this.messenger.addTransport(this.webviewTransport);
   }
 
   public getPanel(): vscode.WebviewPanel | undefined {
-    return this.panel;
+    return this.panels.values().next().value;
+  }
+
+  public getPanels(): vscode.WebviewPanel[] {
+    return Array.from(this.panels);
   }
 
   private createWebviewPanel(editor: vscode.TextEditor | undefined): void {
@@ -51,7 +58,7 @@ export class PanelManager {
       vscode.Uri.file(path.dirname(editor.document.uri.fsPath)) :
       (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
-    this.panel = vscode.window.createWebviewPanel(
+    const panel = vscode.window.createWebviewPanel(
       "shaderView",
       "Shader View",
       viewColumn,
@@ -68,11 +75,12 @@ export class PanelManager {
       },
     );
 
-    // Add webview transport to the shared message transporter
-    const webviewTransport = new WebviewTransport(this.panel);
-    this.messenger.addTransport(webviewTransport);
+    this.panels.add(panel);
 
-    this.setupWebviewHtml();
+    // Add panel to the shared webview transport
+    this.webviewTransport.addPanel(panel);
+
+    this.setupWebviewHtml(panel);
 
     if (editor) {
       setTimeout(
@@ -81,19 +89,15 @@ export class PanelManager {
       );
     }
 
-    this.panel.onDidDispose(() => {
-      this.messenger.removeTransport(webviewTransport);
-      this.panel = undefined;
+    panel.onDidDispose(() => {
+      this.webviewTransport.removePanel(panel);
+      this.panels.delete(panel);
     });
 
     this.logger.info("Webview panel created");
   }
 
-  private setupWebviewHtml(): void {
-    if (!this.panel) {
-      return;
-    }
-
+  private setupWebviewHtml(panel: vscode.WebviewPanel): void {
     const htmlPath = path.join(
       this.context.extensionPath,
       "../ui",
@@ -102,7 +106,7 @@ export class PanelManager {
     );
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
 
-    this.panel.webview.html = rawHtml.replace(
+    panel.webview.html = rawHtml.replace(
       /(src|href)="(.+?)"/g,
       (_, attr, file) => {
         const cleaned = file.replace(/^\\|^\//, "");
@@ -112,10 +116,11 @@ export class PanelManager {
           "dist",
           cleaned,
         );
-        const uri = this.panel!.webview.asWebviewUri(vscode.Uri.file(filePath));
+        const uri = panel.webview.asWebviewUri(vscode.Uri.file(filePath));
         return `${attr}="${uri}"`;
       },
     );
     this.logger.debug("Webview HTML set");
   }
+  
 }

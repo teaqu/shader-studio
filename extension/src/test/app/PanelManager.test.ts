@@ -182,7 +182,10 @@ suite('PanelManager Test Suite', () => {
 
         // Then
         assert.strictEqual(createWebviewPanelStub.callCount, 2);
-        assert.strictEqual(panelManager.getPanel(), mockWebviewPanel2);
+        const allPanels = panelManager.getPanels();
+        assert.strictEqual(allPanels.length, 2);
+        assert.ok(allPanels.includes(mockWebviewPanel1 as any));
+        assert.ok(allPanels.includes(mockWebviewPanel2 as any));
     });
 
     test('localResourceRoots includes correct paths', () => {

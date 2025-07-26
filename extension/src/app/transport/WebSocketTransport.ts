@@ -132,4 +132,8 @@ export class WebSocketTransport implements MessageTransport {
   public onMessage(handler: (message: any) => void): void {
     this.messageHandler = handler;
   }
+
+  public hasActiveClients(): boolean {
+    return this.wsClients.size > 0;
+  }
 }
