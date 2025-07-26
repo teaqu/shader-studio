@@ -176,7 +176,6 @@
   {:else if !error}
     <div class="loading">
       <div class="placeholder">
-        <h2>Config Editor</h2>
         <p>Loading configuration...</p>
       </div>
     </div>
