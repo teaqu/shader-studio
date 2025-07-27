@@ -29,7 +29,7 @@ export class ElectronLauncher {
       if (isDevelopment && this.context.extensionMode === vscode.ExtensionMode.Development) {
         this.logger.info("Development mode - trying npx electron with fallback");
         const hasNpm = await this.checkNpmAvailable();
-        
+
         if (hasNpm) {
           await this.launchWithNpx(electronDir, launcherScript);
         } else {
@@ -159,7 +159,7 @@ export class ElectronLauncher {
     launcherScript: string,
   ): Promise<void> {
     const electronPath = await this.getOrDownloadElectron();
-    
+
     this.logger.info(`Launching with Electron from: ${electronPath}`);
 
     // Verify the launcher script exists
@@ -181,12 +181,11 @@ export class ElectronLauncher {
     this.logger.info(
       `Opened VS Code terminal to launch downloaded Electron with command: ${command}`,
     );
-    vscode.window.showInformationMessage("Launched Shader View in Electron");
   }
 
   private buildLaunchCommand(electronPath: string, launcherScript: string): string {
     const platform = process.platform;
-    
+
     if (platform === "win32") {
       // PowerShell syntax
       return `& "${electronPath}" "${launcherScript}"`;
@@ -201,10 +200,10 @@ export class ElectronLauncher {
       try {
         // Remove quarantine attribute that might prevent execution
         await this.runCommand(`xattr -rd com.apple.quarantine "${executablePath}" 2>/dev/null || true`);
-        
+
         // Ensure executable permissions
         await this.runCommand(`chmod +x "${executablePath}"`);
-        
+
         this.logger.info("Applied macOS executable permissions and removed quarantine");
       } catch (error) {
         this.logger.warn(`Could not apply macOS fixes: ${error}`);
@@ -243,7 +242,7 @@ export class ElectronLauncher {
     const electronPath = await ElectronLauncher.downloadInProgress;
     ElectronLauncher.downloadedElectronPath = electronPath;
     ElectronLauncher.downloadInProgress = null;
-    
+
     return electronPath;
   }
 
@@ -364,82 +363,24 @@ export class ElectronLauncher {
   }
 
   private async extractZip(zipPath: string, extractDir: string): Promise<void> {
-    const yauzl = await import("yauzl");
+    const extract = (await import("extract-zip")).default;
 
-    return new Promise((resolve, reject) => {
-      yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+    try {
+      this.logger.info(`Extracting ${zipPath} to ${extractDir}`);
 
-        if (!zipfile) {
-          reject(new Error("Failed to open zip file"));
-          return;
-        }
+      await extract(zipPath, { dir: extractDir });
 
-        // Create extract directory
-        if (!fs.existsSync(extractDir)) {
-          fs.mkdirSync(extractDir, { recursive: true });
-        }
+      this.logger.info("Zip extraction completed with extract-zip");
 
-        zipfile.readEntry();
+      // Fix permissions on macOS after extraction
+      if (process.platform === "darwin") {
+        await this.fixMacOSElectronApp(extractDir);
+      }
 
-        zipfile.on("entry", (entry) => {
-          const entryPath = path.join(extractDir, entry.fileName);
-
-          if (/\/$/.test(entry.fileName)) {
-            // Directory entry
-            fs.mkdirSync(entryPath, { recursive: true });
-            zipfile.readEntry();
-          } else {
-            // File entry
-            fs.mkdirSync(path.dirname(entryPath), { recursive: true });
-
-            zipfile.openReadStream(entry, (err, readStream) => {
-              if (err) {
-                reject(err);
-                return;
-              }
-
-              if (!readStream) {
-                reject(new Error("Failed to create read stream"));
-                return;
-              }
-
-              const writeStream = fs.createWriteStream(entryPath);
-              readStream.pipe(writeStream);
-
-              writeStream.on("close", () => {
-                // Set executable permissions on Unix systems
-                if (
-                  process.platform !== "win32" &&
-                  entry.fileName.includes("electron")
-                ) {
-                  try {
-                    fs.chmodSync(entryPath, 0o755);
-                  } catch (error) {
-                    this.logger.warn(
-                      `Could not set executable permissions on ${entryPath}: ${error}`,
-                    );
-                  }
-                }
-                zipfile.readEntry();
-              });
-
-              writeStream.on("error", reject);
-            });
-          }
-        });
-
-        zipfile.on("end", () => {
-          this.logger.info("Zip extraction completed");
-          resolve();
-        });
-
-        zipfile.on("error", reject);
-      });
-    });
+    } catch (error) {
+      this.logger.error(`Extraction failed: ${error}`);
+      throw error;
+    }
   }
 
   private async findElectronExecutable(downloadPath: string): Promise<string> {
@@ -456,7 +397,7 @@ export class ElectronLauncher {
     // Search for executable in the download directory
     this.logger.info(`Searching for electron executable in: ${downloadPath}`);
     const foundPath = await this.searchForExecutable(downloadPath, platform);
-    
+
     if (foundPath) {
       this.logger.info(`Found electron executable at: ${foundPath}`);
       return foundPath;
@@ -491,13 +432,13 @@ export class ElectronLauncher {
   private async searchForExecutable(dir: string, platform: string): Promise<string | null> {
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
-        
+
         if (entry.isFile()) {
           if ((platform === "win32" && entry.name === "electron.exe") ||
-              (platform !== "win32" && entry.name === "electron")) {
+            (platform !== "win32" && entry.name === "electron")) {
             return fullPath;
           }
         } else if (entry.isDirectory()) {
@@ -509,5 +450,41 @@ export class ElectronLauncher {
       this.logger.debug(`Error searching in ${dir}: ${error}`);
     }
     return null;
+  }
+
+  private async fixMacOSElectronApp(extractDir: string): Promise<void> {
+    try {
+      const electronAppPath = path.join(extractDir, "Electron.app");
+
+      if (fs.existsSync(electronAppPath)) {
+        // Fix permissions on key executable files
+        const filesToFix = [
+          "Contents/MacOS/Electron",
+          "Contents/Frameworks/Electron Framework.framework/Electron Framework",
+          "Contents/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper",
+          "Contents/Frameworks/Electron Helper (GPU).app/Contents/MacOS/Electron Helper (GPU)",
+          "Contents/Frameworks/Electron Helper (Plugin).app/Contents/MacOS/Electron Helper (Plugin)",
+          "Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)"
+        ];
+
+        for (const file of filesToFix) {
+          const filePath = path.join(electronAppPath, file);
+          if (fs.existsSync(filePath)) {
+            try {
+              await fs.promises.chmod(filePath, 0o755);
+              this.logger.debug(`Fixed permissions for: ${filePath}`);
+            } catch (error) {
+              this.logger.warn(`Could not fix permissions for ${filePath}: ${error}`);
+            }
+          }
+        }
+
+        // Remove quarantine attribute
+        await this.runCommand(`xattr -rd com.apple.quarantine "${electronAppPath}" 2>/dev/null || true`);
+        this.logger.info("Applied macOS Electron.app fixes");
+      }
+    } catch (error) {
+      this.logger.warn(`Could not apply macOS Electron.app fixes: ${error}`);
+    }
   }
 }
