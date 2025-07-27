@@ -119,6 +119,13 @@ function createMenu(): void {
                         win.webContents.reload();
                     }
                 },
+                {
+                    label: 'Toggle Developer Tools',
+                    accelerator: 'F12',
+                    click: () => {
+                        win.webContents.toggleDevTools();
+                    }
+                },
                 { type: 'separator' },
                 { role: 'quit' }
             ]
@@ -139,7 +146,13 @@ app.whenReady().then(() => {
     } else {
         iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
     }
+    
+    console.log('Icon path:', iconPath);
+    console.log('Icon file exists:', fs.existsSync(iconPath));
+    
     const icon = nativeImage.createFromPath(iconPath);
+    console.log('Icon isEmpty:', icon.isEmpty());
+    console.log('Icon size:', icon.getSize());
 
     if (process.platform === 'darwin' && !icon.isEmpty()) {
         app.dock?.setIcon(icon);
