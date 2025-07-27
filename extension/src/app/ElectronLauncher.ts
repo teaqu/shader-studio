@@ -160,13 +160,14 @@ export class ElectronLauncher {
       hideFromUser: true,
     });
 
-    const command = `& "${electronPath}" "${launcherScript}"`;
-    terminal.sendText(command);
-
-    this.logger.info(
-      `Opened VS Code terminal to launch downloaded Electron with command: ${command}`,
-    );
-    vscode.window.showInformationMessage("Launched Shader View in Electron");
+    // if windows
+    if (process.platform === "win32") {
+      // Use PowerShell command to handle spaces in paths
+      terminal.sendText(`& "${electronPath}" "${launcherScript}"`);
+    } else {
+      // For Unix-like systems, just use the command directly
+      terminal.sendText(`"${electronPath}" "${launcherScript}"`);
+    }
   }
 
   private async getOrDownloadElectron(): Promise<string> {

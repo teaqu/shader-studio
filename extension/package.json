@@ -2,7 +2,7 @@
   "name": "shader-view",
   "displayName": "Shader View",
   "description": "A VS Code extension for viewing and editing shadertoy shaders",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
