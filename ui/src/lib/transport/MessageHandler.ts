@@ -2,7 +2,12 @@ import type { ShaderPipeline } from "../rendering/ShaderPipeline";
 import type { TimeManager } from "../util/TimeManager";
 import type { FrameRenderer } from "../rendering/FrameRenderer";
 import type { Transport } from "./MessageTransport";
-import type { LogMessage, ErrorMessage, RefreshMessage, ShaderSourceMessage } from "@shader-view/types";
+import type {
+  ErrorMessage,
+  LogMessage,
+  RefreshMessage,
+  ShaderSourceMessage,
+} from "@shader-view/types";
 
 export class MessageHandler {
   private shaderPipeline: ShaderPipeline;
@@ -32,18 +37,36 @@ export class MessageHandler {
     event: MessageEvent,
   ): Promise<{ running: boolean }> {
     try {
-      let { type, code, config, path, buffers = {} } = event.data as ShaderSourceMessage;
+      let { type, code, config, path, buffers = {} } = event
+        .data as ShaderSourceMessage;
 
-      console.log('MessageHandler: Processing shader message:', { type, path, codeLength: code?.length });
+      console.log("MessageHandler: Processing shader message:", {
+        type,
+        path,
+        codeLength: code?.length,
+      });
 
       if (type !== "shaderSource" || this.isHandlingMessage) {
-        console.log('MessageHandler: Ignoring message - wrong type or already handling');
+        console.log(
+          "MessageHandler: Ignoring message - wrong type or already handling",
+        );
         return { running: false };
+      }
+
+      // Check if this is a different shader and reset if needed
+      if (this.lastEvent && this.lastEvent.data) {
+        const lastShaderData = this.lastEvent.data as ShaderSourceMessage;
+        const isDifferentShader = lastShaderData.path !== path ||
+          lastShaderData.code !== code;
+
+        if (isDifferentShader) {
+          this.cleanup();
+        }
       }
 
       this.isHandlingMessage = true;
       try {
-        console.log('MessageHandler: Compiling shader pipeline...');
+        console.log("MessageHandler: Compiling shader pipeline...");
         const result = await this.shaderPipeline.compileShaderPipeline(
           code,
           config,
@@ -52,7 +75,7 @@ export class MessageHandler {
         );
 
         if (!result.success) {
-          console.log('MessageHandler: Compilation failed:', result.error);
+          console.log("MessageHandler: Compilation failed:", result.error);
           const errorMessage: ErrorMessage = {
             type: "error",
             payload: [result.error || "Unknown compilation error"],
@@ -61,7 +84,7 @@ export class MessageHandler {
           return { running: true };
         }
 
-        console.log('MessageHandler: Compilation successful');
+        console.log("MessageHandler: Compilation successful");
 
         // Send log message in the format the WebSocket server expects
         const logMessage: LogMessage = {
@@ -74,19 +97,22 @@ export class MessageHandler {
 
         // Start render loop if not already running
         if (!this.frameRenderer.isRunning()) {
-          console.log('MessageHandler: Starting render loop');
+          console.log("MessageHandler: Starting render loop");
           this.frameRenderer.startRenderLoop();
         }
 
-        console.log('MessageHandler: Shader processing complete');
+        console.log("MessageHandler: Shader processing complete");
         return { running: true };
       } finally {
         this.isHandlingMessage = false;
       }
     } catch (err) {
-      console.error('MessageHandler: Fatal error in handleShaderMessage:', err);
-      console.error('MessageHandler: Error stack:', err instanceof Error ? err.stack : 'No stack');
-      console.error('MessageHandler: Event data:', event.data);
+      console.error("MessageHandler: Fatal error in handleShaderMessage:", err);
+      console.error(
+        "MessageHandler: Error stack:",
+        err instanceof Error ? err.stack : "No stack",
+      );
+      console.error("MessageHandler: Event data:", event.data);
 
       this.isHandlingMessage = false;
 
@@ -98,7 +124,10 @@ export class MessageHandler {
         };
         this.transport.postMessage(errorMessage);
       } catch (transportErr) {
-        console.error('MessageHandler: Failed to send error message:', transportErr);
+        console.error(
+          "MessageHandler: Failed to send error message:",
+          transportErr,
+        );
       }
 
       return { running: false };
@@ -106,8 +135,7 @@ export class MessageHandler {
   }
 
   public reset(onReset?: () => void): void {
-    this.shaderPipeline.cleanup();
-    this.timeManager.cleanup();
+    this.cleanup();
 
     if (this.lastEvent && onReset) {
       onReset();
@@ -120,14 +148,22 @@ export class MessageHandler {
     }
   }
 
+  private cleanup() {
+    this.shaderPipeline.cleanup();
+    this.timeManager.cleanup();
+  }
+
   public refresh(path?: string): void {
-    console.log('MessageHandler: Refresh requested', path ? `for shader: ${path}` : '(current)');
-    
+    console.log(
+      "MessageHandler: Refresh requested",
+      path ? `for shader: ${path}` : "(current)",
+    );
+
     const refreshMessage: RefreshMessage = {
       type: "refresh",
       payload: {
-        path: path
-      }
+        path: path,
+      },
     };
     this.transport.postMessage(refreshMessage);
   }
