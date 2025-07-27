@@ -7,15 +7,21 @@ import { ShaderProcessor } from "./ShaderProcessor";
 export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     private logger: Logger;
 
-    constructor(private context: vscode.ExtensionContext, private shaderProcessor?: ShaderProcessor) {
+    constructor(
+        private context: vscode.ExtensionContext,
+        private shaderProcessor?: ShaderProcessor,
+    ) {
         this.logger = Logger.getInstance();
     }
 
-    public static register(context: vscode.ExtensionContext, shaderProcessor?: ShaderProcessor): vscode.Disposable {
+    public static register(
+        context: vscode.ExtensionContext,
+        shaderProcessor?: ShaderProcessor,
+    ): vscode.Disposable {
         const provider = new ConfigEditorProvider(context, shaderProcessor);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             "shader-view.configEditor",
-            provider
+            provider,
         );
         return providerRegistration;
     }
@@ -23,18 +29,20 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     public async resolveCustomTextEditor(
         document: vscode.TextDocument,
         webviewPanel: vscode.WebviewPanel,
-        _token: vscode.CancellationToken
+        _token: vscode.CancellationToken,
     ): Promise<void> {
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [
                 vscode.Uri.file(
-                    path.join(this.context.extensionPath, "../config-ui", "dist")
-                )
-            ]
+                    path.join(this.context.extensionPath, "config-ui-dist"),
+                ),
+            ],
         };
 
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+        webviewPanel.webview.html = this.getHtmlForWebview(
+            webviewPanel.webview,
+        );
 
         function updateWebview() {
             webviewPanel.webview.postMessage({
@@ -43,13 +51,14 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
             });
         }
 
-        const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(
-            (e) => {
-                if (e.document.uri.toString() === document.uri.toString()) {
-                    updateWebview();
-                }
-            }
-        );
+        const changeDocumentSubscription = vscode.workspace
+            .onDidChangeTextDocument(
+                (e) => {
+                    if (e.document.uri.toString() === document.uri.toString()) {
+                        updateWebview();
+                    }
+                },
+            );
 
         // Make sure we get rid of the listener when our editor is closed.
         webviewPanel.onDidDispose(() => {
@@ -87,9 +96,8 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         // Read the built HTML file
         const htmlPath = path.join(
             this.context.extensionPath,
-            "../config-ui",
-            "dist",
-            "index.html"
+            "config-ui-dist",
+            "index.html",
         );
 
         this.logger.debug(`Loading config editor HTML from: ${htmlPath}`);
@@ -97,17 +105,19 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         const rawHtml = fs.readFileSync(htmlPath, "utf-8");
         this.logger.debug(`Successfully loaded config editor HTML`);
 
-        const processedHtml = rawHtml.replace(/(src|href)="\.?\/([^"]+)"/g, (_, attr, file) => {
-            const filePath = path.join(
-                this.context.extensionPath,
-                "../config-ui",
-                "dist",
-                file
-            );
-            const uri = webview.asWebviewUri(vscode.Uri.file(filePath));
-            this.logger.debug(`Mapped ${file} to ${uri.toString()}`);
-            return `${attr}="${uri}"`;
-        });
+        const processedHtml = rawHtml.replace(
+            /(src|href)="\.?\/([^"]+)"/g,
+            (_, attr, file) => {
+                const filePath = path.join(
+                    this.context.extensionPath,
+                    "config-ui-dist",
+                    file,
+                );
+                const uri = webview.asWebviewUri(vscode.Uri.file(filePath));
+                this.logger.debug(`Mapped ${file} to ${uri.toString()}`);
+                return `${attr}="${uri}"`;
+            },
+        );
 
         return processedHtml;
     }
@@ -135,20 +145,24 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     /**
      * Update document from text string
      */
-    private updateTextDocumentFromText(document: vscode.TextDocument, text: string): Thenable<boolean> {
+    private updateTextDocumentFromText(
+        document: vscode.TextDocument,
+        text: string,
+    ): Thenable<boolean> {
         const edit = new vscode.WorkspaceEdit();
 
         // Replace the entire document with the new text
         edit.replace(
             document.uri,
             new vscode.Range(0, 0, document.lineCount, 0),
-            text
+            text,
         );
 
         return vscode.workspace.applyEdit(edit);
-    }    /**
+    } /**
      * Get the static html used for the editor webviews.
      */
+
     private getDocumentAsJson(document: vscode.TextDocument): any {
         const text = document.getText();
         if (text.trim().length === 0) {
@@ -159,7 +173,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
             return JSON.parse(text);
         } catch {
             throw new Error(
-                "Could not get document as json. Content is not valid json"
+                "Could not get document as json. Content is not valid json",
             );
         }
     }
@@ -167,7 +181,10 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     /**
      * Write out the json to a given document.
      */
-    private updateTextDocument(document: vscode.TextDocument, json: any): Thenable<boolean> {
+    private updateTextDocument(
+        document: vscode.TextDocument,
+        json: any,
+    ): Thenable<boolean> {
         const edit = new vscode.WorkspaceEdit();
 
         // Just replace the entire document every time for this example extension.
@@ -175,7 +192,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         edit.replace(
             document.uri,
             new vscode.Range(0, 0, document.lineCount, 0),
-            JSON.stringify(json, null, 2)
+            JSON.stringify(json, null, 2),
         );
 
         return vscode.workspace.applyEdit(edit);

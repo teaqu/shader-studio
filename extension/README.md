@@ -1,79 +1,77 @@
-# shader-view README
+# shader-view
 
-## Features
+A fast shadertoy viewer for vscode with hot reloading. This is in alpha stages
+so expect bugs and please report them.
 
-Describe specific features of your extension including screenshots of your
-extension in action. Image paths are relative to this README file.
+![screenshot](assets/screenshot.png)
 
-For example if there is an image subfolder under your extension project
-workspace:
+You an either spawn in a new window, a vscode panel or in your browser.
 
-\!\[feature X\]\(images/feature-x.png\)
+Click the SV icon on the VSCode status bar to see the options.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to
-> show off your extension! We recommend short, focused animations that are easy
-> to follow.
+## Configuration
 
-## Requirements
+### Shader Configuration Files
 
-If you have any requirements or dependencies, add a section describing those and
-how to install and configure them.
+Add config same dir as shader like so: shadername.sv.json. You can also do it
+via the command.
 
-## Extension Settings
+The extension provides a visual editor for `.sv.json` files. Click the UI button
+in the status bar to show.
 
-Include if your extension adds any VS Code settings through the
-`contributes.configuration` extension point.
+![config screenshot](assets/config-screenshot.jpg)
 
-For example:
+### Example Configuration Format
 
-This extension contributes the following settings:
+```json
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "source": "BufferA",
+          "type": "buffer"
+        }
+      }
+    },
+    "BufferA": {
+      "path": "buffer_name.glsl",
+      "inputs": {
+        "iChannel0": {
+          "source": "BufferA",
+          "type": "buffer"
+        },
+        "iChannel1": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}
+```
 
-- `myExtension.enable`: Enable/disable this extension.
-- `myExtension.thing`: Set to `blah` to do something.
+## Supported Uniforms
 
-## Known Issues
+Currently supports uniforms:
 
-Calling out known issues can help limit users opening duplicate issues against
-your extension.
+- `iTime` - shader playback time (in seconds)
+- `iTimeDelta` - render time (time since last frame, in seconds)
+- `iFrameRate` - shader frame rate (frames per second)
+- `iFrame` - shader playback frame number
+- `iMouse` - mouse pixel coordinates
+- `iResolution` - viewport resolution (in pixels)
+- `iChannel0-3` - input channels (textures, buffers, keyboard)
+- `iDate` - current date (year, month, day, time in seconds)
 
-## Release Notes
+## Not Yet Supported (from Shadertoy)
 
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best
-practices for creating your extension.
-
-- [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor
-keyboard shortcuts:
-
-- Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-- Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and
-  Linux).
-- Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-- [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-- [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+- `iChannelTime[4]` - channel playback time (for video inputs)
+- `iChannelResolution[4]` - channel resolution for each input
+- `samplerCube iChannelX` - cubemap texture support
+- `iSampleRate` - sound sample rate (typically 44100)
+- Video texture inputs
+- Audio/sound inputs
+- Webcam inputs
+- Volume/microphone inputs
+- VR/AR inputs

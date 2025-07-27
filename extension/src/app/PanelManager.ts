@@ -39,7 +39,7 @@ export class PanelManager {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
 
     const layout = vscode.window.tabGroups.all;
-    const emptyGroup = layout.find(group => group.tabs.length === 0);
+    const emptyGroup = layout.find((group) => group.tabs.length === 0);
 
     if (emptyGroup) {
       this.createWebviewPanelInColumn(editor, emptyGroup.viewColumn);
@@ -48,12 +48,15 @@ export class PanelManager {
     }
   }
 
-  private createWebviewPanelInColumn(editor: vscode.TextEditor | null, viewColumn: vscode.ViewColumn): void {
+  private createWebviewPanelInColumn(
+    editor: vscode.TextEditor | null,
+    viewColumn: vscode.ViewColumn,
+  ): void {
     const workspaceFolders =
       vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
-    const shaderDir = editor ?
-      vscode.Uri.file(path.dirname(editor.document.uri.fsPath)) :
-      (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
+    const shaderDir = editor
+      ? vscode.Uri.file(path.dirname(editor.document.uri.fsPath))
+      : (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
     const panel = vscode.window.createWebviewPanel(
       "shaderView",
@@ -64,7 +67,7 @@ export class PanelManager {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.file(
-            path.join(this.context.extensionPath, "../ui", "dist"),
+            path.join(this.context.extensionPath, "ui-dist"),
           ),
           shaderDir,
           ...workspaceFolders,
@@ -97,8 +100,7 @@ export class PanelManager {
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {
     const htmlPath = path.join(
       this.context.extensionPath,
-      "../ui",
-      "dist",
+      "ui-dist",
       "index.html",
     );
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
@@ -109,8 +111,7 @@ export class PanelManager {
         const cleaned = file.replace(/^\\|^\//, "");
         const filePath = path.join(
           this.context.extensionPath,
-          "../ui",
-          "dist",
+          "ui-dist",
           cleaned,
         );
         const uri = panel.webview.asWebviewUri(vscode.Uri.file(filePath));
@@ -119,5 +120,4 @@ export class PanelManager {
     );
     this.logger.debug("Webview HTML set");
   }
-  
 }

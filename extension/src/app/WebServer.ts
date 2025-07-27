@@ -19,8 +19,8 @@ export class WebServer {
   }
 
   private getWebServerPort(): number {
-    const config = vscode.workspace.getConfiguration('shaderView');
-    return config.get<number>('webServerPort') || 3000;
+    const config = vscode.workspace.getConfiguration("shaderView");
+    return config.get<number>("webServerPort") || 3000;
   }
 
   public startWebServer(): void {
@@ -52,64 +52,67 @@ export class WebServer {
       this.httpServer.close();
     }
 
-    const workspaceUri = vscode.Uri.joinPath(this.context.extensionUri, '..');
-    const uiDistPath = vscode.Uri.joinPath(workspaceUri, 'ui', 'dist').fsPath;
+    const uiDistPath =
+      vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
 
     this.httpServer = http.createServer((req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-      if (req.method === 'OPTIONS') {
+      if (req.method === "OPTIONS") {
         res.writeHead(200);
         res.end();
         return;
       }
 
-      if (req.url?.startsWith('/textures/')) {
+      if (req.url?.startsWith("/textures/")) {
         this.handleTextureRequest(req, res);
         return;
       }
 
-      let filePath = path.join(uiDistPath, req.url === '/' ? 'index.html' : req.url || '');
+      let filePath = path.join(
+        uiDistPath,
+        req.url === "/" ? "index.html" : req.url || "",
+      );
 
       const resolvedPath = path.resolve(filePath);
       const resolvedDistPath = path.resolve(uiDistPath);
       if (!resolvedPath.startsWith(resolvedDistPath)) {
         res.writeHead(403);
-        res.end('Forbidden');
+        res.end("Forbidden");
         return;
       }
 
       fs.readFile(filePath, (err, data) => {
         if (err) {
           res.writeHead(404);
-          res.end('File not found');
+          res.end("File not found");
           return;
         }
 
         const ext = path.extname(filePath);
-        let contentType = 'text/html';
+        let contentType = "text/html";
         switch (ext) {
-          case '.js':
-            contentType = 'application/javascript';
+          case ".js":
+            contentType = "application/javascript";
             break;
-          case '.css':
-            contentType = 'text/css';
+          case ".css":
+            contentType = "text/css";
             break;
-          case '.json':
-            contentType = 'application/json';
+          case ".json":
+            contentType = "application/json";
             break;
-          case '.png':
-            contentType = 'image/png';
+          case ".png":
+            contentType = "image/png";
             break;
-          case '.jpg':
-          case '.jpeg':
-            contentType = 'image/jpeg';
+          case ".jpg":
+          case ".jpeg":
+            contentType = "image/jpeg";
             break;
         }
 
-        res.writeHead(200, { 'Content-Type': contentType });
+        res.writeHead(200, { "Content-Type": contentType });
         res.end(data);
       });
     });
@@ -118,31 +121,34 @@ export class WebServer {
       this.logger.info(`HTTP server listening on port ${httpPort}`);
     });
 
-    this.httpServer.on('error', (error) => {
+    this.httpServer.on("error", (error) => {
       this.logger.error(`HTTP server error: ${error}`);
     });
   }
 
-  private handleTextureRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private handleTextureRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
     if (!req.url) {
       res.writeHead(400);
-      res.end('Bad Request');
+      res.end("Bad Request");
       return;
     }
 
-    const encodedPath = req.url.replace('/textures/', '');
+    const encodedPath = req.url.replace("/textures/", "");
     const texturePath = decodeURIComponent(encodedPath);
-    
+
     if (!fs.existsSync(texturePath)) {
       res.writeHead(404);
-      res.end('Texture not found');
+      res.end("Texture not found");
       return;
     }
 
     const stats = fs.statSync(texturePath);
     if (!stats.isFile()) {
       res.writeHead(403);
-      res.end('Invalid texture path');
+      res.end("Invalid texture path");
       return;
     }
 
@@ -150,33 +156,33 @@ export class WebServer {
       if (err) {
         this.logger.error(`Failed to read texture file ${texturePath}: ${err}`);
         res.writeHead(404);
-        res.end('Texture file not found');
+        res.end("Texture file not found");
         return;
       }
 
       const ext = path.extname(texturePath).toLowerCase();
-      let contentType = 'image/png';
+      let contentType = "image/png";
       switch (ext) {
-        case '.jpg':
-        case '.jpeg':
-          contentType = 'image/jpeg';
+        case ".jpg":
+        case ".jpeg":
+          contentType = "image/jpeg";
           break;
-        case '.png':
-          contentType = 'image/png';
+        case ".png":
+          contentType = "image/png";
           break;
-        case '.gif':
-          contentType = 'image/gif';
+        case ".gif":
+          contentType = "image/gif";
           break;
-        case '.bmp':
-          contentType = 'image/bmp';
+        case ".bmp":
+          contentType = "image/bmp";
           break;
         default:
-          contentType = 'application/octet-stream';
+          contentType = "application/octet-stream";
       }
 
-      res.writeHead(200, { 
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600'
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=3600",
       });
       res.end(data);
     });
@@ -210,39 +216,43 @@ export class WebServer {
   public async showWebServerMenu(): Promise<void> {
     const items = [
       {
-        label: '$(globe) Open in Browser',
+        label: "$(globe) Open in Browser",
         description: `${this.getHttpUrl()}`,
-        action: 'open'
+        action: "open",
       },
       {
-        label: '$(copy) Copy URL',
-        description: 'Copy server URL to clipboard',
-        action: 'copy'
+        label: "$(copy) Copy URL",
+        description: "Copy server URL to clipboard",
+        action: "copy",
       },
       {
-        label: '$(stop-circle) Stop Server',
-        description: 'Stop the Shader View web server',
-        action: 'stop'
-      }
+        label: "$(stop-circle) Stop Server",
+        description: "Stop the Shader View web server",
+        action: "stop",
+      },
     ];
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Shader View Web Server Options',
-      title: `Web Server Running on ${this.getHttpUrl()}`
+      placeHolder: "Shader View Web Server Options",
+      title: `Web Server Running on ${this.getHttpUrl()}`,
     });
 
     if (selected) {
       switch (selected.action) {
-        case 'open':
+        case "open":
           await vscode.env.openExternal(vscode.Uri.parse(this.getHttpUrl()));
           break;
-        case 'copy':
+        case "copy":
           await vscode.env.clipboard.writeText(this.getHttpUrl());
-          vscode.window.showInformationMessage('Server URL copied to clipboard');
+          vscode.window.showInformationMessage(
+            "Server URL copied to clipboard",
+          );
           break;
-        case 'stop':
+        case "stop":
           this.stopWebServer();
-          vscode.window.showInformationMessage('Shader View web server stopped');
+          vscode.window.showInformationMessage(
+            "Shader View web server stopped",
+          );
           break;
       }
     }

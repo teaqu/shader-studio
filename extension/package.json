@@ -1,8 +1,26 @@
 {
   "name": "shader-view",
-  "displayName": "shader-view",
-  "description": "",
+  "displayName": "Shader View",
+  "description": "A VS Code extension for viewing and editing shadertoy shaders",
   "version": "0.0.1",
+  "publisher": "teaqu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/teaqu/shader-view.git"
+  },
+  "homepage": "https://github.com/teaqu/shader-view",
+  "bugs": {
+    "url": "https://github.com/teaqu/shader-view/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "keywords": [
+    "shader",
+    "glsl",
+    "webgl",
+    "graphics",
+    "shadertoy"
+  ],
   "engines": {
     "vscode": "^1.101.0"
   },
@@ -12,7 +30,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -38,6 +56,10 @@
       {
         "command": "shader-view.toggleConfigView",
         "title": "Shader View: Toggle JSON/UI View"
+      },
+      {
+        "command": "shader-view.launchElectron",
+        "title": "Shader View: Launch in Electron"
       }
     ],
     "customEditors": [
@@ -79,11 +101,17 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
-    "build": "tsc -p ./",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run build && npm run lint",
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "npm run build:ui && npm run build:config-ui && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "build": "npm run build:ui && npm run build:config-ui && npm run build:electron-app && tsc -p ./",
+    "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
+    "build:config-ui": "cd ../config-ui && npm run build && npm run copy-to-extension",
+    "build:electron-app": "cd ../electron && npm run build && npm run copy-to-extension",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
@@ -96,11 +124,16 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
-    "sinon": "^21.0.0"
+    "sinon": "^21.0.0",
+    "ts-loader": "^9.5.1",
+    "webpack": "^5.94.0",
+    "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@electron/get": "^3.1.0",
     "@shader-view/types": "*",
-    "jsonc-parser": "^3.3.1",
-    "ws": "^8.18.3"
+    "@types/yauzl": "^2.10.3",
+    "ws": "^8.18.3",
+    "yauzl": "^3.2.0"
   }
 }

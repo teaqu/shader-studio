@@ -37,12 +37,20 @@ export class ShaderView {
 
     this.messenger = new Messenger(outputChannel, diagnosticCollection);
     this.shaderProcessor = new ShaderProcessor(this.messenger);
-    this.panelManager = new PanelManager(context, this.messenger, this.shaderProcessor, this.glslFileTracker);
+    this.panelManager = new PanelManager(
+      context,
+      this.messenger,
+      this.shaderProcessor,
+      this.glslFileTracker,
+    );
     this.webServer = new WebServer(context);
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
     // Register custom editor for .sv.json files
-    this.configEditorProvider = ConfigEditorProvider.register(context, this.shaderProcessor);
+    this.configEditorProvider = ConfigEditorProvider.register(
+      context,
+      this.shaderProcessor,
+    );
 
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
@@ -63,16 +71,22 @@ export class ShaderView {
   }
 
   private startWebSocketTransport(): void {
-    const config = vscode.workspace.getConfiguration('shaderView');
-    let webSocketPort = config.get<number>('webSocketPort') || 51472;
-    
+    const config = vscode.workspace.getConfiguration("shaderView");
+    let webSocketPort = config.get<number>("webSocketPort") || 51472;
+
     if (this.context.extensionMode === vscode.ExtensionMode.Test) {
       webSocketPort = 51473;
-      this.logger.debug(`Using test port ${webSocketPort} for WebSocket during tests`);
+      this.logger.debug(
+        `Using test port ${webSocketPort} for WebSocket during tests`,
+      );
     }
 
     try {
-      this.webSocketTransport = new WebSocketTransport(webSocketPort, this.shaderProcessor, this.glslFileTracker);
+      this.webSocketTransport = new WebSocketTransport(
+        webSocketPort,
+        this.shaderProcessor,
+        this.glslFileTracker,
+      );
       this.messenger.addTransport(this.webSocketTransport);
     } catch (error) {
       this.logger.error(`Failed to start WebSocket transport: ${error}`);
@@ -85,7 +99,9 @@ export class ShaderView {
 
   private async openInBrowser(): Promise<void> {
     if (!this.webServer.isRunning()) {
-      vscode.window.showWarningMessage('Web server is not running. Start the server first.');
+      vscode.window.showWarningMessage(
+        "Web server is not running. Start the server first.",
+      );
       return;
     }
 
@@ -100,14 +116,18 @@ export class ShaderView {
 
   private async copyServerUrl(): Promise<void> {
     if (!this.webServer.isRunning()) {
-      vscode.window.showWarningMessage('Web server is not running. Start the server first.');
+      vscode.window.showWarningMessage(
+        "Web server is not running. Start the server first.",
+      );
       return;
     }
 
     try {
       const httpUrl = this.webServer.getHttpUrl();
       await vscode.env.clipboard.writeText(httpUrl);
-      vscode.window.showInformationMessage(`Server URL copied to clipboard: ${httpUrl}`);
+      vscode.window.showInformationMessage(
+        `Server URL copied to clipboard: ${httpUrl}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to copy URL: ${error}`);
       vscode.window.showErrorMessage(`Failed to copy URL: ${error}`);
@@ -179,6 +199,13 @@ export class ShaderView {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-view.launchElectron", () => {
+        this.logger.info("shader-view.launchElectron command executed");
+        this.openInElectron();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.toggleConfigView", () => {
         this.logger.info("shader-view.toggleConfigView command executed");
         this.toggleConfigView();
@@ -186,17 +213,25 @@ export class ShaderView {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.refreshCurrentShader", () => {
-        this.logger.info("shader-view.refreshCurrentShader command executed");
-        this.refreshCurrentShader();
-      }),
+      vscode.commands.registerCommand(
+        "shader-view.refreshCurrentShader",
+        () => {
+          this.logger.info("shader-view.refreshCurrentShader command executed");
+          this.refreshCurrentShader();
+        },
+      ),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.refreshSpecificShaderByPath", (shaderPath: string) => {
-        this.logger.info(`shader-view.refreshSpecificShaderByPath command executed for: ${shaderPath}`);
-        this.refreshSpecificShaderByPath(shaderPath);
-      }),
+      vscode.commands.registerCommand(
+        "shader-view.refreshSpecificShaderByPath",
+        (shaderPath: string) => {
+          this.logger.info(
+            `shader-view.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
+          );
+          this.refreshSpecificShaderByPath(shaderPath);
+        },
+      ),
     );
   }
 
@@ -232,15 +267,15 @@ export class ShaderView {
       const activeEditor = vscode.window.activeTextEditor;
 
       let glslFilePath: string;
-      if (!activeEditor || !activeEditor.document.fileName.endsWith('.glsl')) {
+      if (!activeEditor || !activeEditor.document.fileName.endsWith(".glsl")) {
         const fileUri = await vscode.window.showOpenDialog({
           canSelectFiles: true,
           canSelectFolders: false,
           canSelectMany: false,
           filters: {
-            'GLSL Files': ['glsl']
+            "GLSL Files": ["glsl"],
           },
-          title: 'Select GLSL file to generate config for'
+          title: "Select GLSL file to generate config for",
         });
 
         if (!fileUri || fileUri.length === 0) {
@@ -253,7 +288,7 @@ export class ShaderView {
       }
 
       // Get the base name without extension
-      const baseName = path.basename(glslFilePath, '.glsl');
+      const baseName = path.basename(glslFilePath, ".glsl");
       const dirName = path.dirname(glslFilePath);
 
       // Create the config file path
@@ -263,22 +298,26 @@ export class ShaderView {
       if (fs.existsSync(configFilePath)) {
         const overwrite = await vscode.window.showWarningMessage(
           `Config file ${baseName}.sv.json already exists. Overwrite?`,
-          'Yes', 'No'
+          "Yes",
+          "No",
         );
-        if (overwrite !== 'Yes') {
+        if (overwrite !== "Yes") {
           return;
         }
       }
 
       // Create base config
-      const relativeGlslPath = path.relative(dirName, glslFilePath).replace(/\\/g, '/');
+      const relativeGlslPath = path.relative(dirName, glslFilePath).replace(
+        /\\/g,
+        "/",
+      );
       const baseConfig = {
         version: "1.0",
         passes: {
           Image: {
-            inputs: {}
-          }
-        }
+            inputs: {},
+          },
+        },
       };
 
       // Write the config file
@@ -286,10 +325,11 @@ export class ShaderView {
 
       // Open the config file
       const configUri = vscode.Uri.file(configFilePath);
-      await vscode.commands.executeCommand('vscode.open', configUri);
+      await vscode.commands.executeCommand("vscode.open", configUri);
 
-      vscode.window.showInformationMessage(`Generated config file: ${baseName}.sv.json`);
-
+      vscode.window.showInformationMessage(
+        `Generated config file: ${baseName}.sv.json`,
+      );
     } catch (error) {
       this.logger.error(`Failed to generate config: ${error}`);
       vscode.window.showErrorMessage(`Failed to generate config: ${error}`);
@@ -303,22 +343,25 @@ export class ShaderView {
   private async toggleConfigView(): Promise<void> {
     const activeEditor = vscode.window.activeTextEditor;
     const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-    
+
     // Check if we have a .sv.json file either in text editor or custom editor
     let documentUri: vscode.Uri | undefined;
     let isCustomEditor = false;
-    
-    if (activeEditor && activeEditor.document.fileName.endsWith('.sv.json')) {
+
+    if (activeEditor && activeEditor.document.fileName.endsWith(".sv.json")) {
       // Text editor with .sv.json file
       documentUri = activeEditor.document.uri;
       isCustomEditor = false;
-    } else if (currentTab?.input instanceof vscode.TabInputCustom && 
-               (currentTab.input as vscode.TabInputCustom).viewType === 'shader-view.configEditor') {
+    } else if (
+      currentTab?.input instanceof vscode.TabInputCustom &&
+      (currentTab.input as vscode.TabInputCustom).viewType ===
+        "shader-view.configEditor"
+    ) {
       // Custom editor for .sv.json file
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
       isCustomEditor = true;
     }
-    
+
     if (!documentUri) {
       return;
     }
@@ -326,10 +369,18 @@ export class ShaderView {
     try {
       if (isCustomEditor) {
         // Switch to text editor
-        await vscode.commands.executeCommand('vscode.openWith', documentUri, 'default');
+        await vscode.commands.executeCommand(
+          "vscode.openWith",
+          documentUri,
+          "default",
+        );
       } else {
         // Switch to custom editor
-        await vscode.commands.executeCommand('vscode.openWith', documentUri, 'shader-view.configEditor');
+        await vscode.commands.executeCommand(
+          "vscode.openWith",
+          documentUri,
+          "shader-view.configEditor",
+        );
       }
 
       // Refresh the status bar toggle button after a short delay
@@ -344,35 +395,46 @@ export class ShaderView {
 
   private refreshCurrentShader(): void {
     this.logger.info("Refreshing current/active shader");
-    
+
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor && this.isGlslEditor(activeEditor)) {
-      this.logger.info(`Refreshing current shader: ${activeEditor.document.fileName}`);
+      this.logger.info(
+        `Refreshing current shader: ${activeEditor.document.fileName}`,
+      );
       this.shaderProcessor.sendShaderToWebview(activeEditor);
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {
-        this.logger.info(`No active GLSL editor, using last viewed file: ${lastViewedFile}`);
+        this.logger.info(
+          `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
+        );
         this.refreshSpecificShaderByPath(lastViewedFile);
       } else {
-        this.logger.warn("No active GLSL editor and no last viewed file to refresh");
-        vscode.window.showWarningMessage("No GLSL file to refresh. Open a .glsl file first.");
+        this.logger.warn(
+          "No active GLSL editor and no last viewed file to refresh",
+        );
+        vscode.window.showWarningMessage(
+          "No GLSL file to refresh. Open a .glsl file first.",
+        );
       }
     }
   }
 
   private async refreshSpecificShaderByPath(shaderPath: string): Promise<void> {
     this.logger.info(`Refreshing shader by path: ${shaderPath}`);
-    
+
     try {
       if (!fs.existsSync(shaderPath)) {
         this.logger.warn(`Shader file not found at path: ${shaderPath}`);
-        vscode.window.showWarningMessage(`Shader file not found: ${shaderPath}`);
+        vscode.window.showWarningMessage(
+          `Shader file not found: ${shaderPath}`,
+        );
         return;
       }
 
-      const matchingEditor = vscode.window.visibleTextEditors.find(editor => {
-        return editor.document.uri.fsPath === shaderPath && this.isGlslEditor(editor);
+      const matchingEditor = vscode.window.visibleTextEditors.find((editor) => {
+        return editor.document.uri.fsPath === shaderPath &&
+          this.isGlslEditor(editor);
       });
 
       if (matchingEditor) {
@@ -381,17 +443,24 @@ export class ShaderView {
         this.shaderProcessor.sendShaderToWebview(matchingEditor);
       } else {
         this.logger.info(`Opening shader file at path: ${shaderPath}`);
-        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(shaderPath));
-        const editor = await vscode.window.showTextDocument(document, { preview: false });
-        
+        const document = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(shaderPath),
+        );
+        const editor = await vscode.window.showTextDocument(document, {
+          preview: false,
+        });
+
         this.logger.info(`Opened and refreshing shader file: ${shaderPath}`);
         this.glslFileTracker.setLastViewedGlslFile(shaderPath);
         this.shaderProcessor.sendShaderToWebview(editor);
       }
     } catch (error) {
-      this.logger.error(`Failed to refresh shader at path '${shaderPath}': ${error}`);
-      vscode.window.showErrorMessage(`Failed to refresh shader at '${shaderPath}': ${error}`);
+      this.logger.error(
+        `Failed to refresh shader at path '${shaderPath}': ${error}`,
+      );
+      vscode.window.showErrorMessage(
+        `Failed to refresh shader at '${shaderPath}': ${error}`,
+      );
     }
   }
-
 }

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { parse as parseJSONC } from "jsonc-parser";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import type { ShaderConfig, ShaderSourceMessage } from "@shader-view/types";
@@ -10,7 +9,7 @@ export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
   private logger = Logger.getInstance();
 
-  constructor(private messenger: Messenger) { }
+  constructor(private messenger: Messenger) {}
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
@@ -41,7 +40,7 @@ export class ShaderProcessor {
       try {
         // Use the latest config from disk
         const configRaw = fs.readFileSync(configPath, "utf-8");
-        config = parseJSONC(configRaw);
+        config = JSON.parse(configRaw);
 
         // Process buffers
         if (config) {
@@ -87,13 +86,17 @@ export class ShaderProcessor {
       return;
     }
 
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+    for (
+      const passName of Object.keys(config.passes) as Array<
+        keyof typeof config.passes
+      >
+    ) {
       const pass = config.passes[passName];
       if (!pass || typeof pass !== "object") {
         continue;
       }
       // Process pass-level "path" (for buffer source files)
-      if ('path' in pass && pass.path && typeof pass.path === "string") {
+      if ("path" in pass && pass.path && typeof pass.path === "string") {
         this.processBufferPath(pass, passName, shaderPath, buffers);
       }
 
@@ -164,7 +167,7 @@ export class ShaderProcessor {
         const imgPath = path.isAbsolute(input.path)
           ? input.path
           : path.join(path.dirname(shaderPath), input.path);
-        
+
         if (fs.existsSync(imgPath)) {
           input.path = imgPath;
           this.logger.debug(
@@ -179,7 +182,10 @@ export class ShaderProcessor {
     }
   }
 
-  private updateShaderBuffersMap(config: ShaderConfig, shaderPath: string): void {
+  private updateShaderBuffersMap(
+    config: ShaderConfig,
+    shaderPath: string,
+  ): void {
     const bufferFiles = new Set<string>();
 
     if (!config.passes) {
@@ -187,12 +193,16 @@ export class ShaderProcessor {
       return;
     }
 
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+    for (
+      const passName of Object.keys(config.passes) as Array<
+        keyof typeof config.passes
+      >
+    ) {
       const pass = config.passes[passName];
       if (!pass || typeof pass !== "object") {
         continue;
       }
-      if ('path' in pass && pass.path && typeof pass.path === "string") {
+      if ("path" in pass && pass.path && typeof pass.path === "string") {
         const bufferPath = path.isAbsolute(pass.path)
           ? pass.path
           : path.join(path.dirname(shaderPath), pass.path);
