@@ -143,7 +143,7 @@ export class ElectronLauncher {
     const terminal = vscode.window.createTerminal({
       name: `Shader View Dev ${Date.now()}`,
       cwd: electronDir,
-      hideFromUser: false,
+      hideFromUser: true,
     });
 
     const command = `npx electron "${launcherScript}"`;
@@ -172,7 +172,7 @@ export class ElectronLauncher {
     const terminal = vscode.window.createTerminal({
       name: `Shader View Electron ${Date.now()}`,
       cwd: electronDir,
-      hideFromUser: false,
+      hideFromUser: true,
     });
 
     const command = this.buildLaunchCommand(electronPath, launcherScript);
