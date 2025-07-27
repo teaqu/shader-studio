@@ -1,11 +1,14 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import * as child_process from "child_process";
 import { Logger } from "./services/Logger";
 
 export class ElectronLauncher {
   private logger: Logger;
   private context: vscode.ExtensionContext;
+  private static downloadedElectronPath: string | null = null;
+  private static downloadInProgress: Promise<string> | null = null;
 
   constructor(context: vscode.ExtensionContext, logger: Logger) {
     this.context = context;
@@ -22,13 +25,34 @@ export class ElectronLauncher {
 
       const { electronDir, launcherScript } = await this.findElectronApp();
 
-      // Always use npx electron for simplicity and reliability
-      this.logger.info("Using npx electron for all launches");
-      await this.launchWithNpx(electronDir, launcherScript);
+      // In development with workspace, try npx first, fallback to download
+      if (isDevelopment && this.context.extensionMode === vscode.ExtensionMode.Development) {
+        this.logger.info("Development mode - trying npx electron with fallback");
+        const hasNpm = await this.checkNpmAvailable();
+        
+        if (hasNpm) {
+          await this.launchWithNpx(electronDir, launcherScript);
+        } else {
+          this.logger.warn("npm/npx not available, falling back to downloaded Electron");
+          await this.launchWithDownloadedElectron(electronDir, launcherScript);
+        }
+      } else {
+        // For packaged extensions, always use downloaded Electron
+        this.logger.info("Using downloaded Electron for packaged extension");
+        await this.launchWithDownloadedElectron(electronDir, launcherScript);
+      }
     } catch (error) {
       this.logger.error(`Failed to launch Electron: ${error}`);
       vscode.window.showErrorMessage(`Failed to launch Electron: ${error}`);
     }
+  }
+
+  private async checkNpmAvailable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      child_process.exec('npx --version', (error) => {
+        resolve(!error);
+      });
+    });
   }
 
   private async findElectronApp(): Promise<
@@ -117,7 +141,7 @@ export class ElectronLauncher {
     launcherScript: string,
   ): Promise<void> {
     const terminal = vscode.window.createTerminal({
-      name: `Shader View Electron ${Date.now()}`,
+      name: `Shader View Dev ${Date.now()}`,
       cwd: electronDir,
       hideFromUser: false,
     });
@@ -128,5 +152,362 @@ export class ElectronLauncher {
     this.logger.info(
       `Opened VS Code terminal to launch Electron with command: ${command}`,
     );
+  }
+
+  private async launchWithDownloadedElectron(
+    electronDir: string,
+    launcherScript: string,
+  ): Promise<void> {
+    const electronPath = await this.getOrDownloadElectron();
+    
+    this.logger.info(`Launching with Electron from: ${electronPath}`);
+
+    // Verify the launcher script exists
+    await this.verifyLauncherScript(launcherScript);
+
+    // Apply macOS-specific fixes if needed
+    await this.ensureMacOSExecutable(electronPath);
+
+    // Launch in terminal with platform-appropriate command
+    const terminal = vscode.window.createTerminal({
+      name: `Shader View Electron ${Date.now()}`,
+      cwd: electronDir,
+      hideFromUser: false,
+    });
+
+    const command = this.buildLaunchCommand(electronPath, launcherScript);
+    terminal.sendText(command);
+
+    this.logger.info(
+      `Opened VS Code terminal to launch downloaded Electron with command: ${command}`,
+    );
+    vscode.window.showInformationMessage("Launched Shader View in Electron");
+  }
+
+  private buildLaunchCommand(electronPath: string, launcherScript: string): string {
+    const platform = process.platform;
+    
+    if (platform === "win32") {
+      // PowerShell syntax
+      return `& "${electronPath}" "${launcherScript}"`;
+    } else {
+      // Unix-like systems (macOS, Linux) - bash/zsh syntax
+      return `"${electronPath}" "${launcherScript}"`;
+    }
+  }
+
+  private async ensureMacOSExecutable(executablePath: string): Promise<void> {
+    if (process.platform === "darwin") {
+      try {
+        // Remove quarantine attribute that might prevent execution
+        await this.runCommand(`xattr -rd com.apple.quarantine "${executablePath}" 2>/dev/null || true`);
+        
+        // Ensure executable permissions
+        await this.runCommand(`chmod +x "${executablePath}"`);
+        
+        this.logger.info("Applied macOS executable permissions and removed quarantine");
+      } catch (error) {
+        this.logger.warn(`Could not apply macOS fixes: ${error}`);
+      }
+    }
+  }
+
+  private async runCommand(command: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      child_process.exec(command, (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  private async getOrDownloadElectron(): Promise<string> {
+    // Use cached download if available
+    if (ElectronLauncher.downloadedElectronPath) {
+      this.logger.info(`Using cached Electron executable: ${ElectronLauncher.downloadedElectronPath}`);
+      return ElectronLauncher.downloadedElectronPath;
+    }
+
+    // Check if download is already in progress
+    if (ElectronLauncher.downloadInProgress) {
+      this.logger.info("Download already in progress, waiting...");
+      return await ElectronLauncher.downloadInProgress;
+    }
+
+    // Start new download
+    const electronVersion = await this.getElectronVersion();
+    ElectronLauncher.downloadInProgress = this.downloadElectron(electronVersion);
+    const electronPath = await ElectronLauncher.downloadInProgress;
+    ElectronLauncher.downloadedElectronPath = electronPath;
+    ElectronLauncher.downloadInProgress = null;
+    
+    return electronPath;
+  }
+
+  private async verifyLauncherScript(launcherScript: string): Promise<void> {
+    try {
+      await fs.promises.access(launcherScript, fs.constants.F_OK);
+      this.logger.info(`Launcher script verified at: ${launcherScript}`);
+    } catch (error) {
+      throw new Error(`Launcher script not found at ${launcherScript}: ${error}`);
+    }
+  }
+
+  private async getElectronVersion(): Promise<string> {
+    // Try bundled electron app first
+    const extensionDir = this.context.extensionUri.fsPath;
+    const electronAppDir = path.join(extensionDir, "electron-app");
+    const bundledVersion = this.readElectronVersionFromPackageJson(
+      path.join(electronAppDir, "package.json")
+    );
+    if (bundledVersion) return bundledVersion;
+
+    // Fallback to workspace electron directory
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      const workspaceVersion = this.readElectronVersionFromPackageJson(
+        path.join(workspaceRoot, "electron", "package.json")
+      );
+      if (workspaceVersion) return workspaceVersion;
+    }
+
+    // Default fallback
+    this.logger.info("Using default Electron version 32.0.0");
+    return "32.0.0";
+  }
+
+  private readElectronVersionFromPackageJson(packageJsonPath: string): string | null {
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      const electronVersion = packageJson.devDependencies?.electron || packageJson.dependencies?.electron;
+      if (electronVersion) {
+        // Remove ^ or ~ prefix
+        return electronVersion.replace(/^[\^~]/, "");
+      }
+    } catch (error) {
+      this.logger.debug(`Could not read electron version from ${packageJsonPath}: ${error}`);
+    }
+    return null;
+  }
+
+  private async downloadElectron(version: string): Promise<string> {
+    const electronGet = await import("@electron/get");
+
+    this.logger.info(
+      `Downloading/checking cache for Electron ${version} for platform ${process.platform} arch ${process.arch}...`,
+    );
+
+    try {
+      const downloadPath = await electronGet.downloadArtifact({
+        version,
+        artifactName: "electron",
+        platform: process.platform as any,
+        arch: process.arch as any,
+      });
+
+      this.logger.info(`Electron path: ${downloadPath}`);
+
+      if (downloadPath.endsWith(".zip")) {
+        return await this.handleZipExtraction(downloadPath);
+      }
+
+      await this.logDirectoryContentsIfPossible(downloadPath, "Download directory");
+      return this.findElectronExecutable(downloadPath);
+    } catch (error) {
+      this.logger.error(`Failed to download Electron: ${error}`);
+      throw new Error(`Failed to download Electron: ${error}`);
+    }
+  }
+
+  private async handleZipExtraction(downloadPath: string): Promise<string> {
+    const extractDir = downloadPath.replace(".zip", "-extracted");
+    this.logger.info(`Download path is a zip file, checking extraction at: ${extractDir}`);
+
+    // Check if already extracted and valid
+    if (fs.existsSync(extractDir)) {
+      this.logger.info(`Extraction directory already exists, checking for executable`);
+      try {
+        const executablePath = await this.findElectronExecutable(extractDir);
+        this.logger.info(`Using cached extracted Electron at: ${executablePath}`);
+        return executablePath;
+      } catch (error) {
+        this.logger.warn(`Cached extraction invalid, re-extracting: ${error}`);
+        await this.removeDirectorySafely(extractDir);
+      }
+    }
+
+    // Extract the zip file
+    this.logger.info(`Extracting to: ${extractDir}`);
+    await this.extractZip(downloadPath, extractDir);
+    await this.logDirectoryContentsIfPossible(extractDir, "Extracted directory");
+    return this.findElectronExecutable(extractDir);
+  }
+
+  private async removeDirectorySafely(dir: string): Promise<void> {
+    try {
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    } catch (removeError) {
+      this.logger.warn(`Could not remove directory ${dir}: ${removeError}`);
+    }
+  }
+
+  private async logDirectoryContentsIfPossible(dir: string, label: string): Promise<void> {
+    try {
+      const contents = await fs.promises.readdir(dir);
+      this.logger.info(`${label} contents: ${contents.join(", ")}`);
+    } catch (error) {
+      this.logger.warn(`Could not list ${label.toLowerCase()}: ${error}`);
+    }
+  }
+
+  private async extractZip(zipPath: string, extractDir: string): Promise<void> {
+    const yauzl = await import("yauzl");
+
+    return new Promise((resolve, reject) => {
+      yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        if (!zipfile) {
+          reject(new Error("Failed to open zip file"));
+          return;
+        }
+
+        // Create extract directory
+        if (!fs.existsSync(extractDir)) {
+          fs.mkdirSync(extractDir, { recursive: true });
+        }
+
+        zipfile.readEntry();
+
+        zipfile.on("entry", (entry) => {
+          const entryPath = path.join(extractDir, entry.fileName);
+
+          if (/\/$/.test(entry.fileName)) {
+            // Directory entry
+            fs.mkdirSync(entryPath, { recursive: true });
+            zipfile.readEntry();
+          } else {
+            // File entry
+            fs.mkdirSync(path.dirname(entryPath), { recursive: true });
+
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+
+              if (!readStream) {
+                reject(new Error("Failed to create read stream"));
+                return;
+              }
+
+              const writeStream = fs.createWriteStream(entryPath);
+              readStream.pipe(writeStream);
+
+              writeStream.on("close", () => {
+                // Set executable permissions on Unix systems
+                if (
+                  process.platform !== "win32" &&
+                  entry.fileName.includes("electron")
+                ) {
+                  try {
+                    fs.chmodSync(entryPath, 0o755);
+                  } catch (error) {
+                    this.logger.warn(
+                      `Could not set executable permissions on ${entryPath}: ${error}`,
+                    );
+                  }
+                }
+                zipfile.readEntry();
+              });
+
+              writeStream.on("error", reject);
+            });
+          }
+        });
+
+        zipfile.on("end", () => {
+          this.logger.info("Zip extraction completed");
+          resolve();
+        });
+
+        zipfile.on("error", reject);
+      });
+    });
+  }
+
+  private async findElectronExecutable(downloadPath: string): Promise<string> {
+    const platform = process.platform;
+    const executablePath = this.getExpectedExecutablePath(downloadPath, platform);
+
+    this.logger.info(`Expected executable path: ${executablePath}`);
+
+    // Check if the executable exists at the expected path
+    if (await this.isValidExecutable(executablePath)) {
+      return executablePath;
+    }
+
+    // Search for executable in the download directory
+    this.logger.info(`Searching for electron executable in: ${downloadPath}`);
+    const foundPath = await this.searchForExecutable(downloadPath, platform);
+    
+    if (foundPath) {
+      this.logger.info(`Found electron executable at: ${foundPath}`);
+      return foundPath;
+    }
+
+    throw new Error(`Could not locate electron executable in ${downloadPath}`);
+  }
+
+  private getExpectedExecutablePath(downloadPath: string, platform: string): string {
+    if (platform === "win32") {
+      return path.join(downloadPath, "electron.exe");
+    } else if (platform === "darwin") {
+      return path.join(downloadPath, "Electron.app", "Contents", "MacOS", "Electron");
+    } else {
+      return path.join(downloadPath, "electron");
+    }
+  }
+
+  private async isValidExecutable(executablePath: string): Promise<boolean> {
+    try {
+      const stats = await fs.promises.stat(executablePath);
+      if (stats.isFile() && stats.size > 0) {
+        this.logger.info(`Executable found, size: ${stats.size} bytes`);
+        return true;
+      }
+    } catch (error) {
+      this.logger.debug(`Executable not found at expected path: ${error}`);
+    }
+    return false;
+  }
+
+  private async searchForExecutable(dir: string, platform: string): Promise<string | null> {
+    try {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isFile()) {
+          if ((platform === "win32" && entry.name === "electron.exe") ||
+              (platform !== "win32" && entry.name === "electron")) {
+            return fullPath;
+          }
+        } else if (entry.isDirectory()) {
+          const found = await this.searchForExecutable(fullPath, platform);
+          if (found) return found;
+        }
+      }
+    } catch (error) {
+      this.logger.debug(`Error searching in ${dir}: ${error}`);
+    }
+    return null;
   }
 }
