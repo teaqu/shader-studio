@@ -1,17 +1,17 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
-import { piCreateFPSCounter } from "../../../vendor/pilibs/src/piWebUtils";
 import type { Pass } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { KeyboardManager } from "../input/KeyboardManager";
 import type { MouseManager } from "../input/MouseManager";
+import { FPSCalculator } from "../util/FPSCalculator";
 
 export class FrameRenderer {
   private running = false;
-  private fpsCounter: any;
-  private currentFPS = 0;
   private currentFrameTime = 0;
+  private frameCount = 0;
+  private fpsCalculator: FPSCalculator;
 
   private timeManager: TimeManager;
   private keyboardManager: KeyboardManager;
@@ -28,9 +28,9 @@ export class FrameRenderer {
     pipeline: ShaderPipeline,
     bufferManager: BufferManager,
     passRenderer: PassRenderer,
-    glCanvas: HTMLCanvasElement
+    glCanvas: HTMLCanvasElement,
+    fpsCalculator: FPSCalculator
   ) {
-    this.fpsCounter = piCreateFPSCounter();
     this.timeManager = timeManager;
     this.keyboardManager = keyboardManager;
     this.mouseManager = mouseManager;
@@ -38,6 +38,7 @@ export class FrameRenderer {
     this.bufferManager = bufferManager;
     this.passRenderer = passRenderer;
     this.glCanvas = glCanvas;
+    this.fpsCalculator = fpsCalculator;
   }
 
   public isRunning(): boolean {
@@ -49,7 +50,7 @@ export class FrameRenderer {
   }
 
   public getCurrentFPS(): number {
-    return this.currentFPS;
+    return this.fpsCalculator.getFPS();
   }
 
   private getUniforms(): any {
@@ -61,7 +62,7 @@ export class FrameRenderer {
       ]),
       time: this.timeManager.getCurrentTime(this.currentFrameTime),
       timeDelta: this.timeManager.getDeltaTime(),
-      frameRate: this.currentFPS,
+      frameRate: this.fpsCalculator.getRawFPS(),
       mouse: this.mouseManager.getMouse(),
       frame: this.timeManager.getFrame(),
       date: this.timeManager.getCurrentDate(),
@@ -69,12 +70,16 @@ export class FrameRenderer {
   }
 
   public startRenderLoop(): void {
-    if (this.running) return; // Already running
+    if (this.running) {
+      return;
+    }
 
     this.running = true;
 
     const render = (time: number) => {
-      if (!this.running || !this.glCanvas) return;
+      if (!this.running || !this.glCanvas) {
+        return;
+      }
 
       this.render(time);
 
@@ -91,16 +96,18 @@ export class FrameRenderer {
   }
 
   public render(time: number): void {
-    if (!this.running) return;
+    if (!this.running) {
+      return;
+    }
 
     this.currentFrameTime = time;
 
     if (this.timeManager.getFrame() === 0) {
-      this.fpsCounter.Reset(time);
-    }
-
-    if (!this.timeManager.isPaused() && this.fpsCounter.Count(time)) {
-      this.currentFPS = this.fpsCounter.GetFPS();
+      this.frameCount = 0;
+      this.fpsCalculator.reset();
+    } else if (!this.timeManager.isPaused()) {
+      this.fpsCalculator.updateFrame(time);
+      this.frameCount++;
     }
 
     this.timeManager.updateFrame(time);

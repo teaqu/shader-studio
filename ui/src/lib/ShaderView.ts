@@ -9,6 +9,7 @@ import { ShaderPipeline } from "./rendering/ShaderPipeline";
 import { MessageHandler } from "./transport/MessageHandler";
 import { PassRenderer } from "./rendering/PassRenderer";
 import { FrameRenderer } from "./rendering/FrameRenderer";
+import { FPSCalculator } from "./util/FPSCalculator";
 import { ShaderLocker } from "./util/ShaderLocker";
 import type { PiRenderer } from "./types/piRenderer";
 import type { Transport } from "./transport/MessageTransport";
@@ -28,7 +29,7 @@ export class ShaderView {
   private shaderPipeline!: ShaderPipeline;
   private messageHandler!: MessageHandler;
   private passRenderer!: PassRenderer;
-  private renderLoopManager!: FrameRenderer;
+  private frameRenderer!: FrameRenderer;
   private shaderLocker!: ShaderLocker;
 
   constructor(transport: Transport) {
@@ -84,7 +85,7 @@ export class ShaderView {
         this.keyboardManager,
       );
 
-      this.renderLoopManager = new FrameRenderer(
+      this.frameRenderer = new FrameRenderer(
         this.timeManager,
         this.keyboardManager,
         this.mouseManager,
@@ -92,12 +93,13 @@ export class ShaderView {
         this.bufferManager,
         this.passRenderer,
         glCanvas,
+        new FPSCalculator(30, 5),
       );
 
       this.messageHandler = new MessageHandler(
         this.shaderPipeline,
         this.timeManager,
-        this.renderLoopManager,
+        this.frameRenderer,
         this.transport,
       );
 
@@ -138,8 +140,8 @@ export class ShaderView {
 
     // Redraw the final image pass to prevent a black screen flicker.
     const imagePass = this.shaderPipeline.getPass("Image");
-    if (imagePass && this.renderLoopManager.isRunning()) {
-      this.renderLoopManager.renderSinglePass(imagePass);
+    if (imagePass && this.frameRenderer.isRunning()) {
+      this.frameRenderer.renderSinglePass(imagePass);
     }
   }
 
@@ -149,7 +151,7 @@ export class ShaderView {
     const currentShaderPath = event.data?.path;
 
     if (!this.shaderLocker.shouldProcessShader(currentShaderPath)) {
-      return { running: this.renderLoopManager.isRunning() };
+      return { running: this.frameRenderer.isRunning() };
     }
 
     const result = await this.messageHandler.handleShaderMessage(event);
@@ -170,11 +172,11 @@ export class ShaderView {
 
   handleRefresh(): void {
     const isLocked = this.shaderLocker.getIsLocked();
-    
+
     if (isLocked) {
       const lockedShaderPath = this.shaderLocker.getLockedShaderPath();
       console.log('ShaderView: Refreshing locked shader at path:', lockedShaderPath);
-      
+
       this.messageHandler.refresh(lockedShaderPath || undefined);
     } else {
       console.log('ShaderView: Refreshing current shader');
@@ -197,7 +199,7 @@ export class ShaderView {
   }
 
   stopRenderLoop(): void {
-    this.renderLoopManager.stopRenderLoop();
+    this.frameRenderer.stopRenderLoop();
   }
 
   getTimeManager(): TimeManager {
@@ -213,7 +215,7 @@ export class ShaderView {
   }
 
   getCurrentFPS(): number {
-    return this.renderLoopManager.getCurrentFPS();
+    return this.frameRenderer.getCurrentFPS();
   }
 
   getLastShaderEvent(): MessageEvent | null {
@@ -225,8 +227,8 @@ export class ShaderView {
     if (this.bufferManager) {
       this.bufferManager.dispose();
     }
-    if (this.renderLoopManager) {
-      this.renderLoopManager.stopRenderLoop();
+    if (this.frameRenderer) {
+      this.frameRenderer.stopRenderLoop();
     }
   }
 }
