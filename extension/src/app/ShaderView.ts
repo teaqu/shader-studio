@@ -199,13 +199,6 @@ export class ShaderView {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.launchElectron", () => {
-        this.logger.info("shader-view.launchElectron command executed");
-        this.openInElectron();
-      }),
-    );
-
-    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-view.toggleConfigView", () => {
         this.logger.info("shader-view.toggleConfigView command executed");
         this.toggleConfigView();
