@@ -355,7 +355,7 @@ export class ShaderView {
     } else if (
       currentTab?.input instanceof vscode.TabInputCustom &&
       (currentTab.input as vscode.TabInputCustom).viewType ===
-        "shader-view.configEditor"
+      "shader-view.configEditor"
     ) {
       // Custom editor for .sv.json file
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
