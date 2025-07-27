@@ -53,13 +53,12 @@ export class MessageHandler {
         return { running: false };
       }
 
-      // Check if this is a different shader and reset if needed
+      // Check if this is a different shader file and reset if needed
       if (this.lastEvent && this.lastEvent.data) {
         const lastShaderData = this.lastEvent.data as ShaderSourceMessage;
-        const isDifferentShader = lastShaderData.path !== path ||
-          lastShaderData.code !== code;
+        const isDifferentShaderFile = lastShaderData.path !== path;
 
-        if (isDifferentShader) {
+        if (isDifferentShaderFile) {
           this.cleanup();
         }
       }

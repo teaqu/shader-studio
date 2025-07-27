@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MessageHandler } from '../../lib/transport/MessageHandler';
-import type { ShaderPipeline } from '../../lib/rendering/ShaderPipeline';
-import type { TimeManager } from '../../lib/util/TimeManager';
-import type { FrameRenderer } from '../../lib/rendering/FrameRenderer';
-import type { Transport } from '../../lib/transport/MessageTransport';
-import type { ShaderSourceMessage } from '@shader-view/types';
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageHandler } from "../../lib/transport/MessageHandler";
+import type { ShaderPipeline } from "../../lib/rendering/ShaderPipeline";
+import type { TimeManager } from "../../lib/util/TimeManager";
+import type { FrameRenderer } from "../../lib/rendering/FrameRenderer";
+import type { Transport } from "../../lib/transport/MessageTransport";
+import type { ShaderSourceMessage } from "@shader-view/types";
 
 const createMockShaderPipeline = () => ({
   compileShaderPipeline: vi.fn(),
@@ -31,11 +31,11 @@ const createMockTransport = () => ({
   postMessage: vi.fn(),
   onMessage: vi.fn(),
   dispose: vi.fn(),
-  getType: vi.fn().mockReturnValue('websocket'),
+  getType: vi.fn().mockReturnValue("websocket"),
   isConnected: vi.fn().mockReturnValue(true),
 });
 
-describe('MessageHandler', () => {
+describe("MessageHandler", () => {
   let messageHandler: MessageHandler;
   let mockShaderPipeline: ReturnType<typeof createMockShaderPipeline>;
   let mockTimeManager: ReturnType<typeof createMockTimeManager>;
@@ -56,18 +56,18 @@ describe('MessageHandler', () => {
     );
 
     // Suppress console logs during tests
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  describe('when handling shader messages with different shaders', () => {
-    it('should cleanup when shader path changes', async () => {
+  describe("when handling shader messages with different shader files", () => {
+    it("should cleanup when shader path changes", async () => {
       // First shader
       const firstShaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader1.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          type: "shaderSource",
+          path: "shader1.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -93,9 +93,9 @@ describe('MessageHandler', () => {
       // Second shader with different path
       const secondShaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader2.glsl', // Different path
-          code: 'void mainImage() { gl_FragColor = vec4(0.5); }',
+          type: "shaderSource",
+          path: "shader2.glsl", // Different path
+          code: "void mainImage() { gl_FragColor = vec4(0.5); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -109,13 +109,13 @@ describe('MessageHandler', () => {
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    it('should cleanup when shader code changes', async () => {
+    it("should not cleanup when shader code changes but path stays same", async () => {
       // First shader
       const firstShaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -134,12 +134,12 @@ describe('MessageHandler', () => {
       mockShaderPipeline.cleanup.mockClear();
       mockTimeManager.cleanup.mockClear();
 
-      // Same shader path but different code
+      // Same shader path but different code (e.g., user edited the file)
       const modifiedShaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader.glsl', // Same path
-          code: 'void mainImage() { gl_FragColor = vec4(0.5); }', // Different code
+          type: "shaderSource",
+          path: "shader.glsl", // Same path
+          code: "void mainImage() { gl_FragColor = vec4(0.5); }", // Different code
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -148,18 +148,18 @@ describe('MessageHandler', () => {
       // Process modified shader
       await messageHandler.handleShaderMessage(modifiedShaderEvent);
 
-      // Verify cleanup was called when shader code changed
-      expect(mockShaderPipeline.cleanup).toHaveBeenCalledTimes(1);
-      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      // Verify cleanup was NOT called when only code changed (same file)
+      expect(mockShaderPipeline.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
-    it('should not cleanup when same shader is processed again', async () => {
+    it("should not cleanup when same shader is processed again", async () => {
       // First shader
       const shaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -186,12 +186,12 @@ describe('MessageHandler', () => {
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
-    it('should not cleanup on first shader load', async () => {
+    it("should not cleanup on first shader load", async () => {
       const shaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -210,23 +210,138 @@ describe('MessageHandler', () => {
       expect(mockShaderPipeline.cleanup).not.toHaveBeenCalled();
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
+
+    it("should not cleanup when shader compilation fails", async () => {
+      // First shader - successful
+      const firstShaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "working_shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      // Mock successful compilation for first shader
+      mockShaderPipeline.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+      mockFrameRenderer.isRunning.mockReturnValue(false);
+
+      // Process first shader successfully
+      await messageHandler.handleShaderMessage(firstShaderEvent);
+
+      // Reset mocks to check what happens with failed compilation
+      mockShaderPipeline.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+
+      // Second shader with compilation error (same file)
+      const failingShaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "working_shader.glsl", // Same path
+          code: "void mainImage() { SYNTAX_ERROR; }", // Broken code
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      // Mock failed compilation
+      mockShaderPipeline.compileShaderPipeline.mockResolvedValue({
+        success: false,
+        error: "Compilation error: SYNTAX_ERROR is not defined",
+      });
+
+      // Process failing shader
+      await messageHandler.handleShaderMessage(failingShaderEvent);
+
+      // Verify cleanup was NOT called even though compilation failed
+      expect(mockShaderPipeline.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+
+      // Verify error message was sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: "error",
+        payload: ["Compilation error: SYNTAX_ERROR is not defined"],
+      });
+    });
+
+    it("should not cleanup when fatal error occurs during processing", async () => {
+      // First shader - successful
+      const firstShaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "working_shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      // Mock successful compilation for first shader
+      mockShaderPipeline.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+      mockFrameRenderer.isRunning.mockReturnValue(false);
+
+      // Process first shader successfully
+      await messageHandler.handleShaderMessage(firstShaderEvent);
+
+      // Reset mocks to check what happens with fatal error
+      mockShaderPipeline.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockTransport.postMessage.mockClear();
+
+      // Second shader that throws an exception
+      const fatalErrorShaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "working_shader.glsl", // Same path
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      // Mock fatal error during compilation
+      mockShaderPipeline.compileShaderPipeline.mockRejectedValue(
+        new Error("Fatal GPU error")
+      );
+
+      // Process shader that causes fatal error
+      const result = await messageHandler.handleShaderMessage(fatalErrorShaderEvent);
+
+      // Verify cleanup was NOT called even during fatal error
+      expect(mockShaderPipeline.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+
+      // Verify result indicates failure
+      expect(result.running).toBe(false);
+
+      // Verify fatal error message was sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: "error",
+        payload: ["Fatal shader processing error: Error: Fatal GPU error"],
+      });
+    });
   });
 
-  describe('when reset is called', () => {
-    it('should call cleanup', () => {
+  describe("when reset is called", () => {
+    it("should call cleanup", () => {
       messageHandler.reset();
 
       expect(mockShaderPipeline.cleanup).toHaveBeenCalledTimes(1);
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    it('should call onReset callback when lastEvent exists', async () => {
+    it("should call onReset callback when lastEvent exists", async () => {
       // First set up a shader event
       const shaderEvent = {
         data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
         } as ShaderSourceMessage,
@@ -248,12 +363,12 @@ describe('MessageHandler', () => {
       expect(onResetCallback).toHaveBeenCalledTimes(1);
     });
 
-    it('should send error message when no lastEvent exists', () => {
+    it("should send error message when no lastEvent exists", () => {
       messageHandler.reset();
 
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'error',
-        payload: ['❌ No shader to reset'],
+        type: "error",
+        payload: ["❌ No shader to reset"],
       });
     });
   });
