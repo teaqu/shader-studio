@@ -3,7 +3,7 @@
 A fast shadertoy viewer for vscode with hot reloading. This is in alpha stages
 so expect bugs and please report them.
 
-![screenshot](assets/screenshot.png)
+![screenshot](https://raw.githubusercontent.com/teaqu/shader-view/refs/heads/main/assets/screenshot.png)
 
 You an either spawn in a new window, a vscode panel or in your browser.
 
@@ -19,7 +19,7 @@ via the command.
 The extension provides a visual editor for `.sv.json` files. Click the UI button
 in the status bar to show.
 
-![config screenshot](assets/config-screenshot.jpg)
+![config screenshot](https://raw.githubusercontent.com/teaqu/shader-view/refs/heads/main/assets/config-screenshot.jpg)
 
 ### Example Configuration Format
 

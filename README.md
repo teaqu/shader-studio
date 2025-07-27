@@ -2,7 +2,7 @@
 
 A fast shadertoy viewer for vscode with hot reloading.
 
-![screenshot](extension/assets/screenshot.png)
+![screenshot](assets/screenshot.png)
 
 ## Project Structure
 
@@ -43,15 +43,6 @@ Use the VS Code command palette (`Cmd/Ctrl + Shift + P`) and run:
 ### Shader Configuration Files
 
 Add config same dir as shader like so: shadername.sv.json
-
-The extension provides a visual editor for `.sv.json` files. When you open a
-`.sv.json` file, VS Code will show a custom editor interface built with Svelte
-that allows you to:
-
-- Edit configuration visually
-- Add/remove buffer passes
-- Configure input channels
-- Real-time JSON validation
 
 ### Configuration Format
 
