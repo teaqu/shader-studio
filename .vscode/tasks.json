@@ -5,16 +5,28 @@
 	"tasks": [
 		{
 			"type": "npm",
+			"script": "compile",
+			"problemMatcher": "$tsc",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "silent"
+			},
+			"options": {
+				"cwd": "${workspaceFolder}/extension"
+			}
+		},
+		{
+			"type": "npm",
 			"script": "watch",
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
 			},
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			},
+			"group": "build",
 			"options": {
 				"cwd": "${workspaceFolder}/extension"
 			}
