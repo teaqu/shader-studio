@@ -29,7 +29,7 @@ export class FrameRenderer {
     bufferManager: BufferManager,
     passRenderer: PassRenderer,
     glCanvas: HTMLCanvasElement,
-    fpsCalculator: FPSCalculator
+    fpsCalculator: FPSCalculator,
   ) {
     this.timeManager = timeManager;
     this.keyboardManager = keyboardManager;
@@ -100,6 +100,15 @@ export class FrameRenderer {
       return;
     }
 
+    this.timeManager.updateFrame(time);
+
+    if (this.timeManager.getDeltaTime() == 0) {
+      // Solves issue where if rendering in multiple vscode panels, requestAnimationFrame will trigger
+      // an update in all panels causing over rendering.
+      // Unsure why this happens...
+      return;
+    }
+
     this.currentFrameTime = time;
 
     if (this.timeManager.getFrame() === 0) {
@@ -109,8 +118,6 @@ export class FrameRenderer {
       this.fpsCalculator.updateFrame(time);
       this.frameCount++;
     }
-
-    this.timeManager.updateFrame(time);
 
     const uniforms = this.getUniforms();
     const passes = this.shaderPipeline.getPasses();
