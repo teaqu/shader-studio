@@ -8,7 +8,7 @@
     "dev": "tsc && electron dist/electron-launch.js",
     "start": "npm run build && electron dist/electron-launch.js",
     "build-ui": "cd ../ui && npm run build -- --base ./",
-    "copy-ui": "rimraf ui && npm run build-ui && xcopy ..\\ui\\dist ui\\ /s /i",
+    "copy-ui": "rimraf ui && npm run build-ui && cp -r ../ui/dist ui",
     "prebuild": "npm run copy-ui",
     "package": "npm run copy-ui && npm run build && npx electron-forge package",
     "make": "npm run copy-ui && npm run build && npx electron-forge make"
