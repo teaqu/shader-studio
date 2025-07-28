@@ -1,8 +1,13 @@
-# shader-view
+# Shader View for VS Code
 
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
 ![screenshot](assets/screenshot.png)
+
+## Installation
+Install through VS Code extensions. Search for "Shader View".
+
+[Visual Studio Code Market Shader View](https://marketplace.visualstudio.com/items?itemName=teaqu.shader-view)
 
 ## Project Structure
 
