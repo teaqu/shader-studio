@@ -1,7 +1,6 @@
-# shader-view
+# Shader View for VS Code
 
-A fast shadertoy viewer for vscode with hot reloading. This is in alpha stages
-so expect bugs and please report them.
+A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
 ![screenshot](https://raw.githubusercontent.com/teaqu/shader-view/refs/heads/main/assets/screenshot.png)
 
@@ -51,7 +50,7 @@ in the status bar to show.
 }
 ```
 
-## Supported Uniforms
+## Supported from Shadertoy
 
 Currently supports uniforms:
 
@@ -64,8 +63,9 @@ Currently supports uniforms:
 - `iChannel0-3` - input channels (textures, buffers, keyboard)
 - `iDate` - current date (year, month, day, time in seconds)
 
-## Not Yet Supported (from Shadertoy)
+## Not Yet Supported
 
+- Common Buffer
 - `iChannelTime[4]` - channel playback time (for video inputs)
 - `iChannelResolution[4]` - channel resolution for each input
 - `samplerCube iChannelX` - cubemap texture support
