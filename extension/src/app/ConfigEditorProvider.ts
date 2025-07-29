@@ -20,7 +20,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     ): vscode.Disposable {
         const provider = new ConfigEditorProvider(context, shaderProcessor);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
-            "shader-view.configEditor",
+            "shadera.configEditor",
             provider,
         );
         return providerRegistration;

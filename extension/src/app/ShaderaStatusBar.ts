@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export class ShaderViewStatusBar {
+export class ShaderaStatusBar {
     private statusBarItem: vscode.StatusBarItem;
     private configToggleStatusBarItem: vscode.StatusBarItem;
     private isServerRunning: boolean = false;
@@ -11,7 +11,7 @@ export class ShaderViewStatusBar {
             100
         );
         this.updateServerStatus(false);
-        this.statusBarItem.command = 'shader-view.showShaderViewMenu';
+        this.statusBarItem.command = 'shadera.showShaderaMenu';
         this.statusBarItem.show();
         this.context.subscriptions.push(this.statusBarItem);
 
@@ -19,7 +19,7 @@ export class ShaderViewStatusBar {
             vscode.StatusBarAlignment.Right,
             99
         );
-        this.configToggleStatusBarItem.command = 'shader-view.toggleConfigView';
+        this.configToggleStatusBarItem.command = 'shadera.toggleConfigView';
         this.context.subscriptions.push(this.configToggleStatusBarItem);
 
         this.context.subscriptions.push(
@@ -48,26 +48,26 @@ export class ShaderViewStatusBar {
         this.isServerRunning = isRunning;
 
         if (isRunning) {
-            this.statusBarItem.text = "$(circle-filled) SV";
-            this.statusBarItem.tooltip = `Shader View - Server Running${port ? ` on port ${port}` : ''}`;
+            this.statusBarItem.text = "$(circle-filled) SHA";
+            this.statusBarItem.tooltip = `Shader Studio - Server Running${port ? ` on port ${port}` : ''}`;
         } else {
-            this.statusBarItem.text = "SV";
-            this.statusBarItem.tooltip = "Shader View - Click for options";
+            this.statusBarItem.text = "SHA";
+            this.statusBarItem.tooltip = "Shader Studio - Click for options";
         }
     }
 
-    public async showShaderViewMenu() {
+    public async showShaderaMenu() {
         const items = [];
 
         if (this.isServerRunning) {
             items.push({
                 label: '$(stop-circle) Stop Web Server',
-                description: 'Stop the Shader View web server',
+                description: 'Stop the Shader Studio web server',
                 action: 'stop-server'
             });
             items.push({
                 label: '$(globe) Open in Browser',
-                description: 'Open Shader View in external browser',
+                description: 'Open Shader Studio in external browser',
                 action: 'open-browser'
             });
             items.push({
@@ -78,46 +78,46 @@ export class ShaderViewStatusBar {
         } else {
             items.push({
                 label: '$(play-circle) Start Web Server',
-                description: 'Start the Shader View web server',
+                description: 'Start the Shader Studio web server',
                 action: 'start-server'
             });
         }
 
         items.push({
             label: '$(window) Show Panel',
-            description: 'Show the Shader View panel',
+            description: 'Show the Shader Studio panel',
             action: 'show-panel'
         });
         items.push({
             label: '$(device-desktop) Open in new window',
-            description: 'Launch Shader View in it\'s own window',
+            description: 'Launch Shader Studio in it\'s own window',
             action: 'open-electron'
         });
 
         const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Shader View Actions',
-            title: this.isServerRunning ? 'Server Running' : 'Shader View'
+            placeHolder: 'Shader Studio Actions',
+            title: this.isServerRunning ? 'Server Running' : 'Shader Studio'
         });
 
         if (selected) {
             switch (selected.action) {
                 case 'start-server':
-                    await vscode.commands.executeCommand('shader-view.startWebServer');
+                    await vscode.commands.executeCommand('shadera.startWebServer');
                     break;
                 case 'stop-server':
-                    await vscode.commands.executeCommand('shader-view.stopWebServer');
+                    await vscode.commands.executeCommand('shadera.stopWebServer');
                     break;
                 case 'open-browser':
-                    await vscode.commands.executeCommand('shader-view.openInBrowser');
+                    await vscode.commands.executeCommand('shadera.openInBrowser');
                     break;
                 case 'copy-url':
-                    await vscode.commands.executeCommand('shader-view.copyServerUrl');
+                    await vscode.commands.executeCommand('shadera.copyServerUrl');
                     break;
                 case 'show-panel':
-                    await vscode.commands.executeCommand('shader-view.view');
+                    await vscode.commands.executeCommand('shadera.view');
                     break;
                 case 'open-electron':
-                    await vscode.commands.executeCommand('shader-view.openInElectron');
+                    await vscode.commands.executeCommand('shadera.openInElectron');
                     break;
             }
         }
@@ -130,19 +130,19 @@ export class ShaderViewStatusBar {
     private updateConfigToggleVisibility() {
         const activeEditor = vscode.window.activeTextEditor;
         const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-        
+
         let isSvJsonFile = false;
         let isCustomEditor = false;
-        
-        if (activeEditor && activeEditor.document.fileName.endsWith('.sv.json')) {
+
+        if (activeEditor && activeEditor.document.fileName.endsWith('.sha.json')) {
             isSvJsonFile = true;
             isCustomEditor = false;
-        } else if (currentTab?.input instanceof vscode.TabInputCustom && 
-                   (currentTab.input as vscode.TabInputCustom).viewType === 'shader-view.configEditor') {
+        } else if (currentTab?.input instanceof vscode.TabInputCustom &&
+            (currentTab.input as vscode.TabInputCustom).viewType === 'shadera.configEditor') {
             isSvJsonFile = true;
             isCustomEditor = true;
         }
-        
+
         if (isSvJsonFile) {
             if (isCustomEditor) {
                 this.configToggleStatusBarItem.text = "$(file-code) JSON";
@@ -151,7 +151,7 @@ export class ShaderViewStatusBar {
                 this.configToggleStatusBarItem.text = "$(symbol-misc) UI";
                 this.configToggleStatusBarItem.tooltip = "Click to use visual config editor";
             }
-            
+
             this.configToggleStatusBarItem.show();
         } else {
             this.configToggleStatusBarItem.hide();

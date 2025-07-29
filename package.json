@@ -1,5 +1,5 @@
 {
-  "name": "shader-view-monorepo",
+  "name": "shadera-monorepo",
   "version": "0.0.1",
   "private": true,
   "description": "A VS Code extension for viewing and editing shaders with Electron desktop app",

@@ -1,16 +1,16 @@
 {
-  "name": "shader-view",
-  "displayName": "Shader View",
-  "description": "A VS Code extension for viewing and editing shadertoy shaders",
-  "version": "0.0.6",
+  "name": "shadera",
+  "displayName": "Shadera",
+  "description": "GLSL shader viewer for shadertoy shaders",
+  "version": "0.0.1",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/teaqu/shader-view.git"
+    "url": "https://github.com/teaqu/shadera.git"
   },
-  "homepage": "https://github.com/teaqu/shader-view",
+  "homepage": "https://github.com/teaqu/shadera",
   "bugs": {
-    "url": "https://github.com/teaqu/shader-view/issues"
+    "url": "https://github.com/teaqu/shadera/issues"
   },
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -34,57 +34,57 @@
   "contributes": {
     "commands": [
       {
-        "command": "shader-view.view",
-        "title": "Shader View: ShaderToy Panel"
+        "command": "shadera.view",
+        "title": "Shadera: ShaderToy Panel"
       },
       {
-        "command": "shader-view.startWebServer",
-        "title": "Shader View: Start Web Server"
+        "command": "shadera.startWebServer",
+        "title": "Shadera: Start Web Server"
       },
       {
-        "command": "shader-view.stopWebServer",
-        "title": "Shader View: Stop Web Server"
+        "command": "shadera.stopWebServer",
+        "title": "Shadera: Stop Web Server"
       },
       {
-        "command": "shader-view.showWebServerMenu",
-        "title": "Shader View: Web Server Menu"
+        "command": "shadera.showWebServerMenu",
+        "title": "Shadera: Web Server Menu"
       },
       {
-        "command": "shader-view.generateConfig",
-        "title": "Shader View: Generate Config for GLSL File"
+        "command": "shadera.generateConfig",
+        "title": "Shadera: Generate Config for GLSL File"
       },
       {
-        "command": "shader-view.toggleConfigView",
-        "title": "Shader View: Toggle JSON/UI View"
+        "command": "shadera.toggleConfigView",
+        "title": "Shadera: Toggle JSON/UI View"
       },
       {
-        "command": "shader-view.launchElectron",
-        "title": "Shader View: Launch in Electron"
+        "command": "shadera.openInElectron",
+        "title": "Shadera: Open Window"
       }
     ],
     "customEditors": [
       {
-        "viewType": "shader-view.configEditor",
+        "viewType": "shadera.configEditor",
         "displayName": "Shader Config Editor",
         "selector": [
           {
-            "filenamePattern": "*.sv.json"
+            "filenamePattern": "*.sha.json"
           }
         ],
         "priority": "option"
       }
     ],
     "configuration": {
-      "title": "Shader View",
+      "title": "Shadera",
       "properties": {
-        "shaderView.webServerPort": {
+        "shadera.webServerPort": {
           "type": "number",
           "default": 3000,
           "minimum": 1024,
           "maximum": 65535,
           "description": "Port number for the HTTP web server (default from monorepo config)"
         },
-        "shaderView.webSocketPort": {
+        "shadera.webSocketPort": {
           "type": "number",
           "default": 51472,
           "minimum": 1024,
@@ -95,7 +95,7 @@
     },
     "jsonValidation": [
       {
-        "fileMatch": "*.sv.json",
+        "fileMatch": "*.sha.json",
         "url": "./schemas/shader-config.schema.json"
       }
     ]
@@ -131,7 +131,7 @@
   },
   "dependencies": {
     "@electron/get": "^3.1.0",
-    "@shader-view/types": "*",
+    "@shadera/types": "*",
     "@types/yauzl": "^2.10.3",
     "ws": "^8.18.3",
     "yauzl": "^3.2.0"

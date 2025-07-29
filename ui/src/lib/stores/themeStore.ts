@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 
 export type Theme = 'light' | 'dark';
 
-const savedTheme = (typeof localStorage !== 'undefined' && localStorage.getItem('shader-view-theme')) as Theme | null;
+const savedTheme = (typeof localStorage !== 'undefined' && localStorage.getItem('shadera-theme')) as Theme | null;
 const defaultTheme: Theme = savedTheme || 'light';
 
 export const currentTheme = writable<Theme>(defaultTheme);
@@ -12,7 +12,7 @@ export function applyTheme(theme: Theme) {
         document.documentElement.setAttribute('data-theme', theme);
 
         if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('shader-view-theme', theme);
+            localStorage.setItem('shadera-theme', theme);
         }
     }
 }

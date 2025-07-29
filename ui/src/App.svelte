@@ -3,8 +3,8 @@
   import ShaderViewer from "./lib/components/ShaderViewer.svelte";
   import { currentTheme, applyTheme } from "./lib/stores/themeStore";
 
-  function handleAppInitialized(data: { shaderView: any }) {
-    console.log("Shader viewer initialized successfully", data);
+  function handleAppInitialized(data: { Shadera: any }) {
+    console.log("Shadera initialized successfully", data);
   }
 
   onMount(() => {

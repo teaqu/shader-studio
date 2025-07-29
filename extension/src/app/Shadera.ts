@@ -11,7 +11,7 @@ import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 
-export class ShaderView {
+export class Shadera {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
@@ -46,7 +46,7 @@ export class ShaderView {
     this.webServer = new WebServer(context);
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
-    // Register custom editor for .sv.json files
+    // Register custom editor for .sha.json files
     this.configEditorProvider = ConfigEditorProvider.register(
       context,
       this.shaderProcessor,
@@ -71,7 +71,7 @@ export class ShaderView {
   }
 
   private startWebSocketTransport(): void {
-    const config = vscode.workspace.getConfiguration("shaderView");
+    const config = vscode.workspace.getConfiguration("shadera");
     let webSocketPort = config.get<number>("webSocketPort") || 51472;
 
     if (this.context.extensionMode === vscode.ExtensionMode.Test) {
@@ -136,80 +136,80 @@ export class ShaderView {
 
   private registerCommands(): void {
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.view", () => {
-        this.logger.info("shader-view.view command executed");
-        this.panelManager.createShaderView();
+      vscode.commands.registerCommand("shadera.view", () => {
+        this.logger.info("shadera.view command executed");
+        this.panelManager.createPanel();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.startWebServer", () => {
-        this.logger.info("shader-view.startWebServer command executed");
+      vscode.commands.registerCommand("shadera.startWebServer", () => {
+        this.logger.info("shadera.startWebServer command executed");
         this.startWebServer();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.openInBrowser", () => {
-        this.logger.info("shader-view.openInBrowser command executed");
+      vscode.commands.registerCommand("shadera.openInBrowser", () => {
+        this.logger.info("shadera.openInBrowser command executed");
         this.openInBrowser();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.copyServerUrl", () => {
-        this.logger.info("shader-view.copyServerUrl command executed");
+      vscode.commands.registerCommand("shadera.copyServerUrl", () => {
+        this.logger.info("shadera.copyServerUrl command executed");
         this.copyServerUrl();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.stopWebServer", () => {
-        this.logger.info("shader-view.stopWebServer command executed");
+      vscode.commands.registerCommand("shadera.stopWebServer", () => {
+        this.logger.info("shadera.stopWebServer command executed");
         this.webServer.stopWebServer();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.showWebServerMenu", () => {
-        this.logger.info("shader-view.showWebServerMenu command executed");
+      vscode.commands.registerCommand("shadera.showWebServerMenu", () => {
+        this.logger.info("shadera.showWebServerMenu command executed");
         this.webServer.showWebServerMenu();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.generateConfig", () => {
-        this.logger.info("shader-view.generateConfig command executed");
+      vscode.commands.registerCommand("shadera.generateConfig", () => {
+        this.logger.info("shadera.generateConfig command executed");
         this.generateConfig();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.showShaderViewMenu", () => {
-        this.logger.info("shader-view.showShaderViewMenu command executed");
-        this.webServer.getStatusBar().showShaderViewMenu();
+      vscode.commands.registerCommand("shadera.showShaderaMenu", () => {
+        this.logger.info("shadera.showShaderaMenu command executed");
+        this.webServer.getStatusBar().showShaderaMenu();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.openInElectron", () => {
-        this.logger.info("shader-view.openInElectron command executed");
+      vscode.commands.registerCommand("shadera.openInElectron", () => {
+        this.logger.info("shadera.openInElectron command executed");
         this.openInElectron();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-view.toggleConfigView", () => {
-        this.logger.info("shader-view.toggleConfigView command executed");
+      vscode.commands.registerCommand("shadera.toggleConfigView", () => {
+        this.logger.info("shadera.toggleConfigView command executed");
         this.toggleConfigView();
       }),
     );
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
-        "shader-view.refreshCurrentShader",
+        "shadera.refreshCurrentShader",
         () => {
-          this.logger.info("shader-view.refreshCurrentShader command executed");
+          this.logger.info("shadera.refreshCurrentShader command executed");
           this.refreshCurrentShader();
         },
       ),
@@ -217,10 +217,10 @@ export class ShaderView {
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
-        "shader-view.refreshSpecificShaderByPath",
+        "shadera.refreshSpecificShaderByPath",
         (shaderPath: string) => {
           this.logger.info(
-            `shader-view.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
+            `shadera.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
           );
           this.refreshSpecificShaderByPath(shaderPath);
         },
@@ -285,12 +285,12 @@ export class ShaderView {
       const dirName = path.dirname(glslFilePath);
 
       // Create the config file path
-      const configFilePath = path.join(dirName, `${baseName}.sv.json`);
+      const configFilePath = path.join(dirName, `${baseName}.sha.json`);
 
       // Check if config file already exists
       if (fs.existsSync(configFilePath)) {
         const overwrite = await vscode.window.showWarningMessage(
-          `Config file ${baseName}.sv.json already exists. Overwrite?`,
+          `Config file ${baseName}.sha.json already exists. Overwrite?`,
           "Yes",
           "No",
         );
@@ -321,7 +321,7 @@ export class ShaderView {
       await vscode.commands.executeCommand("vscode.open", configUri);
 
       vscode.window.showInformationMessage(
-        `Generated config file: ${baseName}.sv.json`,
+        `Generated config file: ${baseName}.sha.json`,
       );
     } catch (error) {
       this.logger.error(`Failed to generate config: ${error}`);
@@ -337,20 +337,20 @@ export class ShaderView {
     const activeEditor = vscode.window.activeTextEditor;
     const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
 
-    // Check if we have a .sv.json file either in text editor or custom editor
+    // Check if we have a .sha.json file either in text editor or custom editor
     let documentUri: vscode.Uri | undefined;
     let isCustomEditor = false;
 
-    if (activeEditor && activeEditor.document.fileName.endsWith(".sv.json")) {
-      // Text editor with .sv.json file
+    if (activeEditor && activeEditor.document.fileName.endsWith(".sha.json")) {
+      // Text editor with .sha.json file
       documentUri = activeEditor.document.uri;
       isCustomEditor = false;
     } else if (
       currentTab?.input instanceof vscode.TabInputCustom &&
       (currentTab.input as vscode.TabInputCustom).viewType ===
-      "shader-view.configEditor"
+      "shadera.configEditor"
     ) {
-      // Custom editor for .sv.json file
+      // Custom editor for .sha.json file
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
       isCustomEditor = true;
     }
@@ -372,7 +372,7 @@ export class ShaderView {
         await vscode.commands.executeCommand(
           "vscode.openWith",
           documentUri,
-          "shader-view.configEditor",
+          "shadera.configEditor",
         );
       }
 

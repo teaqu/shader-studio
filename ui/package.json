@@ -1,5 +1,5 @@
 {
-  "name": "shader-view-ui",
+  "name": "shadera-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -22,6 +22,6 @@
     "svelte-check": "^4.0.8"
   },
   "dependencies": {
-    "@shader-view/types": "*"
+    "@shadera/types": "*"
   }
 }

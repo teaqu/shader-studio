@@ -1,4 +1,4 @@
-import type { ShaderConfig, BufferPass, ImagePass } from '@shader-view/types';
+import type { ShaderConfig, BufferPass, ImagePass } from '@shadera/types';
 
 export class ConfigEditor {
     private config: ShaderConfig | null = null;
@@ -36,6 +36,11 @@ export class ConfigEditor {
         switch (message.type) {
             case 'update':
                 this.parseAndUpdateConfig(message.text);
+                break;
+            case 'error':
+                console.error('Error from VS Code:', message.text);
+                this.setError(message.text);
+                this.setConfig(null);
                 break;
         }
     }
@@ -128,7 +133,7 @@ export class ConfigEditor {
 
         const updatedPasses = { ...this.config.passes };
         delete updatedPasses[bufferName as keyof typeof updatedPasses];
-        
+
         const updatedConfig = {
             ...this.config,
             passes: updatedPasses
@@ -218,25 +223,25 @@ export class ConfigEditor {
         return buffers.find(buffer => !this.config!.passes[buffer as keyof typeof this.config.passes]) || null;
     }
 
-  /**
-   * Get list of configured buffers
-   */
-  getBufferList(): string[] {
-    if (!this.config) {
-      console.log('getBufferList: no config available');
-      return [];
-    }
-    console.log('getBufferList: config is:', this.config);
-    const result = ['BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
-      buffer => {
-        const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
-        console.log(`getBufferList: ${buffer} exists?`, exists);
-        return exists;
-      }
-    );
-    console.log('getBufferList: final result:', result);
-    return result;
-  }    /**
+    /**
+     * Get list of configured buffers
+     */
+    getBufferList(): string[] {
+        if (!this.config) {
+            console.log('getBufferList: no config available');
+            return [];
+        }
+        console.log('getBufferList: config is:', this.config);
+        const result = ['BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
+            buffer => {
+                const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
+                console.log(`getBufferList: ${buffer} exists?`, exists);
+                return exists;
+            }
+        );
+        console.log('getBufferList: final result:', result);
+        return result;
+    }    /**
      * Get buffer configuration
      */
     getBuffer(bufferName: string): BufferPass | ImagePass | null {

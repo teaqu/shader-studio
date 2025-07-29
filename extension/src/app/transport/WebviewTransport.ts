@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import type { ShaderConfig } from "@shader-view/types";
+import type { ShaderConfig } from "@shadera/types";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
@@ -8,7 +8,7 @@ export class WebviewTransport implements MessageTransport {
 
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
-    
+
     panel.webview.onDidReceiveMessage(
       (message) => this.messageHandler?.(message),
       null,
@@ -52,7 +52,7 @@ export class WebviewTransport implements MessageTransport {
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
-  private processConfigPaths(message: { type: string; config: ShaderConfig; [key: string]: any }): typeof message {
+  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }): typeof message {
     // Clone the message to avoid modifying the original
     const processedMessage = JSON.parse(JSON.stringify(message));
     const config = processedMessage.config;

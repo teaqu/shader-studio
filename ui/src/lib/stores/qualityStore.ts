@@ -13,7 +13,7 @@ const createQualityStore = () => {
     });
 
     if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('shader-view-quality');
+        const stored = localStorage.getItem('shadera-quality');
         if (stored) {
             try {
                 const parsed = JSON.parse(stored);
@@ -32,7 +32,7 @@ const createQualityStore = () => {
             update(state => {
                 const newState = { ...state, mode };
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem('shader-view-quality', JSON.stringify(newState));
+                    localStorage.setItem('shadera-quality', JSON.stringify(newState));
                 }
                 return newState;
             });
@@ -41,7 +41,7 @@ const createQualityStore = () => {
             const defaultState = { mode: 'HD' as QualityMode };
             set(defaultState);
             if (typeof window !== 'undefined') {
-                localStorage.setItem('shader-view-quality', JSON.stringify(defaultState));
+                localStorage.setItem('shadera-quality', JSON.stringify(defaultState));
             }
         }
     };

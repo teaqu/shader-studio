@@ -79,7 +79,7 @@ suite('PanelManager Test Suite', () => {
         assert.strictEqual(panel, undefined);
     });
 
-    test('createShaderView handles no GLSL editor gracefully', () => {
+    test('createPanel handles no GLSL editor gracefully', () => {
         // Given
         const mockWebviewPanel = createMockWebviewPanel();
         const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -95,13 +95,13 @@ suite('PanelManager Test Suite', () => {
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
         // When
-        panelManager.createShaderView();
+        panelManager.createPanel();
 
         // Then
         assert.ok(createWebviewPanelStub.calledOnce);
         const createPanelArgs = createWebviewPanelStub.getCall(0).args;
-        assert.strictEqual(createPanelArgs[0], 'shaderView');
-        assert.strictEqual(createPanelArgs[1], 'Shader View');
+        assert.strictEqual(createPanelArgs[0], 'Shadera');
+        assert.strictEqual(createPanelArgs[1], 'Shadera');
         assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
 
         const webviewOptions = createPanelArgs[3];
@@ -119,7 +119,7 @@ suite('PanelManager Test Suite', () => {
         assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
     });
 
-    test('createShaderView uses empty tab group when available', () => {
+    test('createPanel uses empty tab group when available', () => {
         // Given
         const mockWebviewPanel = createMockWebviewPanel();
         const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -138,7 +138,7 @@ suite('PanelManager Test Suite', () => {
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
         // When
-        panelManager.createShaderView();
+        panelManager.createPanel();
 
         // Then
         assert.ok(createWebviewPanelStub.calledOnce);
@@ -161,13 +161,13 @@ suite('PanelManager Test Suite', () => {
 
         // When
         assert.strictEqual(panelManager.getPanel(), undefined);
-        panelManager.createShaderView();
+        panelManager.createPanel();
 
         // Then
         assert.strictEqual(panelManager.getPanel(), mockWebviewPanel);
     });
 
-    test('createShaderView creates new panel each time', () => {
+    test('createPanel creates new panel each time', () => {
         // Given
         const mockWebviewPanel1 = createMockWebviewPanel();
         const mockWebviewPanel2 = createMockWebviewPanel();
@@ -184,8 +184,8 @@ suite('PanelManager Test Suite', () => {
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
         // When
-        panelManager.createShaderView();
-        panelManager.createShaderView();
+        panelManager.createPanel();
+        panelManager.createPanel();
 
         // Then
         assert.strictEqual(createWebviewPanelStub.callCount, 2);

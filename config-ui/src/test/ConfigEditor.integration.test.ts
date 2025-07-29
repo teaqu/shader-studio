@@ -23,7 +23,7 @@ describe('ConfigEditor Integration Tests', () => {
 
   it('should render loading state initially', () => {
     render(ConfigEditor);
-    
+
     expect(screen.getByText('Loading configuration...')).toBeInTheDocument();
     expect(screen.getByText('Shader Configuration')).toBeInTheDocument();
   });
@@ -35,39 +35,37 @@ describe('ConfigEditor Integration Tests', () => {
     
     await waitFor(() => {
       expect(screen.getByText('Error:')).toBeInTheDocument();
-      expect(screen.getByText(/Invalid JSON.*Failed to.*is not valid JSON/)).toBeInTheDocument();
+      expect(screen.getByText('Failed to load configuration file')).toBeInTheDocument();
     });
-  });
-
-  it('should display simple config correctly', async () => {
+  });  it('should display simple config correctly', async () => {
     render(ConfigEditor);
-    
+
     simulateVSCodeMessage(createMockConfig(simpleConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Shader Configuration')).toBeInTheDocument();
       expect(screen.getByText('Click the "JSON" button in the status bar to edit the raw JSON directly')).toBeInTheDocument();
-      
+
       const imageButton = screen.getByRole('button', { name: 'Image' });
       expect(imageButton).toBeInTheDocument();
       expect(imageButton).toHaveClass('active');
-      
+
       expect(screen.getByRole('button', { name: '+' })).toBeInTheDocument();
     });
   });
 
   it('should display complex config with multiple buffers', async () => {
     render(ConfigEditor);
-    
+
     simulateVSCodeMessage(createMockConfig(complexConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'BufferB' })).toBeInTheDocument();
-      
+
       expect(screen.getByRole('button', { name: 'Image' })).toHaveClass('active');
-      
+
       const bufferRemoveButtons = screen.getAllByTitle(/Remove Buffer/);
       expect(bufferRemoveButtons).toHaveLength(2);
     });
@@ -75,22 +73,22 @@ describe('ConfigEditor Integration Tests', () => {
 
   it('should switch tabs correctly', async () => {
     render(ConfigEditor);
-    
+
     simulateVSCodeMessage(createMockConfig(complexConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
     });
-    
+
     await user.click(screen.getByRole('button', { name: 'BufferA' }));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'BufferA' })).toHaveClass('active');
       expect(screen.getByRole('button', { name: 'Image' })).not.toHaveClass('active');
     });
-    
+
     await user.click(screen.getByRole('button', { name: 'Image' }));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Image' })).toHaveClass('active');
       expect(screen.getByRole('button', { name: 'BufferA' })).not.toHaveClass('active');
@@ -99,13 +97,13 @@ describe('ConfigEditor Integration Tests', () => {
 
   it('should display minimal config correctly', async () => {
     render(ConfigEditor);
-    
+
     simulateVSCodeMessage(createMockConfig(minimalConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
-      const tabButtons = screen.getAllByRole('button').filter(btn => 
-        btn.className.includes('tab-button') && 
+      const tabButtons = screen.getAllByRole('button').filter(btn =>
+        btn.className.includes('tab-button') &&
         (btn.textContent === 'BufferA' || btn.textContent === 'BufferB' || btn.textContent === 'BufferC' || btn.textContent === 'BufferD')
       );
       expect(tabButtons).toHaveLength(0);
@@ -122,21 +120,21 @@ describe('ConfigEditor Integration Tests', () => {
       getState: vi.fn(),
       setState: vi.fn()
     }));
-    
+
     render(ConfigEditor);
-    
+
     simulateVSCodeMessage(createMockConfig(simpleConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
     });
-    
+
     expect(screen.getByText('Shader Configuration')).toBeInTheDocument();
   });
 
   it('should validate config structure matches expected schema', async () => {
     render(ConfigEditor);
-    
+
     const testConfig = {
       version: "1.0",
       passes: {
@@ -158,13 +156,13 @@ describe('ConfigEditor Integration Tests', () => {
         }
       }
     };
-    
+
     simulateVSCodeMessage(createMockConfig(testConfig as ShaderConfig));
-    
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
-      
+
       expect(screen.queryByText('Error:')).not.toBeInTheDocument();
     });
   });

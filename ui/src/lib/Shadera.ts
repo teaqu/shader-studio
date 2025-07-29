@@ -13,9 +13,9 @@ import { FPSCalculator } from "./util/FPSCalculator";
 import { ShaderLocker } from "./util/ShaderLocker";
 import type { PiRenderer } from "./types/piRenderer";
 import type { Transport } from "./transport/MessageTransport";
-import type { ErrorMessage, DebugMessage } from "@shader-view/types";
+import type { ErrorMessage, DebugMessage } from "@shadera/types";
 
-export class ShaderView {
+export class Shadera {
   private transport: Transport;
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
@@ -175,11 +175,11 @@ export class ShaderView {
 
     if (isLocked) {
       const lockedShaderPath = this.shaderLocker.getLockedShaderPath();
-      console.log('ShaderView: Refreshing locked shader at path:', lockedShaderPath);
+      console.log('Shadera: Refreshing locked shader at path:', lockedShaderPath);
 
       this.messageHandler.refresh(lockedShaderPath || undefined);
     } else {
-      console.log('ShaderView: Refreshing current shader');
+      console.log('Shadera: Refreshing current shader');
       this.messageHandler.refresh();
     }
   }

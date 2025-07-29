@@ -3,18 +3,18 @@ import * as path from "path";
 import * as fs from "fs";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import type { ShaderConfig, ShaderSourceMessage } from "@shader-view/types";
+import type { ShaderConfig, ShaderSourceMessage } from "@shadera/types";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();
   private logger = Logger.getInstance();
 
-  constructor(private messenger: Messenger) {}
+  constructor(private messenger: Messenger) { }
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
   ): void {
-    if (!this.messenger || editor?.document.languageId !== "glsl") {
+    if (!this.messenger || (editor?.document.languageId !== "glsl" && editor?.document.languageId !== "frag")) {
       return;
     }
 
@@ -31,7 +31,7 @@ export class ShaderProcessor {
     const shaderPath = editor.document.uri.fsPath;
 
     let config: ShaderConfig | null = null;
-    const configPath = shaderPath.replace(/\.glsl$/i, ".sv.json");
+    const configPath = shaderPath.replace(/\.(glsl|frag)$/i, ".sha.json");
 
     // Collect buffer contents
     const buffers: Record<string, string> = {};

@@ -26,7 +26,7 @@ export function simulateVSCodeMessage(data: any) {
     origin: '*',
     source: window
   };
-  
+
   messageHandlers.forEach(handler => {
     handler(event);
   });
@@ -41,7 +41,7 @@ export function createMockConfig(config: any) {
 
 export function createMockError(error: string) {
   return {
-    type: 'update',
+    type: 'error',
     text: error
   };
 }

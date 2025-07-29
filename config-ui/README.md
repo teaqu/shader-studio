@@ -1,6 +1,6 @@
 # Shader Configuration UI
 
-This directory contains the Svelte-based user interface for the shader configuration editor, which provides a visual interface for editing `.sv.json` files.
+This directory contains the Svelte-based user interface for the shader configuration editor, which provides a visual interface for editing `.sha.json` files.
 
 ## Structure
 
@@ -29,7 +29,7 @@ npm run test
 
 ## Integration
 
-The built application is served by the VS Code extension's ConfigEditorProvider, which loads the generated HTML and assets from the `dist/` directory to provide a custom editor experience for `.sv.json` files.
+The built application is served by the VS Code extension's ConfigEditorProvider, which loads the generated HTML and assets from the `dist/` directory to provide a custom editor experience for `.sha.json` files.
 
 ## Features
 

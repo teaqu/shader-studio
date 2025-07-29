@@ -4,7 +4,7 @@ import type { ShaderPipeline } from "../../lib/rendering/ShaderPipeline";
 import type { TimeManager } from "../../lib/util/TimeManager";
 import type { FrameRenderer } from "../../lib/rendering/FrameRenderer";
 import type { Transport } from "../../lib/transport/MessageTransport";
-import type { ShaderSourceMessage } from "@shader-view/types";
+import type { ShaderSourceMessage } from "@shadera/types";
 
 const createMockShaderPipeline = () => ({
   compileShaderPipeline: vi.fn(),
@@ -56,8 +56,8 @@ describe("MessageHandler", () => {
     );
 
     // Suppress console logs during tests
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => { });
+    vi.spyOn(console, "error").mockImplementation(() => { });
   });
 
   describe("when handling shader messages with different shader files", () => {

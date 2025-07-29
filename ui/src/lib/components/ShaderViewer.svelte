@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { ShaderView } from "../ShaderView";
+  import { Shadera } from "../shadera";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
   import type { AspectRatioMode } from "../stores/aspectRatioStore";
@@ -10,7 +10,7 @@
   import ErrorDisplay from "./ErrorDisplay.svelte";
 
   export let onInitialized: (data: {
-    shaderView: ShaderView;
+    shadera: Shadera;
   }) => void = () => {};
 
   let glCanvas: HTMLCanvasElement;
@@ -23,7 +23,7 @@
   let canvasHeight = 0;
   let zoomLevel = 1.0;
 
-  let shaderView: ShaderView;
+ let shadera: Shadera;
   let transport: Transport;
   let timeManager: any = null;
   let keyboardManager: any = null;
@@ -39,13 +39,13 @@
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    shaderView!.handleCanvasResize(width, height);
+    shadera!.handleCanvasResize(width, height);
   }
 
   function handleReset() {
     if (!initialized) return;
-    shaderView.handleReset(() => {
-      const lastEvent = shaderView!.getLastShaderEvent();
+    shadera.handleReset(() => {
+      const lastEvent = shadera!.getLastShaderEvent();
       if (lastEvent) {
         handleShaderMessage(lastEvent);
       }
@@ -54,18 +54,18 @@
 
   function handleRefresh() {
     if (!initialized) return;
-    shaderView.handleRefresh();
+    shadera.handleRefresh();
   }
 
   function handleTogglePause() {
     if (!initialized) return;
-    shaderView.handleTogglePause();
+    shadera.handleTogglePause();
   }
 
   function handleToggleLock() {
     if (!initialized) return;
-    shaderView.handleToggleLock();
-    isLocked = shaderView.getIsLocked();
+    shadera.handleToggleLock();
+    isLocked = shadera.getIsLocked();
   }
 
   function handleAspectRatioChange(mode: AspectRatioMode) {
@@ -89,23 +89,23 @@
     try {
       transport = createTransport();
 
-      shaderView = new ShaderView(transport);
+      shadera = new Shadera(transport);
 
-      const success = await shaderView.initialize(glCanvas);
+      const success = await shadera.initialize(glCanvas);
       if (!success) {
-        addError("Failed to initialize shader view");
+        addError("Failed to initialize Shadera");
         return;
       }
 
       transport.onMessage(handleShaderMessage);
 
-      timeManager = shaderView.getTimeManager();
-      keyboardManager = shaderView.getKeyboardManager();
-      mouseManager = shaderView.getMouseManager();
+      timeManager = shadera.getTimeManager();
+      keyboardManager = shadera.getKeyboardManager();
+      mouseManager = shadera.getMouseManager();
 
       initialized = true;
 
-      onInitialized({ shaderView });
+      onInitialized({ shadera });
     } catch (err) {
       addError(`Initialization failed: ${err}`);
     }
@@ -115,17 +115,17 @@
     if (!initialized) return;
 
     try {
-      await shaderView.handleShaderMessage(event);
+      await shadera.handleShaderMessage(event);
       // Update the UI lock state to reflect the current state
-      isLocked = shaderView.getIsLocked();
+      isLocked = shadera.getIsLocked();
     } catch (err) {
       const errorMsg = `Shader message handling failed: ${err}`;
-      console.error("ShaderViewer: Error in handleShaderMessage:", err);
+      console.error("Shaderaer: Error in handleShaderMessage:", err);
       console.error(
-        "ShaderViewer: Error stack:",
+        "Shaderaer: Error stack:",
         err instanceof Error ? err.stack : "No stack",
       );
-      console.error("ShaderViewer: Event data:", event.data);
+      console.error("Shaderaer: Event data:", event.data);
       addError(errorMsg);
     }
   }
@@ -140,8 +140,8 @@
 
   onMount(() => {
     const fpsInterval = setInterval(() => {
-      if (initialized && shaderView) {
-        currentFPS = shaderView.getCurrentFPS();
+      if (initialized && Shadera) {
+        currentFPS = shadera.getCurrentFPS();
       }
     }, 100);
 
@@ -149,8 +149,8 @@
   });
 
   onDestroy(() => {
-    if (shaderView) {
-      shaderView.dispose();
+    if (shadera) {
+      shadera.dispose();
     }
     if (transport) {
       transport.dispose();

@@ -1,11 +1,11 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import { ShaderView } from '../../app/ShaderView';
+import { Shadera } from '../../app/Shadera';
 import { Logger } from '../../app/services/Logger';
 
-suite('ShaderView Test Suite', () => {
-    let shaderView: ShaderView;
+suite('Shadera Test Suite', () => {
+    let shadera: Shadera;
     let mockContext: vscode.ExtensionContext;
     let mockOutputChannel: vscode.LogOutputChannel;
     let mockDiagnosticCollection: vscode.DiagnosticCollection;
@@ -82,13 +82,13 @@ suite('ShaderView Test Suite', () => {
             dispose: sandbox.stub()
         } as any);
 
-        shaderView = new ShaderView(mockContext, mockOutputChannel, mockDiagnosticCollection);
-        sendShaderSpy = sandbox.spy(shaderView['shaderProcessor'], 'sendShaderToWebview');
+        shadera = new Shadera(mockContext, mockOutputChannel, mockDiagnosticCollection);
+        sendShaderSpy = sandbox.spy(shadera['shaderProcessor'], 'sendShaderToWebview');
     });
 
     teardown(() => {
-        if (shaderView) {
-            shaderView.dispose();
+        if (shadera) {
+            shadera.dispose();
         }
         sandbox.restore();
     });
@@ -168,7 +168,7 @@ suite('ShaderView Test Suite', () => {
     function simulateTextDocumentChange(editor: vscode.TextEditor): void {
         const textDocumentChangeHandlers = mockContext.subscriptions
             .filter((sub: any) => sub._listener && sub._event === 'onDidChangeTextDocument');
-        
+
         if (textDocumentChangeHandlers.length > 0) {
             const changeEvent = { document: editor.document } as vscode.TextDocumentChangeEvent;
             textDocumentChangeHandlers.forEach((handler: any) => {
@@ -182,7 +182,7 @@ suite('ShaderView Test Suite', () => {
     function simulateActiveEditorChange(editor: vscode.TextEditor): void {
         const activeEditorChangeHandlers = mockContext.subscriptions
             .filter((sub: any) => sub._listener && sub._event === 'onDidChangeActiveTextEditor');
-        
+
         if (activeEditorChangeHandlers.length > 0) {
             activeEditorChangeHandlers.forEach((handler: any) => {
                 if (handler._listener) {
@@ -194,47 +194,47 @@ suite('ShaderView Test Suite', () => {
 
     test('should not process shader updates when no clients are connected', () => {
         const mockEditor = createMockGLSLEditor();
-        
-        assert.strictEqual(shaderView['messenger'].hasActiveClients(), false);
+
+        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
         simulateActiveEditorChange(mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
     });
 
     test('should not process shader updates on text change when no clients are connected', () => {
         const mockEditor = createMockGLSLEditor();
-        
+
         sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
-        assert.strictEqual(shaderView['messenger'].hasActiveClients(), false);
+        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
         simulateTextDocumentChange(mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
     });
 
     test('performShaderUpdate method respects client connection status', () => {
         const mockEditor = createMockGLSLEditor();
-        
-        assert.strictEqual(shaderView['messenger'].hasActiveClients(), false);
-        shaderView['performShaderUpdate'](mockEditor);
+
+        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
+        shadera['performShaderUpdate'](mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
-        
+
         const mockWebviewPanel = {
             reveal: sandbox.stub(),
             webview: {
                 html: '',
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
-                onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+                onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
                 postMessage: sandbox.stub(),
             },
-            onDidDispose: sandbox.stub().returns({ dispose: () => {} }),
+            onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
         };
 
         sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
-        
+
         const fs = require('fs');
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
-        shaderView['panelManager'].createShaderView();
-        assert.strictEqual(shaderView['messenger'].hasActiveClients(), true);
-        shaderView['performShaderUpdate'](mockEditor);
+        shadera['panelManager'].createPanel();
+        assert.strictEqual(shadera['messenger'].hasActiveClients(), true);
+        shadera['performShaderUpdate'](mockEditor);
         sinon.assert.calledOnce(sendShaderSpy);
         sinon.assert.calledWith(sendShaderSpy, mockEditor);
     });
@@ -245,24 +245,24 @@ suite('ShaderView Test Suite', () => {
             webview: {
                 html: '',
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
-                onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+                onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
                 postMessage: sandbox.stub(),
             },
-            onDidDispose: sandbox.stub().returns({ dispose: () => {} }),
+            onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
         };
 
         sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
-        
+
         const fs = require('fs');
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
-        shaderView['panelManager'].createShaderView();
-        assert.strictEqual(shaderView['messenger'].hasActiveClients(), true);
-        
+        shadera['panelManager'].createPanel();
+        assert.strictEqual(shadera['messenger'].hasActiveClients(), true);
+
         const mockEditor = createMockJavaScriptEditor();
-        assert.strictEqual(shaderView['isGlslEditor'](mockEditor), false);
-        
+        assert.strictEqual(shadera['isGlslEditor'](mockEditor), false);
+
         const glslEditor = createMockGLSLEditor();
-        assert.strictEqual(shaderView['isGlslEditor'](glslEditor), true);
+        assert.strictEqual(shadera['isGlslEditor'](glslEditor), true);
     });
 });

@@ -141,7 +141,7 @@ export class ElectronLauncher {
     launcherScript: string,
   ): Promise<void> {
     const terminal = vscode.window.createTerminal({
-      name: `Shader View Dev ${Date.now()}`,
+      name: `Shadera Dev ${Date.now()}`,
       cwd: electronDir,
       hideFromUser: true,
     });
@@ -170,7 +170,7 @@ export class ElectronLauncher {
 
     // Launch in terminal with platform-appropriate command
     const terminal = vscode.window.createTerminal({
-      name: `Shader View Electron ${Date.now()}`,
+      name: `Shadera Electron ${Date.now()}`,
       cwd: electronDir,
       hideFromUser: true,
     });

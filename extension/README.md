@@ -1,24 +1,24 @@
-# Shader View for VS Code
+# Shadera
 
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
-![screenshot](https://raw.githubusercontent.com/teaqu/shader-view/refs/heads/main/assets/screenshot.png)
+![screenshot](https://raw.githubusercontent.com/teaqu/shadera/refs/heads/main/assets/screenshot.png)
 
 You an either spawn in a new window, a vscode panel or in your browser.
 
-Click the SV icon on the VSCode status bar to see the options.
+Click the SS icon on the VSCode status bar to see the options.
 
 ## Configuration
 
 ### Shader Configuration Files
 
-Add config same dir as shader like so: shadername.sv.json. You can also do it
+Add config same dir as shader like so: shadername.sha.json. You can also do it
 via the command.
 
-The extension provides a visual editor for `.sv.json` files. Click the UI button
+The extension provides a visual editor for `.sha.json` files. Click the UI button
 in the status bar to show.
 
-![config screenshot](https://raw.githubusercontent.com/teaqu/shader-view/refs/heads/main/assets/config-screenshot.jpg)
+![config screenshot](https://raw.githubusercontent.com/teaqu/shadera/refs/heads/main/assets/config-screenshot.jpg)
 
 ### Example Configuration Format
 

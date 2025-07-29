@@ -35,7 +35,7 @@ export class PanelManager {
     this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }
 
-  public createShaderView(): void {
+  public createPanel(): void {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
 
     const layout = vscode.window.tabGroups.all;
@@ -59,8 +59,8 @@ export class PanelManager {
       : (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
     const panel = vscode.window.createWebviewPanel(
-      "shaderView",
-      "Shader View",
+      "Shadera",
+      "Shadera",
       viewColumn,
       {
         enableScripts: true,

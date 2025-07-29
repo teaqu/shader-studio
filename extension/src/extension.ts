@@ -1,31 +1,31 @@
 import * as vscode from "vscode";
-import { ShaderView } from "./app/ShaderView";
+import { Shadera } from "./app/Shadera";
 
-let shaderExtension: ShaderView | undefined;
+let shaderExtension: Shadera | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	const isDevMode = process.env.NODE_ENV === "dev";
-	const outputChannel = vscode.window.createOutputChannel("Shader View", {
+	const outputChannel = vscode.window.createOutputChannel("Shadera", {
 		log: true,
 	});
 	outputChannel.debug("Output channel initialized");
 
 	const diagnosticCollection = vscode.languages.createDiagnosticCollection(
-		"shader-view",
+		"shadera",
 	);
 	context.subscriptions.push(diagnosticCollection);
 
 	try {
-		shaderExtension = new ShaderView(
+		shaderExtension = new Shadera(
 			context,
 			outputChannel,
 			diagnosticCollection,
 		);
 
-		outputChannel.info("Shader View extension activated successfully");
+		outputChannel.info("Shadera extension activated successfully");
 	} catch (error) {
-		outputChannel.error(`Failed to activate Shader View extension: ${error}`);
-		vscode.window.showErrorMessage(`Shader View activation failed: ${error}`);
+		outputChannel.error(`Failed to activate Shadera extension: ${error}`);
+		vscode.window.showErrorMessage(`Shadera activation failed: ${error}`);
 	}
 }
 

@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import type { ShaderConfig } from "@shader-view/types";
+import type { ShaderConfig } from "@shadera/types";
 import { ShaderProcessor } from "../ShaderProcessor";
 import { GlslFileTracker } from "../GlslFileTracker";
 
@@ -12,8 +12,8 @@ export class WebSocketTransport implements MessageTransport {
   private clientTypes: Map<WebSocket, 'electron' | 'browser'> = new Map();
 
   constructor(
-    port: number, 
-    private shaderProcessor: ShaderProcessor, 
+    port: number,
+    private shaderProcessor: ShaderProcessor,
     private glslFileTracker: GlslFileTracker
   ) {
     try {
@@ -123,7 +123,7 @@ export class WebSocketTransport implements MessageTransport {
 
           const str = JSON.stringify(clientMessage);
           const messageSize = Buffer.byteLength(str, 'utf8');
-          
+
           client.send(str);
           sentCount++;
         } catch (error) {
@@ -134,7 +134,7 @@ export class WebSocketTransport implements MessageTransport {
     console.log(`WebSocket: Sent to ${sentCount}/${totalClients} clients`);
   }
 
-  private processConfigPaths(message: { type: string; config: ShaderConfig; [key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
+  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
     const processedMessage = JSON.parse(JSON.stringify(message));
     const config = processedMessage.config;
 
@@ -165,14 +165,14 @@ export class WebSocketTransport implements MessageTransport {
     // Handle local file paths differently for browser vs Electron clients
     if (filePath.match(/^[a-zA-Z]:|^\//) || filePath.match(/^\\\\/)) {
       // Looks like a local file path (Windows drive, Unix absolute path, or UNC path)
-      
+
       if (clientType === 'electron') {
         // Electron can access local files directly via file:// protocol
         return `file://${filePath.replace(/\\/g, '/')}`;
       } else {
         // Browser clients need HTTP URLs due to CORS restrictions
         // Encode the full file path for the WebServer to serve directly
-        const config = vscode.workspace.getConfiguration('shaderView');
+        const config = vscode.workspace.getConfiguration('Shadera');
         const port = config.get<number>('webServerPort') || 3000;
         return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
       }

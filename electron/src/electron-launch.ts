@@ -29,7 +29,7 @@ let settings: Settings = {
 
 const settingsPath: string = path.join(app.getPath('userData'), 'settings.json');
 
-app.setName('Shader View');
+app.setName('Shadera');
 
 function loadSettings(): void {
     try {
@@ -60,7 +60,7 @@ function updateWindowBackground(): void {
 function createMenu(): void {
     const template: Electron.MenuItemConstructorOptions[] = [
         {
-            label: 'Shader View',
+            label: 'Shadera',
             submenu: [
                 {
                     label: 'Always on Top',
@@ -146,10 +146,10 @@ app.whenReady().then(() => {
     } else {
         iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
     }
-    
+
     console.log('Icon path:', iconPath);
     console.log('Icon file exists:', fs.existsSync(iconPath));
-    
+
     const icon = nativeImage.createFromPath(iconPath);
     console.log('Icon isEmpty:', icon.isEmpty());
     console.log('Icon size:', icon.getSize());
@@ -165,7 +165,7 @@ app.whenReady().then(() => {
         y: settings.windowBounds.y,
         alwaysOnTop: settings.alwaysOnTop,
         frame: true,
-        title: 'Shader View',
+        title: 'Shadera',
         icon: icon.isEmpty() ? undefined : icon,
         backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff',
         webPreferences: {

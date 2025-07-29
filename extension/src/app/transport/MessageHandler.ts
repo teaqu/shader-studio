@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shader-view/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shadera/types";
 
 export class MessageHandler {
   constructor(
@@ -33,7 +33,7 @@ export class MessageHandler {
   }
 
   private handleLogMessage(message: LogMessage): void {
-    const logText = Array.isArray(message.payload) 
+    const logText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
     this.outputChannel.info(logText);
@@ -81,14 +81,14 @@ export class MessageHandler {
 
   private handleRefreshMessage(message: RefreshMessage): void {
     this.outputChannel.info("Refresh request received from UI");
-    
+
     const shaderPath = message.payload?.path;
     if (shaderPath) {
       this.outputChannel.info(`Requesting refresh for shader at path: ${shaderPath}`);
-      vscode.commands.executeCommand('shader-view.refreshSpecificShaderByPath', shaderPath);
+      vscode.commands.executeCommand('shadera.refreshSpecificShaderByPath', shaderPath);
     } else {
       this.outputChannel.info("Requesting refresh for current/active shader");
-      vscode.commands.executeCommand('shader-view.refreshCurrentShader');
+      vscode.commands.executeCommand('shadera.refreshCurrentShader');
     }
   }
 }
