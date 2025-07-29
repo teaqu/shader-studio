@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Shadera } from "../lib/shadera";
+import { ShaderStudio } from "../lib/ShaderStudio";
 
 vi.mock("../../vendor/pilibs/src/piRenderer", () => ({
     piRenderer: () => ({
@@ -7,8 +7,8 @@ vi.mock("../../vendor/pilibs/src/piRenderer", () => ({
     }),
 }));
 
-describe("Shadera locker integration", () => {
-    let shadera: Shadera;
+describe("Shader Studio locker integration", () => {
+    let shaderStudio: ShaderStudio;
     let mockTransport: any;
     let mockCanvas: HTMLCanvasElement;
     let mockGL: any;
@@ -42,19 +42,19 @@ describe("Shadera locker integration", () => {
             height: 600,
         } as any;
 
-        shadera = new Shadera(mockTransport);
+        shaderStudio = new ShaderStudio(mockTransport);
         vi.spyOn(console, "log").mockImplementation(() => { });
     });
 
     describe("when checking lock state", () => {
         it("then should not be locked initially", () => {
-            expect(shadera.getIsLocked()).toBe(false);
+            expect(shaderStudio.getIsLocked()).toBe(false);
         });
     });
 
     describe("when toggling lock", () => {
         beforeEach(async () => {
-            await shadera.initialize(mockCanvas);
+            await shaderStudio.initialize(mockCanvas);
         });
 
         it("then should toggle lock state", () => {
@@ -62,22 +62,22 @@ describe("Shadera locker integration", () => {
                 data: { path: "test.glsl" },
             } as MessageEvent;
 
-            vi.spyOn(shadera as any, "messageHandler", "get")
+            vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue({
                     getLastEvent: vi.fn().mockReturnValue(mockEvent),
                 });
 
-            shadera.handleToggleLock();
-            expect(shadera.getIsLocked()).toBe(true);
+            shaderStudio.handleToggleLock();
+            expect(shaderStudio.getIsLocked()).toBe(true);
 
-            shadera.handleToggleLock();
-            expect(shadera.getIsLocked()).toBe(false);
+            shaderStudio.handleToggleLock();
+            expect(shaderStudio.getIsLocked()).toBe(false);
         });
     });
 
     describe("when handling shader messages", () => {
         beforeEach(async () => {
-            await shadera.initialize(mockCanvas);
+            await shaderStudio.initialize(mockCanvas);
         });
 
         it("then should process shader when not locked", async () => {
@@ -91,7 +91,7 @@ describe("Shadera locker integration", () => {
                 },
             } as MessageEvent;
 
-            vi.spyOn(shadera as any, "messageHandler", "get")
+            vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue({
                     handleShaderMessage: vi.fn().mockResolvedValue({
                         running: true,
@@ -99,7 +99,7 @@ describe("Shadera locker integration", () => {
                     getLastEvent: vi.fn().mockReturnValue(mockEvent),
                 });
 
-            const result = await shadera.handleShaderMessage(mockEvent);
+            const result = await shaderStudio.handleShaderMessage(mockEvent);
             expect(result.running).toBe(true);
         });
 
@@ -121,13 +121,13 @@ describe("Shadera locker integration", () => {
                 getLastEvent: vi.fn().mockReturnValue(mockEvent),
             };
 
-            vi.spyOn(shadera as any, "messageHandler", "get")
+            vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue(mockMessageHandler);
 
-            await shadera.handleShaderMessage(mockEvent);
-            shadera.handleToggleLock();
+            await shaderStudio.handleShaderMessage(mockEvent);
+            shaderStudio.handleToggleLock();
 
-            const result = await shadera.handleShaderMessage(mockEvent);
+            const result = await shaderStudio.handleShaderMessage(mockEvent);
             expect(result.running).toBe(true);
         });
 
@@ -159,18 +159,18 @@ describe("Shadera locker integration", () => {
                 getLastEvent: vi.fn().mockReturnValue(firstEvent),
             };
 
-            vi.spyOn(shadera as any, "messageHandler", "get")
+            vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue(mockMessageHandler);
-            vi.spyOn(shadera as any, "frameRenderer", "get").mockReturnValue(
+            vi.spyOn(shaderStudio as any, "frameRenderer", "get").mockReturnValue(
                 {
                     isRunning: vi.fn().mockReturnValue(false),
                 },
             );
 
-            await shadera.handleShaderMessage(firstEvent);
-            shadera.handleToggleLock();
+            await shaderStudio.handleShaderMessage(firstEvent);
+            shaderStudio.handleToggleLock();
 
-            const result = await shadera.handleShaderMessage(secondEvent);
+            const result = await shaderStudio.handleShaderMessage(secondEvent);
             expect(result.running).toBe(false);
         });
 
@@ -202,14 +202,14 @@ describe("Shadera locker integration", () => {
                 getLastEvent: vi.fn().mockReturnValue(firstEvent),
             };
 
-            vi.spyOn(shadera as any, "messageHandler", "get")
+            vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue(mockMessageHandler);
 
-            await shadera.handleShaderMessage(firstEvent);
-            shadera.handleToggleLock();
-            shadera.handleToggleLock();
+            await shaderStudio.handleShaderMessage(firstEvent);
+            shaderStudio.handleToggleLock();
+            shaderStudio.handleToggleLock();
 
-            const result = await shadera.handleShaderMessage(secondEvent);
+            const result = await shaderStudio.handleShaderMessage(secondEvent);
             expect(result.running).toBe(true);
         });
     });

@@ -1,8 +1,8 @@
-# Shadera
+# Shader Studio
 
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
-![screenshot](https://raw.githubusercontent.com/teaqu/shadera/refs/heads/main/assets/screenshot.png)
+![screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/screenshot.png)
 
 You an either spawn in a new window, a vscode panel or in your browser.
 
@@ -18,7 +18,7 @@ via the command.
 The extension provides a visual editor for `.sha.json` files. Click the UI button
 in the status bar to show.
 
-![config screenshot](https://raw.githubusercontent.com/teaqu/shadera/refs/heads/main/assets/config-screenshot.jpg)
+![config screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/config-screenshot.jpg)
 
 ### Example Configuration Format
 

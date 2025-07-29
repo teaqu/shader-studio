@@ -22,6 +22,6 @@
     "svelte-check": "^4.0.8"
   },
   "dependencies": {
-    "@shadera/types": "*"
+    "@shader-studio/types": "*"
   }
 }

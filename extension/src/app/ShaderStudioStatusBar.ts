@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export class ShaderaStatusBar {
+export class ShaderStudioStatusBar {
     private statusBarItem: vscode.StatusBarItem;
     private configToggleStatusBarItem: vscode.StatusBarItem;
     private isServerRunning: boolean = false;
@@ -11,7 +11,7 @@ export class ShaderaStatusBar {
             100
         );
         this.updateServerStatus(false);
-        this.statusBarItem.command = 'shadera.showShaderaMenu';
+        this.statusBarItem.command = 'shader-studio.showShaderStudioMenu';
         this.statusBarItem.show();
         this.context.subscriptions.push(this.statusBarItem);
 
@@ -19,7 +19,7 @@ export class ShaderaStatusBar {
             vscode.StatusBarAlignment.Right,
             99
         );
-        this.configToggleStatusBarItem.command = 'shadera.toggleConfigView';
+        this.configToggleStatusBarItem.command = 'shader-studio.toggleConfigView';
         this.context.subscriptions.push(this.configToggleStatusBarItem);
 
         this.context.subscriptions.push(
@@ -56,7 +56,7 @@ export class ShaderaStatusBar {
         }
     }
 
-    public async showShaderaMenu() {
+    public async showShaderStudioMenu() {
         const items = [];
 
         if (this.isServerRunning) {
@@ -102,22 +102,22 @@ export class ShaderaStatusBar {
         if (selected) {
             switch (selected.action) {
                 case 'start-server':
-                    await vscode.commands.executeCommand('shadera.startWebServer');
+                    await vscode.commands.executeCommand('shader-studio.startWebServer');
                     break;
                 case 'stop-server':
-                    await vscode.commands.executeCommand('shadera.stopWebServer');
+                    await vscode.commands.executeCommand('shader-studio.stopWebServer');
                     break;
                 case 'open-browser':
-                    await vscode.commands.executeCommand('shadera.openInBrowser');
+                    await vscode.commands.executeCommand('shader-studio.openInBrowser');
                     break;
                 case 'copy-url':
-                    await vscode.commands.executeCommand('shadera.copyServerUrl');
+                    await vscode.commands.executeCommand('shader-studio.copyServerUrl');
                     break;
                 case 'show-panel':
-                    await vscode.commands.executeCommand('shadera.view');
+                    await vscode.commands.executeCommand('shader-studio.view');
                     break;
                 case 'open-electron':
-                    await vscode.commands.executeCommand('shadera.openInElectron');
+                    await vscode.commands.executeCommand('shader-studio.openInElectron');
                     break;
             }
         }
@@ -138,7 +138,7 @@ export class ShaderaStatusBar {
             isSvJsonFile = true;
             isCustomEditor = false;
         } else if (currentTab?.input instanceof vscode.TabInputCustom &&
-            (currentTab.input as vscode.TabInputCustom).viewType === 'shadera.configEditor') {
+            (currentTab.input as vscode.TabInputCustom).viewType === 'shader-studio.configEditor') {
             isSvJsonFile = true;
             isCustomEditor = true;
         }

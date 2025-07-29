@@ -11,7 +11,7 @@ import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 
-export class Shadera {
+export class ShaderStudio {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
@@ -71,7 +71,7 @@ export class Shadera {
   }
 
   private startWebSocketTransport(): void {
-    const config = vscode.workspace.getConfiguration("shadera");
+    const config = vscode.workspace.getConfiguration("shader-studio");
     let webSocketPort = config.get<number>("webSocketPort") || 51472;
 
     if (this.context.extensionMode === vscode.ExtensionMode.Test) {
@@ -136,80 +136,80 @@ export class Shadera {
 
   private registerCommands(): void {
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.view", () => {
-        this.logger.info("shadera.view command executed");
+      vscode.commands.registerCommand("shader-studio.view", () => {
+        this.logger.info("shader-studio.view command executed");
         this.panelManager.createPanel();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.startWebServer", () => {
-        this.logger.info("shadera.startWebServer command executed");
+      vscode.commands.registerCommand("shader-studio.startWebServer", () => {
+        this.logger.info("shader-studio.startWebServer command executed");
         this.startWebServer();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.openInBrowser", () => {
-        this.logger.info("shadera.openInBrowser command executed");
+      vscode.commands.registerCommand("shader-studio.openInBrowser", () => {
+        this.logger.info("shader-studio.openInBrowser command executed");
         this.openInBrowser();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.copyServerUrl", () => {
-        this.logger.info("shadera.copyServerUrl command executed");
+      vscode.commands.registerCommand("shader-studio.copyServerUrl", () => {
+        this.logger.info("shader-studio.copyServerUrl command executed");
         this.copyServerUrl();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.stopWebServer", () => {
-        this.logger.info("shadera.stopWebServer command executed");
+      vscode.commands.registerCommand("shader-studio.stopWebServer", () => {
+        this.logger.info("shader-studio.stopWebServer command executed");
         this.webServer.stopWebServer();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.showWebServerMenu", () => {
-        this.logger.info("shadera.showWebServerMenu command executed");
+      vscode.commands.registerCommand("shader-studio.showWebServerMenu", () => {
+        this.logger.info("shader-studio.showWebServerMenu command executed");
         this.webServer.showWebServerMenu();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.generateConfig", () => {
-        this.logger.info("shadera.generateConfig command executed");
+      vscode.commands.registerCommand("shader-studio.generateConfig", () => {
+        this.logger.info("shader-studio.generateConfig command executed");
         this.generateConfig();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.showShaderaMenu", () => {
-        this.logger.info("shadera.showShaderaMenu command executed");
-        this.webServer.getStatusBar().showShaderaMenu();
+      vscode.commands.registerCommand("shader-studio.showShaderStudioMenu", () => {
+        this.logger.info("shader-studio.showShaderStudioMenu command executed");
+        this.webServer.getStatusBar().showShaderStudioMenu();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.openInElectron", () => {
-        this.logger.info("shadera.openInElectron command executed");
+      vscode.commands.registerCommand("shader-studio.openInElectron", () => {
+        this.logger.info("shader-studio.openInElectron command executed");
         this.openInElectron();
       }),
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shadera.toggleConfigView", () => {
-        this.logger.info("shadera.toggleConfigView command executed");
+      vscode.commands.registerCommand("shader-studio.toggleConfigView", () => {
+        this.logger.info("shader-studio.toggleConfigView command executed");
         this.toggleConfigView();
       }),
     );
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
-        "shadera.refreshCurrentShader",
+        "shader-studio.refreshCurrentShader",
         () => {
-          this.logger.info("shadera.refreshCurrentShader command executed");
+          this.logger.info("shader-studio.refreshCurrentShader command executed");
           this.refreshCurrentShader();
         },
       ),
@@ -217,10 +217,10 @@ export class Shadera {
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
-        "shadera.refreshSpecificShaderByPath",
+        "shader-studio.refreshSpecificShaderByPath",
         (shaderPath: string) => {
           this.logger.info(
-            `shadera.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
+            `shader-studio.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
           );
           this.refreshSpecificShaderByPath(shaderPath);
         },
@@ -348,7 +348,7 @@ export class Shadera {
     } else if (
       currentTab?.input instanceof vscode.TabInputCustom &&
       (currentTab.input as vscode.TabInputCustom).viewType ===
-      "shadera.configEditor"
+      "shader-studio.configEditor"
     ) {
       // Custom editor for .sha.json file
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
@@ -372,7 +372,7 @@ export class Shadera {
         await vscode.commands.executeCommand(
           "vscode.openWith",
           documentUri,
-          "shadera.configEditor",
+          "shader-studio.configEditor",
         );
       }
 

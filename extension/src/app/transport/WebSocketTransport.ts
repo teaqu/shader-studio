@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import type { ShaderConfig } from "@shadera/types";
+import type { ShaderConfig } from "@shader-studio/types";
 import { ShaderProcessor } from "../ShaderProcessor";
 import { GlslFileTracker } from "../GlslFileTracker";
 
@@ -172,7 +172,7 @@ export class WebSocketTransport implements MessageTransport {
       } else {
         // Browser clients need HTTP URLs due to CORS restrictions
         // Encode the full file path for the WebServer to serve directly
-        const config = vscode.workspace.getConfiguration('Shadera');
+        const config = vscode.workspace.getConfiguration('Shader Studio');
         const port = config.get<number>('webServerPort') || 3000;
         return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
       }

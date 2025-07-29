@@ -3,23 +3,23 @@ import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
 import { Logger } from "./services/Logger";
-import { ShaderaStatusBar } from "./ShaderaStatusBar";
+import { ShaderStudioStatusBar } from "./ShaderStudioStatusBar";
 
 export class WebServer {
   private logger!: Logger;
   private isServerRunning = false;
   private httpServer: http.Server | null = null;
-  private statusBar: ShaderaStatusBar;
+  private statusBar: ShaderStudioStatusBar;
 
   constructor(
     private context: vscode.ExtensionContext,
   ) {
     this.logger = Logger.getInstance();
-    this.statusBar = new ShaderaStatusBar(context);
+    this.statusBar = new ShaderStudioStatusBar(context);
   }
 
   private getWebServerPort(): number {
-    const config = vscode.workspace.getConfiguration("shadera");
+    const config = vscode.workspace.getConfiguration("shader-studio");
     return config.get<number>("webServerPort") || 3000;
   }
 
@@ -209,7 +209,7 @@ export class WebServer {
     return `http://localhost:${httpPort}`;
   }
 
-  public getStatusBar(): ShaderaStatusBar {
+  public getStatusBar(): ShaderStudioStatusBar {
     return this.statusBar;
   }
 
@@ -227,13 +227,13 @@ export class WebServer {
       },
       {
         label: "$(stop-circle) Stop Server",
-        description: "Stop the Shadera web server",
+        description: "Stop the Shader Studio web server",
         action: "stop",
       },
     ];
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: "Shadera Web Server Options",
+      placeHolder: "Shader Studio Web Server Options",
       title: `Web Server Running on ${this.getHttpUrl()}`,
     });
 
@@ -251,7 +251,7 @@ export class WebServer {
         case "stop":
           this.stopWebServer();
           vscode.window.showInformationMessage(
-            "Shadera web server stopped",
+            "Shader Studio web server stopped",
           );
           break;
       }

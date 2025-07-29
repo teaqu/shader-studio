@@ -14,7 +14,7 @@ const createAspectRatioStore = () => {
 
     // Load from localStorage if available
     if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('shadera-aspect-ratio');
+        const stored = localStorage.getItem('shader-studio-aspect-ratio');
         if (stored) {
             try {
                 const parsed = JSON.parse(stored);
@@ -34,7 +34,7 @@ const createAspectRatioStore = () => {
                 const newState = { ...state, mode };
                 // Persist to localStorage
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem('shadera-aspect-ratio', JSON.stringify(newState));
+                    localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify(newState));
                 }
                 return newState;
             });
@@ -43,7 +43,7 @@ const createAspectRatioStore = () => {
             const defaultState = { mode: '16:9' as AspectRatioMode };
             set(defaultState);
             if (typeof window !== 'undefined') {
-                localStorage.setItem('shadera-aspect-ratio', JSON.stringify(defaultState));
+                localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify(defaultState));
             }
         }
     };

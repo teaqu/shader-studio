@@ -7,7 +7,7 @@ import type {
   LogMessage,
   RefreshMessage,
   ShaderSourceMessage,
-} from "@shadera/types";
+} from "@shader-studio/types";
 
 export class MessageHandler {
   private shaderPipeline: ShaderPipeline;

@@ -1,10 +1,10 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import { Shadera } from '../../app/Shadera';
+import { ShaderStudio } from '../../app/ShaderStudio';
 
-suite('Shadera Test Suite', () => {
-    let shadera: Shadera;
+suite('Shader Studio Test Suite', () => {
+    let shaderStudio: ShaderStudio;
     let mockContext: vscode.ExtensionContext;
     let mockOutputChannel: vscode.LogOutputChannel;
     let mockDiagnosticCollection: vscode.DiagnosticCollection;
@@ -81,13 +81,13 @@ suite('Shadera Test Suite', () => {
             dispose: sandbox.stub()
         } as any);
 
-        shadera = new Shadera(mockContext, mockOutputChannel, mockDiagnosticCollection);
-        sendShaderSpy = sandbox.spy(shadera['shaderProcessor'], 'sendShaderToWebview');
+        shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
+        sendShaderSpy = sandbox.spy(shaderStudio['shaderProcessor'], 'sendShaderToWebview');
     });
 
     teardown(() => {
-        if (shadera) {
-            shadera.dispose();
+        if (shaderStudio) {
+            shaderStudio.dispose();
         }
         sandbox.restore();
     });
@@ -194,7 +194,7 @@ suite('Shadera Test Suite', () => {
     test('should not process shader updates when no clients are connected', () => {
         const mockEditor = createMockGLSLEditor();
 
-        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
+        assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), false);
         simulateActiveEditorChange(mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
     });
@@ -203,7 +203,7 @@ suite('Shadera Test Suite', () => {
         const mockEditor = createMockGLSLEditor();
 
         sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
-        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
+        assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), false);
         simulateTextDocumentChange(mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
     });
@@ -211,8 +211,8 @@ suite('Shadera Test Suite', () => {
     test('performShaderUpdate method respects client connection status', () => {
         const mockEditor = createMockGLSLEditor();
 
-        assert.strictEqual(shadera['messenger'].hasActiveClients(), false);
-        shadera['performShaderUpdate'](mockEditor);
+        assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), false);
+        shaderStudio['performShaderUpdate'](mockEditor);
         sinon.assert.notCalled(sendShaderSpy);
 
         const mockWebviewPanel = {
@@ -231,9 +231,9 @@ suite('Shadera Test Suite', () => {
         const fs = require('fs');
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
-        shadera['panelManager'].createPanel();
-        assert.strictEqual(shadera['messenger'].hasActiveClients(), true);
-        shadera['performShaderUpdate'](mockEditor);
+        shaderStudio['panelManager'].createPanel();
+        assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
+        shaderStudio['performShaderUpdate'](mockEditor);
         sinon.assert.calledOnce(sendShaderSpy);
         sinon.assert.calledWith(sendShaderSpy, mockEditor);
     });
@@ -255,13 +255,13 @@ suite('Shadera Test Suite', () => {
         const fs = require('fs');
         sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
 
-        shadera['panelManager'].createPanel();
-        assert.strictEqual(shadera['messenger'].hasActiveClients(), true);
+        shaderStudio['panelManager'].createPanel();
+        assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
         const mockEditor = createMockJavaScriptEditor();
-        assert.strictEqual(shadera['isGlslEditor'](mockEditor), false);
+        assert.strictEqual(shaderStudio['isGlslEditor'](mockEditor), false);
 
         const glslEditor = createMockGLSLEditor();
-        assert.strictEqual(shadera['isGlslEditor'](glslEditor), true);
+        assert.strictEqual(shaderStudio['isGlslEditor'](glslEditor), true);
     });
 });

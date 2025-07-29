@@ -1,4 +1,4 @@
-import type { ShaderConfig, BufferPass, ImagePass } from '@shadera/types';
+import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
 
 export class ConfigEditor {
     private config: ShaderConfig | null = null;

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import type { ShaderConfig } from "@shadera/types";
+import type { ShaderConfig } from "@shader-studio/types";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;

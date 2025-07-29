@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import type { ShaderConfig, ShaderSourceMessage } from "@shadera/types";
+import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 
 export class ShaderProcessor {
   private shaderBuffersMap = new Map<string, Set<string>>();

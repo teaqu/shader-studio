@@ -4,7 +4,7 @@ import type { ShaderPipeline } from "../../lib/rendering/ShaderPipeline";
 import type { TimeManager } from "../../lib/util/TimeManager";
 import type { FrameRenderer } from "../../lib/rendering/FrameRenderer";
 import type { Transport } from "../../lib/transport/MessageTransport";
-import type { ShaderSourceMessage } from "@shadera/types";
+import type { ShaderSourceMessage } from "@shader-studio/types";
 
 const createMockShaderPipeline = () => ({
   compileShaderPipeline: vi.fn(),

@@ -1,31 +1,31 @@
 import * as vscode from "vscode";
-import { Shadera } from "./app/Shadera";
+import { ShaderStudio } from "./app/ShaderStudio";
 
-let shaderExtension: Shadera | undefined;
+let shaderExtension: ShaderStudio | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	const isDevMode = process.env.NODE_ENV === "dev";
-	const outputChannel = vscode.window.createOutputChannel("Shadera", {
+	const outputChannel = vscode.window.createOutputChannel("Shader Studio", {
 		log: true,
 	});
 	outputChannel.debug("Output channel initialized");
 
 	const diagnosticCollection = vscode.languages.createDiagnosticCollection(
-		"shadera",
+		"shader-studio",
 	);
 	context.subscriptions.push(diagnosticCollection);
 
 	try {
-		shaderExtension = new Shadera(
+		shaderExtension = new ShaderStudio(
 			context,
 			outputChannel,
 			diagnosticCollection,
 		);
 
-		outputChannel.info("Shadera extension activated successfully");
+		outputChannel.info("Shader Studio extension activated successfully");
 	} catch (error) {
-		outputChannel.error(`Failed to activate Shadera extension: ${error}`);
-		vscode.window.showErrorMessage(`Shadera activation failed: ${error}`);
+		outputChannel.error(`Failed to activate Shader Studio extension: ${error}`);
+		vscode.window.showErrorMessage(`Shader Studio activation failed: ${error}`);
 	}
 }
 

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shadera/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shader-studio/types";
 
 export class MessageHandler {
   constructor(
@@ -85,10 +85,10 @@ export class MessageHandler {
     const shaderPath = message.payload?.path;
     if (shaderPath) {
       this.outputChannel.info(`Requesting refresh for shader at path: ${shaderPath}`);
-      vscode.commands.executeCommand('shadera.refreshSpecificShaderByPath', shaderPath);
+      vscode.commands.executeCommand('shader-studio.refreshSpecificShaderByPath', shaderPath);
     } else {
       this.outputChannel.info("Requesting refresh for current/active shader");
-      vscode.commands.executeCommand('shadera.refreshCurrentShader');
+      vscode.commands.executeCommand('shader-studio.refreshCurrentShader');
     }
   }
 }

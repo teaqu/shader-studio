@@ -10,4 +10,4 @@ export type {
   BufferConfigInput,
   TextureConfigInput,
   KeyboardConfigInput
-} from "@shadera/types";
+} from "@shader-studio/types";

@@ -1,14 +1,14 @@
 module.exports = {
   packagerConfig: {
     icon: 'assets/icon',
-    name: 'Shadera',
+    name: 'Shader Studio',
     overwrite: true
   },
   makers: [
     {
       name: '@electron-forge/maker-dmg',
       config: {
-        name: 'Shadera',
+        name: 'Shader Studio',
         icon: 'assets/icon.icns',
         overwrite: true
       }

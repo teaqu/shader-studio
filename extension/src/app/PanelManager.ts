@@ -59,8 +59,8 @@ export class PanelManager {
       : (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
     const panel = vscode.window.createWebviewPanel(
-      "shadera",
-      "Shadera",
+      "shader-studio",
+      "Shader Studio",
       viewColumn,
       {
         enableScripts: true,

@@ -1,16 +1,16 @@
 {
-  "name": "shadera",
-  "displayName": "Shadera",
+  "name": "shader-studio",
+  "displayName": "Shader Studio",
   "description": "GLSL shader viewer for shadertoy shaders",
   "version": "0.0.1",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/teaqu/shadera.git"
+    "url": "https://github.com/teaqu/shader-studio.git"
   },
-  "homepage": "https://github.com/teaqu/shadera",
+  "homepage": "https://github.com/teaqu/shader-studio",
   "bugs": {
-    "url": "https://github.com/teaqu/shadera/issues"
+    "url": "https://github.com/teaqu/shader-studio/issues"
   },
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -34,37 +34,37 @@
   "contributes": {
     "commands": [
       {
-        "command": "shadera.view",
-        "title": "Shadera: ShaderToy Panel"
+        "command": "shader-studio.view",
+        "title": "Shader Studio: ShaderToy Panel"
       },
       {
-        "command": "shadera.startWebServer",
-        "title": "Shadera: Start Web Server"
+        "command": "shader-studio.startWebServer",
+        "title": "Shader Studio: Start Web Server"
       },
       {
-        "command": "shadera.stopWebServer",
-        "title": "Shadera: Stop Web Server"
+        "command": "shader-studio.stopWebServer",
+        "title": "Shader Studio: Stop Web Server"
       },
       {
-        "command": "shadera.showWebServerMenu",
-        "title": "Shadera: Web Server Menu"
+        "command": "shader-studio.showWebServerMenu",
+        "title": "Shader Studio: Web Server Menu"
       },
       {
-        "command": "shadera.generateConfig",
-        "title": "Shadera: Generate Config for GLSL File"
+        "command": "shader-studio.generateConfig",
+        "title": "Shader Studio: Generate Config for GLSL File"
       },
       {
-        "command": "shadera.toggleConfigView",
-        "title": "Shadera: Toggle JSON/UI View"
+        "command": "shader-studio.toggleConfigView",
+        "title": "Shader Studio: Toggle JSON/UI View"
       },
       {
-        "command": "shadera.openInElectron",
-        "title": "Shadera: Open Window"
+        "command": "shader-studio.openInElectron",
+        "title": "Shader Studio: Open Window"
       }
     ],
     "customEditors": [
       {
-        "viewType": "shadera.configEditor",
+        "viewType": "shader-studio.configEditor",
         "displayName": "Shader Config Editor",
         "selector": [
           {
@@ -75,16 +75,16 @@
       }
     ],
     "configuration": {
-      "title": "Shadera",
+      "title": "Shader Studio",
       "properties": {
-        "shadera.webServerPort": {
+        "shader-studio.webServerPort": {
           "type": "number",
           "default": 3000,
           "minimum": 1024,
           "maximum": 65535,
           "description": "Port number for the HTTP web server (default from monorepo config)"
         },
-        "shadera.webSocketPort": {
+        "shader-studio.webSocketPort": {
           "type": "number",
           "default": 51472,
           "minimum": 1024,
@@ -131,7 +131,7 @@
   },
   "dependencies": {
     "@electron/get": "^3.1.0",
-    "@shadera/types": "*",
+    "@shader-studio/types": "*",
     "@types/yauzl": "^2.10.3",
     "ws": "^8.18.3",
     "yauzl": "^3.2.0"

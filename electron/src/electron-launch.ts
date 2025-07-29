@@ -29,7 +29,7 @@ let settings: Settings = {
 
 const settingsPath: string = path.join(app.getPath('userData'), 'settings.json');
 
-app.setName('Shadera');
+app.setName('Shader Studio');
 
 function loadSettings(): void {
     try {
@@ -60,7 +60,7 @@ function updateWindowBackground(): void {
 function createMenu(): void {
     const template: Electron.MenuItemConstructorOptions[] = [
         {
-            label: 'shadera',
+            label: 'shader-studio',
             submenu: [
                 {
                     label: 'Always on Top',
@@ -165,7 +165,7 @@ app.whenReady().then(() => {
         y: settings.windowBounds.y,
         alwaysOnTop: settings.alwaysOnTop,
         frame: true,
-        title: 'Shadera',
+        title: 'Shader Studio',
         icon: icon.isEmpty() ? undefined : icon,
         backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff',
         webPreferences: {

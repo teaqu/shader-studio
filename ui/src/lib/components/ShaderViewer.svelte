@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { Shadera } from "../shadera";
+  import { ShaderStudio } from "../ShaderStudio";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
   import type { AspectRatioMode } from "../stores/aspectRatioStore";
@@ -10,7 +10,7 @@
   import ErrorDisplay from "./ErrorDisplay.svelte";
 
   export let onInitialized: (data: {
-    shadera: Shadera;
+    shaderStudio: ShaderStudio;
   }) => void = () => {};
 
   let glCanvas: HTMLCanvasElement;
@@ -23,7 +23,7 @@
   let canvasHeight = 0;
   let zoomLevel = 1.0;
 
- let shadera: Shadera;
+ let shaderStudio: ShaderStudio;
   let transport: Transport;
   let timeManager: any = null;
   let keyboardManager: any = null;
@@ -39,13 +39,13 @@
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    shadera!.handleCanvasResize(width, height);
+    shaderStudio!.handleCanvasResize(width, height);
   }
 
   function handleReset() {
     if (!initialized) return;
-    shadera.handleReset(() => {
-      const lastEvent = shadera!.getLastShaderEvent();
+    shaderStudio.handleReset(() => {
+      const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
         handleShaderMessage(lastEvent);
       }
@@ -54,18 +54,18 @@
 
   function handleRefresh() {
     if (!initialized) return;
-    shadera.handleRefresh();
+    shaderStudio.handleRefresh();
   }
 
   function handleTogglePause() {
     if (!initialized) return;
-    shadera.handleTogglePause();
+    shaderStudio.handleTogglePause();
   }
 
   function handleToggleLock() {
     if (!initialized) return;
-    shadera.handleToggleLock();
-    isLocked = shadera.getIsLocked();
+    shaderStudio.handleToggleLock();
+    isLocked = shaderStudio.getIsLocked();
   }
 
   function handleAspectRatioChange(mode: AspectRatioMode) {
@@ -89,23 +89,23 @@
     try {
       transport = createTransport();
 
-      shadera = new Shadera(transport);
+      shaderStudio = new ShaderStudio(transport);
 
-      const success = await shadera.initialize(glCanvas);
+      const success = await shaderStudio.initialize(glCanvas);
       if (!success) {
-        addError("Failed to initialize Shadera");
+        addError("Failed to initialize ShaderStudio");
         return;
       }
 
       transport.onMessage(handleShaderMessage);
 
-      timeManager = shadera.getTimeManager();
-      keyboardManager = shadera.getKeyboardManager();
-      mouseManager = shadera.getMouseManager();
+      timeManager = shaderStudio.getTimeManager();
+      keyboardManager = shaderStudio.getKeyboardManager();
+      mouseManager = shaderStudio.getMouseManager();
 
       initialized = true;
 
-      onInitialized({ shadera });
+      onInitialized({ shaderStudio });
     } catch (err) {
       addError(`Initialization failed: ${err}`);
     }
@@ -115,17 +115,17 @@
     if (!initialized) return;
 
     try {
-      await shadera.handleShaderMessage(event);
+      await shaderStudio.handleShaderMessage(event);
       // Update the UI lock state to reflect the current state
-      isLocked = shadera.getIsLocked();
+      isLocked = shaderStudio.getIsLocked();
     } catch (err) {
       const errorMsg = `Shader message handling failed: ${err}`;
-      console.error("Shaderaer: Error in handleShaderMessage:", err);
+      console.error("ShaderStudio: Error in handleShaderMessage:", err);
       console.error(
-        "Shaderaer: Error stack:",
+        "ShaderStudio: Error stack:",
         err instanceof Error ? err.stack : "No stack",
       );
-      console.error("Shaderaer: Event data:", event.data);
+      console.error("ShaderStudio: Event data:", event.data);
       addError(errorMsg);
     }
   }
@@ -140,8 +140,8 @@
 
   onMount(() => {
     const fpsInterval = setInterval(() => {
-      if (initialized && shadera) {
-        currentFPS = shadera.getCurrentFPS();
+      if (initialized && shaderStudio) {
+        currentFPS = shaderStudio.getCurrentFPS();
       }
     }, 100);
 
@@ -149,8 +149,8 @@
   });
 
   onDestroy(() => {
-    if (shadera) {
-      shadera.dispose();
+    if (shaderStudio) {
+      shaderStudio.dispose();
     }
     if (transport) {
       transport.dispose();
