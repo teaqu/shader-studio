@@ -2,7 +2,6 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { Shadera } from '../../app/Shadera';
-import { Logger } from '../../app/services/Logger';
 
 suite('Shadera Test Suite', () => {
     let shadera: Shadera;

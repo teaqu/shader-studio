@@ -100,7 +100,7 @@ suite('PanelManager Test Suite', () => {
         // Then
         assert.ok(createWebviewPanelStub.calledOnce);
         const createPanelArgs = createWebviewPanelStub.getCall(0).args;
-        assert.strictEqual(createPanelArgs[0], 'Shadera');
+        assert.strictEqual(createPanelArgs[0], 'shadera');
         assert.strictEqual(createPanelArgs[1], 'Shadera');
         assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
 

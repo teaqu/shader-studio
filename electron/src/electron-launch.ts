@@ -60,7 +60,7 @@ function updateWindowBackground(): void {
 function createMenu(): void {
     const template: Electron.MenuItemConstructorOptions[] = [
         {
-            label: 'Shadera',
+            label: 'shadera',
             submenu: [
                 {
                     label: 'Always on Top',

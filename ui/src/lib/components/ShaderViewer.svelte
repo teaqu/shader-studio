@@ -140,7 +140,7 @@
 
   onMount(() => {
     const fpsInterval = setInterval(() => {
-      if (initialized && Shadera) {
+      if (initialized && shadera) {
         currentFPS = shadera.getCurrentFPS();
       }
     }, 100);
