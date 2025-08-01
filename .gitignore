@@ -15,6 +15,7 @@ coverage/
 !.vscode/tasks.json
 !.vscode/launch.json
 .history/
+.github
 
 # Logs
 logs

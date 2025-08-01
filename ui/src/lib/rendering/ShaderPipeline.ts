@@ -4,6 +4,7 @@ import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass } from "../models";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
+import type { TimeManager } from "../util/TimeManager";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
@@ -11,6 +12,7 @@ export class ShaderPipeline {
   private resourceManager: ResourceManager;
   private renderer: PiRenderer;
   private bufferManager: BufferManager;
+  private timeManager: TimeManager;
   private currentShaderRenderID = 0;
   private shaderPath = "";
   private passes: Pass[] = [];
@@ -22,12 +24,14 @@ export class ShaderPipeline {
     resourceManager: ResourceManager,
     renderer: PiRenderer,
     bufferManager: BufferManager,
+    timeManager: TimeManager
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
     this.resourceManager = resourceManager;
     this.renderer = renderer;
     this.bufferManager = bufferManager;
+    this.timeManager = timeManager;
   }
 
   private isBufferPass(pass: any): pass is BufferPass {
@@ -90,10 +94,11 @@ export class ShaderPipeline {
   private prepareNewCompilation(path: string): void {
     this.currentShaderRenderID++;
 
-    if (this.shaderPath !== path) {
-      this.shaderPath = path;
+    if (this.shaderPath !== "" && this.shaderPath !== path) {
       this.cleanup();
     }
+
+    this.shaderPath = path;
   }
 
   private buildPasses(
@@ -129,14 +134,12 @@ export class ShaderPipeline {
   }
 
   private async compileShaders(): Promise<CompilationResult> {
-    // Keep track of old resources to clean up later
     const oldPassShaders = { ...this.passShaders };
     const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
 
     const newPassShaders: Record<string, PiShader> = {};
     const newPassBuffers: Record<string, any> = {};
 
-    // Compile shaders
     for (const pass of this.passes) {
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc);
@@ -149,7 +152,6 @@ export class ShaderPipeline {
           svelteHeaderLines,
         ) : "Failed to compile shader";
 
-        // Clean up partially compiled shaders
         this.cleanupPartialShaders(newPassShaders);
 
         return {
@@ -161,7 +163,6 @@ export class ShaderPipeline {
       newPassShaders[pass.name] = shader;
       this.passShaders[pass.name] = shader;
 
-      // Create buffers for non-Image passes
       if (pass.name !== "Image") {
         if (oldPassBuffers[pass.name]) {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
@@ -216,7 +217,7 @@ export class ShaderPipeline {
     this.resourceManager.cleanup();
     this.cleanupShaders();
     this.bufferManager.dispose();
-    this.currentShaderRenderID++;
+    this.timeManager.cleanup();
   }
 
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {

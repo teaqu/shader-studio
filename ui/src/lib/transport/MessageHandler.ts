@@ -11,7 +11,6 @@ import type {
 
 export class MessageHandler {
   private shaderPipeline: ShaderPipeline;
-  private timeManager: TimeManager;
   private frameRenderer: FrameRenderer;
   private transport: Transport;
   private isHandlingMessage = false;
@@ -19,12 +18,10 @@ export class MessageHandler {
 
   constructor(
     shaderPipeline: ShaderPipeline,
-    timeManager: TimeManager,
     frameRenderer: FrameRenderer,
     transport: Transport,
   ) {
     this.shaderPipeline = shaderPipeline;
-    this.timeManager = timeManager;
     this.frameRenderer = frameRenderer;
     this.transport = transport;
   }
@@ -51,16 +48,6 @@ export class MessageHandler {
           "MessageHandler: Ignoring message - wrong type or already handling",
         );
         return { running: false };
-      }
-
-      // Check if this is a different shader file and reset if needed
-      if (this.lastEvent && this.lastEvent.data) {
-        const lastShaderData = this.lastEvent.data as ShaderSourceMessage;
-        const isDifferentShaderFile = lastShaderData.path !== path;
-
-        if (isDifferentShaderFile) {
-          this.cleanup();
-        }
       }
 
       this.isHandlingMessage = true;
@@ -149,7 +136,6 @@ export class MessageHandler {
 
   private cleanup() {
     this.shaderPipeline.cleanup();
-    this.timeManager.cleanup();
   }
 
   public refresh(path?: string): void {

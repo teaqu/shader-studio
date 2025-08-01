@@ -75,6 +75,7 @@ export class ShaderStudio {
         this.resourceManager,
         this.renderer,
         this.bufferManager,
+        this.timeManager
       );
 
       this.passRenderer = new PassRenderer(
@@ -98,7 +99,6 @@ export class ShaderStudio {
 
       this.messageHandler = new MessageHandler(
         this.shaderPipeline,
-        this.timeManager,
         this.frameRenderer,
         this.transport,
       );
