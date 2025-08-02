@@ -13,6 +13,7 @@ export class WebServer {
 
   constructor(
     private context: vscode.ExtensionContext,
+    private devMode: boolean = false,
   ) {
     this.logger = Logger.getInstance();
     this.statusBar = new ShaderStudioStatusBar(context);
@@ -52,8 +53,9 @@ export class WebServer {
       this.httpServer.close();
     }
 
-    const uiDistPath =
-      vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
+    const uiDistPath = this.devMode
+      ? vscode.Uri.joinPath(this.context.extensionUri, "..", "ui", "dist").fsPath
+      : vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
 
     this.httpServer = http.createServer((req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");

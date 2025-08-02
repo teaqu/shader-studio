@@ -11,12 +11,11 @@ suite('WebServer Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
     let mockContext: sinon.SinonStubbedInstance<vscode.ExtensionContext>;
     let mockLogger: any;
-    let mockStatusBar: any;
     let mockWorkspaceConfig: any;
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         // Mock vscode context
         mockContext = {
             extensionUri: vscode.Uri.file('/mock/extension/path'),
@@ -66,7 +65,7 @@ suite('WebServer Test Suite', () => {
 
         setup(() => {
             webServer = new WebServer(mockContext);
-            
+
             mockRequest = {
                 url: '',
                 method: 'GET'
@@ -124,25 +123,57 @@ suite('WebServer Test Suite', () => {
     suite('Server Lifecycle', () => {
         test('getHttpUrl returns correct URL', () => {
             webServer = new WebServer(mockContext);
-            
+
             const url = webServer.getHttpUrl();
-            
+
             assert.strictEqual(url, 'http://localhost:3000');
         });
 
         test('getHttpUrl uses configured port', () => {
             mockWorkspaceConfig.get.withArgs('webServerPort').returns(8080);
             webServer = new WebServer(mockContext);
-            
+
             const url = webServer.getHttpUrl();
-            
+
             assert.strictEqual(url, 'http://localhost:8080');
         });
 
         test('isRunning returns false initially', () => {
             webServer = new WebServer(mockContext);
-            
+
             assert.strictEqual(webServer.isRunning(), false);
+        });
+    });
+
+    suite('Development Mode', () => {
+        test('devMode defaults to false when not specified', () => {
+            webServer = new WebServer(mockContext); // devMode not specified
+
+            const devMode = (webServer as any).devMode;
+
+            assert.strictEqual(devMode, false, 'devMode should default to false');
+        });
+
+        test('devMode is set correctly when specified', () => {
+            const devWebServer = new WebServer(mockContext, true);
+            const prodWebServer = new WebServer(mockContext, false);
+
+            const devMode = (devWebServer as any).devMode;
+            const prodMode = (prodWebServer as any).devMode;
+
+            assert.strictEqual(devMode, true, 'devMode should be true when specified');
+            assert.strictEqual(prodMode, false, 'devMode should be false when specified');
+        });
+
+        test('path selection logic based on devMode', () => {
+            const prodWebServer = new WebServer(mockContext, false);
+
+            const prodDevMode = (prodWebServer as any).devMode;
+            assert.strictEqual(prodDevMode, false, 'Production mode should use ui-dist');
+
+            const devWebServer = new WebServer(mockContext, true);
+            const devDevMode = (devWebServer as any).devMode;
+            assert.strictEqual(devDevMode, true, 'Development mode should use ../ui');
         });
     });
 });

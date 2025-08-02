@@ -43,7 +43,7 @@ export class ShaderStudio {
       this.shaderProcessor,
       this.glslFileTracker,
     );
-    this.webServer = new WebServer(context);
+    this.webServer = new WebServer(context, this.isDevelopmentMode());
     this.electronLauncher = new ElectronLauncher(context, this.logger);
 
     // Register custom editor for .sha.json files
