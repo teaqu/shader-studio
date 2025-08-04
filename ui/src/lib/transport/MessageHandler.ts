@@ -81,13 +81,6 @@ export class MessageHandler {
 
         this.lastEvent = event;
 
-        // Start render loop if not already running
-        if (!this.frameRenderer.isRunning()) {
-          console.log("MessageHandler: Starting render loop");
-          this.frameRenderer.startRenderLoop();
-        }
-
-        console.log("MessageHandler: Shader processing complete");
         return { running: true };
       } finally {
         this.isHandlingMessage = false;

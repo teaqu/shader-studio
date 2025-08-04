@@ -1,5 +1,5 @@
-import type { PiRenderer, PiTexture, PiRenderTarget, PiShader } from "../types/piRenderer";
-import type { Buffer, Buffers } from "../models";
+import type { PiRenderer, PiTexture, PiRenderTarget, PiShader } from "./types/piRenderer";
+import type { Buffer, Buffers } from "./models";
 
 export class BufferManager {
   private buffers: Buffers = {};

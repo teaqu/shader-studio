@@ -1,7 +1,7 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { PiRenderer, PiTexture } from "./types/piRenderer";
 import { TextureCache } from "./resources/TextureCache";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { TextureConfigInput } from "../models/ShaderConfig";
+import type { TextureConfigInput } from "./models/ShaderConfig";
 
 export class ResourceManager {
   private readonly textureCache: TextureCache;

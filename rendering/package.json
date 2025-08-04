@@ -1,0 +1,17 @@
+{
+  "name": "@shader-studio/rendering",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@shader-studio/types": "*"
+  }
+}

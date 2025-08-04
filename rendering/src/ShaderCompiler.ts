@@ -1,4 +1,4 @@
-import type { PiRenderer, PiShader } from "../types/piRenderer";
+import type { PiRenderer, PiShader } from "./types/piRenderer";
 
 export class ShaderCompiler {
   constructor(private renderer: PiRenderer) { }

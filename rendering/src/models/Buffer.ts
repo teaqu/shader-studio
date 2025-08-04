@@ -1,4 +1,4 @@
-import type { PiRenderTarget } from "../types/piRenderer";
+import type { PiRenderTarget } from "../../ui/src/lib/types/piRenderer";
 
 export interface Buffer {
   front: PiRenderTarget | null;
