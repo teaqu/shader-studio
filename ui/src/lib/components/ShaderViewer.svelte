@@ -26,8 +26,6 @@
  let shaderStudio: ShaderStudio;
   let transport: Transport;
   let timeManager: any = null;
-  let keyboardManager: any = null;
-  let mouseManager: any = null;
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -100,8 +98,6 @@
       transport.onMessage(handleShaderMessage);
 
       timeManager = shaderStudio.getTimeManager();
-      keyboardManager = shaderStudio.getKeyboardManager();
-      mouseManager = shaderStudio.getMouseManager();
 
       initialized = true;
 
@@ -160,8 +156,6 @@
 
 <div class="main-container">
   <ShaderCanvas
-    {keyboardManager}
-    {mouseManager}
     {zoomLevel}
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
