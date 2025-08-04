@@ -19,7 +19,7 @@
   import fullscreenIcon from "../../assets/fullscreen.svg?raw";
   import menuIcon from "../../assets/menu.svg?raw";
 
-  import { piRequestFullScreen } from "../../../vendor/pilibs/src/piWebUtils.js";
+  import { piRequestFullScreen } from "../../../../vendor/pilibs/src/piWebUtils.js";
 
   export let timeManager: any;
   export let currentFPS: number;

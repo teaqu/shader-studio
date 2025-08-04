@@ -7,7 +7,7 @@ import { aspectRatioStore } from '../lib/stores/aspectRatioStore';
 import { qualityStore } from '../lib/stores/qualityStore';
 
 // Mock the piWebUtils module
-vi.mock('../../vendor/pilibs/src/piWebUtils.js', () => ({
+vi.mock('../../../vendor/pilibs/src/piWebUtils.js', () => ({
   piRequestFullScreen: vi.fn()
 }));
 
@@ -307,7 +307,8 @@ describe('MenuBar Component', () => {
     });
 
     it('should call piRequestFullScreen when fullscreen button is clicked', async () => {
-      const { piRequestFullScreen } = await import('../../vendor/pilibs/src/piWebUtils.js');
+      // Get the mocked function from the module mock
+      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
       
       render(MenuBar, { 
         props: { 

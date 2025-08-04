@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ShaderLocker } from '../lib/util/ShaderLocker';
+import { ShaderLocker } from '../util/ShaderLocker';
 
 describe('ShaderLocker', () => {
     let shaderLocker: ShaderLocker;
@@ -16,7 +16,7 @@ describe('ShaderLocker', () => {
         });
 
         it('then should have no locked shader path', () => {
-            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
         });
 
         it('then should process any shader', () => {
@@ -38,7 +38,7 @@ describe('ShaderLocker', () => {
             shaderLocker.toggleLock();
 
             expect(shaderLocker.getIsLocked()).toBe(true);
-            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
             expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader at path: unknown');
         });
     });
@@ -51,7 +51,7 @@ describe('ShaderLocker', () => {
             shaderLocker.toggleLock();
 
             expect(shaderLocker.getIsLocked()).toBe(false);
-            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
             expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Unlocked');
         });
     });
@@ -100,7 +100,7 @@ describe('ShaderLocker', () => {
         it('then should not update shader path if not locked', () => {
             shaderLocker.updateLockedShader('test.glsl');
 
-            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
             expect(shaderLocker.getIsLocked()).toBe(false);
         });
     });
@@ -113,7 +113,7 @@ describe('ShaderLocker', () => {
 
             shaderLocker.toggleLock();
             expect(shaderLocker.getIsLocked()).toBe(false);
-            expect(shaderLocker.getLockedShaderPath()).toBe(null);
+            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
 
             shaderLocker.toggleLock('shader2.glsl');
             expect(shaderLocker.getIsLocked()).toBe(true);

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { FPSCalculator } from '../../../src/lib/util/FPSCalculator';
+import { describe, it, expect, beforeEach } from "vitest";
+import { FPSCalculator } from "../../util/FPSCalculator";
 
 describe('FPSCalculator', () => {
     let fpsCalculator: FPSCalculator;

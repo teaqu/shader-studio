@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BufferManager } from '../lib/rendering/BufferManager';
-import type { PiRenderer } from '../lib/types/piRenderer';
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { BufferManager } from "../BufferManager";
+import type { PiRenderer } from '../types/piRenderer';
 
 // Mock renderer implementation
 const createMockRenderer = (): PiRenderer => {

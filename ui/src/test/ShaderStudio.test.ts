@@ -47,6 +47,10 @@ describe("Shader Studio locker integration", () => {
     });
 
     describe("when checking lock state", () => {
+        beforeEach(async () => {
+            await shaderStudio.initialize(mockCanvas);
+        });
+
         it("then should not be locked initially", () => {
             expect(shaderStudio.getIsLocked()).toBe(false);
         });
@@ -153,19 +157,14 @@ describe("Shader Studio locker integration", () => {
             } as MessageEvent;
 
             const mockMessageHandler = {
-                handleShaderMessage: vi.fn().mockResolvedValue({
-                    running: true,
-                }),
+                handleShaderMessage: vi.fn()
+                    .mockResolvedValueOnce({ running: true })  // First call succeeds
+                    .mockResolvedValueOnce({ running: false }), // Second call fails (locked)
                 getLastEvent: vi.fn().mockReturnValue(firstEvent),
             };
 
             vi.spyOn(shaderStudio as any, "messageHandler", "get")
                 .mockReturnValue(mockMessageHandler);
-            vi.spyOn(shaderStudio as any, "frameRenderer", "get").mockReturnValue(
-                {
-                    isRunning: vi.fn().mockReturnValue(false),
-                },
-            );
 
             await shaderStudio.handleShaderMessage(firstEvent);
             shaderStudio.handleToggleLock();

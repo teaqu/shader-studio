@@ -6,12 +6,16 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "test": "vitest"
   },
   "files": [
     "dist"
   ],
   "dependencies": {
     "@shader-studio/types": "*"
+  },
+  "devDependencies": {
+    "vitest": "*"
   }
 }

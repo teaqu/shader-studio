@@ -1,5 +1,6 @@
 import type { ShaderConfig } from "@shader-studio/types";
-import { CompilationResult } from "../models";
+import type { CompilationResult } from "../models";
+import type { TimeManager } from "../util/TimeManager";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement): void;
@@ -13,6 +14,8 @@ export interface RenderingEngine {
   isLockedShader(): boolean;
   togglePause(): void;
   toggleLock(path: string): void;
+  getLockedShaderPath(): string | undefined;
+  getTimeManager(): TimeManager;
   stopRenderLoop(): void;
   getCurrentFPS(): number;
   cleanup(): void;

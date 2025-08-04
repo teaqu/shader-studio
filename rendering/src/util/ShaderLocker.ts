@@ -1,12 +1,12 @@
 export class ShaderLocker {
     private isLocked = false;
-    private lockedShaderPath: string | null = null;
+    private lockedShaderPath?: string;
 
     public getIsLocked(): boolean {
         return this.isLocked;
     }
 
-    public getLockedShaderPath(): string | null {
+    public getLockedShaderPath(): string | undefined {
         return this.lockedShaderPath;
     }
 
@@ -14,10 +14,10 @@ export class ShaderLocker {
         this.isLocked = !this.isLocked;
 
         if (this.isLocked) {
-            this.lockedShaderPath = currentShaderPath || null;
+            this.lockedShaderPath = currentShaderPath;
             console.log(`ShaderLocker: Locked to shader at path: ${this.lockedShaderPath || 'unknown'}`);
         } else {
-            this.lockedShaderPath = null;
+            this.lockedShaderPath = undefined;
             console.log('ShaderLocker: Unlocked');
         }
     }

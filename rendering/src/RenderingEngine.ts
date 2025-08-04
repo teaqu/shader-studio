@@ -1,4 +1,4 @@
-import { piRenderer } from "../vendor/pilibs/src/piRenderer";
+import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "./ResourceManager";
 import { BufferManager } from "./BufferManager";
@@ -12,9 +12,9 @@ import { FPSCalculator } from "./util/FPSCalculator";
 import { ShaderLocker } from "./util/ShaderLocker";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
-import { CompilationResult } from "./models";
+import type { CompilationResult } from "./models";
 
-export class RenderingEngineImpl implements RenderingEngineInterface {
+export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
 
@@ -48,6 +48,9 @@ export class RenderingEngineImpl implements RenderingEngineInterface {
     this.timeManager = new TimeManager();
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
+
+    this.keyboardManager.setupEventListeners();
+    this.mouseManager.setupEventListeners(glCanvas);
 
     this.shaderPipeline = new ShaderPipeline(
       glCanvas,
@@ -151,6 +154,14 @@ export class RenderingEngineImpl implements RenderingEngineInterface {
 
   public cleanup(): void {
     this.shaderPipeline.cleanup();
+  }
+
+  public getLockedShaderPath(): string | undefined {
+    return this.shaderLocker.getLockedShaderPath();
+  }
+
+  public getTimeManager(): TimeManager {
+    return this.timeManager;
   }
 
   dispose(): void {

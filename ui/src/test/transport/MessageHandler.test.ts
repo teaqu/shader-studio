@@ -1,22 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageHandler } from "../../lib/transport/MessageHandler";
-import type { ShaderPipeline } from "../../lib/rendering/ShaderPipeline";
-import type { FrameRenderer } from "../../lib/rendering/FrameRenderer";
+import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import type { Transport } from "../../lib/transport/MessageTransport";
 import type { ShaderSourceMessage } from "@shader-studio/types";
 
-const createMockShaderPipeline = () => ({
+const createMockRenderingEngine = () => ({
   compileShaderPipeline: vi.fn(),
   cleanup: vi.fn(),
-  getPass: vi.fn(),
-  getPasses: vi.fn(),
-});
-
-const createMockFrameRenderer = () => ({
-  isRunning: vi.fn(),
-  startRenderLoop: vi.fn(),
+  isLockedShader: vi.fn().mockReturnValue(false),
+  togglePause: vi.fn(),
+  toggleLock: vi.fn(),
   stopRenderLoop: vi.fn(),
-  render: vi.fn(),
+  getCurrentFPS: vi.fn().mockReturnValue(60),
+  getLockedShaderPath: vi.fn(),
+  dispose: vi.fn(),
 });
 
 const createMockTransport = () => ({
@@ -29,18 +26,15 @@ const createMockTransport = () => ({
 
 describe("MessageHandler", () => {
   let messageHandler: MessageHandler;
-  let mockShaderPipeline: ReturnType<typeof createMockShaderPipeline>;
-  let mockFrameRenderer: ReturnType<typeof createMockFrameRenderer>;
+  let mockRenderingEngine: ReturnType<typeof createMockRenderingEngine>;
   let mockTransport: ReturnType<typeof createMockTransport>;
 
   beforeEach(() => {
-    mockShaderPipeline = createMockShaderPipeline();
-    mockFrameRenderer = createMockFrameRenderer();
+    mockRenderingEngine = createMockRenderingEngine();
     mockTransport = createMockTransport();
 
     messageHandler = new MessageHandler(
-      mockShaderPipeline as unknown as ShaderPipeline,
-      mockFrameRenderer as unknown as FrameRenderer,
+      mockRenderingEngine as unknown as RenderingEngine,
       mockTransport as unknown as Transport,
     );
 
@@ -53,7 +47,7 @@ describe("MessageHandler", () => {
     it("should call cleanup", () => {
       messageHandler.reset();
 
-      expect(mockShaderPipeline.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
     });
 
     it("should call onReset callback when lastEvent exists", async () => {
@@ -67,17 +61,16 @@ describe("MessageHandler", () => {
         } as ShaderSourceMessage,
       } as MessageEvent;
 
-      mockShaderPipeline.compileShaderPipeline.mockResolvedValue({
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
         success: true,
       });
-      mockFrameRenderer.isRunning.mockReturnValue(false);
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
       const onResetCallback = vi.fn();
       messageHandler.reset(onResetCallback);
 
-      expect(mockShaderPipeline.cleanup).toHaveBeenCalled();
+      expect(mockRenderingEngine.cleanup).toHaveBeenCalled();
       expect(onResetCallback).toHaveBeenCalledTimes(1);
     });
 

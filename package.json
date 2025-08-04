@@ -5,6 +5,7 @@
   "description": "A VS Code extension for viewing and editing shaders with Electron desktop app",
   "workspaces": [
     "types",
+    "rendering",
     "extension",
     "ui",
     "config-ui",
