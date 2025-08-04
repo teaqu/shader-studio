@@ -1,6 +1,4 @@
-import type { ShaderPipeline } from "../rendering/ShaderPipeline";
-import type { TimeManager } from "../util/TimeManager";
-import type { FrameRenderer } from "../rendering/FrameRenderer";
+import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import type { Transport } from "./MessageTransport";
 import type {
   ErrorMessage,
@@ -10,19 +8,16 @@ import type {
 } from "@shader-studio/types";
 
 export class MessageHandler {
-  private shaderPipeline: ShaderPipeline;
-  private frameRenderer: FrameRenderer;
+  private renderEngine: RenderingEngine;
   private transport: Transport;
   private isHandlingMessage = false;
   private lastEvent: MessageEvent | null = null;
 
   constructor(
-    shaderPipeline: ShaderPipeline,
-    frameRenderer: FrameRenderer,
+    renderEngine: RenderingEngine,
     transport: Transport,
   ) {
-    this.shaderPipeline = shaderPipeline;
-    this.frameRenderer = frameRenderer;
+    this.renderEngine = renderEngine;
     this.transport = transport;
   }
 
@@ -53,18 +48,18 @@ export class MessageHandler {
       this.isHandlingMessage = true;
       try {
         console.log("MessageHandler: Compiling shader pipeline...");
-        const result = await this.shaderPipeline.compileShaderPipeline(
+        const result = await this.renderEngine.compileShaderPipeline(
           code,
           config,
           path,
           buffers,
         );
 
-        if (!result.success) {
-          console.log("MessageHandler: Compilation failed:", result.error);
+        if (!result || !result.success) {
+          console.log("MessageHandler: Compilation failed:", result?.error);
           const errorMessage: ErrorMessage = {
             type: "error",
-            payload: [result.error || "Unknown compilation error"],
+            payload: [result?.error || "Unknown compilation error"],
           };
           this.transport.postMessage(errorMessage);
           return { running: true };
@@ -128,7 +123,7 @@ export class MessageHandler {
   }
 
   private cleanup() {
-    this.shaderPipeline.cleanup();
+    this.renderEngine.cleanup();
   }
 
   public refresh(path?: string): void {

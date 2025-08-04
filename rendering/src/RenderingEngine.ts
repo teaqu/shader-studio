@@ -10,11 +10,11 @@ import { PassRenderer } from "./PassRenderer";
 import { FrameRenderer } from "./FrameRenderer";
 import { FPSCalculator } from "./util/FPSCalculator";
 import { ShaderLocker } from "./util/ShaderLocker";
-import type { PiRenderer } from "./types/piRenderer";
+import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
 import { CompilationResult } from "./models";
 
-export class RenderingEngine {
+export class RenderingEngineImpl implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
   private renderer!: PiRenderer;
 
@@ -147,6 +147,10 @@ export class RenderingEngine {
 
   public getCurrentFPS(): number {
     return this.frameRenderer.getCurrentFPS();
+  }
+
+  public cleanup(): void {
+    this.shaderPipeline.cleanup();
   }
 
   dispose(): void {
