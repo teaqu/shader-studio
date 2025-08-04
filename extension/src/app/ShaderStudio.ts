@@ -10,6 +10,7 @@ import { Logger } from "./services/Logger";
 import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { ConfigViewToggler } from "./ConfigViewToggler";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -22,6 +23,7 @@ export class ShaderStudio {
   private electronLauncher: ElectronLauncher;
   private configEditorProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
+  private configViewToggler: ConfigViewToggler;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -32,6 +34,8 @@ export class ShaderStudio {
 
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
+
+    this.configViewToggler = new ConfigViewToggler(this.logger);
 
     this.glslFileTracker = new GlslFileTracker(context);
 
@@ -206,6 +210,13 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.toggleConfigViewToSource", () => {
+        this.logger.info("shader-studio.toggleConfigViewToSource command executed");
+        this.toggleConfigView();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshCurrentShader",
         () => {
@@ -334,56 +345,7 @@ export class ShaderStudio {
   }
 
   private async toggleConfigView(): Promise<void> {
-    const activeEditor = vscode.window.activeTextEditor;
-    const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-
-    // Check if we have a .sha.json file either in text editor or custom editor
-    let documentUri: vscode.Uri | undefined;
-    let isCustomEditor = false;
-
-    if (activeEditor && activeEditor.document.fileName.endsWith(".sha.json")) {
-      // Text editor with .sha.json file
-      documentUri = activeEditor.document.uri;
-      isCustomEditor = false;
-    } else if (
-      currentTab?.input instanceof vscode.TabInputCustom &&
-      (currentTab.input as vscode.TabInputCustom).viewType ===
-      "shader-studio.configEditor"
-    ) {
-      // Custom editor for .sha.json file
-      documentUri = (currentTab.input as vscode.TabInputCustom).uri;
-      isCustomEditor = true;
-    }
-
-    if (!documentUri) {
-      return;
-    }
-
-    try {
-      if (isCustomEditor) {
-        // Switch to text editor
-        await vscode.commands.executeCommand(
-          "vscode.openWith",
-          documentUri,
-          "default",
-        );
-      } else {
-        // Switch to custom editor
-        await vscode.commands.executeCommand(
-          "vscode.openWith",
-          documentUri,
-          "shader-studio.configEditor",
-        );
-      }
-
-      // Refresh the status bar toggle button after a short delay
-      setTimeout(() => {
-        this.webServer.getStatusBar().refreshConfigToggle();
-      }, 100);
-    } catch (error) {
-      this.logger.error(`Failed to toggle config view: ${error}`);
-      vscode.window.showErrorMessage(`Failed to toggle view: ${error}`);
-    }
+    await this.configViewToggler.toggle();
   }
 
   private refreshCurrentShader(): void {

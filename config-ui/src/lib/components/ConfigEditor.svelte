@@ -90,9 +90,6 @@
 <div class="config-editor">
   <div class="header">
     <h1>Shader Configuration</h1>
-    <p class="subtitle">
-      Click the "JSON" button in the status bar to edit the raw JSON directly
-    </p>
   </div>
 
   {#if error}

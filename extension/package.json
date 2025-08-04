@@ -55,13 +55,33 @@
       },
       {
         "command": "shader-studio.toggleConfigView",
-        "title": "Shader Studio: Toggle JSON/UI View"
+        "title": "Open Preview to the Side",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "shader-studio.toggleConfigViewToSource",
+        "title": "Show Source",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "shader-studio.openInElectron",
         "title": "Shader Studio: Open Window"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "shader-studio.toggleConfigView",
+          "when": "resourceFilename =~ /.*\\.sha\\.json$/ && !activeCustomEditorId",
+          "group": "navigation@1"
+        },
+        {
+          "command": "shader-studio.toggleConfigViewToSource",
+          "when": "activeCustomEditorId == shader-studio.configEditor",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "customEditors": [
       {
         "viewType": "shader-studio.configEditor",
