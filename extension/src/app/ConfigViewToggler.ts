@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
 import { Logger } from './services/Logger';
+import { Constants } from './Constants';
 
 /**
  * Handles toggling between source (text) and preview (custom) editors for shader config files.
  * Provides markdown-style toggle behavior that never creates duplicate tabs.
  */
 export class ConfigViewToggler {
-  private static readonly CONFIG_EDITOR_VIEW_TYPE = "shader-studio.configEditor";
-  private static readonly CONFIG_FILE_EXTENSION = ".sha.json";
-
   constructor(private readonly logger: Logger) {}
 
   /**
@@ -49,10 +47,10 @@ export class ConfigViewToggler {
     let isInCustomEditor = false;
 
     if (currentTab?.input instanceof vscode.TabInputCustom &&
-        (currentTab.input as vscode.TabInputCustom).viewType === ConfigViewToggler.CONFIG_EDITOR_VIEW_TYPE) {
+        (currentTab.input as vscode.TabInputCustom).viewType === Constants.CONFIG_EDITOR_VIEW_TYPE) {
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
       isInCustomEditor = true;
-    } else if (activeEditor && activeEditor.document.fileName.endsWith(ConfigViewToggler.CONFIG_FILE_EXTENSION)) {
+    } else if (activeEditor && activeEditor.document.fileName.endsWith(Constants.CONFIG_FILE_EXTENSION)) {
       documentUri = activeEditor.document.uri;
     }
 
@@ -78,16 +76,15 @@ export class ConfigViewToggler {
   }
 
   private async switchToCustomEditor(documentUri: vscode.Uri): Promise<void> {
-    // Find existing custom editor tab
     const targetTab = this.findCustomEditorTab(documentUri);
     
     if (targetTab) {
       const tabGroup = vscode.window.tabGroups.all.find(group => group.tabs.includes(targetTab));
       if (tabGroup) {
-        await vscode.commands.executeCommand("vscode.openWith", documentUri, ConfigViewToggler.CONFIG_EDITOR_VIEW_TYPE, tabGroup.viewColumn);
+        await vscode.commands.executeCommand("vscode.openWith", documentUri, Constants.CONFIG_EDITOR_VIEW_TYPE, tabGroup.viewColumn);
       }
     } else {
-      await vscode.commands.executeCommand("vscode.openWith", documentUri, ConfigViewToggler.CONFIG_EDITOR_VIEW_TYPE, vscode.ViewColumn.Beside);
+      await vscode.commands.executeCommand("vscode.openWith", documentUri, Constants.CONFIG_EDITOR_VIEW_TYPE, vscode.ViewColumn.Beside);
     }
   }
 
@@ -107,7 +104,7 @@ export class ConfigViewToggler {
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
         if (tab.input instanceof vscode.TabInputCustom &&
-            (tab.input as vscode.TabInputCustom).viewType === ConfigViewToggler.CONFIG_EDITOR_VIEW_TYPE &&
+            (tab.input as vscode.TabInputCustom).viewType === Constants.CONFIG_EDITOR_VIEW_TYPE &&
             (tab.input as vscode.TabInputCustom).uri.toString() === documentUri.toString()) {
           return tab;
         }

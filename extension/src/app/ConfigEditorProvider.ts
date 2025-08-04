@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { ShaderProcessor } from "./ShaderProcessor";
+import { Constants } from "./Constants";
 
 export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     private logger: Logger;
@@ -20,7 +21,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     ): vscode.Disposable {
         const provider = new ConfigEditorProvider(context, shaderProcessor);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
-            "shader-studio.configEditor",
+            Constants.CONFIG_EDITOR_VIEW_TYPE,
             provider,
         );
         return providerRegistration;

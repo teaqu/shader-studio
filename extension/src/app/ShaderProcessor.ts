@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
+import { Constants } from "./Constants";
 import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 
 export class ShaderProcessor {
@@ -31,7 +32,7 @@ export class ShaderProcessor {
     const shaderPath = editor.document.uri.fsPath;
 
     let config: ShaderConfig | null = null;
-    const configPath = shaderPath.replace(/\.(glsl|frag)$/i, ".sha.json");
+    const configPath = shaderPath.replace(/\.(glsl|frag)$/i, Constants.CONFIG_FILE_EXTENSION);
 
     // Collect buffer contents
     const buffers: Record<string, string> = {};
