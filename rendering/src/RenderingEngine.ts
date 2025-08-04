@@ -42,6 +42,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
 
     this.renderer = piRenderer();
+    this.renderer.Initialize(gl);
     this.shaderCompiler = new ShaderCompiler(this.renderer);
     this.resourceManager = new ResourceManager(this.renderer);
     this.bufferManager = new BufferManager(this.renderer);
