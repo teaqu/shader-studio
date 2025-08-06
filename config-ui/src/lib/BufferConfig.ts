@@ -91,6 +91,7 @@ export class BufferConfig {
    * Update an input channel with partial data
    */
   updateInputChannelPartial(channel: string, updates: Partial<ConfigInput>): void {
+    console.log(`Updating input channel ${channel} with updates:`, updates);
     const existingInput = this.config.inputs?.[channel as keyof typeof this.config.inputs];
 
     // Create a properly typed input based on the type
@@ -104,7 +105,10 @@ export class BufferConfig {
     } else if (updates.type === 'texture') {
       updatedInput = {
         type: 'texture',
-        path: (updates as any).path || (existingInput as any)?.path || ''
+        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path),
+        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
+        wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
+        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip)
       };
     } else if (updates.type === 'keyboard') {
       updatedInput = {
@@ -138,6 +142,10 @@ export class BufferConfig {
    */
   getInputChannels(): Array<[string, ConfigInput]> {
     return Object.entries(this.config.inputs || {});
+  }
+
+  getInputChannel(channel: string): ConfigInput | undefined {
+    return this.config.inputs ? this.config.inputs[channel as keyof typeof this.config.inputs] : undefined;
   }
 
   /**
@@ -201,6 +209,10 @@ export class BufferConfig {
     if (this.onUpdate) {
       this.onUpdate(this.bufferName, this.config);
     }
+  }
+
+  private newElseExistingInput(newInput: any, existing: any): any {
+    return newInput == undefined ? existing : newInput;
   }
 
   /**

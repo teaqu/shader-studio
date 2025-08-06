@@ -47,7 +47,7 @@
     if (target && bufferConfig) {
       const newType = target.value as "buffer" | "texture" | "keyboard";
 
-      // When changing type, we need to provide appropriate default values
+      // default values
       if (newType === "buffer") {
         bufferConfig.updateInputChannelPartial(channel, {
           type: "buffer",

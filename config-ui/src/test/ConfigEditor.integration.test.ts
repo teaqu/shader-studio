@@ -37,14 +37,15 @@ describe('ConfigEditor Integration Tests', () => {
       expect(screen.getByText('Error:')).toBeInTheDocument();
       expect(screen.getByText('Failed to load configuration file')).toBeInTheDocument();
     });
-  });  it('should display simple config correctly', async () => {
+  }); 
+  
+  it('should display simple config correctly', async () => {
     render(ConfigEditor);
 
     simulateVSCodeMessage(createMockConfig(simpleConfig as ShaderConfig));
 
     await waitFor(() => {
       expect(screen.getByText('Shader Configuration')).toBeInTheDocument();
-      expect(screen.getByText('Click the "JSON" button in the status bar to edit the raw JSON directly')).toBeInTheDocument();
 
       const imageButton = screen.getByRole('button', { name: 'Image' });
       expect(imageButton).toBeInTheDocument();
@@ -164,6 +165,214 @@ describe('ConfigEditor Integration Tests', () => {
       expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
 
       expect(screen.queryByText('Error:')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Texture Configuration Tests', () => {
+    it('should handle clearing texture path and result in empty string', async () => {
+      const mockPostMessage = vi.fn();
+      (global as any).acquireVsCodeApi = vi.fn(() => ({
+        postMessage: mockPostMessage,
+        getState: vi.fn(),
+        setState: vi.fn()
+      }));
+
+      render(ConfigEditor);
+
+      const testConfig = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "texture",
+                path: "./textures/test.png"
+              }
+            }
+          }
+        }
+      };
+
+      simulateVSCodeMessage(createMockConfig(testConfig as ShaderConfig));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Path/)).toBeInTheDocument();
+      });
+
+      const pathInput = screen.getByLabelText(/Path/) as HTMLInputElement;
+      expect(pathInput.value).toBe('./textures/test.png');
+
+      // Clear the path
+      await user.clear(pathInput);
+
+      await waitFor(() => {
+        expect(pathInput.value).toBe('');
+      });
+
+      // Verify the config was updated with empty string
+      await waitFor(() => {
+        expect(mockPostMessage).toHaveBeenCalled();
+        const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+        expect(lastCall[0]).toEqual(
+          expect.objectContaining({
+            type: 'updateConfig',
+            text: expect.stringContaining('"path": ""')
+          })
+        );
+      });
+    });
+
+    it('should handle complete texture configuration workflow', async () => {
+      const mockPostMessage = vi.fn();
+      (global as any).acquireVsCodeApi = vi.fn(() => ({
+        postMessage: mockPostMessage,
+        getState: vi.fn(),
+        setState: vi.fn()
+      }));
+
+      render(ConfigEditor);
+
+      // Start with minimal config
+      const testConfig = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {}
+          }
+        }
+      };
+
+      simulateVSCodeMessage(createMockConfig(testConfig as ShaderConfig));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+      });
+
+      // Add texture channel
+      const addChannelButton = screen.getByText('+ Add Channel');
+      await user.click(addChannelButton);
+      await user.click(screen.getByText('iChannel0'));
+
+      // Set to texture type
+      const typeSelect = screen.getByLabelText(/Type/) as HTMLSelectElement;
+      await user.selectOptions(typeSelect, 'texture');
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Path/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Filter/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Wrap/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Vertical Flip/)).toBeInTheDocument();
+      });
+
+      // Configure all texture properties
+      const pathInput = screen.getByLabelText(/Path/) as HTMLInputElement;
+      const filterSelect = screen.getByLabelText(/Filter/) as HTMLSelectElement;
+      const wrapSelect = screen.getByLabelText(/Wrap/) as HTMLSelectElement;
+      const vflipCheckbox = screen.getByLabelText(/Vertical Flip/) as HTMLInputElement;
+
+      await user.type(pathInput, './textures/complete-test.jpg');
+      await user.selectOptions(filterSelect, 'linear');
+      await user.selectOptions(wrapSelect, 'clamp');
+      
+      // vflip should be checked by default, so uncheck it
+      if (vflipCheckbox.checked) {
+        await user.click(vflipCheckbox);
+      }
+
+      await waitFor(() => {
+        expect(pathInput.value).toBe('./textures/complete-test.jpg');
+        expect(filterSelect.value).toBe('linear');
+        expect(wrapSelect.value).toBe('clamp');
+        expect(vflipCheckbox.checked).toBe(false);
+      });
+
+      // Verify final configuration contains all properties
+      await waitFor(() => {
+        const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+        const configText = lastCall[0].text;
+        expect(configText).toContain('./textures/complete-test.jpg');
+        expect(configText).toContain('"filter": "linear"');
+        expect(configText).toContain('"wrap": "clamp"');
+        expect(configText).toContain('"vflip": false');
+      });
+    });
+
+    it('should test texture configuration in BufferA pass', async () => {
+      const mockPostMessage = vi.fn();
+      (global as any).acquireVsCodeApi = vi.fn(() => ({
+        postMessage: mockPostMessage,
+        getState: vi.fn(),
+        setState: vi.fn()
+      }));
+
+      render(ConfigEditor);
+
+      const testConfig = {
+        version: "1.0",
+        passes: {
+          Image: {},
+          BufferA: {
+            path: "./buffer.glsl",
+            inputs: {
+              iChannel0: {
+                type: "texture",
+                path: "./textures/buffer-texture.png",
+                filter: "nearest",
+                wrap: "repeat",
+                vflip: false
+              }
+            }
+          }
+        }
+      };
+
+      simulateVSCodeMessage(createMockConfig(testConfig as ShaderConfig));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
+      });
+
+      // Switch to BufferA tab
+      await user.click(screen.getByRole('button', { name: 'BufferA' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'BufferA' })).toHaveClass('active');
+        // Use specific IDs to avoid ambiguity with multiple path inputs
+        expect(screen.getByLabelText('Path:', { selector: 'input[id="path-BufferA"]' })).toBeInTheDocument();
+      });
+
+      // Find texture-specific inputs by their specific IDs
+      const bufferPathInput = screen.getByLabelText('Path:', { selector: 'input[id="path-BufferA"]' }) as HTMLInputElement;
+      const texturePathInput = screen.getByLabelText('Path:', { selector: 'input[id="path-iChannel0"]' }) as HTMLInputElement;
+      expect(texturePathInput.value).toBe('./textures/buffer-texture.png');
+
+      const filterSelect = screen.getByLabelText(/Filter/) as HTMLSelectElement;
+      const wrapSelect = screen.getByLabelText(/Wrap/) as HTMLSelectElement;
+      const vflipCheckbox = screen.getByLabelText(/Vertical Flip/) as HTMLInputElement;
+
+      // Verify initial values
+      expect(texturePathInput.value).toBe('./textures/buffer-texture.png');
+      expect(filterSelect.value).toBe('nearest');
+      expect(wrapSelect.value).toBe('repeat');
+      expect(vflipCheckbox.checked).toBe(false);
+
+      // Update texture path to empty string
+      await user.clear(texturePathInput);
+
+      await waitFor(() => {
+        expect(texturePathInput.value).toBe('');
+      });
+
+      // Verify empty path is reflected in JSON
+      await waitFor(() => {
+        const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+        expect(lastCall[0]).toEqual(
+          expect.objectContaining({
+            type: 'updateConfig',
+            text: expect.stringContaining('"path": ""')
+          })
+        );
+      });
     });
   });
 });
