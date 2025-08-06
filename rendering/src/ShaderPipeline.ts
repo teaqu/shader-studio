@@ -34,7 +34,7 @@ export class ShaderPipeline {
     this.timeManager = timeManager;
   }
 
-  private isBufferPass(pass: any): pass is BufferPass {
+  private isBufferPass(pass: BufferPass): pass is BufferPass {
     return pass && typeof pass === 'object' && typeof pass.path === 'string';
   }
 

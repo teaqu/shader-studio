@@ -10,6 +10,7 @@ import { PassRenderer } from "./PassRenderer";
 import { FrameRenderer } from "./FrameRenderer";
 import { FPSCalculator } from "./util/FPSCalculator";
 import { ShaderLocker } from "./util/ShaderLocker";
+import { ConfigValidator } from "./util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "./models";
@@ -119,6 +120,17 @@ export class RenderingEngine implements RenderingEngineInterface {
       return {
         success: false,
       };
+    }
+
+    // Validate config before processing
+    if (config) {
+      const validation = ConfigValidator.validateConfig(config);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: `Invalid shader configuration: ${validation.errors.join(', ')}`,
+        };
+      }
     }
 
     if (path) {
