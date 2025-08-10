@@ -1,9 +1,13 @@
 # Change Log
 
-All notable changes to the "shader-studio" extension will be documented in this file.
+### 0.2
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+- Changed config UI to act like a markdown preview.
+- Rendering now independent of Svelte UI.
+- More docs in extension readme.
+- Fixed locked shader not refreshing to new file on unlock.
+- Fixed JSON not updating when changing texture config on the UI.
+- Fixed shader breaking on invalid config.
 
-## [Unreleased]
-
+### 0.1
 - Initial release
