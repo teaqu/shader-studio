@@ -8,6 +8,7 @@
 - Fixed locked shader not refreshing to new file on unlock.
 - Fixed JSON not updating when changing texture config on the UI.
 - Fixed shader breaking on invalid config.
+- Fixed electron icon and title bar on macOS.
 
 ### 0.1
 - Initial release

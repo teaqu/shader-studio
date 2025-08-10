@@ -2,6 +2,11 @@ import { app, BrowserWindow, Menu, nativeImage, nativeTheme, MenuItem } from 'el
 import * as path from 'path';
 import * as fs from 'fs';
 
+app.setName('Shader Studio');
+if (process.platform === 'darwin') {
+    process.title = 'Shader Studio';
+}
+
 interface WindowBounds {
     width: number;
     height: number;
@@ -28,8 +33,6 @@ let settings: Settings = {
 };
 
 const settingsPath: string = path.join(app.getPath('userData'), 'settings.json');
-
-app.setName('Shader Studio');
 
 function loadSettings(): void {
     try {
@@ -141,11 +144,7 @@ app.whenReady().then(() => {
     nativeTheme.themeSource = settings.theme;
 
     let iconPath: string;
-    if (process.platform === 'darwin') {
-        iconPath = path.join(__dirname, '..', 'assets', 'icon.icns');
-    } else {
-        iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-    }
+    iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
 
     console.log('Icon path:', iconPath);
     console.log('Icon file exists:', fs.existsSync(iconPath));
