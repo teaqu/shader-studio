@@ -32,11 +32,17 @@ This mode is convenient as it runs independently of VS Code and also has the abi
 
 The window mode provides additional options such as setting the window theme, reloading, and more.
 
-![shader studio window options](https://github.com/teaqu/shader-studio/blob/main/assets/window-options.png?raw=true)
+<img src="https://github.com/teaqu/shader-studio/blob/main/assets/window-options.png?raw=true" alt="shader studio window options" width="250"/>
 
 ### Web Browser
 
 For the best performance, it's recommended to use your web browser. Web browsers appear to have better GPU optimizations and can achieve higher priority rendering than observed in VS Code panels or Electron windows.
+
+## Runtime Config
+
+If you click on the resolution on the menubar there are some options to change how the shader is displayed.
+
+<img src="https://github.com/teaqu/shader-studio/blob/main/assets/runtime-config.png?raw=true" alt="shader runtime config" width="250"/>
 
 ## Configuration
 
