@@ -81,8 +81,6 @@ export class RenderingEngine implements RenderingEngineInterface {
       glCanvas,
       new FPSCalculator(30, 5),
     );
-
-    this.frameRenderer.startRenderLoop();
   }
 
   public handleCanvasResize(width: number, height: number): void {
@@ -110,13 +108,14 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
   }
 
- public async compileShaderPipeline(
+  public async compileShaderPipeline(
     code: string,
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
     if (!this.shaderLocker.shouldProcessShader(path)) {
+      this.stopRenderLoop();
       return {
         success: false,
       };
@@ -126,6 +125,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
+        this.stopRenderLoop();
         return {
           success: false,
           error: `Invalid shader configuration: ${validation.errors.join(', ')}`,
@@ -137,12 +137,22 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.shaderLocker.updateLockedShader(path);
     }
 
-    return this.shaderPipeline.compileShaderPipeline(
+    const result: Promise<CompilationResult> = this.shaderPipeline.compileShaderPipeline(
       code,
       config,
       path,
       buffers,
     );
+
+    result.then(res => {
+      if (res.success) {
+        this.frameRenderer.startRenderLoop();
+      } else {
+        this.stopRenderLoop();
+      }
+    });
+
+    return result;
   }
 
   public isLockedShader(): boolean {

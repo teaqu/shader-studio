@@ -12,10 +12,22 @@ vi.mock("../util/ConfigValidator", () => ({
 
 describe("RenderingEngine", () => {
   let renderingEngine: RenderingEngine;
+  let mockFrameRenderer: any;
 
   beforeEach(() => {
     renderingEngine = new RenderingEngine();
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => { });
+
+    mockFrameRenderer = {
+      startRenderLoop: vi.fn(),
+      stopRenderLoop: vi.fn(),
+    };
+
+    Object.defineProperty(renderingEngine, 'frameRenderer', {
+      value: mockFrameRenderer,
+      writable: true,
+      configurable: true
+    });
   });
 
   describe("config validation", () => {
@@ -39,7 +51,7 @@ describe("RenderingEngine", () => {
     it("should validate config before processing", async () => {
       const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
       mockValidateConfig.mockReturnValue({ isValid: true, errors: [] });
-      
+
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
@@ -60,11 +72,11 @@ describe("RenderingEngine", () => {
 
     it("should reject compilation when config validation fails", async () => {
       const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
-      mockValidateConfig.mockReturnValue({ 
-        isValid: false, 
-        errors: ['Test validation error'] 
+      mockValidateConfig.mockReturnValue({
+        isValid: false,
+        errors: ['Test validation error']
       });
-      
+
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
@@ -87,7 +99,7 @@ describe("RenderingEngine", () => {
 
     it("should not validate null config", async () => {
       const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
-      
+
       await renderingEngine.compileShaderPipeline(
         "void mainImage() {}",
         null,
@@ -266,6 +278,178 @@ describe("RenderingEngine", () => {
         expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledTimes(2);
         expect(result!.success).toBe(true);
       });
+    });
+  });
+
+  describe("render loop lifecycle", () => {
+    let mockPipeline: any;
+
+    beforeEach(() => {
+      mockPipeline = {
+        compileShaderPipeline: vi.fn(),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline,
+        writable: true,
+        configurable: true
+      });
+
+      const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
+      mockValidateConfig.mockReturnValue({ isValid: true, errors: [] });
+    });
+
+    it("should start render loop when shader compilation succeeds", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+
+      const shaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {}
+        }
+      };
+
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        shaderConfig,
+        "test.glsl",
+        {}
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockFrameRenderer.startRenderLoop).toHaveBeenCalledTimes(1);
+      expect(mockFrameRenderer.stopRenderLoop).not.toHaveBeenCalled();
+    });
+
+    it("should stop render loop when shader compilation fails", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({
+        success: false,
+        error: "Compilation error"
+      });
+
+      const shaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {}
+        }
+      };
+
+      await renderingEngine.compileShaderPipeline(
+        "invalid shader code",
+        shaderConfig,
+        "test.glsl",
+        {}
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockFrameRenderer.stopRenderLoop).toHaveBeenCalledTimes(1);
+      expect(mockFrameRenderer.startRenderLoop).not.toHaveBeenCalled();
+    });
+
+    it("should stop render loop when config validation fails", async () => {
+      const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
+      mockValidateConfig.mockReturnValue({
+        isValid: false,
+        errors: ['Invalid config']
+      });
+
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {}
+        }
+      };
+
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        config,
+        "test.glsl",
+        {}
+      );
+
+      expect(mockFrameRenderer.stopRenderLoop).toHaveBeenCalledTimes(1);
+      expect(mockFrameRenderer.startRenderLoop).not.toHaveBeenCalled();
+      expect(mockPipeline.compileShaderPipeline).not.toHaveBeenCalled();
+    });
+
+    it("should stop render loop when shader is locked and different path is provided", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+
+      const shaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {}
+        }
+      };
+
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        shaderConfig,
+        "first.glsl",
+        {}
+      );
+      renderingEngine.toggleLock("first.glsl");
+
+      vi.clearAllMocks();
+
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        shaderConfig,
+        "different.glsl",
+        {}
+      );
+
+      expect(mockFrameRenderer.stopRenderLoop).toHaveBeenCalledTimes(1);
+      expect(mockFrameRenderer.startRenderLoop).not.toHaveBeenCalled();
+      expect(mockPipeline.compileShaderPipeline).not.toHaveBeenCalled();
+    });
+
+    it("should handle multiple successive compilations correctly", async () => {
+      const shaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {}
+        }
+      };
+
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        shaderConfig,
+        "test1.glsl",
+        {}
+      );
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockFrameRenderer.startRenderLoop).toHaveBeenCalledTimes(1);
+
+      mockPipeline.compileShaderPipeline.mockResolvedValue({
+        success: false,
+        error: "Syntax error"
+      });
+      await renderingEngine.compileShaderPipeline(
+        "invalid code",
+        shaderConfig,
+        "test2.glsl",
+        {}
+      );
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockFrameRenderer.stopRenderLoop).toHaveBeenCalledTimes(1);
+
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+      await renderingEngine.compileShaderPipeline(
+        "void mainImage() {}",
+        shaderConfig,
+        "test3.glsl",
+        {}
+      );
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockFrameRenderer.startRenderLoop).toHaveBeenCalledTimes(2);
+      expect(mockFrameRenderer.stopRenderLoop).toHaveBeenCalledTimes(1);
     });
   });
 });
