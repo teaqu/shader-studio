@@ -4,7 +4,7 @@
   import { currentTheme, applyTheme } from "./lib/stores/themeStore";
 
   function handleAppInitialized(data: { shaderStudio: any }) {
-    console.log("Shadera initialized successfully", data);
+    console.log("Shader Studio UI initialized successfully");
   }
 
   onMount(() => {
