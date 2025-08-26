@@ -185,11 +185,41 @@ app.whenReady().then(() => {
 
     const uiPath: string = path.join(__dirname, '..', 'ui', 'index.html');
 
+    // Check for WebSocket port argument
+    const wsPortArg = process.argv.find(arg => arg.startsWith('--wsPort='));
+    const webSocketPort = wsPortArg ? parseInt(wsPortArg.split('=')[1], 10) : 51472;
+
     if (process.env.NODE_ENV === 'development') {
         win.webContents.openDevTools();
     }
 
-    win.loadFile(uiPath);
+    // Read and modify HTML to inject WebSocket port
+    try {
+        let htmlContent = fs.readFileSync(uiPath, 'utf8');
+        const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
+        htmlContent = htmlContent.replace('<head>', `<head>${scriptTag}`);
+
+        // Create a temporary file with the modified HTML
+        const tempHtmlPath = path.join(__dirname, '..', 'ui', 'index-temp.html');
+        fs.writeFileSync(tempHtmlPath, htmlContent);
+
+        win.loadFile(tempHtmlPath);
+
+        // Clean up temp file after loading
+        win.webContents.once('did-finish-load', () => {
+            try {
+                if (fs.existsSync(tempHtmlPath)) {
+                    fs.unlinkSync(tempHtmlPath);
+                }
+            } catch (error) {
+                console.warn('Could not clean up temp HTML file:', error);
+            }
+        });
+    } catch (error) {
+        console.error('Error modifying HTML for WebSocket port:', error);
+        // Fallback to original HTML
+        win.loadFile(uiPath);
+    }
 
     createMenu();
 

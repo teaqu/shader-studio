@@ -105,7 +105,13 @@ export class PanelManager {
     );
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
 
-    panel.webview.html = rawHtml.replace(
+    // Inject WebSocket port configuration
+    const config = vscode.workspace.getConfiguration("shader-studio");
+    const webSocketPort = config.get<number>("webSocketPort") || 51472;
+    const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
+    const htmlWithConfig = rawHtml.replace('<head>', `<head>${scriptTag}`);
+
+    panel.webview.html = htmlWithConfig.replace(
       /(src|href)="(.+?)"/g,
       (_, attr, file) => {
         const cleaned = file.replace(/^\\|^\//, "");
@@ -118,6 +124,6 @@ export class PanelManager {
         return `${attr}="${uri}"`;
       },
     );
-    this.logger.debug("Webview HTML set");
+    this.logger.debug("Webview HTML set with WebSocket port configuration");
   }
 }

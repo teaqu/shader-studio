@@ -102,14 +102,14 @@
           "default": 3000,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Port number for the HTTP web server (default from monorepo config)"
+          "description": "Port number for the HTTP web server"
         },
         "shader-studio.webSocketPort": {
           "type": "number",
           "default": 51472,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Port number for the WebSocket server (default from monorepo config)"
+          "description": "Port number for the WebSocket server (requires restart)"
         }
       }
     },

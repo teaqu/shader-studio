@@ -20,8 +20,8 @@ export class WebServer {
   }
 
   private getWebServerPort(): number {
-    const config = vscode.workspace.getConfiguration("shader-studio");
-    return config.get<number>("webServerPort") || 3000;
+    const currentConfig = vscode.workspace.getConfiguration("shader-studio");
+    return currentConfig.get<number>("webServerPort") || 3000;
   }
 
   public startWebServer(): void {
@@ -91,6 +91,16 @@ export class WebServer {
           res.writeHead(404);
           res.end("File not found");
           return;
+        }
+
+        // Inject WebSocket port for index.html
+        if (path.basename(filePath) === "index.html") {
+          const currentConfig = vscode.workspace.getConfiguration("shader-studio");
+          const webSocketPort = currentConfig.get<number>("webSocketPort") || 51472;
+          let htmlContent = data.toString();
+          const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
+          htmlContent = htmlContent.replace('<head>', `<head>${scriptTag}`);
+          data = Buffer.from(htmlContent);
         }
 
         const ext = path.extname(filePath);

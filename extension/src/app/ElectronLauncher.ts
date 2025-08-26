@@ -146,7 +146,10 @@ export class ElectronLauncher {
       hideFromUser: true,
     });
 
-    const command = `npx electron "${launcherScript}"`;
+    const config = vscode.workspace.getConfiguration("shader-studio");
+    const webSocketPort = config.get<number>("webSocketPort") || 51472;
+
+    const command = `npx electron "${launcherScript}" --wsPort=${webSocketPort}`;
     terminal.sendText(command);
 
     this.logger.info(
@@ -185,13 +188,15 @@ export class ElectronLauncher {
 
   private buildLaunchCommand(electronPath: string, launcherScript: string): string {
     const platform = process.platform;
+    const config = vscode.workspace.getConfiguration("shader-studio");
+    const webSocketPort = config.get<number>("webSocketPort") || 51472;
 
     if (platform === "win32") {
       // PowerShell syntax
-      return `& "${electronPath}" "${launcherScript}"`;
+      return `& "${electronPath}" "${launcherScript}" --wsPort=${webSocketPort}`;
     } else {
       // Unix-like systems (macOS, Linux) - bash/zsh syntax
-      return `"${electronPath}" "${launcherScript}"`;
+      return `"${electronPath}" "${launcherScript}" --wsPort=${webSocketPort}`;
     }
   }
 

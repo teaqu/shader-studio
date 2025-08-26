@@ -10,11 +10,25 @@ export class WebSocketTransport implements Transport {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    this.url = 'ws://localhost:51472';
+    const port = this.getPort();
+    this.url = `ws://localhost:${port}`;
     this.connect();
   }
 
   private url: string;
+
+  private getPort(): number {
+    // Check injected config from server/extension
+    if (typeof window !== 'undefined' && (window as any).shaderViewConfig?.port) {
+      const port = (window as any).shaderViewConfig.port;
+      console.log(`WebSocket: Using port from config: ${port}`);
+      return port;
+    }
+
+    // Default port
+    console.log('WebSocket: Using default port: 51472');
+    return 51472;
+  }
 
   private connect(): void {
     try {
@@ -26,7 +40,7 @@ export class WebSocketTransport implements Transport {
         this.connected = true;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
-        
+
         this.sendClientInfo();
       };
 
@@ -87,16 +101,16 @@ export class WebSocketTransport implements Transport {
   }
 
   private sendClientInfo(): void {
-    const isElectron = !!(window as any).electronAPI || 
-                       !!(window as any).require || 
-                       (typeof process !== 'undefined' && process.versions?.electron);
-    
+    const isElectron = !!(window as any).electronAPI ||
+      !!(window as any).require ||
+      (typeof process !== 'undefined' && process.versions?.electron);
+
     this.postMessage({
       type: 'clientInfo',
       isElectron: isElectron,
       userAgent: navigator.userAgent
     });
-    
+
     console.log(`WebSocket: Sent client info - isElectron: ${isElectron}`);
   }
 
