@@ -1,10 +1,11 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as http from 'http';
-import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { WebServer } from '../../app/WebServer';
+import { EventEmitter } from 'stream';
+const proxyquire = require('proxyquire');
 
 suite('WebServer Test Suite', () => {
     let webServer: WebServer;
@@ -24,8 +25,11 @@ suite('WebServer Test Suite', () => {
 
         // Mock workspace configuration
         mockWorkspaceConfig = {
-            get: sandbox.stub().withArgs('webServerPort').returns(3000)
+            get: sandbox.stub()
         };
+        // Default returns
+        mockWorkspaceConfig.get.withArgs('webServerPort').returns(3000);
+        mockWorkspaceConfig.get.returns(51472); // Default for any unmatched key
         sandbox.stub(vscode.workspace, 'getConfiguration').returns(mockWorkspaceConfig);
 
         // Mock Logger static method
@@ -48,7 +52,7 @@ suite('WebServer Test Suite', () => {
 
         // Mock Uri.joinPath
         sandbox.stub(vscode.Uri, 'joinPath').callsFake((base, ...segments) => {
-            return { fsPath: path.join('/mock/path', ...segments) } as vscode.Uri;
+            return { fsPath: path.join(base.fsPath, ...segments) } as vscode.Uri;
         });
     });
 
@@ -174,6 +178,73 @@ suite('WebServer Test Suite', () => {
             const devWebServer = new WebServer(mockContext, true);
             const devDevMode = (devWebServer as any).devMode;
             assert.strictEqual(devDevMode, true, 'Development mode should use ../ui');
+        });
+    });
+
+    suite('WebSocket Port Injection', () => {
+        let mockRequest: sinon.SinonStubbedInstance<http.IncomingMessage>;
+        let mockResponse: sinon.SinonStubbedInstance<http.ServerResponse>;
+        let mockHttpServer: EventEmitter;
+
+        setup(() => {
+            mockHttpServer = new EventEmitter();
+            (mockHttpServer as any).listen = sandbox.stub();
+            (mockHttpServer as any).close = sandbox.stub();
+
+            let requestHandler: any;
+
+            const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
+                'fs': {
+                    readFile: sandbox.stub().callsFake((filePath, callback) => {
+                        callback(null, Buffer.from('<html><head></head><body></body></html>'));
+                    }),
+                    existsSync: sandbox.stub().returns(true)
+                },
+                'http': {
+                    createServer: sandbox.stub().callsFake((handler) => {
+                        requestHandler = handler;
+                        // Forward request events to the handler
+                        mockHttpServer.on('request', requestHandler);
+                        return mockHttpServer;
+                    })
+                }
+            });
+            webServer = new ProxiedWebServer(mockContext);
+            webServer.startWebServer();
+
+            mockRequest = { url: '/index.html', method: 'GET' } as any;
+            mockResponse = { writeHead: sandbox.stub(), end: sandbox.stub(), setHeader: sandbox.stub() } as any;
+        });
+
+        test('should inject configured WebSocket port into index.html', () => {
+            const testPort = 9999;
+            mockWorkspaceConfig.get.withArgs('webSocketPort').returns(testPort);
+
+            // When: The server receives a request for index.html
+            mockHttpServer.emit('request', mockRequest, mockResponse);
+
+            if (mockResponse.end.called) {
+                // Then: The response should contain the correct script
+                const responseBody = mockResponse.end.getCall(0).args[0];
+                const responseString = Buffer.isBuffer(responseBody) ? responseBody.toString() : responseBody;
+                const expectedScript = `<script>window.shaderViewConfig = { port: ${testPort} };</script>`;
+                assert.ok(responseString.includes(expectedScript), `HTML should contain the configured port script.`);
+            } else {
+                assert.fail('response.end was never called');
+            }
+        });
+
+        test('should inject default WebSocket port when not configured', () => {
+            mockWorkspaceConfig.get.withArgs('webSocketPort').returns(undefined);
+
+            // When: The server receives a request for index.html
+            mockHttpServer.emit('request', mockRequest, mockResponse);
+
+            // Then: The response should contain the default port script
+            const responseBody = mockResponse.end.getCall(0).args[0];
+            const responseString = Buffer.isBuffer(responseBody) ? responseBody.toString() : responseBody;
+            const expectedScript = `<script>window.shaderViewConfig = { port: 51472 };</script>`;
+            assert.ok(responseString.includes(expectedScript), `HTML should contain the default port script. Got: ${responseString}`);
         });
     });
 });

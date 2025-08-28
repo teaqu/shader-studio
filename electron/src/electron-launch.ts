@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, MenuItem } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { parseWebSocketPortFromArgs, injectPortIntoHtml } from '@shader-studio/utils';
 
 app.setName('Shader Studio');
 if (process.platform === 'darwin') {
@@ -185,9 +186,7 @@ app.whenReady().then(() => {
 
     const uiPath: string = path.join(__dirname, '..', 'ui', 'index.html');
 
-    // Check for WebSocket port argument
-    const wsPortArg = process.argv.find(arg => arg.startsWith('--wsPort='));
-    const webSocketPort = wsPortArg ? parseInt(wsPortArg.split('=')[1], 10) : 51472;
+    const webSocketPort = parseWebSocketPortFromArgs(process.argv);
 
     if (process.env.NODE_ENV === 'development') {
         win.webContents.openDevTools();
@@ -196,8 +195,7 @@ app.whenReady().then(() => {
     // Read and modify HTML to inject WebSocket port
     try {
         let htmlContent = fs.readFileSync(uiPath, 'utf8');
-        const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
-        htmlContent = htmlContent.replace('<head>', `<head>${scriptTag}`);
+        htmlContent = injectPortIntoHtml(htmlContent, webSocketPort);
 
         // Create a temporary file with the modified HTML
         const tempHtmlPath = path.join(__dirname, '..', 'ui', 'index-temp.html');

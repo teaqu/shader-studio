@@ -6,6 +6,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { getWebSocketPortFromConfig, injectPortIntoHtml } from "@shader-studio/utils";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -107,9 +108,8 @@ export class PanelManager {
 
     // Inject WebSocket port configuration
     const config = vscode.workspace.getConfiguration("shader-studio");
-    const webSocketPort = config.get<number>("webSocketPort") || 51472;
-    const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
-    const htmlWithConfig = rawHtml.replace('<head>', `<head>${scriptTag}`);
+    const webSocketPort = getWebSocketPortFromConfig(config);
+    const htmlWithConfig = injectPortIntoHtml(rawHtml, webSocketPort);
 
     panel.webview.html = htmlWithConfig.replace(
       /(src|href)="(.+?)"/g,
@@ -125,5 +125,11 @@ export class PanelManager {
       },
     );
     this.logger.debug("Webview HTML set with WebSocket port configuration");
+  }
+
+  public dispose(): void {
+    this.panels.forEach(panel => panel.dispose());
+    this.panels.clear();
+    this.messenger.removeTransport(this.webviewTransport);
   }
 }

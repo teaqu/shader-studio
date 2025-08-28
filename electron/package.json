@@ -20,6 +20,9 @@
     "@electron-forge/maker-dmg": "^7.8.1",
     "@electron-forge/maker-rpm": "^7.8.1",
     "@electron-forge/maker-zip": "^7.8.1",
-    "electron": "^37.2.4"
+    "@shader-studio/utils": "*",
+    "@types/node": "*",
+    "electron": "^37.2.4",
+    "typescript": "*"
   }
 }

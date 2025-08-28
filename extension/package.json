@@ -152,6 +152,7 @@
   "dependencies": {
     "@electron/get": "^3.1.0",
     "@shader-studio/types": "*",
+    "@shader-studio/utils": "*",
     "@types/yauzl": "^2.10.3",
     "ws": "^8.18.3",
     "yauzl": "^3.2.0"

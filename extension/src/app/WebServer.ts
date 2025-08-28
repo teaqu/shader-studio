@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Logger } from "./services/Logger";
 import { ShaderStudioStatusBar } from "./ShaderStudioStatusBar";
+import { getWebSocketPortFromConfig, injectPortIntoHtml } from "@shader-studio/utils";
 
 export class WebServer {
   private logger!: Logger;
@@ -96,10 +97,9 @@ export class WebServer {
         // Inject WebSocket port for index.html
         if (path.basename(filePath) === "index.html") {
           const currentConfig = vscode.workspace.getConfiguration("shader-studio");
-          const webSocketPort = currentConfig.get<number>("webSocketPort") || 51472;
+          const webSocketPort = getWebSocketPortFromConfig(currentConfig);
           let htmlContent = data.toString();
-          const scriptTag = `<script>window.shaderViewConfig = { port: ${webSocketPort} };</script>`;
-          htmlContent = htmlContent.replace('<head>', `<head>${scriptTag}`);
+          htmlContent = injectPortIntoHtml(htmlContent, webSocketPort);
           data = Buffer.from(htmlContent);
         }
 

@@ -1,0 +1,22 @@
+{
+  "name": "@shader-studio/utils",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:ui": "vitest --ui"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/node": "*",
+    "typescript": "*",
+    "vite": "*",
+    "vitest": "*"
+  }
+}

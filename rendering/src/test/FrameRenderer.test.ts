@@ -375,7 +375,7 @@ describe("FrameRenderer", () => {
       // This tests the real-world scenario in VS Code where multiple panels cause
       // mixed sequences of normal frames and duplicate frames with 0ms delta
       frameRenderer.setRunning(true);
-      
+
       const frameSequence = [
         { time: 1000, delta: 0.016667 }, // Normal frame
         { time: 1016.67, delta: 0 }, // Duplicate (VS Code bug)
@@ -421,7 +421,7 @@ describe("FrameRenderer", () => {
       // Testing that == 0 catches exactly 0 (VS Code duplicates) but allows any non-zero delta
       // This ensures high refresh rate monitors (1000Hz+) still work properly
       frameRenderer.setRunning(true);
-      
+
       const testCases = [
         { delta: 0, shouldDrop: true }, // Exact zero (VS Code duplicate)
         { delta: 0.0, shouldDrop: true }, // Explicit zero (VS Code duplicate)

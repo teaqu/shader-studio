@@ -55,11 +55,15 @@ suite('PanelManager Test Suite', () => {
 
     teardown(() => {
         sandbox.restore();
+        panelManager.dispose();
+        // Reset Logger singleton
+        (Logger as any).instance = undefined;
     });
 
     function createMockWebviewPanel() {
         return {
             reveal: sandbox.stub(),
+            dispose: sandbox.stub(),
             webview: {
                 html: '',
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
@@ -212,5 +216,51 @@ suite('PanelManager Test Suite', () => {
         const pathContainsMockExtension = uiDistPath.includes('mock-extension') || uiDistPath.includes('test') || uiDistPath.includes('app');
         assert.ok(pathContainsMockExtension);
         assert.ok(expectedLocalResourceRoots.length >= 2);
+    });
+
+    suite('WebSocket Port Configuration', () => {
+        let createWebviewPanelStub: sinon.SinonStub;
+        let readFileSyncStub: sinon.SinonStub;
+        let mockWorkspaceConfiguration: any;
+
+        setup(() => {
+            const mockWebviewPanel = createMockWebviewPanel();
+            createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+
+            const fs = require('fs');
+            readFileSyncStub = sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+            mockWorkspaceConfiguration = {
+                get: sandbox.stub()
+            };
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns(mockWorkspaceConfiguration);
+        });
+
+        test('should inject configured WebSocket port into HTML', () => {
+            const testPort = 8888;
+            mockWorkspaceConfiguration.get.withArgs('webSocketPort').returns(testPort);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const expectedScript = `<script>window.shaderViewConfig = { port: ${testPort} };</script>`;
+            assert.ok(
+                createdPanel.webview.html.includes(expectedScript),
+                `HTML should contain the script for port ${testPort}`
+            );
+        });
+
+        test('should use default WebSocket port when not configured', () => {
+            mockWorkspaceConfiguration.get.withArgs('webSocketPort').returns(undefined);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const expectedScript = `<script>window.shaderViewConfig = { port: 51472 };</script>`;
+            assert.ok(
+                createdPanel.webview.html.includes(expectedScript),
+                'HTML should contain the script for the default port 51472'
+            );
+        });
     });
 });

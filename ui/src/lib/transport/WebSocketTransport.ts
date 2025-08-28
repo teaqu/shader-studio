@@ -18,14 +18,12 @@ export class WebSocketTransport implements Transport {
   private url: string;
 
   private getPort(): number {
-    // Check injected config from server/extension
     if (typeof window !== 'undefined' && (window as any).shaderViewConfig?.port) {
       const port = (window as any).shaderViewConfig.port;
       console.log(`WebSocket: Using port from config: ${port}`);
       return port;
     }
 
-    // Default port
     console.log('WebSocket: Using default port: 51472');
     return 51472;
   }
