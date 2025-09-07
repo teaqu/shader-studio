@@ -6,6 +6,7 @@ dist/
 out/
 ui-dist/
 config-ui-dist/
+utils-dist/
 
 # Coverage reports
 coverage/

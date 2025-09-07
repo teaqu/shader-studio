@@ -9,10 +9,13 @@
     "start": "npm run build && electron dist/electron-launch.js",
     "build-ui": "cd ../ui && npm run build -- --base ./",
     "copy-ui": "rimraf ui && npm run build-ui && cpx \"../ui/dist/**/*\" ui",
-    "copy-to-extension": "rimraf ../extension/electron-app && cpx \"dist/**/*\" ../extension/electron-app/dist && cpx \"ui/**/*\" ../extension/electron-app/ui && cpx \"assets/**/*\" ../extension/electron-app/assets && cpx \"package.json\" ../extension/electron-app/",
+    "copy-to-extension": "rimraf ../extension/electron-app && cpx \"dist/**/*\" ../extension/electron-app/dist && cpx \"ui/**/*\" ../extension/electron-app/ui && cpx \"assets/**/*\" ../extension/electron-app/assets && cpx \"../utils/dist/**/*\" ../extension/electron-app/utils-dist",
     "prebuild": "npm run copy-ui",
     "package": "npm run copy-ui && npm run build && npx electron-forge package",
     "make": "npm run copy-ui && npm run build && npx electron-forge make"
+  },
+  "dependencies": {
+    "@shader-studio/utils": "*"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.1",
@@ -20,7 +23,6 @@
     "@electron-forge/maker-dmg": "^7.8.1",
     "@electron-forge/maker-rpm": "^7.8.1",
     "@electron-forge/maker-zip": "^7.8.1",
-    "@shader-studio/utils": "*",
     "@types/node": "*",
     "electron": "^37.2.4",
     "typescript": "*"

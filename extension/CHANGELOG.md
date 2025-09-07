@@ -1,5 +1,8 @@
 # Change Log
 
+### 0.4
+- Electron fix
+
 ### 0.3
 - Fixed custom websocket port
 - Fixed render loop breaking on error

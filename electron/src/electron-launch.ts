@@ -1,7 +1,10 @@
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, MenuItem } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { parseWebSocketPortFromArgs, injectPortIntoHtml } from '@shader-studio/utils';
+const utilsPath = process.env.NODE_ENV != 'dev' 
+  ? path.join(__dirname, '..', 'utils-dist') 
+  : '@shader-studio/utils';
+const { parseWebSocketPortFromArgs, injectPortIntoHtml } = require(utilsPath);
 
 app.setName('Shader Studio');
 if (process.platform === 'darwin') {
@@ -188,7 +191,7 @@ app.whenReady().then(() => {
 
     const webSocketPort = parseWebSocketPortFromArgs(process.argv);
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'dev') {
         win.webContents.openDevTools();
     }
 
