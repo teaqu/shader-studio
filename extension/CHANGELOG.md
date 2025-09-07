@@ -1,5 +1,9 @@
 # Change Log
 
+### 0.3
+- Fixed custom websocket port
+- Fixed render loop breaking on error
+
 ### 0.2
 
 - Changed config UI to act like a markdown preview.
