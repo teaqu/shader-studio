@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "GLSL shader viewer for shadertoy shaders",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
@@ -66,6 +66,10 @@
       {
         "command": "shader-studio.openInElectron",
         "title": "Shader Studio: Open Window"
+      },
+      {
+        "command": "shader-studio.newShader",
+        "title": "Shader Studio: New Shader"
       }
     ],
     "menus": {

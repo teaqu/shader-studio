@@ -64,6 +64,11 @@ export class ShaderStudioStatusBar {
             description: 'Launch Shader Studio in it\'s own window',
             action: 'open-electron'
         });
+        items.push({
+            label: '$(new-file) New Shader',
+            description: 'Create a new shadertoy.glsl file',
+            action: 'new-shader'
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Shader Studio Actions',
@@ -90,11 +95,11 @@ export class ShaderStudioStatusBar {
                 case 'open-electron':
                     await vscode.commands.executeCommand('shader-studio.openInElectron');
                     break;
+                case 'new-shader':
+                    await vscode.commands.executeCommand('shader-studio.newShader');
+                    break;
             }
         }
-    }
-
-    public refreshConfigToggle() {
     }
 
     public dispose() {

@@ -11,6 +11,7 @@ import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
+import { ShaderCreator } from "./ShaderCreator";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -24,6 +25,7 @@ export class ShaderStudio {
   private configEditorProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
+  private shaderCreator!: ShaderCreator;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -36,9 +38,8 @@ export class ShaderStudio {
     this.logger = Logger.getInstance();
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
-
     this.glslFileTracker = new GlslFileTracker(context);
-
+    this.shaderCreator = new ShaderCreator(this.logger);
     this.messenger = new Messenger(outputChannel, diagnosticCollection);
     this.shaderProcessor = new ShaderProcessor(this.messenger);
     this.panelManager = new PanelManager(
@@ -237,6 +238,16 @@ export class ShaderStudio {
         },
       ),
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "shader-studio.newShader",
+        () => {
+          this.logger.info("shader-studio.newShader command executed");
+          this.newShader();
+        },
+      ),
+    );
   }
 
   private registerEventHandlers(): void {
@@ -417,5 +428,9 @@ export class ShaderStudio {
         `Failed to refresh shader at '${shaderPath}': ${error}`,
       );
     }
+  }
+
+  private async newShader(): Promise<void> {
+    await this.shaderCreator.create();
   }
 }

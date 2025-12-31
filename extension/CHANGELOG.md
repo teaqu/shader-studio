@@ -1,13 +1,15 @@
 # Change Log
+### 0.0.5
+- Create default shader from menu
 
-### 0.4
+### 0.0.4
 - Electron fix
 
-### 0.3
+### 0.0.3
 - Fixed custom websocket port
 - Fixed render loop breaking on error
 
-### 0.2
+### 0.0.2
 
 - Changed config UI to act like a markdown preview.
 - Rendering now independent of Svelte UI.
@@ -17,5 +19,5 @@
 - Fixed shader breaking on invalid config.
 - Fixed electron icon and title bar on macOS.
 
-### 0.1
+### 0.0.1
 - Initial release
