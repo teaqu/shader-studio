@@ -252,7 +252,9 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor && this.glslFileTracker.isGlslEditor(editor)) {
+      if (!editor) return;
+      this.glslFileTracker.recommendGlslHighlighter(editor);
+      if (this.glslFileTracker.isGlslEditor(editor)) {
         this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
         this.performShaderUpdate(editor);
       }
@@ -260,6 +262,10 @@ export class ShaderStudio {
 
     vscode.workspace.onDidChangeTextDocument((event) => {
       const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+
+      this.glslFileTracker.recommendGlslHighlighter(editor);
+
       if (editor && this.glslFileTracker.isGlslEditor(editor)) {
         this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
         this.performShaderUpdate(editor);

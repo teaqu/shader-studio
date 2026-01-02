@@ -160,6 +160,76 @@ suite('Shader Studio Test Suite', () => {
     } as any;
   }
 
+  test('should recommend GLSL highlighting extension when file is .glsl but languageId is missing', async () => {
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+    shaderStudio['panelManager'].createPanel();
+    assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
+
+    const mockEditor = createMockGLSLNoLanguageEditor();
+
+    // Simulate no installed GLSL-related extensions
+    sandbox.stub(vscode.extensions, 'all').value([]);
+    sandbox.stub(vscode.extensions, 'getExtension').withArgs('slevesque.shader').returns(undefined as any);
+
+    const showInfo = sandbox.stub(vscode.window, 'showInformationMessage' as any).resolves('Install "slevesque.shader"' as any);
+    const exec = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
+    // Call the recommendation helper directly to avoid event wiring timing issues in tests
+    await shaderStudio['glslFileTracker'].recommendGlslHighlighter(mockEditor);
+
+    sinon.assert.calledOnce(showInfo);
+    sinon.assert.calledWith(exec, 'workbench.extensions.installExtension', 'slevesque.shader');
+  });
+
+  test('should allow disabling future recommendations via "Don\'t show again" option', async () => {
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+    shaderStudio['panelManager'].createPanel();
+    assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
+
+    const mockEditor = createMockGLSLNoLanguageEditor();
+
+    // Simulate no installed GLSL-related extensions
+    sandbox.stub(vscode.extensions, 'all').value([]);
+
+    const showInfo = sandbox.stub(vscode.window, 'showInformationMessage' as any).resolves("Don't show again" as any);
+
+    // Call the recommendation helper directly to avoid event wiring timing issues in tests
+    await shaderStudio['glslFileTracker'].recommendGlslHighlighter(mockEditor);
+
+    sinon.assert.calledOnce(showInfo);
+    sinon.assert.calledWith(mockContext.globalState.update as sinon.SinonStub, 'suppressGlslHighlightRecommendation', true);
+  });
+
   function createMockJavaScriptEditor(): vscode.TextEditor {
     const mockDocument = {
       fileName: '/mock/path/script.js',
