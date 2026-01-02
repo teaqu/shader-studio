@@ -131,6 +131,7 @@
     "package": "npm run build:ui && npm run build:config-ui && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
+    "prebuild": "cd .. && npm run build:types && npm run build -w utils",
     "build": "npm run build:ui && npm run build:config-ui && npm run build:electron-app && tsc -p ./",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
     "build:config-ui": "cd ../config-ui && npm run build && npm run copy-to-extension",
