@@ -1,4 +1,7 @@
 # Change Log
+### 0.0.7
+- Electron install fix all platforms
+
 ### 0.0.6
 - Electron install fix on macos
 - Run based on file extension not just language id

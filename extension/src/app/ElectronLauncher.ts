@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as child_process from "child_process";
 import { Logger } from "./services/Logger";
+import AdmZip from "adm-zip";
 
 export class ElectronLauncher {
   private logger: Logger;
@@ -244,7 +245,9 @@ export class ElectronLauncher {
     const bundledVersion = this.readElectronVersionFromPackageJson(
       path.join(electronAppDir, "package.json")
     );
-    if (bundledVersion) return bundledVersion;
+    if (bundledVersion) {
+      return bundledVersion;
+    }
 
     // Fallback to workspace electron directory
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -252,7 +255,9 @@ export class ElectronLauncher {
       const workspaceVersion = this.readElectronVersionFromPackageJson(
         path.join(workspaceRoot, "electron", "package.json")
       );
-      if (workspaceVersion) return workspaceVersion;
+      if (workspaceVersion) {
+        return workspaceVersion;
+      }
     }
 
     // Default fallback
@@ -352,22 +357,54 @@ export class ElectronLauncher {
       await this.removeDirectorySafely(extractDir);
       await fs.promises.mkdir(extractDir, { recursive: true });
 
-      if (process.platform === "darwin") {
-        // On macOS, prefer `ditto` which preserves .app bundles, symlinks and resource forks
-        this.logger.info("Using macOS 'ditto' to extract zip (preserves .app bundles and symlinks)");
-        await this.runCommand(`ditto -xk "${zipPath}" "${extractDir}"`);
-        this.logger.info("Zip extraction completed with ditto (macOS)");
+      // Log directory permissions and state
+      try {
+        const stat = await fs.promises.stat(extractDir);
+        this.logger.info(`Extract dir exists. Mode: ${stat.mode.toString(8)}, Owner: ${stat.uid}`);
+      } catch (e) {
+        this.logger.warn(`Could not stat extract dir: ${e}`);
+      }
+
+      // Use adm-zip for cross-platform extraction
+      this.logger.info("Using adm-zip for cross-platform zip extraction");
+      try {
+        const zip = new AdmZip(zipPath);
+        
+        this.logger.info(`Found ${zip.getEntries().length} entries in zip`);
+        
+        // On Windows, extractAllTo may fail due to chmod issues
+        // Use manual extraction with error handling for each entry
+        for (const entry of zip.getEntries()) {
+          try {
+            if (entry.isDirectory) {
+              await fs.promises.mkdir(path.join(extractDir, entry.entryName), { recursive: true });
+            } else {
+              const targetPath = path.join(extractDir, entry.entryName);
+              await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+              await fs.promises.writeFile(targetPath, entry.getData());
+              this.logger.debug(`Extracted: ${entry.entryName}`);
+            }
+          } catch (entryError) {
+            // Log but continue - some files may fail but shouldn't block entire extraction
+            this.logger.warn(`Failed to extract entry ${entry.entryName}: ${entryError}`);
+          }
+        }
+        
+        this.logger.info("Zip extraction completed with adm-zip");
 
         // Fix permissions on macOS after extraction
-        await this.fixMacOSElectronApp(extractDir);
-      } else {
-        const extract = (await import("extract-zip")).default;
-        await extract(zipPath, { dir: extractDir });
-        this.logger.info("Zip extraction completed with extract-zip");
+        if (process.platform === "darwin") {
+          await this.fixMacOSElectronApp(extractDir);
+        }
+      } catch (admZipError) {
+        this.logger.error(`adm-zip extraction failed: ${admZipError}`);
+        this.logger.error(`Stack: ${admZipError instanceof Error ? admZipError.stack : 'no stack'}`);
+        throw admZipError;
       }
 
     } catch (error) {
       this.logger.error(`Extraction failed: ${error}`);
+      this.logger.error(`Stack trace: ${error instanceof Error ? error.stack : 'no stack'}`);
       throw error;
     }
   }
@@ -432,7 +469,9 @@ export class ElectronLauncher {
           }
         } else if (entry.isDirectory()) {
           const found = await this.searchForExecutable(fullPath, platform);
-          if (found) return found;
+          if (found) {
+            return found;
+          }
         }
       }
     } catch (error) {

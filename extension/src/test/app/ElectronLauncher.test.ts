@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
 const proxyquire = require('proxyquire');
 
 suite('ElectronLauncher Port Configuration', () => {
@@ -100,34 +102,39 @@ suite('ElectronLauncher Port Configuration', () => {
         assert.ok(command.includes(`--wsPort=${testPort}`), `Command should include "--wsPort=${testPort}". Got: ${command}`);
     });
 
-    test('should extract zip using ditto on macOS', async () => {
-        const electronZip = '/tmp/fake-electron.zip';
+    test('should extract zip files using adm-zip', async () => {
+        const electronZip = path.join(os.tmpdir(), 'fake-electron.zip');
         const extractDir = electronZip.replace('.zip', '-extracted');
 
-        // Local fs and child_process mocks specific to this test
+        // Mock entry object from adm-zip
+        const mockEntry = {
+            isDirectory: false,
+            entryName: 'electron.exe',
+            getData: sandbox.stub().returns(Buffer.from('fake electron binary'))
+        };
+
+        // Mock adm-zip
+        const admZipMock = sandbox.stub().returns({
+            getEntries: sandbox.stub().returns([mockEntry])
+        });
+
+        // Local fs mock specific to this test
         const fsLocal = {
             existsSync: sandbox.stub().returns(false),
             promises: {
                 access: sandbox.stub().resolves(),
                 readdir: sandbox.stub().resolves([]),
+                stat: sandbox.stub().resolves({ uid: 0, mode: 0o40755 }),
                 rm: sandbox.stub().resolves(),
-                mkdir: sandbox.stub().resolves()
+                mkdir: sandbox.stub().resolves(),
+                writeFile: sandbox.stub().resolves()
             }
-        };
-
-        const childProcessLocal = {
-            exec: sandbox.stub().yields(null),
-            spawn: sandbox.stub().returns({ on: sandbox.stub(), unref: sandbox.stub() })
-        };
-
-        const electronGetMock = {
-            downloadArtifact: sandbox.stub().resolves(electronZip)
         };
 
         const { ElectronLauncher: LocalLauncher } = proxyquire('../../app/ElectronLauncher', {
             'fs': fsLocal,
-            'child_process': childProcessLocal,
-            '@electron/get': electronGetMock,
+            'child_process': { exec: sandbox.stub() },
+            'adm-zip': admZipMock
         });
 
         const mockLogger = { info: sandbox.stub(), warn: sandbox.stub(), error: sandbox.stub(), debug: sandbox.stub() };
@@ -137,19 +144,9 @@ suite('ElectronLauncher Port Configuration', () => {
         sandbox.stub(LocalLauncher.prototype, 'findElectronExecutable').resolves('/fake/path/to/electron');
         sandbox.stub(LocalLauncher.prototype, 'fixMacOSElectronApp').resolves();
 
-        // Temporarily force platform to darwin
-        const origPlatform = process.platform as any;
-        Object.defineProperty(process, 'platform', { value: 'darwin' });
+        await (launcher as any).handleZipExtraction(electronZip);
 
-        try {
-            await (launcher as any).handleZipExtraction(electronZip);
-
-            assert.ok(childProcessLocal.exec.calledOnce, 'ditto should be run on macOS');
-            const cmd = childProcessLocal.exec.getCall(0).args[0];
-            assert.ok(/ditto -xk/.test(cmd), `Expected ditto command, got: ${cmd}`);
-        } finally {
-            // Restore original platform
-            Object.defineProperty(process, 'platform', { value: origPlatform });
-        }
+        assert.ok(admZipMock.calledWith(electronZip), 'adm-zip should be called with the zip path');
+        assert.ok(fsLocal.promises.writeFile.called, 'Files should be written to disk');
     });
 });

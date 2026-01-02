@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "GLSL shader viewer for shadertoy shaders",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
@@ -141,6 +141,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/mocha": "^10.0.10",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.101.0",
@@ -158,8 +159,7 @@
     "@electron/get": "^3.1.0",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
-    "@types/yauzl": "^2.10.3",
-    "ws": "^8.18.3",
-    "yauzl": "^3.2.0"
+    "adm-zip": "^0.5.16",
+    "ws": "^8.18.3"
   }
 }
