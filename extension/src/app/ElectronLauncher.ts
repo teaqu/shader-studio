@@ -357,55 +357,65 @@ export class ElectronLauncher {
       await this.removeDirectorySafely(extractDir);
       await fs.promises.mkdir(extractDir, { recursive: true });
 
-      // Log directory permissions and state
-      try {
-        const stat = await fs.promises.stat(extractDir);
-        this.logger.info(`Extract dir exists. Mode: ${stat.mode.toString(8)}, Owner: ${stat.uid}`);
-      } catch (e) {
-        this.logger.warn(`Could not stat extract dir: ${e}`);
+      // Use native unzip on macOS/Linux to preserve attributes and code signatures
+      // Fall back to adm-zip on Windows
+      if (process.platform !== "win32") {
+        await this.extractZipWithNativeUnzip(zipPath, extractDir);
+      } else {
+        await this.extractZipWithAdmZip(zipPath, extractDir);
       }
 
-      // Use adm-zip for cross-platform extraction
-      this.logger.info("Using adm-zip for cross-platform zip extraction");
-      try {
-        const zip = new AdmZip(zipPath);
-        
-        this.logger.info(`Found ${zip.getEntries().length} entries in zip`);
-        
-        // On Windows, extractAllTo may fail due to chmod issues
-        // Use manual extraction with error handling for each entry
-        for (const entry of zip.getEntries()) {
-          try {
-            if (entry.isDirectory) {
-              await fs.promises.mkdir(path.join(extractDir, entry.entryName), { recursive: true });
-            } else {
-              const targetPath = path.join(extractDir, entry.entryName);
-              await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-              await fs.promises.writeFile(targetPath, entry.getData());
-              this.logger.debug(`Extracted: ${entry.entryName}`);
-            }
-          } catch (entryError) {
-            // Log but continue - some files may fail but shouldn't block entire extraction
-            this.logger.warn(`Failed to extract entry ${entry.entryName}: ${entryError}`);
-          }
-        }
-        
-        this.logger.info("Zip extraction completed with adm-zip");
-
-        // Fix permissions on macOS after extraction
-        if (process.platform === "darwin") {
-          await this.fixMacOSElectronApp(extractDir);
-        }
-      } catch (admZipError) {
-        this.logger.error(`adm-zip extraction failed: ${admZipError}`);
-        this.logger.error(`Stack: ${admZipError instanceof Error ? admZipError.stack : 'no stack'}`);
-        throw admZipError;
+      // Fix permissions on macOS after extraction
+      if (process.platform === "darwin") {
+        await this.fixMacOSElectronApp(extractDir);
       }
-
     } catch (error) {
       this.logger.error(`Extraction failed: ${error}`);
       this.logger.error(`Stack trace: ${error instanceof Error ? error.stack : 'no stack'}`);
       throw error;
+    }
+  }
+
+  private async extractZipWithNativeUnzip(zipPath: string, extractDir: string): Promise<void> {
+    this.logger.info("Using native unzip command to preserve attributes");
+    try {
+      await this.runCommand(`unzip -q "${zipPath}" -d "${extractDir}"`);
+      this.logger.info("Zip extraction completed with native unzip");
+    } catch (error) {
+      this.logger.error(`Native unzip failed: ${error}, falling back to adm-zip`);
+      await this.extractZipWithAdmZip(zipPath, extractDir);
+    }
+  }
+
+  private async extractZipWithAdmZip(zipPath: string, extractDir: string): Promise<void> {
+    this.logger.info("Using adm-zip for cross-platform zip extraction");
+    try {
+      const zip = new AdmZip(zipPath);
+      
+      this.logger.info(`Found ${zip.getEntries().length} entries in zip`);
+      
+      // Use manual extraction with error handling for each entry
+      for (const entry of zip.getEntries()) {
+        try {
+          if (entry.isDirectory) {
+            await fs.promises.mkdir(path.join(extractDir, entry.entryName), { recursive: true });
+          } else {
+            const targetPath = path.join(extractDir, entry.entryName);
+            await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+            await fs.promises.writeFile(targetPath, entry.getData());
+            this.logger.debug(`Extracted: ${entry.entryName}`);
+          }
+        } catch (entryError) {
+          // Log but continue - some files may fail but shouldn't block entire extraction
+          this.logger.warn(`Failed to extract entry ${entry.entryName}: ${entryError}`);
+        }
+      }
+      
+      this.logger.info("Zip extraction completed with adm-zip");
+    } catch (admZipError) {
+      this.logger.error(`adm-zip extraction failed: ${admZipError}`);
+      this.logger.error(`Stack: ${admZipError instanceof Error ? admZipError.stack : 'no stack'}`);
+      throw admZipError;
     }
   }
 
