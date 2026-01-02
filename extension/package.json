@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "GLSL shader viewer for shadertoy shaders",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "teaqu",
   "repository": {
     "type": "git",

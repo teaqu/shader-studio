@@ -1,4 +1,9 @@
 # Change Log
+### 0.0.6
+- Electron install fix on macos
+- Run based on file extension not just language id
+- Recomend syntax highlighter
+
 ### 0.0.5
 - Create default shader from menu
 

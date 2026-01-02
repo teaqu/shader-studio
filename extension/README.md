@@ -4,17 +4,14 @@ A GLSL fragment shader viewer for VS Code with hot reloading, designed specifica
 
 ![screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/screenshot.png)
 
+https://marketplace.visualstudio.com/items?itemName=slevesque.shader is recomended for synax highlighting.
+
 ## Quick Start
 
 1. Open any shadertoy style `.glsl` file in VS Code
 2. Click the SHA icon on the VS Code status bar to see the viewing options
 
 ![shader studio menu button](https://github.com/teaqu/shader-studio/blob/main/assets/sha-button.png?raw=true)
-
-You can launch your shader in three different ways:
-- **Panel**: Embedded within VS Code
-- **Window**: Standalone Electron window
-- **Web Browser**: For best performance
 
 You can launch as many panels, windows, or browser tabs as you want simultaneously.
 
