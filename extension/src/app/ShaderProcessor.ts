@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import { Constants } from "./Constants";
+import { isGlslDocument } from "./GlslFileTracker";
 import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 
 export class ShaderProcessor {
@@ -15,7 +16,11 @@ export class ShaderProcessor {
   public sendShaderToWebview(
     editor: vscode.TextEditor,
   ): void {
-    if (!this.messenger || (editor?.document.languageId !== "glsl" && editor?.document.languageId !== "frag")) {
+    if (!this.messenger) {
+      return;
+    }
+    const doc = editor?.document;
+    if (!doc || !isGlslDocument(doc)) {
       return;
     }
 

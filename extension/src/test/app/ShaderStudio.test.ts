@@ -124,6 +124,42 @@ suite('Shader Studio Test Suite', () => {
     } as any;
   }
 
+  function createMockGLSLNoLanguageEditor(): vscode.TextEditor {
+    const mockDocument = {
+      fileName: '/mock/path/shader.glsl',
+      languageId: 'plaintext',
+      uri: vscode.Uri.file('/mock/path/shader.glsl'),
+      getText: sandbox.stub().returns('// Mock GLSL code'),
+      lineCount: 10,
+      isClosed: false,
+      isDirty: false,
+      isUntitled: false,
+      save: sandbox.stub(),
+      eol: vscode.EndOfLine.LF,
+      version: 1,
+    } as any;
+
+    return {
+      document: mockDocument,
+      selection: new vscode.Selection(0, 0, 0, 0),
+      selections: [new vscode.Selection(0, 0, 0, 0)],
+      visibleRanges: [new vscode.Range(0, 0, 9, 0)],
+      options: {
+        cursorStyle: vscode.TextEditorCursorStyle.Line,
+        insertSpaces: true,
+        lineNumbers: vscode.TextEditorLineNumbersStyle.On,
+        tabSize: 4
+      },
+      viewColumn: vscode.ViewColumn.One,
+      edit: sandbox.stub(),
+      insertSnippet: sandbox.stub(),
+      setDecorations: sandbox.stub(),
+      revealRange: sandbox.stub(),
+      show: sandbox.stub(),
+      hide: sandbox.stub(),
+    } as any;
+  }
+
   function createMockJavaScriptEditor(): vscode.TextEditor {
     const mockDocument = {
       fileName: '/mock/path/script.js',
@@ -259,5 +295,32 @@ suite('Shader Studio Test Suite', () => {
 
     const glslEditor = createMockGLSLEditor();
     assert.strictEqual(shaderStudio['isGlslEditor'](glslEditor), true);
+  });
+
+  test('should process .glsl file even when languageId is not glsl', () => {
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+    shaderStudio['panelManager'].createPanel();
+    assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
+
+    const mockEditor = createMockGLSLNoLanguageEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+    shaderStudio['performShaderUpdate'](mockEditor);
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditor);
   });
 });

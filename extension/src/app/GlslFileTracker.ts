@@ -36,6 +36,11 @@ export class GlslFileTracker {
     }
 
     public isGlslEditor(editor: vscode.TextEditor): boolean {
-        return editor.document.languageId === 'glsl' || editor.document.fileName.endsWith('.glsl');
+        return isGlslDocument(editor.document);
     }
+}
+
+export function isGlslDocument(document: vscode.TextDocument): boolean {
+    return document.languageId === 'glsl' || document.languageId === 'frag'
+        || document.fileName.endsWith('.glsl') || document.fileName.endsWith('.frag');
 }
