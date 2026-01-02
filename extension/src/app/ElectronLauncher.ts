@@ -32,14 +32,6 @@ export class ElectronLauncher {
     }
   }
 
-  private async checkNpmAvailable(): Promise<boolean> {
-    return new Promise((resolve) => {
-      child_process.exec('npx --version', (error) => {
-        resolve(!error);
-      });
-    });
-  }
-
   private async findElectronApp(): Promise<
     { electronDir: string; launcherScript: string }
   > {
@@ -353,18 +345,25 @@ export class ElectronLauncher {
   }
 
   private async extractZip(zipPath: string, extractDir: string): Promise<void> {
-    const extract = (await import("extract-zip")).default;
-
     try {
       this.logger.info(`Extracting ${zipPath} to ${extractDir}`);
 
-      await extract(zipPath, { dir: extractDir });
+      // Ensure target directory exists and is empty
+      await this.removeDirectorySafely(extractDir);
+      await fs.promises.mkdir(extractDir, { recursive: true });
 
-      this.logger.info("Zip extraction completed with extract-zip");
-
-      // Fix permissions on macOS after extraction
       if (process.platform === "darwin") {
+        // On macOS, prefer `ditto` which preserves .app bundles, symlinks and resource forks
+        this.logger.info("Using macOS 'ditto' to extract zip (preserves .app bundles and symlinks)");
+        await this.runCommand(`ditto -xk "${zipPath}" "${extractDir}"`);
+        this.logger.info("Zip extraction completed with ditto (macOS)");
+
+        // Fix permissions on macOS after extraction
         await this.fixMacOSElectronApp(extractDir);
+      } else {
+        const extract = (await import("extract-zip")).default;
+        await extract(zipPath, { dir: extractDir });
+        this.logger.info("Zip extraction completed with extract-zip");
       }
 
     } catch (error) {

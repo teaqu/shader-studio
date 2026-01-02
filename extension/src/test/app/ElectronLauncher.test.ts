@@ -56,6 +56,9 @@ suite('ElectronLauncher Port Configuration', () => {
             electronDir: '/mock/electron/dir',
             launcherScript: '/mock/electron/dir/dist/electron-launch.js'
         });
+
+        // Prevent tests from attempting a real network download by default
+        sandbox.stub(electronLauncher, 'getOrDownloadElectron').resolves('/fake/path/to/electron');
     });
 
     teardown(() => {
@@ -90,12 +93,63 @@ suite('ElectronLauncher Port Configuration', () => {
         childProcessMock.exec.reset();
         childProcessMock.exec.yields(new Error('npm not found'));
 
-        sandbox.stub(electronLauncher, 'getOrDownloadElectron').resolves('/fake/path/to/electron');
-
         await electronLauncher.launch(true);
 
         assert.ok(createTerminalStub.calledOnce, 'Should create a terminal');
         const command = mockTerminal.sendText.getCall(0).args[0];
         assert.ok(command.includes(`--wsPort=${testPort}`), `Command should include "--wsPort=${testPort}". Got: ${command}`);
+    });
+
+    test('should extract zip using ditto on macOS', async () => {
+        const electronZip = '/tmp/fake-electron.zip';
+        const extractDir = electronZip.replace('.zip', '-extracted');
+
+        // Local fs and child_process mocks specific to this test
+        const fsLocal = {
+            existsSync: sandbox.stub().returns(false),
+            promises: {
+                access: sandbox.stub().resolves(),
+                readdir: sandbox.stub().resolves([]),
+                rm: sandbox.stub().resolves(),
+                mkdir: sandbox.stub().resolves()
+            }
+        };
+
+        const childProcessLocal = {
+            exec: sandbox.stub().yields(null),
+            spawn: sandbox.stub().returns({ on: sandbox.stub(), unref: sandbox.stub() })
+        };
+
+        const electronGetMock = {
+            downloadArtifact: sandbox.stub().resolves(electronZip)
+        };
+
+        const { ElectronLauncher: LocalLauncher } = proxyquire('../../app/ElectronLauncher', {
+            'fs': fsLocal,
+            'child_process': childProcessLocal,
+            '@electron/get': electronGetMock,
+        });
+
+        const mockLogger = { info: sandbox.stub(), warn: sandbox.stub(), error: sandbox.stub(), debug: sandbox.stub() };
+        const launcher = new LocalLauncher(mockContext, mockLogger as any);
+
+        // Prevent file-system searching from failing the test
+        sandbox.stub(LocalLauncher.prototype, 'findElectronExecutable').resolves('/fake/path/to/electron');
+        sandbox.stub(LocalLauncher.prototype, 'fixMacOSElectronApp').resolves();
+
+        // Temporarily force platform to darwin
+        const origPlatform = process.platform as any;
+        Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+        try {
+            await (launcher as any).handleZipExtraction(electronZip);
+
+            assert.ok(childProcessLocal.exec.calledOnce, 'ditto should be run on macOS');
+            const cmd = childProcessLocal.exec.getCall(0).args[0];
+            assert.ok(/ditto -xk/.test(cmd), `Expected ditto command, got: ${cmd}`);
+        } finally {
+            // Restore original platform
+            Object.defineProperty(process, 'platform', { value: origPlatform });
+        }
     });
 });
