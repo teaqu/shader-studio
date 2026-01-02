@@ -24,23 +24,8 @@ export class ElectronLauncher {
       this.logger.info(`Extension mode: ${this.context.extensionMode}`);
 
       const { electronDir, launcherScript } = await this.findElectronApp();
-
-      // In development with workspace, try npx first, fallback to download
-      if (isDevelopment && this.context.extensionMode === vscode.ExtensionMode.Development) {
-        this.logger.info("Development mode - trying npx electron with fallback");
-        const hasNpm = await this.checkNpmAvailable();
-
-        if (hasNpm) {
-          await this.launchWithNpx(electronDir, launcherScript);
-        } else {
-          this.logger.warn("npm/npx not available, falling back to downloaded Electron");
-          await this.launchWithDownloadedElectron(electronDir, launcherScript);
-        }
-      } else {
-        // For packaged extensions, always use downloaded Electron
         this.logger.info("Using downloaded Electron for packaged extension");
         await this.launchWithDownloadedElectron(electronDir, launcherScript);
-      }
     } catch (error) {
       this.logger.error(`Failed to launch Electron: ${error}`);
       vscode.window.showErrorMessage(`Failed to launch Electron: ${error}`);
