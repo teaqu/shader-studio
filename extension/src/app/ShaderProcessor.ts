@@ -5,6 +5,7 @@ import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import { Constants } from "./Constants";
 import { isGlslDocument } from "./GlslFileTracker";
+import { PathResolver } from "./PathResolver";
 import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 
 export class ShaderProcessor {
@@ -119,9 +120,7 @@ export class ShaderProcessor {
     shaderPath: string,
     buffers: Record<string, string>,
   ): void {
-    const bufferPath = path.isAbsolute(pass.path)
-      ? pass.path
-      : path.join(path.dirname(shaderPath), pass.path);
+    const bufferPath = PathResolver.resolvePath(shaderPath, pass.path);
 
     // Check if we have this buffer in memory first
     const bufferDoc = vscode.workspace.textDocuments.find(
@@ -153,7 +152,18 @@ export class ShaderProcessor {
         this.logger.warn(
           `Failed to read buffer content for ${passName}: ${bufferPath}`,
         );
+        vscode.window.showErrorMessage(
+          `Failed to read buffer file: ${bufferPath}`,
+        );
       }
+    } else {
+      // File not found
+      this.logger.error(
+        `Buffer file not found for ${passName}: ${bufferPath}`,
+      );
+      vscode.window.showErrorMessage(
+        `Buffer file not found: ${bufferPath}`,
+      );
     }
 
     pass.path = bufferPath;
@@ -167,12 +177,11 @@ export class ShaderProcessor {
     if (!pass.inputs) {
       return;
     }
+    
     for (const key of Object.keys(pass.inputs)) {
       const input = pass.inputs[key];
       if (input.type === "texture" && input.path) {
-        const imgPath = path.isAbsolute(input.path)
-          ? input.path
-          : path.join(path.dirname(shaderPath), input.path);
+        const imgPath = PathResolver.resolvePath(shaderPath, input.path);
 
         if (fs.existsSync(imgPath)) {
           input.path = imgPath;
@@ -180,8 +189,11 @@ export class ShaderProcessor {
             `Resolved image path for ${passName}.inputs.${key}: ${imgPath}`,
           );
         } else {
-          this.logger.warn(
+          this.logger.error(
             `Image not found for ${passName}.inputs.${key}: ${imgPath}`,
+          );
+          vscode.window.showErrorMessage(
+            `Texture file not found: ${imgPath}`,
           );
         }
       }
@@ -209,9 +221,7 @@ export class ShaderProcessor {
         continue;
       }
       if ("path" in pass && pass.path && typeof pass.path === "string") {
-        const bufferPath = path.isAbsolute(pass.path)
-          ? pass.path
-          : path.join(path.dirname(shaderPath), pass.path);
+        const bufferPath = PathResolver.resolvePath(shaderPath, pass.path);
 
         bufferFiles.add(bufferPath);
       }

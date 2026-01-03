@@ -153,8 +153,9 @@
             on:input={updatePath}
             class="config-input"
             class:error={!validation.isValid}
-            placeholder=""
+            placeholder="e.g., ./buffer.glsl, @/shaders/buffer.glsl, or C:\path\to\buffer.glsl"
           />
+          <span class="input-note">Relative, absolute, or @/ for workspace root</span>
         </div>
 
         {#if !validation.isValid}
@@ -250,9 +251,10 @@
                       value={input.path}
                       on:input={(e) => updateInputPath(channelName, e)}
                       class="input-text"
-                      placeholder=""
+                      placeholder="e.g., ./texture.png, @/assets/tex.png, or C:\path\to\tex.png"
                       required
                     />
+                    <span class="input-note">Relative, absolute, or @/ for workspace root</span>
                   </div>
 
                   <div class="input-group">

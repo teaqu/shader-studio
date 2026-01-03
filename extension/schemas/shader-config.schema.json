@@ -56,7 +56,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the buffer GLSL file (relative or absolute)"
+          "description": "Path to the buffer GLSL file (relative, absolute, or @/ for workspace root)"
         },
         "inputs": {
           "$ref": "#/definitions/PassInputs"
