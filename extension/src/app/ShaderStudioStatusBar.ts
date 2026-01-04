@@ -65,6 +65,11 @@ export class ShaderStudioStatusBar {
             action: 'open-electron'
         });
         items.push({
+            label: '$(library) Shader Browser',
+            description: 'Browse all shaders in workspace',
+            action: 'shader-browser'
+        });
+        items.push({
             label: '$(new-file) New Shader',
             description: 'Create a new shadertoy.glsl file',
             action: 'new-shader'
@@ -94,6 +99,9 @@ export class ShaderStudioStatusBar {
                     break;
                 case 'open-electron':
                     await vscode.commands.executeCommand('shader-studio.openInElectron');
+                    break;
+                case 'shader-browser':
+                    await vscode.commands.executeCommand('shader-studio.openShaderBrowser');
                     break;
                 case 'new-shader':
                     await vscode.commands.executeCommand('shader-studio.newShader');

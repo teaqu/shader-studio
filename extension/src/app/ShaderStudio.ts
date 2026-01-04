@@ -9,6 +9,7 @@ import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
 import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
+import { ShaderBrowserProvider } from "./ShaderBrowserProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
@@ -23,6 +24,7 @@ export class ShaderStudio {
   private logger!: Logger;
   private electronLauncher: ElectronLauncher;
   private configEditorProvider: vscode.Disposable;
+  private shaderBrowserProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
@@ -57,6 +59,9 @@ export class ShaderStudio {
       this.shaderProcessor,
     );
 
+    // Register shader browser
+    this.shaderBrowserProvider = ShaderBrowserProvider.register(context);
+
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
 
@@ -72,6 +77,7 @@ export class ShaderStudio {
     this.webServer.stopWebServer();
     this.messenger.close();
     this.configEditorProvider.dispose();
+    this.shaderBrowserProvider.dispose();
     this.logger.info("Shader extension disposed");
   }
 
@@ -183,9 +189,9 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-studio.generateConfig", () => {
+      vscode.commands.registerCommand("shader-studio.generateConfig", (uri?: vscode.Uri) => {
         this.logger.info("shader-studio.generateConfig command executed");
-        this.generateConfig();
+        this.generateConfig(uri);
       }),
     );
 
@@ -283,29 +289,35 @@ export class ShaderStudio {
     }
   }
 
-  private async generateConfig(): Promise<void> {
+  private async generateConfig(uri?: vscode.Uri): Promise<void> {
     try {
-      const activeEditor = vscode.window.activeTextEditor;
-
       let glslFilePath: string;
-      if (!activeEditor || !activeEditor.document.fileName.endsWith(".glsl")) {
-        const fileUri = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          filters: {
-            "GLSL Files": ["glsl"],
-          },
-          title: "Select GLSL file to generate config for",
-        });
-
-        if (!fileUri || fileUri.length === 0) {
-          return; // User cancelled
-        }
-
-        glslFilePath = fileUri[0].fsPath;
+      
+      if (uri) {
+        // URI was provided (e.g., from shader browser)
+        glslFilePath = uri.fsPath;
       } else {
-        glslFilePath = activeEditor.document.fileName;
+        const activeEditor = vscode.window.activeTextEditor;
+
+        if (!activeEditor || !activeEditor.document.fileName.endsWith(".glsl")) {
+          const fileUri = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters: {
+              "GLSL Files": ["glsl"],
+            },
+            title: "Select GLSL file to generate config for",
+          });
+
+          if (!fileUri || fileUri.length === 0) {
+            return; // User cancelled
+          }
+
+          glslFilePath = fileUri[0].fsPath;
+        } else {
+          glslFilePath = activeEditor.document.fileName;
+        }
       }
 
       // Get the base name without extension
