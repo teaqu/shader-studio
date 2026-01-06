@@ -1,7 +1,7 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass } from "./models";
+import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
@@ -34,8 +34,8 @@ export class ShaderPipeline {
     this.timeManager = timeManager;
   }
 
-  private isBufferPass(pass: BufferPass): pass is BufferPass {
-    return pass && typeof pass === 'object' && typeof pass.path === 'string';
+  private isBufferPass(pass: BufferPass | ImagePass | undefined): pass is BufferPass {
+    return !!pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string';
   }
 
   public getPasses(): Pass[] {
@@ -128,7 +128,7 @@ export class ShaderPipeline {
         name: passName,
         shaderSrc,
         inputs: pass?.inputs ?? {},
-        path: this.isBufferPass(pass) ? pass.path : undefined,
+        path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
       };
     });
   }

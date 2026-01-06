@@ -1,4 +1,4 @@
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
+import type { PiRenderer, PiTexture } from "../types/piRenderer";
 
 export class ShaderKeyboardInput {
   private static readonly KEYBOARD_SIZE = 256;

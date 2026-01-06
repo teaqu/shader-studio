@@ -1,5 +1,5 @@
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
-import type { TextureConfigInput } from "../../models/ShaderConfig";
+import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { TextureConfigInput } from "../models/ShaderConfig";
 
 export class TextureCache {
   private static readonly DEFAULT_TEXTURE_COLOR = new Uint8Array([0, 0, 0, 255]);
