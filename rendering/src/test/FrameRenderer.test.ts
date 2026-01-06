@@ -388,6 +388,7 @@ describe("FrameRenderer", () => {
       // to trigger duplicate calls with identical timestamps
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0); // Duplicate frame
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5); // Not first frame
 
       frameRenderer.render(1000);
 
@@ -397,6 +398,32 @@ describe("FrameRenderer", () => {
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
       expect(mockKeyboardManager.clearPressed).not.toHaveBeenCalled();
       expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+    });
+
+    it("should NOT drop frame 0 even with delta time === 0 (new shader load)", () => {
+      // First frame should render even with 0 delta (new shader loaded while paused)
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(0); // First frame
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} }
+      ];
+      const mockPassShaders = {
+        'Image': { mProgram: {}, mResult: true }
+      };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      // Should NOT return early - first frame should render
+      expect(mockFPSCalculator.reset).toHaveBeenCalled();
+      expect(mockTimeManager.incrementFrame).toHaveBeenCalled();
+      expect(mockKeyboardManager.clearPressed).toHaveBeenCalled();
+      expect(mockPassRenderer.renderPass).toHaveBeenCalled();
     });
 
     it("should handle sequence of duplicate and normal frames correctly", () => {
@@ -604,6 +631,52 @@ describe("FrameRenderer", () => {
       mockBufferManager.getPassBuffers.mockReturnValue({});
 
       expect(() => frameRenderer.render(1000)).not.toThrow();
+    });
+
+    it("should render first frame even when paused (new shader loaded)", () => {
+      frameRenderer.setRunning(true);
+      mockTimeManager.getFrame.mockReturnValue(0); // First frame
+      mockTimeManager.isPaused.mockReturnValue(true); // Paused
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+
+      const mockPasses = [
+        { name: 'Buffer A', shaderSrc: 'buffer shader', inputs: {} },
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} }
+      ];
+      const mockPassShaders = {
+        'Buffer A': { mProgram: {}, mResult: true },
+        'Image': { mProgram: {}, mResult: true }
+      };
+      const mockPassBuffers = {
+        'Buffer A': {
+          front: { mTex0: {} },
+          back: { mTex0: {} }
+        }
+      };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+      mockBufferManager.getPassBuffers.mockReturnValue(mockPassBuffers);
+
+      frameRenderer.render(1000);
+
+      // Both buffer pass and image pass should render on first frame even when paused
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(2);
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        { name: 'Buffer A', shaderSrc: 'buffer shader', inputs: {} },
+        { mTex0: {} },
+        { mProgram: {}, mResult: true },
+        expect.any(Object)
+      );
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} },
+        null,
+        { mProgram: {}, mResult: true },
+        expect.any(Object)
+      );
+      
+      // Frame should not increment when paused
+      expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
     });
   });
 });

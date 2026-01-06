@@ -102,10 +102,12 @@ export class FrameRenderer {
 
     this.timeManager.updateFrame(time);
 
-    // Solves issue where if rendering in multiple vscode panels, requestAnimationFrame will trigger
-    // an update in all panels causing over rendering.
-    // Unsure why this happens...
-    if (this.timeManager.getDeltaTime() === 0) {
+    const currentFrame = this.timeManager.getFrame();
+    const deltaTime = this.timeManager.getDeltaTime();
+
+    // Skip duplicate frames from VS Code multi-panel rendering (but allow first frame)
+    // See test not sure why this happens
+    if (deltaTime === 0 && currentFrame !== 0) {
       return;
     }
 
@@ -115,10 +117,10 @@ export class FrameRenderer {
     const uniforms = this.getUniforms();
     const isPaused = this.timeManager.isPaused();
 
-    if (!isPaused) {
+    if (!isPaused || currentFrame === 0) {
       this.renderBufferPasses(uniforms);
     }
-
+    
     this.renderImagePass(uniforms);
     this.keyboardManager.clearPressed();
 
