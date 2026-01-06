@@ -102,15 +102,32 @@ export class FrameRenderer {
 
     this.timeManager.updateFrame(time);
 
-    if (this.timeManager.getDeltaTime() == 0) {
-      // Solves issue where if rendering in multiple vscode panels, requestAnimationFrame will trigger
-      // an update in all panels causing over rendering.
-      // Unsure why this happens...
+    // Solves issue where if rendering in multiple vscode panels, requestAnimationFrame will trigger
+    // an update in all panels causing over rendering.
+    // Unsure why this happens...
+    if (this.timeManager.getDeltaTime() === 0) {
       return;
     }
 
     this.currentFrameTime = time;
+    this.updateFPSTracking(time);
 
+    const uniforms = this.getUniforms();
+    const isPaused = this.timeManager.isPaused();
+
+    if (!isPaused) {
+      this.renderBufferPasses(uniforms);
+    }
+
+    this.renderImagePass(uniforms);
+    this.keyboardManager.clearPressed();
+
+    if (!isPaused) {
+      this.timeManager.incrementFrame();
+    }
+  }
+
+  private updateFPSTracking(time: number): void {
     if (this.timeManager.getFrame() === 0) {
       this.frameCount = 0;
       this.fpsCalculator.reset();
@@ -118,8 +135,9 @@ export class FrameRenderer {
       this.fpsCalculator.updateFrame(time);
       this.frameCount++;
     }
+  }
 
-    const uniforms = this.getUniforms();
+  private renderBufferPasses(uniforms: any): void {
     const passes = this.shaderPipeline.getPasses();
     const passShaders = this.shaderPipeline.getPassShaders();
     const passBuffers = this.bufferManager.getPassBuffers();
@@ -131,33 +149,22 @@ export class FrameRenderer {
 
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-      this.passRenderer.renderPass(
-        pass,
-        buffers.back,
-        shader,
-        uniforms,
-      );
+      
+      this.passRenderer.renderPass(pass, buffers.back, shader, uniforms);
 
-      const temp = buffers.front;
-      buffers.front = buffers.back;
-      buffers.back = temp;
+      // Swap front and back buffers
+      [buffers.front, buffers.back] = [buffers.back, buffers.front];
     }
+  }
 
+  private renderImagePass(uniforms: any): void {
+    const passes = this.shaderPipeline.getPasses();
     const imagePass = passes.find((p: Pass) => p.name === "Image");
+    
     if (imagePass) {
+      const passShaders = this.shaderPipeline.getPassShaders();
       const shader = passShaders[imagePass.name];
-      this.passRenderer.renderPass(
-        imagePass,
-        null,
-        shader,
-        uniforms,
-      );
-    }
-
-    this.keyboardManager.clearPressed();
-
-    if (!this.timeManager.isPaused()) {
-      this.timeManager.incrementFrame();
+      this.passRenderer.renderPass(imagePass, null, shader, uniforms);
     }
   }
 

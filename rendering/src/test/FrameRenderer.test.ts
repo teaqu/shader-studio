@@ -201,12 +201,40 @@ describe("FrameRenderer", () => {
       mockTimeManager.isPaused.mockReturnValue(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
 
+      const mockPasses = [
+        { name: 'Buffer A', shaderSrc: 'buffer shader', inputs: {} },
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} }
+      ];
+      const mockPassShaders = {
+        'Buffer A': { mProgram: {}, mResult: true },
+        'Image': { mProgram: {}, mResult: true }
+      };
+      const mockPassBuffers = {
+        'Buffer A': {
+          front: { mTex0: {} },
+          back: { mTex0: {} }
+        }
+      };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+      mockBufferManager.getPassBuffers.mockReturnValue(mockPassBuffers);
+
       frameRenderer.render(1000);
 
       expect(mockTimeManager.updateFrame).toHaveBeenCalledWith(1000);
       expect(mockFPSCalculator.updateFrame).not.toHaveBeenCalled();
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
       expect(mockKeyboardManager.clearPressed).toHaveBeenCalled();
+      
+      // When paused, only Image pass renders (to handle resize)
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(1);
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} },
+        null,
+        { mProgram: {}, mResult: true },
+        expect.any(Object)
+      );
     });
 
     it("should handle shader rendering pipeline correctly", () => {
