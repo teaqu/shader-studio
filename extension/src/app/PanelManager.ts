@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { ShaderProcessor } from "./ShaderProcessor";
+import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
@@ -16,7 +16,7 @@ export class PanelManager {
   constructor(
     private context: vscode.ExtensionContext,
     private messenger: Messenger,
-    private shaderProcessor: ShaderProcessor,
+    private shaderProvider: ShaderProvider,
     private glslFileTracker: GlslFileTracker,
   ) {
     this.logger = Logger.getInstance();
@@ -85,7 +85,7 @@ export class PanelManager {
 
     if (editor) {
       setTimeout(
-        () => this.shaderProcessor.sendShaderToWebview(editor),
+        () => this.shaderProvider.sendShaderToWebview(editor),
         200,
       );
     }

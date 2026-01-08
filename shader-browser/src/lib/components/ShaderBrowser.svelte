@@ -10,7 +10,7 @@
   let sortBy = $state<'name' | 'updated' | 'created'>('updated');
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
-  let pageSize = 100;
+  let pageSize = 20;
 
   let filteredShaders = $derived.by(() => {
     let filtered: ShaderFile[];

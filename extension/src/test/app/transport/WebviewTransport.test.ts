@@ -178,22 +178,6 @@ suite('WebviewTransport Test Suite', () => {
         assert.strictEqual(transport.panelCount, 0);
     });
 
-    test('convertUriForClient uses first available panel', () => {
-        transport = new WebviewTransport();
-        
-        const filePath = '/test/path/file.txt';
-        assert.strictEqual(transport.convertUriForClient(filePath), filePath);
-        
-        transport.addPanel(mockPanel as any);
-        
-        const expectedUri = vscode.Uri.file('/mock/uri');
-        mockWebview.asWebviewUri.returns(expectedUri);
-        
-        const result = transport.convertUriForClient(filePath);
-        assert.strictEqual(result, expectedUri.toString());
-        sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(filePath));
-    });
-
     test('send processes shader config paths correctly', () => {
         transport = new WebviewTransport();
         transport.addPanel(mockPanel as any);

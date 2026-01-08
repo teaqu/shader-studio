@@ -70,7 +70,13 @@ suite('PathResolver Test Suite', () => {
             assert.strictEqual(result, absolutePath);
         });
 
-        test('should handle Windows drive letter paths', () => {
+        test('should handle Windows drive letter paths', function() {
+            // This test only makes sense on Windows
+            if (process.platform !== 'win32') {
+                this.skip();
+                return;
+            }
+            
             const shaderPath = path.join(SHADER_DIR, 'main.glsl');
             const absolutePath = 'C:\\absolute\\path\\buffer.glsl';
             

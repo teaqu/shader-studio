@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
-import { ShaderProcessor } from "./ShaderProcessor";
+import { ShaderProvider } from "./ShaderProvider";
 import { Constants } from "./Constants";
 
 export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
@@ -10,16 +10,16 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
 
     constructor(
         private context: vscode.ExtensionContext,
-        private shaderProcessor?: ShaderProcessor,
+        private shaderProcessor?: ShaderProvider,
     ) {
         this.logger = Logger.getInstance();
     }
 
     public static register(
         context: vscode.ExtensionContext,
-        shaderProcessor?: ShaderProcessor,
+        shaderProvider?: ShaderProvider,
     ): vscode.Disposable {
-        const provider = new ConfigEditorProvider(context, shaderProcessor);
+        const provider = new ConfigEditorProvider(context, shaderProvider);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             Constants.CONFIG_EDITOR_VIEW_TYPE,
             provider,

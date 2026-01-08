@@ -4,14 +4,14 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import { PanelManager } from '../../app/PanelManager';
 import { Messenger } from '../../app/transport/Messenger';
-import { ShaderProcessor } from '../../app/ShaderProcessor';
+import { ShaderProvider } from '../../app/ShaderProvider';
 import { Logger } from '../../app/services/Logger';
 
 suite('PanelManager Test Suite', () => {
     let panelManager: PanelManager;
     let mockContext: vscode.ExtensionContext;
     let mockMessenger: Messenger;
-    let mockShaderProcessor: ShaderProcessor;
+    let mockShaderProvider: ShaderProvider;
     let sandbox: sinon.SinonSandbox;
 
     setup(() => {
@@ -39,7 +39,7 @@ suite('PanelManager Test Suite', () => {
             removeTransport: sandbox.stub(),
         } as any;
 
-        mockShaderProcessor = {
+        mockShaderProvider = {
             sendShaderToWebview: sandbox.stub(),
         } as any;
 
@@ -50,7 +50,7 @@ suite('PanelManager Test Suite', () => {
             getLastViewedGlslFile: sandbox.stub().returns(null)
         } as any;
 
-        panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProcessor, mockGlslFileTracker);
+        panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProvider, mockGlslFileTracker);
     });
 
     teardown(() => {

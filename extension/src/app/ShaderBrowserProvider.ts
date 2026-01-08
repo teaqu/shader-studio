@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
-import { PathResolver } from "./PathResolver";
+import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
+import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderBrowserProvider {
@@ -111,120 +112,31 @@ export class ShaderBrowserProvider {
             const doc = await vscode.workspace.openTextDocument(shaderPath);
             const code = doc.getText();
             
-            // Check if config exists and load it
-            const configPath = this.getConfigPath(shaderPath);
-            let config: ShaderConfig | null = null;
+            // Collect buffer contents
             const buffers: Record<string, string> = {};
             
-            if (fs.existsSync(configPath)) {
-                const configContent = fs.readFileSync(configPath, 'utf-8');
-                config = JSON.parse(configContent);
-                
-                // Load buffer shaders referenced in the config
-                if (config) {
-                    this.processBuffers(config, shaderPath, buffers);
-                    // Convert texture paths to webview URIs
-                    this.processInputTexturePaths(config, shaderPath);
-                }
-            }
+            // Load and process config
+            const config = ShaderConfigProcessor.loadAndProcessConfig(shaderPath, buffers);
 
             this.logger.debug(`Sending shader code for ${shaderPath} with ${Object.keys(buffers).length} buffer(s)`);
 
-            this.panel.webview.postMessage({
+            // Process config paths to convert texture paths to webview URIs
+            const message = {
                 type: "shaderCode",
                 path: shaderPath,
                 code: code,
                 config: config,
                 buffers: buffers,
-            });
+            };
+
+            const processedMessage = config
+                ? ConfigPathConverter.processConfigPaths(message as any, this.panel.webview)
+                : message;
+
+            this.panel.webview.postMessage(processedMessage);
         } catch (error) {
             this.logger.error(`Failed to load shader code: ${error}`);
         }
-    }
-
-    private processBuffers(
-        config: ShaderConfig,
-        shaderPath: string,
-        buffers: Record<string, string>,
-    ): void {
-        if (!config.passes) {
-            return;
-        }
-
-        for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
-            const pass = config.passes[passName];
-            if (!pass || typeof pass !== "object") {
-                continue;
-            }
-
-            // Process pass-level "path" (for buffer source files)
-            if ("path" in pass && pass.path && typeof pass.path === "string") {
-                this.processBufferPath(pass, passName, shaderPath, buffers);
-            }
-        }
-    }
-
-    private processInputTexturePaths(
-        config: ShaderConfig,
-        shaderPath: string,
-    ): void {
-        if (!config.passes || !this.panel) {
-            return;
-        }
-
-        for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
-            const pass = config.passes[passName];
-            if (!pass || typeof pass !== "object") {
-                continue;
-            }
-
-            // Process inputs for texture paths
-            if ('inputs' in pass && pass.inputs && typeof pass.inputs === "object") {
-                for (const key of Object.keys(pass.inputs)) {
-                    const input = (pass.inputs as any)[key];
-                    if (input && input.type === "texture" && input.path) {
-                        // Resolve the path relative to the shader file
-                        const resolvedPath = PathResolver.resolvePath(shaderPath, input.path);
-                        
-                        if (fs.existsSync(resolvedPath)) {
-                            // Convert to webview URI
-                            const uri = this.panel.webview.asWebviewUri(vscode.Uri.file(resolvedPath));
-                            input.path = uri.toString();
-                            this.logger.debug(`Converted texture path for ${passName}.inputs.${key}: ${resolvedPath} -> ${input.path}`);
-                        } else {
-                            this.logger.warn(`Texture file not found for ${passName}.inputs.${key}: ${resolvedPath}`);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private processBufferPath(
-        pass: any,
-        passName: string,
-        shaderPath: string,
-        buffers: Record<string, string>,
-    ): void {
-        const bufferPath = PathResolver.resolvePath(shaderPath, pass.path);
-
-        this.logger.debug(`Processing buffer for pass ${passName}: ${bufferPath}`);
-
-        if (fs.existsSync(bufferPath)) {
-            try {
-                const bufferContent = fs.readFileSync(bufferPath, "utf-8");
-                buffers[passName] = bufferContent;
-                this.logger.debug(`Loaded buffer content for ${passName}: ${bufferPath}`);
-            } catch (e) {
-                this.logger.warn(`Failed to read buffer content for ${passName}: ${bufferPath}`);
-                vscode.window.showErrorMessage(`Failed to read buffer file: ${bufferPath}`);
-            }
-        } else {
-            this.logger.error(`Buffer file not found for ${passName}: ${bufferPath}`);
-            vscode.window.showErrorMessage(`Buffer file not found: ${bufferPath}`);
-        }
-
-        pass.path = bufferPath;
     }
 
     private async findAllShaders(): Promise<any[]> {
@@ -280,9 +192,7 @@ export class ShaderBrowserProvider {
     }
 
     private getConfigPath(shaderPath: string): string {
-        const dir = path.dirname(shaderPath);
-        const baseName = path.basename(shaderPath, path.extname(shaderPath));
-        return path.join(dir, `${baseName}.sha.json`);
+        return ShaderConfigProcessor.getConfigPath(shaderPath);
     }
 
     private async openShader(shaderPath: string): Promise<void> {

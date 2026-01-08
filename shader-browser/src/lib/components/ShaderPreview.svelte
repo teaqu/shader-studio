@@ -71,7 +71,7 @@
 
       if (result?.success) {
         // Let it render a few frames to ensure it's fully initialized
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         
         // Capture the rendered frame as an image
         try {

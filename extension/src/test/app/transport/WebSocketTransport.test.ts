@@ -8,13 +8,13 @@ suite('WebSocketTransport Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
     let mockWsServer: sinon.SinonStubbedInstance<WebSocketServer>;
     let mockWsClient: sinon.SinonStubbedInstance<WebSocket>;
-    let mockShaderProcessor: any;
+    let mockShaderProvider: any;
     let mockGlslFileTracker: any;
 
     setup(() => {
         sandbox = sinon.createSandbox();
 
-        mockShaderProcessor = {
+        mockShaderProvider = {
             sendShaderToWebview: sandbox.stub()
         };
 
@@ -67,12 +67,12 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false when no clients connected', () => {
-        transport = new WebSocketTransport(51475, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51475, mockShaderProvider, mockGlslFileTracker);
         assert.strictEqual(transport.hasActiveClients(), false);
     });
 
     test('hasActiveClients returns true when clients are connected', () => {
-        transport = new WebSocketTransport(51476, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51476, mockShaderProvider, mockGlslFileTracker);
 
         // Simulate client connection by accessing private wsClients
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
@@ -82,7 +82,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false after all clients disconnect', () => {
-        transport = new WebSocketTransport(51477, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51477, mockShaderProvider, mockGlslFileTracker);
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);
@@ -95,7 +95,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns true with multiple clients', () => {
-        transport = new WebSocketTransport(51478, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51478, mockShaderProvider, mockGlslFileTracker);
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         const mockClient2 = { ...mockWsClient } as any;
@@ -113,7 +113,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('send method handles no clients gracefully', () => {
-        transport = new WebSocketTransport(51479, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51479, mockShaderProvider, mockGlslFileTracker);
 
         assert.strictEqual(transport.hasActiveClients(), false);
 
@@ -124,7 +124,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('close method clears all clients', () => {
-        transport = new WebSocketTransport(51480, mockShaderProcessor, mockGlslFileTracker);
+        transport = new WebSocketTransport(51480, mockShaderProvider, mockGlslFileTracker);
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);
@@ -141,7 +141,7 @@ suite('WebSocketTransport Test Suite', () => {
         let mockConfig: any;
 
         setup(() => {
-            transport = new WebSocketTransport(51481, mockShaderProcessor, mockGlslFileTracker);
+            transport = new WebSocketTransport(51481, mockShaderProvider, mockGlslFileTracker);
 
             mockConfig = {
                 get: sandbox.stub().withArgs('webServerPort').returns(3000)

@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { PanelManager } from "./PanelManager";
 import { WebServer } from "./WebServer";
-import { ShaderProcessor } from "./ShaderProcessor";
+import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
@@ -18,7 +18,7 @@ export class ShaderStudio {
   private panelManager: PanelManager;
   private webServer: WebServer;
   private webSocketTransport: WebSocketTransport | null = null;
-  private shaderProcessor: ShaderProcessor;
+  private shaderProvider: ShaderProvider;
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
   private logger!: Logger;
@@ -43,11 +43,11 @@ export class ShaderStudio {
     this.glslFileTracker = new GlslFileTracker(context);
     this.shaderCreator = new ShaderCreator(this.logger);
     this.messenger = new Messenger(outputChannel, diagnosticCollection);
-    this.shaderProcessor = new ShaderProcessor(this.messenger);
+    this.shaderProvider = new ShaderProvider(this.messenger);
     this.panelManager = new PanelManager(
       context,
       this.messenger,
-      this.shaderProcessor,
+      this.shaderProvider,
       this.glslFileTracker,
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
@@ -56,7 +56,7 @@ export class ShaderStudio {
     // Register custom editor for .sha.json files
     this.configEditorProvider = ConfigEditorProvider.register(
       context,
-      this.shaderProcessor,
+      this.shaderProvider,
     );
 
     // Register shader browser
@@ -95,7 +95,7 @@ export class ShaderStudio {
     try {
       this.webSocketTransport = new WebSocketTransport(
         webSocketPort,
-        this.shaderProcessor,
+        this.shaderProvider,
         this.glslFileTracker,
       );
       this.messenger.addTransport(this.webSocketTransport);
@@ -285,7 +285,7 @@ export class ShaderStudio {
 
   private performShaderUpdate(editor: vscode.TextEditor): void {
     if (this.messenger.hasActiveClients()) {
-      this.shaderProcessor.sendShaderToWebview(editor);
+      this.shaderProvider.sendShaderToWebview(editor);
     }
   }
 
@@ -385,7 +385,7 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
-      this.shaderProcessor.sendShaderToWebview(activeEditor);
+      this.shaderProvider.sendShaderToWebview(activeEditor);
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {
@@ -424,7 +424,7 @@ export class ShaderStudio {
       if (matchingEditor) {
         this.logger.info(`Found open editor for ${shaderPath}, refreshing`);
         this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-        this.shaderProcessor.sendShaderToWebview(matchingEditor);
+        this.shaderProvider.sendShaderToWebview(matchingEditor);
       } else {
         this.logger.info(`Opening shader file at path: ${shaderPath}`);
         const document = await vscode.workspace.openTextDocument(
@@ -436,7 +436,7 @@ export class ShaderStudio {
 
         this.logger.info(`Opened and refreshing shader file: ${shaderPath}`);
         this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-        this.shaderProcessor.sendShaderToWebview(editor);
+        this.shaderProvider.sendShaderToWebview(editor);
       }
     } catch (error) {
       this.logger.error(

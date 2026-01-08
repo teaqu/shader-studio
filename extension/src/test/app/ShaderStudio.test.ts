@@ -81,7 +81,7 @@ suite('Shader Studio Test Suite', () => {
     } as any);
 
     shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
-    sendShaderSpy = sandbox.spy(shaderStudio['shaderProcessor'], 'sendShaderToWebview');
+    sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderToWebview');
   });
 
   teardown(() => {

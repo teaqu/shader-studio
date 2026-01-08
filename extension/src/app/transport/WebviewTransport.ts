@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
+import { ConfigPathConverter } from "./ConfigPathConverter";
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class WebviewTransport implements MessageTransport {
@@ -27,7 +28,10 @@ export class WebviewTransport implements MessageTransport {
 
   public send(message: any): void {
     if (message.type === "shaderSource" && message.config) {
-      message = this.processConfigPaths(message);
+      const firstPanel = this.panels.values().next().value;
+      if (firstPanel?.webview) {
+        message = ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
+      }
     }
 
     let sentCount = 0;
@@ -50,48 +54,6 @@ export class WebviewTransport implements MessageTransport {
     }
 
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
-  }
-
-  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }): typeof message {
-    // Clone the message to avoid modifying the original
-    const processedMessage = JSON.parse(JSON.stringify(message));
-    const config = processedMessage.config;
-
-    if (!config?.passes) {
-      return processedMessage;
-    }
-
-    // Process all passes in the passes object
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
-      const pass = config.passes[passName];
-      if (!pass || typeof pass !== "object") {
-        continue;
-      }
-
-      // Process inputs for texture paths
-      if (pass.inputs && typeof pass.inputs === "object") {
-        for (const key of Object.keys(pass.inputs)) {
-          const input = pass.inputs[key as keyof typeof pass.inputs];
-          if (input && input.type === "texture" && input.path) {
-            input.path = this.convertUriForClient(input.path);
-          }
-        }
-      }
-    }
-
-    return processedMessage;
-  }
-
-  public convertUriForClient(filePath: string): string {
-    const firstPanel = this.panels.values().next().value;
-    try {
-      if (firstPanel?.webview) {
-        return firstPanel.webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
-      }
-      return filePath;
-    } catch (error) {
-      return filePath;
-    }
   }
 
   public close(): void {
