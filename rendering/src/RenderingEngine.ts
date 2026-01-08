@@ -34,10 +34,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.shaderLocker = new ShaderLocker();
   }
 
-  initialize(glCanvas: HTMLCanvasElement) {
+  initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
 
-    const gl = glCanvas.getContext("webgl2");
+    const gl = glCanvas.getContext("webgl2", { preserveDrawingBuffer });
     if (!gl) {
       throw new Error("WebGL2 not supported");
     }

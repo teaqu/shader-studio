@@ -34,6 +34,9 @@ export class ShaderBrowserProvider {
             return;
         }
 
+        // Get workspace folders for texture loading
+        const workspaceFolders = vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
+
         this.panel = vscode.window.createWebviewPanel(
             "shader-studio.shaderBrowser",
             "Shader Browser",
@@ -48,6 +51,7 @@ export class ShaderBrowserProvider {
                             "shader-browser-dist",
                         ),
                     ),
+                    ...workspaceFolders,
                 ],
             },
         );
@@ -119,6 +123,8 @@ export class ShaderBrowserProvider {
                 // Load buffer shaders referenced in the config
                 if (config) {
                     this.processBuffers(config, shaderPath, buffers);
+                    // Convert texture paths to webview URIs
+                    this.processInputTexturePaths(config, shaderPath);
                 }
             }
 
@@ -154,6 +160,42 @@ export class ShaderBrowserProvider {
             // Process pass-level "path" (for buffer source files)
             if ("path" in pass && pass.path && typeof pass.path === "string") {
                 this.processBufferPath(pass, passName, shaderPath, buffers);
+            }
+        }
+    }
+
+    private processInputTexturePaths(
+        config: ShaderConfig,
+        shaderPath: string,
+    ): void {
+        if (!config.passes || !this.panel) {
+            return;
+        }
+
+        for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+            const pass = config.passes[passName];
+            if (!pass || typeof pass !== "object") {
+                continue;
+            }
+
+            // Process inputs for texture paths
+            if ('inputs' in pass && pass.inputs && typeof pass.inputs === "object") {
+                for (const key of Object.keys(pass.inputs)) {
+                    const input = (pass.inputs as any)[key];
+                    if (input && input.type === "texture" && input.path) {
+                        // Resolve the path relative to the shader file
+                        const resolvedPath = PathResolver.resolvePath(shaderPath, input.path);
+                        
+                        if (fs.existsSync(resolvedPath)) {
+                            // Convert to webview URI
+                            const uri = this.panel.webview.asWebviewUri(vscode.Uri.file(resolvedPath));
+                            input.path = uri.toString();
+                            this.logger.debug(`Converted texture path for ${passName}.inputs.${key}: ${resolvedPath} -> ${input.path}`);
+                        } else {
+                            this.logger.warn(`Texture file not found for ${passName}.inputs.${key}: ${resolvedPath}`);
+                        }
+                    }
+                }
             }
         }
     }
