@@ -244,16 +244,16 @@
               <span class="page-ellipsis">...</span>
             {/if}
             
-            {#each Array(5) as _, i}
-              {@const pageNum = Math.max(2, Math.min(totalPages - 1, currentPage - 2 + i))}
-              {#if pageNum > 1 && pageNum < totalPages}
-                <button 
-                  class="page-button {currentPage === pageNum ? 'active' : ''}"
-                  onclick={() => goToPage(pageNum)}
-                >
-                  {pageNum}
-                </button>
-              {/if}
+            {@const startPage = Math.max(2, Math.min(currentPage - 2, totalPages - 4))}
+            {@const endPage = Math.min(totalPages - 1, Math.max(currentPage + 2, 5))}
+            {#each Array(endPage - startPage + 1) as _, i}
+              {@const pageNum = startPage + i}
+              <button 
+                class="page-button {currentPage === pageNum ? 'active' : ''}"
+                onclick={() => goToPage(pageNum)}
+              >
+                {pageNum}
+              </button>
             {/each}
             
             {#if currentPage < totalPages - 2}
