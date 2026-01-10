@@ -20,7 +20,13 @@
 
 <div class="shader-card" on:click={() => dispatch('open')}>
   <div class="shader-thumbnail">
-    <ShaderPreview {shader} {vscodeApi} {width} {height} />
+    <ShaderPreview 
+      {shader} 
+      {vscodeApi} 
+      {width} 
+      {height} 
+      on:compilationFailed={() => dispatch('compilationFailed')}
+    />
   </div>
   
   <div class="shader-info">

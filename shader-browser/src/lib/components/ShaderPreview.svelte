@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
   import { RenderingEngine } from '@shader-studio/rendering/RenderingEngine';
   import { renderQueue } from '../stores/shaderStore';
+
+  const dispatch = createEventDispatcher();
 
   let { shader, width = 320, height = 180, vscodeApi }: {
     shader: ShaderFile;
@@ -123,6 +126,7 @@
       } else {
         console.error('Failed to compile shader:', shader.name, result?.error);
         compilationFailed = true;
+        dispatch('compilationFailed');
         // Still clean up on failure
         cleanupRenderer(renderingEngine, canvas);
         renderingEngine = null;
@@ -130,6 +134,7 @@
     } catch (err) {
       console.error('Failed to initialize rendering:', err);
       compilationFailed = true;
+      dispatch('compilationFailed');
     }
   }
 

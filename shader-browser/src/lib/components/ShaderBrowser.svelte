@@ -12,11 +12,13 @@
   let currentPage = $state(1);
   let pageSize = $state(20);
   let cardSize = $state(280); // Card width in pixels (200-500)
+  let hideFailedShaders = $state(false);
+  let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let stateRestored = $state(false);
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -33,6 +35,11 @@
         shader.name.toLowerCase().includes(query) ||
         shader.relativePath.toLowerCase().includes(query)
       );
+    }
+
+    // Filter out failed shaders if hideFailedShaders is enabled
+    if (hideFailedShaders) {
+      filtered = filtered.filter(shader => !failedShaders.has(shader.path));
     }
 
     // Sort the filtered results
@@ -139,6 +146,9 @@
           if (message.savedState.cardSize && typeof message.savedState.cardSize === 'number') {
             cardSize = message.savedState.cardSize;
           }
+          if (typeof message.savedState.hideFailedShaders === 'boolean') {
+            hideFailedShaders = message.savedState.hideFailedShaders;
+          }
         }
         
         stateRestored = true;
@@ -174,6 +184,10 @@
 
   function refreshShaders() {
     vscode?.postMessage({ type: 'requestShaders' });
+  }
+
+  function handleCompilationFailure(shader: ShaderFile) {
+    failedShaders = new Set(failedShaders).add(shader.path); // Create new Set to trigger reactivity
   }
 </script>
 
@@ -220,6 +234,10 @@
           title={`${cardSize}px`}
         />
       </div>
+      <label class="checkbox-control">
+        <input type="checkbox" bind:checked={hideFailedShaders} />
+        <span class="checkbox-label">Hide Failed</span>
+      </label>
       <button class="icon-button" onclick={refreshShaders} title="Refresh">
         ↻
       </button>
@@ -252,6 +270,7 @@
             on:open={() => openShader(shader)}
             on:openConfig={() => openConfig(shader)}
             on:createConfig={() => createConfig(shader)}
+            on:compilationFailed={() => handleCompilationFailure(shader)}
           />
         {/each}
       </div>
@@ -456,6 +475,24 @@
 
   .card-size-slider:focus::-moz-range-thumb {
     box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+  }
+
+  .checkbox-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .checkbox-control input[type="checkbox"] {
+    cursor: pointer;
+  }
+
+  .checkbox-label {
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    white-space: nowrap;
   }
 
   .shader-count {
