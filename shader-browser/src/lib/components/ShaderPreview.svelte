@@ -14,6 +14,7 @@
   let canvas: HTMLCanvasElement;
   let renderingEngine: RenderingEngine | null = null;
   let capturedImage: string = $state('');
+  let compilationFailed: boolean = $state(false);
   let shaderCode: string = '';
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
@@ -107,9 +108,11 @@
         // Capture the rendered frame as an image
         try {
           capturedImage = canvas.toDataURL('image/png');
+          compilationFailed = false;
           console.log('Captured image for shader:', shader.name, 'Image length:', capturedImage.length);
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
+          compilationFailed = true;
         }
         
         // Clean up rendering resources
@@ -119,12 +122,14 @@
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.error);
+        compilationFailed = true;
         // Still clean up on failure
         cleanupRenderer(renderingEngine, canvas);
         renderingEngine = null;
       }
     } catch (err) {
       console.error('Failed to initialize rendering:', err);
+      compilationFailed = true;
     }
   }
 
@@ -210,6 +215,11 @@
       {height}
       class="shader-preview"
     />
+  {:else if compilationFailed}
+    <div class="shader-error">
+      <div class="error-icon">⚠️</div>
+      <div class="error-message">Compilation Failed</div>
+    </div>
   {:else}
     <canvas
       bind:this={canvas}
@@ -234,6 +244,29 @@
     height: 100%;
     display: block;
     object-fit: cover;
+  }
+  
+  .shader-error {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: #fff;
+  }
+  
+  .error-icon {
+    font-size: 48px;
+    margin-bottom: 8px;
+    opacity: 0.6;
+    filter: grayscale(100%);
+  }
+  
+  .error-message {
+    font-size: 12px;
+    opacity: 0.7;
   }
   
   .hover-canvas-wrapper {
