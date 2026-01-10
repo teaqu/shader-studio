@@ -61,19 +61,44 @@
     }
   }
 
+  async function createShaderRenderer(targetCanvas: HTMLCanvasElement, startRenderLoop: boolean) {
+    const engine = new RenderingEngine();
+    engine.initialize(targetCanvas, startRenderLoop);
+    
+    const result = await engine.compileShaderPipeline(
+      shaderCode,
+      shaderConfig,
+      shader.path,
+      shaderBuffers
+    );
+    
+    return { engine, result };
+  }
+
+  function cleanupRenderer(engine: RenderingEngine | null, targetCanvas: HTMLCanvasElement | null) {
+    if (engine) {
+      engine.stopRenderLoop();
+      engine.dispose();
+    }
+    
+    if (targetCanvas) {
+      // Force WebGL context to be lost to free resources
+      const gl = targetCanvas.getContext('webgl2');
+      if (gl) {
+        const loseContext = gl.getExtension('WEBGL_lose_context');
+        if (loseContext) {
+          loseContext.loseContext();
+        }
+      }
+    }
+  }
+
   async function initializeRendering() {
     if (!shaderCode || !canvas || renderingEngine) return;
 
     try {
-      renderingEngine = new RenderingEngine();
-      renderingEngine.initialize(canvas, true);
-      
-      const result = await renderingEngine.compileShaderPipeline(
-        shaderCode,
-        shaderConfig,
-        shader.path,
-        shaderBuffers
-      );
+      const { engine, result } = await createShaderRenderer(canvas, true);
+      renderingEngine = engine;
 
       if (result?.success) {
         // Let it render a few frames to ensure it's fully initialized
@@ -88,28 +113,15 @@
         }
         
         // Clean up rendering resources
-        renderingEngine.stopRenderLoop();
-        renderingEngine.dispose();
+        cleanupRenderer(renderingEngine, canvas);
         renderingEngine = null;
-        
-        // Force WebGL context to be lost to free resources
-        const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true });
-        if (gl) {
-          const loseContext = gl.getExtension('WEBGL_lose_context');
-          if (loseContext) {
-            loseContext.loseContext();
-          }
-        }
         
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.error);
         // Still clean up on failure
-        if (renderingEngine) {
-          renderingEngine.stopRenderLoop();
-          renderingEngine.dispose();
-          renderingEngine = null;
-        }
+        cleanupRenderer(renderingEngine, canvas);
+        renderingEngine = null;
       }
     } catch (err) {
       console.error('Failed to initialize rendering:', err);
@@ -132,15 +144,8 @@
     
     try {
       // Create a completely new rendering engine and pipeline
-      hoverRenderingEngine = new RenderingEngine();
-      hoverRenderingEngine.initialize(hoverCanvas, false);
-      
-      const result = await hoverRenderingEngine.compileShaderPipeline(
-        shaderCode,
-        shaderConfig,
-        shader.path,
-        shaderBuffers
-      );
+      const { engine, result } = await createShaderRenderer(hoverCanvas, false);
+      hoverRenderingEngine = engine;
       
       if (!result?.success) {
         console.error('Failed to compile shader on hover:', shader.name, result?.error);
@@ -162,22 +167,10 @@
   function cleanupHoverRendering() {
     isHovering = false;
     
-    if (hoverRenderingEngine) {
-      hoverRenderingEngine.stopRenderLoop();
-      hoverRenderingEngine.dispose();
-      hoverRenderingEngine = null;
-    }
+    cleanupRenderer(hoverRenderingEngine, hoverCanvas);
+    hoverRenderingEngine = null;
     
     if (hoverCanvas) {
-      // Force WebGL context to be lost
-      const gl = hoverCanvas.getContext('webgl2');
-      if (gl) {
-        const loseContext = gl.getExtension('WEBGL_lose_context');
-        if (loseContext) {
-          loseContext.loseContext();
-        }
-      }
-      
       // Remove canvas from DOM
       if (hoverCanvas.parentNode) {
         hoverCanvas.parentNode.removeChild(hoverCanvas);
@@ -192,11 +185,7 @@
       renderQueue.remove(queueId);
     }
     
-    if (renderingEngine) {
-      renderingEngine.stopRenderLoop();
-      renderingEngine.dispose();
-    }
-    
+    cleanupRenderer(renderingEngine, canvas);
     cleanupHoverRendering();
   });
 </script>
