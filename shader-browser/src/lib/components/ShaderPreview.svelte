@@ -65,9 +65,9 @@
     }
   }
 
-  async function createShaderRenderer(targetCanvas: HTMLCanvasElement, startRenderLoop: boolean) {
+  async function createShaderRenderer(targetCanvas: HTMLCanvasElement, renderSingleFrame: boolean) {
     const engine = new RenderingEngine();
-    engine.initialize(targetCanvas, startRenderLoop);
+    engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
     
     const result = await engine.compileShaderPipeline(
       shaderCode,
@@ -75,6 +75,14 @@
       shader.path,
       shaderBuffers
     );
+    
+    if (result?.success) {
+      // TODO Should make compile shader pipeline not start render loop automatically
+      engine.stopRenderLoop();
+      if (renderSingleFrame) {
+        engine.render();
+      }
+    }
     
     return { engine, result };
   }
@@ -111,8 +119,8 @@
       renderingEngine = engine;
 
       if (result?.success) {
-        // Let it render a few frames to ensure it's fully initialized
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Let next frame render to ensure it's fully initialized
+        await new Promise((resolve) => setTimeout(resolve, 16));
         
         // Capture the rendered frame as an image
         try {
@@ -159,15 +167,17 @@
     hoverCanvasWrapper.appendChild(hoverCanvas);
     
     try {
-      // Create a completely new rendering engine and pipeline
+      // Create a completely new rendering engine and pipeline, start the render loop
       const { engine, result } = await createShaderRenderer(hoverCanvas, false);
       hoverRenderingEngine = engine;
       
-      if (!result?.success) {
+      if (result?.success) {
+        // Start the render loop for interactive preview
+        engine.startRenderLoop();
+      } else {
         console.error('Failed to compile shader on hover:', shader.name, result?.error);
         cleanupHoverRendering();
       }
-      // If successful, keep rendering until mouse leaves
     } catch (err) {
       console.error('Failed to initialize hover rendering:', err);
       cleanupHoverRendering();

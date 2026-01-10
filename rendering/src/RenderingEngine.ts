@@ -167,8 +167,20 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.shaderLocker.toggleLock(path);
   }
 
+  public startRenderLoop(): void {
+    this.frameRenderer.startRenderLoop();
+  }
+
   public stopRenderLoop(): void {
     this.frameRenderer.stopRenderLoop();
+  }
+
+  public render(time: number = performance.now()): void {
+    if (this.frameRenderer) {
+      this.frameRenderer.setRunning(true);
+      this.frameRenderer.render(time);
+      this.frameRenderer.setRunning(false);
+    }
   }
 
   public getCurrentFPS(): number {
