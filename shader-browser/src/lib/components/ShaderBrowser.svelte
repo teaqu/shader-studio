@@ -14,6 +14,7 @@
   let cardSize = $state(280); // Card width in pixels (200-500)
   let hideFailedShaders = $state(false);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
+  let refreshKey = $state(0); // Force re-render when changed
   let stateRestored = $state(false);
 
   // Persist state changes by sending to extension
@@ -183,6 +184,8 @@
   }
 
   function refreshShaders() {
+    failedShaders = new Set(); // Clear failed shaders list
+    refreshKey++; // Force complete re-render
     vscode?.postMessage({ type: 'requestShaders' });
   }
 
@@ -262,7 +265,7 @@
       </div>
     {:else}
       <div class="shader-grid" style="grid-template-columns: repeat(auto-fill, minmax({cardSize}px, 1fr));">
-        {#each paginatedShaders as shader (shader.path)}
+        {#each paginatedShaders as shader (shader.path + '-' + refreshKey)}
           <ShaderCard 
             {shader}
             {cardSize}
