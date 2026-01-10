@@ -14,9 +14,8 @@
   let cardSize = $state(280); // Card width in pixels (200-500)
   let hideFailedShaders = $state(false);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
-  let refreshKey = $state(0); // Force re-render when changed
+  let refreshKey = $state(0); // Only incremented on explicit refresh
   let stateRestored = $state(false);
-  let debounceTimer: number | null = null;
 
   // Persist state changes by sending to extension
   $effect(() => {
@@ -26,21 +25,8 @@
     }
   });
 
-  // Refresh cards when card size changes to re-render at new resolution
-  let lastCardSize = cardSize;
-  $effect(() => {
-    if (stateRestored && cardSize !== lastCardSize) {
-      // Debounce the refresh to avoid lag during slider movement
-      if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-      }
-      debounceTimer = window.setTimeout(() => {
-        refreshKey++;
-        lastCardSize = cardSize;
-        debounceTimer = null;
-      }, 500); // Wait 500ms after slider stops moving
-    }
-  });
+  // No need to remount cards when card size changes
+  // The card size is passed as a prop and components will update reactively
 
   let filteredShaders = $derived.by(() => {
     let filtered: ShaderFile[];
@@ -202,7 +188,8 @@
 
   function refreshShaders() {
     failedShaders = new Set(); // Clear failed shaders list
-    refreshKey++; // Force complete re-render
+    refreshKey++; // Force ShaderPreview components to remount and reload
+    // Request fresh shader list from extension
     vscode?.postMessage({ type: 'requestShaders' });
   }
 
@@ -282,7 +269,7 @@
       </div>
     {:else}
       <div class="shader-grid" style="grid-template-columns: repeat(auto-fill, minmax({cardSize}px, 1fr));">
-        {#each paginatedShaders as shader (shader.path + '-' + refreshKey)}
+        {#each paginatedShaders as shader (`${shader.path}-${refreshKey}`)}
           <ShaderCard 
             {shader}
             {cardSize}

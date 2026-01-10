@@ -98,7 +98,13 @@
   }
 
   async function initializeRendering() {
-    if (!shaderCode || !canvas || renderingEngine) return;
+    if (!shaderCode || !canvas) return;
+
+    // Clean up existing rendering engine if any
+    if (renderingEngine) {
+      cleanupRenderer(renderingEngine, canvas);
+      renderingEngine = null;
+    }
 
     try {
       const { engine, result } = await createShaderRenderer(canvas, true);
