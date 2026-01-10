@@ -18,6 +18,12 @@
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
   let queueId: string = '';
+  
+  // Hover rendering state
+  let isHovering: boolean = $state(false);
+  let hoverCanvas: HTMLCanvasElement | null = null;
+  let hoverRenderingEngine: RenderingEngine | null = null;
+  let hoverCanvasWrapper: HTMLDivElement | null = null;
 
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
@@ -95,10 +101,7 @@
           }
         }
         
-        // Clear shader code and buffers to free memory
-        shaderCode = '';
-        shaderConfig = null;
-        shaderBuffers = {};
+        // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.error);
         // Still clean up on failure
@@ -113,6 +116,76 @@
     }
   }
 
+  async function handleMouseEnter() {
+    if (isHovering || !shaderCode || !hoverCanvasWrapper) return;
+    
+    isHovering = true;
+    
+    // Create a completely new canvas for hover rendering
+    hoverCanvas = document.createElement('canvas');
+    hoverCanvas.width = width;
+    hoverCanvas.height = height;
+    hoverCanvas.className = 'shader-preview hover-canvas';
+    
+    // Append the canvas to the wrapper
+    hoverCanvasWrapper.appendChild(hoverCanvas);
+    
+    try {
+      // Create a completely new rendering engine and pipeline
+      hoverRenderingEngine = new RenderingEngine();
+      hoverRenderingEngine.initialize(hoverCanvas, false);
+      
+      const result = await hoverRenderingEngine.compileShaderPipeline(
+        shaderCode,
+        shaderConfig,
+        shader.path,
+        shaderBuffers
+      );
+      
+      if (!result?.success) {
+        console.error('Failed to compile shader on hover:', shader.name, result?.error);
+        cleanupHoverRendering();
+      }
+      // If successful, keep rendering until mouse leaves
+    } catch (err) {
+      console.error('Failed to initialize hover rendering:', err);
+      cleanupHoverRendering();
+    }
+  }
+  
+  function handleMouseLeave() {
+    if (!isHovering) return;
+    
+    cleanupHoverRendering();
+  }
+  
+  function cleanupHoverRendering() {
+    isHovering = false;
+    
+    if (hoverRenderingEngine) {
+      hoverRenderingEngine.stopRenderLoop();
+      hoverRenderingEngine.dispose();
+      hoverRenderingEngine = null;
+    }
+    
+    if (hoverCanvas) {
+      // Force WebGL context to be lost
+      const gl = hoverCanvas.getContext('webgl2');
+      if (gl) {
+        const loseContext = gl.getExtension('WEBGL_lose_context');
+        if (loseContext) {
+          loseContext.loseContext();
+        }
+      }
+      
+      // Remove canvas from DOM
+      if (hoverCanvas.parentNode) {
+        hoverCanvas.parentNode.removeChild(hoverCanvas);
+      }
+      hoverCanvas = null;
+    }
+  }
+
   onDestroy(() => {
     // Remove from queue if still waiting
     if (queueId) {
@@ -123,10 +196,23 @@
       renderingEngine.stopRenderLoop();
       renderingEngine.dispose();
     }
+    
+    cleanupHoverRendering();
   });
 </script>
 
-<div class="shader-preview-container">
+<div 
+  class="shader-preview-container"
+  onmouseenter={handleMouseEnter}
+  onmouseleave={handleMouseLeave}
+>
+  <!-- Hover canvas wrapper - always present but only visible when hovering -->
+  <div 
+    bind:this={hoverCanvasWrapper} 
+    class="hover-canvas-wrapper"
+    class:visible={isHovering}
+  ></div>
+  
   {#if capturedImage}
     <img
       src={capturedImage}
@@ -159,5 +245,26 @@
     height: 100%;
     display: block;
     object-fit: cover;
+  }
+  
+  .hover-canvas-wrapper {
+    width: 100%;
+    height: 100%;
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 10;
+    background: #000;
+  }
+  
+  .hover-canvas-wrapper.visible {
+    display: block;
+  }
+  
+  .hover-canvas-wrapper :global(canvas) {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
 </style>
