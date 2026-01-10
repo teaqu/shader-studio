@@ -84,6 +84,10 @@ export class ShaderBrowserProvider {
                 case "createConfig":
                     await this.createConfig(message.shaderPath);
                     break;
+                case "saveState":
+                    // Save state to workspace storage
+                    await this.context.workspaceState.update('shaderBrowser.state', message.state);
+                    break;
             }
         });
 
@@ -97,9 +101,13 @@ export class ShaderBrowserProvider {
 
         const shaders = await this.findAllShaders();
         this.logger.debug(`Found ${shaders.length} shaders`);
+        
+        const savedState = this.context.workspaceState.get('shaderBrowser.state', null);
+        
         this.panel.webview.postMessage({
             type: "shadersUpdate",
             shaders: shaders,
+            savedState: savedState,
         });
     }
 

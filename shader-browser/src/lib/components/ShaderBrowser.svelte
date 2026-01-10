@@ -1,16 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { shadersStore, searchQuery } from '../stores/shaderStore';
+  import { shadersStore } from '../stores/shaderStore';
   import ShaderCard from './ShaderCard.svelte';
   import type { ShaderFile } from '../types/ShaderFile';
 
-  let vscode: any;
+  let vscode: any = $state(null);
   let shaders = $state<ShaderFile[]>([]);
   let search = $state('');
   let sortBy = $state<'name' | 'updated' | 'created'>('updated');
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
   let pageSize = $state(20);
+  let stateRestored = $state(false);
+
+  // Persist state changes by sending to extension
+  $effect(() => {
+    const state = { sortBy, sortOrder, pageSize };
+    if (vscode && stateRestored) {
+      vscode.postMessage({ type: 'saveState', state });
+    }
+  });
 
   let filteredShaders = $derived.by(() => {
     let filtered: ShaderFile[];
@@ -121,6 +130,14 @@
         console.log('Updating shaders:', message.shaders);
         shaders = message.shaders || [];
         shadersStore.set(shaders);
+        
+        if (message.savedState) {
+          if (message.savedState.sortBy) sortBy = message.savedState.sortBy;
+          if (message.savedState.sortOrder) sortOrder = message.savedState.sortOrder;
+          if (message.savedState.pageSize) pageSize = message.savedState.pageSize;
+        }
+        
+        stateRestored = true;
         break;
     }
   }
@@ -172,13 +189,6 @@
         <option value="updated">Updated</option>
         <option value="created">Created</option>
       </select>
-      <select class="page-size-select" bind:value={pageSize}>
-        <option value={10}>Show 10</option>
-        <option value={20}>Show 20</option>
-        <option value={30}>Show 30</option>
-        <option value={50}>Show 50</option>
-        <option value={100}>Show 100</option>
-      </select>
       <button 
         class="icon-button sort-order-button" 
         onclick={toggleSortOrder} 
@@ -186,6 +196,13 @@
       >
         {sortOrder === 'asc' ? '↑' : '↓'}
       </button>
+      <select class="page-size-select" bind:value={pageSize}>
+        <option value={10}>Show 10</option>
+        <option value={20}>Show 20</option>
+        <option value={30}>Show 30</option>
+        <option value={50}>Show 50</option>
+        <option value={100}>Show 100</option>
+      </select>
       <button class="icon-button" onclick={refreshShaders} title="Refresh">
         ↻
       </button>
