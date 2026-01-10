@@ -16,12 +16,29 @@
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Force re-render when changed
   let stateRestored = $state(false);
+  let debounceTimer: number | null = null;
 
   // Persist state changes by sending to extension
   $effect(() => {
     const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
+    }
+  });
+
+  // Refresh cards when card size changes to re-render at new resolution
+  let lastCardSize = cardSize;
+  $effect(() => {
+    if (stateRestored && cardSize !== lastCardSize) {
+      // Debounce the refresh to avoid lag during slider movement
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = window.setTimeout(() => {
+        refreshKey++;
+        lastCardSize = cardSize;
+        debounceTimer = null;
+      }, 500); // Wait 500ms after slider stops moving
     }
   });
 
