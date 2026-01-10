@@ -10,7 +10,7 @@
   let sortBy = $state<'name' | 'updated' | 'created'>('updated');
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
-  let pageSize = 20;
+  let pageSize = $state(20);
 
   let filteredShaders = $derived.by(() => {
     let filtered: ShaderFile[];
@@ -58,6 +58,7 @@
     search;
     sortBy;
     sortOrder;
+    pageSize;
     currentPage = 1;
   });
 
@@ -170,6 +171,13 @@
         <option value="name">Name</option>
         <option value="updated">Updated</option>
         <option value="created">Created</option>
+      </select>
+      <select class="page-size-select" bind:value={pageSize}>
+        <option value={10}>Show 10</option>
+        <option value={20}>Show 20</option>
+        <option value={30}>Show 30</option>
+        <option value={50}>Show 50</option>
+        <option value={100}>Show 100</option>
       </select>
       <button 
         class="icon-button sort-order-button" 
