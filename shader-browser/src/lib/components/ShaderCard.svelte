@@ -5,16 +5,22 @@
 
   export let shader: ShaderFile;
   export let vscodeApi: any;
+  export let cardSize: number = 280;
   
   const dispatch = createEventDispatcher();
   
   // Remove .glsl extension from display name
   const displayName = shader.name.replace(/\.glsl$/, '');
+  
+  // Calculate preview dimensions based on card size (16:9 aspect ratio)
+  // Scale resolution proportionally to card size
+  $: width = Math.round(cardSize * 2.286); // 640/280 ratio for medium
+  $: height = Math.round(width * 9 / 16); // 16:9 aspect ratio
 </script>
 
 <div class="shader-card" on:click={() => dispatch('open')}>
   <div class="shader-thumbnail">
-    <ShaderPreview {shader} {vscodeApi} width={640} height={360} />
+    <ShaderPreview {shader} {vscodeApi} {width} {height} />
   </div>
   
   <div class="shader-info">

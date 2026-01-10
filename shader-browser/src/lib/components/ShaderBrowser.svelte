@@ -11,11 +11,12 @@
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
   let pageSize = $state(20);
+  let cardSize = $state(280); // Card width in pixels (200-500)
   let stateRestored = $state(false);
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize };
+    const state = { sortBy, sortOrder, pageSize, cardSize };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -135,6 +136,9 @@
           if (message.savedState.sortBy) sortBy = message.savedState.sortBy;
           if (message.savedState.sortOrder) sortOrder = message.savedState.sortOrder;
           if (message.savedState.pageSize) pageSize = message.savedState.pageSize;
+          if (message.savedState.cardSize && typeof message.savedState.cardSize === 'number') {
+            cardSize = message.savedState.cardSize;
+          }
         }
         
         stateRestored = true;
@@ -203,6 +207,19 @@
         <option value={50}>Show 50</option>
         <option value={100}>Show 100</option>
       </select>
+      <div class="card-size-control">
+        <label for="card-size-slider" class="size-label">Card Size</label>
+        <input 
+          id="card-size-slider"
+          type="range" 
+          min="200" 
+          max="1600" 
+          step="20"
+          bind:value={cardSize}
+          class="card-size-slider"
+          title={`${cardSize}px`}
+        />
+      </div>
       <button class="icon-button" onclick={refreshShaders} title="Refresh">
         ↻
       </button>
@@ -226,10 +243,11 @@
         {/if}
       </div>
     {:else}
-      <div class="shader-grid">
+      <div class="shader-grid" style="grid-template-columns: repeat(auto-fill, minmax({cardSize}px, 1fr));">
         {#each paginatedShaders as shader (shader.path)}
           <ShaderCard 
             {shader}
+            {cardSize}
             vscodeApi={vscode}
             on:open={() => openShader(shader)}
             on:openConfig={() => openConfig(shader)}
@@ -383,6 +401,63 @@
     border-color: var(--vscode-focusBorder);
   }
 
+  .card-size-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .size-label {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+  }
+
+  .card-size-slider {
+    width: 120px;
+    height: 4px;
+    background: var(--vscode-input-background);
+    border-radius: 2px;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .card-size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--vscode-button-background);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .card-size-slider::-webkit-slider-thumb:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .card-size-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--vscode-button-background);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  .card-size-slider::-moz-range-thumb:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .card-size-slider:focus::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+  }
+
+  .card-size-slider:focus::-moz-range-thumb {
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+  }
+
   .shader-count {
     color: var(--vscode-descriptionForeground);
     font-size: 12px;
@@ -397,7 +472,6 @@
 
   .shader-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
   }
 
