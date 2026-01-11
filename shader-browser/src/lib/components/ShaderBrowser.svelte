@@ -217,8 +217,14 @@
   function refreshShaders() {
     failedShaders = new Set(); // Clear failed shaders list
     refreshKey++; // Force ShaderPreview components to remount and reload
-    // Request fresh shader list from extension
-    vscode?.postMessage({ type: 'requestShaders' });
+    // Request fresh shader list from extension without cached thumbnails
+    vscode?.postMessage({ type: 'requestShaders', skipCache: true });
+    
+    // After shaders have had time to render and save thumbnails, 
+    // request the list again WITH cache to restore cached state
+    setTimeout(() => {
+      vscode?.postMessage({ type: 'requestShaders', skipCache: false });
+    }, 3000); // Wait 3 seconds for rendering to complete
   }
 
   function handleCompilationFailure(shader: ShaderFile) {

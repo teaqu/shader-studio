@@ -4,14 +4,17 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
+import { ThumbnailCache } from "./ThumbnailCache";
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderBrowserProvider {
     private logger: Logger;
     private panel: vscode.WebviewPanel | undefined;
+    private thumbnailCache: ThumbnailCache;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
+        this.thumbnailCache = new ThumbnailCache(context);
     }
 
     public static register(
@@ -66,11 +69,15 @@ export class ShaderBrowserProvider {
             this.logger.debug(`Received message from webview: ${message.type}`);
             switch (message.type) {
                 case "requestShaders":
-                    await this.sendShaderList();
+                    await this.sendShaderList(message.skipCache);
                     break;
 
                 case "requestShaderCode":
                     await this.sendShaderCode(message.path);
+                    break;
+
+                case "saveThumbnail":
+                    await this.saveThumbnail(message.path, message.thumbnail, message.modifiedTime);
                     break;
 
                 case "openShader":
@@ -94,7 +101,7 @@ export class ShaderBrowserProvider {
         this.panel.webview.html = this.getHtmlForWebview(this.panel.webview);
     }
 
-    private async sendShaderList(): Promise<void> {
+    private async sendShaderList(skipCache: boolean = false): Promise<void> {
         if (!this.panel) {
             return;
         }
@@ -102,11 +109,38 @@ export class ShaderBrowserProvider {
         const shaders = await this.findAllShaders();
         this.logger.debug(`Found ${shaders.length} shaders`);
         
+        // Add cached thumbnails to shader data (unless skipCache is true)
+        const shadersWithThumbnails = shaders.map(shader => {
+            if (skipCache) {
+                this.logger.debug(`Skipping cache for ${shader.name} (refresh requested)`);
+                return {
+                    ...shader,
+                    cachedThumbnail: null,
+                };
+            }
+            
+            const thumbnail = this.thumbnailCache.getThumbnail(shader.path, shader.modifiedTime);
+            if (thumbnail) {
+                this.logger.debug(`Found cached thumbnail for ${shader.name} (${thumbnail.length} chars)`);
+            } else {
+                this.logger.debug(`No cached thumbnail for ${shader.name}`);
+            }
+            return {
+                ...shader,
+                cachedThumbnail: thumbnail,
+            };
+        });
+
+        // Prune old thumbnails in the background
+        this.thumbnailCache.pruneCache(shaders.map(s => s.path)).catch(err => {
+            this.logger.error(`Failed to prune thumbnail cache: ${err}`);
+        });
+        
         const savedState = this.context.workspaceState.get('shaderBrowser.state', null);
         
         this.panel.webview.postMessage({
             type: "shadersUpdate",
-            shaders: shaders,
+            shaders: shadersWithThumbnails,
             savedState: savedState,
         });
     }
@@ -239,6 +273,19 @@ export class ShaderBrowserProvider {
             vscode.window.showErrorMessage(
                 `Failed to create config: ${error}`,
             );
+        }
+    }
+
+    private async saveThumbnail(shaderPath: string, thumbnail: string, modifiedTime?: number): Promise<void> {
+        try {
+            const success = this.thumbnailCache.saveThumbnail(shaderPath, thumbnail, modifiedTime);
+            if (success) {
+                this.logger.debug(`Saved thumbnail for ${shaderPath}`);
+            } else {
+                this.logger.error(`Failed to save thumbnail for ${shaderPath}`);
+            }
+        } catch (error) {
+            this.logger.error(`Error saving thumbnail: ${error}`);
         }
     }
 

@@ -22,6 +22,7 @@
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
   let queueId: string = '';
+  let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
   
   // Hover rendering state
   let isHovering: boolean = $state(false);
@@ -31,35 +32,64 @@
 
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
-    await loadShaderCode();
+    
+    console.log('ShaderPreview mounted for:', shader.name, {
+      hasCachedThumbnail: !!shader.cachedThumbnail,
+      cachedThumbnailLength: shader.cachedThumbnail?.length,
+      useCache
+    });
+    
+    // Use cached thumbnail if available and we're not forcing a refresh
+    if (shader.cachedThumbnail && useCache) {
+      console.log('Using cached thumbnail for:', shader.name);
+      capturedImage = shader.cachedThumbnail;
+      compilationFailed = false;
+    } else {
+      console.log('Loading and rendering shader:', shader.name);
+      await loadShaderCode();
+    }
   });
 
   async function loadShaderCode() {
     if (!vscodeApi || shaderCode) return;
 
     try {
-      vscodeApi.postMessage({
-        type: 'requestShaderCode',
-        path: shader.path
-      });
+      // Return a promise that resolves when shader code is loaded
+      await new Promise<void>((resolve, reject) => {
+        vscodeApi.postMessage({
+          type: 'requestShaderCode',
+          path: shader.path
+        });
 
-      const handleMessage = async (event: MessageEvent) => {
-        const message = event.data;
-        if (message.type === 'shaderCode' && message.path === shader.path) {
+        const handleMessage = async (event: MessageEvent) => {
+          const message = event.data;
+          if (message.type === 'shaderCode' && message.path === shader.path) {
+            window.removeEventListener('message', handleMessage);
+            
+            shaderCode = message.code;
+            shaderConfig = message.config || null;
+            shaderBuffers = message.buffers || {};
+            
+            resolve();
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
           window.removeEventListener('message', handleMessage);
-          
-          shaderCode = message.code;
-          shaderConfig = message.config || null;
-          shaderBuffers = message.buffers || {};
-          
-          // Queue the rendering to avoid too many concurrent WebGL contexts
-          await renderQueue.enqueue(queueId, async () => {
-            await initializeRendering();
-          });
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
+          reject(new Error('Timeout loading shader code'));
+        }, 5000);
+      });
+      
+      // Queue the rendering to avoid too many concurrent WebGL contexts
+      // Only if we're not just loading for hover (check if canvas exists)
+      if (canvas) {
+        await renderQueue.enqueue(queueId, async () => {
+          await initializeRendering();
+        });
+      }
     } catch (err) {
       console.error('Failed to load shader code:', err);
     }
@@ -127,6 +157,16 @@
           capturedImage = canvas.toDataURL('image/png');
           compilationFailed = false;
           console.log('Captured image for shader:', shader.name, 'Image length:', capturedImage.length);
+          
+          // Save thumbnail to cache on extension side
+          if (vscodeApi && capturedImage) {
+            vscodeApi.postMessage({
+              type: 'saveThumbnail',
+              path: shader.path,
+              thumbnail: capturedImage,
+              modifiedTime: shader.modifiedTime
+            });
+          }
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
           compilationFailed = true;
@@ -153,7 +193,17 @@
   }
 
   async function handleMouseEnter() {
-    if (isHovering || !shaderCode || !hoverCanvasWrapper) return;
+    if (isHovering || !hoverCanvasWrapper) return;
+    
+    // Load shader code if not already loaded (e.g., when using cached thumbnail)
+    if (!shaderCode) {
+      await loadShaderCode();
+      // Wait for shader code to be loaded
+      if (!shaderCode) {
+        console.error('Failed to load shader code for hover');
+        return;
+      }
+    }
     
     isHovering = true;
     

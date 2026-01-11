@@ -5,6 +5,7 @@ export interface ShaderFile {
     configPath?: string;
     hasConfig: boolean;
     thumbnailData?: string;
+    cachedThumbnail?: string; // Cached thumbnail from disk
     modifiedTime?: number;
     createdTime?: number;
 }
