@@ -1,16 +1,17 @@
 <script lang="ts">
   import type { ShaderFile } from '../types/ShaderFile';
-  import { createEventDispatcher } from 'svelte';
   import ShaderPreview from './ShaderPreview.svelte';
 
-  let { shader, vscodeApi, cardSize = 280, forceFresh = false }: {
+  let { shader, vscodeApi, cardSize = 280, forceFresh = false, onOpen, onOpenConfig, onCreateConfig, onCompilationFailed }: {
     shader: ShaderFile;
     vscodeApi: any;
     cardSize?: number;
     forceFresh?: boolean;
+    onOpen?: () => void;
+    onOpenConfig?: () => void;
+    onCreateConfig?: () => void;
+    onCompilationFailed?: () => void;
   } = $props();
-  
-  const dispatch = createEventDispatcher();
   
   // Remove .glsl extension from display name
   const displayName = shader.name.replace(/\.glsl$/, '');
@@ -21,7 +22,13 @@
   let height = $derived(Math.round(width * 9 / 16)); // 16:9 aspect ratio
 </script>
 
-<div class="shader-card" on:click={() => dispatch('open')}>
+<div 
+  class="shader-card" 
+  role="button" 
+  tabindex="0"
+  onclick={() => onOpen?.()}
+  onkeydown={(e) => e.key === 'Enter' && onOpen?.()}
+>
   <div class="shader-thumbnail">
     <ShaderPreview 
       {shader} 
@@ -29,7 +36,7 @@
       {width} 
       {height}
       {forceFresh}
-      on:compilationFailed={() => dispatch('compilationFailed')}
+      onCompilationFailed={onCompilationFailed}
     />
   </div>
   
@@ -41,7 +48,7 @@
       {#if shader.hasConfig}
         <button 
           class="action-btn" 
-          on:click|stopPropagation={() => dispatch('openConfig')}
+          onclick={(e) => { e.stopPropagation(); onOpenConfig?.(); }}
           title="Open config"
         >
           ⚙️ Config
@@ -49,7 +56,7 @@
       {:else}
         <button 
           class="action-btn create" 
-          on:click|stopPropagation={() => dispatch('createConfig')}
+          onclick={(e) => { e.stopPropagation(); onCreateConfig?.(); }}
           title="Create config"
         >
           + Config
@@ -83,28 +90,6 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-  }
-
-  .shader-thumbnail img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, 
-      var(--vscode-editor-background) 0%, 
-      var(--vscode-editorWidget-background) 100%);
-  }
-
-  .placeholder-icon {
-    font-size: 48px;
-    opacity: 0.3;
   }
 
   .shader-info {

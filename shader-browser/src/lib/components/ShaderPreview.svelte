@@ -1,21 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { createEventDispatcher } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
-  import { RenderingEngine } from '@shader-studio/rendering/RenderingEngine';
+  import { RenderingEngine } from '@shader-studio/rendering';
   import { renderQueue } from '../stores/shaderStore';
 
-  const dispatch = createEventDispatcher();
-
-  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false }: {
+  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, onCompilationFailed }: {
     shader: ShaderFile;
     width?: number;
     height?: number;
     vscodeApi: any;
-    forceFresh?: boolean;
+    forceFresh?: boolean; 
+    onCompilationFailed?: () => void;  
   } = $props();
 
-  let canvas: HTMLCanvasElement;
+  let canvas: HTMLCanvasElement = $state()!;
   let renderingEngine: RenderingEngine | null = null;
   let capturedImage: string = $state('');
   let compilationFailed: boolean = $state(false);
@@ -173,7 +171,7 @@
       } else {
         console.error('Failed to compile shader:', shader.name, result?.error);
         compilationFailed = true;
-        dispatch('compilationFailed');
+        onCompilationFailed?.();
         // Still clean up on failure
         cleanupRenderer(renderingEngine, canvas);
         renderingEngine = null;
@@ -181,7 +179,7 @@
     } catch (err) {
       console.error('Failed to initialize rendering:', err);
       compilationFailed = true;
-      dispatch('compilationFailed');
+      onCompilationFailed?.();
     }
   }
 
@@ -261,6 +259,7 @@
 
 <div 
   class="shader-preview-container"
+  role="presentation"
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
 >

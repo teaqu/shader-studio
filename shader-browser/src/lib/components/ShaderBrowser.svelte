@@ -318,10 +318,10 @@
             {cardSize}
             {forceFresh}
             vscodeApi={vscode}
-            on:open={() => openShader(shader)}
-            on:openConfig={() => openConfig(shader)}
-            on:createConfig={() => createConfig(shader)}
-            on:compilationFailed={() => handleCompilationFailure(shader)}
+            onOpen={() => openShader(shader)}
+            onOpenConfig={() => openConfig(shader)}
+            onCreateConfig={() => createConfig(shader)}
+            onCompilationFailed={() => handleCompilationFailure(shader)}
           />
         {/each}
       </div>

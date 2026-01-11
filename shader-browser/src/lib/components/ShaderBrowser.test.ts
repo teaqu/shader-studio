@@ -55,7 +55,7 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
     });
 
     it('should not call postMessage if vscode is null', () => {
-        const vscode = null;
+        const vscode: any = null;
         
         // Simulate refreshShaders guard check
         if (!vscode) {
@@ -118,14 +118,16 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
     it('should trigger refresh after card size change with debounce', () => {
         vi.useFakeTimers();
         const vscode = mockVscodeApi;
-        let cardSize = 280;
         let stateRestored = true;
         let initialCardSizeSet = true;
         let debounceTimeout: NodeJS.Timeout | null = null;
+        let forceFresh = false;
+        void forceFresh;
 
         // Simulate the debounced effect for card size changes
         function simulateCardSizeChange(newSize: number) {
-            cardSize = newSize;
+            // Use newSize for simulation
+            console.log(`Card size changed to: ${newSize}`);
 
             // Clear existing timeout
             if (debounceTimeout !== null) {
@@ -145,7 +147,7 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
                 return;
             }
             
-            let forceFresh = true;
+            forceFresh = true;
             vscode.postMessage({ type: 'requestShaders', skipCache: true });
             
             setTimeout(() => {
@@ -191,6 +193,7 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
         let debounceTimeout: NodeJS.Timeout | null = null;
 
         function simulateCardSizeChange(newSize: number) {
+            void newSize;
             if (debounceTimeout !== null) {
                 clearTimeout(debounceTimeout);
             }
@@ -219,6 +222,7 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
         let debounceTimeout: NodeJS.Timeout | null = null;
 
         function simulateCardSizeChange(newSize: number) {
+            void newSize;
             if (debounceTimeout !== null) {
                 clearTimeout(debounceTimeout);
             }
@@ -382,6 +386,7 @@ describe('ShaderBrowser - Search Functionality', () => {
         handleSearchChange('test');
 
         expect(currentPage).toBe(1);
+        expect(search).toBe('test'); // Use search variable
     });
 
     it('should filter with trimmed search string', () => {
@@ -424,17 +429,18 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'name';
+        void sortBy; 
         const sortOrder = 'asc';
 
         const sorted = [...shaders].sort((a, b) => {
             const comparison = a.name.localeCompare(b.name);
-            return sortOrder === 'asc' ? -comparison : comparison;
+            return sortOrder === 'asc' ? comparison : -comparison;
         });
 
-        // With 'asc' and negated comparison, it actually sorts Z-A
-        expect(sorted[0].name).toBe('zebra.glsl');
+        // With 'asc', it sorts A-Z
+        expect(sorted[0].name).toBe('apple.glsl');
         expect(sorted[1].name).toBe('banana.glsl');
-        expect(sorted[2].name).toBe('apple.glsl');
+        expect(sorted[2].name).toBe('zebra.glsl');
     });
 
     it('should sort by name descending', () => {
@@ -445,17 +451,19 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'name';
-        const sortOrder = 'desc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'desc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const comparison = a.name.localeCompare(b.name);
-            return sortOrder === 'asc' ? -comparison : comparison;
+            return sortOrder === 'asc' ? comparison : -comparison;
         });
 
-        // With 'desc' and non-negated comparison, it actually sorts A-Z
-        expect(sorted[0].name).toBe('apple.glsl');
+        // With 'desc', it sorts Z-A
+        expect(sorted[0].name).toBe('zebra.glsl');
         expect(sorted[1].name).toBe('banana.glsl');
-        expect(sorted[2].name).toBe('zebra.glsl');
+        expect(sorted[2].name).toBe('apple.glsl');
     });
 
     it('should sort by updated time descending (most recent first)', () => {
@@ -466,7 +474,9 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'updated';
-        const sortOrder = 'desc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'desc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const aTime = a.modifiedTime || 0;
@@ -488,7 +498,9 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'updated';
-        const sortOrder = 'asc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'asc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const aTime = a.modifiedTime || 0;
@@ -510,7 +522,9 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'created';
-        const sortOrder = 'desc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'desc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const aTime = a.createdTime || 0;
@@ -532,7 +546,9 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'created';
-        const sortOrder = 'asc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'asc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const aTime = a.createdTime || 0;
@@ -554,7 +570,9 @@ describe('ShaderBrowser - Sorting Functionality', () => {
         ];
 
         const sortBy = 'updated';
-        const sortOrder = 'desc';
+        void sortBy; 
+        const getSortOrder = (): 'asc' | 'desc' => 'desc';
+        const sortOrder = getSortOrder();
 
         const sorted = [...shaders].sort((a, b) => {
             const aTime = a.modifiedTime || 0;
@@ -616,6 +634,7 @@ describe('ShaderBrowser - Hide Failed Shaders', () => {
 
         const failedShaders = new Set(['/test/failed.glsl']);
         const hideFailedShaders = true;
+        void hideFailedShaders; 
 
         const filtered = shaders.filter(shader => !failedShaders.has(shader.path));
 
@@ -666,6 +685,7 @@ describe('ShaderBrowser - Hide Failed Shaders', () => {
 
         const failedShaders = new Set(['/test/failed1.glsl', '/test/failed2.glsl']);
         const hideFailedShaders = true;
+        void hideFailedShaders; 
 
         const filtered = shaders.filter(shader => !failedShaders.has(shader.path));
 
@@ -696,6 +716,7 @@ describe('ShaderBrowser - Hide Failed Shaders', () => {
         const failedShaders = new Set(['/test/failed_shader.glsl']);
         const hideFailedShaders = true;
         const search = 'shader';
+        void search; // Used in the filter below
 
         // First filter by search
         const query = search.toLowerCase();
@@ -722,6 +743,7 @@ describe('ShaderBrowser - Hide Failed Shaders', () => {
 
         const failedShaders = new Set<string>();
         const hideFailedShaders = true;
+        void hideFailedShaders; 
 
         const filtered = shaders.filter(shader => !failedShaders.has(shader.path));
 
@@ -942,7 +964,7 @@ describe('ShaderBrowser - State Persistence', () => {
     });
 
     it('should not save state if vscode is not available', () => {
-        const vscode = null;
+        const vscode: any = null;
         const stateRestored = true;
         let sortBy = 'name';
         let sortOrder = 'desc';
@@ -1003,7 +1025,13 @@ describe('ShaderBrowser - State Persistence', () => {
         let cardSize = 280;
         let hideFailedShaders = false;
 
-        const savedState = {
+        const savedState: Partial<{
+            sortBy: 'name' | 'updated' | 'created';
+            sortOrder: 'asc' | 'desc';
+            pageSize: number;
+            cardSize: number;
+            hideFailedShaders: boolean;
+        }> = {
             sortBy: 'name' as const,
             cardSize: 500,
         };
@@ -1095,9 +1123,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         handleMouseEnter();
 
         expect(hoverCanvas).not.toBeNull();
-        expect(hoverCanvas?.width).toBe(640);
-        expect(hoverCanvas?.height).toBe(360);
-        expect(hoverCanvas?.className).toBe('shader-preview hover-canvas');
+        expect(hoverCanvas!.width).toBe(640);
+        expect(hoverCanvas!.height).toBe(360);
+        expect(hoverCanvas!.className).toBe('shader-preview hover-canvas');
         expect(hoverCanvasWrapper.children.length).toBe(1);
     });
 
@@ -1326,7 +1354,7 @@ describe('ShaderBrowser - Config Button Functionality', () => {
     });
 
     it('should handle createConfig with vscode unavailable', () => {
-        const vscode = null;
+        const vscode: any = null;
         const shader = {
             path: '/test/shader.glsl',
             name: 'shader.glsl',
