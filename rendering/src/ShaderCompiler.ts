@@ -31,6 +31,7 @@ export class ShaderCompiler {
     const header = `
     precision highp float;
     out vec4 fragColor;
+    #define HW_PERFORMANCE 1
 
     uniform vec3 iResolution;
     uniform float iTime;
