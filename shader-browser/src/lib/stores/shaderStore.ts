@@ -6,7 +6,7 @@ export const selectedShader: Writable<ShaderFile | null> = writable(null);
 export const searchQuery: Writable<string> = writable('');
 
 // Rendering queue to limit concurrent WebGL contexts
-const MAX_CONCURRENT_RENDERS = 5;
+const MAX_CONCURRENT_RENDERS = 3;
 
 interface RenderQueueItem {
   id: string;

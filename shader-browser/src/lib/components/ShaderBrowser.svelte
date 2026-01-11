@@ -25,8 +25,36 @@
     }
   });
 
-  // No need to remount cards when card size changes
-  // The card size is passed as a prop and components will update reactively
+  // Debounced refresh when card size changes
+  let cardSizeRefreshTimeout: number | null = null;
+  let initialCardSizeSet = false;
+  $effect(() => {
+    // Track cardSize to create dependency
+    cardSize;
+    
+    // Clear existing timeout
+    if (cardSizeRefreshTimeout !== null) {
+      window.clearTimeout(cardSizeRefreshTimeout);
+    }
+    
+    // Only trigger refresh after initial state restoration is complete
+    if (stateRestored && initialCardSizeSet) {
+      cardSizeRefreshTimeout = window.setTimeout(() => {
+        refreshShaders();
+      }, 500); // 500ms debounce
+    }
+    
+    // Mark that initial cardSize has been set after state restoration
+    if (stateRestored) {
+      initialCardSizeSet = true;
+    }
+    
+    return () => {
+      if (cardSizeRefreshTimeout !== null) {
+        window.clearTimeout(cardSizeRefreshTimeout);
+      }
+    };
+  });
 
   let filteredShaders = $derived.by(() => {
     let filtered: ShaderFile[];
