@@ -15,6 +15,7 @@
   let hideFailedShaders = $state(false);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
+  let forceFresh = $state(false); // Flag to force fresh rendering, ignoring cache
   let stateRestored = $state(false);
 
   // Persist state changes by sending to extension
@@ -215,15 +216,23 @@
   }
 
   function refreshShaders() {
+    if (!vscode) {
+      return;
+    }
+    
     failedShaders = new Set(); // Clear failed shaders list
+    forceFresh = true; // Force components to ignore cache
     refreshKey++; // Force ShaderPreview components to remount and reload
     // Request fresh shader list from extension without cached thumbnails
-    vscode?.postMessage({ type: 'requestShaders', skipCache: true });
+    vscode.postMessage({ type: 'requestShaders', skipCache: true });
     
     // After shaders have had time to render and save thumbnails, 
     // request the list again WITH cache to restore cached state
     setTimeout(() => {
-      vscode?.postMessage({ type: 'requestShaders', skipCache: false });
+      if (vscode) {
+        forceFresh = false; // Allow cache again
+        vscode.postMessage({ type: 'requestShaders', skipCache: false });
+      }
     }, 3000); // Wait 3 seconds for rendering to complete
   }
 
@@ -307,6 +316,7 @@
           <ShaderCard 
             {shader}
             {cardSize}
+            {forceFresh}
             vscodeApi={vscode}
             on:open={() => openShader(shader)}
             on:openConfig={() => openConfig(shader)}

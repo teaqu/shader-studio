@@ -7,11 +7,12 @@
 
   const dispatch = createEventDispatcher();
 
-  let { shader, width = 320, height = 180, vscodeApi }: {
+  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false }: {
     shader: ShaderFile;
     width?: number;
     height?: number;
     vscodeApi: any;
+    forceFresh?: boolean;
   } = $props();
 
   let canvas: HTMLCanvasElement;
@@ -33,19 +34,11 @@
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
     
-    console.log('ShaderPreview mounted for:', shader.name, {
-      hasCachedThumbnail: !!shader.cachedThumbnail,
-      cachedThumbnailLength: shader.cachedThumbnail?.length,
-      useCache
-    });
-    
     // Use cached thumbnail if available and we're not forcing a refresh
-    if (shader.cachedThumbnail && useCache) {
-      console.log('Using cached thumbnail for:', shader.name);
+    if (shader.cachedThumbnail && useCache && !forceFresh) {
       capturedImage = shader.cachedThumbnail;
       compilationFailed = false;
     } else {
-      console.log('Loading and rendering shader:', shader.name);
       await loadShaderCode();
     }
   });

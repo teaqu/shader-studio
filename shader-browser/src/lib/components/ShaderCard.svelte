@@ -3,9 +3,12 @@
   import { createEventDispatcher } from 'svelte';
   import ShaderPreview from './ShaderPreview.svelte';
 
-  export let shader: ShaderFile;
-  export let vscodeApi: any;
-  export let cardSize: number = 280;
+  let { shader, vscodeApi, cardSize = 280, forceFresh = false }: {
+    shader: ShaderFile;
+    vscodeApi: any;
+    cardSize?: number;
+    forceFresh?: boolean;
+  } = $props();
   
   const dispatch = createEventDispatcher();
   
@@ -14,8 +17,8 @@
   
   // Calculate preview dimensions based on card size (16:9 aspect ratio)
   // Scale resolution proportionally to card size
-  $: width = Math.round(cardSize * 2.286); // 640/280 ratio for medium
-  $: height = Math.round(width * 9 / 16); // 16:9 aspect ratio
+  let width = $derived(Math.round(cardSize * 2.286)); // 640/280 ratio for medium
+  let height = $derived(Math.round(width * 9 / 16)); // 16:9 aspect ratio
 </script>
 
 <div class="shader-card" on:click={() => dispatch('open')}>
@@ -24,7 +27,8 @@
       {shader} 
       {vscodeApi} 
       {width} 
-      {height} 
+      {height}
+      {forceFresh}
       on:compilationFailed={() => dispatch('compilationFailed')}
     />
   </div>
