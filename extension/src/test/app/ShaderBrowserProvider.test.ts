@@ -338,6 +338,29 @@ suite('ShaderBrowserProvider Test Suite', () => {
             assert.ok(openTextDocumentStub.calledOnce);
             assert.strictEqual(openTextDocumentStub.firstCall.args[0], '/test/shader.glsl');
             assert.ok(showTextDocumentStub.calledOnce);
+            // Check that showTextDocument is called with correct viewColumn
+            const callArgs = showTextDocumentStub.firstCall.args;
+            // The second argument is the viewColumn
+            // If mockPanel.viewColumn is undefined, should be ViewColumn.Beside
+            assert.strictEqual(callArgs[1], vscode.ViewColumn.Beside);
+        });
+
+        test('should open shader in next column if panel has viewColumn', async () => {
+            const mockDocument = {} as any;
+            const openTextDocumentStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument);
+            const showTextDocumentStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            // Simulate panel with a viewColumn
+            mockPanel.viewColumn = vscode.ViewColumn.One;
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+            const messageHandler = setupMessageHandler(mockPanel);
+            await messageHandler({ type: 'openShader', path: '/test/shader.glsl' });
+
+            assert.ok(openTextDocumentStub.calledOnce);
+            assert.ok(showTextDocumentStub.calledOnce);
+            const callArgs = showTextDocumentStub.firstCall.args;
+            // Should be panel.viewColumn + 1
+            assert.strictEqual(callArgs[1], mockPanel.viewColumn + 1);
         });
 
         test('should show error message if opening shader fails', async () => {

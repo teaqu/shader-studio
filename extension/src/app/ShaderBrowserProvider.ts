@@ -240,7 +240,8 @@ export class ShaderBrowserProvider {
     private async openShader(shaderPath: string): Promise<void> {
         try {
             const doc = await vscode.workspace.openTextDocument(shaderPath);
-            await vscode.window.showTextDocument(doc);
+            const column = this.panel?.viewColumn ? this.panel.viewColumn + 1 : vscode.ViewColumn.Beside;
+            await vscode.window.showTextDocument(doc, column);
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to open shader: ${error}`,
