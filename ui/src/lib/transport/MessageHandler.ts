@@ -48,6 +48,7 @@ export class MessageHandler {
       this.isHandlingMessage = true;
       try {
         console.log("MessageHandler: Compiling shader pipeline...");
+        this.renderEngine.stopRenderLoop();
         const result = await this.renderEngine.compileShaderPipeline(
           code,
           config,
@@ -66,6 +67,7 @@ export class MessageHandler {
         }
 
         console.log("MessageHandler: Compilation successful");
+        this.renderEngine.startRenderLoop();
 
         // Send log message in the format the WebSocket server expects
         const logMessage: LogMessage = {

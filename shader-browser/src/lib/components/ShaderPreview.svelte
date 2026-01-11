@@ -98,10 +98,10 @@
     );
     
     if (result?.success) {
-      // TODO Should make compile shader pipeline not start render loop automatically
-      engine.stopRenderLoop();
       if (renderSingleFrame) {
         engine.render();
+      } else {
+        engine.startRenderLoop();
       }
     }
     

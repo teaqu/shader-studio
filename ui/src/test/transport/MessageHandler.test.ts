@@ -10,6 +10,7 @@ const createMockRenderingEngine = () => ({
   isLockedShader: vi.fn().mockReturnValue(false),
   togglePause: vi.fn(),
   toggleLock: vi.fn(),
+  startRenderLoop: vi.fn(),
   stopRenderLoop: vi.fn(),
   getCurrentFPS: vi.fn().mockReturnValue(60),
   getLockedShaderPath: vi.fn(),

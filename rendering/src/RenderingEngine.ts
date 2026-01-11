@@ -115,7 +115,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
     if (!this.shaderLocker.shouldProcessShader(path)) {
-      this.stopRenderLoop();
       return {
         success: false,
       };
@@ -125,7 +124,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
-        this.stopRenderLoop();
         return {
           success: false,
           error: `Invalid shader configuration: ${validation.errors.join(', ')}`,
@@ -143,14 +141,6 @@ export class RenderingEngine implements RenderingEngineInterface {
       path,
       buffers,
     );
-
-    result.then(res => {
-      if (res.success) {
-        this.frameRenderer.startRenderLoop();
-      } else {
-        this.stopRenderLoop();
-      }
-    });
 
     return result;
   }

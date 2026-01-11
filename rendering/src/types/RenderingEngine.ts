@@ -16,7 +16,9 @@ export interface RenderingEngine {
   toggleLock(path: string): void;
   getLockedShaderPath(): string | undefined;
   getTimeManager(): TimeManager;
+  startRenderLoop(): void;
   stopRenderLoop(): void;
+  render(time?: number): void;
   getCurrentFPS(): number;
   cleanup(): void;
   dispose(): void;
