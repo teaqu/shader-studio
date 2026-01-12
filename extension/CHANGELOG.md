@@ -1,4 +1,9 @@
 # Change Log
+### 0.0.8
+- Shader Browser
+- HW_PERFORMANCE
+- bug fixes
+
 ### 0.0.7
 - Electron install fix all platforms
 
