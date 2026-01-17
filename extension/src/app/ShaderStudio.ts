@@ -13,6 +13,7 @@ import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ElectronLauncher } from "./ElectronLauncher";
+import { ConfigGenerator } from "./ConfigGenerator";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -28,6 +29,7 @@ export class ShaderStudio {
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
+  private configGenerator: ConfigGenerator;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -44,6 +46,7 @@ export class ShaderStudio {
     this.shaderCreator = new ShaderCreator(this.logger);
     this.messenger = new Messenger(outputChannel, diagnosticCollection);
     this.shaderProvider = new ShaderProvider(this.messenger);
+    this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
     this.panelManager = new PanelManager(
       context,
       this.messenger,
@@ -191,7 +194,7 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.generateConfig", (uri?: vscode.Uri) => {
         this.logger.info("shader-studio.generateConfig command executed");
-        this.generateConfig(uri);
+        this.configGenerator.generateConfig(uri);
       }),
     );
 
@@ -293,86 +296,6 @@ export class ShaderStudio {
   private performShaderUpdate(editor: vscode.TextEditor): void {
     if (this.messenger.hasActiveClients()) {
       this.shaderProvider.sendShaderToWebview(editor);
-    }
-  }
-
-  private async generateConfig(uri?: vscode.Uri): Promise<void> {
-    try {
-      let glslFilePath: string;
-      
-      if (uri) {
-        // URI was provided (e.g., from shader browser)
-        glslFilePath = uri.fsPath;
-      } else {
-        const activeEditor = vscode.window.activeTextEditor;
-
-        if (!activeEditor || !activeEditor.document.fileName.endsWith(".glsl")) {
-          const fileUri = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            filters: {
-              "GLSL Files": ["glsl"],
-            },
-            title: "Select GLSL file to generate config for",
-          });
-
-          if (!fileUri || fileUri.length === 0) {
-            return; // User cancelled
-          }
-
-          glslFilePath = fileUri[0].fsPath;
-        } else {
-          glslFilePath = activeEditor.document.fileName;
-        }
-      }
-
-      // Get the base name without extension
-      const baseName = path.basename(glslFilePath, ".glsl");
-      const dirName = path.dirname(glslFilePath);
-
-      // Create the config file path
-      const configFilePath = path.join(dirName, `${baseName}.sha.json`);
-
-      // Check if config file already exists
-      if (fs.existsSync(configFilePath)) {
-        const overwrite = await vscode.window.showWarningMessage(
-          `Config file ${baseName}.sha.json already exists. Overwrite?`,
-          "Yes",
-          "No",
-        );
-        if (overwrite !== "Yes") {
-          return;
-        }
-      }
-
-      // Create base config
-      const relativeGlslPath = path.relative(dirName, glslFilePath).replace(
-        /\\/g,
-        "/",
-      );
-      const baseConfig = {
-        version: "1.0",
-        passes: {
-          Image: {
-            inputs: {},
-          },
-        },
-      };
-
-      // Write the config file
-      fs.writeFileSync(configFilePath, JSON.stringify(baseConfig, null, 2));
-
-      // Open the config file
-      const configUri = vscode.Uri.file(configFilePath);
-      await vscode.commands.executeCommand("vscode.open", configUri);
-
-      vscode.window.showInformationMessage(
-        `Generated config file: ${baseName}.sha.json`,
-      );
-    } catch (error) {
-      this.logger.error(`Failed to generate config: ${error}`);
-      vscode.window.showErrorMessage(`Failed to generate config: ${error}`);
     }
   }
 

@@ -403,4 +403,23 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledWith(executeCommandStub, 'workbench.action.openSettings', '^shader-studio.');
   });
+
+  test('should call generateConfig on ConfigGenerator when generateConfig command is executed', async () => {
+    // Mock the ConfigGenerator's generateConfig method
+    const generateConfigSpy = sandbox.spy(shaderStudio['configGenerator'], 'generateConfig');
+    
+    // Get the command handler that was registered
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const generateConfigCall = registerCommandStub.getCalls().find((call: any) => 
+      call.args[0] === 'shader-studio.generateConfig'
+    );
+    
+    // Execute the command handler directly
+    if (generateConfigCall && generateConfigCall.args[1]) {
+      await generateConfigCall.args[1]();
+    }
+    
+    // Verify the ConfigGenerator's generateConfig method was called
+    sinon.assert.calledOnce(generateConfigSpy);
+  });
 });
