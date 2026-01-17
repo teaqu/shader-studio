@@ -74,6 +74,11 @@ export class ShaderStudioStatusBar {
             description: 'Create a new shadertoy.glsl file',
             action: 'new-shader'
         });
+        items.push({
+            label: '$(gear) Settings',
+            description: 'Open Shader Studio settings',
+            action: 'open-settings'
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Shader Studio Actions',
@@ -105,6 +110,9 @@ export class ShaderStudioStatusBar {
                     break;
                 case 'new-shader':
                     await vscode.commands.executeCommand('shader-studio.newShader');
+                    break;
+                case 'open-settings':
+                    await vscode.commands.executeCommand('shader-studio.openSettings');
                     break;
             }
         }

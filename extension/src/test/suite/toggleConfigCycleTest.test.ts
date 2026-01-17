@@ -3,11 +3,15 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
-suite('Toggle Cycle Test Suite', () => {
+suite('Toggle Config Cycle Test Suite', () => {
   let testConfigFile: string;
   let testConfigUri: vscode.Uri;
 
   suiteSetup(async () => {
+    // Set default config view to 'code' for testing
+    const config = vscode.workspace.getConfiguration('shader-studio');
+    await config.update('defaultConfigView', 'code', vscode.ConfigurationTarget.Global);
+    
     // Create a test .sha.json file in temp directory
     const os = require('os');
     const tempDir = os.tmpdir();

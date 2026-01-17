@@ -138,6 +138,16 @@ suite('ShaderStudioStatusBar Test Suite', () => {
         assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.newShader'));
     });
 
+    test('showShaderStudioMenu should execute open-settings', async () => {
+        statusBar = new ShaderStudioStatusBar(mockContext);
+
+        const choice = { label: '$(gear) Settings', description: 'Open Shader Studio settings', action: 'open-settings' } as any;
+        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+
+        await statusBar.showShaderStudioMenu();
+
+        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openSettings'));
+    });
 
     test('dispose should call dispose on status bar item', () => {
         statusBar = new ShaderStudioStatusBar(mockContext);

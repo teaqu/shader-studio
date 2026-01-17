@@ -79,6 +79,15 @@
         "command": "shader-studio.openShaderBrowser",
         "title": "Shader Studio: Open Shader Browser",
         "icon": "$(library)"
+      },
+      {
+        "command": "shader-studio.openSettings",
+        "title": "Shader Studio: Open Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "shader-studio.updateEditorPriority",
+        "title": "Shader Studio: Update Editor Priority"
       }
     ],
     "menus": {
@@ -104,7 +113,7 @@
             "filenamePattern": "*.sha.json"
           }
         ],
-        "priority": "option"
+        "priority": "default"
       }
     ],
     "configuration": {
@@ -123,6 +132,15 @@
           "minimum": 1024,
           "maximum": 65535,
           "description": "Port number for the WebSocket server (requires restart)"
+        },
+        "shader-studio.defaultConfigView": {
+          "type": "string",
+          "enum": [
+            "gui",
+            "code"
+          ],
+          "default": "gui",
+          "description": "Default view for .sha.json files: 'gui' for the visual editor, 'code' for the JSON source. (requires restart)"
         }
       }
     },

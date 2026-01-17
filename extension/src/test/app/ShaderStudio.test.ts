@@ -393,4 +393,14 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledOnce(sendShaderSpy);
     sinon.assert.calledWith(sendShaderSpy, mockEditor);
   });
+
+  test('should open settings when openSettings command is executed', async () => {
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    
+    // Execute the command directly on the shaderStudio instance
+    await shaderStudio['openSettings']();
+    
+    sinon.assert.calledOnce(executeCommandStub);
+    sinon.assert.calledWith(executeCommandStub, 'workbench.action.openSettings', '^shader-studio.');
+  });
 });

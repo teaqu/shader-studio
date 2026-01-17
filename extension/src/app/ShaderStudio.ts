@@ -1,18 +1,18 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { PanelManager } from "./PanelManager";
-import { WebServer } from "./WebServer";
-import { ShaderProvider } from "./ShaderProvider";
-import { Messenger } from "./transport/Messenger";
-import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { Logger } from "./services/Logger";
-import { ElectronLauncher } from "./ElectronLauncher";
+import { PanelManager } from "./PanelManager";
+import { ShaderProvider } from "./ShaderProvider";
+import { WebServer } from "./WebServer";
+import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { ShaderBrowserProvider } from "./ShaderBrowserProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
+import { Messenger } from "./transport/Messenger";
+import { ElectronLauncher } from "./ElectronLauncher";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -254,6 +254,13 @@ export class ShaderStudio {
         },
       ),
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.openSettings", () => {
+        this.logger.info("shader-studio.openSettings command executed");
+        this.openSettings();
+      }),
+    );
   }
 
   private registerEventHandlers(): void {
@@ -445,6 +452,18 @@ export class ShaderStudio {
       vscode.window.showErrorMessage(
         `Failed to refresh shader at '${shaderPath}': ${error}`,
       );
+    }
+  }
+
+  private async openSettings(): Promise<void> {
+    try {
+      await vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        '^shader-studio.'
+      );
+    } catch (error) {
+      this.logger.error(`Failed to open settings: ${error}`);
+      vscode.window.showErrorMessage(`Failed to open settings: ${error}`);
     }
   }
 
