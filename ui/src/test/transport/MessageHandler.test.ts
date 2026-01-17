@@ -43,6 +43,34 @@ describe("MessageHandler", () => {
     vi.spyOn(console, "error").mockImplementation(() => { });
   });
 
+  describe("when handleShaderMessage is called", () => {
+    it("should set lastEvent even if compilation fails", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: false,
+        error: "Compile error",
+      });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(messageHandler.getLastEvent()).toBe(shaderEvent);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: "error",
+        payload: ["Compile error"],
+      });
+      expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
+    });
+  });
+
 
   describe("when reset is called", () => {
     it("should call cleanup", () => {

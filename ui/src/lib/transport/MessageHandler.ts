@@ -55,6 +55,7 @@ export class MessageHandler {
           path,
           buffers,
         );
+        this.lastEvent = event;
 
         if (!result || !result.success) {
           console.log("MessageHandler: Compilation failed:", result?.error);
@@ -75,9 +76,6 @@ export class MessageHandler {
           payload: ["Shader compiled and linked"], // Array format expected by server
         };
         this.transport.postMessage(logMessage);
-
-        this.lastEvent = event;
-
         return { running: true };
       } finally {
         this.isHandlingMessage = false;
