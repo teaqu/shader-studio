@@ -42,7 +42,7 @@ export class MessageHandler {
     const logText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
-    this.outputChannel.info(logText);
+    this.outputChannel.debug(logText);
 
     if (
       logText.includes("Shader compiled and linked") &&
@@ -117,7 +117,7 @@ export class MessageHandler {
     const configPath = message.payload?.shaderPath;
     if (configPath) {
       this.outputChannel.info(`Requesting to open config at path: ${configPath}`);
-      
+
       // Check if config file exists
       const fs = require('fs');
       if (fs.existsSync(configPath)) {
