@@ -26,6 +26,20 @@ export interface RefreshMessage extends BaseMessage {
   };
 }
 
+export interface GenerateConfigMessage extends BaseMessage {
+  type: "generateConfig";
+  payload: {
+    shaderPath?: string;
+  };
+}
+
+export interface ShowConfigMessage extends BaseMessage {
+  type: "showConfig";
+  payload: {
+    shaderPath?: string;
+  };
+}
+
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
   code: string;
@@ -34,4 +48,4 @@ export interface ShaderSourceMessage extends BaseMessage {
   buffers: Record<string, string>;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | RefreshMessage | ShaderSourceMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage;

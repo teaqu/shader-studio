@@ -55,6 +55,34 @@
     shaderStudio.handleRefresh();
   }
 
+  function handleConfig() {
+    if (!initialized) return;
+    
+    // Get the current shader path from the last shader event
+    const lastEvent = shaderStudio.getLastShaderEvent();
+    const shaderPath = lastEvent?.data?.path;
+    
+    if (!shaderPath) {
+      // If no shader path, just request config generation (will fall back to last viewed)
+      transport.postMessage({ 
+        type: 'generateConfig', 
+        payload: {} 
+      });
+      return;
+    }
+    
+    // Check if config file exists by trying to fetch it
+    const configPath = shaderPath.replace(/\.glsl$/, '.sha.json');
+    
+    // Send a message to either show existing config or generate new one
+    transport.postMessage({ 
+      type: 'showConfig', 
+      payload: { 
+        shaderPath: configPath 
+      } 
+    });
+  }
+
   function handleTogglePause() {
     if (!initialized) return;
     shaderStudio.handleTogglePause();
@@ -175,6 +203,7 @@
       onAspectRatioChange={handleAspectRatioChange}
       onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
+      onConfig={handleConfig}
     />
   {/if}
   <ErrorDisplay

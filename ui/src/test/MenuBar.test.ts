@@ -600,4 +600,144 @@ describe('MenuBar Component', () => {
       unmount2();
     });
   });
+
+  describe('Config Button', () => {
+    it('should call onConfig and close options menu when config button is clicked', async () => {
+      const onConfig = vi.fn();
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          onConfig 
+        } 
+      });
+
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      // Click config button
+      const configButton = screen.getByLabelText('Open shader config');
+      await fireEvent.click(configButton);
+
+      // Verify onConfig was called
+      expect(onConfig).toHaveBeenCalledTimes(1);
+      
+      // Verify options menu is closed
+      expect(screen.queryByLabelText('Open shader config')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Time Manager Edge Cases', () => {
+    it('should handle null timeManager gracefully', async () => {
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          timeManager: null 
+        } 
+      });
+
+      // Should show 0.00 for time when no timeManager
+      expect(screen.getByText('0.00')).toBeInTheDocument();
+      // Should still show FPS
+      expect(screen.getByText('60.0 FPS')).toBeInTheDocument();
+    });
+
+    it('should update time display when timeManager provides values', async () => {
+      // Mock timeManager to return different values
+      const mockTimeManagerWithValues = {
+        getCurrentTime: vi.fn().mockReturnValue(10.5),
+        isPaused: vi.fn().mockReturnValue(false)
+      };
+
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          timeManager: mockTimeManagerWithValues 
+        } 
+      });
+
+      // Should show the time from timeManager
+      expect(screen.getByText('10.50')).toBeInTheDocument();
+      expect(mockTimeManagerWithValues.getCurrentTime).toHaveBeenCalled();
+    });
+  });
+
+  describe('Fullscreen Edge Cases', () => {
+    it('should handle fullscreen without canvas element', async () => {
+      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
+      
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          canvasElement: null 
+        } 
+      });
+
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      
+      // Click fullscreen
+      const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
+      await fireEvent.click(fullscreenButton);
+      
+      // Should call with null when no canvas element
+      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(null);
+    });
+
+    it('should handle fullscreen with canvas but no container', async () => {
+      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
+      
+      // Create canvas without canvas-container parent
+      const canvasWithoutContainer = document.createElement('canvas');
+      const mockParent = document.createElement('div');
+      mockParent.appendChild(canvasWithoutContainer);
+      
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          canvasElement: canvasWithoutContainer 
+        } 
+      });
+
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      
+      // Click fullscreen
+      const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
+      await fireEvent.click(fullscreenButton);
+      
+      // Should call with canvas parent when no container found
+      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(mockParent);
+    });
+
+    it('should handle fullscreen with canvas-container found', async () => {
+      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
+      
+      // Create canvas with canvas-container parent
+      const canvas = document.createElement('canvas');
+      const container = document.createElement('div');
+      container.classList.add('canvas-container');
+      container.appendChild(canvas);
+      
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          canvasElement: canvas 
+        } 
+      });
+
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      
+      // Click fullscreen
+      const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
+      await fireEvent.click(fullscreenButton);
+      
+      // Should call with the container when found
+      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(container);
+    });
+  });
 });

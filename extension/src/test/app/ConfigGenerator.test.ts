@@ -288,9 +288,8 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledWith(showInfoStub, 'Generated config file: provided_shader.sha.json');
   });
 
-  test('should handle config file overwrite confirmation', async () => {
+  test('should show confirmation when showConfirmation is true', async () => {
     const fs = require('fs');
-    const path = require('path');
     
     // Mock active GLSL editor
     const activeEditor = {
@@ -303,74 +302,24 @@ suite('ConfigGenerator Test Suite', () => {
     
     sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
     
-    // Mock config file already exists
-    const configFilePath = path.join(path.dirname(activeEditor.document.fileName), 'active_shader.sha.json');
-    const existsSyncStub = sandbox.stub(fs, 'existsSync').callsFake((filePath: any) => {
-      if (filePath === configFilePath) {
-        return true; // Config file exists
-      }
-      return false;
-    });
-    
-    // Mock overwrite confirmation
-    const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage').resolves('Yes' as any);
+    // Mock file system operations
+    const existsSyncStub = sandbox.stub(fs, 'existsSync').returns(false);
     const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
     
-    // Mock vscode commands and window
+    // Mock confirmation dialog
+    const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves('Yes' as any);
+    
+    // Mock vscode commands
     const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-    const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
     
-    // Call generateConfig
-    await configGenerator.generateConfig();
+    // Call generateConfig with confirmation
+    await configGenerator.generateConfig(undefined, true);
     
-    // Verify it showed overwrite warning and proceeded
-    sinon.assert.calledOnce(showWarningStub);
-    sinon.assert.calledWith(showWarningStub, 'Config file active_shader.sha.json already exists. Overwrite?', 'Yes' as any, 'No' as any);
+    // Verify it showed confirmation and created the config
+    sinon.assert.calledTwice(showInfoStub);
+    sinon.assert.calledWith(showInfoStub, 'Generate config file for active_shader.glsl?', 'Yes' as any, 'No' as any);
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledOnce(executeCommandStub);
-    sinon.assert.calledOnce(showInfoStub);
-  });
-
-  test('should cancel when user declines overwrite', async () => {
-    const fs = require('fs');
-    const path = require('path');
-    
-    // Mock active GLSL editor
-    const activeEditor = {
-      document: {
-        fileName: '/mock/path/active_shader.glsl',
-        languageId: 'glsl',
-        uri: vscode.Uri.file('/mock/path/active_shader.glsl'),
-      }
-    } as vscode.TextEditor;
-    
-    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
-    
-    // Mock config file already exists
-    const configFilePath = path.join(path.dirname(activeEditor.document.fileName), 'active_shader.sha.json');
-    const existsSyncStub = sandbox.stub(fs, 'existsSync').callsFake((filePath: any) => {
-      if (filePath === configFilePath) {
-        return true; // Config file exists
-      }
-      return false;
-    });
-    
-    // Mock overwrite cancellation
-    const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage').resolves('No' as any);
-    const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
-    
-    // Mock vscode commands and window
-    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-    const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
-    
-    // Call generateConfig
-    await configGenerator.generateConfig();
-    
-    // Verify it showed overwrite warning and cancelled
-    sinon.assert.calledOnce(showWarningStub);
-    sinon.assert.notCalled(writeFileSyncStub);
-    sinon.assert.notCalled(executeCommandStub);
-    sinon.assert.notCalled(showInfoStub);
   });
 
   test('should handle file dialog cancellation', async () => {

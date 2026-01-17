@@ -199,6 +199,13 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.generateConfigFromUI", (uri?: vscode.Uri) => {
+        this.logger.info("shader-studio.generateConfigFromUI command executed");
+        this.configGenerator.generateConfig(uri, true); // Show confirmation
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.showShaderStudioMenu", () => {
         this.logger.info("shader-studio.showShaderStudioMenu command executed");
         this.webServer.getStatusBar().showShaderStudioMenu();

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage } from "@shader-studio/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage } from "@shader-studio/types";
 
 export class MessageHandler {
   constructor(
@@ -21,6 +21,12 @@ export class MessageHandler {
           break;
         case "refresh":
           this.handleRefreshMessage(message);
+          break;
+        case "generateConfig":
+          this.handleGenerateConfigMessage(message);
+          break;
+        case "showConfig":
+          this.handleShowConfigMessage(message);
           break;
         default:
           this.outputChannel.debug(`Unknown message type: ${message.type}`);
@@ -89,6 +95,45 @@ export class MessageHandler {
     } else {
       this.outputChannel.info("Requesting refresh for current/active shader");
       vscode.commands.executeCommand('shader-studio.refreshCurrentShader');
+    }
+  }
+
+  private handleGenerateConfigMessage(message: GenerateConfigMessage): void {
+    this.outputChannel.info("Generate config request received from UI");
+
+    const shaderPath = message.payload?.shaderPath;
+    if (shaderPath) {
+      this.outputChannel.info(`Requesting config generation for shader at path: ${shaderPath}`);
+      vscode.commands.executeCommand('shader-studio.generateConfigFromUI', vscode.Uri.file(shaderPath));
+    } else {
+      this.outputChannel.info("Requesting config generation for current/last viewed shader");
+      vscode.commands.executeCommand('shader-studio.generateConfigFromUI');
+    }
+  }
+
+  private handleShowConfigMessage(message: ShowConfigMessage): void {
+    this.outputChannel.info("Show config request received from UI");
+
+    const configPath = message.payload?.shaderPath;
+    if (configPath) {
+      this.outputChannel.info(`Requesting to open config at path: ${configPath}`);
+      
+      // Check if config file exists
+      const fs = require('fs');
+      if (fs.existsSync(configPath)) {
+        // Open the existing config file
+        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(configPath));
+        this.outputChannel.info(`Opened existing config file: ${configPath}`);
+      } else {
+        // Config doesn't exist, generate it
+        this.outputChannel.info(`Config file not found: ${configPath}, generating new config`);
+        // Convert config path back to shader path
+        const shaderPath = configPath.replace(/\.sha\.json$/, '.glsl');
+        vscode.commands.executeCommand('shader-studio.generateConfigFromUI', vscode.Uri.file(shaderPath));
+      }
+    } else {
+      this.outputChannel.info("No config path provided, requesting config generation");
+      vscode.commands.executeCommand('shader-studio.generateConfigFromUI');
     }
   }
 }

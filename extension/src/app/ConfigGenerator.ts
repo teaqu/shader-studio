@@ -16,15 +16,30 @@ export class ConfigGenerator {
     this.logger = logger;
   }
 
-  public async generateConfig(uri?: vscode.Uri): Promise<void> {
+  public async generateConfig(uri?: vscode.Uri, showConfirmation: boolean = false): Promise<void> {
     try {
       let glslFilePath: string;
       
       if (uri) {
-        // URI was provided (e.g., from shader browser)
+        // URI was provided (e.g., from shader browser or UI)
         glslFilePath = uri.fsPath;
       } else {
         glslFilePath = await this.resolveGlslFilePath();
+      }
+
+      // Show confirmation dialog if requested (e.g., when called from UI)
+      if (showConfirmation) {
+        const fileName = require('path').basename(glslFilePath, '.glsl');
+        
+        // Show confirmation for creating new config
+        const confirm = await vscode.window.showInformationMessage(
+          `Generate config file for ${fileName}.glsl?`,
+          "Yes",
+          "No"
+        );
+        if (confirm !== "Yes") {
+          return;
+        }
       }
 
       // Generate the config file

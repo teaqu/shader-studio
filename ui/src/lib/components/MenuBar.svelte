@@ -18,6 +18,7 @@
   import unlockIcon from "../../assets/unlock.svg?raw";
   import fullscreenIcon from "../../assets/fullscreen.svg?raw";
   import menuIcon from "../../assets/menu.svg?raw";
+  import configIcon from "../../assets/config.svg?raw";
 
   import { piRequestFullScreen } from "../../../../vendor/pilibs/src/piWebUtils.js";
 
@@ -35,6 +36,7 @@
   export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
   export let onQualityChange: (mode: QualityMode) => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
+  export let onConfig: () => void = () => {};
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -104,6 +106,12 @@
     event.stopPropagation();
     showOptionsMenu = false;
     onRefresh();
+  }
+
+  function handleConfig(event: MouseEvent) {
+    event.stopPropagation();
+    showOptionsMenu = false;
+    onConfig();
   }
 
   function handleFullscreenToggle() {
@@ -301,6 +309,14 @@
           >
             {@html refreshIcon}
             <span>Refresh</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={handleConfig}
+            aria-label="Open shader config"
+          >
+            {@html configIcon}
+            <span>Config</span>
           </button>
           {#if showThemeButton}
             <button
