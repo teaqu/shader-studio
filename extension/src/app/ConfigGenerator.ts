@@ -133,5 +133,14 @@ export class ConfigGenerator {
     vscode.window.showInformationMessage(
       `Generated config file: ${baseName}.sha.json`,
     );
+
+    // If a preview is active, refresh the shader so the newly generated config is applied immediately
+    if (this.messenger.hasActiveClients()) {
+      this.glslFileTracker.setLastViewedGlslFile(glslFilePath);
+      await vscode.commands.executeCommand(
+        "shader-studio.refreshSpecificShaderByPath",
+        glslFilePath,
+      );
+    }
   }
 }

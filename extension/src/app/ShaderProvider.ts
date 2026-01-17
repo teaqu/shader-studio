@@ -60,4 +60,51 @@ export class ShaderProvider {
     this.messenger.send(message);
     this.logger.debug("Shader message sent to webview");
   }
+
+  public async sendShaderFromPath(shaderPath: string): Promise<void> {
+    if (!this.messenger) {
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(shaderPath)) {
+        return;
+      }
+
+      const code = fs.readFileSync(shaderPath, "utf-8");
+
+      // Ignore GLSL files that do not contain mainImage
+      if (!code.includes("mainImage")) {
+        vscode.window.showWarningMessage(
+          "GLSL file ignored: missing mainImage function.",
+        );
+        return;
+      }
+
+      // Collect buffer contents
+      const buffers: Record<string, string> = {};
+
+      // Load and process config
+      const config = ShaderConfigProcessor.loadAndProcessConfig(shaderPath, buffers);
+
+      // Always update the shader - no change detection
+      this.logger.debug(`Sending shader update for ${shaderPath}`);
+      this.logger.debug(
+        `Sending ${Object.keys(buffers).length} buffer(s)`,
+      );
+
+      const message: ShaderSourceMessage = {
+        type: "shaderSource",
+        code,
+        config,
+        path: shaderPath,
+        buffers,
+      };
+
+      this.messenger.send(message);
+      this.logger.debug("Shader message sent to webview");
+    } catch {
+      return;
+    }
+  }
 }

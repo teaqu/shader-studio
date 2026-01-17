@@ -134,8 +134,8 @@ suite('ConfigGenerator Test Suite', () => {
     const expectedConfigPath = path.join(path.dirname(lastViewedFile), 'last_viewed_shader.sha.json');
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledWith(writeFileSyncStub, expectedConfigPath, sinon.match(/"version": "1.0"/));
-    sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledWith(executeCommandStub, 'vscode.open', vscode.Uri.file(expectedConfigPath));
+    sinon.assert.calledWith(executeCommandStub, 'shader-studio.refreshSpecificShaderByPath', lastViewedFile);
     
     // Verify success message
     sinon.assert.calledOnce(showInfoStub);
@@ -182,6 +182,7 @@ suite('ConfigGenerator Test Suite', () => {
 
   test('should fall back to file dialog when last viewed GLSL file does not exist even with active preview', async () => {
     const fs = require('fs');
+    const path = require('path');
     
     // Mock last viewed file that doesn't exist
     const lastViewedFile = '/mock/path/nonexistent_shader.glsl';
@@ -216,8 +217,18 @@ suite('ConfigGenerator Test Suite', () => {
     
     // Verify config file was created and opened
     sinon.assert.calledOnce(writeFileSyncStub);
-    sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledOnce(showInfoStub);
+
+    // Verify config file was opened
+    const expectedConfigPath = path.join(path.dirname(selectedFile.fsPath), 'selected_shader.sha.json');
+    sinon.assert.calledWith(executeCommandStub, 'vscode.open', vscode.Uri.file(expectedConfigPath));
+
+    // When preview is active, config generation triggers an automatic shader refresh
+    sinon.assert.calledWith(
+      executeCommandStub,
+      'shader-studio.refreshSpecificShaderByPath',
+      selectedFile.fsPath,
+    );
   });
 
   test('should use active GLSL editor when available', async () => {
@@ -320,6 +331,52 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledWith(showInfoStub, 'Generate config file for active_shader.glsl?', 'Yes' as any, 'No' as any);
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledOnce(executeCommandStub);
+  });
+
+  test('should refresh the shader by path after generating config when preview is active', async () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    // Mock active GLSL editor
+    const activeShaderPath = '/mock/path/active_shader.glsl';
+    const activeEditor = {
+      document: {
+        fileName: activeShaderPath,
+        languageId: 'glsl',
+        uri: vscode.Uri.file(activeShaderPath),
+      }
+    } as vscode.TextEditor;
+
+    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+
+    // Pretend preview is active
+    sandbox.stub(messenger, 'hasActiveClients').returns(true);
+
+    // Config doesn't exist yet
+    sandbox.stub(fs, 'existsSync').returns(false);
+    sandbox.stub(fs, 'writeFileSync');
+
+    // Track command calls
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+
+    // Act
+    await configGenerator.generateConfig();
+
+    // Assert: config opened
+    const expectedConfigPath = path.join(path.dirname(activeShaderPath), 'active_shader.sha.json');
+    sinon.assert.calledWith(
+      executeCommandStub,
+      'vscode.open',
+      vscode.Uri.file(expectedConfigPath),
+    );
+
+    // Assert: shader refresh triggered automatically
+    sinon.assert.calledWith(
+      executeCommandStub,
+      'shader-studio.refreshSpecificShaderByPath',
+      activeShaderPath,
+    );
   });
 
   test('should handle file dialog cancellation', async () => {

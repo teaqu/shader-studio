@@ -52,11 +52,45 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
             });
         }
 
+        let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+
+        const triggerShaderRefresh = () => {
+            if (!this.shaderProcessor) {
+                return;
+            }
+
+            const configPath = document.uri.fsPath;
+            let shaderPath = configPath.replace(/\.sha\.json$/i, ".glsl");
+            if (!fs.existsSync(shaderPath)) {
+                const fragPath = configPath.replace(/\.sha\.json$/i, ".frag");
+                if (fs.existsSync(fragPath)) {
+                    shaderPath = fragPath;
+                }
+            }
+
+            const visibleShaderEditor = vscode.window.visibleTextEditors.find(
+                (editor) => editor.document.uri.fsPath === shaderPath,
+            );
+
+            if (visibleShaderEditor) {
+                this.shaderProcessor.sendShaderToWebview(visibleShaderEditor);
+            } else {
+                this.shaderProcessor.sendShaderFromPath(shaderPath);
+            }
+        };
+
         const changeDocumentSubscription = vscode.workspace
             .onDidChangeTextDocument(
                 (e) => {
                     if (e.document.uri.toString() === document.uri.toString()) {
                         updateWebview();
+
+                        if (refreshTimeout) {
+                            clearTimeout(refreshTimeout);
+                        }
+                        refreshTimeout = setTimeout(() => {
+                            triggerShaderRefresh();
+                        }, 150);
                     }
                 },
             );
@@ -64,6 +98,10 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         // Make sure we get rid of the listener when our editor is closed.
         webviewPanel.onDidDispose(() => {
             changeDocumentSubscription.dispose();
+
+            if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+            }
         });
 
         // Update webview when it becomes visible again
