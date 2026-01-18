@@ -63,6 +63,12 @@ suite('ShaderBrowserProvider Test Suite', () => {
             languageModelAccessInformation: {} as any,
         };
 
+        // Stub fs operations for ThumbnailCache
+        const fs = require('fs');
+        sandbox.stub(fs, 'existsSync').returns(true);
+        sandbox.stub(fs, 'mkdirSync').returns(undefined);
+        sandbox.stub(fs, 'readFileSync').returns('<html><body>Mock HTML</body></html>');
+
         provider = new ShaderBrowserProvider(mockContext);
     });
 
@@ -75,7 +81,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
         let handler: Function | undefined;
         panel.webview.onDidReceiveMessage = (callback: Function) => {
             handler = callback;
-            return { dispose: () => {} };
+            return { dispose: () => { } };
         };
         provider.show();
         if (!handler) {
@@ -101,11 +107,11 @@ suite('ShaderBrowserProvider Test Suite', () => {
     suite('Panel Management', () => {
         test('should register message handler on show', () => {
             const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
-            
+
             let messageHandlerRegistered = false;
             mockPanel.webview.onDidReceiveMessage = () => {
                 messageHandlerRegistered = true;
-                return { dispose: () => {} };
+                return { dispose: () => { } };
             };
 
             provider.show();
@@ -165,7 +171,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             let disposeCallback: Function | undefined;
             mockPanel.onDidDispose = (callback: Function) => {
                 disposeCallback = callback;
-                return { dispose: () => {} };
+                return { dispose: () => { } };
             };
 
             provider.show();
@@ -220,10 +226,10 @@ suite('ShaderBrowserProvider Test Suite', () => {
             sandbox.stub(vscode.workspace, 'findFiles').rejects(new Error('File system error'));
 
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
             await messageHandler({ type: 'requestShaders', skipCache: false });
-            
+
             // Should still send response (even if empty)
             assert.ok(postMessageSpy.called);
         });
@@ -248,7 +254,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             };
             sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
             sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig').returns(null);
-            
+
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
             await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
@@ -286,9 +292,9 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should handle missing path parameter', async () => {
             sandbox.stub(vscode.workspace, 'openTextDocument').rejects(new Error('No path'));
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
-            
+
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
             await messageHandler({ type: 'requestShaderCode' });
             assert.ok(true, 'Should handle missing path gracefully');
@@ -299,10 +305,10 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should handle saveThumbnail message without error', async () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
-            await messageHandler({ 
-                type: 'saveThumbnail', 
+            await messageHandler({
+                type: 'saveThumbnail',
                 path: '/test/shader.glsl',
                 thumbnail: 'data:image/png;base64,...',
                 modifiedTime: 1000
@@ -314,9 +320,9 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should handle saveThumbnail with missing modifiedTime', async () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
-            await messageHandler({ 
-                type: 'saveThumbnail', 
+
+            await messageHandler({
+                type: 'saveThumbnail',
                 path: '/test/shader.glsl',
                 thumbnail: 'data:image/png;base64,...'
             });
@@ -379,7 +385,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             sandbox.stub(vscode.workspace, 'openTextDocument').rejects(new Error('No path'));
             const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
-            
+
             const messageHandler = setupMessageHandler(mockPanel);
             await messageHandler({ type: 'openShader' });
 
@@ -443,7 +449,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             sandbox.stub(vscode.commands, 'executeCommand').rejects(new Error('No shader path'));
             const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
-            
+
             const messageHandler = setupMessageHandler(mockPanel);
             await messageHandler({ type: 'createConfig' });
 
@@ -454,10 +460,10 @@ suite('ShaderBrowserProvider Test Suite', () => {
     suite('Message Handling - saveState', () => {
         test('should save state to workspace storage on saveState message', async () => {
             const updateStub = mockContext.workspaceState.update as sinon.SinonStub;
-            
+
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             const testState = { sortBy: 'name', pageSize: 30 };
             await messageHandler({ type: 'saveState', state: testState });
 
@@ -468,7 +474,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             const updateStub = mockContext.workspaceState.update as sinon.SinonStub;
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             await messageHandler({ type: 'saveState', state: null });
 
             assert.ok(updateStub.calledWith('shaderBrowser.state', null));
@@ -479,7 +485,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should ignore unknown message types', async () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
             await messageHandler({ type: 'unknownMessageType', data: 'test' });
             assert.ok(true, 'Should handle unknown message types gracefully');
@@ -488,7 +494,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should handle message with null type', async () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
             await messageHandler({ type: null });
             assert.ok(true, 'Should handle null message type');
@@ -497,7 +503,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
         test('should handle message with undefined type', async () => {
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
-            
+
             // Should not throw
             await messageHandler({});
             assert.ok(true, 'Should handle undefined message type');

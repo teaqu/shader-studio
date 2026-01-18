@@ -353,10 +353,7 @@ export class ShaderStudio {
         return;
       }
 
-      const matchingEditor = vscode.window.visibleTextEditors.find((editor) => {
-        return editor.document.uri.fsPath === shaderPath &&
-          this.isGlslEditor(editor);
-      });
+      const matchingEditor = await this.glslFileTracker.getMatchingEditorAllGroups(shaderPath);
 
       if (matchingEditor) {
         this.logger.info(`Found open editor for ${shaderPath}, refreshing`);

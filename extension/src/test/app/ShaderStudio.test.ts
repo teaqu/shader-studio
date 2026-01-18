@@ -80,6 +80,11 @@ suite('Shader Studio Test Suite', () => {
       dispose: sandbox.stub()
     } as any);
 
+    // Stub fs operations for ThumbnailCache
+    const fs = require('fs');
+    sandbox.stub(fs, 'existsSync').returns(true);
+    sandbox.stub(fs, 'mkdirSync').returns(undefined);
+
     shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
     sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderToWebview');
   });
@@ -396,10 +401,10 @@ suite('Shader Studio Test Suite', () => {
 
   test('should open settings when openSettings command is executed', async () => {
     const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-    
+
     // Execute the command directly on the shaderStudio instance
     await shaderStudio['openSettings']();
-    
+
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledWith(executeCommandStub, 'workbench.action.openSettings', '^shader-studio.');
   });
@@ -407,18 +412,18 @@ suite('Shader Studio Test Suite', () => {
   test('should call generateConfig on ConfigGenerator when generateConfig command is executed', async () => {
     // Mock the ConfigGenerator's generateConfig method
     const generateConfigSpy = sandbox.spy(shaderStudio['configGenerator'], 'generateConfig');
-    
+
     // Get the command handler that was registered
     const registerCommandStub = vscode.commands.registerCommand as any;
-    const generateConfigCall = registerCommandStub.getCalls().find((call: any) => 
+    const generateConfigCall = registerCommandStub.getCalls().find((call: any) =>
       call.args[0] === 'shader-studio.generateConfig'
     );
-    
+
     // Execute the command handler directly
     if (generateConfigCall && generateConfigCall.args[1]) {
       await generateConfigCall.args[1]();
     }
-    
+
     // Verify the ConfigGenerator's generateConfig method was called
     sinon.assert.calledOnce(generateConfigSpy);
   });

@@ -204,11 +204,11 @@ suite('GlslFileTracker Test Suite', () => {
         test('should find last viewed file in visible editors when no active GLSL editor', () => {
             // Setup: No active editor
             windowStub.get(() => undefined);
-            
+
             // Setup: Last viewed file exists
             const lastViewedPath = '/test/shader.glsl';
             tracker.setLastViewedGlslFile(lastViewedPath);
-            
+
             // Create a mock visible editor that matches the last viewed file
             const mockVisibleEditor = createMockEditor(lastViewedPath, 'glsl');
             visibleEditorsStub.get(() => [mockVisibleEditor]);
@@ -221,10 +221,10 @@ suite('GlslFileTracker Test Suite', () => {
         test('should return null when last viewed file is not in visible editors', () => {
             // Setup: No active editor
             windowStub.get(() => undefined);
-            
+
             // Setup: Last viewed file exists but not in visible editors
             tracker.setLastViewedGlslFile('/test/not-visible.glsl');
-            
+
             // Setup: Different visible editor
             const mockVisibleEditor = createMockEditor('/test/different.glsl', 'glsl');
             visibleEditorsStub.get(() => [mockVisibleEditor]);
@@ -238,7 +238,7 @@ suite('GlslFileTracker Test Suite', () => {
             // Setup: Active GLSL editor
             const activeEditor = createMockEditor('/test/current.glsl', 'glsl');
             windowStub.get(() => activeEditor);
-            
+
             // Setup: Different last viewed file in visible editors
             tracker.setLastViewedGlslFile('/test/previous.glsl');
             const mockVisibleEditor = createMockEditor('/test/previous.glsl', 'glsl');
@@ -261,7 +261,7 @@ suite('GlslFileTracker Test Suite', () => {
             // Step 1: User views a GLSL file
             const glslEditor = createMockEditor('/test/shader.glsl', 'glsl');
             windowStub.get(() => glslEditor);
-            
+
             let result = tracker.getActiveOrLastViewedGLSLEditor();
             assert.strictEqual(result, glslEditor);
             assert.strictEqual(tracker.getLastViewedGlslFile(), '/test/shader.glsl');
@@ -287,6 +287,56 @@ suite('GlslFileTracker Test Suite', () => {
             const newTracker = new GlslFileTracker(mockContext);
 
             assert.strictEqual(newTracker.getLastViewedGlslFile(), filePath);
+        });
+    });
+
+    suite('getMatchingEditor', () => {
+        setup(() => {
+            mockGlobalState.get.withArgs('lastViewedGlslFile').returns(null);
+            tracker = new GlslFileTracker(mockContext);
+        });
+
+        test('returns visible editor if present', async () => {
+            const shaderPath = '/mock/path/visible.glsl';
+            const mockEditor = {
+                document: {
+                    uri: vscode.Uri.file(shaderPath),
+                    fileName: shaderPath,
+                    languageId: 'glsl'
+                }
+            } as vscode.TextEditor;
+            sandbox.stub(vscode.window, 'visibleTextEditors').value([mockEditor]);
+            const result = await tracker.getMatchingEditorAllGroups(shaderPath);
+            assert.strictEqual(result, mockEditor);
+        });
+
+        test('reveals editor from tabGroups if not visible', async () => {
+            const shaderPath = '/mock/path/tabbed.glsl';
+            sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+            let tabInput: any;
+            try {
+                tabInput = new (vscode as any).TabInputText(vscode.Uri.file(shaderPath));
+            } catch (e) {
+                tabInput = { uri: vscode.Uri.file(shaderPath) };
+            }
+            const mockTab = { input: tabInput } as any;
+            sandbox.stub(vscode.window, 'tabGroups').value({ all: [{ tabs: [mockTab], viewColumn: vscode.ViewColumn.Two }] } as any);
+            const mockDocument = { uri: vscode.Uri.file(shaderPath) } as any;
+            const mockEditor = { document: mockDocument } as any;
+            const openDocStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+            const showDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves(mockEditor as any);
+            const result = await tracker.getMatchingEditorAllGroups(shaderPath);
+            assert.strictEqual(openDocStub.called, true);
+            assert.strictEqual(showDocStub.called, true);
+            assert.strictEqual(result, mockEditor);
+        });
+
+        test('returns undefined if no matching editor found', async () => {
+            const shaderPath = '/mock/path/not-found.glsl';
+            sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+            sandbox.stub(vscode.window, 'tabGroups').value({ all: [] } as any);
+            const result = await tracker.getMatchingEditorAllGroups(shaderPath);
+            assert.strictEqual(result, undefined);
         });
     });
 });
