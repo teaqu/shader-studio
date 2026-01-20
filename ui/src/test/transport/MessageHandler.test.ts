@@ -28,7 +28,7 @@ const createMockTransport = () => ({
 
 const createMockShaderLocker = () => ({
   isLocked: vi.fn(),
-  updateLockedShader: vi.fn(),
+  getLockedShaderPath: vi.fn(),
 });
 
 describe("MessageHandler", () => {
@@ -124,21 +124,6 @@ describe("MessageHandler", () => {
   });
 
   describe("locking functionality", () => {
-    it("should not update locked shader if already locked", async () => {
-      mockShaderLocker.isLocked.mockReturnValue(true);
-      const event = {
-        data: {
-          type: "shaderSource",
-          code: "void main() {}",
-          config: null,
-          path: "shaderA.glsl",
-          buffers: {},
-        },
-      };
-      await messageHandler.handleShaderMessage(event as any);
-      expect(mockShaderLocker.updateLockedShader).not.toHaveBeenCalled();
-    });
-
     it("should process shader if not locked", async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       mockRenderingEngine.compileShaderPipeline.mockResolvedValue({ success: true });
@@ -159,6 +144,75 @@ describe("MessageHandler", () => {
         {}
       );
       expect(mockRenderingEngine.startRenderLoop).toHaveBeenCalled();
+    });
+
+    it("should skip processing when locked and message is for different shader", async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue("locked-shader.glsl");
+      
+      const event = {
+        data: {
+          type: "shaderSource",
+          code: "void main() {}",
+          config: null,
+          path: "different-shader.glsl",
+          buffers: {},
+        },
+      };
+
+      const result = await messageHandler.handleShaderMessage(event as any);
+      
+      expect(result).toEqual({ running: true });
+      expect(mockRenderingEngine.compileShaderPipeline).not.toHaveBeenCalled();
+      expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
+    });
+
+    it("should allow processing when locked and message is for the same locked shader", async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue("locked-shader.glsl");
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({ success: true });
+      
+      const event = {
+        data: {
+          type: "shaderSource",
+          code: "void main() {}",
+          config: null,
+          path: "locked-shader.glsl",
+          buffers: {},
+        },
+      };
+
+      const result = await messageHandler.handleShaderMessage(event as any);
+      
+      expect(result).toEqual({ running: true });
+      expect(mockRenderingEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        "void main() {}",
+        null,
+        "locked-shader.glsl",
+        {}
+      );
+      expect(mockRenderingEngine.startRenderLoop).toHaveBeenCalled();
+    });
+
+    it("should skip processing when locked and getLockedShaderPath returns undefined", async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue(undefined);
+      
+      const event = {
+        data: {
+          type: "shaderSource",
+          code: "void main() {}",
+          config: null,
+          path: "any-shader.glsl",
+          buffers: {},
+        },
+      };
+
+      const result = await messageHandler.handleShaderMessage(event as any);
+      
+      expect(result).toEqual({ running: true });
+      expect(mockRenderingEngine.compileShaderPipeline).not.toHaveBeenCalled();
+      expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
     });
   });
 });

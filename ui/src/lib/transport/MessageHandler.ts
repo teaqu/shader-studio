@@ -49,7 +49,10 @@ export class MessageHandler {
         return { running: false };
       }
 
-      if (this.shaderLocker.isLocked()) {
+      // If shader is locked, skip processing unless it's the locked shader
+      // This prevents changing shaders while locked
+      // But still allows reloading the locked shader
+      if (this.shaderLocker.isLocked() && this.shaderLocker.getLockedShaderPath() !== path) {
         return { running: true };
       }
 

@@ -21,10 +21,4 @@ export class ShaderLocker {
             console.log('ShaderLocker: Unlocked');
         }
     }
-
-    public updateLockedShader(shaderPath: string): void {
-        if (this.locked) {
-            this.lockedShaderPath = shaderPath;
-        }
-    }
 }

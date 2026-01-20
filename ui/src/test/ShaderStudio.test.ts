@@ -29,7 +29,6 @@ describe('ShaderStudio', () => {
     vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(false);
     vi.spyOn(mockShaderLocker, 'getLockedShaderPath').mockReturnValue(undefined);
     vi.spyOn(mockShaderLocker, 'toggleLock').mockImplementation(() => {});
-    vi.spyOn(mockShaderLocker, 'updateLockedShader').mockImplementation(() => {});
 
     // Mock RenderingEngine
     mockRenderingEngine = {

@@ -51,24 +51,6 @@ describe('ShaderLocker', () => {
         });
     });
 
-    describe('when updating locked shader', () => {
-        it('then should update shader path if locked', () => {
-            shaderLocker.toggleLock('original.glsl');
-
-            shaderLocker.updateLockedShader('updated.glsl');
-
-            expect(shaderLocker.getLockedShaderPath()).toBe('updated.glsl');
-            expect(shaderLocker.isLocked()).toBe(true);
-        });
-
-        it('then should not update shader path if not locked', () => {
-            shaderLocker.updateLockedShader('test.glsl');
-
-            expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
-            expect(shaderLocker.isLocked()).toBe(false);
-        });
-    });
-
     describe('when performing multiple operations', () => {
         it('then should handle lock/unlock cycles correctly', () => {
             shaderLocker.toggleLock('shader1.glsl');
