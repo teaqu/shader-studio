@@ -13,6 +13,16 @@ suite('Shader Studio Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
+    
+    // Mock filesystem operations to prevent ThumbnailCache from creating real directories
+    const fs = require('fs');
+    sandbox.stub(fs, 'existsSync').returns(true);
+    sandbox.stub(fs, 'mkdirSync').callsFake((path: any, options?: any) => {
+      // Mock implementation - do nothing
+      return undefined;
+    });
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    
     mockOutputChannel = {
       info: sandbox.stub(),
       debug: sandbox.stub(),
@@ -79,11 +89,6 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.commands, 'registerCommand').returns({
       dispose: sandbox.stub()
     } as any);
-
-    // Stub fs operations for ThumbnailCache
-    const fs = require('fs');
-    sandbox.stub(fs, 'existsSync').returns(true);
-    sandbox.stub(fs, 'mkdirSync').returns(undefined);
 
     shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
     sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderToWebview');
@@ -179,9 +184,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    const fs = require('fs');
-    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
+    
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
@@ -215,9 +218,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    const fs = require('fs');
-    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
+    
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
@@ -335,9 +336,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    const fs = require('fs');
-    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
+    
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
     shaderStudio['performShaderUpdate'](mockEditor);
@@ -359,9 +358,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    const fs = require('fs');
-    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
+    
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
@@ -386,9 +383,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    const fs = require('fs');
-    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
+    
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 

@@ -14,6 +14,29 @@ suite('ShaderBrowserProvider Test Suite', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        
+        // Mock filesystem operations to prevent ThumbnailCache from creating real directories
+        const fs = require('fs');
+        sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {
+            const path = args[0] as string;
+            // Return false for HTML files to trigger error handling
+            if (path.includes('index.html')) {
+                return false;
+            }
+            return true;
+        });
+        sandbox.stub(fs, 'mkdirSync').callsFake((path: any, options?: any) => {
+            // Mock implementation - do nothing
+            return undefined;
+        });
+        sandbox.stub(fs, 'readFileSync').callsFake((...args: any[]) => {
+            const path = args[0] as string;
+            // Return mock HTML for HTML files
+            if (path.includes('index.html')) {
+                return '<html><head></head><body>Mock Shader Browser</body></html>';
+            }
+            return '<html><head></head><body></body></html>';
+        });
 
         // Create mock webview
         postMessageSpy = sandbox.spy();
@@ -62,12 +85,6 @@ suite('ShaderBrowserProvider Test Suite', () => {
             storageUri: vscode.Uri.file('/mock/storage'),
             languageModelAccessInformation: {} as any,
         };
-
-        // Stub fs operations for ThumbnailCache
-        const fs = require('fs');
-        sandbox.stub(fs, 'existsSync').returns(true);
-        sandbox.stub(fs, 'mkdirSync').returns(undefined);
-        sandbox.stub(fs, 'readFileSync').returns('<html><body>Mock HTML</body></html>');
 
         provider = new ShaderBrowserProvider(mockContext);
     });

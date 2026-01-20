@@ -9,7 +9,6 @@ import { ShaderPipeline } from "./ShaderPipeline";
 import { PassRenderer } from "./PassRenderer";
 import { FrameRenderer } from "./FrameRenderer";
 import { FPSCalculator } from "./util/FPSCalculator";
-import { ShaderLocker } from "./util/ShaderLocker";
 import { ConfigValidator } from "./util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
@@ -28,11 +27,6 @@ export class RenderingEngine implements RenderingEngineInterface {
   private shaderPipeline!: ShaderPipeline;
   private passRenderer!: PassRenderer;
   private frameRenderer!: FrameRenderer;
-  private shaderLocker!: ShaderLocker;
-
-  constructor() {
-    this.shaderLocker = new ShaderLocker();
-  }
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
@@ -114,12 +108,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
-    if (!this.shaderLocker.shouldProcessShader(path)) {
-      return {
-        success: false,
-      };
-    }
-
     // Validate config before processing
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
@@ -129,10 +117,6 @@ export class RenderingEngine implements RenderingEngineInterface {
           error: `Invalid shader configuration: ${validation.errors.join(', ')}`,
         };
       }
-    }
-
-    if (path) {
-      this.shaderLocker.updateLockedShader(path);
     }
 
     const result: Promise<CompilationResult> = this.shaderPipeline.compileShaderPipeline(
@@ -145,16 +129,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     return result;
   }
 
-  public isLockedShader(): boolean {
-    return this.shaderLocker.getIsLocked();
-  }
-
   public togglePause(): void {
     this.timeManager.togglePause();
-  }
-
-  public toggleLock(path: string): void {
-    this.shaderLocker.toggleLock(path);
   }
 
   public startRenderLoop(): void {
@@ -179,10 +155,6 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public cleanup(): void {
     this.shaderPipeline.cleanup();
-  }
-
-  public getLockedShaderPath(): string | undefined {
-    return this.shaderLocker.getLockedShaderPath();
   }
 
   public getTimeManager(): TimeManager {

@@ -1,9 +1,9 @@
 export class ShaderLocker {
-    private isLocked = false;
+    private locked = false;
     private lockedShaderPath?: string;
 
-    public getIsLocked(): boolean {
-        return this.isLocked;
+    public isLocked(): boolean {
+        return this.locked;
     }
 
     public getLockedShaderPath(): string | undefined {
@@ -11,9 +11,9 @@ export class ShaderLocker {
     }
 
     public toggleLock(currentShaderPath?: string): void {
-        this.isLocked = !this.isLocked;
+        this.locked = !this.locked;
 
-        if (this.isLocked) {
+        if (this.locked) {
             this.lockedShaderPath = currentShaderPath;
             console.log(`ShaderLocker: Locked to shader at path: ${this.lockedShaderPath || 'unknown'}`);
         } else {
@@ -22,22 +22,8 @@ export class ShaderLocker {
         }
     }
 
-    public shouldProcessShader(incomingShaderPath: string): boolean {
-        if (!this.isLocked || !this.lockedShaderPath) {
-            return true;
-        }
-
-        const shouldProcess = incomingShaderPath === this.lockedShaderPath;
-
-        if (!shouldProcess) {
-            console.log(`ShaderLocker: Ignoring shader ${incomingShaderPath} - locked to ${this.lockedShaderPath}`);
-        }
-
-        return shouldProcess;
-    }
-
     public updateLockedShader(shaderPath: string): void {
-        if (this.isLocked) {
+        if (this.locked) {
             this.lockedShaderPath = shaderPath;
         }
     }

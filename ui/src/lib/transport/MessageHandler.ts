@@ -1,4 +1,5 @@
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
+import type { ShaderLocker } from "../ShaderLocker";
 import type { Transport } from "./MessageTransport";
 import type {
   ErrorMessage,
@@ -9,16 +10,19 @@ import type {
 
 export class MessageHandler {
   private renderEngine: RenderingEngine;
+  private shaderLocker: ShaderLocker;
   private transport: Transport;
   private isHandlingMessage = false;
   private lastEvent: MessageEvent | null = null;
 
   constructor(
-    renderEngine: RenderingEngine,
     transport: Transport,
+    renderEngine: RenderingEngine,
+    shaderLocker: ShaderLocker,
   ) {
-    this.renderEngine = renderEngine;
     this.transport = transport;
+    this.renderEngine = renderEngine;
+    this.shaderLocker = shaderLocker;
   }
 
   public getLastEvent(): MessageEvent | null {
@@ -43,6 +47,10 @@ export class MessageHandler {
           "MessageHandler: Ignoring message - wrong type or already handling",
         );
         return { running: false };
+      }
+
+      if (this.shaderLocker.isLocked()) {
+        return { running: true };
       }
 
       this.isHandlingMessage = true;
