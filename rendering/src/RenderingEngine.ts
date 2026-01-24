@@ -27,6 +27,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private shaderPipeline!: ShaderPipeline;
   private passRenderer!: PassRenderer;
   private frameRenderer!: FrameRenderer;
+  private currentConfig: ShaderConfig | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
@@ -108,6 +109,9 @@ export class RenderingEngine implements RenderingEngineInterface {
     path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
+    // Save the config for later use
+    this.currentConfig = config;
+    
     // Validate config before processing
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
@@ -127,6 +131,55 @@ export class RenderingEngine implements RenderingEngineInterface {
     );
 
     return result;
+  }
+
+  public getCurrentConfig(): ShaderConfig | null {
+    return this.currentConfig;
+  }
+
+  public async updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined> {
+    // Get current passes to find the buffer
+    const passes = this.shaderPipeline.getPasses();
+    const bufferPass = passes.find(pass => pass.name === bufferName && pass.name !== "Image");
+    
+    if (!bufferPass) {
+      return {
+        success: false,
+        error: `Buffer '${bufferName}' not found in current shader`,
+      };
+    }
+
+    // Get current shader code
+    const imagePass = passes.find(pass => pass.name === "Image");
+    if (!imagePass) {
+      return {
+        success: false,
+        error: "No Image pass found in current shader",
+      };
+    }
+
+    // Create updated buffers with just the specific buffer
+    const updatedBuffers: Record<string, string> = {};
+    for (const pass of passes) {
+      if (pass.name !== "Image" && pass.shaderSrc) {
+        updatedBuffers[pass.name] = pass.name === bufferName ? bufferContent : pass.shaderSrc;
+      }
+    }
+
+    // Use the saved config instead of reconstructing it
+    const config = this.currentConfig;
+
+    // Recompile with updated buffer
+    return this.compileShaderPipeline(
+      imagePass.shaderSrc,
+      config,
+      this.shaderPipeline.getShaderPath(),
+      updatedBuffers
+    );
+  }
+
+  public getPasses(): any[] {
+    return this.shaderPipeline.getPasses();
   }
 
   public togglePause(): void {

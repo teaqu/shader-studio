@@ -11,6 +11,9 @@ export interface RenderingEngine {
     path: string,
     buffers?: Record<string, string>
   ): Promise<CompilationResult | undefined>;
+  getCurrentConfig(): ShaderConfig | null;
+  updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
+  getPasses(): any[];
   togglePause(): void;
   getTimeManager(): TimeManager;
   startRenderLoop(): void;
