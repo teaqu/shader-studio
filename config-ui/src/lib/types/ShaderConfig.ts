@@ -1,6 +1,6 @@
 export interface BufferConfigInput {
     type: 'buffer';
-    source: 'BufferA' | 'BufferB' | 'BufferC' | 'BufferD';
+    source: 'BufferA' | 'BufferB' | 'BufferC' | 'BufferD' | 'CommonBuffer';
 }
 
 export interface TextureConfigInput {
@@ -32,6 +32,7 @@ export interface ShaderPasses {
     BufferB?: BufferPass;
     BufferC?: BufferPass;
     BufferD?: BufferPass;
+    CommonBuffer?: BufferPass;
 }
 
 export interface ShaderConfig {

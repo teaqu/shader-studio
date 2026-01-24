@@ -39,7 +39,7 @@ export class BufferManager {
     const newBuffers: Buffers = {};
 
     for (const name of Object.keys(this.buffers)) {
-      if (name !== "Image") {
+      if (name !== "Image" && name !== "CommonBuffer") {
         const newBuffer = this.createPingPongBuffers(newWidth, newHeight);
         
         if (this.shouldCopyExistingBuffers(oldBuffers, name, newBuffer)) {

@@ -98,6 +98,9 @@ export class PassRenderer {
         } else if (input.type === "buffer") {
           if (input.source === passConfig.name) {
             textureBindings[i] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
+          } else if (input.source === "CommonBuffer") {
+            // CommonBuffer doesn't have render targets, it's just shared code
+            textureBindings[i] = defaultTexture;
           } else if (passBuffers[input.source]) {
             textureBindings[i] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
           }

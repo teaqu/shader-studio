@@ -145,12 +145,18 @@ export class FrameRenderer {
     const passBuffers = this.bufferManager.getPassBuffers();
 
     for (const pass of passes) {
-      if (pass.name === "Image") {
+      if (pass.name === "Image" || pass.name === "CommonBuffer") {
         continue;
       }
 
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
+      
+      // Skip if buffers are missing (prevents "Cannot read properties of undefined (reading 'back')")
+      if (!buffers) {
+        console.warn(`Missing buffers for pass: ${pass.name}. Skipping render. This may indicate a configuration issue.`);
+        continue;
+      }
       
       this.passRenderer.renderPass(pass, buffers.back, shader, uniforms);
 

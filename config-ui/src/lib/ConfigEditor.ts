@@ -224,6 +224,29 @@ export class ConfigEditor {
     }
 
     /**
+     * Add Common buffer to the configuration
+     */
+    addCommonBuffer(): boolean {
+        if (!this.config) return false;
+
+        // Check if CommonBuffer already exists
+        if (this.config.passes.CommonBuffer) return false;
+
+        const updatedConfig = {
+            ...this.config,
+            passes: {
+                ...this.config.passes,
+                CommonBuffer: {
+                    path: 'common.glsl',
+                    inputs: {}
+                }
+            }
+        };
+        this.updateConfig(updatedConfig);
+        return true;
+    }
+
+    /**
      * Get list of configured buffers
      */
     getBufferList(): string[] {
@@ -232,7 +255,7 @@ export class ConfigEditor {
             return [];
         }
         console.log('getBufferList: config is:', this.config);
-        const result = ['BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
+        const result = ['CommonBuffer', 'BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
             buffer => {
                 const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
                 console.log(`getBufferList: ${buffer} exists?`, exists);

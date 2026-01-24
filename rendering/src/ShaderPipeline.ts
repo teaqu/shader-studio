@@ -140,10 +140,19 @@ export class ShaderPipeline {
     const newPassShaders: Record<string, PiShader> = {};
     const newPassBuffers: Record<string, any> = {};
 
+    // Extract CommonBuffer code if it exists
+    const commonBufferPass = this.passes.find(pass => pass.name === "CommonBuffer");
+    const commonCode = commonBufferPass?.shaderSrc || "";
+
     for (const pass of this.passes) {
+      // Skip CommonBuffer as it's not a render target
+      if (pass.name === "CommonBuffer") {
+        continue;
+      }
+
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc);
+        .wrapShaderToyCode(pass.shaderSrc, commonCode);
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode);
 
       if (!shader || !shader.mResult) {
         const err = shader ? ShaderErrorFormatter.formatShaderError(
@@ -163,7 +172,7 @@ export class ShaderPipeline {
       newPassShaders[pass.name] = shader;
       this.passShaders[pass.name] = shader;
 
-      if (pass.name !== "Image") {
+      if (pass.name !== "Image" && pass.name !== "CommonBuffer") {
         if (oldPassBuffers[pass.name]) {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];

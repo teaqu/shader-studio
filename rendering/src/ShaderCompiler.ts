@@ -5,59 +5,38 @@ export class ShaderCompiler {
 
   public wrapShaderToyCode(
     code: string,
+    commonCode?: string,
   ): { wrappedCode: string; headerLineCount: number } {
-    const injectChannels = ["iChannel0", "iChannel1", "iChannel2", "iChannel3"]
-      .filter((ch) =>
-        !new RegExp(`uniform\\s+sampler2D\\s+${ch}\\s*;`).test(code)
-      )
-      .map((ch) => `uniform sampler2D ${ch};`)
-      .join("\n");
-    const injectMouse = !/uniform\s+vec4\s+iMouse\s*;/.test(code)
-      ? `uniform vec4 iMouse;\n`
-      : "";
-    const injectFrame = !/uniform\s+int\s+iFrame\s*;/.test(code)
-      ? `uniform int iFrame;\n`
-      : "";
-    const injectTimeDelta = !/uniform\s+float\s+iTimeDelta\s*;/.test(code)
-      ? `uniform float iTimeDelta;\n`
-      : "";
-    const injectFrameRate = !/uniform\s+float\s+iFrameRate\s*;/.test(code)
-      ? `uniform float iFrameRate;\n`
-      : "";
-    const injectDate = !/uniform\s+vec4\s+iDate\s*;/.test(code)
-      ? `uniform vec4 iDate;\n`
-      : "";
+    let header = `
+precision highp float;
+out vec4 fragColor;
+#define HW_PERFORMANCE 1
+uniform vec3 iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform float iFrameRate;
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+uniform vec4 iMouse;
+uniform int iFrame;
+uniform vec4 iDate;
+`;
 
-    const header = `
-    precision highp float;
-    out vec4 fragColor;
-    #define HW_PERFORMANCE 1
+    if (commonCode) {
+      header += commonCode;
+    }
 
-    uniform vec3 iResolution;
-    uniform float iTime;
-    ${injectTimeDelta}
-    ${injectFrameRate}
-    ${injectChannels}
-    ${injectMouse}
-    ${injectFrame}
-    ${injectDate}`;
-
-    const wrappedCode = `${header}
-
-${code}
-
-void main() {
-  mainImage(fragColor, gl_FragCoord.xy);
-}`;
-
-    const headerLineCount = (header.match(/\n/g) || []).length + 2;
-    return { wrappedCode, headerLineCount };
+    const shaderCode = header + code + "\nvoid main() {\n  mainImage(fragColor, gl_FragCoord.xy);\n}";
+    const headerLineCount = (header.match(/\n/g) || []).length;
+    return { wrappedCode: shaderCode, headerLineCount };
   }
 
-  public compileShader(shaderSrc: string): PiShader | null {
+  public compileShader(shaderSrc: string, commonCode?: string): PiShader | null {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc);
+    const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc, commonCode);
     return this.renderer.CreateShader(vs, fs);
   }
 }

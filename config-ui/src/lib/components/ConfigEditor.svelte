@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { ConfigEditor } from "../ConfigEditor";
-  import type { ShaderConfig, BufferPass } from "../types/ShaderConfig";
+  import type { ShaderConfig, BufferPass } from "@shader-studio/types";
   import BufferConfig from "./BufferConfig.svelte";
 
   let config: ShaderConfig | null = null;
@@ -37,6 +37,16 @@
     }
   });
 
+  function addCommonBuffer() {
+    console.log("Adding Common buffer");
+    const success = configEditor?.addCommonBuffer();
+    console.log("Add Common buffer success:", success);
+    if (success) {
+      activeTab = "Common";
+      console.log("Switched to tab:", activeTab);
+    }
+  }
+
   function addSpecificBuffer(bufferName: string) {
     console.log("Adding specific buffer:", bufferName);
     const success = configEditor?.addSpecificBuffer(bufferName);
@@ -54,6 +64,10 @@
     configEditor?.removeBuffer(bufferName);
   }
 
+  function getActualBufferName(tabName: string): string {
+    return tabName === "Common" ? "CommonBuffer" : tabName;
+  }
+
   // Reactive statement to ensure tabs update when config changes
   $: allTabs = (() => {
     const tabs = ["Image"];
@@ -65,7 +79,13 @@
     if (config && configEditor) {
       const bufferList = configEditor.getBufferList();
       console.log("Reactive buffer list:", bufferList);
-      tabs.push(...bufferList);
+      // Add Common first, then other buffers
+      const commonBuffer = bufferList.find(buffer => buffer === "CommonBuffer");
+      const otherBuffers = bufferList.filter(buffer => buffer !== "CommonBuffer");
+      if (commonBuffer) {
+        tabs.unshift("Common"); // Add Common tab at the beginning
+      }
+      tabs.push(...otherBuffers);
     }
     console.log("Reactive final tabs:", tabs);
     return tabs;
@@ -79,10 +99,12 @@
   $: activeTabConfig = (() => {
     if (!configEditor || !config) return null;
 
+    const actualBufferName = getActualBufferName(activeTab);
+    
     if (activeTab === "Image") {
       return config.passes.Image;
     } else {
-      return configEditor.getBuffer(activeTab);
+      return configEditor.getBuffer(actualBufferName);
     }
   })();
 </script>
@@ -112,7 +134,7 @@
             >
               {tabName}
             </button>
-            {#if tabName !== "Image"}
+            {#if tabName !== "Image" && tabName !== "Common"}
               <button
                 class="remove-tab-btn"
                 on:click={() => removeBuffer(tabName)}
@@ -124,10 +146,18 @@
           </div>
         {/each}
 
-        {#if config && ["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes])}
+        {#if config && (["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes]) || !config?.passes.CommonBuffer)}
           <div class="add-tab-dropdown">
             <button class="add-tab-btn" title="Add Buffer"> + </button>
             <div class="dropdown-content">
+              {#if !config?.passes.CommonBuffer}
+                <button
+                  class="dropdown-item"
+                  on:click={() => addCommonBuffer()}
+                >
+                  Common
+                </button>
+              {/if}
               {#each ["BufferA", "BufferB", "BufferC", "BufferD"] as bufferName}
                 {#if !config?.passes[bufferName as keyof typeof config.passes]}
                   <button
@@ -158,7 +188,7 @@
           {/if}
         {:else if activeTabConfig && activeTab !== "Image"}
           <BufferConfig
-            bufferName={activeTab}
+            bufferName={getActualBufferName(activeTab)}
             config={activeTabConfig}
             onUpdate={(bufferName, updatedConfig) => {
               configEditor?.updateBuffer(

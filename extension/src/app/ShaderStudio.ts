@@ -275,7 +275,9 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
       this.glslFileTracker.recommendGlslHighlighter(editor);
       if (this.glslFileTracker.isGlslEditor(editor)) {
         this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
@@ -285,7 +287,9 @@ export class ShaderStudio {
 
     vscode.workspace.onDidChangeTextDocument((event) => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
 
       this.glslFileTracker.recommendGlslHighlighter(editor);
 
@@ -300,9 +304,9 @@ export class ShaderStudio {
     return this.glslFileTracker.isGlslEditor(editor);
   }
 
-  private performShaderUpdate(editor: vscode.TextEditor): void {
+  private async performShaderUpdate(editor: vscode.TextEditor): Promise<void> {
     if (this.messenger.hasActiveClients()) {
-      this.shaderProvider.sendShaderToWebview(editor);
+      await this.shaderProvider.sendShaderToWebview(editor);
     }
   }
 

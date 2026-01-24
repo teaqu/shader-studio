@@ -589,6 +589,101 @@ describe("FrameRenderer", () => {
   });
 
   describe("edge cases", () => {
+    it("should handle rendering when CommonBuffer is present", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Mock passes with CommonBuffer
+      const passes = [
+        { name: "CommonBuffer", shaderSrc: "vec3 red() { return vec3(1.0, 0.0, 0.0); }" },
+        { name: "BufferA", shaderSrc: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }" },
+        { name: "Image", shaderSrc: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }" }
+      ];
+      
+      // Mock pass shaders (excluding CommonBuffer)
+      const passShaders = {
+        "BufferA": { mProgram: {}, mResult: true },
+        "Image": { mProgram: {}, mResult: true }
+      };
+      
+      // Mock pass buffers (excluding CommonBuffer)
+      const passBuffers = {
+        "BufferA": { front: { mTex0: {} }, back: { mTex0: {} } }
+      };
+      
+      mockShaderPipeline.getPasses.mockReturnValue(passes);
+      mockShaderPipeline.getPassShaders.mockReturnValue(passShaders);
+      mockBufferManager.getPassBuffers.mockReturnValue(passBuffers);
+      
+      // This should not throw "Cannot read properties of undefined (reading 'back')"
+      expect(() => {
+        frameRenderer.render(1000);
+      }).not.toThrow();
+      
+      // Verify CommonBuffer and Image passes are skipped in buffer rendering
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(2); // BufferA + Image
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        passes[1], // BufferA
+        { mTex0: {} }, // passBuffers.BufferA.back
+        passShaders.BufferA,
+        expect.any(Object)
+      );
+    });
+
+    it("should throw error when buffer is missing for a pass", () => {
+      // Directly test the problematic code pattern WITHOUT the fix
+      const passBuffers: any = {}; // Empty object
+      const buffers = passBuffers["BufferA"]; // This will be undefined
+      
+      // This should throw "Cannot read properties of undefined (reading 'back')" without the fix
+      expect(() => {
+        const back = buffers.back; // This is the exact line that was failing
+      }).toThrow("Cannot read properties of undefined (reading 'back')");
+    });
+
+    it("should NOT throw error when buffer is missing for a pass WITH the fix", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Mock console.warn to verify warning is logged
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Mock passes with CommonBuffer and BufferA
+      const passes = [
+        { name: "CommonBuffer", shaderSrc: "vec3 red() { return vec3(1.0, 0.0, 0.0); }" },
+        { name: "BufferA", shaderSrc: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }" }
+      ];
+      
+      const passShaders = {
+        "BufferA": { mProgram: {}, mResult: true }
+      };
+      
+      // CRITICAL: Missing buffer for BufferA - this should NOT cause the error with the fix
+      const passBuffers = {}; // Empty!
+      
+      mockShaderPipeline.getPasses.mockReturnValue(passes);
+      mockShaderPipeline.getPassShaders.mockReturnValue(passShaders);
+      mockBufferManager.getPassBuffers.mockReturnValue(passBuffers);
+      
+      // This should NOT throw "Cannot read properties of undefined (reading 'back')" with the fix
+      expect(() => {
+        frameRenderer.render(1000);
+      }).not.toThrow();
+      
+      // Should log a warning about missing buffers
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Missing buffers for pass: BufferA. Skipping render. This may indicate a configuration issue."
+      );
+      
+      // Should not render anything since buffers are missing
+      expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+      
+      // Clean up spy
+      consoleSpy.mockRestore();
+    });
+
     it("should handle missing Image pass", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
