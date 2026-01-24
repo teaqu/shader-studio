@@ -1,215 +1,453 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ShaderStudio } from "../lib/ShaderStudio";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ShaderStudio } from '../lib/ShaderStudio';
+import { ShaderLocker } from '../lib/ShaderLocker';
+import type { Transport } from '../lib/transport/MessageTransport';
+import type { RenderingEngine } from '../../../rendering/src/types';
+import type { ErrorMessage, DebugMessage, ShaderSourceMessage } from '@shader-studio/types';
 
-vi.mock("../../vendor/pilibs/src/piRenderer", () => ({
-    piRenderer: () => ({
-        Initialize: vi.fn().mockReturnValue(true),
-    }),
-}));
+// Mock implementations
+describe('ShaderStudio', () => {
+  let shaderStudio: ShaderStudio;
+  let mockTransport: Transport;
+  let mockShaderLocker: ShaderLocker;
+  let mockRenderingEngine: RenderingEngine;
+  let mockCanvas: HTMLCanvasElement;
+  let mockGL: WebGL2RenderingContext;
 
-describe("Shader Studio locker integration", () => {
-    let shaderStudio: ShaderStudio;
-    let mockTransport: any;
-    let mockCanvas: HTMLCanvasElement;
-    let mockGL: any;
+  beforeEach(() => {
+    // Mock Transport
+    mockTransport = {
+      postMessage: vi.fn(),
+      onMessage: vi.fn(),
+      dispose: vi.fn(),
+      getType: vi.fn().mockReturnValue('websocket'),
+      isConnected: vi.fn().mockReturnValue(true)
+    };
 
-    beforeEach(() => {
-        mockTransport = {
-            postMessage: vi.fn(),
-            onMessage: vi.fn(),
-            dispose: vi.fn(),
-            getType: vi.fn().mockReturnValue("websocket"),
-            isConnected: vi.fn().mockReturnValue(true),
-        };
+    // Mock ShaderLocker
+    mockShaderLocker = new ShaderLocker();
+    vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(false);
+    vi.spyOn(mockShaderLocker, 'getLockedShaderPath').mockReturnValue(undefined);
+    vi.spyOn(mockShaderLocker, 'toggleLock').mockImplementation(() => {});
 
-        mockGL = {
-            getExtension: vi.fn(),
-            createProgram: vi.fn(),
-            createShader: vi.fn(),
-            compileShader: vi.fn(),
-            linkProgram: vi.fn(),
-            useProgram: vi.fn(),
-            getParameter: vi.fn().mockReturnValue(true),
-            getShaderInfoLog: vi.fn().mockReturnValue(""),
-            getProgramInfoLog: vi.fn().mockReturnValue(""),
-            deleteShader: vi.fn(),
-            deleteProgram: vi.fn(),
-        };
+    // Mock RenderingEngine
+    mockRenderingEngine = {
+      initialize: vi.fn().mockImplementation(() => {}),
+      handleCanvasResize: vi.fn().mockImplementation(() => {}),
+      togglePause: vi.fn().mockImplementation(() => {}),
+      stopRenderLoop: vi.fn().mockImplementation(() => {}),
+      getCurrentFPS: vi.fn().mockReturnValue(60),
+      getTimeManager: vi.fn().mockReturnValue({}),
+      dispose: vi.fn().mockImplementation(() => {}),
+      compileShaderPipeline: vi.fn(),
+      startRenderLoop: vi.fn().mockImplementation(() => {}),
+      cleanup: vi.fn().mockImplementation(() => {})
+    } as any;
 
-        mockCanvas = {
-            getContext: vi.fn().mockReturnValue(mockGL),
-            width: 800,
-            height: 600,
-        } as any;
+    // Mock Canvas and WebGL context
+    mockCanvas = document.createElement('canvas');
+    mockGL = {
+      // Add minimal WebGL2 context properties
+      getExtension: vi.fn(),
+      getParameter: vi.fn(),
+      createShader: vi.fn(),
+      shaderSource: vi.fn(),
+      compileShader: vi.fn(),
+      getShaderParameter: vi.fn(),
+      createProgram: vi.fn(),
+      attachShader: vi.fn(),
+      linkProgram: vi.fn(),
+      getProgramParameter: vi.fn(),
+      useProgram: vi.fn(),
+      createBuffer: vi.fn(),
+      bindBuffer: vi.fn(),
+      bufferData: vi.fn(),
+      enableVertexAttribArray: vi.fn(),
+      vertexAttribPointer: vi.fn(),
+      drawArrays: vi.fn(),
+      clear: vi.fn(),
+      clearColor: vi.fn(),
+      viewport: vi.fn(),
+      VERTEX_SHADER: 35633,
+      FRAGMENT_SHADER: 35632,
+      COMPILE_STATUS: 35713,
+      LINK_STATUS: 35714,
+      ARRAY_BUFFER: 34962,
+      STATIC_DRAW: 35044,
+      COLOR_BUFFER_BIT: 16384
+    } as any;
 
-        shaderStudio = new ShaderStudio(mockTransport);
-        vi.spyOn(console, "log").mockImplementation(() => { });
+    // Mock getContext
+    vi.spyOn(mockCanvas, 'getContext').mockReturnValue(mockGL);
+
+    shaderStudio = new ShaderStudio(mockTransport, mockShaderLocker, mockRenderingEngine);
+  });
+
+  describe('constructor', () => {
+    it('should initialize with provided dependencies', () => {
+      expect(shaderStudio).toBeDefined();
+    });
+  });
+
+  describe('initialize', () => {
+    it('should initialize successfully with WebGL2 support', async () => {
+      const result = await shaderStudio.initialize(mockCanvas);
+
+      expect(result).toBe(true);
+      expect(mockCanvas.getContext).toHaveBeenCalledWith('webgl2');
+      expect(mockRenderingEngine.initialize).toHaveBeenCalledWith(mockCanvas);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'debug',
+        payload: ['Svelte with piLibs initialized']
+      });
     });
 
-    describe("when checking lock state", () => {
-        beforeEach(async () => {
-            await shaderStudio.initialize(mockCanvas);
-        });
+    it('should return false when WebGL2 is not supported', async () => {
+      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
 
-        it("then should not be locked initially", () => {
-            expect(shaderStudio.getIsLocked()).toBe(false);
-        });
+      const result = await shaderStudio.initialize(mockCanvas);
+
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ WebGL2 not supported']
+      });
     });
 
-    describe("when toggling lock", () => {
-        beforeEach(async () => {
-            await shaderStudio.initialize(mockCanvas);
-        });
+    it('should handle initialization errors gracefully', async () => {
+      const error = new Error('Initialization failed');
+      (mockRenderingEngine.initialize as any).mockImplementation(() => {
+        throw error;
+      });
 
-        it("then should toggle lock state", () => {
-            const mockEvent = {
-                data: { path: "test.glsl" },
-            } as MessageEvent;
+      const result = await shaderStudio.initialize(mockCanvas);
 
-            vi.spyOn(shaderStudio as any, "messageHandler", "get")
-                .mockReturnValue({
-                    getLastEvent: vi.fn().mockReturnValue(mockEvent),
-                });
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ Renderer initialization failed:', 'Error: Initialization failed']
+      });
+    });
+  });
 
-            shaderStudio.handleToggleLock();
-            expect(shaderStudio.getIsLocked()).toBe(true);
-
-            shaderStudio.handleToggleLock();
-            expect(shaderStudio.getIsLocked()).toBe(false);
-        });
+  describe('handleCanvasResize', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
     });
 
-    describe("when handling shader messages", () => {
-        beforeEach(async () => {
-            await shaderStudio.initialize(mockCanvas);
-        });
+    it('should call rendering engine handleCanvasResize', () => {
+      const width = 800;
+      const height = 600;
 
-        it("then should process shader when not locked", async () => {
-            const mockEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "test.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
+      shaderStudio.handleCanvasResize(width, height);
 
-            vi.spyOn(shaderStudio as any, "messageHandler", "get")
-                .mockReturnValue({
-                    handleShaderMessage: vi.fn().mockResolvedValue({
-                        running: true,
-                    }),
-                    getLastEvent: vi.fn().mockReturnValue(mockEvent),
-                });
-
-            const result = await shaderStudio.handleShaderMessage(mockEvent);
-            expect(result.running).toBe(true);
-        });
-
-        it("then should process same shader when locked", async () => {
-            const mockEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "test.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
-
-            const mockMessageHandler = {
-                handleShaderMessage: vi.fn().mockResolvedValue({
-                    running: true,
-                }),
-                getLastEvent: vi.fn().mockReturnValue(mockEvent),
-            };
-
-            vi.spyOn(shaderStudio as any, "messageHandler", "get")
-                .mockReturnValue(mockMessageHandler);
-
-            await shaderStudio.handleShaderMessage(mockEvent);
-            shaderStudio.handleToggleLock();
-
-            const result = await shaderStudio.handleShaderMessage(mockEvent);
-            expect(result.running).toBe(true);
-        });
-
-        it("then should ignore different shader when locked", async () => {
-            const firstEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "first.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
-
-            const secondEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "second.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
-
-            const mockMessageHandler = {
-                handleShaderMessage: vi.fn()
-                    .mockResolvedValueOnce({ running: true })  // First call succeeds
-                    .mockResolvedValueOnce({ running: false }), // Second call fails (locked)
-                getLastEvent: vi.fn().mockReturnValue(firstEvent),
-            };
-
-            vi.spyOn(shaderStudio as any, "messageHandler", "get")
-                .mockReturnValue(mockMessageHandler);
-
-            await shaderStudio.handleShaderMessage(firstEvent);
-            shaderStudio.handleToggleLock();
-
-            const result = await shaderStudio.handleShaderMessage(secondEvent);
-            expect(result.running).toBe(false);
-        });
-
-        it("then should process all shaders after unlocking", async () => {
-            const firstEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "first.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
-
-            const secondEvent = {
-                data: {
-                    type: "shaderSource",
-                    path: "second.glsl",
-                    code: "void mainImage() {}",
-                    config: null,
-                    buffers: {},
-                },
-            } as MessageEvent;
-
-            const mockMessageHandler = {
-                handleShaderMessage: vi.fn().mockResolvedValue({
-                    running: true,
-                }),
-                getLastEvent: vi.fn().mockReturnValue(firstEvent),
-            };
-
-            vi.spyOn(shaderStudio as any, "messageHandler", "get")
-                .mockReturnValue(mockMessageHandler);
-
-            await shaderStudio.handleShaderMessage(firstEvent);
-            shaderStudio.handleToggleLock();
-            shaderStudio.handleToggleLock();
-
-            const result = await shaderStudio.handleShaderMessage(secondEvent);
-            expect(result.running).toBe(true);
-        });
+      expect(mockRenderingEngine.handleCanvasResize).toHaveBeenCalledWith(width, height);
     });
+
+    it('should return early if canvas is not initialized', () => {
+      const newShaderStudio = new ShaderStudio(mockTransport, mockShaderLocker, mockRenderingEngine);
+      
+      newShaderStudio.handleCanvasResize(800, 600);
+
+      expect(mockRenderingEngine.handleCanvasResize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleShaderMessage', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should delegate to message handler', async () => {
+      const mockEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'test shader code',
+          config: {},
+          path: 'test.glsl',
+          buffers: {}
+        }
+      } as MessageEvent;
+
+      // Mock the message handler method
+      const mockResult = { running: true };
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        handleShaderMessage: vi.fn().mockResolvedValue(mockResult)
+      });
+
+      const result = await shaderStudio.handleShaderMessage(mockEvent);
+
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('handleReset', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should call message handler reset with callback', () => {
+      const onComplete = vi.fn();
+      
+      // Mock the message handler method
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        reset: vi.fn()
+      });
+
+      shaderStudio.handleReset(onComplete);
+
+      expect((shaderStudio as any).messageHandler.reset).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('should call message handler reset without callback', () => {
+      // Mock the message handler method
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        reset: vi.fn()
+      });
+
+      shaderStudio.handleReset();
+
+      expect((shaderStudio as any).messageHandler.reset).toHaveBeenCalledWith(expect.any(Function));
+    });
+  });
+
+  describe('handleRefresh', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should refresh locked shader when locked', () => {
+      const lockedPath = 'locked-shader.glsl';
+      vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(true);
+      vi.spyOn(mockShaderLocker, 'getLockedShaderPath').mockReturnValue(lockedPath);
+
+      // Mock the message handler method
+      const mockRefresh = vi.fn();
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        refresh: mockRefresh
+      });
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      shaderStudio.handleRefresh();
+
+      expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing locked shader at path:', lockedPath);
+      expect(mockRefresh).toHaveBeenCalledWith(lockedPath);
+    });
+
+    it('should refresh current shader when not locked', () => {
+      vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(false);
+
+      // Mock the message handler method
+      const mockRefresh = vi.fn();
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        refresh: mockRefresh
+      });
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      shaderStudio.handleRefresh();
+
+      expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing current shader');
+      expect(mockRefresh).toHaveBeenCalledWith();
+    });
+  });
+
+  describe('handleTogglePause', () => {
+    it('should call rendering engine togglePause', () => {
+      shaderStudio.handleTogglePause();
+
+      expect(mockRenderingEngine.togglePause).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleToggleLock', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should toggle lock with shader path from last event', () => {
+      const mockEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'test shader code',
+          config: {},
+          path: 'test-shader.glsl',
+          buffers: {}
+        }
+      } as MessageEvent;
+
+      // Mock the message handler method
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        getLastEvent: vi.fn().mockReturnValue(mockEvent)
+      });
+
+      shaderStudio.handleToggleLock();
+
+      expect(mockShaderLocker.toggleLock).toHaveBeenCalledWith('test-shader.glsl');
+    });
+
+    it('should toggle lock without shader path when no last event', () => {
+      // Mock the message handler method
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        getLastEvent: vi.fn().mockReturnValue(null)
+      });
+
+      shaderStudio.handleToggleLock();
+
+      expect(mockShaderLocker.toggleLock).toHaveBeenCalledWith(undefined);
+    });
+  });
+
+  describe('getIsLocked', () => {
+    it('should return shader locker isLocked status', () => {
+      vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(true);
+
+      const result = shaderStudio.getIsLocked();
+
+      expect(result).toBe(true);
+      expect(mockShaderLocker.isLocked).toHaveBeenCalled();
+    });
+  });
+
+  describe('stopRenderLoop', () => {
+    it('should call rendering engine stopRenderLoop', () => {
+      shaderStudio.stopRenderLoop();
+
+      expect(mockRenderingEngine.stopRenderLoop).toHaveBeenCalled();
+    });
+  });
+
+  describe('getCurrentFPS', () => {
+    it('should return rendering engine current FPS', () => {
+      const fps = 75;
+      vi.spyOn(mockRenderingEngine, 'getCurrentFPS').mockReturnValue(fps);
+
+      const result = shaderStudio.getCurrentFPS();
+
+      expect(result).toBe(fps);
+      expect(mockRenderingEngine.getCurrentFPS).toHaveBeenCalled();
+    });
+  });
+
+  describe('getLastShaderEvent', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should return last event from message handler', () => {
+      const mockEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'test shader code',
+          config: {},
+          path: 'test.glsl',
+          buffers: {}
+        }
+      } as MessageEvent;
+
+      // Mock the message handler method
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        getLastEvent: vi.fn().mockReturnValue(mockEvent)
+      });
+
+      const result = shaderStudio.getLastShaderEvent();
+
+      expect(result).toBe(mockEvent);
+    });
+  });
+
+  describe('getTimeManager', () => {
+    it('should return time manager from rendering engine', () => {
+      const mockTimeManager = {
+        isPaused: vi.fn().mockReturnValue(false),
+        togglePause: vi.fn(),
+        cleanup: vi.fn(),
+        getCurrentTime: vi.fn().mockReturnValue(0),
+        updateFrame: vi.fn(),
+        getDeltaTime: vi.fn().mockReturnValue(0.016),
+        getFrame: vi.fn().mockReturnValue(0),
+        incrementFrame: vi.fn(),
+        getCurrentDate: vi.fn().mockReturnValue(new Float32Array([2024, 0, 1, 0]))
+      } as any;
+      vi.spyOn(mockRenderingEngine, 'getTimeManager').mockReturnValue(mockTimeManager);
+
+      const result = shaderStudio.getTimeManager();
+
+      expect(result).toBe(mockTimeManager);
+      expect(mockRenderingEngine.getTimeManager).toHaveBeenCalled();
+    });
+  });
+
+  describe('dispose', () => {
+    it('should call rendering engine dispose', () => {
+      shaderStudio.dispose();
+
+      expect(mockRenderingEngine.dispose).toHaveBeenCalled();
+    });
+
+    it('should handle disposal when rendering engine is undefined', () => {
+      const shaderStudioWithoutEngine = new ShaderStudio(mockTransport, mockShaderLocker, undefined as any);
+      
+      expect(() => shaderStudioWithoutEngine.dispose()).not.toThrow();
+    });
+  });
+
+  describe('integration scenarios', () => {
+    it('should handle complete initialization and basic operations', async () => {
+      // Initialize
+      const initResult = await shaderStudio.initialize(mockCanvas);
+      expect(initResult).toBe(true);
+
+      // Handle resize
+      shaderStudio.handleCanvasResize(1024, 768);
+      expect(mockRenderingEngine.handleCanvasResize).toHaveBeenCalledWith(1024, 768);
+
+      // Toggle pause
+      shaderStudio.handleTogglePause();
+      expect(mockRenderingEngine.togglePause).toHaveBeenCalled();
+
+      // Get FPS
+      const fps = shaderStudio.getCurrentFPS();
+      expect(fps).toBe(60);
+
+      // Dispose
+      shaderStudio.dispose();
+      expect(mockRenderingEngine.dispose).toHaveBeenCalled();
+    });
+
+    it('should handle lock/unlock workflow', async () => {
+      await shaderStudio.initialize(mockCanvas);
+
+      const mockEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'test shader code',
+          config: {},
+          path: 'workflow-test.glsl',
+          buffers: {}
+        }
+      } as MessageEvent;
+
+      // Mock message handler
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        getLastEvent: vi.fn().mockReturnValue(mockEvent),
+        refresh: vi.fn()
+      });
+
+      // Toggle lock on
+      shaderStudio.handleToggleLock();
+      expect(mockShaderLocker.toggleLock).toHaveBeenCalledWith('workflow-test.glsl');
+
+      // Check locked status
+      vi.spyOn(mockShaderLocker, 'isLocked').mockReturnValue(true);
+      vi.spyOn(mockShaderLocker, 'getLockedShaderPath').mockReturnValue('workflow-test.glsl');
+      expect(shaderStudio.getIsLocked()).toBe(true);
+
+      // Refresh (should refresh locked shader)
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      shaderStudio.handleRefresh();
+      expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing locked shader at path:', 'workflow-test.glsl');
+    });
+  });
 });

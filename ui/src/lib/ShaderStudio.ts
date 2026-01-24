@@ -1,5 +1,5 @@
-import { RenderingEngine as RenderingEngineImpl } from "../../../rendering/src/RenderingEngine";
 import type { RenderingEngine } from "../../../rendering/src/types";
+import { ShaderLocker } from "./ShaderLocker";
 import { MessageHandler } from "./transport/MessageHandler";
 import type { Transport } from "./transport/MessageTransport";
 import type { ErrorMessage, DebugMessage } from "@shader-studio/types";
@@ -9,9 +9,12 @@ export class ShaderStudio {
   private glCanvas: HTMLCanvasElement | null = null;
   private renderingEngine!: RenderingEngine;
   private messageHandler!: MessageHandler;
+  private shaderLocker!: ShaderLocker;
 
-  constructor(transport: Transport) {
+  constructor(transport: Transport, shaderLocker: ShaderLocker, renderingEngine: RenderingEngine) {
     this.transport = transport;
+    this.shaderLocker = shaderLocker;
+    this.renderingEngine = renderingEngine;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -28,12 +31,12 @@ export class ShaderStudio {
     }
 
     try {
-      this.renderingEngine = new RenderingEngineImpl();
       this.renderingEngine.initialize(glCanvas);
 
       this.messageHandler = new MessageHandler(
-        this.renderingEngine,
         this.transport,
+        this.renderingEngine,
+        this.shaderLocker,
       );
 
       const debugMessage: DebugMessage = {
@@ -77,10 +80,8 @@ export class ShaderStudio {
   }
 
   handleRefresh(): void {
-    const isLocked = this.renderingEngine.isLockedShader();
-
-    if (isLocked) {
-      const lockedShaderPath = this.renderingEngine.getLockedShaderPath();
+    if (this.shaderLocker.isLocked()) {
+      const lockedShaderPath = this.shaderLocker.getLockedShaderPath();
       console.log('Shader Studio: Refreshing locked shader at path:', lockedShaderPath);
 
       this.messageHandler.refresh(lockedShaderPath || undefined);
@@ -97,11 +98,11 @@ export class ShaderStudio {
   handleToggleLock(): void {
     const lastEvent = this.messageHandler.getLastEvent();
     const currentShaderPath = lastEvent?.data?.path;
-    this.renderingEngine.toggleLock(currentShaderPath);
+    this.shaderLocker.toggleLock(currentShaderPath);
   }
 
   getIsLocked(): boolean {
-    return this.renderingEngine.isLockedShader();
+    return this.shaderLocker.isLocked();
   }
 
   stopRenderLoop(): void {

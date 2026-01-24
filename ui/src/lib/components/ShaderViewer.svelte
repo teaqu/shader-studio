@@ -8,6 +8,8 @@
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
+  import { ShaderLocker } from "../ShaderLocker";
+  import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -114,8 +116,10 @@
   async function initializeApp() {
     try {
       transport = createTransport();
+      const shadderLocker = new ShaderLocker();
+      const renderingEngine = new RenderingEngine();
 
-      shaderStudio = new ShaderStudio(transport);
+      shaderStudio = new ShaderStudio(transport, shadderLocker, renderingEngine);
 
       const success = await shaderStudio.initialize(glCanvas);
       if (!success) {

@@ -11,10 +11,7 @@ export interface RenderingEngine {
     path: string,
     buffers?: Record<string, string>
   ): Promise<CompilationResult | undefined>;
-  isLockedShader(): boolean;
   togglePause(): void;
-  toggleLock(path: string): void;
-  getLockedShaderPath(): string | undefined;
   getTimeManager(): TimeManager;
   startRenderLoop(): void;
   stopRenderLoop(): void;
