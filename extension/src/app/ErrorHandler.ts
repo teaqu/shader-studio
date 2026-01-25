@@ -1,20 +1,20 @@
 import * as vscode from "vscode";
-import { ErrorMessage } from "@shader-studio/types";
+import { ErrorMessage, WarningMessage } from "@shader-studio/types";
 
 export class ErrorHandler {
   private currentShaderConfig: { config: any; shaderPath: string } | null = null;
   private recentErrors = new Map<string, number>();
   private readonly DEBOUNCE_MS = 500; // 0.5 second debounce
-  private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until fixed
-  private readonly PERSISTENT_TIMEOUT_MS = 2000; // 2 seconds timeout for persistent errors
+  private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private editorChangeDisposable: vscode.Disposable | null = null;
   
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     private diagnosticCollection: vscode.DiagnosticCollection,
   ) {
-    // Start periodic cleanup timer
-    this.startCleanupTimer();
+    // Listen for editor changes
+    this.setupEditorChangeListener();
   }
 
   public dispose(): void {
@@ -23,10 +23,39 @@ export class ErrorHandler {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+    // Clean up editor change listener
+    if (this.editorChangeDisposable) {
+      this.editorChangeDisposable.dispose();
+      this.editorChangeDisposable = null;
+    }
   }
 
   public setShaderConfig(config: { config: any; shaderPath: string } | null): void {
     this.currentShaderConfig = config;
+  }
+
+  private setupEditorChangeListener(): void {
+    // Listen for active editor changes to clear persistent errors
+    this.editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(() => {
+      // Clear persistent errors when switching editors
+      this.clearPersistentErrors();
+    });
+
+    // Also listen for text changes in the active editor to clear persistent errors
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      // Only clear if it's the active editor and a GLSL file
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor && event.document === activeEditor.document && activeEditor.document.languageId === 'glsl') {
+        this.clearPersistentErrors();
+      }
+    });
+  }
+
+  private clearPersistentErrors(): void {
+    // Clear all persistent errors when editor changes
+    this.persistentErrors.clear();
+    this.diagnosticCollection.clear();
+    console.log('[ErrorHandler] Cleared persistent errors on editor change');
   }
 
   public handleError(message: ErrorMessage): void {
@@ -120,7 +149,7 @@ export class ErrorHandler {
     }
   }
 
-  public handlePersistentError(message: ErrorMessage): void {
+  public handlePersistentError(message: ErrorMessage | WarningMessage): void {
     if (!message || !message.payload) {
       return; // Skip invalid messages
     }
@@ -151,7 +180,7 @@ export class ErrorHandler {
     console.log(`[ErrorHandler] Showing persistent: ${normalizedError}`);
     
     // Store the diagnostic for persistence
-    const diagnosticInfo = this.createPersistentDiagnostic(errorText);
+    const diagnosticInfo = this.createPersistentDiagnostic(errorText, message.type);
     if (diagnosticInfo) {
       this.persistentErrors.set(normalizedError, {
         ...diagnosticInfo,
@@ -163,19 +192,18 @@ export class ErrorHandler {
     // Clean up old errors from the map (prevent memory leak)
     this.cleanupOldErrors(now);
     
-    // Clean up expired persistent errors
-    this.cleanupExpiredPersistentErrors(now);
-    
-    this.outputChannel.error(errorText);
+    // Use appropriate log level based on message type
+    if (message.type === 'warning') {
+      this.outputChannel.warn(errorText);
+    } else {
+      this.outputChannel.error(errorText);
+    }
   }
 
   public clearErrors(): void {
-    // Clear all diagnostics when shader compilation succeeds
+    // Clear only regular errors when shader compilation succeeds
+    // Keep persistent errors (warnings) until editor change
     this.diagnosticCollection.clear();
-    
-    // Clean up expired persistent errors and restore remaining ones
-    const now = Date.now();
-    this.cleanupExpiredPersistentErrors(now);
     this.restorePersistentErrors();
     
     // Also log the success message for debugging
@@ -192,51 +220,29 @@ export class ErrorHandler {
   }
 
   private restorePersistentErrors(): void {
-    // Restore all non-expired persistent errors to the diagnostic collection
-    const now = Date.now();
+    // Restore all persistent errors to the diagnostic collection
     for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {
-      if (now - diagnosticInfo.lastSeen < this.PERSISTENT_TIMEOUT_MS) {
-        this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
-      }
+      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
     }
   }
 
-  private cleanupExpiredPersistentErrors(now: number): void {
-    // Remove persistent errors that haven't been seen recently
-    for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {
-      if (now - diagnosticInfo.lastSeen > this.PERSISTENT_TIMEOUT_MS) {
-        this.persistentErrors.delete(normalizedError);
-        console.log(`[ErrorHandler] Expired persistent error: ${normalizedError}`);
-      }
-    }
-  }
-
-  private startCleanupTimer(): void {
-    // Run cleanup every 500ms to check for expired persistent errors
-    this.cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      const hadErrors = this.persistentErrors.size > 0;
-      
-      this.cleanupExpiredPersistentErrors(now);
-      
-      // If we had errors and now they're gone, refresh diagnostics
-      if (hadErrors && this.persistentErrors.size === 0) {
-        this.diagnosticCollection.clear();
-      }
-    }, 500);
-  }
-
-  private createPersistentDiagnostic(errorText: string): { diagnostic: vscode.Diagnostic; uri: vscode.Uri } | null {
+  private createPersistentDiagnostic(errorText: string, messageType?: string): { diagnostic: vscode.Diagnostic; uri: vscode.Uri } | null {
     // For persistent errors, always show in the active shader file at line 1
     const editor = vscode.window.activeTextEditor;
     if (editor && editor.document.languageId === "glsl") {
       const document = editor.document;
       if (document.lineCount > 0) {
         const range = document.lineAt(0).range; // Line 1 (0-indexed as 0)
+        
+        // Use warning severity if message type is 'warning', otherwise error
+        const severity = messageType === 'warning' 
+          ? vscode.DiagnosticSeverity.Warning 
+          : vscode.DiagnosticSeverity.Error;
+          
         const diagnostic = new vscode.Diagnostic(
           range,
           errorText,
-          vscode.DiagnosticSeverity.Error,
+          severity,
         );
         return { diagnostic, uri: document.uri };
       }

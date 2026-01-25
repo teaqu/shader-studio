@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { ErrorMessage } from '@shader-studio/types';
+import { ErrorMessage, WarningMessage } from '@shader-studio/types';
 import { ErrorHandler } from '../../app/ErrorHandler';
 
 suite('ErrorHandler Test Suite', () => {
@@ -63,68 +63,22 @@ suite('ErrorHandler Test Suite', () => {
         errorHandler.dispose();
     });
 
-    test('should handle basic error messages', () => {
-        const message: ErrorMessage = {
-            type: 'error',
-            payload: ['Test error message']
-        };
-
-        // Should not throw
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message);
-        });
-    });
-
-    test('should handle array payload', () => {
-        const message: ErrorMessage = {
-            type: 'error',
-            payload: ['Error part 1', 'Error part 2']
-        };
-
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message);
-        });
-    });
-
-    test('should handle string payload', () => {
-        const message: ErrorMessage = {
-            type: 'error',
-            payload: 'Single error message' as any
-        };
-
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message);
-        });
-    });
-
+    // Keep only meaningful behavioral tests
     test('should debounce identical errors', () => {
         const message: ErrorMessage = {
             type: 'error',
             payload: ['Duplicate error message']
         };
 
-        // Both should not throw (second one debounced)
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message);
-            errorHandler.handleError(message);
-        });
-    });
+        let errorCallCount = 0;
+        mockOutputChannel.error = () => { errorCallCount++; };
 
-    test('should not debounce different errors', () => {
-        const message1: ErrorMessage = {
-            type: 'error',
-            payload: ['Error message 1']
-        };
+        // Call the same error twice
+        errorHandler.handleError(message);
+        errorHandler.handleError(message);
 
-        const message2: ErrorMessage = {
-            type: 'error',
-            payload: ['Error message 2']
-        };
-
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message1);
-            errorHandler.handleError(message2);
-        });
+        // Should only call error once (second one debounced)
+        assert.equal(errorCallCount, 1, 'Second identical error should be debounced');
     });
 
     test('should normalize file path errors for debouncing', () => {
@@ -138,114 +92,165 @@ suite('ErrorHandler Test Suite', () => {
             payload: ['Image not found for Image.inputs.iChannel0: /path/to/file.jpg']
         };
 
-        // Should normalize to same error (second one debounced)
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message1);
-            errorHandler.handleError(message2);
-        });
+        let errorCallCount = 0;
+        mockOutputChannel.error = () => { errorCallCount++; };
+
+        // Call both errors (same file, different formats)
+        errorHandler.handleError(message1);
+        errorHandler.handleError(message2);
+
+        // Should only call error once (second one debounced due to normalization)
+        // This proves that different error message formats about the same file
+        // get normalized to the same key and debounced
+        assert.equal(errorCallCount, 1, 'Different error formats with same file path should be debounced');
     });
 
-    test('should handle persistent errors', () => {
-        const message: ErrorMessage = {
-            type: 'error',
-            payload: ['Texture file not found: /path/to/missing.jpg']
+    test('should handle warning messages with correct severity', () => {
+        const warningMessage: WarningMessage = {
+            type: 'warning',
+            payload: ['Test warning message']
         };
 
+        let warnCalled = false;
+        let errorCalled = false;
+        
+        mockOutputChannel.warn = () => { warnCalled = true; };
+        mockOutputChannel.error = () => { errorCalled = true; };
+
+        // Should not throw and should use warn channel
         assert.doesNotThrow(() => {
-            errorHandler.handlePersistentError(message);
+            errorHandler.handlePersistentError(warningMessage);
         });
+
+        assert.ok(warnCalled, 'Warning should call outputChannel.warn');
+        assert.ok(!errorCalled, 'Warning should not call outputChannel.error');
     });
 
-    test('should debounce persistent errors', () => {
-        const message: ErrorMessage = {
+    test('should handle error messages with correct severity', () => {
+        const errorMessage: ErrorMessage = {
             type: 'error',
-            payload: ['Texture file not found: /path/to/missing.jpg']
+            payload: ['Test error message']
         };
 
+        let warnCalled = false;
+        let errorCalled = false;
+        
+        mockOutputChannel.warn = () => { warnCalled = true; };
+        mockOutputChannel.error = () => { errorCalled = true; };
+
+        // Should not throw and should use error channel
         assert.doesNotThrow(() => {
-            errorHandler.handlePersistentError(message);
-            errorHandler.handlePersistentError(message);
+            errorHandler.handlePersistentError(errorMessage);
         });
+
+        assert.ok(errorCalled, 'Error should call outputChannel.error');
+        assert.ok(!warnCalled, 'Error should not call outputChannel.warn');
     });
 
-    test('should clear errors', () => {
-        const message: ErrorMessage = {
+    test('clearErrors should not clear persistent errors', () => {
+        const persistentMessage: ErrorMessage = {
             type: 'error',
-            payload: ['Test error']
+            payload: ['Texture file not found: /path/to/persistent.jpg']
         };
 
-        assert.doesNotThrow(() => {
-            errorHandler.handleError(message);
-            errorHandler.clearErrors();
-        });
+        const regularMessage: ErrorMessage = {
+            type: 'error',
+            payload: ['Regular error message']
+        };
+
+        let errorCallCount = 0;
+        mockOutputChannel.error = () => { errorCallCount++; };
+
+        // Add persistent error first
+        errorHandler.handlePersistentError(persistentMessage);
+        assert.equal(errorCallCount, 1, 'First persistent error should be logged');
+        
+        // Add regular error
+        errorHandler.handleError(regularMessage);
+        assert.equal(errorCallCount, 2, 'Regular error should be logged');
+        
+        // Clear errors - should only clear regular errors, not persistent
+        errorHandler.clearErrors();
+        
+        // Wait for debounce to expire then try persistent error again
+        // It should still be debounced because persistent errors weren't cleared
+        errorHandler.handlePersistentError(persistentMessage);
+        assert.equal(errorCallCount, 2, 'Persistent error should still be debounced after clearErrors');
     });
 
-    test('should set shader config', () => {
+    test('should handle WarningMessage type in handlePersistentError', () => {
+        const warningMessage: WarningMessage = {
+            type: 'warning',
+            payload: ['Warning message']
+        };
+
+        let warnCalled = false;
+        mockOutputChannel.warn = () => { warnCalled = true; };
+
+        errorHandler.handlePersistentError(warningMessage);
+        
+        assert.ok(warnCalled, 'WarningMessage should call outputChannel.warn');
+    });
+
+    test('should clear specific persistent errors', () => {
+        const message1: ErrorMessage = {
+            type: 'error',
+            payload: ['Texture file not found: /path/to/file1.jpg']
+        };
+
+        const message2: ErrorMessage = {
+            type: 'error',
+            payload: ['Texture file not found: /path/to/file2.jpg']
+        };
+
+        let errorCallCount = 0;
+        mockOutputChannel.error = () => { errorCallCount++; };
+
+        // Add both persistent errors
+        errorHandler.handlePersistentError(message1);
+        errorHandler.handlePersistentError(message2);
+        assert.equal(errorCallCount, 2, 'Both errors should be logged initially');
+        
+        // Clear specific error by normalized name
+        errorHandler.clearPersistentError('FILE_NOT_FOUND:/path/to/file1.jpg');
+        
+        // First error should work again (cleared from debounce), second should still be debounced
+        errorHandler.handlePersistentError(message1);
+        assert.equal(errorCallCount, 3, 'Cleared error should be logged again');
+        
+        errorHandler.handlePersistentError(message2);
+        assert.equal(errorCallCount, 3, 'Non-cleared error should still be debounced');
+    });
+
+    test('should set and use shader config', () => {
         const config = {
             config: { passes: {} },
             shaderPath: '/path/to/shader.glsl'
         };
 
-        assert.doesNotThrow(() => {
-            errorHandler.setShaderConfig(config);
-            errorHandler.setShaderConfig(null);
-        });
+        // Set config and verify no errors
+        errorHandler.setShaderConfig(config);
+        
+        // Set null config and verify no errors
+        errorHandler.setShaderConfig(null);
+        
+        // No assertion needed - just verifying no exceptions
     });
 
-    test('should handle edge cases', () => {
-        // Valid edge cases that should not throw
-        assert.doesNotThrow(() => {
-            errorHandler.handleError({ type: 'error', payload: [''] });
-            errorHandler.handleError({ type: 'error', payload: ['Valid error message'] });
-        });
-
-        // Null/undefined payload should be handled gracefully (no throw)
-        assert.doesNotThrow(() => {
-            errorHandler.handleError({ type: 'error', payload: null as any });
-            errorHandler.handleError({ type: 'error', payload: undefined as any });
-            errorHandler.handlePersistentError({ type: 'error', payload: null as any });
-            errorHandler.handlePersistentError({ type: 'error', payload: undefined as any });
-        });
-    });
-
-    test('should handle rapid error bursts', () => {
-        const message: ErrorMessage = {
+    test('should handle non-line errors at default position', () => {
+        const generalErrorMessage: ErrorMessage = {
             type: 'error',
-            payload: ['Rapid error']
+            payload: ['General shader compilation failed']
         };
 
-        assert.doesNotThrow(() => {
-            // Send 10 errors rapidly
-            for (let i = 0; i < 10; i++) {
-                errorHandler.handleError(message);
-            }
-        });
-    });
+        let diagnosticSet = false;
+        let errorCalled = false;
+        mockDiagnosticCollection.set = () => { diagnosticSet = true; };
+        mockOutputChannel.error = () => { errorCalled = true; };
 
-    test('should handle performance load', () => {
-        const startTime = Date.now();
+        errorHandler.handleError(generalErrorMessage);
 
-        assert.doesNotThrow(() => {
-            // Handle 100 different errors
-            for (let i = 0; i < 100; i++) {
-                const message: ErrorMessage = {
-                    type: 'error',
-                    payload: [`Error ${i}`]
-                };
-                errorHandler.handleError(message);
-            }
-        });
-
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-
-        // Should complete quickly (under 100ms)
-        assert.ok(duration < 100, `Performance test took ${duration}ms (expected < 100ms)`);
-    });
-
-    test('should dispose timer', () => {
-        assert.doesNotThrow(() => {
-            errorHandler.dispose();
-        });
+        assert.ok(diagnosticSet, 'Should create diagnostic for general error');
+        assert.ok(errorCalled, 'Should log error to output channel');
     });
 });

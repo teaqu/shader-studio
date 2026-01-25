@@ -19,6 +19,11 @@ export interface ErrorMessage extends BaseMessage {
   payload: string[];
 }
 
+export interface WarningMessage extends BaseMessage {
+  type: "warning";
+  payload: string[];
+}
+
 export interface RefreshMessage extends BaseMessage {
   type: "refresh";
   payload: {
@@ -48,4 +53,4 @@ export interface ShaderSourceMessage extends BaseMessage {
   buffers: Record<string, string>;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage;
