@@ -7,7 +7,7 @@ import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ConfigEditorProvider } from "./ConfigEditorProvider";
-import { ShaderBrowserProvider } from "./ShaderBrowserProvider";
+import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
@@ -26,7 +26,7 @@ export class ShaderStudio {
   private logger!: Logger;
   private electronLauncher: ElectronLauncher;
   private configEditorProvider: vscode.Disposable;
-  private shaderBrowserProvider: vscode.Disposable;
+  private sShaderExplorerProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
@@ -67,8 +67,8 @@ export class ShaderStudio {
       this.shaderProvider,
     );
 
-    // Register shader browser
-    this.shaderBrowserProvider = ShaderBrowserProvider.register(context);
+    // Register shader explorer
+    this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
 
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
@@ -85,7 +85,7 @@ export class ShaderStudio {
     this.webServer.stopWebServer();
     this.messenger.close();
     this.configEditorProvider.dispose();
-    this.shaderBrowserProvider.dispose();
+    this.sShaderExplorerProvider.dispose();
     this.errorHandler.dispose();
     this.logger.info("Shader extension disposed");
   }

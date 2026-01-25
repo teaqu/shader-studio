@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
+describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
     let mockVscodeApi: any;
     let postMessageSpy: any;
 
@@ -260,7 +260,7 @@ describe('ShaderBrowser - Refresh Functionality (Unit Tests)', () => {
     });
 });
 
-describe('ShaderBrowser - Search Functionality', () => {
+describe('ShaderExplorer - Search Functionality', () => {
     it('should filter shaders by name', () => {
         const shaders = [
             { path: '/test/shader1.glsl', name: 'shader1.glsl', relativePath: 'test/shader1.glsl' },
@@ -412,7 +412,7 @@ describe('ShaderBrowser - Search Functionality', () => {
     });
 });
 
-describe('ShaderBrowser - Sorting Functionality', () => {
+describe('ShaderExplorer - Sorting Functionality', () => {
     const createShader = (name: string, modifiedTime: number, createdTime: number) => ({
         path: `/test/${name}`,
         name,
@@ -616,7 +616,7 @@ describe('ShaderBrowser - Sorting Functionality', () => {
     });
 });
 
-describe('ShaderBrowser - Hide Failed Shaders', () => {
+describe('ShaderExplorer - Hide Failed Shaders', () => {
     const createShader = (name: string) => ({
         path: `/test/${name}`,
         name,
@@ -769,7 +769,7 @@ describe('ShaderBrowser - Hide Failed Shaders', () => {
     });
 });
 
-describe('ShaderBrowser - State Persistence', () => {
+describe('ShaderExplorer - State Persistence', () => {
     let mockVscodeApi: any;
     let postMessageSpy: any;
 
@@ -1268,7 +1268,7 @@ describe('ShaderPreview - Hover Functionality', () => {
     });
 });
 
-describe('ShaderBrowser - Config Button Functionality', () => {
+describe('ShaderExplorer - Config Button Functionality', () => {
     let mockVscodeApi: any;
     let postMessageSpy: any;
 
@@ -1480,7 +1480,7 @@ describe('ShaderBrowser - Config Button Functionality', () => {
     });
 });
 
-describe('ShaderBrowser - Pagination Functionality', () => {
+describe('ShaderExplorer - Pagination Functionality', () => {
     it('should calculate total pages correctly', () => {
         const pageSize = 20;
         const shaderCount = 45;

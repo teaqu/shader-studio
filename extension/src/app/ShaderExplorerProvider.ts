@@ -5,9 +5,8 @@ import { Logger } from "./services/Logger";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { ThumbnailCache } from "./ThumbnailCache";
-import type { ShaderConfig } from "@shader-studio/types";
 
-export class ShaderBrowserProvider {
+export class ShaderExplorerProvider {
     private logger: Logger;
     private panel: vscode.WebviewPanel | undefined;
     private thumbnailCache: ThumbnailCache;
@@ -22,10 +21,10 @@ export class ShaderBrowserProvider {
     public static register(
         context: vscode.ExtensionContext,
     ): vscode.Disposable {
-        const provider = new ShaderBrowserProvider(context);
+        const provider = new ShaderExplorerProvider(context);
 
         const command = vscode.commands.registerCommand(
-            "shader-studio.openShaderBrowser",
+            "shader-studio.openShaderExplorer",
             () => {
                 provider.show();
             },
@@ -44,8 +43,8 @@ export class ShaderBrowserProvider {
         const workspaceFolders = vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
 
         this.panel = vscode.window.createWebviewPanel(
-            "shader-studio.shaderBrowser",
-            "Shader Browser",
+            "shader-studio.shaderExplorer",
+            "Shader Explorer",
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -54,7 +53,7 @@ export class ShaderBrowserProvider {
                     vscode.Uri.file(
                         path.join(
                             this.context.extensionPath,
-                            "shader-browser-dist",
+                            "shader-explorer-dist",
                         ),
                     ),
                     ...workspaceFolders,
@@ -296,19 +295,19 @@ export class ShaderBrowserProvider {
     private getHtmlForWebview(webview: vscode.Webview): string {
         const htmlPath = path.join(
             this.context.extensionPath,
-            "shader-browser-dist",
+            "shader-explorer-dist",
             "index.html",
         );
 
-        this.logger.debug(`Loading shader browser HTML from: ${htmlPath}`);
+        this.logger.debug(`Loading shader explorer HTML from: ${htmlPath}`);
 
         if (!fs.existsSync(htmlPath)) {
-            this.logger.error(`Shader browser HTML not found at: ${htmlPath}`);
+            this.logger.error(`Shader Explorer HTML not found at: ${htmlPath}`);
             return `
                 <html>
                     <body>
                         <h1>Error</h1>
-                        <p>Shader browser UI not found. Please rebuild the extension.</p>
+                        <p>Shader Explorer UI not found. Please rebuild the extension.</p>
                         <p>Expected at: ${htmlPath}</p>
                     </body>
                 </html>
@@ -316,14 +315,14 @@ export class ShaderBrowserProvider {
         }
 
         const rawHtml = fs.readFileSync(htmlPath, "utf-8");
-        this.logger.debug(`Successfully loaded shader browser HTML`);
+        this.logger.debug(`Successfully loaded shader explorer HTML`);
 
         const processedHtml = rawHtml.replace(
             /(src|href)="\.?\/([^"]+)"/g,
             (_, attr, file) => {
                 const filePath = path.join(
                     this.context.extensionPath,
-                    "shader-browser-dist",
+                    "shader-explorer-dist",
                     file,
                 );
                 const uri = webview.asWebviewUri(vscode.Uri.file(filePath));
@@ -336,12 +335,12 @@ export class ShaderBrowserProvider {
         const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
         const cspMatch = processedHtml.match(cspPattern);
         
-        console.log(`ShaderBrowserProvider: Webview CSP source: ${webview.cspSource}`);
+        console.log(`ShaderExplorerProvider: Webview CSP source: ${webview.cspSource}`);
         
         if (cspMatch) {
             // Update existing CSP to include webview.cspSource
             const existingCsp = cspMatch[1];
-            console.log(`ShaderBrowserProvider: Found existing CSP: ${existingCsp}`);
+            console.log(`ShaderExplorerProvider: Found existing CSP: ${existingCsp}`);
             
             // Use the actual webview.cspSource for scripts and styles
             const scriptSrc = `script-src 'self' 'unsafe-inline' ${webview.cspSource}`;
@@ -367,7 +366,7 @@ export class ShaderBrowserProvider {
                 cspPattern,
                 `<meta http-equiv="Content-Security-Policy" content="${updatedCsp}">`
             );
-            console.log(`ShaderBrowserProvider: Updated CSP to: ${updatedCsp}`);
+            console.log(`ShaderExplorerProvider: Updated CSP to: ${updatedCsp}`);
             this.logger.debug("Updated existing CSP for webview support");
             return finalHtml;
         } else {
@@ -389,13 +388,13 @@ export class ShaderBrowserProvider {
                                    `\n    ${newCsp}` + 
                                    processedHtml.slice(afterHeadIndex);
                     
-                    console.log(`ShaderBrowserProvider: Added CSP after <head> tag`);
+                    console.log(`ShaderExplorerProvider: Added CSP after <head> tag`);
                     return finalHtml;
                 }
             }
             
             // Fallback: return original HTML if CSP injection fails
-            console.log(`ShaderBrowserProvider: Failed to inject CSP, using original`);
+            console.log(`ShaderExplorerProvider: Failed to inject CSP, using original`);
             return processedHtml;
         }
     }

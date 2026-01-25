@@ -3,7 +3,7 @@ import type { ShaderConfig } from "@shader-studio/types";
 
 /**
  * Utility for converting config paths to webview URIs.
- * Shared between WebviewTransport and ShaderBrowserProvider.
+ * Shared between WebviewTransport and ShaderExplorerProvider.
  */
 export class ConfigPathConverter {
   /**

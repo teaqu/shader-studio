@@ -21,7 +21,7 @@ export class ConfigGenerator {
       let glslFilePath: string;
       
       if (uri) {
-        // URI was provided (e.g., from shader browser or UI)
+        // URI was provided (e.g., from Shader Explorer or UI)
         glslFilePath = uri.fsPath;
       } else {
         glslFilePath = await this.resolveGlslFilePath();

@@ -65,9 +65,9 @@ export class ShaderStudioStatusBar {
             action: 'open-electron'
         });
         items.push({
-            label: '$(library) Shader Browser',
+            label: '$(library) Shader Explorer',
             description: 'Browse all shaders in workspace',
-            action: 'shader-browser'
+            action: 'shader explorer'
         });
         items.push({
             label: '$(new-file) New Shader',
@@ -105,8 +105,8 @@ export class ShaderStudioStatusBar {
                 case 'open-electron':
                     await vscode.commands.executeCommand('shader-studio.openInElectron');
                     break;
-                case 'shader-browser':
-                    await vscode.commands.executeCommand('shader-studio.openShaderBrowser');
+                case 'shader explorer':
+                    await vscode.commands.executeCommand('shader-studio.openShaderExplorer');
                     break;
                 case 'new-shader':
                     await vscode.commands.executeCommand('shader-studio.newShader');

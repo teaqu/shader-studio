@@ -76,8 +76,8 @@
         "title": "Shader Studio: New Shader"
       },
       {
-        "command": "shader-studio.openShaderBrowser",
-        "title": "Shader Studio: Open Shader Browser",
+        "command": "shader-studio.openShaderExplorer",
+        "title": "Shader Studio: Open Shader Explorer",
         "icon": "$(library)"
       },
       {
@@ -113,7 +113,7 @@
             "filenamePattern": "*.sha.json"
           }
         ],
-        "priority": "default"
+        "priority": "option"
       }
     ],
     "configuration": {
@@ -155,15 +155,15 @@
     "vscode:prepublish": "npm run package",
     "compile": "webpack",
     "watch": "webpack --watch",
-    "package": "npm run build:ui && npm run build:config-ui && npm run build:shader-browser && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
+    "package": "npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "prebuild": "node scripts/conditional-build-types-utils.js",
-    "build:force": "npm run build:ui && npm run build:config-ui && npm run build:shader-browser && npm run build:electron-app && tsc -p ./",
-    "build": "node scripts/conditional-build.js types && node scripts/conditional-build.js rendering && node scripts/conditional-build.js ui && node scripts/conditional-build.js config-ui && node scripts/conditional-build.js shader-browser && node scripts/conditional-build.js electron && tsc -p ./",
+    "build:force": "npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && npm run build:electron-app && tsc -p ./",
+    "build": "node scripts/conditional-build.js types && node scripts/conditional-build.js rendering && node scripts/conditional-build.js ui && node scripts/conditional-build.js config-ui && node scripts/conditional-build.js shader-explorer && node scripts/conditional-build.js electron && tsc -p ./",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
     "build:config-ui": "cd ../config-ui && npm run build && npm run copy-to-extension",
-    "build:shader-browser": "cd ../shader-browser && npm run build && npm run copy-to-extension",
+    "build:shader-explorer": "cd ../shader-explorer && npm run build && npm run copy-to-extension",
     "build:electron-app": "cd ../electron && npm run build && npm run copy-to-extension",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",

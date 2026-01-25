@@ -1,12 +1,12 @@
 {
-  "name": "shader-browser-ui",
+  "name": "shader-explorer-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "copy-to-extension": "rimraf ../extension/shader-browser-dist && cpx \"dist/**/*\" ../extension/shader-browser-dist",
+    "copy-to-extension": "rimraf ../extension/shader-explorer-dist && cpx \"dist/**/*\" ../extension/shader-explorer-dist",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "vitest run",

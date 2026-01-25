@@ -142,7 +142,7 @@
   }
 
   onMount(() => {
-    console.log('ShaderBrowser mounted');
+    console.log('ShaderExplorer mounted');
     if (typeof acquireVsCodeApi !== 'undefined') {
       vscode = acquireVsCodeApi();
       console.log('VS Code API acquired');
@@ -241,7 +241,7 @@
   }
 </script>
 
-<div class="shader-browser">
+<div class="shader-explorer">
   <div class="toolbar">
     <div class="search-container">
       <input 
@@ -395,7 +395,7 @@
 </div>
 
 <style>
-  .shader-browser {
+  .shader-explorer {
     display: flex;
     flex-direction: column;
     height: 100vh;

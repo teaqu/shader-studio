@@ -1,6 +1,6 @@
-# Shader Browser UI
+# Shader Explorer UI
 
-A Svelte-based shader gallery/portfolio browser for VS Code extension.
+A Svelte-based shader explorer/portfolio browser for VS Code extension.
 
 ## Development
 
