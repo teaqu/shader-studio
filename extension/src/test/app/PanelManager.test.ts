@@ -4,13 +4,14 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import { PanelManager } from '../../app/PanelManager';
 import { Messenger } from '../../app/transport/Messenger';
+import { WebviewTransport } from '../../app/transport/WebviewTransport';
 import { ShaderProvider } from '../../app/ShaderProvider';
 import { Logger } from '../../app/services/Logger';
 
 suite('PanelManager Test Suite', () => {
     let panelManager: PanelManager;
     let mockContext: vscode.ExtensionContext;
-    let mockMessenger: Messenger;
+    let mockMessenger: Messenger & { addTransport: sinon.SinonStub, removeTransport: sinon.SinonStub };
     let mockShaderProvider: ShaderProvider;
     let sandbox: sinon.SinonSandbox;
 
@@ -35,8 +36,8 @@ suite('PanelManager Test Suite', () => {
         } as any;
 
         mockMessenger = {
-            addTransport: sandbox.stub(),
-            removeTransport: sandbox.stub(),
+            addTransport: sandbox.stub().returns(undefined),
+            removeTransport: sandbox.stub().returns(undefined),
         } as any;
 
         mockShaderProvider = {
@@ -76,6 +77,18 @@ suite('PanelManager Test Suite', () => {
 
     test('PanelManager can be instantiated', () => {
         assert.ok(panelManager instanceof PanelManager);
+    });
+
+    test('PanelManager uses WebviewTransport and not WebSocket', () => {
+        // Given - When: PanelManager is created in setup
+        
+        // Then: Verify that WebviewTransport was added to messenger
+        assert.ok(mockMessenger.addTransport.calledOnce);
+        const addedTransport = (mockMessenger.addTransport as sinon.SinonStub).getCall(0).args[0];
+        assert.ok(addedTransport instanceof WebviewTransport, 'PanelManager should add WebviewTransport to messenger');
+        
+        // Verify no WebSocket-related imports or usage in PanelManager
+        // This is verified by the fact that we only use WebviewTransport in the constructor
     });
 
     test('getPanel returns undefined when no panel exists', () => {
@@ -218,49 +231,43 @@ suite('PanelManager Test Suite', () => {
         assert.ok(expectedLocalResourceRoots.length >= 2);
     });
 
-    suite('WebSocket Port Configuration', () => {
+    suite('Webview HTML Processing', () => {
         let createWebviewPanelStub: sinon.SinonStub;
         let readFileSyncStub: sinon.SinonStub;
-        let mockWorkspaceConfiguration: any;
 
         setup(() => {
             const mockWebviewPanel = createMockWebviewPanel();
             createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
             const fs = require('fs');
-            readFileSyncStub = sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
-            mockWorkspaceConfiguration = {
-                get: sandbox.stub()
-            };
-            sandbox.stub(vscode.workspace, 'getConfiguration').returns(mockWorkspaceConfiguration);
+            readFileSyncStub = sandbox.stub(fs, 'readFileSync').returns('<html><head><link rel="stylesheet" href="/assets/style.css"></head><body><script src="/assets/main.js"></script></body></html>');
         });
 
-        test('should inject configured WebSocket port into HTML', () => {
-            const testPort = 8888;
-            mockWorkspaceConfiguration.get.withArgs('webSocketPort').returns(testPort);
-
+        test('should convert relative resource URLs to webview URIs', () => {
             panelManager.createPanel();
 
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
-            const expectedScript = `<script>window.shaderViewConfig = { port: ${testPort} };</script>`;
-            assert.ok(
-                createdPanel.webview.html.includes(expectedScript),
-                `HTML should contain the script for port ${testPort}`
-            );
+            const html = createdPanel.webview.html;
+            
+            // Should convert href="/assets/style.css" to webview URI (file:// in test mock)
+            assert.ok(html.includes('href="file:///mock/uri"'), `Should convert CSS href to webview URI. HTML: ${html}`);
+            // Should convert src="/assets/main.js" to webview URI (file:// in test mock)  
+            assert.ok(html.includes('src="file:///mock/uri"'), `Should convert JS src to webview URI. HTML: ${html}`);
+            
+            // Verify the original relative paths are not present
+            assert.ok(!html.includes('href="/assets/'), 'Should not contain original relative CSS href');
+            assert.ok(!html.includes('src="/assets/'), 'Should not contain original relative JS src');
         });
 
-        test('should use default WebSocket port when not configured', () => {
-            mockWorkspaceConfiguration.get.withArgs('webSocketPort').returns(undefined);
-
+        test('should not inject WebSocket configuration', () => {
             panelManager.createPanel();
 
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
-            const expectedScript = `<script>window.shaderViewConfig = { port: 51472 };</script>`;
-            assert.ok(
-                createdPanel.webview.html.includes(expectedScript),
-                'HTML should contain the script for the default port 51472'
-            );
+            const html = createdPanel.webview.html;
+            
+            // Should NOT contain WebSocket port configuration
+            assert.ok(!html.includes('window.shaderViewConfig'), 'Should not inject WebSocket config');
+            assert.ok(!html.includes('port:'), 'Should not contain port configuration');
         });
     });
 });

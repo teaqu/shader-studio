@@ -6,7 +6,6 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
-import { getWebSocketPortFromConfig, injectPortIntoHtml } from "@shader-studio/utils";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -106,25 +105,23 @@ export class PanelManager {
     );
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
 
-    // Inject WebSocket port configuration
-    const config = vscode.workspace.getConfiguration("shader-studio");
-    const webSocketPort = getWebSocketPortFromConfig(config);
-    const htmlWithConfig = injectPortIntoHtml(rawHtml, webSocketPort);
-
-    panel.webview.html = htmlWithConfig.replace(
-      /(src|href)="(.+?)"/g,
+    // Convert relative resource URLs to webview URIs
+    const processedHtml = rawHtml.replace(
+      /(src|href)="\.?\/([^"]+)"/g,
       (_, attr, file) => {
-        const cleaned = file.replace(/^\\|^\//, "");
         const filePath = path.join(
           this.context.extensionPath,
           "ui-dist",
-          cleaned,
+          file,
         );
         const uri = panel.webview.asWebviewUri(vscode.Uri.file(filePath));
+        this.logger.debug(`Mapped ${file} to ${uri.toString()}`);
         return `${attr}="${uri}"`;
       },
     );
-    this.logger.debug("Webview HTML set with WebSocket port configuration");
+
+    panel.webview.html = processedHtml;
+    this.logger.debug("Webview HTML set with resource URIs");
   }
 
   public dispose(): void {

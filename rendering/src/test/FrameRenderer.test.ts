@@ -226,7 +226,7 @@ describe("FrameRenderer", () => {
       expect(mockFPSCalculator.updateFrame).not.toHaveBeenCalled();
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
       expect(mockKeyboardManager.clearPressed).toHaveBeenCalled();
-      
+
       // When paused, only Image pass renders (to handle resize)
       expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(1);
       expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
@@ -712,7 +712,7 @@ describe("FrameRenderer", () => {
         { mProgram: {}, mResult: true },
         expect.any(Object)
       );
-      
+
       // Frame should not increment when paused
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
     });
