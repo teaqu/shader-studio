@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage } from "@shader-studio/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, WarningMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage } from "@shader-studio/types";
 import { PathResolver } from "../PathResolver";
 import { ErrorHandler } from "../ErrorHandler";
 
@@ -34,6 +34,9 @@ export class MessageHandler {
           break;
         case "error":
           this.errorHandler.handleError(message as ErrorMessage);
+          break;
+        case "warning":
+          this.errorHandler.handlePersistentError(message as WarningMessage);
           break;
         case "refresh":
           this.handleRefreshMessage(message);

@@ -9,8 +9,11 @@ import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
+  private configProcessor: ShaderConfigProcessor;
 
-  constructor(private messenger: Messenger) { }
+  constructor(private messenger: Messenger) {
+    this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
+  }
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
@@ -46,7 +49,7 @@ export class ShaderProvider {
     const buffers: Record<string, string> = {};
 
     // Load and process config
-    const config = ShaderConfigProcessor.loadAndProcessConfig(shaderPath, buffers);
+    const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
 
     // Always update the shader - no change detection
     this.logger.debug(`Sending shader update for ${shaderPath}`);
@@ -93,7 +96,7 @@ export class ShaderProvider {
       const buffers: Record<string, string> = {};
 
       // Load and process config
-      const config = ShaderConfigProcessor.loadAndProcessConfig(shaderPath, buffers);
+      const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
 
       // Always update the shader - no change detection
       this.logger.debug(`Sending shader update for ${shaderPath}`);
@@ -130,7 +133,7 @@ export class ShaderProvider {
     try {
       // Check only currently active shaders
       for (const activeShaderPath of this.activeShaders) {
-        const config = ShaderConfigProcessor.loadAndProcessConfig(activeShaderPath, {});
+        const config = this.configProcessor.loadAndProcessConfig(activeShaderPath, {});
         
         // Check both "common" and "CommonBuffer" keys for backward compatibility
         if (config?.passes?.common?.path === shaderPath) {
@@ -150,12 +153,12 @@ export class ShaderProvider {
   private updatePreviewedShadersUsingCommonBuffer(commonBufferPath: string): void {
     for (const activeShaderPath of this.activeShaders) {
       try {
-        const config = ShaderConfigProcessor.loadAndProcessConfig(activeShaderPath, {});
+        const config = this.configProcessor.loadAndProcessConfig(activeShaderPath, {});
         // Check if this active shader uses the commonBufferPath as common
         if (config?.passes?.common?.path === commonBufferPath) {
           // Collect buffer contents (including the updated common buffer)
           const buffers: Record<string, string> = {};
-          ShaderConfigProcessor.processConfig(config, activeShaderPath, buffers);
+          this.configProcessor.processConfig(config, activeShaderPath, buffers);
 
           // Read the main shader file directly to ensure we have the correct Image code
           let imageCode = "";

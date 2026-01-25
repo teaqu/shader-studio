@@ -122,7 +122,11 @@ suite('ConfigGenerator Test Suite', () => {
     const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
     
     // Mock active editor as null or non-GLSL
-    sandbox.stub(vscode.window, 'activeTextEditor').value(null);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
     
     // Call generateConfig
     await configGenerator.generateConfig();
@@ -142,6 +146,9 @@ suite('ConfigGenerator Test Suite', () => {
     // Verify success message
     sinon.assert.calledOnce(showInfoStub);
     sinon.assert.calledWith(showInfoStub, 'Generated config file: last_viewed_shader.sha.json');
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should fall back to file dialog when no active preview and no active editor', async () => {
@@ -166,7 +173,11 @@ suite('ConfigGenerator Test Suite', () => {
     const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
     
     // Mock active editor as null
-    sandbox.stub(vscode.window, 'activeTextEditor').value(null);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
     
     // Call generateConfig
     await configGenerator.generateConfig();
@@ -180,6 +191,9 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledOnce(showInfoStub);
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should fall back to file dialog when last viewed GLSL file does not exist even with active preview', async () => {
@@ -206,7 +220,11 @@ suite('ConfigGenerator Test Suite', () => {
     const showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage').resolves();
     
     // Mock active editor as null
-    sandbox.stub(vscode.window, 'activeTextEditor').value(null);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
     
     // Call generateConfig
     await configGenerator.generateConfig();
@@ -231,6 +249,9 @@ suite('ConfigGenerator Test Suite', () => {
       'shader-studio.refreshSpecificShaderByPath',
       selectedFile.fsPath,
     );
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should use active GLSL editor when available', async () => {
@@ -246,7 +267,11 @@ suite('ConfigGenerator Test Suite', () => {
       }
     } as vscode.TextEditor;
     
-    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: activeEditor,
+      configurable: true,
+      writable: true
+    });
     
     // Mock file system operations
     const existsSyncStub = sandbox.stub(fs, 'existsSync').returns(false);
@@ -269,6 +294,9 @@ suite('ConfigGenerator Test Suite', () => {
     // Verify success message
     sinon.assert.calledOnce(showInfoStub);
     sinon.assert.calledWith(showInfoStub, 'Generated config file: active_shader.sha.json');
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should use provided URI when available', async () => {
@@ -313,7 +341,11 @@ suite('ConfigGenerator Test Suite', () => {
       }
     } as vscode.TextEditor;
     
-    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: activeEditor,
+      configurable: true,
+      writable: true
+    });
     
     // Mock file system operations
     const existsSyncStub = sandbox.stub(fs, 'existsSync').returns(false);
@@ -333,6 +365,9 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledWith(showInfoStub, 'Generate config file for active_shader.glsl?', 'Yes' as any, 'No' as any);
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledOnce(executeCommandStub);
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should refresh the shader by path after generating config when preview is active', async () => {
@@ -349,7 +384,11 @@ suite('ConfigGenerator Test Suite', () => {
       }
     } as vscode.TextEditor;
 
-    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: activeEditor,
+      configurable: true,
+      writable: true
+    });
 
     // Pretend preview is active
     sandbox.stub(messenger, 'hasActiveClients').returns(true);
@@ -379,6 +418,9 @@ suite('ConfigGenerator Test Suite', () => {
       'shader-studio.refreshSpecificShaderByPath',
       activeShaderPath,
     );
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should handle file dialog cancellation', async () => {
@@ -392,13 +434,20 @@ suite('ConfigGenerator Test Suite', () => {
     const showOpenDialogStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves([]);
     
     // Mock active editor as null
-    sandbox.stub(vscode.window, 'activeTextEditor').value(null);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
     
     // Call generateConfig and expect it to not throw
     await configGenerator.generateConfig();
     
     // Verify it showed the dialog and cancelled gracefully
     sinon.assert.calledOnce(showOpenDialogStub);
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should handle errors gracefully', async () => {
@@ -407,7 +456,11 @@ suite('ConfigGenerator Test Suite', () => {
     sandbox.stub(fs, 'existsSync').throws(new Error('File system error'));
     
     // Mock active editor as null to trigger file dialog path
-    sandbox.stub(vscode.window, 'activeTextEditor').value(null);
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
     sandbox.stub(messenger, 'hasActiveClients').returns(false);
     
     // Mock file dialog to return a file
@@ -423,5 +476,8 @@ suite('ConfigGenerator Test Suite', () => {
     // Verify error was handled
     sinon.assert.calledOnce(showErrorStub);
     sinon.assert.calledWith(showErrorStub, 'Failed to generate config: Error: File system error');
+    
+    // Clean up
+    delete (vscode.window as any).activeTextEditor;
   });
 });

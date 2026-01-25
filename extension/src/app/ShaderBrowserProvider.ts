@@ -11,10 +11,12 @@ export class ShaderBrowserProvider {
     private logger: Logger;
     private panel: vscode.WebviewPanel | undefined;
     private thumbnailCache: ThumbnailCache;
+    private configProcessor: ShaderConfigProcessor;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.thumbnailCache = new ThumbnailCache(context);
+        this.configProcessor = new ShaderConfigProcessor();
     }
 
     public static register(
@@ -158,7 +160,7 @@ export class ShaderBrowserProvider {
             const buffers: Record<string, string> = {};
             
             // Load and process config
-            const config = ShaderConfigProcessor.loadAndProcessConfig(shaderPath, buffers);
+            const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
 
             this.logger.debug(`Sending shader code for ${shaderPath} with ${Object.keys(buffers).length} buffer(s)`);
 
@@ -171,9 +173,10 @@ export class ShaderBrowserProvider {
                 buffers: buffers,
             };
 
-            const processedMessage = config
-                ? ConfigPathConverter.processConfigPaths(message as any, this.panel.webview)
-                : message;
+            const processedMessage = ConfigPathConverter.processConfigPaths(
+                message as any,
+                this.panel.webview
+            );
 
             this.panel.webview.postMessage(processedMessage);
         } catch (error) {

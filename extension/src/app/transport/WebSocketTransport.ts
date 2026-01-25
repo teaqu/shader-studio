@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
-import { MessageTransport } from "./MessageTransport";
 import type { ShaderConfig } from "@shader-studio/types";
+import { ConfigPathConverter } from "./ConfigPathConverter";
+import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 
@@ -107,11 +108,16 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   public send(message: any): void {
-    let sentCount = 0;
-    let totalClients = this.wsClients.size;
+    const totalClients = this.wsClients.size;
+    if (totalClients === 0) {
+      return;
+    }
 
     console.log(`WebSocket: Sending ${message.type} to ${totalClients} clients`);
+    this.sendMessageToAllClients(message);
+  }
 
+  private sendMessageToAllClients(message: any): void {
     for (const client of this.wsClients) {
       if (client.readyState === WebSocket.OPEN) {
         try {
@@ -121,46 +127,57 @@ export class WebSocketTransport implements MessageTransport {
             clientMessage = this.processConfigPaths(message, clientType);
           }
 
-          const str = JSON.stringify(clientMessage);
-          const messageSize = Buffer.byteLength(str, 'utf8');
-
-          client.send(str);
-          sentCount++;
+          client.send(JSON.stringify(clientMessage));
         } catch (error) {
-          console.error('WebSocket send error:', error);
+          console.error(`WebSocketTransport: Error sending message to client:`, error);
         }
       }
     }
-    console.log(`WebSocket: Sent to ${sentCount}/${totalClients} clients`);
   }
 
   private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
-    const processedMessage = JSON.parse(JSON.stringify(message));
-    const config = processedMessage.config;
+    // Create a mock webview for ConfigPathConverter
+    const mockWebview = {
+      asWebviewUri: (uri: vscode.Uri) => uri
+    } as vscode.Webview;
+    
+    const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview);
+    
+    // Handle video-specific logic based on client type
+    this.handleVideoPaths(processedMessage, clientType);
+    
+    return processedMessage;
+  }
 
-    if (!config?.passes) {
-      return processedMessage;
+  private handleVideoPaths(message: any, clientType: 'electron' | 'browser'): void {
+    if (!message.config?.passes) {
+      return;
     }
 
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
-      const pass = config.passes[passName];
-      if (!pass || typeof pass !== "object") {
+    for (const passName of Object.keys(message.config.passes)) {
+      const pass = message.config.passes[passName];
+      if (!pass?.inputs) {
         continue;
       }
 
-      if (pass.inputs && typeof pass.inputs === "object") {
-        for (const key of Object.keys(pass.inputs)) {
-          const input = pass.inputs[key as keyof typeof pass.inputs];
-          if (input && input.type === "texture" && input.path) {
-            input.path = this.convertUriForClient(input.path, clientType);
+      for (const key of Object.keys(pass.inputs)) {
+        const input = pass.inputs[key];
+        if (input?.path && input.type === "video") {
+          if (clientType === 'electron') {
+            // Electron clients can use file:// URLs
+            input.path = `file://${input.path.replace(/\\/g, '/')}`;
+          } else {
+            // Browser clients need HTTP URLs via webserver
+            const config = vscode.workspace.getConfiguration('Shader Studio');
+            const port = config.get<number>('webServerPort') || 3000;
+            input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
           }
         }
       }
     }
-
-    return processedMessage;
   }
 
+  // Legacy method for backward compatibility with tests
   public convertUriForClient(filePath: string, clientType: 'electron' | 'browser' = 'browser'): string {
     // Handle local file paths differently for browser vs Electron clients
     if (filePath.match(/^[a-zA-Z]:|^\//) || filePath.match(/^\\\\/)) {
@@ -181,10 +198,13 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   public close(): void {
-    for (const client of this.wsClients) {
-      client.close();
-    }
+    this.wsClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.close();
+      }
+    });
     this.wsClients.clear();
+    this.clientTypes.clear();
     this.wsServer.close();
   }
 

@@ -11,11 +11,19 @@ export interface TextureConfigInput {
     vflip?: boolean;
 }
 
+export interface VideoConfigInput {
+    type: 'video';
+    path: string;
+    filter?: "linear" | "nearest" | "mipmap";
+    wrap?: "repeat" | "clamp";
+    vflip?: boolean;
+}
+
 export interface KeyboardConfigInput {
     type: 'keyboard';
 }
 
-export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput;
+export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | KeyboardConfigInput;
 
 export interface ImagePass {
     inputs?: Partial<Record<`iChannel${0 | 1 | 2 | 3}`, ConfigInput>>;

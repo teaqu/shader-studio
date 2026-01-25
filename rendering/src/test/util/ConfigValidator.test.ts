@@ -424,6 +424,153 @@ describe("ConfigValidator", () => {
         });
       });
 
+      describe("video input validation", () => {
+        it("should accept valid video input", () => {
+          const config: ShaderConfig = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 'video.mp4'
+                  }
+                }
+              }
+            }
+          };
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it("should accept video input with all valid options", () => {
+          const config: ShaderConfig = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 'video.mp4',
+                    filter: 'linear',
+                    wrap: 'repeat',
+                    vflip: true
+                  }
+                }
+              }
+            }
+          };
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it("should reject video input without path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject video input with non-string path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 123
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject video input with invalid filter", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 'video.mp4',
+                    filter: 'invalid'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject video input with invalid wrap", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 'video.mp4',
+                    wrap: 'invalid'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject video input with non-boolean vflip", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'video',
+                    path: 'video.mp4',
+                    vflip: 'true'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+      });
+
       describe("invalid input type", () => {
         it("should reject input with invalid type", () => {
           const config = {

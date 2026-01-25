@@ -110,6 +110,14 @@ export class BufferConfig {
         wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
         vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip)
       };
+    } else if (updates.type === 'video') {
+      updatedInput = {
+        type: 'video',
+        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path),
+        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
+        wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
+        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip)
+      };
     } else if (updates.type === 'keyboard') {
       updatedInput = {
         type: 'keyboard'
@@ -125,7 +133,18 @@ export class BufferConfig {
       } else if (existing?.type === 'texture') {
         updatedInput = {
           type: 'texture',
-          path: (updates as any).path || existing.path || ''
+          path: (updates as any).path || existing.path || '',
+          filter: (updates as any).filter || existing.filter,
+          wrap: (updates as any).wrap || existing.wrap,
+          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip
+        };
+      } else if (existing?.type === 'video') {
+        updatedInput = {
+          type: 'video',
+          path: (updates as any).path || existing.path || '',
+          filter: (updates as any).filter || existing.filter,
+          wrap: (updates as any).wrap || existing.wrap,
+          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip
         };
       } else {
         updatedInput = {
@@ -196,10 +215,89 @@ export class BufferConfig {
       }
     }
 
+    // Validate input channels
+    if (this.config.inputs) {
+      for (const [channelName, input] of Object.entries(this.config.inputs)) {
+        if (!this.validateInput(input)) {
+          errors.push(`${this.bufferName} pass has invalid input configuration for ${channelName}`);
+        }
+      }
+    }
+
     return {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  private validateInput(input: any): boolean {
+    if (!input || typeof input !== 'object' || !input.type) {
+      return false;
+    }
+
+    switch (input.type) {
+      case 'buffer':
+        return this.validateBufferInput(input);
+      case 'texture':
+        return this.validateTextureInput(input);
+      case 'video':
+        return this.validateVideoInput(input);
+      case 'keyboard':
+        return this.validateKeyboardInput(input);
+      default:
+        return false;
+    }
+  }
+
+  private validateBufferInput(input: any): boolean {
+    const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
+    return input.source && 
+           validSources.includes(input.source) && 
+           input.source !== 'common';
+  }
+
+  private validateTextureInput(input: any): boolean {
+    if (!input.path || typeof input.path !== 'string') {
+      return false;
+    }
+
+    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+      return false;
+    }
+
+    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+      return false;
+    }
+
+    if (input.vflip !== undefined && typeof input.vflip !== 'boolean') {
+      return false;
+    }
+
+    return true;
+  }
+
+  private validateVideoInput(input: any): boolean {
+    if (!input.path || typeof input.path !== 'string') {
+      return false;
+    }
+
+    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+      return false;
+    }
+
+    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+      return false;
+    }
+
+    if (input.vflip !== undefined && typeof input.vflip !== 'boolean') {
+      return false;
+    }
+
+    return true;
+  }
+
+  private validateKeyboardInput(input: any): boolean {
+    return input.type === 'keyboard';
   }
 
   /**

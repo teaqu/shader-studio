@@ -183,7 +183,19 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public togglePause(): void {
+    const wasPaused = this.timeManager.isPaused();
+    
+    // Toggle time manager
     this.timeManager.togglePause();
+    
+    // Handle videos based on new pause state
+    if (wasPaused) {
+      // Was paused, now resuming - resume videos
+      this.resourceManager.resumeAllVideos();
+    } else {
+      // Was playing, now pausing - pause videos
+      this.resourceManager.pauseAllVideos();
+    }
   }
 
   public startRenderLoop(): void {

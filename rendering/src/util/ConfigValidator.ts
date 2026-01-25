@@ -93,6 +93,8 @@ export class ConfigValidator {
         return this.validateBufferInput(input);
       case 'texture':
         return this.validateTextureInput(input);
+      case 'video':
+        return this.validateVideoInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
       default:
@@ -131,5 +133,26 @@ export class ConfigValidator {
   private static validateKeyboardInput(input: any): boolean {
     // Keyboard input only needs the type field
     return input.type === 'keyboard';
+  }
+
+  private static validateVideoInput(input: any): boolean {
+    if (!input.path || typeof input.path !== 'string') {
+      return false;
+    }
+
+    // Validate optional properties (same as texture)
+    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+      return false;
+    }
+
+    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+      return false;
+    }
+
+    if (input.vflip !== undefined && typeof input.vflip !== 'boolean') {
+      return false;
+    }
+
+    return true;
   }
 }

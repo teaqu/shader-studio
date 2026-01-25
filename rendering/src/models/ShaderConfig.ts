@@ -15,7 +15,15 @@ export interface KeyboardConfigInput {
   type: 'keyboard';
 }
 
-export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput;
+export interface VideoConfigInput {
+  type: 'video';
+  path: string;
+  filter?: "linear" | "nearest" | "mipmap";
+  wrap?: "repeat" | "clamp";
+  vflip?: boolean;
+}
+
+export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput;
 
 export interface ConfigPass {
   path?: string;

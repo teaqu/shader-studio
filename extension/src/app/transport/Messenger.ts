@@ -5,29 +5,23 @@ import { ErrorHandler } from "../ErrorHandler";
 
 export class Messenger {
   private messageHandler: MessageHandler;
+  private errorHandler: ErrorHandler;
   private transports: MessageTransport[] = [];
 
   constructor(
     outputChannel: vscode.LogOutputChannel,
     errorHandler: ErrorHandler
   ) {
+    this.errorHandler = errorHandler;
     this.messageHandler = new MessageHandler(outputChannel, errorHandler);
+  }
+
+  public getErrorHandler(): ErrorHandler {
+    return this.errorHandler;
   }
 
   public send(message: any): void {
     try {
-      const messageStr = JSON.stringify(message);
-      const messageSize = new Blob([messageStr]).size;
-
-      if (message.type === 'shader') {
-        console.log(`Messenger: Sending shader message (${messageSize} bytes) to ${this.transports.length} transports`);
-        if (message.payload && message.payload.code) {
-          console.log(`Messenger: Shader code length: ${message.payload.code.length} characters`);
-        }
-      } else {
-        console.log(`Messenger: Sending ${message.type} (${messageSize} bytes) to ${this.transports.length} transports`);
-      }
-
       // Send to all transports
       this.transports.forEach((transport, index) => {
         try {

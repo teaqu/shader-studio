@@ -26,7 +26,10 @@ suite('ConfigPathConverter Test Suite', () => {
 
     test('convertUriForClient returns original path when no webview provided', () => {
         const filePath = '/test/path/file.txt';
-        const result = ConfigPathConverter.convertUriForClient(filePath, null as any);
+        const result = ConfigPathConverter.convertUriForClient(
+            filePath, 
+            null as any
+        );
         assert.strictEqual(result, filePath);
     });
 
@@ -35,7 +38,10 @@ suite('ConfigPathConverter Test Suite', () => {
         const expectedUri = vscode.Uri.parse('vscode-webview://test/file.txt');
         mockWebview.asWebviewUri.returns(expectedUri);
         
-        const result = ConfigPathConverter.convertUriForClient(filePath, mockWebview);
+        const result = ConfigPathConverter.convertUriForClient(
+            filePath, 
+            mockWebview
+        );
         
         assert.strictEqual(result, expectedUri.toString());
         sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(filePath));
@@ -63,7 +69,10 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const processedMessage = ConfigPathConverter.processConfigPaths(originalMessage as any, mockWebview);
+        const processedMessage = ConfigPathConverter.processConfigPaths(
+            originalMessage as any, 
+            mockWebview
+        );
         
         assert.strictEqual(processedMessage.type, 'shaderSource');
         assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
@@ -97,7 +106,10 @@ suite('ConfigPathConverter Test Suite', () => {
             code: 'shader code'
         };
         
-        const result = ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
         
         assert.strictEqual(result.type, 'shaderSource');
         assert.strictEqual(result.code, 'shader code');
@@ -135,7 +147,10 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
         
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockUri1.toString());
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, mockUri2.toString());
@@ -171,7 +186,10 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
         
         assert.strictEqual((result.config.passes.BufferA?.inputs as any).iChannel0.path, mockUri.toString());
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
@@ -196,7 +214,10 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
         
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.type, 'buffer');
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.name, 'BufferA');

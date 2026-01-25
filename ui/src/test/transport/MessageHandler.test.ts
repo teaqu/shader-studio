@@ -409,4 +409,132 @@ describe("MessageHandler", () => {
       expect(bufferName).toBeNull();
     });
   });
+
+  describe('warning message handling', () => {
+    it('should send warning messages when compilation returns warnings', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(false);
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+        warnings: ['Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser.']
+      });
+
+      const event = {
+        data: {
+          type: 'shaderSource',
+          code: 'void main() {}',
+          config: { passes: { Image: { inputs: { iChannel0: { type: 'video', path: 'video.mp4' } } } } },
+          path: 'shader.glsl',
+          buffers: {},
+        },
+      };
+
+      await messageHandler.handleShaderMessage(event as any);
+
+      // Verify warning was sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'warning',
+        payload: ['Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser.']
+      });
+
+      // Verify success message was also sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'log',
+        payload: ['Shader compiled and linked']
+      });
+
+      // Verify render loop started
+      expect(mockRenderingEngine.startRenderLoop).toHaveBeenCalled();
+    });
+
+    it('should send multiple warning messages when multiple warnings are returned', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(false);
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+        warnings: [
+          'Video is not loading: video1.mp4.',
+          'Video is not loading: video2.mp4.'
+        ]
+      });
+
+      const event = {
+        data: {
+          type: 'shaderSource',
+          code: 'void main() {}',
+          config: null,
+          path: 'shader.glsl',
+          buffers: {},
+        },
+      };
+
+      await messageHandler.handleShaderMessage(event as any);
+
+      // Verify both warnings were sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'warning',
+        payload: ['Video is not loading: video1.mp4.']
+      });
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'warning',
+        payload: ['Video is not loading: video2.mp4.']
+      });
+    });
+
+    it('should not send warning messages when no warnings are returned', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(false);
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+        warnings: undefined
+      });
+
+      const event = {
+        data: {
+          type: 'shaderSource',
+          code: 'void main() {}',
+          config: null,
+          path: 'shader.glsl',
+          buffers: {},
+        },
+      };
+
+      await messageHandler.handleShaderMessage(event as any);
+
+      // Verify no warning messages were sent
+      const warningCalls = mockTransport.postMessage.mock.calls.filter(
+        (call: any) => call[0].type === 'warning'
+      );
+      expect(warningCalls).toHaveLength(0);
+
+      // Verify success message was sent
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'log',
+        payload: ['Shader compiled and linked']
+      });
+    });
+
+    it('should not send warning messages when warnings array is empty', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(false);
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+        warnings: []
+      });
+
+      const event = {
+        data: {
+          type: 'shaderSource',
+          code: 'void main() {}',
+          config: null,
+          path: 'shader.glsl',
+          buffers: {},
+        },
+      };
+
+      await messageHandler.handleShaderMessage(event as any);
+
+      // Verify no warning messages were sent
+      const warningCalls = mockTransport.postMessage.mock.calls.filter(
+        (call: any) => call[0].type === 'warning'
+      );
+      expect(warningCalls).toHaveLength(0);
+    });
+  });
 });
