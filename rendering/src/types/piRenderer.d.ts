@@ -74,13 +74,13 @@ export interface PiRenderer {
   
   // Texture methods
   CreateTexture(type: number, xres: number, yres: number, format: number, filter: number, wrap: number, buffer?: ArrayBuffer | Uint8Array | null): PiTexture | null;
-  CreateTextureFromImage(type: number, image: HTMLImageElement, format: number, filter: number, wrap: number, flipY: boolean): PiTexture | null;
+  CreateTextureFromImage(type: number, image: HTMLImageElement | HTMLVideoElement, format: number, filter: number, wrap: number, flipY: boolean): PiTexture | null;
   SetSamplerFilter(te: PiTexture, filter: number): void;
   SetSamplerWrap(te: PiTexture, wrap: number): void;
   SetSamplerVFlip(te: PiTexture, vflip: boolean, image?: HTMLImageElement): void;
   CreateMipmaps(te: PiTexture): void;
   UpdateTexture(tex: PiTexture, x0: number, y0: number, xres: number, yres: number, buffer: ArrayBuffer | Uint8Array): void;
-  UpdateTextureFromImage(tex: PiTexture, image: HTMLImageElement): void;
+  UpdateTextureFromImage(tex: PiTexture, image: HTMLImageElement | HTMLVideoElement): void;
   DestroyTexture(te: PiTexture | null): void;
   AttachTextures(num: number, t0?: PiTexture | null, t1?: PiTexture | null, t2?: PiTexture | null, t3?: PiTexture | null): void;
   DettachTextures(): void;

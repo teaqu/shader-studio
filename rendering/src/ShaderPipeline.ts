@@ -87,8 +87,8 @@ export class ShaderPipeline {
       return compilation;
     }
 
-    await this.updateResources();
-    return { success: true };
+    const warnings = await this.updateResources();
+    return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
   private prepareNewCompilation(path: string): void {
@@ -210,7 +210,8 @@ export class ShaderPipeline {
     return { success: true };
   }
 
-  private async updateResources(): Promise<void> {
+  private async updateResources(): Promise<string[]> {
+    const warnings: string[] = [];
     for (const pass of this.passes) {
       for (let i = 0; i < 4; i++) { // 4 channels (iChannel0-3)
         const input = pass.inputs[`iChannel${i}`];
@@ -221,9 +222,20 @@ export class ShaderPipeline {
             vflip: input.vflip
           };
           await this.resourceManager.loadImageTexture(input.path, textureOptions);
+        } else if (input?.type === "video" && input.path) {
+          const videoOptions = {
+            filter: input.filter,
+            wrap: input.wrap,
+            vflip: input.vflip
+          };
+          const result = await this.resourceManager.loadVideoTexture(input.path, videoOptions);
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
         }
       }
     }
+    return warnings;
   }
 
   private cleanupPartialShaders(shaders: Record<string, PiShader>): void {

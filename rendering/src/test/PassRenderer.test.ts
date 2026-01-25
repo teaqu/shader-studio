@@ -29,6 +29,7 @@ const createMockResourceManager = () => ({
   getDefaultTexture: vi.fn().mockReturnValue(createMockTexture()),
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
+  getVideoTexture: vi.fn(),
 });
 
 const createMockBufferManager = () => ({
@@ -267,6 +268,185 @@ describe("PassRenderer", () => {
         defaultTexture
       );
       expect(mockResourceManager.getDefaultTexture).toHaveBeenCalledTimes(2);
+    });
+
+    it("should handle video input correctly", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "video", path: "video.mp4" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockVideoTexture = createMockTexture();
+      mockResourceManager.getVideoTexture.mockReturnValue(mockVideoTexture);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockResourceManager.getVideoTexture).toHaveBeenCalledWith("video.mp4");
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        mockVideoTexture,
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture()
+      );
+    });
+
+    it("should use default texture when video texture is not found", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "video", path: "missing.mp4" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getVideoTexture.mockReturnValue(null);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockResourceManager.getVideoTexture).toHaveBeenCalledWith("missing.mp4");
+      const defaultTexture = mockResourceManager.getDefaultTexture();
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        defaultTexture,
+        defaultTexture,
+        defaultTexture,
+        defaultTexture
+      );
+    });
+
+    it("should handle multiple video inputs on different channels", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "video", path: "video1.mp4" },
+          iChannel2: { type: "video", path: "video2.mp4" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockVideoTexture1 = createMockTexture();
+      const mockVideoTexture2 = createMockTexture();
+      mockResourceManager.getVideoTexture
+        .mockReturnValueOnce(mockVideoTexture1)
+        .mockReturnValueOnce(mockVideoTexture2);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockResourceManager.getVideoTexture).toHaveBeenCalledWith("video1.mp4");
+      expect(mockResourceManager.getVideoTexture).toHaveBeenCalledWith("video2.mp4");
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        mockVideoTexture1,
+        mockResourceManager.getDefaultTexture(),
+        mockVideoTexture2,
+        mockResourceManager.getDefaultTexture()
+      );
+    });
+
+    it("should handle mixed texture and video inputs", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "image.jpg" },
+          iChannel1: { type: "video", path: "video.mp4" },
+          iChannel2: { type: "keyboard" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockImageTexture = createMockTexture();
+      const mockVideoTexture = createMockTexture();
+      const mockKeyboardTexture = createMockTexture();
+      
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "image.jpg": mockImageTexture
+      });
+      mockResourceManager.getVideoTexture.mockReturnValue(mockVideoTexture);
+      mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        mockImageTexture,
+        mockVideoTexture,
+        mockKeyboardTexture,
+        mockResourceManager.getDefaultTexture()
+      );
+    });
+
+    it("should not call getVideoTexture when video input has no path", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "video" } as any // No path
+        }
+      };
+
+      const mockShader = createMockShader();
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockResourceManager.getVideoTexture).not.toHaveBeenCalled();
     });
   });
 });

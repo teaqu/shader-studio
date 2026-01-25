@@ -11,6 +11,8 @@ suite('ShaderProvider Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
     let sendSpy: sinon.SinonSpy;
     let mockOutputChannel: any;
+    let loadAndProcessConfigStub: sinon.SinonStub;
+    let processConfigStub: sinon.SinonStub;
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -36,7 +38,15 @@ suite('ShaderProvider Test Suite', () => {
         mockMessenger = {
             send: sendSpy,
             hasActiveClients: sandbox.stub().returns(true),
+            getErrorHandler: sandbox.stub().returns({
+                handleError: sandbox.stub(),
+                handlePersistentError: sandbox.stub()
+            })
         };
+
+        // Stub prototype methods before creating provider
+        loadAndProcessConfigStub = sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig');
+        processConfigStub = sandbox.stub(ShaderConfigProcessor.prototype, 'processConfig');
 
         provider = new ShaderProvider(mockMessenger);
     });
@@ -59,8 +69,7 @@ suite('ShaderProvider Test Suite', () => {
                 }
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, {}).returns(mockConfig);
+            loadAndProcessConfigStub.returns(mockConfig);
 
             // Add active shader
             (provider as any).activeShaders.add(shaderPath);
@@ -81,8 +90,7 @@ suite('ShaderProvider Test Suite', () => {
                 }
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, {}).returns(mockConfig);
+            loadAndProcessConfigStub.returns(mockConfig);
 
             (provider as any).activeShaders.add(shaderPath);
 
@@ -114,13 +122,11 @@ suite('ShaderProvider Test Suite', () => {
                 common: 'common code'
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, {}).returns(mockConfig);
-            sandbox.stub(ShaderConfigProcessor, 'processConfig')
-                .withArgs(mockConfig, shaderPath, sinon.match.object).callsFake((config, path, buffers) => {
-                    buffers.Image = 'shader code';
-                    buffers.common = 'common code';
-                });
+            loadAndProcessConfigStub.returns(mockConfig);
+            processConfigStub.callsFake((_config: any, _path: any, buffers: any) => {
+                buffers.Image = 'shader code';
+                buffers.common = 'common code';
+            });
 
             (provider as any).activeShaders.add(shaderPath);
 
@@ -146,8 +152,7 @@ suite('ShaderProvider Test Suite', () => {
                 }
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, {}).returns(mockConfig);
+            loadAndProcessConfigStub.returns(mockConfig);
 
             (provider as any).activeShaders.add(shaderPath);
 
@@ -178,8 +183,7 @@ suite('ShaderProvider Test Suite', () => {
                 }
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, {}).returns(mockConfig);
+            loadAndProcessConfigStub.returns(mockConfig);
 
             (provider as any).activeShaders.add(shaderPath);
 
@@ -210,8 +214,7 @@ suite('ShaderProvider Test Suite', () => {
                 }
             };
 
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .withArgs(shaderPath, sinon.match.object).returns(mockConfig);
+            loadAndProcessConfigStub.returns(mockConfig);
 
             provider.sendShaderToWebview(mockEditor as any);
 

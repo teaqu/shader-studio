@@ -45,7 +45,7 @@
   function updateInputType(channel: string, e: Event) {
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
-      const newType = target.value as "buffer" | "texture" | "keyboard";
+      const newType = target.value as "buffer" | "texture" | "video" | "keyboard";
 
       // default values
       if (newType === "buffer") {
@@ -56,6 +56,11 @@
       } else if (newType === "texture") {
         bufferConfig.updateInputChannelPartial(channel, {
           type: "texture",
+          path: "",
+        });
+      } else if (newType === "video") {
+        bufferConfig.updateInputChannelPartial(channel, {
+          type: "video",
           path: "",
         });
       } else {
@@ -83,7 +88,7 @@
     const target = e.target as HTMLInputElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === "texture") {
+      if (currentInput && (currentInput.type === "texture" || currentInput.type === "video")) {
         bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
           path: target.value,
@@ -97,7 +102,7 @@
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === "texture") {
+      if (currentInput && (currentInput.type === "texture" || currentInput.type === "video")) {
         bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
           filter: target.value as "linear" | "nearest" | "mipmap" | undefined,
@@ -111,7 +116,7 @@
     const target = e.target as HTMLSelectElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === "texture") {
+      if (currentInput && (currentInput.type === "texture" || currentInput.type === "video")) {
         bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
           wrap: target.value as "repeat" | "clamp" | undefined,
@@ -125,7 +130,7 @@
     const target = e.target as HTMLInputElement;
     if (target && bufferConfig) {
       const currentInput = bufferConfig.getInputChannel(channel);
-      if (currentInput && currentInput.type === "texture") {
+      if (currentInput && (currentInput.type === "texture" || currentInput.type === "video")) {
         bufferConfig.updateInputChannelPartial(channel, {
           ...currentInput,
           vflip: target.checked,
@@ -221,6 +226,7 @@
                   >
                     <option value="buffer">Buffer</option>
                     <option value="texture">Texture</option>
+                    <option value="video">Video</option>
                     <option value="keyboard">Keyboard</option>
                   </select>
                 </div>
@@ -295,6 +301,61 @@
                     />
                     <span class="checkbox-label"
                       >Flip texture vertically (default: checked)</span
+                    >
+                  </div>
+                {/if}
+
+                {#if input.type === "video"}
+                  <div class="input-group">
+                    <label for="path-{channelName}">Path:</label>
+                    <input
+                      id="path-{channelName}"
+                      type="text"
+                      value={input.path || ""}
+                      on:input={(e) => updateInputPath(channelName, e)}
+                      placeholder="Path to video file or URL"
+                      class="input-text"
+                    />
+                  </div>
+
+                  <div class="input-group">
+                    <label for="filter-{channelName}">Filter:</label>
+                    <select
+                      id="filter-{channelName}"
+                      value={input.filter || "linear"}
+                      on:change={(e) => updateTextureFilter(channelName, e)}
+                      class="input-select"
+                    >
+                      <option value="linear">Linear (default)</option>
+                      <option value="nearest">Nearest</option>
+                      <option value="mipmap">Mipmap</option>
+                    </select>
+                  </div>
+
+                  <div class="input-group">
+                    <label for="wrap-{channelName}">Wrap:</label>
+                    <select
+                      id="wrap-{channelName}"
+                      value={input.wrap || "clamp"}
+                      on:change={(e) => updateTextureWrap(channelName, e)}
+                      class="input-select"
+                    >
+                      <option value="clamp">Clamp (default)</option>
+                      <option value="repeat">Repeat</option>
+                    </select>
+                  </div>
+
+                  <div class="input-group">
+                    <label for="vflip-{channelName}">Vertical Flip:</label>
+                    <input
+                      id="vflip-{channelName}"
+                      type="checkbox"
+                      checked={input.vflip ?? true}
+                      on:change={(e) => updateTextureVFlip(channelName, e)}
+                      class="input-checkbox"
+                    />
+                    <span class="checkbox-label"
+                      >Flip video vertically (default: checked)</span
                     >
                   </div>
                 {/if}

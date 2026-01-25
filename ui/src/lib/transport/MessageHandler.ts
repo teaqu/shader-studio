@@ -5,7 +5,8 @@ import type {
   ErrorMessage,
   LogMessage,
   RefreshMessage,
-  ShaderSourceMessage
+  ShaderSourceMessage,
+  WarningMessage
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
 
@@ -175,6 +176,13 @@ export class MessageHandler {
         return;
       }
 
+      // Send any warnings (e.g., video loading failures)
+      if (result.warnings && result.warnings.length > 0) {
+        for (const warning of result.warnings) {
+          this.sendWarningMessage(warning);
+        }
+      }
+
       this.renderEngine.startRenderLoop();
       this.sendSuccessMessages();
     }).catch(err => {
@@ -191,6 +199,14 @@ export class MessageHandler {
       payload: [error],
     };
     this.transport.postMessage(errorMessage);
+  }
+
+  private sendWarningMessage(warning: string): void {
+    const warningMessage: WarningMessage = {
+      type: "warning",
+      payload: [warning],
+    };
+    this.transport.postMessage(warningMessage);
   }
 
   private sendSuccessMessages(): void {

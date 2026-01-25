@@ -38,6 +38,10 @@ suite('PanelManager Test Suite', () => {
         mockMessenger = {
             addTransport: sandbox.stub().returns(undefined),
             removeTransport: sandbox.stub().returns(undefined),
+            getErrorHandler: sandbox.stub().returns({
+                handleError: sandbox.stub(),
+                handlePersistentError: sandbox.stub()
+            }),
         } as any;
 
         mockShaderProvider = {
@@ -70,6 +74,7 @@ suite('PanelManager Test Suite', () => {
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
                 onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
                 postMessage: sandbox.stub(),
+                cspSource: 'vscode-resource:',
             },
             onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
         };
@@ -268,6 +273,78 @@ suite('PanelManager Test Suite', () => {
             // Should NOT contain WebSocket port configuration
             assert.ok(!html.includes('window.shaderViewConfig'), 'Should not inject WebSocket config');
             assert.ok(!html.includes('port:'), 'Should not contain port configuration');
+        });
+
+        test('should add media-src to existing CSP for video support', () => {
+            const htmlWithCsp = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src vscode-resource:;"></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithCsp);
+            
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+            
+            // Should contain media-src with webview.cspSource and blob:
+            assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should add media-src to existing CSP');
+            assert.ok(html.includes('Content-Security-Policy'), 'Should preserve CSP meta tag');
+        });
+
+        test('should replace existing media-src in CSP', () => {
+            const htmlWithMediaSrc = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; media-src vscode-resource:;"></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithMediaSrc);
+            
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+            
+            // Should replace existing media-src with new one including blob:
+            assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should replace existing media-src');
+            assert.ok(!html.includes('media-src vscode-resource:;'), 'Should not contain old media-src without blob:');
+        });
+
+        test('should add new CSP when none exists', () => {
+            const htmlWithoutCsp = '<!doctype html><html><head></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithoutCsp);
+            
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+            
+            // Should add new nonce-based CSP with media-src
+            assert.ok(html.includes('Content-Security-Policy'), 'Should add new CSP meta tag');
+            assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should include media-src in new CSP');
+            assert.ok(html.includes('nonce-abc123'), 'Should use nonce-based CSP');
+            assert.ok(html.includes('script-src vscode-resource: \'nonce-abc123\''), 'Should include script-src with nonce');
+        });
+
+        test('should handle CSP addition when no head tag exists', () => {
+            const htmlWithoutHead = '<!doctype html><html><body></body></html>';
+            readFileSyncStub.returns(htmlWithoutHead);
+            
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+            
+            // Should create head tag with CSP
+            assert.ok(html.includes('<head>'), 'Should create head tag');
+            assert.ok(html.includes('Content-Security-Policy'), 'Should add CSP to new head tag');
+        });
+
+        test('should handle malformed HTML gracefully', () => {
+            const malformedHtml = '<body>Just some content</body>';
+            readFileSyncStub.returns(malformedHtml);
+            
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+            
+            // Should fallback to prepending CSP
+            assert.ok(html.includes('<head>'), 'Should add head tag as fallback');
+            assert.ok(html.includes('Content-Security-Policy'), 'Should add CSP as fallback');
         });
     });
 });

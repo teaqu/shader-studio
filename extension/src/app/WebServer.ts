@@ -142,16 +142,30 @@ export class WebServer {
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ): void {
+    console.log(`WebServer: Received request for: ${req.url}`);
+    
     if (!req.url) {
+      console.log('WebServer: No URL in request');
       res.writeHead(400);
       res.end("Bad Request");
       return;
     }
 
+    if (!req.url.startsWith("/textures/")) {
+      console.log(`WebServer: Invalid texture URL: ${req.url}`);
+      res.writeHead(400);
+      res.end("Invalid texture URL");
+      return;
+    }
+
     const encodedPath = req.url.replace("/textures/", "");
     const texturePath = decodeURIComponent(encodedPath);
+    
+    console.log(`WebServer: Encoded path: ${encodedPath}`);
+    console.log(`WebServer: Decoded path: ${texturePath}`);
 
     if (!fs.existsSync(texturePath)) {
+      console.log(`WebServer: File not found: ${texturePath}`);
       res.writeHead(404);
       res.end("Texture not found");
       return;
@@ -159,8 +173,19 @@ export class WebServer {
 
     const stats = fs.statSync(texturePath);
     if (!stats.isFile()) {
+      console.log(`WebServer: Not a file: ${texturePath}`);
       res.writeHead(403);
       res.end("Invalid texture path");
+      return;
+    }
+
+    console.log(`WebServer: Serving file: ${texturePath} (${stats.size} bytes)`);
+
+    // Handle range requests for video files
+    const range = req.headers.range;
+    if (range && this.isVideoFile(texturePath)) {
+      console.log(`WebServer: Video range request: ${range}`);
+      this.handleVideoRangeRequest(req, res, texturePath, stats);
       return;
     }
 
@@ -188,6 +213,18 @@ export class WebServer {
         case ".bmp":
           contentType = "image/bmp";
           break;
+        case ".webm":
+          contentType = "video/webm";
+          break;
+        case ".mp4":
+          contentType = "video/mp4";
+          break;
+        case ".mov":
+          contentType = "video/quicktime";
+          break;
+        case ".avi":
+          contentType = "video/x-msvideo";
+          break;
         default:
           contentType = "application/octet-stream";
       }
@@ -195,9 +232,88 @@ export class WebServer {
       res.writeHead(200, {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Range",
+        "Accept-Ranges": "bytes",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Cross-Origin-Embedder-Policy": "unsafe-none",
+        "Cross-Origin-Opener-Policy": "cross-origin",
       });
       res.end(data);
     });
+  }
+
+  private isVideoFile(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return ['.webm', '.mp4', '.mov', '.avi'].includes(ext);
+  }
+
+  private handleVideoRangeRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    filePath: string,
+    stats: fs.Stats
+  ): void {
+    const range = req.headers.range;
+    console.log(`WebServer: Processing range request: ${range}`);
+    
+    if (!range) {
+      console.log('WebServer: No range header, sending entire file');
+      // No range header, send entire file
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+    const chunksize = (end - start) + 1;
+
+    console.log(`WebServer: Range ${start}-${end}/${stats.size} (${chunksize} bytes)`);
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': this.getContentType(filePath),
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Range',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      'Cross-Origin-Opener-Policy': 'cross-origin',
+    });
+
+    console.log(`WebServer: Sending 206 response with headers:`, {
+      'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': this.getContentType(filePath),
+    });
+
+    const stream = fs.createReadStream(filePath, { start, end });
+    stream.on('error', (error) => {
+      console.error(`WebServer: Stream error: ${error}`);
+      res.end();
+    });
+    
+    stream.on('end', () => {
+      console.log(`WebServer: Stream completed for range ${start}-${end}`);
+    });
+    
+    stream.pipe(res);
+  }
+
+  private getContentType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case ".webm": return "video/webm";
+      case ".mp4": return "video/mp4";
+      case ".mov": return "video/quicktime";
+      case ".avi": return "video/x-msvideo";
+      default: return "application/octet-stream";
+    }
   }
 
   public stopWebServer(): void {

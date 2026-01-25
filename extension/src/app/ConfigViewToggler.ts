@@ -50,7 +50,7 @@ export class ConfigViewToggler {
         (currentTab.input as vscode.TabInputCustom).viewType === Constants.CONFIG_EDITOR_VIEW_TYPE) {
       documentUri = (currentTab.input as vscode.TabInputCustom).uri;
       isInCustomEditor = true;
-    } else if (activeEditor && activeEditor.document.fileName.endsWith(Constants.CONFIG_FILE_EXTENSION)) {
+    } else if (activeEditor && activeEditor.document.fileName?.endsWith(Constants.CONFIG_FILE_EXTENSION)) {
       documentUri = activeEditor.document.uri;
     }
 
