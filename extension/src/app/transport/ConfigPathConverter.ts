@@ -11,7 +11,8 @@ export class ConfigPathConverter {
    */
   public static processConfigPaths(
     message: { type: string; config: ShaderConfig; [key: string]: any },
-    webview: vscode.Webview
+    webview: vscode.Webview,
+    options: { skipVideoProcessing?: boolean } = {}
   ): typeof message {
     console.log(`ConfigPathConverter: Processing config paths for message type: ${message.type}`);
     
@@ -38,7 +39,7 @@ export class ConfigPathConverter {
         for (const key of Object.keys(pass.inputs)) {
           const input = pass.inputs[key as keyof typeof pass.inputs];
           if (input && input.path) {
-            if (input.type === "texture") {
+            if (input.type === "texture" || (input.type === "video" && !options.skipVideoProcessing)) {
               console.log(`ConfigPathConverter: Found ${input.type} input: ${input.path}`);
               input.path = this.convertUriForClient(input.path, webview);
             }

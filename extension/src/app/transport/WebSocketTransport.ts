@@ -136,14 +136,15 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
-    // Create a mock webview for ConfigPathConverter
+    // Create a mock webview for ConfigPathConverter (it won't be used for videos)
     const mockWebview = {
-      asWebviewUri: (uri: vscode.Uri) => uri
+      asWebviewUri: (uri: vscode.Uri) => uri,
+      cspSource: ''
     } as vscode.Webview;
     
-    const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview);
+    const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview, { skipVideoProcessing: true });
     
-    // Handle video-specific logic based on client type
+    // Handle video-specific logic based on client type (videos not processed by ConfigPathConverter)
     this.handleVideoPaths(processedMessage, clientType);
     
     return processedMessage;
