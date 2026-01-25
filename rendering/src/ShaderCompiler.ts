@@ -25,7 +25,7 @@ uniform vec4 iDate;
 `;
 
     if (commonCode) {
-      header += commonCode;
+      header += commonCode + "\n";
     }
 
     const shaderCode = header + code + "\nvoid main() {\n mainImage(fragColor, gl_FragCoord.xy);\n}";
