@@ -474,7 +474,7 @@ canvas {
   border-radius: 6px;
   padding: 0.5rem 0;
   width: fit-content;
-  min-width: 90px;
+  min-width: 130px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1001;
   animation: options-menu-appear 0.2s ease-out;
