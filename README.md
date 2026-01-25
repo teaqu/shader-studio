@@ -3,7 +3,7 @@
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
 ![screenshot](assets/screenshot.png)
-![shader browser screenshot](assets/shader-browser.png)
+![shader explorer screenshot](assets/shader-explorer.png)
 
 ## Installation
 Install through VS Code extensions. Search for "Shader Studio".

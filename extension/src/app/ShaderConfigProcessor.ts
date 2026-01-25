@@ -13,7 +13,7 @@ const noopErrorHandler = {
 
 /**
  * Shared utility for processing shader configurations.
- * Used by both ShaderProvider and ShaderBrowserProvider.
+ * Used by both ShaderProvider and Shader ExplorerProvider.
  */
 export class ShaderConfigProcessor {
   private logger = Logger.getInstance();

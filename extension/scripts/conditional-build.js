@@ -42,7 +42,7 @@ try {
     });
     
     // Check for copy-to-extension script
-    if (['ui', 'config-ui', 'shader-browser', 'electron'].includes(workspace)) {
+    if (['ui', 'config-ui', 'shader-explorer', 'electron'].includes(workspace)) {
       let copyScript = packageJson.scripts['copy-to-extension'];
       if (copyScript) {
         // Check if target directories already exist

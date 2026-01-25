@@ -2,7 +2,7 @@ out
 dist
 ui-dist
 config-ui-dist
-shader-browser-dist
+shader-explorer-dist
 electron-app
 node_modules
 .vscode-test/

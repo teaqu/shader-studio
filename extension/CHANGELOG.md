@@ -1,6 +1,6 @@
 # Change Log
 ### 0.0.8
-- Shader Browser
+- Shader Explorer
 - HW_PERFORMANCE
 - bug fixes
 
@@ -23,7 +23,6 @@
 - Fixed render loop breaking on error
 
 ### 0.0.2
-
 - Changed config UI to act like a markdown preview.
 - Rendering now independent of Svelte UI.
 - More docs in extension readme.

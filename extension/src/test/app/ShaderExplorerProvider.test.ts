@@ -1,12 +1,12 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import { ShaderBrowserProvider } from '../../app/ShaderBrowserProvider';
+import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { Logger } from '../../app/services/Logger';
 
-suite('ShaderBrowserProvider Test Suite', () => {
-    let provider: ShaderBrowserProvider;
+suite('ShaderExplorerProvider Test Suite', () => {
+    let provider: ShaderExplorerProvider;
     let mockContext: vscode.ExtensionContext;
     let sandbox: sinon.SinonSandbox;
     let mockPanel: any;
@@ -51,7 +51,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             const path = args[0] as string;
             // Return mock HTML for HTML files
             if (path.includes('index.html')) {
-                return '<html><head></head><body>Mock Shader Browser</body></html>';
+                return '<html><head></head><body>Mock Shader Explorer</body></html>';
             }
             return '<html><head></head><body></body></html>';
         });
@@ -104,7 +104,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
             languageModelAccessInformation: {} as any,
         };
 
-        provider = new ShaderBrowserProvider(mockContext);
+        provider = new ShaderExplorerProvider(mockContext);
     });
 
     teardown(() => {
@@ -126,15 +126,15 @@ suite('ShaderBrowserProvider Test Suite', () => {
     }
 
     suite('Command Registration', () => {
-        test('should register shader browser command', () => {
+        test('should register shader explorer command', () => {
             const registerCommandStub = sandbox.stub(vscode.commands, 'registerCommand').returns({
                 dispose: sandbox.stub()
             } as any);
 
-            const disposable = ShaderBrowserProvider.register(mockContext);
+            const disposable = ShaderExplorerProvider.register(mockContext);
 
             assert.ok(registerCommandStub.calledOnce);
-            assert.strictEqual(registerCommandStub.firstCall.args[0], 'shader-studio.openShaderBrowser');
+            assert.strictEqual(registerCommandStub.firstCall.args[0], 'shader-studio.openShaderExplorer');
             assert.ok(disposable);
         });
     });
@@ -160,8 +160,8 @@ suite('ShaderBrowserProvider Test Suite', () => {
 
             provider.show();
 
-            assert.strictEqual(createWebviewPanelStub.firstCall.args[0], 'shader-studio.shaderBrowser');
-            assert.strictEqual(createWebviewPanelStub.firstCall.args[1], 'Shader Browser');
+            assert.strictEqual(createWebviewPanelStub.firstCall.args[0], 'shader-studio.shaderExplorer');
+            assert.strictEqual(createWebviewPanelStub.firstCall.args[1], 'Shader Explorer');
         });
 
         test('should configure panel options correctly', () => {

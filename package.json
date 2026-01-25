@@ -10,7 +10,7 @@
     "extension",
     "ui",
     "config-ui",
-    "shader-browser",
+    "shader-explorer",
     "electron"
   ],
   "scripts": {
@@ -19,11 +19,11 @@
     "build:extension": "npm run build:types && npm run build -w extension",
     "build:ui": "npm run build:types && npm run build -w ui",
     "build:config-ui": "npm run build:types && npm run build -w config-ui",
-    "build:shader-browser": "npm run build:types && npm run build -w shader-browser",
+    "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",
     "build:electron": "npm run build -w electron",
     "compile:extension": "npm run compile -w extension",
     "dev:ui": "npm run dev -w ui",
-    "dev:shader-browser": "npm run dev -w shader-browser",
+    "dev:shader-explorer": "npm run dev -w shader-explorer",
     "dev:config-ui": "npm run dev -w config-ui",
     "dev:electron": "npm run dev -w electron",
     "test": "npm run test --workspaces --if-present",
