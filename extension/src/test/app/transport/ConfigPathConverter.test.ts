@@ -222,4 +222,117 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.type, 'buffer');
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.name, 'BufferA');
     });
+
+    test('processConfigPaths processes video input paths correctly', () => {
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-video.mp4');
+        mockWebview.asWebviewUri.returns(mockUri);
+        
+        const originalMessage = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'video',
+                                path: '/absolute/path/to/video.mp4'
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        
+        const processedMessage = ConfigPathConverter.processConfigPaths(
+            originalMessage as any, 
+            mockWebview
+        );
+        
+        assert.strictEqual(processedMessage.type, 'shaderSource');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
+        
+        // Original should not be mutated
+        assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/video.mp4');
+    });
+
+    test('processConfigPaths processes mixed texture and video inputs', () => {
+        const mockTextureUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
+        const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+        
+        let callCount = 0;
+        mockWebview.asWebviewUri.callsFake(() => {
+            callCount++;
+            return callCount === 1 ? mockTextureUri : mockVideoUri;
+        });
+        
+        const message = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'texture',
+                                path: '/absolute/path/to/texture.png'
+                            },
+                            iChannel1: {
+                                type: 'video',
+                                path: '/absolute/path/to/video.mp4'
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
+        
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockTextureUri.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, mockVideoUri.toString());
+    });
+
+    test('processConfigPaths handles video input with additional properties', () => {
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+        mockWebview.asWebviewUri.returns(mockUri);
+        
+        const message = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'video',
+                                path: '/absolute/path/to/video.mp4',
+                                filter: 'linear',
+                                wrap: 'clamp',
+                                vflip: true
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        
+        const result = ConfigPathConverter.processConfigPaths(
+            message as any, 
+            mockWebview
+        );
+        
+        const input = (result.config.passes.Image.inputs as any).iChannel0;
+        assert.strictEqual(input.path, mockUri.toString());
+        assert.strictEqual(input.type, 'video');
+        assert.strictEqual(input.filter, 'linear');
+        assert.strictEqual(input.wrap, 'clamp');
+        assert.strictEqual(input.vflip, true);
+    });
 });

@@ -332,6 +332,71 @@ export class ShaderBrowserProvider {
             },
         );
 
-        return processedHtml;
+        // Inject or update CSP to allow loading from webview sources
+        const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
+        const cspMatch = processedHtml.match(cspPattern);
+        
+        console.log(`ShaderBrowserProvider: Webview CSP source: ${webview.cspSource}`);
+        
+        if (cspMatch) {
+            // Update existing CSP to include webview.cspSource
+            const existingCsp = cspMatch[1];
+            console.log(`ShaderBrowserProvider: Found existing CSP: ${existingCsp}`);
+            
+            // Use the actual webview.cspSource for scripts and styles
+            const scriptSrc = `script-src 'self' 'unsafe-inline' ${webview.cspSource}`;
+            const styleSrc = `style-src 'self' 'unsafe-inline' ${webview.cspSource}`;
+            const imgSrc = `img-src 'self' data: blob: ${webview.cspSource}`;
+            const mediaSrc = `media-src 'self' blob: ${webview.cspSource}`;
+            
+            let updatedCsp = existingCsp;
+            updatedCsp = updatedCsp.includes('script-src') 
+                ? updatedCsp.replace(/script-src[^;]*/, scriptSrc)
+                : `${updatedCsp}; ${scriptSrc}`;
+            updatedCsp = updatedCsp.includes('style-src') 
+                ? updatedCsp.replace(/style-src[^;]*/, styleSrc)
+                : `${updatedCsp}; ${styleSrc}`;
+            updatedCsp = updatedCsp.includes('img-src') 
+                ? updatedCsp.replace(/img-src[^;]*/, imgSrc)
+                : `${updatedCsp}; ${imgSrc}`;
+            updatedCsp = updatedCsp.includes('media-src') 
+                ? updatedCsp.replace(/media-src[^;]*/, mediaSrc)
+                : `${updatedCsp}; ${mediaSrc}`;
+            
+            const finalHtml = processedHtml.replace(
+                cspPattern,
+                `<meta http-equiv="Content-Security-Policy" content="${updatedCsp}">`
+            );
+            console.log(`ShaderBrowserProvider: Updated CSP to: ${updatedCsp}`);
+            this.logger.debug("Updated existing CSP for webview support");
+            return finalHtml;
+        } else {
+            // Add CSP inside <head> tag
+            const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' ${webview.cspSource}; style-src 'self' 'unsafe-inline' ${webview.cspSource}; img-src 'self' data: blob: ${webview.cspSource}; media-src 'self' blob: ${webview.cspSource}; font-src 'self'; connect-src 'self';">`;
+            
+            // Handle both <!doctype html> and <html> cases
+            const doctypeMatch = processedHtml.match(/<!doctype html>/i);
+            const htmlMatch = processedHtml.match(/<html[^>]*>/i);
+            
+            if (doctypeMatch && htmlMatch) {
+                // Insert after <head> tag
+                const headMatch = processedHtml.match(/<head[^>]*>/i);
+                if (headMatch) {
+                    const headIndex = processedHtml.indexOf(headMatch[0]);
+                    const afterHeadIndex = headIndex + headMatch[0].length;
+                    
+                    const finalHtml = processedHtml.slice(0, afterHeadIndex) + 
+                                   `\n    ${newCsp}` + 
+                                   processedHtml.slice(afterHeadIndex);
+                    
+                    console.log(`ShaderBrowserProvider: Added CSP after <head> tag`);
+                    return finalHtml;
+                }
+            }
+            
+            // Fallback: return original HTML if CSP injection fails
+            console.log(`ShaderBrowserProvider: Failed to inject CSP, using original`);
+            return processedHtml;
+        }
     }
 }

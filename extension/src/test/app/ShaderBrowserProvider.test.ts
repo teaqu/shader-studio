@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderBrowserProvider } from '../../app/ShaderBrowserProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
+import { Logger } from '../../app/services/Logger';
 
 suite('ShaderBrowserProvider Test Suite', () => {
     let provider: ShaderBrowserProvider;
@@ -14,6 +15,23 @@ suite('ShaderBrowserProvider Test Suite', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        
+        // Initialize Logger for tests with mock output channel
+        const mockOutputChannel = {
+            name: 'test',
+            append: sandbox.stub(),
+            appendLine: sandbox.stub(),
+            clear: sandbox.stub(),
+            show: sandbox.stub(),
+            hide: sandbox.stub(),
+            dispose: sandbox.stub(),
+            info: sandbox.stub(),
+            warn: sandbox.stub(),
+            error: sandbox.stub(),
+            debug: sandbox.stub(),
+            trace: sandbox.stub()
+        } as any;
+        Logger.initialize(mockOutputChannel);
         
         // Mock filesystem operations to prevent ThumbnailCache from creating real directories
         const fs = require('fs');

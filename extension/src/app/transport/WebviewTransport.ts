@@ -36,8 +36,8 @@ export class WebviewTransport implements MessageTransport {
         console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
         message = ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
         
-        // Handle video-specific logic for webview
-        this.handleVideoPaths(message);
+        // Handle video-specific localResourceRoots for webview
+        this.handleVideoResourceRoots(message);
         
         console.log(`WebviewTransport: ConfigPathConverter returned processed message`);
       } else {
@@ -67,11 +67,19 @@ export class WebviewTransport implements MessageTransport {
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
-  private handleVideoPaths(message: any): void {
+  private handleVideoResourceRoots(message: any): void {
     if (!message.config?.passes) {
       return;
     }
 
+    const firstPanel = this.panels.values().next().value;
+    if (!firstPanel?.webview) {
+      return;
+    }
+
+    // Store original paths before ConfigPathConverter processes them
+    const videoPaths: string[] = [];
+    
     for (const passName of Object.keys(message.config.passes)) {
       const pass = message.config.passes[passName];
       if (!pass?.inputs) {
@@ -81,37 +89,30 @@ export class WebviewTransport implements MessageTransport {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
         if (input?.path && input.type === "video") {
-          const firstPanel = this.panels.values().next().value;
-          
-          if (firstPanel?.webview) {
-            // Check if file exists first
-            const fs = require('fs');
-            if (!fs.existsSync(input.path)) {
-              console.error(`WebviewTransport: Video file does not exist: ${input.path}`);
-              continue;
-            }
-            
-            // Add video directory to localResourceRoots if needed
-            const videoDir = path.dirname(input.path);
-            const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
-            const videoDirUri = vscode.Uri.file(videoDir);
-            
-            const hasVideoDir = currentRoots.some((root: vscode.Uri) => 
-              root.fsPath === videoDirUri.fsPath
-            );
-            
-            if (!hasVideoDir) {
-              firstPanel.webview.options = {
-                ...firstPanel.webview.options,
-                localResourceRoots: [...currentRoots, videoDirUri]
-              };
-            }
-            
-            // Use webview URI for video
-            const webviewUri = firstPanel.webview.asWebviewUri(vscode.Uri.file(input.path)).toString();
-            input.path = webviewUri;
+          // If path is already a webview URI, we can't extract the original path easily
+          // So we'll skip localResourceRoots handling for webview URIs
+          if (!input.path.startsWith('vscode-webview://')) {
+            videoPaths.push(input.path);
           }
         }
+      }
+    }
+
+    // Add video directories to localResourceRoots
+    for (const videoPath of videoPaths) {
+      const videoDir = path.dirname(videoPath);
+      const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
+      const videoDirUri = vscode.Uri.file(videoDir);
+      
+      const hasVideoDir = currentRoots.some((root: vscode.Uri) => 
+        root.fsPath === videoDirUri.fsPath
+      );
+      
+      if (!hasVideoDir) {
+        firstPanel.webview.options = {
+          ...firstPanel.webview.options,
+          localResourceRoots: [...currentRoots, videoDirUri]
+        };
       }
     }
   }
