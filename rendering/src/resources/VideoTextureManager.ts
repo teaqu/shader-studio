@@ -224,18 +224,23 @@ export class VideoTextureManager {
 
   private getFilterFromOptions(filter?: string): any {
     switch (filter) {
-      case "linear": return this.renderer.FILTER.LINEAR;
-      case "nearest": return this.renderer.FILTER.NONE;
-      case "mipmap": 
-      default: return this.renderer.FILTER.MIPMAP;
+      case "linear":
+      default:
+        return this.renderer.FILTER.LINEAR;
+      case "nearest":
+        return this.renderer.FILTER.NONE;
+      case "mipmap":
+        return this.renderer.FILTER.MIPMAP;
     }
   }
 
   private getWrapFromOptions(wrap?: string): any {
     switch (wrap) {
-      case "clamp": return this.renderer.TEXWRP.CLAMP;
+      case "clamp":
+      default:
+        return this.renderer.TEXWRP.CLAMP;
       case "repeat":
-      default: return this.renderer.TEXWRP.REPEAT;
+        return this.renderer.TEXWRP.REPEAT;
     }
   }
 }

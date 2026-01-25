@@ -430,7 +430,7 @@ describe("VideoTextureManager", () => {
   });
 
   describe("filter options", () => {
-    it("should use MIPMAP filter by default", async () => {
+    it("should use LINEAR filter by default", async () => {
       const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
 
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
@@ -447,7 +447,7 @@ describe("VideoTextureManager", () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        mockRenderer.FILTER.MIPMAP,
+        mockRenderer.FILTER.LINEAR,
         expect.anything(),
         expect.anything()
       );
@@ -480,7 +480,7 @@ describe("VideoTextureManager", () => {
   });
 
   describe("wrap options", () => {
-    it("should use REPEAT wrap by default", async () => {
+    it("should use CLAMP wrap by default", async () => {
       const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
 
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
@@ -498,7 +498,7 @@ describe("VideoTextureManager", () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        mockRenderer.TEXWRP.REPEAT,
+        mockRenderer.TEXWRP.CLAMP,
         expect.anything()
       );
     });
