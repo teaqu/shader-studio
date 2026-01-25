@@ -1,14 +1,16 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import type { ShaderConfig } from "@shader-studio/types";
 import { ConfigPathConverter } from "./ConfigPathConverter";
+import type { ErrorHandler } from "../ErrorHandler";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
-  private errorHandler?: { handleError: (message: any) => void };
+  private errorHandler?: { handleError: (message: any) => void; handlePersistentError?: (message: any) => void };
   private panels: Set<vscode.WebviewPanel> = new Set();
 
-  public setErrorHandler(errorHandler: { handleError: (message: any) => void }): void {
+  public setErrorHandler(errorHandler: ErrorHandler): void {
     this.errorHandler = errorHandler;
   }
 
@@ -86,16 +88,81 @@ export class WebviewTransport implements MessageTransport {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
         if (input?.path && input.type === "video") {
-          // Videos need webserver - show error if not available
-          const errorMessage = `Webserver not running - cannot load video: ${input.path}. Please start the webserver using 'Shader Studio: Start Web Server' command`;
-          console.error(`WebviewTransport: ${errorMessage}`);
-          if (this.errorHandler) {
-            this.errorHandler.handleError({
-              type: 'error',
-              payload: [errorMessage]
-            });
+          // VS Code webviews have limited video format support
+          // Try webview URI first, fallback to web server for unsupported formats
+          const firstPanel = this.panels.values().next().value;
+          
+          if (firstPanel?.webview) {
+            // Check if file exists first
+            const fs = require('fs');
+            if (!fs.existsSync(input.path)) {
+              console.error(`WebviewTransport: Video file does not exist: ${input.path}`);
+              continue;
+            }
+            
+            // Check file extension for VS Code compatibility
+            const ext = path.extname(input.path).toLowerCase();
+            const supportedFormats = ['.mp4', '.webm']; // Basic check
+            const useWebServer = !supportedFormats.includes(ext);
+            
+            if (useWebServer) {
+              // Fallback to web server for unsupported formats
+              const config = vscode.workspace.getConfiguration('shader-studio');
+              const webServerPort = config.get<number>('webServerPort') || 3000;
+              const encodedPath = encodeURIComponent(input.path);
+              const httpUrl = `http://localhost:${webServerPort}/textures/${encodedPath}`;
+              
+              console.log(`WebviewTransport: Using web server for unsupported format (${ext}): ${httpUrl}`);
+              input.path = httpUrl;
+              
+              const warningMessage = `Video format ${ext} may not be supported in VS Code panels. Using web server instead. For best compatibility, use MP4 with H.264 video and MP3 audio.`;
+              console.warn(`WebviewTransport: ${warningMessage}`);
+              if (this.errorHandler) {
+                this.errorHandler.handleError({
+                  type: 'info',
+                  payload: [warningMessage]
+                });
+              }
+            } else {
+              // Try webview URI for supported formats
+              const videoDir = path.dirname(input.path);
+              const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
+              const videoDirUri = vscode.Uri.file(videoDir);
+              
+              console.log(`WebviewTransport: Video path: ${input.path}`);
+              console.log(`WebviewTransport: Video directory: ${videoDir}`);
+              console.log(`WebviewTransport: Video directory URI: ${videoDirUri.fsPath}`);
+              console.log(`WebviewTransport: Current localResourceRoots:`, currentRoots.map(r => r.fsPath));
+              
+              const hasVideoDir = currentRoots.some((root: vscode.Uri) => 
+                root.fsPath === videoDirUri.fsPath
+              );
+              
+              if (!hasVideoDir) {
+                firstPanel.webview.options = {
+                  ...firstPanel.webview.options,
+                  localResourceRoots: [...currentRoots, videoDirUri]
+                };
+                console.log(`WebviewTransport: Added video directory to localResourceRoots: ${videoDir}`);
+                console.log(`WebviewTransport: Updated localResourceRoots:`, firstPanel.webview.options.localResourceRoots?.map(r => r.fsPath) ?? []);
+              }
+              
+              // Use webview URI for video
+              const webviewUri = firstPanel.webview.asWebviewUri(vscode.Uri.file(input.path)).toString();
+              console.log(`WebviewTransport: Using webview URI for video: ${webviewUri}`);
+              input.path = webviewUri;
+              
+              // Add error handling for VS Code video limitations
+              const errorMessage = `Video may not load in VS Code panel due to format restrictions. For better video support, try opening Shader Studio in it's own window or browser. VS Code supports MP4 (H.264 video + MP3 audio) and WebM (VP8 video + supported audio).`;
+              console.warn(`WebviewTransport: ${errorMessage}`);
+              if (this.errorHandler) {
+                this.errorHandler.handlePersistentError?.({
+                  type: 'error',
+                  payload: [errorMessage]
+                });
+              }
+            }
           }
-          // Note: We leave the path as-is (webview URI) which will fail, but the error message is clear
         }
       }
     }
