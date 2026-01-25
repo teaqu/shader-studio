@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, ErrorMessage, WarningMessage } from "@shader-studio/types";
 import { ConfigPathConverter } from "./ConfigPathConverter";
 import type { ErrorHandler } from "../ErrorHandler";
 
@@ -157,7 +157,7 @@ export class WebviewTransport implements MessageTransport {
               console.warn(`WebviewTransport: ${errorMessage}`);
               if (this.errorHandler) {
                 this.errorHandler.handlePersistentError?.({
-                  type: 'error',
+                  type: 'warning',
                   payload: [errorMessage]
                 });
               }
