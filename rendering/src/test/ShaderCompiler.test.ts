@@ -260,7 +260,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       // Count lines in the header (everything before user code)
       const lines = commonCode.trim().split('\n');
       const expectedAdditionalLines = lines.length;
-      const baseHeaderLines = 15; // Standard uniforms + precision + out + define
+      const baseHeaderLines = 16; // Standard uniforms + precision + out + define + 1 new line separator
 
       expect(headerLineCount).toBe(baseHeaderLines + expectedAdditionalLines);
     });
@@ -446,5 +446,27 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(mockRenderer.CreateShader).toHaveBeenCalledTimes(1);
       expect(result).toBe(mockShader);
     });
-  });
-});
+
+    it("should ensure newline separation between common buffer and main shader to fix #define concatenation bug", () => {
+      const mockShader = createMockShader();
+      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
+
+      // Common buffer that ends without newline
+      const commonCode = "vec3 commonHelper() { return vec3(1.0); }"; // No trailing newline
+      // Main shader that starts with #define
+      const code = "#define MY_DEFINE 1.0\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  fragColor = vec4(MY_DEFINE);\n}";
+
+      const result = shaderCompiler.compileShader(code, commonCode);
+
+      expect(result).toBe(mockShader);
+      expect(mockRenderer.CreateShader).toHaveBeenCalledTimes(1);
+
+      const [vs, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
+
+      // Verify that common code and #define are properly separated
+      expect(fs).toContain("vec3 commonHelper() { return vec3(1.0); }\n#define MY_DEFINE 1.0");
+      // Ensure they are not concatenated without newline
+      expect(fs).not.toContain("}#define");
+    });
+   });
+ });
