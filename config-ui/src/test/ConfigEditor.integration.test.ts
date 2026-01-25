@@ -9,6 +9,7 @@ import type { ShaderConfig } from '../lib/types/ShaderConfig';
 import simpleConfig from './fixtures/simple-config.json';
 import complexConfig from './fixtures/complex-config.json';
 import minimalConfig from './fixtures/minimal-config.json';
+import commonBufferConfig from './fixtures/common-buffer-config.json';
 
 describe('ConfigEditor Integration Tests', () => {
   const user = userEvent.setup();
@@ -373,6 +374,322 @@ describe('ConfigEditor Integration Tests', () => {
           })
         );
       });
+    });
+  });
+});
+
+describe('CommonBuffer Tests', () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should display Common tab when common buffer is present in config', async () => {
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(commonBufferConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
+    });
+
+    // Verify tab order: Image -> Common -> BufferA
+    const tabButtons = screen.getAllByRole('button').filter(btn =>
+      btn.className.includes('tab-button')
+    );
+    expect(tabButtons[0]).toHaveTextContent('Image');
+    expect(tabButtons[1]).toHaveTextContent('Common');
+    expect(tabButtons[2]).toHaveTextContent('BufferA');
+    expect(tabButtons.length).toBe(3); // Image, Common, and BufferA
+  });
+
+  it('should show input channels for regular buffers but not for Common', async () => {
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(commonBufferConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
+    });
+
+    // Check Common tab has no input channels
+    await user.click(screen.getByRole('button', { name: 'Common' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Input Channels')).not.toBeInTheDocument();
+    });
+
+    // Check BufferA tab has input channels
+    await user.click(screen.getByRole('button', { name: 'BufferA' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'BufferA' })).toHaveClass('active');
+    });
+
+    // BufferA should have input channels section since it's a regular buffer
+    expect(screen.getByText('Input Channels')).toBeInTheDocument();
+  });
+
+  it('should handle removing and adding Common buffer', async () => {
+    const mockPostMessage = vi.fn();
+    (global as any).acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mockPostMessage,
+      getState: vi.fn(),
+      setState: vi.fn()
+    }));
+
+    render(ConfigEditor);
+
+    // Start with minimal config (no common buffer)
+    const minimalConfig = {
+      version: "1.0",
+      passes: {
+        Image: {
+          inputs: {}
+        }
+      }
+    };
+
+    simulateVSCodeMessage(createMockConfig(minimalConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+      // Common should not be a tab button yet, only in dropdown
+      const tabButtons = screen.getAllByRole('button').filter(btn =>
+        btn.className.includes('tab-button')
+      );
+      const commonTab = tabButtons.find(btn => btn.textContent?.trim() === 'Common');
+      expect(commonTab).not.toBeDefined();
+    });
+
+    // Click add buffer button
+    await user.click(screen.getByRole('button', { name: '+' }));
+
+    // Click Common option
+    await user.click(screen.getByText('Common'));
+
+    // Verify Common tab now appears
+    await waitFor(() => {
+      const tabButtons = screen.getAllByRole('button').filter(btn =>
+        btn.className.includes('tab-button')
+      );
+      const commonTab = tabButtons.find(btn => btn.textContent?.trim() === 'Common');
+      expect(commonTab).toBeInTheDocument();
+    });
+
+    // Verify the config was updated with common buffer
+    await waitFor(() => {
+      expect(mockPostMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'updateConfig',
+          text: expect.stringContaining('"common"')
+        })
+      );
+    });
+  });
+
+  it('should show remove button for Common buffer tab', async () => {
+    const mockPostMessage = vi.fn();
+    (global as any).acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mockPostMessage,
+      getState: vi.fn(),
+      setState: vi.fn()
+    }));
+
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(commonBufferConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
+    });
+
+    // Check that Common tab has a remove button
+    const commonTabWrapper = screen.getByRole('button', { name: 'Common' }).closest('.tab-wrapper');
+    const removeButtons = commonTabWrapper?.querySelectorAll('.remove-tab-btn');
+    expect(removeButtons?.length || 0).toBe(1);
+
+    // Click the remove button for Common
+    const commonRemoveButton = removeButtons?.[0];
+    if (commonRemoveButton) {
+      await user.click(commonRemoveButton);
+    }
+
+    // Verify Common was removed from config
+    await waitFor(() => {
+      expect(mockPostMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'updateConfig',
+          text: expect.stringContaining('"passes":')
+        })
+      );
+    });
+
+    // Check that Common tab is no longer present
+    const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+    const configText = lastCall[0].text;
+    expect(configText).not.toContain('"common":');
+  });
+
+  it('should not allow common as buffer source in input channels', async () => {
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(commonBufferConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+    });
+
+    // Switch to Image tab to see input channels
+    await user.click(screen.getByRole('button', { name: 'Image' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Input Channels')).toBeInTheDocument();
+    });
+
+    // Add a buffer input channel
+    await user.click(screen.getByText('+ Add Channel'));
+    await user.click(screen.getByText('iChannel1'));
+
+    // Set type to buffer for iChannel1
+    const typeSelect = document.getElementById('type-iChannel1') as HTMLSelectElement;
+    await user.selectOptions(typeSelect, 'buffer');
+
+    // Verify that 'common' is NOT in the source options for iChannel1
+    const sourceSelect = document.getElementById('source-iChannel1') as HTMLSelectElement;
+    const sourceOptions = Array.from(sourceSelect.options).map(option => option.value);
+    expect(sourceOptions).not.toContain('common');
+    expect(sourceOptions).toEqual(['', 'BufferA', 'BufferB', 'BufferC', 'BufferD']);
+  });
+
+  it('should validate common buffer configuration structure', async () => {
+    const mockPostMessage = vi.fn();
+    (global as any).acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mockPostMessage,
+      getState: vi.fn(),
+      setState: vi.fn()
+    }));
+
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(commonBufferConfig as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
+    });
+
+    // Switch to Common tab
+    await user.click(screen.getByRole('button', { name: 'Common' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Common' })).toHaveClass('active');
+    });
+
+    // Verify path input is present and has correct value
+    const pathInput = screen.getByLabelText(/Path/) as HTMLInputElement;
+    expect(pathInput).toBeInTheDocument();
+    expect(pathInput.value).toBe('./common.glsl');
+
+    // Update path and verify it updates the config
+    await user.clear(pathInput);
+    await user.type(pathInput, './shared/common.glsl');
+
+    await waitFor(() => {
+      expect(pathInput.value).toBe('./shared/common.glsl');
+    });
+
+    // Verify the config was updated
+    await waitFor(() => {
+      const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
+      const configText = lastCall[0].text;
+      expect(configText).toContain('./shared/common.glsl');
+      expect(configText).toContain('"common":');
+      expect(configText).not.toContain('"common": {\n      "path": "./shared/common.glsl",\n      "inputs":'); // Common should have no inputs property
+    });
+  });
+
+  it('should validate common buffer JSON schema compliance', async () => {
+    // Test that common buffer config is valid according to JSON schema
+    const validCommonConfig = {
+      version: "1.0",
+      passes: {
+        Image: {
+          inputs: {
+            "iChannel0": {
+              "type": "buffer",
+              "source": "BufferA"
+            }
+          }
+        },
+        "common": {
+          "path": "./common.glsl"
+        },
+        "BufferA": {
+          "path": "./buffers/buffer_a.glsl",
+          "inputs": {
+            "iChannel0": {
+              "type": "buffer",
+              "source": "BufferA"
+            }
+          }
+        }
+      }
+    };
+
+    // This should not throw any validation errors when loading the config
+    expect(() => {
+      render(ConfigEditor);
+      simulateVSCodeMessage(createMockConfig(validCommonConfig as ShaderConfig));
+    }).not.toThrow();
+
+    // Verify the config loads successfully and tabs are created
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'BufferA' })).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Since Common tab is no longer present, verify BufferA tab works instead
+    const bufferATab = screen.getByRole('button', { name: 'BufferA' });
+    await user.click(bufferATab);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Input Channels')).toBeInTheDocument();
+    });
+  });
+
+  it('should handle config with invalid common buffer and Image', async () => {
+    const configWithInvalidCommon = {
+      version: "1.0",
+      passes: {
+        Image: {
+          inputs: {
+            "iChannel0": {
+              "type": "texture",
+              "path": "./test.png"
+            }
+          }
+        },
+        "common": {
+          "path": "./common.glsl"
+        }
+      }
+    };
+
+    render(ConfigEditor);
+
+    simulateVSCodeMessage(createMockConfig(configWithInvalidCommon as ShaderConfig));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Common' })).toBeInTheDocument();
     });
   });
 });

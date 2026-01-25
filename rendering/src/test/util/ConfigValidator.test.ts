@@ -234,6 +234,26 @@ describe("ConfigValidator", () => {
           expect(result.isValid).toBe(false);
           expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
         });
+
+        it("should reject buffer input with 'common' as source", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'buffer',
+                    source: 'common'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
       });
 
       describe("texture input validation", () => {

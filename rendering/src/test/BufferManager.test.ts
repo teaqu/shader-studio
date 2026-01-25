@@ -196,6 +196,22 @@ describe('BufferManager', () => {
       expect(passBuffers.BufferA).toBeTruthy();
       expect(passBuffers.BufferA?.front?.mTex0?.mXres).toBe(800);
     });
+
+    it('should skip common pass during resize', () => {
+      const commonBuffer = bufferManager.createPingPongBuffers(400, 300);
+      bufferManager.setPassBuffers({ 
+        common: commonBuffer,
+        BufferA: bufferManager.createPingPongBuffers(400, 300)
+      });
+
+      bufferManager.resizeBuffers(800, 600);
+
+      const passBuffers = bufferManager.getPassBuffers();
+      // common pass should be skipped (removed), only BufferA should be resized
+      expect(passBuffers.BufferA).toBeTruthy();
+      expect(passBuffers.BufferA?.front?.mTex0?.mXres).toBe(800);
+      expect(passBuffers.common).toBeUndefined(); // common should be removed
+    });
   });
 
   describe('Memory Management', () => {

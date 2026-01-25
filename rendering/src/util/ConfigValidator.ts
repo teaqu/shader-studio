@@ -102,7 +102,9 @@ export class ConfigValidator {
 
   private static validateBufferInput(input: any): boolean {
     const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-    return input.source && validSources.includes(input.source);
+    return input.source && 
+           validSources.includes(input.source) && 
+           input.source !== 'common'; // Explicitly reject "common" as a source
   }
 
   private static validateTextureInput(input: any): boolean {

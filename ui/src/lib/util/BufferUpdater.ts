@@ -61,13 +61,7 @@ export class BufferUpdater {
           
           this.renderEngine.startRenderLoop();
           
-          // Clear any previous compilation errors
-          const clearErrorMessage: ErrorMessage = {
-            type: "error",
-            payload: [],
-          };
-          this.transport.postMessage(clearErrorMessage);
-          
+          // Send success message - this will clear previous errors
           const logMessage: LogMessage = {
             type: "log",
             payload: [`Buffer '${bufferName}' updated and pipeline recompiled`],

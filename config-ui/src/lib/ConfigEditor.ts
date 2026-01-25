@@ -1,4 +1,4 @@
-import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
+import type { ShaderConfig, BufferPass, ImagePass } from './types/ShaderConfig';
 
 export class ConfigEditor {
     private config: ShaderConfig | null = null;
@@ -76,6 +76,23 @@ export class ConfigEditor {
             this.setError(errorMessage);
             this.setConfig(null);
         }
+    }
+
+    /**
+     * Get the next available buffer name (BufferA, BufferB, etc.)
+     */
+    getNextBufferName(): string | null {
+        if (!this.config) return null;
+
+        const bufferOrder = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
+        
+        for (const bufferName of bufferOrder) {
+            if (!this.config.passes[bufferName as keyof typeof this.config.passes]) {
+                return bufferName;
+            }
+        }
+        
+        return null; // All buffers are already used
     }
 
     /**
@@ -214,25 +231,31 @@ export class ConfigEditor {
     }
 
     /**
-     * Get the next available buffer name
+     * Add a common buffer pass to the configuration
      */
-    getNextBufferName(): string | null {
-        if (!this.config) return 'BufferA';
-
-        const buffers = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-        return buffers.find(buffer => !this.config!.passes[buffer as keyof typeof this.config.passes]) || null;
+    public addCommonBuffer(): boolean {
+        if (!this.config || !this.config.passes.common) {
+            if (!this.config) return false;
+            
+            this.config.passes.common = {
+                path: "common.glsl"
+                // No inputs for common buffer
+            };
+            
+            // Trigger UI update
+            this.updateConfig(this.config);
+            return true;
+        }
+        return false; // Already exists
     }
 
-    /**
-     * Get list of configured buffers
-     */
     getBufferList(): string[] {
         if (!this.config) {
             console.log('getBufferList: no config available');
             return [];
         }
         console.log('getBufferList: config is:', this.config);
-        const result = ['BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
+        const result = ['common', 'BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
             buffer => {
                 const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
                 console.log(`getBufferList: ${buffer} exists?`, exists);

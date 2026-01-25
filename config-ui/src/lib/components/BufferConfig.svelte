@@ -168,6 +168,7 @@
       </div>
     {/if}
 
+    {#if bufferName !== "common"}
     <div class="config-item">
       <div class="section-header">
         <h3>Input Channels</h3>
@@ -234,6 +235,7 @@
                       class="input-select"
                       required
                     >
+                      <option value="">None</option>
                       <option value="BufferA">BufferA</option>
                       <option value="BufferB">BufferB</option>
                       <option value="BufferC">BufferC</option>
@@ -248,13 +250,11 @@
                     <input
                       id="path-{channelName}"
                       type="text"
-                      value={input.path}
+                      value={input.path || ""}
                       on:input={(e) => updateInputPath(channelName, e)}
+                      placeholder="Path to texture file"
                       class="input-text"
-                      placeholder="e.g., ./texture.png, @/assets/tex.png, or C:\path\to\tex.png"
-                      required
                     />
-                    <span class="input-note">Relative, absolute, or @/ for workspace root</span>
                   </div>
 
                   <div class="input-group">
@@ -321,6 +321,7 @@
         {/if}
       </div>
     </div>
+    {/if}
   </div>
 </div>
 

@@ -1,16 +1,14 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as fs from "fs";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import { Constants } from "./Constants";
 import { isGlslDocument } from "./GlslFileTracker";
-import { PathResolver } from "./PathResolver";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
   private logger = Logger.getInstance();
+  private activeShaders: Set<string> = new Set(); // Track currently active shader paths
 
   constructor(private messenger: Messenger) { }
 
@@ -26,16 +24,23 @@ export class ShaderProvider {
     }
 
     const code = editor.document.getText();
+    const shaderPath = editor.document.uri.fsPath;
 
-    // Ignore GLSL files that do not contain mainImage
+    // Check if this file is a common buffer (referenced as common in any config)
+    // This check should happen BEFORE the mainImage check
+    if (this.isCommonBufferFile(shaderPath)) {
+      this.logger.debug(`common buffer file updated: ${shaderPath}. Updating previewed shaders that use it...`);
+      this.updatePreviewedShadersUsingCommonBuffer(shaderPath);
+      return;
+    }
+
+    // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
       vscode.window.showWarningMessage(
         "GLSL file ignored: missing mainImage function.",
       );
       return;
     }
-
-    const shaderPath = editor.document.uri.fsPath;
 
     // Collect buffer contents
     const buffers: Record<string, string> = {};
@@ -59,6 +64,9 @@ export class ShaderProvider {
 
     this.messenger.send(message);
     this.logger.debug("Shader message sent to webview");
+
+    // Track this shader as active
+    this.activeShaders.add(shaderPath);
   }
 
   public async sendShaderFromPath(shaderPath: string): Promise<void> {
@@ -105,6 +113,76 @@ export class ShaderProvider {
       this.logger.debug("Shader message sent to webview");
     } catch {
       return;
+    }
+  }
+
+  /**
+   * Remove a shader from the active tracking set
+   */
+  public removeActiveShader(shaderPath: string): void {
+    this.activeShaders.delete(shaderPath);
+  }
+
+  /**
+   * Check if the given file path is used as a common buffer in any currently active shader config
+   */
+  private isCommonBufferFile(shaderPath: string): boolean {
+    try {
+      // Check only currently active shaders
+      for (const activeShaderPath of this.activeShaders) {
+        const config = ShaderConfigProcessor.loadAndProcessConfig(activeShaderPath, {});
+        
+        // Check both "common" and "CommonBuffer" keys for backward compatibility
+        if (config?.passes?.common?.path === shaderPath) {
+          return true;
+        }
+      }
+    } catch (e) {
+      this.logger.warn('Failed to check for common buffer usage in active shaders');
+    }
+
+    return false;
+  }
+
+  /**
+   * Update only the currently active shaders that use the given common buffer
+   */
+  private updatePreviewedShadersUsingCommonBuffer(commonBufferPath: string): void {
+    for (const activeShaderPath of this.activeShaders) {
+      try {
+        const config = ShaderConfigProcessor.loadAndProcessConfig(activeShaderPath, {});
+        // Check if this active shader uses the commonBufferPath as common
+        if (config?.passes?.common?.path === commonBufferPath) {
+          // Collect buffer contents (including the updated common buffer)
+          const buffers: Record<string, string> = {};
+          ShaderConfigProcessor.processConfig(config, activeShaderPath, buffers);
+
+          // Read the main shader file directly to ensure we have the correct Image code
+          let imageCode = "";
+          try {
+            // For Image pass, the code is the main shader file itself
+            // Read the active shader file directly
+            const fs = require('fs');
+            imageCode = fs.readFileSync(activeShaderPath, 'utf8');
+          } catch (e) {
+            this.logger.warn(`Failed to read Image shader for ${activeShaderPath}: ${e}`);
+            imageCode = buffers.Image || "";
+          }
+
+          const message: ShaderSourceMessage = {
+            type: "shaderSource",
+            code: imageCode,
+            config,
+            path: activeShaderPath,
+            buffers,
+          };
+
+          this.messenger.send(message);
+          this.logger.debug(`Updated active shader: ${activeShaderPath}`);
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to update active shader using common buffer: ${activeShaderPath}`);
+      }
     }
   }
 }

@@ -220,6 +220,50 @@ it("should always inject all channel samplers regardless of user declarations (L
       // Verify the exact sequence of key elements with proper spacing
       expect(normalized).toMatch(/precision highp float;\s*out vec4 fragColor;\s*#define HW_PERFORMANCE 1\s*uniform vec3 iResolution;\s*uniform float iTime;\s*uniform float iTimeDelta;\s*uniform float iFrameRate;\s*uniform sampler2D iChannel0;\s*uniform sampler2D iChannel1;\s*uniform sampler2D iChannel2;\s*uniform sampler2D iChannel3;\s*uniform vec4 iMouse;\s*uniform int iFrame;\s*uniform vec4 iDate;\s*void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{\}\s*void main\(\) \{\s*mainImage\(fragColor, gl_FragCoord\.xy\);\s*\}/);
     });
+
+    it("should prepend common code to shader when provided", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const commonCode = "vec3 helperFunction() { return vec3(0.5); }\n#define COMMON_CONST 42.0\n";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, commonCode);
+
+      // Common code should appear after standard uniforms but before user code
+      const commonIndex = wrappedCode.indexOf("vec3 helperFunction()");
+      const mainImageIndex = wrappedCode.indexOf("void mainImage");
+
+      expect(commonIndex).toBeGreaterThan(wrappedCode.indexOf("uniform vec4 iDate;"));
+      expect(commonIndex).toBeLessThan(mainImageIndex);
+      expect(wrappedCode).toContain("vec3 helperFunction() { return vec3(0.5); }");
+      expect(wrappedCode).toContain("#define COMMON_CONST 42.0");
+    });
+
+    it("should handle empty common code gracefully", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode: wrappedWithEmpty } = shaderCompiler.wrapShaderToyCode(code, "");
+      const { wrappedCode: wrappedWithout } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedWithEmpty).toBe(wrappedWithout);
+    });
+
+    it("should handle undefined common code gracefully", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode: wrappedWithUndefined } = shaderCompiler.wrapShaderToyCode(code, undefined);
+      const { wrappedCode: wrappedWithout } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedWithUndefined).toBe(wrappedWithout);
+    });
+
+    it("should correctly calculate header line count with common code", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const commonCode = "vec3 helperFunction() { return vec3(0.5); }\n#define COMMON_CONST 42.0\n";
+      const { headerLineCount } = shaderCompiler.wrapShaderToyCode(code, commonCode);
+
+      // Count lines in the header (everything before user code)
+      const lines = commonCode.trim().split('\n');
+      const expectedAdditionalLines = lines.length;
+      const baseHeaderLines = 15; // Standard uniforms + precision + out + define
+
+      expect(headerLineCount).toBe(baseHeaderLines + expectedAdditionalLines);
+    });
   });
 
   describe("compileShader", () => {
@@ -376,6 +420,31 @@ it("should always inject all channel samplers regardless of user declarations (L
       
       // Verify fragment shader has all required components in right order
       expect(capturedFs).toMatch(/precision highp float;[\s\S]*out vec4 fragColor;[\s\S]*#define HW_PERFORMANCE 1[\s\S]*uniform vec3 iResolution;[\s\S]*void main\(\) \{[\s\S]*mainImage\(fragColor, gl_FragCoord\.xy\);[\s\S]*\}/);
+    });
+
+    it("should pass common code to wrapShaderToyCode when compiling", () => {
+      const mockShader = createMockShader();
+      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
+
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const commonCode = "vec3 helper() { return vec3(1.0); }";
+      const result = shaderCompiler.compileShader(code, commonCode);
+
+      expect(mockRenderer.CreateShader).toHaveBeenCalledTimes(1);
+      const [vs, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
+      expect(fs).toContain("vec3 helper() { return vec3(1.0); }");
+      expect(result).toBe(mockShader);
+    });
+
+    it("should handle undefined common code in compileShader", () => {
+      const mockShader = createMockShader();
+      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
+
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const result = shaderCompiler.compileShader(code, undefined);
+
+      expect(mockRenderer.CreateShader).toHaveBeenCalledTimes(1);
+      expect(result).toBe(mockShader);
     });
   });
 });

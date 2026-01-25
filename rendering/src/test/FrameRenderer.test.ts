@@ -376,6 +376,44 @@ describe("FrameRenderer", () => {
         })
       );
     });
+
+    it("should skip rendering common pass", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockPasses = [
+        { name: "BufferA", shaderSrc: "buffer shader", inputs: {} },
+        { name: "common", shaderSrc: "common shader", inputs: {} },
+        { name: "Image", shaderSrc: "image shader", inputs: {} }
+      ];
+      const mockPassShaders = {
+        "BufferA": { mProgram: {}, mResult: true },
+        "common": { mProgram: {}, mResult: true },
+        "Image": { mProgram: {}, mResult: true }
+      };
+      const mockPassBuffers = {
+        "BufferA": {
+          front: { mTex0: {} },
+          back: { mTex0: {} }
+        }
+      };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+      mockBufferManager.getPassBuffers.mockReturnValue(mockPassBuffers);
+
+      frameRenderer.render(1000);
+
+      // Should render BufferA and Image, but skip common
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(2);
+      // Verify that renderPass was called for BufferA and Image, but not common
+      const renderPassCalls = vi.mocked(mockPassRenderer.renderPass).mock.calls;
+      const renderedPassNames = renderPassCalls.map(call => call[0].name);
+      expect(renderedPassNames).toContain("BufferA");
+      expect(renderedPassNames).toContain("Image");
+      expect(renderedPassNames).not.toContain("common");
+    });
   });
 
   describe("VS Code Webview Multi-Panel Fix", () => {

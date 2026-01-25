@@ -120,17 +120,28 @@ export class ShaderPipeline {
       return;
     }
 
-    this.passes = passNames.map(passName => {
-      const pass = config?.passes?.[passName as keyof typeof config.passes];
-      const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
+    this.passes = passNames
+      .map(passName => {
+        const pass = config?.passes?.[passName as keyof typeof config.passes];
+        const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
-      return {
-        name: passName,
-        shaderSrc,
-        inputs: pass?.inputs ?? {},
-        path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
-      };
-    });
+        // Skip common buffer if there's no meaningful content
+        if (passName === "common") {
+          // Check if common buffer has actual GLSL functions/code, not just comments/whitespace
+          const meaningfulContent = shaderSrc.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').trim();
+          if (!meaningfulContent) {
+            return null;
+          }
+        }
+
+        return {
+          name: passName,
+          shaderSrc,
+          inputs: pass?.inputs ?? {},
+          path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
+        };
+      })
+      .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
   }
 
   private async compileShaders(): Promise<CompilationResult> {
@@ -140,10 +151,18 @@ export class ShaderPipeline {
     const newPassShaders: Record<string, PiShader> = {};
     const newPassBuffers: Record<string, any> = {};
 
+    // Extract common code if it exists
+    const commonBufferPass = this.passes.find(pass => pass.name === "common");
+    const commonCode = commonBufferPass?.shaderSrc || "";
+
     for (const pass of this.passes) {
+      // Skip common as it's not a render target and doesn't need mainImage
+      if (pass.name === "common") {
+        continue;
+      }
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc);
+        .wrapShaderToyCode(pass.shaderSrc, commonCode);
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode);
 
       if (!shader || !shader.mResult) {
         const err = shader ? ShaderErrorFormatter.formatShaderError(
@@ -163,7 +182,7 @@ export class ShaderPipeline {
       newPassShaders[pass.name] = shader;
       this.passShaders[pass.name] = shader;
 
-      if (pass.name !== "Image") {
+      if (pass.name !== "Image" && pass.name !== "common") {
         if (oldPassBuffers[pass.name]) {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];

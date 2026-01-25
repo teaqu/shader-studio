@@ -80,7 +80,7 @@ describe('BufferUpdater', () => {
         expect(mockRenderEngine.startRenderLoop).toHaveBeenCalled();
       });
       
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'error', payload: [] });
+      // Should send success message to clear previous errors
       expect(mockTransport.postMessage).toHaveBeenCalledWith({ 
         type: 'log', 
         payload: ['Buffer \'BufferA\' updated and pipeline recompiled'] 

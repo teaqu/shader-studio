@@ -32,6 +32,7 @@ export interface ShaderPasses {
     BufferB?: BufferPass;
     BufferC?: BufferPass;
     BufferD?: BufferPass;
+    common?: BufferPass;
 }
 
 export interface ShaderConfig {

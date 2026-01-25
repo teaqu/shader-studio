@@ -24,6 +24,9 @@
         "Image": {
           "$ref": "#/definitions/ImagePass"
         },
+        "common": {
+          "$ref": "#/definitions/BufferPass"
+        },
         "BufferA": {
           "$ref": "#/definitions/BufferPass"
         },
@@ -96,7 +99,7 @@
             },
             "source": {
               "type": "string",
-              "enum": ["BufferA", "BufferB", "BufferC", "BufferD"],
+              "enum": ["common", "BufferA", "BufferB", "BufferC", "BufferD"],
               "description": "Source buffer name"
             }
           },

@@ -5,7 +5,7 @@ import type {
   ErrorMessage,
   LogMessage,
   RefreshMessage,
-  ShaderSourceMessage,
+  ShaderSourceMessage
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
 
@@ -45,11 +45,20 @@ export class MessageHandler {
 
       if (this.shaderLocker.isLocked()) {
         const lockedPath = this.shaderLocker.getLockedShaderPath();
+        
         if (lockedPath === undefined || lockedPath !== path) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
             return;
           }
+          
+          // Check if this is a common buffer file update
+          if (this.isCommonBufferFile(path)) {
+            // For common buffer files, we need special handling since they don't have mainImage
+            this.handleCommonBufferUpdate(path, buffers, code);
+            return;
+          }
+          
           const bufferUpdateResult = this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
           return;
@@ -69,6 +78,79 @@ export class MessageHandler {
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
     return Object.keys(buffers).length > 0 || !!code;
+  }
+
+  private isCommonBufferFile(filePath: string): boolean {
+    // Check if the file path indicates this is a common buffer file
+    const filename = filePath.split(/[\\/]/).pop();
+    
+    if (!filename) {
+      return false;
+    }
+    
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    const isCommon = nameWithoutExt.toLowerCase() === 'common';
+    
+    // Also check if the path contains 'common' as a fallback
+    const pathContainsCommon = filePath.toLowerCase().includes('common');
+    
+    return isCommon || pathContainsCommon;
+  }
+
+  private handleCommonBufferUpdate(path: string, buffers: Record<string, string>, code: string): void {
+    // For common buffer updates when shader is locked, we need to refresh the locked shader
+    // to pick up the new common buffer content, not update the common buffer directly
+    try {
+      const lockedPath = this.shaderLocker.getLockedShaderPath();
+      if (lockedPath) {
+        // Request a refresh of the locked shader to pick up the new common buffer content
+        this.refresh(lockedPath);
+        return;
+      }
+      
+      // If no locked shader, fall back to direct common buffer update
+      this.renderEngine.stopRenderLoop();
+      
+      this.renderEngine.updateBufferAndRecompile('common', code)
+        .then(result => {
+          if (!result?.success) {
+            const errorMessage: ErrorMessage = {
+              type: "error",
+              payload: [result?.error || "Unknown compilation error"],
+            };
+            this.transport.postMessage(errorMessage);
+            return;
+          }
+          
+          this.renderEngine.startRenderLoop();
+          
+          // Send success message to clear previous errors
+          const logMessage: LogMessage = {
+            type: "log",
+            payload: [`Common buffer updated and pipeline recompiled`],
+          };
+          this.transport.postMessage(logMessage);
+        })
+        .catch(err => {
+          console.error("MessageHandler: Error in handleCommonBufferUpdate:", err);
+          
+          // Try to send error message, but don't throw if this fails too
+          try {
+            const errorMessage: ErrorMessage = {
+              type: "error",
+              payload: [`Common buffer update error: ${err}`],
+            };
+            this.transport.postMessage(errorMessage);
+          } catch (transportErr) {
+            console.error(
+              "MessageHandler: Failed to send error message:",
+              transportErr,
+            );
+          }
+        });
+    } catch (err) {
+      console.error("MessageHandler: Fatal error in handleCommonBufferUpdate:", err);
+    }
   }
 
   private processMainShaderCompilation(
@@ -112,14 +194,7 @@ export class MessageHandler {
   }
 
   private sendSuccessMessages(): void {
-    // Clear any previous compilation errors
-    const clearErrorMessage: ErrorMessage = {
-      type: "error",
-      payload: [],
-    };
-    this.transport.postMessage(clearErrorMessage);
-
-    // Send success log message
+    // Send success log message - this will clear previous errors
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
@@ -150,6 +225,19 @@ export class MessageHandler {
         transportErr,
       );
     }
+  }
+
+  public clearErrors(): void {
+    // Send a success message to clear any previous errors
+    const logMessage: LogMessage = {
+      type: "log",
+      payload: ["Shader compiled and linked"],
+    };
+    this.transport.postMessage(logMessage);
+  }
+
+  public sendSuccessMessage(): void {
+    this.sendSuccessMessages();
   }
 
   public reset(onReset?: () => void): void {

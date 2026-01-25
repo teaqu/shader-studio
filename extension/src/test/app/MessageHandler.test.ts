@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
-import { ShowConfigMessage, GenerateConfigMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -136,5 +136,51 @@ suite('MessageHandler Test Suite', () => {
     // Verify it requested config generation without URI
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledWith(executeCommandStub, 'shader-studio.generateConfigFromUI');
+  });
+
+  test('should clear errors when shader compilation succeeds', () => {
+    // Set up current shader config
+    const shaderSourceEvent: ShaderSourceMessage = {
+      type: 'shaderSource',
+      code: 'test code',
+      config: { passes: { BufferA: { path: './buffer.glsl' } } },
+      path: '/test/shader.glsl',
+      buffers: {}
+    };
+    messageHandler.handleMessage(shaderSourceEvent);
+
+    // Send shader compilation success message
+    const successEvent: LogMessage = {
+      type: 'log',
+      payload: ['Shader compiled and linked']
+    };
+    messageHandler.handleMessage(successEvent);
+
+    // Verify ALL errors were cleared (main shader and buffers)
+    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/shader.glsl'));
+    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/buffer.glsl'));
+  });
+
+  test('should clear errors when buffer update succeeds', () => {
+    // Set up current shader config
+    const shaderSourceEvent: ShaderSourceMessage = {
+      type: 'shaderSource',
+      code: 'test code',
+      config: { passes: { BufferA: { path: './buffer.glsl' } } },
+      path: '/test/shader.glsl',
+      buffers: {}
+    };
+    messageHandler.handleMessage(shaderSourceEvent);
+
+    // Send buffer update success message
+    const bufferSuccessEvent: LogMessage = {
+      type: 'log',
+      payload: ['Buffer \'BufferA\' updated and pipeline recompiled']
+    };
+    messageHandler.handleMessage(bufferSuccessEvent);
+
+    // Verify errors were cleared for main shader and buffer
+    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/shader.glsl'));
+    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/buffer.glsl'));
   });
 });

@@ -275,11 +275,7 @@ describe("MessageHandler", () => {
         'updated buffer A code'
       );
 
-      // Verify error was cleared first, then success message was sent
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'error',
-        payload: [] // Clear previous errors
-      });
+      // Verify success message was sent to clear errors
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
         type: 'log',
         payload: ['Buffer \'gol-buffer\' updated and pipeline recompiled']
@@ -329,11 +325,7 @@ describe("MessageHandler", () => {
         'updated buffer content'
       );
 
-      // Verify error was cleared first, then success message was sent
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'error',
-        payload: [] // Clear previous errors
-      });
+      // Verify success message was sent to clear errors
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
         type: 'log',
         payload: ['Buffer \'gol-buffer\' updated and pipeline recompiled']
