@@ -135,6 +135,34 @@
         },
         {
           "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "video"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to video file"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest", "mipmap"],
+              "description": "Video filtering mode"
+            },
+            "wrap": {
+              "type": "string",
+              "enum": ["repeat", "clamp"],
+              "description": "Video wrap mode"
+            },
+            "vflip": {
+              "type": "boolean",
+              "description": "Whether to flip video vertically"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type"],
           "properties": {
             "type": {
