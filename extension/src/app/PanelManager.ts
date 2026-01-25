@@ -20,6 +20,7 @@ export class PanelManager {
   ) {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
+    this.webviewTransport.setErrorHandler(this.messenger.getErrorHandler());
     this.messenger.addTransport(this.webviewTransport);
   }
 
@@ -122,7 +123,6 @@ export class PanelManager {
 
     panel.webview.html = processedHtml;
     this.logger.debug("Webview HTML set with resource URIs");
-  }
 
   public dispose(): void {
     this.panels.forEach(panel => panel.dispose());

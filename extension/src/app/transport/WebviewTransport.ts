@@ -1,11 +1,16 @@
 import * as vscode from "vscode";
 import { MessageTransport } from "./MessageTransport";
-import { ConfigPathConverter } from "./ConfigPathConverter";
 import type { ShaderConfig } from "@shader-studio/types";
+import { ConfigPathConverter } from "./ConfigPathConverter";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
+  private errorHandler?: { handleError: (message: any) => void };
   private panels: Set<vscode.WebviewPanel> = new Set();
+
+  public setErrorHandler(errorHandler: { handleError: (message: any) => void }): void {
+    this.errorHandler = errorHandler;
+  }
 
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
@@ -27,10 +32,21 @@ export class WebviewTransport implements MessageTransport {
   }
 
   public send(message: any): void {
+    console.log(`WebviewTransport: send() called with message type: ${message.type}`);
+    
     if (message.type === "shaderSource" && message.config) {
+      console.log(`WebviewTransport: Processing shaderSource message with config`);
       const firstPanel = this.panels.values().next().value;
       if (firstPanel?.webview) {
+        console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
         message = ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
+        
+        // Handle video-specific logic for webview
+        this.handleVideoPaths(message);
+        
+        console.log(`WebviewTransport: ConfigPathConverter returned processed message`);
+      } else {
+        console.log(`WebviewTransport: No webview panel available for path conversion`);
       }
     }
 
@@ -54,6 +70,35 @@ export class WebviewTransport implements MessageTransport {
     }
 
     console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
+  }
+
+  private handleVideoPaths(message: any): void {
+    if (!message.config?.passes) {
+      return;
+    }
+
+    for (const passName of Object.keys(message.config.passes)) {
+      const pass = message.config.passes[passName];
+      if (!pass?.inputs) {
+        continue;
+      }
+
+      for (const key of Object.keys(pass.inputs)) {
+        const input = pass.inputs[key];
+        if (input?.path && input.type === "video") {
+          // Videos need webserver - show error if not available
+          const errorMessage = `Webserver not running - cannot load video: ${input.path}. Please start the webserver using 'Shader Studio: Start Web Server' command`;
+          console.error(`WebviewTransport: ${errorMessage}`);
+          if (this.errorHandler) {
+            this.errorHandler.handleError({
+              type: 'error',
+              payload: [errorMessage]
+            });
+          }
+          // Note: We leave the path as-is (webview URI) which will fail, but the error message is clear
+        }
+      }
+    }
   }
 
   public close(): void {

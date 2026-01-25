@@ -1,16 +1,19 @@
 import type { PiRenderer, PiTexture } from "./types/piRenderer";
 import { TextureCache } from "./resources/TextureCache";
+import { VideoTextureManager } from "./resources/VideoTextureManager";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { TextureConfigInput } from "./models/ShaderConfig";
+import type { TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
 
 export class ResourceManager {
   private readonly textureCache: TextureCache;
+  private readonly videoTextureManager: VideoTextureManager;
   private readonly keyboardInput: ShaderKeyboardInput;
 
   constructor(
     private readonly renderer: PiRenderer,
   ) {
     this.textureCache = new TextureCache(renderer);
+    this.videoTextureManager = new VideoTextureManager(renderer);
     this.keyboardInput = new ShaderKeyboardInput(renderer);
   }
 
@@ -20,6 +23,11 @@ export class ResourceManager {
 
   public getKeyboardTexture(): PiTexture | null {
     return this.keyboardInput.getKeyboardTexture();
+  }
+
+  public getVideoTexture(path: string): PiTexture | null {
+    const texture = this.videoTextureManager.getVideoTexture(path);
+    return texture ?? null;
   }
 
   public getDefaultTexture(): PiTexture | null {
@@ -53,6 +61,27 @@ export class ResourceManager {
     }
   }
 
+  public async loadVideoTexture(
+    path: string, 
+    opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+  ): Promise<PiTexture | null> {
+    try {
+      const texture = await this.videoTextureManager.loadVideoTexture(path, opts);
+      return texture;
+    } catch (error) {
+      const errorMessage = `Failed to load video texture from ${path}: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(errorMessage);
+      
+      // Return default texture as fallback instead of throwing
+      const defaultTexture = this.textureCache.getDefaultTexture();
+      if (defaultTexture) {
+        console.warn(`Using default texture as fallback for video: ${path}`);
+        return defaultTexture;
+      }
+      return null;
+    }
+  }
+
   public updateKeyboardTexture(
     keyHeld: Uint8Array,
     keyPressed: Uint8Array,
@@ -65,6 +94,7 @@ export class ResourceManager {
     if (!this.renderer) return;
 
     this.textureCache.cleanup();
+    this.videoTextureManager.cleanup();
     this.keyboardInput.cleanup();
   }
 }

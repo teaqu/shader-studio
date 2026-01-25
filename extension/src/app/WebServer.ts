@@ -188,6 +188,18 @@ export class WebServer {
         case ".bmp":
           contentType = "image/bmp";
           break;
+        case ".webm":
+          contentType = "video/webm";
+          break;
+        case ".mp4":
+          contentType = "video/mp4";
+          break;
+        case ".mov":
+          contentType = "video/quicktime";
+          break;
+        case ".avi":
+          contentType = "video/x-msvideo";
+          break;
         default:
           contentType = "application/octet-stream";
       }

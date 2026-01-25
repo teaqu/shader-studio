@@ -171,9 +171,10 @@ export class ShaderBrowserProvider {
                 buffers: buffers,
             };
 
-            const processedMessage = config
-                ? ConfigPathConverter.processConfigPaths(message as any, this.panel.webview)
-                : message;
+            const processedMessage = ConfigPathConverter.processConfigPaths(
+                message as any,
+                this.panel.webview
+            );
 
             this.panel.webview.postMessage(processedMessage);
         } catch (error) {

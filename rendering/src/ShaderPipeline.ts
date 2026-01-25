@@ -221,6 +221,13 @@ export class ShaderPipeline {
             vflip: input.vflip
           };
           await this.resourceManager.loadImageTexture(input.path, textureOptions);
+        } else if (input?.type === "video" && input.path) {
+          const videoOptions = {
+            filter: input.filter,
+            wrap: input.wrap,
+            vflip: input.vflip
+          };
+          await this.resourceManager.loadVideoTexture(input.path, videoOptions);
         }
       }
     }

@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
-import { MessageTransport } from "./MessageTransport";
 import type { ShaderConfig } from "@shader-studio/types";
+import { ConfigPathConverter } from "./ConfigPathConverter";
+import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 
@@ -107,60 +108,118 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   public send(message: any): void {
-    let sentCount = 0;
-    let totalClients = this.wsClients.size;
+    console.log(`WebSocketTransport: send() called with message type: ${message.type}`);
+    
+    const totalClients = this.wsClients.size;
+    if (totalClients === 0) {
+      console.log(`WebSocketTransport: No clients to send message to`);
+      return;
+    }
+
+    // Check if we have any active browser/Electron clients
+    const hasRealClients = Array.from(this.wsClients).some(client => 
+      client.readyState === WebSocket.OPEN && 
+      ['browser', 'electron'].includes(this.clientTypes.get(client) || 'browser')
+    );
+
+    if (!hasRealClients) {
+      console.log(`WebSocketTransport: No active browser/Electron clients, skipping message processing`);
+      // Still send the message but without path conversion
+      this.sendMessageToAllClients(message);
+      return;
+    }
 
     console.log(`WebSocket: Sending ${message.type} to ${totalClients} clients`);
+    this.sendMessageToAllClients(message);
+  }
 
+  private sendMessageToAllClients(message: any): void {
     for (const client of this.wsClients) {
       if (client.readyState === WebSocket.OPEN) {
         try {
           let clientMessage = message;
           if (message.type === "shaderSource" && message.config) {
             const clientType = this.clientTypes.get(client) || 'browser';
-            clientMessage = this.processConfigPaths(message, clientType);
+            console.log(`WebSocketTransport: Client type detected as: ${clientType}`);
+            console.log(`WebSocketTransport: Calling ConfigPathConverter.processConfigPaths for client type: ${clientType}`);
+            
+            // Only process path conversion for actual browser/Electron clients
+            // VS Code panels should be handled by WebviewTransport, not WebSocketTransport
+            if (clientType === 'browser' || clientType === 'electron') {
+              clientMessage = this.processConfigPaths(message, clientType);
+              console.log(`WebSocketTransport: processConfigPaths completed`);
+            } else {
+              console.log(`WebSocketTransport: Skipping path conversion for unsupported client type: ${clientType}`);
+            }
           }
 
           const str = JSON.stringify(clientMessage);
-          const messageSize = Buffer.byteLength(str, 'utf8');
-
+          console.log(`WebSocketTransport: Sending message (${str.length} bytes) to client`);
           client.send(str);
-          sentCount++;
         } catch (error) {
-          console.error('WebSocket send error:', error);
+          console.error(`WebSocketTransport: Error sending message to client:`, error);
         }
+      } else {
+        console.log(`WebSocketTransport: Client not ready (readyState: ${client.readyState})`);
       }
     }
-    console.log(`WebSocket: Sent to ${sentCount}/${totalClients} clients`);
   }
 
   private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
-    const processedMessage = JSON.parse(JSON.stringify(message));
-    const config = processedMessage.config;
+    // Create a mock webview for ConfigPathConverter
+    const mockWebview = {
+      asWebviewUri: (uri: vscode.Uri) => uri
+    } as vscode.Webview;
+    
+    const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview);
+    
+    // Handle video-specific logic based on client type
+    this.handleVideoPaths(processedMessage, clientType);
+    
+    return processedMessage;
+  }
 
-    if (!config?.passes) {
-      return processedMessage;
+  private handleVideoPaths(message: any, clientType: 'electron' | 'browser'): void {
+    if (!message.config?.passes) {
+      return;
     }
 
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
-      const pass = config.passes[passName];
-      if (!pass || typeof pass !== "object") {
+    for (const passName of Object.keys(message.config.passes)) {
+      const pass = message.config.passes[passName];
+      if (!pass?.inputs) {
         continue;
       }
 
-      if (pass.inputs && typeof pass.inputs === "object") {
-        for (const key of Object.keys(pass.inputs)) {
-          const input = pass.inputs[key as keyof typeof pass.inputs];
-          if (input && input.type === "texture" && input.path) {
-            input.path = this.convertUriForClient(input.path, clientType);
+      for (const key of Object.keys(pass.inputs)) {
+        const input = pass.inputs[key];
+        if (input?.path && input.type === "video") {
+          if (clientType === 'browser') {
+            // Check if this is actually a VS Code panel by looking at the path format
+            // VS Code panels should not use webserver URLs for videos
+            if (input.path.startsWith('vscode-webview://') || input.path.includes('vscode-resource.vscode-cdn.net')) {
+              // This is a VS Code panel - show error message about needing webserver
+              const errorMessage = `Webserver not running - cannot load video: ${input.path}. Please start the webserver using 'Shader Studio: Start Web Server' command`;
+              console.error(`WebSocketTransport: ${errorMessage}`);
+              // Note: We can't send error to UI from here since this is server-side
+              // Leave the path as-is which will fail, but the error is clear in console
+            } else {
+              // This is a real browser client - use webserver URLs
+              const config = vscode.workspace.getConfiguration('Shader Studio');
+              const port = config.get<number>('webServerPort') || 3000;
+              input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
+              console.log(`WebSocketTransport: Video converted to webserver URL: ${input.path}`);
+            }
+          } else {
+            // Electron clients can use file:// URLs
+            input.path = `file://${input.path.replace(/\\/g, '/')}`;
+            console.log(`WebSocketTransport: Video converted to file:// URL: ${input.path}`);
           }
         }
       }
     }
-
-    return processedMessage;
   }
 
+  // Legacy method for backward compatibility with tests
   public convertUriForClient(filePath: string, clientType: 'electron' | 'browser' = 'browser'): string {
     // Handle local file paths differently for browser vs Electron clients
     if (filePath.match(/^[a-zA-Z]:|^\//) || filePath.match(/^\\\\/)) {
@@ -181,10 +240,11 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   public close(): void {
-    for (const client of this.wsClients) {
-      client.close();
-    }
-    this.wsClients.clear();
+    this.wsClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.close();
+      }
+    });
     this.wsServer.close();
   }
 

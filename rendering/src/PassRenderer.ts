@@ -101,6 +101,8 @@ export class PassRenderer {
           } else if (passBuffers[input.source]) {
             textureBindings[i] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
           }
+        } else if (input.type === "video" && input.path) {
+          textureBindings[i] = this.resourceManager.getVideoTexture(input.path) || defaultTexture;
         }
       }
     }

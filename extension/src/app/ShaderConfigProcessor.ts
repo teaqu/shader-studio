@@ -182,6 +182,21 @@ export class ShaderConfigProcessor {
             payload: [`Texture file not found: ${imgPath}`]
           });
         }
+      } else if (input.type === "video" && input.path) {
+        const videoPath = PathResolver.resolvePath(shaderPath, input.path);
+
+        if (fs.existsSync(videoPath)) {
+          input.path = videoPath;
+          this.getLogger().debug(
+            `Resolved video path for ${passName}.inputs.${key}: ${videoPath}`,
+          );
+        } else {
+          // Send persistent error to ErrorHandler for missing video files (same as textures)
+          errorHandler?.handlePersistentError?.({
+            type: 'error',
+            payload: [`Video file not found: ${videoPath}`]
+          });
+        }
       }
     }
   }
