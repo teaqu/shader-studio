@@ -1,4 +1,10 @@
 # Change Log
+### 0.0.9
+- Added video input support (including schema, config, and UI updates)
+- Added common buffer
+- Better error handling
+- Bug fixes
+
 ### 0.0.8
 - Shader Explorer
 - HW_PERFORMANCE
