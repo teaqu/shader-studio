@@ -31,6 +31,7 @@ export class ShaderStudio {
   private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
   private configGenerator: ConfigGenerator;
+  private errorHandler: ErrorHandler;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -47,6 +48,7 @@ export class ShaderStudio {
     this.shaderCreator = new ShaderCreator(this.logger);
     
     const errorHandler = new ErrorHandler(outputChannel, diagnosticCollection);
+    this.errorHandler = errorHandler;
     this.messenger = new Messenger(outputChannel, errorHandler);
     this.shaderProvider = new ShaderProvider(this.messenger);
     this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
@@ -84,6 +86,7 @@ export class ShaderStudio {
     this.messenger.close();
     this.configEditorProvider.dispose();
     this.shaderBrowserProvider.dispose();
+    this.errorHandler.dispose();
     this.logger.info("Shader extension disposed");
   }
 

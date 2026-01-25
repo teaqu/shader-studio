@@ -1,10 +1,9 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as fs from "fs";
 import { PathResolver } from "./PathResolver";
 import { Logger } from "./services/Logger";
 import { Constants } from "./Constants";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 /**
  * Shared utility for processing shader configurations.
@@ -22,6 +21,7 @@ export class ShaderConfigProcessor {
   public static loadAndProcessConfig(
     shaderPath: string,
     buffers: Record<string, string>,
+    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): ShaderConfig | null {
     const configPath = this.getConfigPath(shaderPath);
 
@@ -34,15 +34,17 @@ export class ShaderConfigProcessor {
       const config = JSON.parse(configContent);
 
       if (config) {
-        this.processConfig(config, shaderPath, buffers);
+        this.processConfig(config, shaderPath, buffers, errorHandler);
       }
 
       return config;
     } catch (e) {
       this.getLogger().warn(`Failed to parse config: ${configPath}`);
-      vscode.window.showWarningMessage(
-        `Failed to parse config: ${configPath}`,
-      );
+      // Send error to ErrorHandler instead of showing popup
+      errorHandler?.handleError({
+        type: 'error',
+        payload: [`Failed to parse config: ${configPath}`]
+      });
       return null;
     }
   }
@@ -62,6 +64,7 @@ export class ShaderConfigProcessor {
     config: ShaderConfig,
     shaderPath: string,
     buffers: Record<string, string>,
+    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     if (!config.passes) {
       return;
@@ -79,12 +82,12 @@ export class ShaderConfigProcessor {
 
       // Process pass-level "path" (for buffer source files)
       if ("path" in pass && pass.path && typeof pass.path === "string") {
-        this.processBufferPath(pass, passName, shaderPath, buffers);
+        this.processBufferPath(pass, passName, shaderPath, buffers, errorHandler);
       }
 
       // Process inputs - resolve texture paths to absolute paths
       if (pass.inputs && typeof pass.inputs === "object") {
-        this.processInputs(pass, passName, shaderPath);
+        this.processInputs(pass, passName, shaderPath, errorHandler);
       }
     }
   }
@@ -98,6 +101,7 @@ export class ShaderConfigProcessor {
     passName: string,
     shaderPath: string,
     buffers: Record<string, string>,
+    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     const bufferPath = PathResolver.resolvePath(shaderPath, pass.path);
 
@@ -129,18 +133,19 @@ export class ShaderConfigProcessor {
         this.getLogger().warn(
           `Failed to read buffer content for ${passName}: ${bufferPath}`,
         );
-        vscode.window.showErrorMessage(
-          `Failed to read buffer file: ${bufferPath}`,
-        );
+        // Send error to ErrorHandler instead of showing popup
+        errorHandler?.handleError({
+          type: 'error',
+          payload: [`Failed to read buffer file: ${bufferPath}`]
+        });
       }
     } else {
       // File not found
-      this.getLogger().error(
-        `Buffer file not found for ${passName}: ${bufferPath}`,
-      );
-      vscode.window.showErrorMessage(
-        `Buffer file not found: ${bufferPath}`,
-      );
+      // Send persistent error to ErrorHandler for missing buffer files
+      errorHandler?.handlePersistentError?.({
+        type: 'error',
+        payload: [`Buffer file not found: ${bufferPath}`]
+      });
     }
 
     pass.path = bufferPath;
@@ -154,6 +159,7 @@ export class ShaderConfigProcessor {
     pass: any,
     passName: string,
     shaderPath: string,
+    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     if (!pass.inputs) {
       return;
@@ -170,12 +176,11 @@ export class ShaderConfigProcessor {
             `Resolved image path for ${passName}.inputs.${key}: ${imgPath}`,
           );
         } else {
-          this.getLogger().error(
-            `Image not found for ${passName}.inputs.${key}: ${imgPath}`,
-          );
-          vscode.window.showErrorMessage(
-            `Texture file not found: ${imgPath}`,
-          );
+          // Send persistent error to ErrorHandler for missing texture files
+          errorHandler?.handlePersistentError?.({
+            type: 'error',
+            payload: [`Texture file not found: ${imgPath}`]
+          });
         }
       }
     }
