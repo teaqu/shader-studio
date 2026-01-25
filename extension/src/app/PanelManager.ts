@@ -20,7 +20,6 @@ export class PanelManager {
   ) {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
-    this.webviewTransport.setErrorHandler(this.messenger.getErrorHandler());
     this.messenger.addTransport(this.webviewTransport);
   }
 
@@ -127,7 +126,7 @@ export class PanelManager {
     );
 
     // Inject or update CSP to allow video loading from webview sources
-    const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["']\s*\/?>/i;
+    const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
     const cspMatch = processedHtml.match(cspPattern);
     
     console.log(`PanelManager: Webview CSP source: ${panel.webview.cspSource}`);
@@ -179,7 +178,6 @@ export class PanelManager {
           console.log(`PanelManager: Added nonce-based CSP with new <head> tag`);
         }
       } else {
-        console.error('PanelManager: Unexpected HTML structure, could not find doctype or html tags');
         // Fallback: just prepend
         processedHtml = `<head>${newCsp}</head>\n` + processedHtml;
         console.log(`PanelManager: Added nonce-based CSP at document start as fallback`);

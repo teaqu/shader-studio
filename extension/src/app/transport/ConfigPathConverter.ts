@@ -41,10 +41,6 @@ export class ConfigPathConverter {
             if (input.type === "texture") {
               console.log(`ConfigPathConverter: Found ${input.type} input: ${input.path}`);
               input.path = this.convertUriForClient(input.path, webview);
-            } else if (input.type === "video") {
-              console.log(`ConfigPathConverter: Found video input, leaving path as-is for video handling: ${input.path}`);
-              // Don't convert video paths - let the transport handle them
-              // Videos need special handling (file:// or HTTP) not webview URIs
             }
           }
         }

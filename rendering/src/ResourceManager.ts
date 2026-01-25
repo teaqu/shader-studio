@@ -4,6 +4,11 @@ import { VideoTextureManager } from "./resources/VideoTextureManager";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
 import type { TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
 
+export interface VideoLoadResult {
+  texture: PiTexture | null;
+  warning?: string;
+}
+
 export class ResourceManager {
   private readonly textureCache: TextureCache;
   private readonly videoTextureManager: VideoTextureManager;
@@ -64,21 +69,21 @@ export class ResourceManager {
   public async loadVideoTexture(
     path: string, 
     opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
-  ): Promise<PiTexture | null> {
+  ): Promise<VideoLoadResult> {
     try {
       const texture = await this.videoTextureManager.loadVideoTexture(path, opts);
-      return texture;
+      return { texture };
     } catch (error) {
-      const errorMessage = `Failed to load video texture from ${path}: ${error instanceof Error ? error.message : String(error)}`;
-      console.error(errorMessage);
+      const warningMessage = `Video is not loading: ${path}. If using in a VS Code panel, try opening Shader Studio in its own window or browser. You could also try converting the video to another format`;
+      console.error(warningMessage);
       
       // Return default texture as fallback instead of throwing
       const defaultTexture = this.textureCache.getDefaultTexture();
       if (defaultTexture) {
         console.warn(`Using default texture as fallback for video: ${path}`);
-        return defaultTexture;
+        return { texture: defaultTexture, warning: warningMessage };
       }
-      return null;
+      return { texture: null, warning: warningMessage };
     }
   }
 
@@ -96,5 +101,13 @@ export class ResourceManager {
     this.textureCache.cleanup();
     this.videoTextureManager.cleanup();
     this.keyboardInput.cleanup();
+  }
+
+  public pauseAllVideos(): void {
+    this.videoTextureManager.pauseAll();
+  }
+
+  public resumeAllVideos(): void {
+    this.videoTextureManager.resumeAll();
   }
 }

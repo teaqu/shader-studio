@@ -20,6 +20,7 @@ const createMockShaderCompiler = () => ({
 const createMockResourceManager = () => ({
     cleanup: vi.fn(),
     loadImageTexture: vi.fn(),
+    loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
 });
 
 const createMockRenderer = () => ({
@@ -473,7 +474,7 @@ describe("ShaderPipeline", () => {
                     common: { inputs: {} },
                     Image: { inputs: {} },
                 }
-            };
+            } as any;
             const buffers = {
                 common: `
                     vec4 commonFunction(vec4 color) {
@@ -499,6 +500,303 @@ describe("ShaderPipeline", () => {
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("video input handling", () => {
+        it("should load video texture when pass has video input", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                { filter: undefined, wrap: undefined, vflip: undefined }
+            );
+        });
+
+        it("should load video texture with filter options", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { 
+                                type: "video", 
+                                path: "video.mp4",
+                                filter: "linear"
+                            }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                { filter: "linear", wrap: undefined, vflip: undefined }
+            );
+        });
+
+        it("should load video texture with wrap options", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { 
+                                type: "video", 
+                                path: "video.mp4",
+                                wrap: "clamp"
+                            }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                { filter: undefined, wrap: "clamp", vflip: undefined }
+            );
+        });
+
+        it("should load video texture with vflip option", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { 
+                                type: "video", 
+                                path: "video.mp4",
+                                vflip: false
+                            }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                { filter: undefined, wrap: undefined, vflip: false }
+            );
+        });
+
+        it("should load video texture with all options", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { 
+                                type: "video", 
+                                path: "video.mp4",
+                                filter: "nearest",
+                                wrap: "repeat",
+                                vflip: true
+                            }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                { filter: "nearest", wrap: "repeat", vflip: true }
+            );
+        });
+
+        it("should load multiple video textures from different channels", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video1.mp4" },
+                            iChannel1: { type: "video", path: "video2.mp4" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledTimes(2);
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video1.mp4",
+                expect.any(Object)
+            );
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video2.mp4",
+                expect.any(Object)
+            );
+        });
+
+        it("should load video textures from buffer passes", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: {
+                        path: "buffer-a.glsl",
+                        inputs: {
+                            iChannel0: { type: "video", path: "buffer-video.mp4" }
+                        }
+                    }
+                }
+            };
+            const buffers = {
+                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "buffer-video.mp4",
+                expect.any(Object)
+            );
+        });
+
+        it("should handle mixed texture and video inputs", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg" },
+                            iChannel1: { type: "video", path: "video.mp4" },
+                            iChannel2: { type: "keyboard" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                expect.any(Object)
+            );
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                expect.any(Object)
+            );
+        });
+
+        it("should not load video texture when path is missing", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video" } // No path
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadVideoTexture).not.toHaveBeenCalled();
+        });
+
+        it("should return warnings from video loading failures", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" }
+                        }
+                    }
+                }
+            };
+
+            // Mock video loading to return a warning
+            mockResourceManager.loadVideoTexture.mockResolvedValue({
+                texture: null,
+                warning: "Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser."
+            });
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toBeDefined();
+            expect(result.warnings).toHaveLength(1);
+            expect(result.warnings![0]).toContain("Video is not loading");
+        });
+
+        it("should return multiple warnings from multiple video loading failures", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video1.mp4" },
+                            iChannel1: { type: "video", path: "video2.mp4" }
+                        }
+                    }
+                }
+            };
+
+            // Mock video loading to return warnings for both
+            mockResourceManager.loadVideoTexture
+                .mockResolvedValueOnce({
+                    texture: null,
+                    warning: "Video is not loading: video1.mp4."
+                })
+                .mockResolvedValueOnce({
+                    texture: null,
+                    warning: "Video is not loading: video2.mp4."
+                });
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toBeDefined();
+            expect(result.warnings).toHaveLength(2);
+            expect(result.warnings![0]).toContain("video1.mp4");
+            expect(result.warnings![1]).toContain("video2.mp4");
+        });
+
+        it("should not include warnings when video loads successfully", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" }
+                        }
+                    }
+                }
+            };
+
+            // Mock successful video loading (no warning)
+            mockResourceManager.loadVideoTexture.mockResolvedValue({
+                texture: {},
+                warning: undefined
+            });
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toBeUndefined();
         });
     });
 });

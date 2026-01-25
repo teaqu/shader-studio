@@ -298,4 +298,228 @@ suite('WebviewTransport Test Suite', () => {
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockUri1.toString());
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockUri2.toString());
     });
+
+    suite('handleVideoPaths', () => {
+        let fsExistsSyncStub: sinon.SinonStub;
+        let mockErrorHandler: { handleError: sinon.SinonStub; handlePersistentError: sinon.SinonStub };
+
+        setup(() => {
+            // Mock fs.existsSync
+            const fs = require('fs');
+            fsExistsSyncStub = sandbox.stub(fs, 'existsSync').returns(true);
+            
+            mockErrorHandler = {
+                handleError: sandbox.stub(),
+                handlePersistentError: sandbox.stub()
+            };
+        });
+
+        test('should convert supported video format (.mp4) to webview URI', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockVideoUri);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/video.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri.toString());
+        });
+
+        test('should convert supported video format (.webm) to webview URI', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.webm');
+            mockWebview.asWebviewUri.returns(mockVideoUri);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/video.webm' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri.toString());
+        });
+
+        test('should skip video if file does not exist', () => {
+            fsExistsSyncStub.returns(false);
+            
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/nonexistent.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            // Path should remain unchanged since file doesn't exist
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/nonexistent.mp4');
+        });
+
+        test('should add video directory to localResourceRoots', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockVideoUri);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/video.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            // Check that localResourceRoots was updated
+            assert.ok(mockWebview.options.localResourceRoots);
+            assert.ok(mockWebview.options.localResourceRoots.length > 0);
+        });
+
+        test('should handle multiple video inputs', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockVideoUri1 = vscode.Uri.parse('vscode-webview://webview-panel/video1.mp4');
+            const mockVideoUri2 = vscode.Uri.parse('vscode-webview://webview-panel/video2.mp4');
+            mockWebview.asWebviewUri
+                .onCall(0).returns(mockVideoUri1)
+                .onCall(1).returns(mockVideoUri2);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/video1.mp4' },
+                                iChannel1: { type: 'video', path: '/path/to/video2.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri1.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockVideoUri2.toString());
+        });
+
+        test('should handle mixed texture and video inputs', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockTextureUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
+            const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri
+                .onCall(0).returns(mockTextureUri)
+                .onCall(1).returns(mockVideoUri);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'texture', path: '/path/to/texture.png' },
+                                iChannel1: { type: 'video', path: '/path/to/video.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockTextureUri.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockVideoUri.toString());
+        });
+
+        test('should handle video inputs in buffer passes', () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+            
+            const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockVideoUri);
+            mockWebview.options = { localResourceRoots: [] };
+            
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: { inputs: {} },
+                        BufferA: {
+                            path: 'buffer-a.glsl',
+                            inputs: {
+                                iChannel0: { type: 'video', path: '/path/to/video.mp4' }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            transport.send(message);
+            
+            const sentMessage = mockWebview.postMessage.getCall(0).args[0];
+            assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.path, mockVideoUri.toString());
+        });
+    });
 });

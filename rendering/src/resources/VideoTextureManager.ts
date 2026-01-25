@@ -113,6 +113,29 @@ export class VideoTextureManager {
     }
   }
 
+  public pauseAll(): void {
+    // Pause all currently playing videos
+    for (const [path, video] of Object.entries(this.videoElements)) {
+      if (!video.paused) {
+        video.pause();
+        console.log(`Paused video: ${path}`);
+      }
+    }
+  }
+
+  public resumeAll(): void {
+    // Resume all paused videos
+    for (const [path, video] of Object.entries(this.videoElements)) {
+      if (video.paused) {
+        video.play().then(() => {
+          console.log(`Resumed video: ${path}`);
+        }).catch(error => {
+          console.warn(`Could not resume video ${path}:`, error);
+        });
+      }
+    }
+  }
+
   private createTextureFromVideo(
     video: HTMLVideoElement,
     options: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>>

@@ -270,7 +270,7 @@ suite('ShaderBrowserProvider Test Suite', () => {
                 getText: () => 'void main() { gl_FragColor = vec4(1.0); }'
             };
             sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig').returns(null);
+            sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
 
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
@@ -291,8 +291,8 @@ suite('ShaderBrowserProvider Test Suite', () => {
             const mockBuffers = { bufferA: 'buffer code' };
 
             sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
-            sandbox.stub(ShaderConfigProcessor, 'loadAndProcessConfig')
-                .callsFake((_path, buffers) => {
+            sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig')
+                .callsFake((_path: any, buffers: any) => {
                     Object.assign(buffers, mockBuffers);
                     return mockConfig as any;
                 });

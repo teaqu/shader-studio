@@ -3,27 +3,35 @@ import * as fs from "fs";
 import { PathResolver } from "./PathResolver";
 import { Logger } from "./services/Logger";
 import { Constants } from "./Constants";
-import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
+import type { ShaderConfig } from "@shader-studio/types";
+import type { ErrorHandler } from "./ErrorHandler";
+
+const noopErrorHandler = {
+  handleError: () => {},
+  handlePersistentError: () => {},
+};
 
 /**
  * Shared utility for processing shader configurations.
  * Used by both ShaderProvider and ShaderBrowserProvider.
  */
 export class ShaderConfigProcessor {
-  private static getLogger(): Logger {
-    return Logger.getInstance();
+  private logger = Logger.getInstance();
+  private errorHandler: Pick<ErrorHandler, 'handleError' | 'handlePersistentError'>;
+
+  constructor(errorHandler?: ErrorHandler) {
+    this.errorHandler = errorHandler || noopErrorHandler;
   }
 
   /**
    * Load and process a shader configuration file.
    * Returns the config and buffers, or null if config doesn't exist or fails to load.
    */
-  public static loadAndProcessConfig(
+  public loadAndProcessConfig(
     shaderPath: string,
     buffers: Record<string, string>,
-    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): ShaderConfig | null {
-    const configPath = this.getConfigPath(shaderPath);
+    const configPath = ShaderConfigProcessor.getConfigPath(shaderPath);
 
     if (!fs.existsSync(configPath)) {
       return null;
@@ -34,14 +42,13 @@ export class ShaderConfigProcessor {
       const config = JSON.parse(configContent);
 
       if (config) {
-        this.processConfig(config, shaderPath, buffers, errorHandler);
+        this.processConfig(config, shaderPath, buffers);
       }
 
       return config;
     } catch (e) {
-      this.getLogger().warn(`Failed to parse config: ${configPath}`);
-      // Send error to ErrorHandler instead of showing popup
-      errorHandler?.handleError({
+      this.logger.warn(`Failed to parse config: ${configPath}`);
+      this.errorHandler.handleError({
         type: 'error',
         payload: [`Failed to parse config: ${configPath}`]
       });
@@ -60,11 +67,10 @@ export class ShaderConfigProcessor {
    * Process buffers and inputs in a shader config.
    * Resolves buffer paths, loads buffer content, and resolves texture input paths.
    */
-  public static processConfig(
+  public processConfig(
     config: ShaderConfig,
     shaderPath: string,
     buffers: Record<string, string>,
-    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     if (!config.passes) {
       return;
@@ -82,12 +88,12 @@ export class ShaderConfigProcessor {
 
       // Process pass-level "path" (for buffer source files)
       if ("path" in pass && pass.path && typeof pass.path === "string") {
-        this.processBufferPath(pass, passName, shaderPath, buffers, errorHandler);
+        this.processBufferPath(pass, passName, shaderPath, buffers);
       }
 
       // Process inputs - resolve texture paths to absolute paths
       if (pass.inputs && typeof pass.inputs === "object") {
-        this.processInputs(pass, passName, shaderPath, errorHandler);
+        this.processInputs(pass, passName, shaderPath);
       }
     }
   }
@@ -96,12 +102,11 @@ export class ShaderConfigProcessor {
    * Process a buffer path for a shader pass.
    * Resolves the path and loads the buffer content from memory or disk.
    */
-  private static processBufferPath(
+  private processBufferPath(
     pass: any,
     passName: string,
     shaderPath: string,
     buffers: Record<string, string>,
-    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     const bufferPath = PathResolver.resolvePath(shaderPath, pass.path);
 
@@ -110,7 +115,7 @@ export class ShaderConfigProcessor {
       (doc) => doc.fileName === bufferPath,
     );
 
-    this.getLogger().debug(
+    this.logger.debug(
       `Processing buffer for pass ${passName}: ${bufferPath}`,
     );
 
@@ -118,7 +123,7 @@ export class ShaderConfigProcessor {
       // Get content from memory directly
       const bufferContent = bufferDoc.getText();
       buffers[passName] = bufferContent;
-      this.getLogger().debug(
+      this.logger.debug(
         `Loaded buffer content from memory for ${passName}`,
       );
     } else if (fs.existsSync(bufferPath)) {
@@ -126,23 +131,21 @@ export class ShaderConfigProcessor {
       try {
         const bufferContent = fs.readFileSync(bufferPath, "utf-8");
         buffers[passName] = bufferContent;
-        this.getLogger().debug(
+        this.logger.debug(
           `Loaded buffer content from disk for ${passName}: ${bufferPath}`,
         );
       } catch (e) {
-        this.getLogger().warn(
+        this.logger.warn(
           `Failed to read buffer content for ${passName}: ${bufferPath}`,
         );
-        // Send error to ErrorHandler instead of showing popup
-        errorHandler?.handleError({
+        this.errorHandler.handleError({
           type: 'error',
           payload: [`Failed to read buffer file: ${bufferPath}`]
         });
       }
     } else {
       // File not found
-      // Send persistent error to ErrorHandler for missing buffer files
-      errorHandler?.handlePersistentError?.({
+      this.errorHandler.handlePersistentError({
         type: 'error',
         payload: [`Buffer file not found: ${bufferPath}`]
       });
@@ -155,11 +158,10 @@ export class ShaderConfigProcessor {
    * Process texture inputs in a shader pass.
    * Resolves relative texture paths to absolute paths.
    */
-  private static processInputs(
+  private processInputs(
     pass: any,
     passName: string,
     shaderPath: string,
-    errorHandler?: { handleError: (message: ErrorMessage) => void; handlePersistentError?: (message: ErrorMessage) => void },
   ): void {
     if (!pass.inputs) {
       return;
@@ -172,12 +174,11 @@ export class ShaderConfigProcessor {
 
         if (fs.existsSync(imgPath)) {
           input.path = imgPath;
-          this.getLogger().debug(
+          this.logger.debug(
             `Resolved image path for ${passName}.inputs.${key}: ${imgPath}`,
           );
         } else {
-          // Send persistent error to ErrorHandler for missing texture files
-          errorHandler?.handlePersistentError?.({
+          this.errorHandler.handlePersistentError({
             type: 'error',
             payload: [`Texture file not found: ${imgPath}`]
           });
@@ -187,12 +188,11 @@ export class ShaderConfigProcessor {
 
         if (fs.existsSync(videoPath)) {
           input.path = videoPath;
-          this.getLogger().debug(
+          this.logger.debug(
             `Resolved video path for ${passName}.inputs.${key}: ${videoPath}`,
           );
         } else {
-          // Send persistent error to ErrorHandler for missing video files (same as textures)
-          errorHandler?.handlePersistentError?.({
+          this.errorHandler.handlePersistentError({
             type: 'error',
             payload: [`Video file not found: ${videoPath}`]
           });

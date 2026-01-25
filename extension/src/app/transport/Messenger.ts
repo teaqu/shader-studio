@@ -22,20 +22,6 @@ export class Messenger {
 
   public send(message: any): void {
     try {
-      const messageStr = JSON.stringify(message);
-      const messageSize = new Blob([messageStr]).size;
-
-      if (message.type === 'shader' || message.type === 'shaderSource') {
-        console.log(`Messenger: Sending shader message (${messageSize} bytes) to ${this.transports.length} transports`);
-        if (message.payload && message.payload.code) {
-          console.log(`Messenger: Shader code length: ${message.payload.code.length} characters`);
-        } else if (message.code) {
-          console.log(`Messenger: Shader code length: ${message.code.length} characters`);
-        }
-      } else {
-        console.log(`Messenger: Sending ${message.type} (${messageSize} bytes) to ${this.transports.length} transports`);
-      }
-
       // Send to all transports
       this.transports.forEach((transport, index) => {
         try {

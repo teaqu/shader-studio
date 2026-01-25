@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
 import { ErrorHandler } from '../../app/ErrorHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -260,5 +260,73 @@ suite('MessageHandler Test Suite', () => {
       assert.strictEqual(setCall.args[1][0].message, errorMessage);
       assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Error);
     });
+  });
+
+  test('should handle warning messages and show as persistent warning', () => {
+    // Mock active editor and document with GLSL language
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/shader.glsl'),
+      lineCount: 10,
+      languageId: 'glsl',
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0)
+      })
+    } as any;
+
+    const mockEditor = {
+      document: mockDocument
+    } as any;
+
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    const warningMessage: WarningMessage = {
+      type: 'warning',
+      payload: ['Video is not loading: video.webm. If using in a VS Code panel, try opening Shader Studio in its own window or browser.']
+    };
+
+    messageHandler.handleMessage(warningMessage);
+
+    // Verify warning was logged
+    sinon.assert.calledWith(mockOutputChannel.warn as any, sinon.match.string);
+
+    // Verify diagnostic was set with warning severity
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+    const setCall = (mockDiagnosticCollection.set as any).getCall(0);
+    assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Warning);
+  });
+
+  test('should handle video loading warning message', () => {
+    // Mock active editor and document with GLSL language
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/shader.glsl'),
+      lineCount: 10,
+      languageId: 'glsl',
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0)
+      })
+    } as any;
+
+    const mockEditor = {
+      document: mockDocument
+    } as any;
+
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    // Test the exact warning message format from ResourceManager
+    const warningMessage: WarningMessage = {
+      type: 'warning',
+      payload: ['Video is not loading: /path/to/video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser. You could also try converting the video to MP4 (H.264) or WebM format.']
+    };
+
+    messageHandler.handleMessage(warningMessage);
+
+    // Verify warning was logged to output channel
+    sinon.assert.calledOnce(mockOutputChannel.warn as any);
+
+    // Verify diagnostic was set
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+    const setCall = (mockDiagnosticCollection.set as any).getCall(0);
+    assert.ok(setCall.args[1][0].message.includes('Video is not loading'));
+    assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Warning);
   });
 });
