@@ -1,9 +1,10 @@
-import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
+import * as path from 'path';
 import { ConfigGenerator } from '../../app/ConfigGenerator';
 import { GlslFileTracker } from '../../app/GlslFileTracker';
 import { Messenger } from '../../app/transport/Messenger';
+import { ErrorHandler } from '../../app/ErrorHandler';
 import { Logger } from '../../app/services/Logger';
 
 suite('ConfigGenerator Test Suite', () => {
@@ -81,7 +82,8 @@ suite('ConfigGenerator Test Suite', () => {
 
     // Create dependencies
     glslFileTracker = new GlslFileTracker(mockContext);
-    messenger = new Messenger(mockOutputChannel, mockDiagnosticCollection);
+    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
+    messenger = new Messenger(mockOutputChannel, errorHandler);
     
     // Create ConfigGenerator
     configGenerator = new ConfigGenerator(glslFileTracker, messenger, logger);

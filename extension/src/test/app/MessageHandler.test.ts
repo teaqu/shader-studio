@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage } from '@shader-studio/types';
+import { ErrorHandler } from '../../app/ErrorHandler';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -39,7 +40,8 @@ suite('MessageHandler Test Suite', () => {
       forEach: sandbox.stub(),
     } as any;
 
-    messageHandler = new MessageHandler(mockOutputChannel, mockDiagnosticCollection);
+    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
+    messageHandler = new MessageHandler(mockOutputChannel, errorHandler);
   });
 
   teardown(() => {
@@ -156,9 +158,8 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(successEvent);
 
-    // Verify ALL errors were cleared (main shader and buffers)
-    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/shader.glsl'));
-    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/buffer.glsl'));
+    // Verify ALL errors were cleared
+    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
   });
 
   test('should clear errors when buffer update succeeds', () => {
@@ -172,15 +173,92 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(shaderSourceEvent);
 
-    // Send buffer update success message
     const bufferSuccessEvent: LogMessage = {
       type: 'log',
       payload: ['Buffer \'BufferA\' updated and pipeline recompiled']
     };
     messageHandler.handleMessage(bufferSuccessEvent);
 
-    // Verify errors were cleared for main shader and buffer
-    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/shader.glsl'));
-    sinon.assert.calledWith(mockDiagnosticCollection.delete as any, vscode.Uri.file('/test/buffer.glsl'));
+    // Verify errors were cleared
+    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+  });
+
+  test('should show non-line-number errors at line 1', () => {
+    // Mock active editor and document
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/shader.glsl'),
+      lineCount: 10,
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0)
+      })
+    } as any;
+
+    const mockEditor = {
+      document: mockDocument
+    } as any;
+
+    const activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    // Test video loading error
+    const videoErrorEvent: ErrorMessage = {
+      type: 'error',
+      payload: ['Shader compilation error: Error: Failed to load video texture from video.webm: Failed to load video from URL: video.webm - Unknown error']
+    };
+
+    messageHandler.handleMessage(videoErrorEvent);
+
+    // Verify error was logged
+    sinon.assert.calledWith(mockOutputChannel.error as any, 'Shader compilation error: Error: Failed to load video texture from video.webm: Failed to load video from URL: video.webm - Unknown error');
+
+    // Verify diagnostic was set at line 1 (first line of document)
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+    const setCall = (mockDiagnosticCollection.set as any).getCall(0);
+    assert.strictEqual(setCall.args[0], mockDocument.uri);
+    assert.strictEqual(setCall.args[1][0].message, 'Shader compilation error: Error: Failed to load video texture from video.webm: Failed to load video from URL: video.webm - Unknown error');
+    assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Error);
+    assert.deepStrictEqual(setCall.args[1][0].range, new vscode.Range(0, 0, 0, 0));
+  });
+
+  test('should show various non-line-number errors at line 1', () => {
+    // Mock active editor and document
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/shader.glsl'),
+      lineCount: 5,
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0)
+      })
+    } as any;
+
+    const mockEditor = {
+      document: mockDocument
+    } as any;
+
+    const activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    // Test different types of non-line-number errors
+    const testCases = [
+      'Failed to load texture: file not found',
+      'Configuration error: invalid input type',
+      'Resource loading failed: network error',
+      'Shader validation error: unsupported operation'
+    ];
+
+    testCases.forEach((errorMessage, index) => {
+      // Reset stubs for each test case
+      (mockDiagnosticCollection.set as any).resetHistory();
+
+      const errorEvent: ErrorMessage = {
+        type: 'error',
+        payload: [errorMessage]
+      };
+
+      messageHandler.handleMessage(errorEvent);
+
+      // Verify diagnostic was set for each error type
+      sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+      const setCall = (mockDiagnosticCollection.set as any).getCall(0);
+      assert.strictEqual(setCall.args[1][0].message, errorMessage);
+      assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Error);
+    });
   });
 });

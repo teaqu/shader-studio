@@ -1,24 +1,28 @@
 import * as vscode from "vscode";
 import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage } from "@shader-studio/types";
 import { PathResolver } from "../PathResolver";
+import { ErrorHandler } from "../ErrorHandler";
 
 export class MessageHandler {
-  private currentShaderConfig: { config: any; shaderPath: string } | null = null;
+  private errorHandler: ErrorHandler;
   
   constructor(
     private outputChannel: vscode.LogOutputChannel,
-    private diagnosticCollection: vscode.DiagnosticCollection,
-  ) { }
+    errorHandler: ErrorHandler,
+  ) {
+    this.errorHandler = errorHandler;
+  }
 
   public handleMessage(message: MessageEvent): void {
     try {
       // Track current shader configuration when we receive shader source
       if (message.type === "shaderSource") {
         const shaderMsg = message as ShaderSourceMessage;
-        this.currentShaderConfig = {
+        const shaderConfig = {
           config: shaderMsg.config,
           shaderPath: shaderMsg.path
         };
+        this.errorHandler.setShaderConfig(shaderConfig);
       }
       
       switch (message.type) {
@@ -29,7 +33,7 @@ export class MessageHandler {
           this.handleDebugMessage(message);
           break;
         case "error":
-          this.handleErrorMessage(message);
+          this.errorHandler.handleError(message as ErrorMessage);
           break;
         case "refresh":
           this.handleRefreshMessage(message);
@@ -64,31 +68,7 @@ export class MessageHandler {
       logText.includes("Shader compiled and linked") ||
       logText.includes("updated and pipeline recompiled")
     ) {
-      // Clear diagnostics for all files in the current shader configuration
-      if (this.currentShaderConfig) {
-        const config = this.currentShaderConfig.config;
-        const shaderPath = this.currentShaderConfig.shaderPath;
-        
-        // Clear diagnostics for main shader file
-        this.diagnosticCollection.delete(vscode.Uri.file(shaderPath));
-        
-        // Clear diagnostics for all buffer files
-        if (config.passes) {
-          for (const [passName, pass] of Object.entries(config.passes)) {
-            if (pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string') {
-              const bufferPath = pass.path;
-              const resolvedPath = PathResolver.resolvePath(shaderPath, bufferPath);
-              this.diagnosticCollection.delete(vscode.Uri.file(resolvedPath));
-            }
-          }
-        }
-      } else {
-        // Fallback: clear diagnostics for active editor
-        const editor = vscode.window.activeTextEditor;
-        if (editor?.document.languageId === "glsl") {
-          this.diagnosticCollection.delete(editor.document.uri);
-        }
-      }
+      this.errorHandler.clearErrors();
     }
   }
 
@@ -97,86 +77,6 @@ export class MessageHandler {
       ? message.payload.join(" ")
       : message.payload;
     this.outputChannel.debug(debugText);
-  }
-
-  private handleErrorMessage(message: ErrorMessage): void {
-    let errorText = Array.isArray(message.payload)
-      ? message.payload.join(" ")
-      : message.payload;
-    
-    this.outputChannel.error(errorText);
-
-    const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
-    if (!match) {
-      // Clear diagnostics if no valid error format
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        this.diagnosticCollection.delete(editor.document.uri);
-      }
-      return;
-    }
-
-    const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
-    
-    // Parse pass name from error message (format: "PassName: ERROR: ...")
-    const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
-    let targetUri: vscode.Uri | null = null;
-    
-    if (passNameMatch && this.currentShaderConfig) {
-      const passName = passNameMatch[1].trim();
-      targetUri = this.getUriForPass(passName, this.currentShaderConfig);
-    }
-    
-    // Fallback to active editor if we can't determine the target file
-    if (!targetUri) {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && editor.document.languageId === "glsl") {
-        targetUri = editor.document.uri;
-      }
-    }
-    
-    if (targetUri) {
-      try {
-        const document = vscode.workspace.textDocuments.find(doc => doc.uri === targetUri);
-        if (document && lineNum < document.lineCount) {
-          const range = document.lineAt(lineNum).range;
-          const diagnostic = new vscode.Diagnostic(
-            range,
-            errorText,
-            vscode.DiagnosticSeverity.Error,
-          );
-          this.diagnosticCollection.set(targetUri, [diagnostic]);
-        }
-      } catch (error) {
-        this.outputChannel.warn(`Failed to set diagnostic for ${targetUri.fsPath}: ${error}`);
-      }
-    } else {
-      // Clear all diagnostics if we can't determine where to show the error
-      this.diagnosticCollection.clear();
-    }
-  }
-
-  private getUriForPass(passName: string, shaderConfig: { config: any; shaderPath: string }): vscode.Uri | null {
-    try {
-      // If it's the main Image pass, return the main shader file
-      if (passName === "Image") {
-        return vscode.Uri.file(shaderConfig.shaderPath);
-      }
-      
-      // For other passes, look up the path in the config
-      const pass = shaderConfig.config.passes?.[passName];
-      if (pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string') {
-        const bufferPath = pass.path;
-        // Resolve relative path based on the main shader's directory
-        const resolvedPath = PathResolver.resolvePath(shaderConfig.shaderPath, bufferPath);
-        return vscode.Uri.file(resolvedPath);
-      }
-      
-      return null;
-    } catch (error) {
-      this.outputChannel.warn(`Failed to resolve path for pass ${passName}: ${error}`);
-      return null;
-    }
   }
 
   private handleRefreshMessage(message: RefreshMessage): void {

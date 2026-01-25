@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { MessageHandler } from "./MessageHandler";
 import { MessageTransport } from "./MessageTransport";
+import { ErrorHandler } from "../ErrorHandler";
 
 export class Messenger {
   private messageHandler: MessageHandler;
@@ -8,9 +9,9 @@ export class Messenger {
 
   constructor(
     outputChannel: vscode.LogOutputChannel,
-    diagnosticCollection: vscode.DiagnosticCollection
+    errorHandler: ErrorHandler
   ) {
-    this.messageHandler = new MessageHandler(outputChannel, diagnosticCollection);
+    this.messageHandler = new MessageHandler(outputChannel, errorHandler);
   }
 
   public send(message: any): void {

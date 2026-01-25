@@ -12,6 +12,7 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
+import { ErrorHandler } from "./ErrorHandler";
 import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigGenerator } from "./ConfigGenerator";
 
@@ -44,7 +45,9 @@ export class ShaderStudio {
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
     this.shaderCreator = new ShaderCreator(this.logger);
-    this.messenger = new Messenger(outputChannel, diagnosticCollection);
+    
+    const errorHandler = new ErrorHandler(outputChannel, diagnosticCollection);
+    this.messenger = new Messenger(outputChannel, errorHandler);
     this.shaderProvider = new ShaderProvider(this.messenger);
     this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
     this.panelManager = new PanelManager(
@@ -275,7 +278,9 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
       this.glslFileTracker.recommendGlslHighlighter(editor);
       if (this.glslFileTracker.isGlslEditor(editor)) {
         this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
@@ -285,7 +290,9 @@ export class ShaderStudio {
 
     vscode.workspace.onDidChangeTextDocument((event) => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
 
       this.glslFileTracker.recommendGlslHighlighter(editor);
 
