@@ -160,9 +160,8 @@ describe("MessageHandler", () => {
         },
       };
 
-      const result = await messageHandler.handleShaderMessage(event as any);
+      await messageHandler.handleShaderMessage(event as any);
       
-      expect(result).toEqual({ running: true });
       expect(mockRenderingEngine.compileShaderPipeline).not.toHaveBeenCalled();
       expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
     });
@@ -182,9 +181,8 @@ describe("MessageHandler", () => {
         },
       };
 
-      const result = await messageHandler.handleShaderMessage(event as any);
+      await messageHandler.handleShaderMessage(event as any);
       
-      expect(result).toEqual({ running: true });
       expect(mockRenderingEngine.compileShaderPipeline).toHaveBeenCalledWith(
         "void main() {}",
         null,
@@ -210,7 +208,6 @@ describe("MessageHandler", () => {
 
       const result = await messageHandler.handleShaderMessage(event as any);
       
-      expect(result).toEqual({ running: true });
       expect(mockRenderingEngine.compileShaderPipeline).not.toHaveBeenCalled();
       expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
     });
@@ -287,8 +284,6 @@ describe("MessageHandler", () => {
         type: 'log',
         payload: ['Buffer \'gol-buffer\' updated and pipeline recompiled']
       });
-
-      expect(result).toEqual({ running: true });
     });
 
     it('should ignore buffer file update when buffer does not match', async () => {
@@ -307,8 +302,6 @@ describe("MessageHandler", () => {
 
       // Verify buffer update was NOT called
       expect(mockRenderingEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
-
-      expect(result).toEqual({ running: true });
     });
 
     it('should resolve buffer name from file path and update correct buffer', async () => {
@@ -345,8 +338,6 @@ describe("MessageHandler", () => {
         type: 'log',
         payload: ['Buffer \'gol-buffer\' updated and pipeline recompiled']
       });
-
-      expect(result).toEqual({ running: true });
     });
 
     it('should handle buffer update compilation failure', async () => {
@@ -373,8 +364,6 @@ describe("MessageHandler", () => {
         type: 'error',
         payload: ['Compilation failed']
       });
-
-      expect(result).toEqual({ running: true });
     });
   });
 

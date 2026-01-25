@@ -170,14 +170,19 @@ describe('ShaderStudio', () => {
       } as MessageEvent;
 
       // Mock the message handler method
-      const mockResult = { running: true };
-      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
-        handleShaderMessage: vi.fn().mockResolvedValue(mockResult)
+      const mockMessageHandler = {
+        handleShaderMessage: vi.fn().mockResolvedValue(undefined)
+      };
+      
+      // Replace the message handler property
+      Object.defineProperty(shaderStudio, 'messageHandler', {
+        value: mockMessageHandler,
+        writable: true
       });
 
-      const result = await shaderStudio.handleShaderMessage(mockEvent);
+      await shaderStudio.handleShaderMessage(mockEvent);
 
-      expect(result).toEqual(mockResult);
+      expect(mockMessageHandler.handleShaderMessage).toHaveBeenCalledWith(mockEvent);
     });
   });
 

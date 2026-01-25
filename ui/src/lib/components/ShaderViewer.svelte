@@ -139,11 +139,11 @@
     }
   }
 
-  async function handleShaderMessage(event: MessageEvent) {
+  function handleShaderMessage(event: MessageEvent) {
     if (!initialized) return;
 
     try {
-      await shaderStudio.handleShaderMessage(event);
+      shaderStudio.handleShaderMessage(event);
       // Update the UI lock state to reflect the current state
       isLocked = shaderStudio.getIsLocked();
     } catch (err) {

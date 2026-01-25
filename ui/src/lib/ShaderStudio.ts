@@ -64,11 +64,10 @@ export class ShaderStudio {
     this.renderingEngine.handleCanvasResize(width, height);
   }
 
-  async handleShaderMessage(
+  handleShaderMessage(
     event: MessageEvent,
-  ): Promise<{ running: boolean }> {
-    const result = await this.messageHandler.handleShaderMessage(event);
-    return result;
+  ): void {
+    this.messageHandler.handleShaderMessage(event);
   }
 
   handleReset(onComplete?: () => void): void {
