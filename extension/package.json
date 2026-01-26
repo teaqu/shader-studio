@@ -89,6 +89,10 @@
         "command": "shader-studio.updateEditorPriority",
         "title": "Shader Studio: Update Editor Priority"
       }
+      ,{
+        "command": "shader-studio.transpileGlslToJs",
+        "title": "Shader Studio: Transpile GLSL to JavaScript (for debugging)"
+      }
     ],
     "menus": {
       "editor/title": [
