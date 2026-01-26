@@ -1,4 +1,8 @@
 # Change Log
+### 0.0.10
+- Transpile shader to javascript for debugging
+- Common buffer bug fix
+
 ### 0.0.9
 - Added video input support (including schema, config, and UI updates)
 - Added common buffer

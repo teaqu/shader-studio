@@ -120,7 +120,7 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 
 ## Debugging
 
-This extension provides a feature to transpile your GLSL shader code into JavaScript. This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
+Shader Studio can transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
 
 To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
 
