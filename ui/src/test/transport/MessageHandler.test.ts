@@ -433,7 +433,7 @@ describe("MessageHandler", () => {
       // Verify warning was sent
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
         type: 'warning',
-        payload: ['Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser.']
+        payload: ['Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or web browser.']
       });
 
       // Verify success message was also sent
