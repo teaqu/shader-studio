@@ -23,7 +23,12 @@
     "shader toy",
     "shader viewer",
     "shader editor",
-    "openGL"
+    "openGL",
+    "debugging",
+    "debugger",
+    "inspector",
+    "shader debugger",
+    "shader inspector"
   ],
   "engines": {
     "vscode": "^1.101.0"
