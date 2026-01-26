@@ -5,5 +5,7 @@ config-ui-dist
 shader-explorer-dist
 electron-app
 node_modules
+vendor
+glsl-deps
 .vscode-test/
 *.vsix

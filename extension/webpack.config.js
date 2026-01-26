@@ -15,18 +15,6 @@ module.exports = {
     vscode: 'commonjs vscode' // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
     // modules added here also need to be added in the .vscodeignore file
   },
-  optimization: {
-    // Don't minimize glsl-transpiler - it breaks the stdlib object lookups
-    minimizer: [
-      new (require('terser-webpack-plugin'))({
-        terserOptions: {
-          keep_classnames: true,
-          keep_fnames: true,
-        },
-        exclude: /glsl-transpiler/,
-      }),
-    ],
-  },
   resolve: {
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
     extensions: ['.ts', '.js']

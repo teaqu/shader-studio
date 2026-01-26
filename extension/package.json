@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "GLSL shader viewer for shadertoy and shader toy shaders",
-  "version": "0.0.11",
+  "version": "0.1.0",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
@@ -88,8 +88,8 @@
       {
         "command": "shader-studio.updateEditorPriority",
         "title": "Shader Studio: Update Editor Priority"
-      }
-      ,{
+      },
+      {
         "command": "shader-studio.transpileGlslToJs",
         "title": "Shader Studio: Transpile GLSL to JavaScript (for debugging)"
       }
@@ -159,7 +159,8 @@
     "vscode:prepublish": "npm run package",
     "compile": "webpack",
     "watch": "webpack --watch",
-    "package": "npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
+    "copy-glsl-transpiler": "cd ../vendor/glsl-transpiler && npm install --production && cd ../../extension && rimraf vendor && cpx \"../vendor/glsl-transpiler/**/*\" vendor/glsl-transpiler",
+    "package": "npm run copy-glsl-transpiler && npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && npm run build:electron-app && webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "prebuild": "node scripts/conditional-build-types-utils.js",
@@ -194,7 +195,6 @@
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
     "adm-zip": "^0.5.16",
-    "ws": "^8.18.3",
-    "glsl-transpiler": "^3.0.3"
+    "ws": "^8.18.3"
   }
 }
