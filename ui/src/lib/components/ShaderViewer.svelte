@@ -25,6 +25,7 @@
   let canvasWidth = 0;
   let canvasHeight = 0;
   let zoomLevel = 1.0;
+  let isInspectorEnabled = false;
   let isInspectorActive = false;
   let isInspectorLocked = false;
   let mouseX = 0;
@@ -94,7 +95,25 @@
 
   function handleTogglePause() {
     if (!initialized) return;
+    const timeManager = shaderStudio.getTimeManager();
+    const wasPaused = timeManager.isPaused();
+    
     shaderStudio.handleTogglePause();
+    
+    // When pausing and inspector is enabled, activate inspector
+    if (!wasPaused && isInspectorEnabled) {
+      isInspectorActive = true;
+      // Stop render loop (pause already happened via handleTogglePause)
+      shaderStudio.getRenderingEngine().stopRenderLoop();
+    } else if (wasPaused) {
+      // When resuming, deactivate inspector
+      isInspectorActive = false;
+      isInspectorLocked = false;
+      pixelRGB = null;
+      fragCoord = null;
+      // Restart render loop
+      shaderStudio.getRenderingEngine().startRenderLoop();
+    }
   }
 
   function handleToggleLock() {
@@ -115,27 +134,22 @@
     zoomLevel = zoom;
   }
 
-  function handleToggleInspector() {
-    isInspectorActive = !isInspectorActive;
-    if (isInspectorActive) {
-      // Stop the render loop and pause time when inspector is activated
-      if (initialized && shaderStudio) {
-        shaderStudio.getRenderingEngine().stopRenderLoop();
-        const timeManager = shaderStudio.getTimeManager();
-        if (!timeManager.isPaused()) {
-          shaderStudio.handleTogglePause();
-        }
+  function handleToggleInspectorEnabled() {
+    isInspectorEnabled = !isInspectorEnabled;
+    
+    // If enabling, pause and activate inspector immediately
+    if (isInspectorEnabled && initialized && shaderStudio) {
+      const timeManager = shaderStudio.getTimeManager();
+      if (!timeManager.isPaused()) {
+        shaderStudio.handleTogglePause();
       }
-    } else {
-      // Resume time and restart render loop when inspector is deactivated
-      if (initialized && shaderStudio) {
-        const timeManager = shaderStudio.getTimeManager();
-        if (timeManager.isPaused()) {
-          shaderStudio.handleTogglePause();
-        }
-        shaderStudio.getRenderingEngine().startRenderLoop();
-      }
-      // Clear pixel data when inspector is deactivated
+      isInspectorActive = true;
+      shaderStudio.getRenderingEngine().stopRenderLoop();
+    }
+    
+    // If disabling while inspector is active, just deactivate it (don't resume)
+    if (!isInspectorEnabled && isInspectorActive) {
+      isInspectorActive = false;
       isInspectorLocked = false;
       pixelRGB = null;
       fragCoord = null;
@@ -292,7 +306,7 @@
       {canvasWidth}
       {canvasHeight}
       {isLocked}
-      {isInspectorActive}
+      {isInspectorEnabled}
       canvasElement={glCanvas}
       onReset={handleReset}
       onRefresh={handleRefresh}
@@ -302,7 +316,7 @@
       onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
       onConfig={handleConfig}
-      onToggleInspector={handleToggleInspector}
+      onToggleInspectorEnabled={handleToggleInspectorEnabled}
     />
   {/if}
   <ErrorDisplay
