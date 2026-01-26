@@ -105,7 +105,6 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - `iChannel0-3` - input channels (textures, buffers, keyboard)
 - `iDate` - current date (year, month, day, time in seconds)
 - Video inputs
-- Common Buffer
 
 ### Not Yet Supported
 
