@@ -26,7 +26,7 @@ describe('MenuBar Component', () => {
     canvasWidth: 800,
     canvasHeight: 600,
     isLocked: false,
-    isInspectorActive: false,
+    isInspectorEnabled: false,
     canvasElement: null,
     onReset: vi.fn(),
     onRefresh: vi.fn(),
@@ -35,7 +35,7 @@ describe('MenuBar Component', () => {
     onAspectRatioChange: vi.fn(),
     onQualityChange: vi.fn(),
     onZoomChange: vi.fn(),
-    onToggleInspector: vi.fn()
+    onToggleInspectorEnabled: vi.fn()
   };
 
   beforeEach(() => {
@@ -743,51 +743,65 @@ describe('MenuBar Component', () => {
     });
   });
 
-  describe('Pixel Inspector Toggle', () => {
-    it('should render the pixel inspector toggle button', () => {
+  describe('Pixel Inspector Enable/Disable', () => {
+    it('should render the inspector toggle in options menu', async () => {
       render(MenuBar, { props: defaultProps });
+      
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
       
       const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
       expect(inspectorButton).toBeInTheDocument();
     });
 
-    it('should call onToggleInspector when inspector button is clicked', async () => {
-      const onToggleInspector = vi.fn();
+    it('should call onToggleInspectorEnabled when inspector menu item is clicked', async () => {
+      const onToggleInspectorEnabled = vi.fn();
       render(MenuBar, { 
         props: { 
           ...defaultProps, 
-          onToggleInspector 
+          onToggleInspectorEnabled 
         } 
       });
+      
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
       
       const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
       await fireEvent.click(inspectorButton);
       
-      expect(onToggleInspector).toHaveBeenCalledOnce();
+      expect(onToggleInspectorEnabled).toHaveBeenCalledOnce();
     });
 
-    it('should have active class when inspector is active', () => {
-      const { container } = render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          isInspectorActive: true 
-        } 
-      });
-      
-      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
-      expect(inspectorButton).toHaveClass('active');
-    });
-
-    it('should not have active class when inspector is not active', () => {
+    it('should show "Disable Inspector" when inspector is enabled', async () => {
       render(MenuBar, { 
         props: { 
           ...defaultProps, 
-          isInspectorActive: false 
+          isInspectorEnabled: true 
         } 
       });
       
-      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
-      expect(inspectorButton).not.toHaveClass('active');
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      
+      expect(screen.getByText('Disable Inspector')).toBeInTheDocument();
+    });
+
+    it('should show "Enable Inspector" when inspector is disabled', async () => {
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          isInspectorEnabled: false 
+        } 
+      });
+      
+      // Open options menu
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      
+      expect(screen.getByText('Enable Inspector')).toBeInTheDocument();
     });
   });
 });

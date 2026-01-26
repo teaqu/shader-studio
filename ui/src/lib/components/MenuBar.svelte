@@ -38,8 +38,8 @@
   export let onQualityChange: (mode: QualityMode) => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
   export let onConfig: () => void = () => {};
-  export let onToggleInspector: () => void = () => {};
-  export let isInspectorActive: boolean = false;
+  export let isInspectorEnabled: boolean = true;
+  export let onToggleInspectorEnabled: () => void = () => {};
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -198,13 +198,6 @@
         {@html pauseIcon}
       {/if}
     </button>
-    <button 
-      on:click={onToggleInspector} 
-      aria-label="Toggle pixel inspector"
-      class:active={isInspectorActive}
-    >
-      {@html inspectorIcon}
-    </button>
     <div class="menu-title fixed-width">{currentTime.toFixed(2)}</div>
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
@@ -353,6 +346,14 @@
               <span>Fullscreen</span>
             </button>
           {/if}
+          <button
+            class="options-menu-item"
+            on:click={() => { showOptionsMenu = false; onToggleInspectorEnabled(); }}
+            aria-label="Toggle pixel inspector"
+          >
+            {@html inspectorIcon}
+            <span>{isInspectorEnabled ? 'Disable' : 'Enable'} Inspector</span>
+          </button>
         </div>
       {/if}
     </div>
