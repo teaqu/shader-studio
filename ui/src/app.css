@@ -218,6 +218,11 @@ canvas {
   background-color: var(--vscode-list-hoverBackground);
 }
 
+.menu-bar button.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
 .error-overlay {
   position: fixed;
   top: 0;

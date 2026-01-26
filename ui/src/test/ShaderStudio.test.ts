@@ -95,7 +95,7 @@ describe('ShaderStudio', () => {
 
       expect(result).toBe(true);
       expect(mockCanvas.getContext).toHaveBeenCalledWith('webgl2');
-      expect(mockRenderingEngine.initialize).toHaveBeenCalledWith(mockCanvas);
+      expect(mockRenderingEngine.initialize).toHaveBeenCalledWith(mockCanvas, true);
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
         type: 'debug',
         payload: ['Svelte with piLibs initialized']

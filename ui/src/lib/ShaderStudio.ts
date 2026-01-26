@@ -31,7 +31,7 @@ export class ShaderStudio {
     }
 
     try {
-      this.renderingEngine.initialize(glCanvas);
+      this.renderingEngine.initialize(glCanvas, true); // Enable preserveDrawingBuffer for pixel reading
 
       this.messageHandler = new MessageHandler(
         this.transport,
@@ -118,6 +118,10 @@ export class ShaderStudio {
 
   getTimeManager(): any {
     return this.renderingEngine.getTimeManager();
+  }
+
+  getRenderingEngine() {
+    return this.renderingEngine;
   }
 
   dispose(): void {

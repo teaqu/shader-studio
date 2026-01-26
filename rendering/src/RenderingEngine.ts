@@ -226,6 +226,31 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.timeManager;
   }
 
+  public readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
+    if (!this.glCanvas) {
+      return null;
+    }
+
+    const gl = this.glCanvas.getContext("webgl2");
+    if (!gl) {
+      return null;
+    }
+
+    // WebGL coordinates are from bottom-left, so we need to flip Y
+    const glY = this.glCanvas.height - y - 1;
+
+    // Read a single pixel
+    const pixels = new Uint8Array(4);
+    gl.readPixels(x, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+    return {
+      r: pixels[0],
+      g: pixels[1],
+      b: pixels[2],
+      a: pixels[3],
+    };
+  }
+
   dispose(): void {
     // Clean up resources
     if (this.bufferManager) {

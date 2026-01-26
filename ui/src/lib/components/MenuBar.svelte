@@ -19,6 +19,7 @@
   import fullscreenIcon from "../../assets/fullscreen.svg?raw";
   import menuIcon from "../../assets/menu.svg?raw";
   import configIcon from "../../assets/config.svg?raw";
+  import inspectorIcon from "../../assets/inspector.svg?raw";
 
   import { piRequestFullScreen } from "../../../../vendor/pilibs/src/piWebUtils.js";
 
@@ -37,6 +38,8 @@
   export let onQualityChange: (mode: QualityMode) => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
   export let onConfig: () => void = () => {};
+  export let onToggleInspector: () => void = () => {};
+  export let isInspectorActive: boolean = false;
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -194,6 +197,13 @@
       {:else}
         {@html pauseIcon}
       {/if}
+    </button>
+    <button 
+      on:click={onToggleInspector} 
+      aria-label="Toggle pixel inspector"
+      class:active={isInspectorActive}
+    >
+      {@html inspectorIcon}
     </button>
     <div class="menu-title fixed-width">{currentTime.toFixed(2)}</div>
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
