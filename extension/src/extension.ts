@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import { ShaderStudio } from "./app/ShaderStudio";
 
+import * as path from "path";
+import { GlslToJsTranspiler } from "./app/Transpiler";
+
 let shaderExtension: ShaderStudio | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
@@ -37,6 +40,35 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.commands.executeCommand('workbench.action.reloadWindow');
 					}
 				});
+			}
+		})
+	);
+
+	// Register GLSL to JS transpile command
+	context.subscriptions.push(
+		vscode.commands.registerCommand("shader-studio.transpileGlslToJs", async (fileUri?: vscode.Uri) => {
+			try {
+				let uri = fileUri;
+				if (!uri) {
+					const activeEditor = vscode.window.activeTextEditor;
+					if (!activeEditor) {
+						vscode.window.showErrorMessage("No active editor or file selected.");
+						return;
+					}
+					uri = activeEditor.document.uri;
+				}
+				   try {
+					   const output = GlslToJsTranspiler.transpileFile(uri);
+					   if (!output) return;
+					   const outPath = GlslToJsTranspiler.writeTranspiledFile(uri, output);
+					   vscode.window.showInformationMessage(`Transpiled GLSL to JS: ${path.basename(outPath)}`);
+					   const doc = await vscode.workspace.openTextDocument(outPath);
+					   vscode.window.showTextDocument(doc);
+				   } catch (err) {
+					   vscode.window.showErrorMessage(`GLSL Transpile failed: ${err}`);
+				   }
+			} catch (err) {
+				vscode.window.showErrorMessage(`GLSL Transpile failed: ${err}`);
 			}
 		})
 	);

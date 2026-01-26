@@ -118,6 +118,12 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - Volume/microphone inputs
 - VR/AR inputs
 
+## Debugging
+
+This extension provides a feature to transpile your GLSL shader code into JavaScript. This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
+
+To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
+
 ## Contributing
 
 Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/teaqu/shader-view) to report issues or submit pull requests.
