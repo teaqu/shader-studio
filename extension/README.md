@@ -124,6 +124,10 @@ Shader Studio can transpile your GLSL shader code into JavaScript (using https:/
 
 To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
 
+This can be used in conjunction with the pixel inspector. Get the values from that and then update the js uniforms.
+
+<img width="477" height="291" alt="image" src="https://github.com/user-attachments/assets/493ebc29-0ae5-49ca-95a9-cf8aac4ddace" />
+
 ## Contributing
 
 Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/teaqu/shader-view) to report issues or submit pull requests.
