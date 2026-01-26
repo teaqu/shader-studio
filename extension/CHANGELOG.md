@@ -1,4 +1,7 @@
 # Change Log
+### 0.0.11
+- Transpile package fix
+
 ### 0.0.10
 - Transpile shader to javascript for debugging
 - Common buffer bug fix
