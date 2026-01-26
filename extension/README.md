@@ -118,7 +118,7 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - Volume/microphone inputs
 - VR/AR inputs
 
-## Debugging
+## Debugging (Experemental)
 
 Shader Studio can transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
 
