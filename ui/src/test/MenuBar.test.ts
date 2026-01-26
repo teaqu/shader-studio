@@ -26,6 +26,7 @@ describe('MenuBar Component', () => {
     canvasWidth: 800,
     canvasHeight: 600,
     isLocked: false,
+    isInspectorActive: false,
     canvasElement: null,
     onReset: vi.fn(),
     onRefresh: vi.fn(),
@@ -33,7 +34,8 @@ describe('MenuBar Component', () => {
     onToggleLock: vi.fn(),
     onAspectRatioChange: vi.fn(),
     onQualityChange: vi.fn(),
-    onZoomChange: vi.fn()
+    onZoomChange: vi.fn(),
+    onToggleInspector: vi.fn()
   };
 
   beforeEach(() => {
@@ -738,6 +740,54 @@ describe('MenuBar Component', () => {
       
       // Should call with the container when found
       expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(container);
+    });
+  });
+
+  describe('Pixel Inspector Toggle', () => {
+    it('should render the pixel inspector toggle button', () => {
+      render(MenuBar, { props: defaultProps });
+      
+      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
+      expect(inspectorButton).toBeInTheDocument();
+    });
+
+    it('should call onToggleInspector when inspector button is clicked', async () => {
+      const onToggleInspector = vi.fn();
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          onToggleInspector 
+        } 
+      });
+      
+      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
+      await fireEvent.click(inspectorButton);
+      
+      expect(onToggleInspector).toHaveBeenCalledOnce();
+    });
+
+    it('should have active class when inspector is active', () => {
+      const { container } = render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          isInspectorActive: true 
+        } 
+      });
+      
+      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
+      expect(inspectorButton).toHaveClass('active');
+    });
+
+    it('should not have active class when inspector is not active', () => {
+      render(MenuBar, { 
+        props: { 
+          ...defaultProps, 
+          isInspectorActive: false 
+        } 
+      });
+      
+      const inspectorButton = screen.getByLabelText('Toggle pixel inspector');
+      expect(inspectorButton).not.toHaveClass('active');
     });
   });
 });

@@ -261,4 +261,95 @@ describe("RenderingEngine", () => {
       });
     });
   });
+
+  describe("readPixel", () => {
+    it("should return null when canvas is not initialized", () => {
+      const result = renderingEngine.readPixel(0, 0);
+      expect(result).toBeNull();
+    });
+
+    it("should return null when WebGL context is not available", () => {
+      const mockCanvas = document.createElement("canvas");
+      mockCanvas.getContext = vi.fn().mockReturnValue(null);
+
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: mockCanvas,
+        writable: true,
+        configurable: true,
+      });
+
+      const result = renderingEngine.readPixel(0, 0);
+      expect(result).toBeNull();
+    });
+
+    it("should read pixel data correctly", () => {
+      const mockCanvas = document.createElement("canvas");
+      mockCanvas.width = 100;
+      mockCanvas.height = 100;
+
+      const mockGl = {
+        readPixels: vi.fn().mockImplementation(
+          (x: number, y: number, width: number, height: number, format: number, type: number, pixels: Uint8Array) => {
+            pixels[0] = 255; // R
+            pixels[1] = 128; // G
+            pixels[2] = 64;  // B
+            pixels[3] = 255; // A
+          }
+        ),
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+      };
+
+      mockCanvas.getContext = vi.fn().mockReturnValue(mockGl);
+
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: mockCanvas,
+        writable: true,
+        configurable: true,
+      });
+
+      const result = renderingEngine.readPixel(50, 30);
+
+      expect(result).toEqual({
+        r: 255,
+        g: 128,
+        b: 64,
+        a: 255,
+      });
+    });
+
+    it("should flip Y coordinate for WebGL (bottom-left origin)", () => {
+      const mockCanvas = document.createElement("canvas");
+      mockCanvas.width = 100;
+      mockCanvas.height = 100;
+
+      const mockGl = {
+        readPixels: vi.fn(),
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+      };
+
+      mockCanvas.getContext = vi.fn().mockReturnValue(mockGl);
+
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: mockCanvas,
+        writable: true,
+        configurable: true,
+      });
+
+      // Read at y=30 on a 100px tall canvas
+      // Should flip to glY = 100 - 30 - 1 = 69
+      renderingEngine.readPixel(50, 30);
+
+      expect(mockGl.readPixels).toHaveBeenCalledWith(
+        50,    // x
+        69,    // flipped y (100 - 30 - 1)
+        1,     // width
+        1,     // height
+        mockGl.RGBA,
+        mockGl.UNSIGNED_BYTE,
+        expect.any(Uint8Array)
+      );
+    });
+  });
 });

@@ -1,4 +1,7 @@
 # Change Log
+### 0.2
+- Pixel Inspector
+
 ### 0.1
 - More transpile fixes
 

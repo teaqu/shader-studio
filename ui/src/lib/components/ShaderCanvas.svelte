@@ -14,6 +14,8 @@
     width: number;
     height: number;
   }) => void = () => {};
+  export let onCanvasClick: (event: MouseEvent) => void = () => {};
+  export let isInspectorActive: boolean = false;
 
   let glCanvas: HTMLCanvasElement;
   let currentAspectMode: AspectRatioMode = "16:9";
@@ -72,6 +74,13 @@
     }
   }
 
+  function handleMouseDown(event: MouseEvent) {
+    if (isInspectorActive) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
+
   $: if (glCanvas) {
     setupInputHandling();
   }
@@ -82,6 +91,6 @@
   }
 </script>
 
-<div class="canvas-container">
-  <canvas bind:this={glCanvas}></canvas>
+<div class="canvas-container" on:click={onCanvasClick}>
+  <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
 </div>
