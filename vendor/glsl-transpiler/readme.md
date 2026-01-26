@@ -1,3 +1,7 @@
+# Have installed here as have issues with packaging in extension with npm
+# Repo: https://github.com/stackgl/glsl-transpiler
+# commit: 3c826ab
+
 # glsl-transpiler [![test](https://github.com/stackgl/glsl-transpiler/actions/workflows/test.yml/badge.svg)](https://github.com/stackgl/glsl-transpiler/actions/workflows/test.yml)
 
 Transforms [glsl](https://www.opengl.org/documentation/glsl/) source to optimized js code. It converts vectors and matrices to arrays, expands swizzles, applies expressions optimizations and provides stdlib for environment compatibility.
