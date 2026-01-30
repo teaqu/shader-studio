@@ -243,15 +243,28 @@
 
 <div class="shader-explorer">
   <div class="toolbar">
-    <div class="search-container">
-      <input 
-        type="text" 
-        bind:value={search} 
-        placeholder="Search shaders..." 
-        class="search-input"
-      />
-    </div>
     <div class="toolbar-actions">
+      <div class="search-container">
+        <input 
+          type="text" 
+          bind:value={search} 
+          placeholder="Search shaders..." 
+          class="search-input"
+        />
+      </div>
+      <div class="card-size-control">
+        <label for="card-size-slider" class="size-label">Card Size</label>
+        <input 
+          id="card-size-slider"
+          type="range" 
+          min="200" 
+          max="1000" 
+          step="20"
+          bind:value={cardSize}
+          class="card-size-slider"
+          title={`${cardSize}px`}
+        />
+      </div>
       <select class="sort-select" bind:value={sortBy}>
         <option value="name">Name</option>
         <option value="updated">Updated</option>
@@ -271,19 +284,6 @@
         <option value={50}>Show 50</option>
         <option value={100}>Show 100</option>
       </select>
-      <div class="card-size-control">
-        <label for="card-size-slider" class="size-label">Card Size</label>
-        <input 
-          id="card-size-slider"
-          type="range" 
-          min="200" 
-          max="1600" 
-          step="20"
-          bind:value={cardSize}
-          class="card-size-slider"
-          title={`${cardSize}px`}
-        />
-      </div>
       <label class="checkbox-control">
         <input type="checkbox" bind:checked={hideFailedShaders} />
         <span class="checkbox-label">Hide Failed</span>
@@ -404,18 +404,41 @@
 
   .toolbar {
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
     padding: 16px;
     border-bottom: 1px solid var(--vscode-panel-border);
     background-color: var(--vscode-editor-background);
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
   }
 
   .search-container {
-    flex: 1;
+    flex: 1 1 180px;
+    min-width: 180px;
+    margin: 0 8px;
+    display: flex;
+    align-items: center;
+    max-width: unset;
   }
 
   .search-input {
+    min-width: 0;
+    flex: 1 1 auto;
     width: 100%;
     padding: 6px 12px;
     background: var(--vscode-input-background);
