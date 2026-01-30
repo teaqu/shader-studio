@@ -1,8 +1,0 @@
-# Electron build output
-out/
-out/make/
-ui/
-dist/
-
-# Dependencies
-node_modules/

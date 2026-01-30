@@ -60,11 +60,6 @@ export class ShaderStudioStatusBar {
             action: 'show-panel'
         });
         items.push({
-            label: '$(device-desktop) Open in new window',
-            description: 'Launch Shader Studio in it\'s own window',
-            action: 'open-electron'
-        });
-        items.push({
             label: '$(library) Shader Explorer',
             description: 'Browse all shaders in workspace',
             action: 'shader explorer'
@@ -101,9 +96,6 @@ export class ShaderStudioStatusBar {
                     break;
                 case 'show-panel':
                     await vscode.commands.executeCommand('shader-studio.view');
-                    break;
-                case 'open-electron':
-                    await vscode.commands.executeCommand('shader-studio.openInElectron');
                     break;
                 case 'shader explorer':
                     await vscode.commands.executeCommand('shader-studio.openShaderExplorer');

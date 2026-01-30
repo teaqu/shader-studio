@@ -9,8 +9,7 @@ export class Constants {
     TOGGLE_CONFIG_VIEW: "shader-studio.toggleConfigView",
     TOGGLE_CONFIG_VIEW_TO_SOURCE: "shader-studio.toggleConfigViewToSource",
     GENERATE_CONFIG: "shader-studio.generateConfig",
-    REFRESH_SHADER: "shader-studio.refreshShader",
-    OPEN_IN_ELECTRON: "shader-studio.openInElectron"
+    REFRESH_SHADER: "shader-studio.refreshShader"
   } as const;
   
 }

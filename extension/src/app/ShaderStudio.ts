@@ -13,7 +13,6 @@ import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
-import { ElectronLauncher } from "./ElectronLauncher";
 import { ConfigGenerator } from "./ConfigGenerator";
 
 export class ShaderStudio {
@@ -24,7 +23,6 @@ export class ShaderStudio {
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
   private logger!: Logger;
-  private electronLauncher: ElectronLauncher;
   private configEditorProvider: vscode.Disposable;
   private sShaderExplorerProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
@@ -59,7 +57,6 @@ export class ShaderStudio {
       this.glslFileTracker,
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
-    this.electronLauncher = new ElectronLauncher(context, this.logger);
 
     // Register custom editor for .sha.json files
     this.configEditorProvider = ConfigEditorProvider.register(
@@ -219,13 +216,6 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-studio.openInElectron", () => {
-        this.logger.info("shader-studio.openInElectron command executed");
-        this.openInElectron();
-      }),
-    );
-
-    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.toggleConfigView", () => {
         this.logger.info("shader-studio.toggleConfigView command executed");
         this.toggleConfigView();
@@ -314,10 +304,6 @@ export class ShaderStudio {
     if (this.messenger.hasActiveClients()) {
       this.shaderProvider.sendShaderToWebview(editor);
     }
-  }
-
-  private async openInElectron(): Promise<void> {
-    await this.electronLauncher.launch(this.isDevelopmentMode());
   }
 
   private async toggleConfigView(): Promise<void> {

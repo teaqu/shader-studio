@@ -15,7 +15,6 @@ Install through VS Code extensions. Search for "Shader Studio".
 - `/extension/` - VS Code extension
 - `/ui/` - User interface including shader rendering components
 - `/config-ui/` - UI for editing json config
-- `/electron/` - Dedicated window for UI
 
 ## Development
 

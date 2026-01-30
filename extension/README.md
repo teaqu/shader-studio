@@ -24,17 +24,9 @@ You can launch as many panels, windows, or browser tabs as you want simultaneous
 
 This runs the shader within a panel in VS Code, allowing you to view your shader alongside your code.
 
-### Window
-
-This mode is convenient as it runs independently of VS Code and also has the ability to stay on top of other windows.
-
-The window mode provides additional options such as setting the window theme, reloading, and more.
-
-<img src="https://github.com/teaqu/shader-studio/blob/main/assets/window-options.png?raw=true" alt="shader studio window options" width="250"/>
-
 ### Web Browser
 
-For the best performance, it's recommended to use your web browser. Web browsers appear to have better GPU optimizations and can achieve higher priority rendering than observed in VS Code panels or Electron windows.
+For the best performance, it's recommended to use your web browser. Web browsers appear to have better GPU optimizations and can achieve higher priority rendering than observed in VS Code panels.
 
 ## Runtime Config
 
