@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
+import * as path from 'path';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { Logger } from '../../app/services/Logger';
 
@@ -53,7 +54,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'video.mp4'));
         });
 
         test('should call handlePersistentError when video file not found', () => {
@@ -93,8 +94,8 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, '/path/to/video1.mp4');
-            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, '/path/to/video2.mp4');
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'video1.mp4'));
+            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, path.join('/path/to', 'video2.mp4'));
         });
 
         test('should handle mixed texture and video inputs', () => {
@@ -113,8 +114,8 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
-            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, '/path/to/video.mp4');
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'texture.png'));
+            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, path.join('/path/to', 'video.mp4'));
         });
 
         test('should handle video inputs in buffer passes', () => {
@@ -135,7 +136,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.BufferA.inputs.iChannel0.path, '/path/to/video.mp4');
+            assert.strictEqual(config.passes.BufferA.inputs.iChannel0.path, path.join('/path/to', 'video.mp4'));
         });
 
         test('should not modify inputs without path', () => {

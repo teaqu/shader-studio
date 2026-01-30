@@ -5,9 +5,24 @@ import * as fs from "fs";
 // Otherwise some files break with "Cannot find module" errors at runtime e.g. shaders with length()
 // Load from vendor directory
 // have directly in repo to avoid packaging issues for now.
-declare const __non_webpack_require__: typeof require;
-const glslDepsPath = path.join(__dirname, '..', 'vendor', 'glsl-transpiler');
-const glslTranspiler = __non_webpack_require__(glslDepsPath).default;
+declare const __non_webpack_require__: typeof require | undefined;
+
+// Determine the correct path to vendor folder based on runtime context
+// - Webpack bundle (dist/): __dirname is 'dist/', vendor at 'dist/vendor/'
+// - TypeScript output (out/): __dirname is 'out/app/', vendor at 'src/vendor/' (relative to extension root)
+function getGlslTranspilerPath(): string {
+    if (typeof __non_webpack_require__ !== 'undefined') {
+        // Webpack bundle - vendor is copied to dist/vendor/
+        return path.join(__dirname, '..', 'vendor', 'glsl-transpiler');
+    } else {
+        // TypeScript output - vendor is in src/vendor/ (extension root)
+        return path.join(__dirname, '..', '..', 'vendor', 'glsl-transpiler');
+    }
+}
+
+const glslDepsPath = getGlslTranspilerPath();
+// Use __non_webpack_require__ when available (webpack bundle), fallback to regular require (tests)
+const glslTranspiler = (typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__(glslDepsPath) : require(glslDepsPath)).default;
 
 export class GlslToJsTranspiler {
   static transpileFile(uri: { fsPath: string }): string | undefined {

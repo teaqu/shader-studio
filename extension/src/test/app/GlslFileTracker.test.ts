@@ -298,34 +298,36 @@ suite('GlslFileTracker Test Suite', () => {
 
         test('returns visible editor if present', async () => {
             const shaderPath = '/mock/path/visible.glsl';
+            const shaderUri = vscode.Uri.file(shaderPath);
             const mockEditor = {
                 document: {
-                    uri: vscode.Uri.file(shaderPath),
-                    fileName: shaderPath,
+                    uri: shaderUri,
+                    fileName: shaderUri.fsPath,
                     languageId: 'glsl'
                 }
             } as vscode.TextEditor;
             sandbox.stub(vscode.window, 'visibleTextEditors').value([mockEditor]);
-            const result = await tracker.getMatchingEditorAllGroups(shaderPath);
+            const result = await tracker.getMatchingEditorAllGroups(shaderUri.fsPath);
             assert.strictEqual(result, mockEditor);
         });
 
         test('reveals editor from tabGroups if not visible', async () => {
             const shaderPath = '/mock/path/tabbed.glsl';
+            const shaderUri = vscode.Uri.file(shaderPath);
             sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
             let tabInput: any;
             try {
-                tabInput = new (vscode as any).TabInputText(vscode.Uri.file(shaderPath));
+                tabInput = new (vscode as any).TabInputText(shaderUri);
             } catch (e) {
-                tabInput = { uri: vscode.Uri.file(shaderPath) };
+                tabInput = { uri: shaderUri };
             }
             const mockTab = { input: tabInput } as any;
             sandbox.stub(vscode.window, 'tabGroups').value({ all: [{ tabs: [mockTab], viewColumn: vscode.ViewColumn.Two }] } as any);
-            const mockDocument = { uri: vscode.Uri.file(shaderPath) } as any;
+            const mockDocument = { uri: shaderUri } as any;
             const mockEditor = { document: mockDocument } as any;
             const openDocStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
             const showDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves(mockEditor as any);
-            const result = await tracker.getMatchingEditorAllGroups(shaderPath);
+            const result = await tracker.getMatchingEditorAllGroups(shaderUri.fsPath);
             assert.strictEqual(openDocStub.called, true);
             assert.strictEqual(showDocStub.called, true);
             assert.strictEqual(result, mockEditor);
