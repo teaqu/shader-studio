@@ -2,7 +2,7 @@
   "name": "shader-studio-monorepo",
   "version": "0.0.1",
   "private": true,
-  "description": "A VS Code extension for viewing and editing shaders with Electron desktop app",
+  "description": "A VS Code extension for viewing and editing shaders",
   "workspaces": [
     "types",
     "rendering",
@@ -10,8 +10,7 @@
     "extension",
     "ui",
     "config-ui",
-    "shader-explorer",
-    "electron"
+    "shader-explorer"
   ],
   "scripts": {
     "build": "npm run build:types && npm run build --workspaces --if-present",
@@ -20,15 +19,12 @@
     "build:ui": "npm run build:types && npm run build -w ui",
     "build:config-ui": "npm run build:types && npm run build -w config-ui",
     "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",
-    "build:electron": "npm run build -w electron",
     "compile:extension": "npm run compile -w extension",
     "dev:ui": "npm run dev -w ui",
     "dev:shader-explorer": "npm run dev -w shader-explorer",
     "dev:config-ui": "npm run dev -w config-ui",
-    "dev:electron": "npm run dev -w electron",
     "test": "npm run test --workspaces --if-present",
-    "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist config-ui/node_modules config-ui/dist electron/node_modules electron/dist electron/out types/node_modules types/dist",
-    "package:electron": "npm run make -w electron",
+    "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist config-ui/node_modules config-ui/dist types/node_modules types/dist",
     "watch:extension": "npm run watch -w extension"
   },
   "devDependencies": {
@@ -41,7 +37,6 @@
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
     "cpx2": "^7.0.1",
-    "electron": "^37.2.4",
     "eslint": "^9.25.1",
     "eslint-plugin-svelte": "^2.46.0",
     "globals": "^15.12.0",

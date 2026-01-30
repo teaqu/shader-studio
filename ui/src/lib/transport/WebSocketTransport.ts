@@ -99,17 +99,12 @@ export class WebSocketTransport implements Transport {
   }
 
   private sendClientInfo(): void {
-    const isElectron = !!(window as any).electronAPI ||
-      !!(window as any).require ||
-      (typeof process !== 'undefined' && process.versions?.electron);
-
     this.postMessage({
       type: 'clientInfo',
-      isElectron: isElectron,
       userAgent: navigator.userAgent
     });
 
-    console.log(`WebSocket: Sent client info - isElectron: ${isElectron}`);
+    console.log(`WebSocket: Sent client info`);
   }
 
   postMessage(message: any): void {

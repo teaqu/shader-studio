@@ -116,17 +116,6 @@ suite('ShaderStudioStatusBar Test Suite', () => {
         assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.view'));
     });
 
-    test('showShaderStudioMenu should execute open-electron', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
-
-        const choice = { label: "$(device-desktop) Open in new window", description: "Launch Shader Studio in it's own window", action: 'open-electron' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
-
-        await statusBar.showShaderStudioMenu();
-
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openInElectron'));
-    });
-
     test('showShaderStudioMenu should execute new-shader', async () => {
         statusBar = new ShaderStudioStatusBar(mockContext);
 

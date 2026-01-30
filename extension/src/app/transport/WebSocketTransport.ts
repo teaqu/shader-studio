@@ -10,7 +10,6 @@ export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private messageHandler?: (message: any) => void;
-  private clientTypes: Map<WebSocket, 'electron' | 'browser'> = new Map();
 
   constructor(
     port: number,
@@ -47,11 +46,9 @@ export class WebSocketTransport implements MessageTransport {
           const messageStr = msg instanceof Buffer ? msg.toString() : msg;
           const data = JSON.parse(messageStr);
 
-          // Handle client identification
+          // Handle client identification (legacy, kept for compatibility)
           if (data.type === 'clientInfo') {
-            const clientType = data.isElectron ? 'electron' : 'browser';
-            this.clientTypes.set(ws, clientType);
-            console.log(`WebSocket: Client identified as ${clientType}`);
+            console.log(`WebSocket: Client connected from browser`);
             return;
           }
 
@@ -67,7 +64,6 @@ export class WebSocketTransport implements MessageTransport {
 
       ws.on("close", (code, reason) => {
         this.wsClients.delete(ws);
-        this.clientTypes.delete(ws);
         console.log(`WebSocket: Client disconnected. Code: ${code}, 
           Reason: ${reason?.toString()}. Total clients: ${this.wsClients.size}`);
       });
@@ -75,7 +71,6 @@ export class WebSocketTransport implements MessageTransport {
       ws.on("error", (error) => {
         console.error('WebSocket client error:', error);
         this.wsClients.delete(ws);
-        this.clientTypes.delete(ws);
       });
 
       const pingInterval = setInterval(() => {
@@ -123,8 +118,7 @@ export class WebSocketTransport implements MessageTransport {
         try {
           let clientMessage = message;
           if (message.type === "shaderSource" && message.config) {
-            const clientType = this.clientTypes.get(client) || 'browser';
-            clientMessage = this.processConfigPaths(message, clientType);
+            clientMessage = this.processConfigPaths(message);
           }
 
           client.send(JSON.stringify(clientMessage));
@@ -135,7 +129,7 @@ export class WebSocketTransport implements MessageTransport {
     }
   }
 
-  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }, clientType: 'electron' | 'browser'): typeof message {
+  private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }): typeof message {
     // Create a mock webview for ConfigPathConverter (it won't be used for videos)
     const mockWebview = {
       asWebviewUri: (uri: vscode.Uri) => uri,
@@ -144,13 +138,13 @@ export class WebSocketTransport implements MessageTransport {
     
     const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview, { skipVideoProcessing: true });
     
-    // Handle video-specific logic based on client type (videos not processed by ConfigPathConverter)
-    this.handleVideoPaths(processedMessage, clientType);
+    // Handle video-specific logic for browser clients
+    this.handleVideoPaths(processedMessage);
     
     return processedMessage;
   }
 
-  private handleVideoPaths(message: any, clientType: 'electron' | 'browser'): void {
+  private handleVideoPaths(message: any): void {
     if (!message.config?.passes) {
       return;
     }
@@ -164,36 +158,24 @@ export class WebSocketTransport implements MessageTransport {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
         if (input?.path && input.type === "video") {
-          if (clientType === 'electron') {
-            // Electron clients can use file:// URLs
-            input.path = `file://${input.path.replace(/\\/g, '/')}`;
-          } else {
-            // Browser clients need HTTP URLs via webserver
-            const config = vscode.workspace.getConfiguration('Shader Studio');
-            const port = config.get<number>('webServerPort') || 3000;
-            input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
-          }
+          // Browser clients need HTTP URLs via webserver
+          const config = vscode.workspace.getConfiguration('Shader Studio');
+          const port = config.get<number>('webServerPort') || 3000;
+          input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
         }
       }
     }
   }
 
   // Legacy method for backward compatibility with tests
-  public convertUriForClient(filePath: string, clientType: 'electron' | 'browser' = 'browser'): string {
-    // Handle local file paths differently for browser vs Electron clients
-    if (filePath.match(/^[a-zA-Z]:|^\//) || filePath.match(/^\\\\/)) {
-      // Looks like a local file path (Windows drive, Unix absolute path, or UNC path)
-
-      if (clientType === 'electron') {
-        // Electron can access local files directly via file:// protocol
-        return `file://${filePath.replace(/\\/g, '/')}`;
-      } else {
-        // Browser clients need HTTP URLs due to CORS restrictions
-        // Encode the full file path for the WebServer to serve directly
-        const config = vscode.workspace.getConfiguration('Shader Studio');
-        const port = config.get<number>('webServerPort') || 3000;
-        return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
-      }
+  public convertUriForClient(filePath: string): string {
+    // Handle local file paths for browser clients
+    if (filePath.match(/^[a-zA-Z]:|^\//)) {
+      // Looks like a local file path (Windows drive or Unix absolute path)
+      // Browser clients need HTTP URLs due to CORS restrictions
+      const config = vscode.workspace.getConfiguration('Shader Studio');
+      const port = config.get<number>('webServerPort') || 3000;
+      return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
     }
     return filePath;
   }
@@ -205,7 +187,6 @@ export class WebSocketTransport implements MessageTransport {
       }
     });
     this.wsClients.clear();
-    this.clientTypes.clear();
     this.wsServer.close();
   }
 

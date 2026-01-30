@@ -154,74 +154,53 @@ suite('WebSocketTransport Test Suite', () => {
             }
         });
 
-        test('converts Windows path to file:// URL for Electron client', () => {
-            const filePath = 'C:\\path\\to\\texture.png';
-            const result = transport.convertUriForClient(filePath, 'electron');
-
-            assert.strictEqual(result, 'file://C:/path/to/texture.png');
-        });
-
-        test('converts Unix path to file:// URL for Electron client', () => {
-            const filePath = '/path/to/texture.png';
-            const result = transport.convertUriForClient(filePath, 'electron');
-
-            assert.strictEqual(result, 'file:///path/to/texture.png');
-        });
-
-        test('converts Windows path to HTTP URL for browser client', () => {
-            const filePath = 'C:\\path\\to\\texture.png';
-            const result = transport.convertUriForClient(filePath, 'browser');
-
-            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
-        });
-
-        test('converts Unix path to HTTP URL for browser client', () => {
-            const filePath = '/path/to/texture.png';
-            const result = transport.convertUriForClient(filePath, 'browser');
-
-            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
-        });
-
-        test('uses custom port for browser client', () => {
-            mockConfig.get.withArgs('webServerPort').returns(8080);
-            const filePath = 'C:\\path\\to\\texture.png';
-            const result = transport.convertUriForClient(filePath, 'browser');
-
-            assert.strictEqual(result, `http://localhost:8080/textures/${encodeURIComponent(filePath)}`);
-        });
-
-        test('defaults to browser client type when not specified', () => {
+        test('converts Windows path to HTTP URL', () => {
             const filePath = 'C:\\path\\to\\texture.png';
             const result = transport.convertUriForClient(filePath);
 
             assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
         });
 
+        test('converts Unix path to HTTP URL', () => {
+            const filePath = '/path/to/texture.png';
+            const result = transport.convertUriForClient(filePath);
+
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
+        });
+
+        test('uses custom port', () => {
+            mockConfig.get.withArgs('webServerPort').returns(8080);
+            const filePath = 'C:\\path\\to\\texture.png';
+            const result = transport.convertUriForClient(filePath);
+
+            assert.strictEqual(result, `http://localhost:8080/textures/${encodeURIComponent(filePath)}`);
+        });
+
         test('returns unchanged path for non-local file paths', () => {
             const httpUrl = 'http://example.com/texture.png';
-            const result = transport.convertUriForClient(httpUrl, 'browser');
+            const result = transport.convertUriForClient(httpUrl);
 
             assert.strictEqual(result, httpUrl);
         });
 
         test('returns unchanged path for already converted file:// URLs', () => {
             const fileUrl = 'file://C:/path/to/texture.png';
-            const result = transport.convertUriForClient(fileUrl, 'electron');
+            const result = transport.convertUriForClient(fileUrl);
 
             assert.strictEqual(result, fileUrl);
         });
 
-        test('handles paths with spaces correctly for browser client', () => {
+        test('handles paths with spaces correctly', () => {
             const filePath = 'C:\\path\\with spaces\\texture.png';
-            const result = transport.convertUriForClient(filePath, 'browser');
+            const result = transport.convertUriForClient(filePath);
 
             assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
             assert.ok(result.includes('with%20spaces'));
         });
 
-        test('handles paths with special characters correctly for browser client', () => {
+        test('handles paths with special characters correctly', () => {
             const filePath = 'C:\\path\\with&special#chars\\texture.png';
-            const result = transport.convertUriForClient(filePath, 'browser');
+            const result = transport.convertUriForClient(filePath);
 
             assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent(filePath)}`);
             assert.ok(result.includes('%26') && result.includes('%23'));
@@ -229,7 +208,7 @@ suite('WebSocketTransport Test Suite', () => {
 
         test('handles relative paths correctly', () => {
             const relativePath = 'relative/path/texture.png';
-            const result = transport.convertUriForClient(relativePath, 'browser');
+            const result = transport.convertUriForClient(relativePath);
 
             // Should return unchanged since it doesn't match the local file pattern
             assert.strictEqual(result, relativePath);
@@ -254,36 +233,9 @@ suite('WebSocketTransport Test Suite', () => {
             }
         });
 
-        test('converts video path to file:// URL for Electron client', () => {
+        test('converts video path to HTTP URL', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'electron');
-
-            const message = {
-                type: 'shaderSource',
-                config: {
-                    passes: {
-                        Image: {
-                            inputs: {
-                                iChannel0: { type: 'video', path: '/path/to/video.mp4' }
-                            }
-                        }
-                    }
-                }
-            };
-
-            transport.send(message);
-
-            const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, 'file:///path/to/video.mp4');
-        });
-
-        test('converts video path to HTTP URL for browser client', () => {
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
-            wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'browser');
 
             const message = {
                 type: 'shaderSource',
@@ -304,11 +256,9 @@ suite('WebSocketTransport Test Suite', () => {
             assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`);
         });
 
-        test('converts Windows video path to file:// URL for Electron client', () => {
+        test('converts Windows video path to HTTP URL', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'electron');
 
             const message = {
                 type: 'shaderSource',
@@ -326,14 +276,12 @@ suite('WebSocketTransport Test Suite', () => {
             transport.send(message);
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, 'file://C:/path/to/video.mp4');
+            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, `http://localhost:3000/textures/${encodeURIComponent('C:\\path\\to\\video.mp4')}`);
         });
 
         test('handles multiple video inputs', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'electron');
 
             const message = {
                 type: 'shaderSource',
@@ -352,15 +300,13 @@ suite('WebSocketTransport Test Suite', () => {
             transport.send(message);
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, 'file:///path/to/video1.mp4');
-            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel1.path, 'file:///path/to/video2.mp4');
+            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, `http://localhost:3000/textures/${encodeURIComponent('/path/to/video1.mp4')}`);
+            assert.strictEqual(sentData.config.passes.Image.inputs.iChannel1.path, `http://localhost:3000/textures/${encodeURIComponent('/path/to/video2.mp4')}`);
         });
 
         test('does not modify non-video inputs', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'electron');
 
             const message = {
                 type: 'shaderSource',
@@ -385,9 +331,7 @@ suite('WebSocketTransport Test Suite', () => {
 
         test('handles video inputs in buffer passes', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'electron');
 
             const message = {
                 type: 'shaderSource',
@@ -408,16 +352,14 @@ suite('WebSocketTransport Test Suite', () => {
             transport.send(message);
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            assert.strictEqual(sentData.config.passes.BufferA.inputs.iChannel0.path, 'file:///path/to/video.mp4');
+            assert.strictEqual(sentData.config.passes.BufferA.inputs.iChannel0.path, `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`);
         });
 
-        test('uses custom port for browser video URLs', () => {
+        test('uses custom port for video URLs', () => {
             mockConfig.get.withArgs('webServerPort').returns(8080);
             
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            const clientTypes = (transport as any).clientTypes as Map<WebSocket, string>;
             wsClients.add(mockWsClient as any);
-            clientTypes.set(mockWsClient as any, 'browser');
 
             const message = {
                 type: 'shaderSource',
