@@ -82,6 +82,16 @@ Here's an example of the configuration format.
 }
 ```
 
+## Debugging (Experemental)
+
+Shader Studio can transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
+
+To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
+
+This can be used in conjunction with the pixel inspector. Get the values from that and then update the js uniforms.
+
+<img width="477" height="291" alt="image" src="https://github.com/user-attachments/assets/493ebc29-0ae5-49ca-95a9-cf8aac4ddace" />
+
 ## Shadertoy Compatibility
 
 The aim is to support all Shadertoy features. Currently, the extension supports the following uniforms:
@@ -109,12 +119,6 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - Webcam inputs
 - Volume/microphone inputs
 - VR/AR inputs
-
-## Debugging (Experemental)
-
-Shader Studio can transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
-
-To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
 
 ## Contributing
 
