@@ -1,15 +1,6 @@
 .vscode/**
 .vscode-test/**
 src/**
-vendor/**/test/**
-vendor/**/tests/**
-vendor/**/.github/**
-vendor/**/.*
-vendor/**/README.md
-vendor/**/readme.md
-vendor/**/LICENSE*
-vendor/**/CHANGELOG*
-vendor/**/package-lock.json
 out/**
 webpack.config.js
 .gitignore
@@ -20,6 +11,5 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
-node_modules
 scripts
 ../**
