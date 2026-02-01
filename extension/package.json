@@ -158,10 +158,11 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "copy-glsl-transpiler": "cd ../vendor/glsl-transpiler && npm install --production && cd ../../extension && rimraf vendor && cpx \"../vendor/glsl-transpiler/**/*\" vendor/glsl-transpiler",
-    "package": "npm run copy-glsl-transpiler && npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && webpack --mode production --devtool hidden-source-map",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "copy-glsl-to-dist": "rimraf dist/node_modules && cpx \"../node_modules/glsl-transpiler/**/*\" dist/node_modules/glsl-transpiler && cpx \"../node_modules/inherits/**/*\" dist/node_modules/inherits && cpx \"../node_modules/through2/**/*\" dist/node_modules/through2 && cpx \"../node_modules/through/**/*\" dist/node_modules/through && cpx \"../node_modules/glsl-tokenizer/**/*\" dist/node_modules/glsl-tokenizer && cpx \"../node_modules/glsl-parser/**/*\" dist/node_modules/glsl-parser && cpx \"../node_modules/xtend/**/*\" dist/node_modules/xtend && cpx \"../node_modules/subscript/**/*\" dist/node_modules/subscript && cpx \"../node_modules/prepr/**/*\" dist/node_modules/prepr && cpx \"../node_modules/pick-by-alias/**/*\" dist/node_modules/pick-by-alias && cpx \"../node_modules/strip-json-comments/**/*\" dist/node_modules/strip-json-comments && cpx \"../node_modules/parenthesis/**/*\" dist/node_modules/parenthesis && cpx \"../node_modules/object-assign/**/*\" dist/node_modules/object-assign && cpx \"../node_modules/jsep/**/*\" dist/node_modules/jsep && cpx \"../node_modules/escaper/**/*\" dist/node_modules/escaper && cpx \"../node_modules/expression-eval/**/*\" dist/node_modules/expression-eval && cpx \"../node_modules/core-util-is/**/*\" dist/node_modules/core-util-is && cpx \"../node_modules/balanced-match/**/*\" dist/node_modules/balanced-match && cpx \"../node_modules/readable-stream/**/*\" dist/node_modules/readable-stream && cpx \"../node_modules/isarray/**/*\" dist/node_modules/isarray && cpx \"../node_modules/string_decoder/**/*\" dist/node_modules/string_decoder && cpx \"../node_modules/process-nextick-args/**/*\" dist/node_modules/process-nextick-args && cpx \"../node_modules/util-deprecate/**/*\" dist/node_modules/util-deprecate",
+    "package": "npm run build:ui && npm run build:config-ui && npm run build:shader-explorer && node esbuild.js --production && npm run copy-glsl-to-dist",
+    "vsce-package": "npm run package && vsce package --no-dependencies",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "prebuild": "node scripts/conditional-build-types-utils.js",
@@ -183,14 +184,13 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
-    "sinon": "^21.0.0",
-    "ts-loader": "^9.5.1",
-    "webpack": "^5.94.0",
-    "webpack-cli": "^5.1.4"
+    "esbuild": "^0.24.0",
+    "sinon": "^21.0.0"
   },
   "dependencies": {
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
+    "glsl-transpiler": "^3.0.3",
     "ws": "^8.18.3"
   }
 }
