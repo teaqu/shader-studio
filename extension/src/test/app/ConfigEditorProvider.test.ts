@@ -97,6 +97,51 @@ suite('ConfigEditorProvider Test Suite', () => {
     sinon.assert.notCalled(executeCommandStub);
   });
 
+  test('should pass forceCleanup option when refreshing visible shader editor', async () => {
+    const fs = require('fs');
+    const clock = sandbox.useFakeTimers({ shouldClearNativeTimers: true } as any);
+
+    const mockContext = {
+      extensionPath: '/mock/extension/path',
+    } as any as vscode.ExtensionContext;
+
+    sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+
+    const configPath = '/mock/path/shader.sha.json';
+    const configDocument = createMockConfigDocument(configPath);
+    const expectedShaderPath = configDocument.uri.fsPath.replace(/\.sha\.json$/i, '.glsl');
+
+    sandbox.stub(fs, 'existsSync').callsFake((p: any) => p === expectedShaderPath);
+
+    const mockShaderProvider = {
+      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromPath: sandbox.stub().resolves(),
+    } as any;
+
+    const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+    const webviewPanel = createMockWebviewPanel();
+
+    const shaderEditor = createMockShaderEditor(expectedShaderPath);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([shaderEditor]);
+
+    let onChangeCb: ((e: vscode.TextDocumentChangeEvent) => void) | undefined;
+    sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake((cb: any) => {
+      onChangeCb = cb;
+      return { dispose: sandbox.stub() } as any;
+    });
+
+    await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+    assert.ok(onChangeCb);
+    onChangeCb!({ document: configDocument } as any);
+
+    await clock.tickAsync(200);
+
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderToWebview);
+    sinon.assert.calledWith(mockShaderProvider.sendShaderToWebview, shaderEditor, { forceCleanup: true });
+  });
+
   test('should refresh shader by path when config changes and shader editor is not visible', async () => {
     const fs = require('fs');
     const clock = sandbox.useFakeTimers({ shouldClearNativeTimers: true } as any);
@@ -138,5 +183,48 @@ suite('ConfigEditorProvider Test Suite', () => {
 
     sinon.assert.notCalled(mockShaderProvider.sendShaderToWebview);
     sinon.assert.calledWith(mockShaderProvider.sendShaderFromPath, expectedShaderPath);
+  });
+
+  test('should pass forceCleanup option when refreshing shader by path', async () => {
+    const fs = require('fs');
+    const clock = sandbox.useFakeTimers({ shouldClearNativeTimers: true } as any);
+
+    const mockContext = {
+      extensionPath: '/mock/extension/path',
+    } as any as vscode.ExtensionContext;
+
+    sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+    const configPath = '/mock/path/shader.sha.json';
+
+    const mockShaderProvider = {
+      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromPath: sandbox.stub().resolves(),
+    } as any;
+
+    const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+    const configDocument = createMockConfigDocument(configPath);
+    const expectedShaderPath = configDocument.uri.fsPath.replace(/\.sha\.json$/i, '.glsl');
+
+    sandbox.stub(fs, 'existsSync').callsFake((p: any) => p === expectedShaderPath);
+    const webviewPanel = createMockWebviewPanel();
+
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+
+    let onChangeCb: ((e: vscode.TextDocumentChangeEvent) => void) | undefined;
+    sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake((cb: any) => {
+      onChangeCb = cb;
+      return { dispose: sandbox.stub() } as any;
+    });
+
+    await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+    assert.ok(onChangeCb);
+    onChangeCb!({ document: configDocument } as any);
+
+    await clock.tickAsync(200);
+
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromPath);
+    sinon.assert.calledWith(mockShaderProvider.sendShaderFromPath, expectedShaderPath, { forceCleanup: true });
   });
 });

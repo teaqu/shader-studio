@@ -68,14 +68,15 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
                 }
             }
 
+            // Use editor if visible (to capture unsaved changes), otherwise read from disk
             const visibleShaderEditor = vscode.window.visibleTextEditors.find(
                 (editor) => editor.document.uri.fsPath === shaderPath,
             );
 
             if (visibleShaderEditor) {
-                this.shaderProcessor.sendShaderToWebview(visibleShaderEditor);
+                this.shaderProcessor.sendShaderToWebview(visibleShaderEditor, { forceCleanup: true });
             } else {
-                this.shaderProcessor.sendShaderFromPath(shaderPath);
+                this.shaderProcessor.sendShaderFromPath(shaderPath, { forceCleanup: true });
             }
         };
 
