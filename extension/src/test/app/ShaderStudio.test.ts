@@ -422,4 +422,54 @@ suite('Shader Studio Test Suite', () => {
     // Verify the ConfigGenerator's generateConfig method was called
     sinon.assert.calledOnce(generateConfigSpy);
   });
+
+  test('refreshSpecificShaderByPath should call sendShaderFromPath with forceCleanup', async () => {
+    const shaderPath = '/mock/path/shader.glsl';
+    const fs = require('fs');
+    
+    // fs.existsSync is already stubbed in setup to return true
+    fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+
+    const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath);
+
+    sinon.assert.calledOnce(sendShaderFromPathSpy);
+    sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { forceCleanup: true });
+  });
+
+  test('refreshCurrentShader should call sendShaderFromPath with forceCleanup when no active GLSL editor', async () => {
+    const lastViewedFile = '/mock/path/last-shader.glsl';
+    const fs = require('fs');
+    
+    fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+
+    // Set up last viewed file
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
+
+    // Mock no active editor
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+
+    const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshCurrentShader']();
+
+    sinon.assert.calledOnce(sendShaderFromPathSpy);
+    sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { forceCleanup: true });
+  });
+
+  test('refreshCurrentShader should call sendShaderToWebview with forceCleanup when active GLSL editor exists', async () => {
+    const mockEditor = createMockGLSLEditor();
+    
+    // Mock active editor is a GLSL editor
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    // Reset the spy since it might have been called during setup
+    sendShaderSpy.resetHistory();
+
+    await shaderStudio['refreshCurrentShader']();
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditor, { forceCleanup: true });
+  });
 });

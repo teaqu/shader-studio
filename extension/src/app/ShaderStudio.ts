@@ -317,7 +317,7 @@ export class ShaderStudio {
     await this.configViewToggler.toggle();
   }
 
-  private refreshCurrentShader(): void {
+  private async refreshCurrentShader(): Promise<void> {
     this.logger.info("Refreshing current/active shader");
 
     const activeEditor = vscode.window.activeTextEditor;
@@ -325,14 +325,15 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
-      this.shaderProvider.sendShaderToWebview(activeEditor);
+      this.shaderProvider.sendShaderToWebview(activeEditor, { forceCleanup: true });
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {
         this.logger.info(
           `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
         );
-        this.refreshSpecificShaderByPath(lastViewedFile);
+        // Use sendShaderFromPath to avoid switching focus
+        await this.shaderProvider.sendShaderFromPath(lastViewedFile, { forceCleanup: true });
       } else {
         this.logger.warn(
           "No active GLSL editor and no last viewed file to refresh",
@@ -356,25 +357,10 @@ export class ShaderStudio {
         return;
       }
 
-      const matchingEditor = await this.glslFileTracker.getMatchingEditorAllGroups(shaderPath);
-
-      if (matchingEditor) {
-        this.logger.info(`Found open editor for ${shaderPath}, refreshing`);
-        this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-        this.shaderProvider.sendShaderToWebview(matchingEditor);
-      } else {
-        this.logger.info(`Opening shader file at path: ${shaderPath}`);
-        const document = await vscode.workspace.openTextDocument(
-          vscode.Uri.file(shaderPath),
-        );
-        const editor = await vscode.window.showTextDocument(document, {
-          preview: false,
-        });
-
-        this.logger.info(`Opened and refreshing shader file: ${shaderPath}`);
-        this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-        this.shaderProvider.sendShaderToWebview(editor);
-      }
+      // Always read from file to avoid switching focus
+      this.logger.info(`Sending shader from path: ${shaderPath}`);
+      this.glslFileTracker.setLastViewedGlslFile(shaderPath);
+      await this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
     } catch (error) {
       this.logger.error(
         `Failed to refresh shader at path '${shaderPath}': ${error}`,

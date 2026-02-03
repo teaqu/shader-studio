@@ -17,6 +17,7 @@ export class ShaderProvider {
 
   public sendShaderToWebview(
     editor: vscode.TextEditor,
+    options?: { forceCleanup?: boolean },
   ): void {
     if (!this.messenger) {
       return;
@@ -63,6 +64,7 @@ export class ShaderProvider {
       config,
       path: shaderPath,
       buffers,
+      forceCleanup: options?.forceCleanup,
     };
 
     this.messenger.send(message);
@@ -72,7 +74,10 @@ export class ShaderProvider {
     this.activeShaders.add(shaderPath);
   }
 
-  public async sendShaderFromPath(shaderPath: string): Promise<void> {
+  public async sendShaderFromPath(
+    shaderPath: string,
+    options?: { forceCleanup?: boolean },
+  ): Promise<void> {
     if (!this.messenger) {
       return;
     }
@@ -110,6 +115,7 @@ export class ShaderProvider {
         config,
         path: shaderPath,
         buffers,
+        forceCleanup: options?.forceCleanup,
       };
 
       this.messenger.send(message);

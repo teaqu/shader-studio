@@ -81,6 +81,72 @@ describe("MessageHandler", () => {
       });
       expect(mockRenderingEngine.startRenderLoop).not.toHaveBeenCalled();
     });
+
+    it("should call cleanup when forceCleanup is true", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+          forceCleanup: true,
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.compileShaderPipeline).toHaveBeenCalled();
+      expect(mockRenderingEngine.startRenderLoop).toHaveBeenCalled();
+    });
+
+    it("should not call cleanup when forceCleanup is false", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+          forceCleanup: false,
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
+      expect(mockRenderingEngine.compileShaderPipeline).toHaveBeenCalled();
+    });
+
+    it("should not call cleanup when forceCleanup is undefined", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
+      expect(mockRenderingEngine.compileShaderPipeline).toHaveBeenCalled();
+    });
   });
 
 
