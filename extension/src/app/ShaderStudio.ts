@@ -160,6 +160,13 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.viewInNewWindow", async () => {
+        this.logger.info("shader-studio.viewInNewWindow command executed");
+        await this.panelManager.createPanelInNewWindow();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.startWebServer", () => {
         this.logger.info("shader-studio.startWebServer command executed");
         this.startWebServer();
