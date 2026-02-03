@@ -52,6 +52,9 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
     this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
 
+    const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
+    this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
+
     this.renderer.AttachTextures(
       4,
       textureBindings[0],
@@ -68,6 +71,35 @@ export class PassRenderer {
     this.renderer.DrawUnitQuad_XY(posLoc);
   }
 
+
+  private getChannelResolutions(
+    passConfig: Pass,
+    textureBindings: (PiTexture | null)[]
+  ): number[] {
+    // Returns a flat array of 12 floats representing 4 vec3 channel resolutions
+    // Format: [ch0.x, ch0.y, ch0.z, ch1.x, ch1.y, ch1.z, ch2.x, ch2.y, ch2.z, ch3.x, ch3.y, ch3.z]
+    const resolutions: number[] = [];
+    
+    for (let i = 0; i < 4; i++) {
+      const texture = textureBindings[i];
+      const input = passConfig.inputs[`iChannel${i}`];
+      
+      if (texture && input) {
+        // For keyboard input: 256x3 (as per ShaderToy spec)
+        if (input.type === 'keyboard') {
+          resolutions.push(256, 3, 1);
+        } else {
+          // For textures, videos, and buffers: use actual texture dimensions
+          resolutions.push(texture.mXres, texture.mYres, 1);
+        }
+      } else {
+        // No input or no texture: default to 0, 0, 0
+        resolutions.push(0, 0, 0);
+      }
+    }
+    
+    return resolutions;
+  }
 
   private getTextureBindings(
     passConfig: Pass,

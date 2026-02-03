@@ -105,6 +105,7 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - `iMouse` - mouse pixel coordinates
 - `iResolution` - viewport resolution (in pixels)
 - `iChannel0-3` - input channels (textures, buffers, keyboard)
+- `iChannelResolution[4]` - channel resolution for each input (vec3: width, height, depth)
 - `iDate` - current date (year, month, day, time in seconds)
 - Video Inputs
 - Common Buffer
@@ -112,7 +113,6 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 ### Not Yet Supported
 
 - `iChannelTime[4]` - channel playback time (for video inputs)
-- `iChannelResolution[4]` - channel resolution for each input
 - `samplerCube iChannelX` - cubemap texture support
 - `iSampleRate` - sound sample rate (typically 44100)
 - Audio/sound inputs (including video audio)
