@@ -19,6 +19,7 @@ uniform sampler2D iChannel0;
 uniform sampler2D iChannel1;
 uniform sampler2D iChannel2;
 uniform sampler2D iChannel3;
+uniform vec3 iChannelResolution[4];
 uniform vec4 iMouse;
 uniform int iFrame;
 uniform vec4 iDate;

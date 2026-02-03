@@ -39,6 +39,9 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform sampler2D iChannel1;"); // SetShaderTextureUnit
       expect(wrappedCode).toContain("uniform sampler2D iChannel2;"); // SetShaderTextureUnit
       expect(wrappedCode).toContain("uniform sampler2D iChannel3;"); // SetShaderTextureUnit
+      
+      // Channel resolutions
+      expect(wrappedCode).toContain("uniform vec3 iChannelResolution[4];"); // SetShaderConstant3FV
     });
 
 it("should always inject all uniforms regardless of user declarations (Like ShaderToy)", () => {
@@ -218,7 +221,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       const normalized = wrappedCode.replace(/\s+/g, ' ').trim();
       
       // Verify the exact sequence of key elements with proper spacing
-      expect(normalized).toMatch(/precision highp float;\s*out vec4 fragColor;\s*#define HW_PERFORMANCE 1\s*uniform vec3 iResolution;\s*uniform float iTime;\s*uniform float iTimeDelta;\s*uniform float iFrameRate;\s*uniform sampler2D iChannel0;\s*uniform sampler2D iChannel1;\s*uniform sampler2D iChannel2;\s*uniform sampler2D iChannel3;\s*uniform vec4 iMouse;\s*uniform int iFrame;\s*uniform vec4 iDate;\s*void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{\}\s*void main\(\) \{\s*mainImage\(fragColor, gl_FragCoord\.xy\);\s*\}/);
+      expect(normalized).toMatch(/precision highp float;\s*out vec4 fragColor;\s*#define HW_PERFORMANCE 1\s*uniform vec3 iResolution;\s*uniform float iTime;\s*uniform float iTimeDelta;\s*uniform float iFrameRate;\s*uniform sampler2D iChannel0;\s*uniform sampler2D iChannel1;\s*uniform sampler2D iChannel2;\s*uniform sampler2D iChannel3;\s*uniform vec3 iChannelResolution\[4\];\s*uniform vec4 iMouse;\s*uniform int iFrame;\s*uniform vec4 iDate;\s*void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{\}\s*void main\(\) \{\s*mainImage\(fragColor, gl_FragCoord\.xy\);\s*\}/);
     });
 
     it("should prepend common code to shader when provided", () => {
@@ -260,7 +263,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       // Count lines in the header (everything before user code)
       const lines = commonCode.trim().split('\n');
       const expectedAdditionalLines = lines.length;
-      const baseHeaderLines = 16; // Standard uniforms + precision + out + define + 1 new line separator
+      const baseHeaderLines = 17; // Standard uniforms + precision + out + define + iChannelResolution + 1 new line separator
 
       expect(headerLineCount).toBe(baseHeaderLines + expectedAdditionalLines);
     });

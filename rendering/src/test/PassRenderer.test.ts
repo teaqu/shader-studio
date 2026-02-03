@@ -20,13 +20,16 @@ const createMockRenderer = () => ({
   DrawUnitQuad_XY: vi.fn(),
 }) as unknown as PiRenderer;
 
-const createMockTexture = () => ({}) as PiTexture;
+const createMockTexture = (xres = 0, yres = 0) => ({
+  mXres: xres,
+  mYres: yres
+}) as PiTexture;
 
 const createMockShader = () => ({}) as PiShader;
 
 const createMockResourceManager = () => ({
   getKeyboardTexture: vi.fn(),
-  getDefaultTexture: vi.fn().mockReturnValue(createMockTexture()),
+  getDefaultTexture: vi.fn().mockReturnValue(createMockTexture(1, 1)),
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
   getVideoTexture: vi.fn(),
@@ -447,6 +450,216 @@ describe("PassRenderer", () => {
       passRenderer.renderPass(passConfig, null, mockShader, uniforms);
 
       expect(mockResourceManager.getVideoTexture).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("iChannelResolution", () => {
+    it("should set iChannelResolution with all zeros when no inputs", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {}
+      };
+
+      const mockShader = createMockShader();
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      );
+    });
+
+    it("should set iChannelResolution with texture dimensions", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "image.jpg" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockImageTexture = createMockTexture(512, 256);
+
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "image.jpg": mockImageTexture
+      });
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [512, 256, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      );
+    });
+
+    it("should set iChannelResolution with keyboard dimensions (256x3)", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "keyboard" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockKeyboardTexture = createMockTexture(256, 3);
+      mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [256, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      );
+    });
+
+    it("should set iChannelResolution with video dimensions", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "video", path: "video.mp4" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockVideoTexture = createMockTexture(1920, 1080);
+      mockResourceManager.getVideoTexture.mockReturnValue(mockVideoTexture);
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [1920, 1080, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      );
+    });
+
+    it("should set iChannelResolution with buffer dimensions", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "buffer", source: "BufferA" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const bufferTexture = createMockTexture(800, 600);
+      const mockBuffer = {
+        front: { mTex0: bufferTexture },
+        back: { mTex0: createMockTexture(800, 600) }
+      };
+
+      mockBufferManager.getPassBuffers.mockReturnValue({
+        BufferA: mockBuffer
+      });
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [800, 600, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      );
+    });
+
+    it("should set iChannelResolution with multiple channel dimensions", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "image.jpg" },
+          iChannel1: { type: "video", path: "video.mp4" },
+          iChannel2: { type: "keyboard" },
+          iChannel3: { type: "buffer", source: "BufferA" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockImageTexture = createMockTexture(512, 256);
+      const mockVideoTexture = createMockTexture(1920, 1080);
+      const mockKeyboardTexture = createMockTexture(256, 3);
+      const bufferTexture = createMockTexture(800, 600);
+
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "image.jpg": mockImageTexture
+      });
+      mockResourceManager.getVideoTexture.mockReturnValue(mockVideoTexture);
+      mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
+      mockBufferManager.getPassBuffers.mockReturnValue({
+        BufferA: {
+          front: { mTex0: bufferTexture },
+          back: { mTex0: createMockTexture(800, 600) }
+        }
+      });
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [512, 256, 1, 1920, 1080, 1, 256, 3, 1, 800, 600, 1]
+      );
     });
   });
 });
