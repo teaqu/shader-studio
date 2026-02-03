@@ -48,6 +48,11 @@ export class PanelManager {
     }
   }
 
+  public async createPanelInNewWindow(): Promise<void> {
+    this.createPanel();
+    await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
+  }
+
   private createWebviewPanelInColumn(
     editor: vscode.TextEditor | null,
     viewColumn: vscode.ViewColumn,

@@ -55,9 +55,14 @@ export class ShaderStudioStatusBar {
         }
 
         items.push({
-            label: '$(window) Show Panel',
+            label: '$(window) Open Panel',
             description: 'Show the Shader Studio panel',
             action: 'show-panel'
+        });
+        items.push({
+            label: '$(multiple-windows) Open Window',
+            description: 'Open Shader Studio in a new window',
+            action: 'show-window'
         });
         items.push({
             label: '$(library) Shader Explorer',
@@ -96,6 +101,9 @@ export class ShaderStudioStatusBar {
                     break;
                 case 'show-panel':
                     await vscode.commands.executeCommand('shader-studio.view');
+                    break;
+                case 'show-window':
+                    await vscode.commands.executeCommand('shader-studio.viewInNewWindow');
                     break;
                 case 'shader explorer':
                     await vscode.commands.executeCommand('shader-studio.openShaderExplorer');

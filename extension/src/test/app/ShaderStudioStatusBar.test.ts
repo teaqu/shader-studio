@@ -116,6 +116,17 @@ suite('ShaderStudioStatusBar Test Suite', () => {
         assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.view'));
     });
 
+    test('showShaderStudioMenu should execute show-window', async () => {
+        statusBar = new ShaderStudioStatusBar(mockContext);
+
+        const choice = { label: '$(multiple-windows) Show Window', description: 'Open Shader Studio in a new window', action: 'show-window' } as any;
+        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+
+        await statusBar.showShaderStudioMenu();
+
+        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.viewInNewWindow'));
+    });
+
     test('showShaderStudioMenu should execute new-shader', async () => {
         statusBar = new ShaderStudioStatusBar(mockContext);
 

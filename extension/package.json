@@ -44,7 +44,11 @@
     "commands": [
       {
         "command": "shader-studio.view",
-        "title": "Shader Studio: ShaderToy Panel"
+        "title": "Shader Studio: New Panel"
+      },
+      {
+        "command": "shader-studio.viewInNewWindow",
+        "title": "Shader Studio: New Window"
       },
       {
         "command": "shader-studio.startWebServer",
