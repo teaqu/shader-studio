@@ -225,6 +225,62 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.path, shaderPath);
         });
 
+        test('should include forceCleanup in message when option is provided', () => {
+            const shaderPath = '/path/to/shader.glsl';
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl'
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            provider.sendShaderToWebview(mockEditor as any, { forceCleanup: true });
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.forceCleanup, true);
+        });
+
+        test('should not include forceCleanup when option is not provided', () => {
+            const shaderPath = '/path/to/shader.glsl';
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl'
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            provider.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.forceCleanup, undefined);
+        });
+
         test('should show warning for GLSL files without mainImage', () => {
             const shaderPath = '/path/to/shader.glsl';
 
@@ -254,6 +310,57 @@ suite('ShaderProvider Test Suite', () => {
             provider.removeActiveShader(shaderPath);
 
             assert.strictEqual((provider as any).activeShaders.has(shaderPath), false);
+        });
+    });
+
+    suite('sendShaderFromPath', () => {
+        test('should include forceCleanup in message when option is provided', async () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            await provider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.forceCleanup, true);
+            assert.strictEqual(message.path, shaderPath);
+        });
+
+        test('should not include forceCleanup when option is not provided', async () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            await provider.sendShaderFromPath(shaderPath);
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.forceCleanup, undefined);
         });
     });
 });

@@ -51,6 +51,7 @@ export interface ShaderSourceMessage extends BaseMessage {
   config: any;
   path: string;
   buffers: Record<string, string>;
+  forceCleanup?: boolean;
 }
 
 export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage;

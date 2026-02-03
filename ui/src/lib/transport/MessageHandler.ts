@@ -158,10 +158,15 @@ export class MessageHandler {
     message: ShaderSourceMessage, 
     event: MessageEvent
   ): void {
-    const { code, config, path, buffers } = message;
+    const { code, config, path, buffers, forceCleanup } = message;
 
     this.isHandlingMessage = true;
     this.renderEngine.stopRenderLoop();
+    
+    // If forceCleanup is requested (e.g., from refresh/config change), cleanup first
+    if (forceCleanup) {
+      this.cleanup();
+    }
     
     this.renderEngine.compileShaderPipeline(
       code,
