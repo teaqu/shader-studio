@@ -26,6 +26,7 @@ export class ShaderConfigProcessor {
   /**
    * Load and process a shader configuration file.
    * Returns the config and buffers, or null if config doesn't exist or fails to load.
+   * If the config file is open in an editor, reads from the editor to capture unsaved changes.
    */
   public loadAndProcessConfig(
     shaderPath: string,
@@ -38,7 +39,14 @@ export class ShaderConfigProcessor {
     }
 
     try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
+      // Check if config file is open in an editor (to capture unsaved changes)
+      const configDocument = vscode.workspace.textDocuments.find(
+        doc => doc.uri.fsPath === configPath
+      );
+      
+      const configContent = configDocument 
+        ? configDocument.getText() 
+        : fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configContent);
 
       if (config) {
