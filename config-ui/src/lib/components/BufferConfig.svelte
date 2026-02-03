@@ -140,6 +140,20 @@
     }
   }
 
+  function updateTextureGrayscale(channel: string, e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target && bufferConfig) {
+      const currentInput = bufferConfig.getInputChannel(channel);
+      if (currentInput && currentInput.type === "texture") {
+        bufferConfig.updateInputChannelPartial(channel, {
+          ...currentInput,
+          grayscale: target.checked,
+        });
+        config = bufferConfig.getConfig();
+      }
+    }
+  }
+
   $: validation = bufferConfig?.validate() || { isValid: true, errors: [] };
 </script>
 
@@ -302,6 +316,17 @@
                     <span class="checkbox-label"
                       >Flip texture vertically (default: checked)</span
                     >
+                  </div>
+
+                  <div class="input-group">
+                    <label for="grayscale-{channelName}">Grayscale:</label>
+                    <input
+                      id="grayscale-{channelName}"
+                      type="checkbox"
+                      checked={input.grayscale ?? false}
+                      on:change={(e) => updateTextureGrayscale(channelName, e)}
+                      class="input-checkbox"
+                    />
                   </div>
                 {/if}
 

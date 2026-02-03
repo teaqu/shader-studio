@@ -219,7 +219,8 @@ export class ShaderPipeline {
           const textureOptions = {
             filter: input.filter,
             wrap: input.wrap,
-            vflip: input.vflip
+            vflip: input.vflip,
+            grayscale: input.grayscale
           };
           await this.resourceManager.loadImageTexture(input.path, textureOptions);
         } else if (input?.type === "video" && input.path) {

@@ -41,7 +41,7 @@ export class ResourceManager {
 
   public async loadImageTexture(
     path: string, 
-    opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+    opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {}
   ): Promise<PiTexture | null> {
     const cachedTexture = this.textureCache.removeCachedTexture(path);
     

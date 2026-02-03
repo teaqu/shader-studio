@@ -799,4 +799,259 @@ describe("ShaderPipeline", () => {
             expect(result.warnings).toBeUndefined();
         });
     });
+
+    describe("texture input handling", () => {
+        it("should load texture with default options when none specified", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: undefined }
+            );
+        });
+
+        it("should load texture with filter option", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg", filter: "linear" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: "linear", wrap: undefined, vflip: undefined, grayscale: undefined }
+            );
+        });
+
+        it("should load texture with wrap option", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg", wrap: "clamp" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: undefined, wrap: "clamp", vflip: undefined, grayscale: undefined }
+            );
+        });
+
+        it("should load texture with vflip option", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg", vflip: false }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: undefined, wrap: undefined, vflip: false, grayscale: undefined }
+            );
+        });
+
+        it("should load texture with grayscale option true", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg", grayscale: true }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: true }
+            );
+        });
+
+        it("should load texture with grayscale option false", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image.jpg", grayscale: false }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: false }
+            );
+        });
+
+        it("should load texture with all options including grayscale", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { 
+                                type: "texture", 
+                                path: "image.jpg",
+                                filter: "nearest",
+                                wrap: "repeat",
+                                vflip: true,
+                                grayscale: true
+                            }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image.jpg",
+                { filter: "nearest", wrap: "repeat", vflip: true, grayscale: true }
+            );
+        });
+
+        it("should load multiple textures with different grayscale options", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "color.jpg", grayscale: false },
+                            iChannel1: { type: "texture", path: "gray.jpg", grayscale: true }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(2);
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "color.jpg",
+                expect.objectContaining({ grayscale: false })
+            );
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "gray.jpg",
+                expect.objectContaining({ grayscale: true })
+            );
+        });
+
+        it("should load texture from buffer pass with grayscale option", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: {
+                        path: "buffer-a.glsl",
+                        inputs: {
+                            iChannel0: { type: "texture", path: "buffer-texture.jpg", grayscale: true }
+                        }
+                    }
+                }
+            };
+            const buffers = {
+                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "buffer-texture.jpg",
+                expect.objectContaining({ grayscale: true })
+            );
+        });
+
+        it("should not load texture when path is missing", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", grayscale: true } // No path
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).not.toHaveBeenCalled();
+        });
+
+        it("should handle mixed grayscale and non-grayscale textures across multiple passes", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "image-color.jpg", grayscale: false }
+                        }
+                    },
+                    BufferA: {
+                        inputs: {
+                            iChannel0: { type: "texture", path: "buffer-gray.jpg", grayscale: true },
+                            iChannel1: { type: "texture", path: "buffer-color.jpg" } // undefined grayscale
+                        }
+                    }
+                }
+            };
+            const buffers = {
+                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(3);
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "image-color.jpg",
+                expect.objectContaining({ grayscale: false })
+            );
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "buffer-gray.jpg",
+                expect.objectContaining({ grayscale: true })
+            );
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+                "buffer-color.jpg",
+                expect.objectContaining({ grayscale: undefined })
+            );
+        });
+    });
 });

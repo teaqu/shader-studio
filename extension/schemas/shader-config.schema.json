@@ -129,6 +129,10 @@
             "vflip": {
               "type": "boolean",
               "description": "Whether to flip texture vertically"
+            },
+            "grayscale": {
+              "type": "boolean",
+              "description": "Load texture as single channel (R8) instead of RGBA"
             }
           },
           "additionalProperties": false
