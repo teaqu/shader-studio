@@ -21,7 +21,7 @@ export class TextureCache {
 
   public async loadTextureFromUrl(
     url: string,
-    options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+    options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {}
   ): Promise<PiTexture> {
     return new Promise((resolve, reject) => {
       const image = new window.Image();
@@ -77,15 +77,16 @@ export class TextureCache {
     );
   }
 
-  private createTextureFromImage(image: HTMLImageElement, options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip'>>): PiTexture {
+  private createTextureFromImage(image: HTMLImageElement, options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>>): PiTexture {
     const filter = this.getFilterFromOptions(options.filter);
     const wrap = this.getWrapFromOptions(options.wrap);
     const vflip = options.vflip ?? true;
+    const format = options.grayscale ? this.renderer.TEXFMT.C1I8 : this.renderer.TEXFMT.C4I8;
 
     const texture = this.renderer.CreateTextureFromImage(
       this.renderer.TEXTYPE.T2D,
       image,
-      this.renderer.TEXFMT.C4I8,
+      format,
       filter,
       wrap,
       vflip,

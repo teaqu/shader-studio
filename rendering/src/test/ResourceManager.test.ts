@@ -185,6 +185,59 @@ describe("ResourceManager", () => {
       });
     });
 
+    it("should pass grayscale option to texture cache", async () => {
+      const mockTexture = createMockTexture();
+      const textureCache = (resourceManager as any).textureCache;
+      textureCache.loadTextureFromUrl.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadImageTexture("image.jpg", { grayscale: true });
+
+      expect(textureCache.loadTextureFromUrl).toHaveBeenCalledWith("image.jpg", { grayscale: true });
+    });
+
+    it("should pass grayscale: false option to texture cache", async () => {
+      const mockTexture = createMockTexture();
+      const textureCache = (resourceManager as any).textureCache;
+      textureCache.loadTextureFromUrl.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadImageTexture("image.jpg", { grayscale: false });
+
+      expect(textureCache.loadTextureFromUrl).toHaveBeenCalledWith("image.jpg", { grayscale: false });
+    });
+
+    it("should pass all options including grayscale to texture cache", async () => {
+      const mockTexture = createMockTexture();
+      const textureCache = (resourceManager as any).textureCache;
+      textureCache.loadTextureFromUrl.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadImageTexture("image.jpg", {
+        filter: "nearest",
+        wrap: "repeat",
+        vflip: true,
+        grayscale: true,
+      });
+
+      expect(textureCache.loadTextureFromUrl).toHaveBeenCalledWith("image.jpg", {
+        filter: "nearest",
+        wrap: "repeat",
+        vflip: true,
+        grayscale: true,
+      });
+    });
+
+    it("should not include grayscale when not specified", async () => {
+      const mockTexture = createMockTexture();
+      const textureCache = (resourceManager as any).textureCache;
+      textureCache.loadTextureFromUrl.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadImageTexture("image.jpg", { filter: "linear" });
+
+      expect(textureCache.loadTextureFromUrl).toHaveBeenCalledWith("image.jpg", { filter: "linear" });
+      // Verify grayscale is not in the call
+      const callArgs = textureCache.loadTextureFromUrl.mock.calls[0][1];
+      expect(callArgs).not.toHaveProperty("grayscale");
+    });
+
     it("should return default texture on error when available", async () => {
       const mockDefaultTexture = createMockTexture();
       const textureCache = (resourceManager as any).textureCache;

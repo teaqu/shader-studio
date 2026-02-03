@@ -108,7 +108,8 @@ export class BufferConfig {
         path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path),
         filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
         wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
-        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip)
+        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip),
+        grayscale: this.newElseExistingInput((updates as any).grayscale, (existingInput as any)?.grayscale)
       };
     } else if (updates.type === 'video') {
       updatedInput = {
@@ -136,7 +137,8 @@ export class BufferConfig {
           path: (updates as any).path || existing.path || '',
           filter: (updates as any).filter || existing.filter,
           wrap: (updates as any).wrap || existing.wrap,
-          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip
+          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip,
+          grayscale: (updates as any).grayscale !== undefined ? (updates as any).grayscale : existing.grayscale
         };
       } else if (existing?.type === 'video') {
         updatedInput = {

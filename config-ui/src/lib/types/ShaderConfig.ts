@@ -9,6 +9,7 @@ export interface TextureConfigInput {
     filter?: "linear" | "nearest" | "mipmap";
     wrap?: "repeat" | "clamp";
     vflip?: boolean;
+    grayscale?: boolean;
 }
 
 export interface KeyboardConfigInput {
