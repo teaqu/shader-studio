@@ -44,6 +44,13 @@ body {
   min-height: 100vh;
 }
 
+.main-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--vscode-editor-foreground, #333);
+}
+
 .header {
   margin-bottom: 30px;
   border-bottom: 1px solid var(--vscode-panel-border, #e0e0e0);
@@ -192,10 +199,6 @@ body {
 /* Tab Content */
 .tab-content {
   padding: 20px 0;
-}
-
-.pass-config {
-  margin-bottom: 30px;
 }
 
 .pass-details {

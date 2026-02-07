@@ -191,45 +191,36 @@
     <div class="config-item">
       <div class="section-header">
         <h3>Input Channels</h3>
-        {#if bufferConfig && bufferConfig.getAvailableChannels().length > 0}
-          <div class="add-channel-dropdown">
-            <button class="action-btn"> + Add Channel </button>
-            <div class="dropdown-content">
-              {#each bufferConfig.getAvailableChannels() as channel}
-                <button
-                  class="dropdown-item"
-                  on:click={() => addSpecificChannel(channel)}
-                >
-                  {channel}
-                </button>
-              {/each}
-            </div>
-          </div>
-        {/if}
       </div>
 
-      <p class="item-count">
-        {bufferConfig?.getInputChannelCount() || 0} channels configured
-      </p>
-
-      <div class="item-list">
+      <div class="channels-grid">
         {#each ["iChannel0", "iChannel1", "iChannel2", "iChannel3"] as channelName}
           {@const input =
             config.inputs?.[channelName as keyof typeof config.inputs]}
-          {#if input}
-            <div class="item-card">
-              <div class="item-header">
-                <span class="item-name">{channelName}</span>
+          <div class="channel-box {input ? 'configured' : 'empty'}">
+            <div class="channel-header">
+              <h4 class="channel-name">{channelName}</h4>
+              {#if input}
                 <button
-                  class="remove-btn"
+                  class="remove-channel-btn"
                   on:click={() => removeInputChannel(channelName)}
                   title="Remove {channelName}"
                 >
                   ×
                 </button>
-              </div>
-
-              <div class="item-config">
+              {:else if bufferConfig && bufferConfig.getAvailableChannels().includes(channelName)}
+                <button
+                  class="add-channel-btn"
+                  on:click={() => addSpecificChannel(channelName)}
+                  title="Add {channelName}"
+                >
+                  +
+                </button>
+              {/if}
+            </div>
+            
+            {#if input}
+              <div class="channel-config">
                 <div class="input-group">
                   <label for="type-{channelName}">Type:</label>
                   <select
@@ -285,7 +276,7 @@
                       on:change={(e) => updateTextureFilter(channelName, e)}
                       class="input-select"
                     >
-                      <option value="mipmap">Mipmap (default)</option>
+                      <option value="mipmap">Mipmap</option>
                       <option value="linear">Linear</option>
                       <option value="nearest">Nearest</option>
                     </select>
@@ -299,7 +290,7 @@
                       on:change={(e) => updateTextureWrap(channelName, e)}
                       class="input-select"
                     >
-                      <option value="repeat">Repeat (default)</option>
+                      <option value="repeat">Repeat</option>
                       <option value="clamp">Clamp</option>
                     </select>
                   </div>
@@ -313,9 +304,6 @@
                       on:change={(e) => updateTextureVFlip(channelName, e)}
                       class="input-checkbox"
                     />
-                    <span class="checkbox-label"
-                      >Flip texture vertically (default: checked)</span
-                    >
                   </div>
 
                   <div class="input-group">
@@ -351,7 +339,7 @@
                       on:change={(e) => updateTextureFilter(channelName, e)}
                       class="input-select"
                     >
-                      <option value="linear">Linear (default)</option>
+                      <option value="linear">Linear</option>
                       <option value="nearest">Nearest</option>
                       <option value="mipmap">Mipmap</option>
                     </select>
@@ -365,7 +353,7 @@
                       on:change={(e) => updateTextureWrap(channelName, e)}
                       class="input-select"
                     >
-                      <option value="clamp">Clamp (default)</option>
+                      <option value="clamp">Clamp</option>
                       <option value="repeat">Repeat</option>
                     </select>
                   </div>
@@ -379,32 +367,22 @@
                       on:change={(e) => updateTextureVFlip(channelName, e)}
                       class="input-checkbox"
                     />
-                    <span class="checkbox-label"
-                      >Flip video vertically (default: checked)</span
-                    >
                   </div>
                 {/if}
 
                 {#if input.type === "keyboard"}
-                  <div class="input-group">
-                    <span class="input-note"
-                      >Keyboard input (no additional configuration needed)</span
-                    >
+                  <div class="input-note">
+                    Keyboard input configured
                   </div>
                 {/if}
               </div>
-            </div>
-          {/if}
-        {/each}
-
-        {#if (bufferConfig?.getInputChannelCount() || 0) === 0}
-          <div class="empty-state">
-            <p>No input channels configured</p>
-            <p class="hint">
-              Add channels to connect this buffer to other buffers or textures
-            </p>
+            {:else}
+              <div class="empty-channel">
+                <p>Not configured</p>
+              </div>
+            {/if}
           </div>
-        {/if}
+        {/each}
       </div>
     </div>
     {/if}
@@ -455,44 +433,6 @@
     font-style: italic;
   }
 
-  .add-channel-dropdown {
-    position: relative;
-    display: inline-block;
-  }
-
-  .add-channel-dropdown:hover .dropdown-content {
-    display: block;
-  }
-
-  .dropdown-content {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: 100%;
-    background: var(--vscode-dropdown-background);
-    border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    z-index: 1000;
-    min-width: 120px;
-  }
-
-  .dropdown-item {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    color: var(--vscode-dropdown-foreground);
-    font-size: 13px;
-  }
-
-  .dropdown-item:hover {
-    background: var(--vscode-list-hoverBackground);
-  }
-
   .input-text,
   .input-select {
     padding: 8px 12px;
@@ -514,8 +454,102 @@
     margin-right: 8px;
   }
 
-  .checkbox-label {
-    font-size: 14px;
-    color: var(--vscode-input-foreground, #333);
+  .channels-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 16px;
   }
+
+  .channel-box {
+    background: var(--vscode-editor-background, #ffffff);
+    border: 1px solid var(--vscode-panel-border, #e0e0e0);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: all 0.2s ease;
+    min-height: 200px;
+  }
+
+  .channel-box.configured {
+    border-color: var(--vscode-focusBorder, #007acc);
+    box-shadow: 0 2px 12px rgba(0, 123, 255, 0.15);
+  }
+
+  .channel-box.empty {
+    opacity: 0.7;
+    border-style: dashed;
+  }
+
+  .channel-box:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  }
+
+  .channel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--vscode-tab-inactiveBackground, #f8f8f8);
+    border-bottom: 1px solid var(--vscode-panel-border, #e0e0e0);
+  }
+
+  .channel-name {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vscode-tab-activeForeground, #333);
+  }
+
+  .add-channel-btn,
+  .remove-channel-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .add-channel-btn {
+    color: var(--vscode-button-foreground, #007acc);
+    opacity: 0.7;
+  }
+
+  .add-channel-btn:hover {
+    opacity: 1;
+    background: var(--vscode-button-secondaryHoverBackground, rgba(0, 122, 204, 0.1));
+  }
+
+  .remove-channel-btn {
+    color: var(--vscode-errorForeground, #f44336);
+    opacity: 0.7;
+  }
+
+  .remove-channel-btn:hover {
+    opacity: 1;
+    background: var(--vscode-errorForeground, #f44336);
+    color: white;
+  }
+
+  .channel-config {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .empty-channel {
+    padding: 16px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground, #666);
+  }
+
+  .empty-channel p {
+    margin: 0;
+    font-style: italic;
+  }
+
 </style>
