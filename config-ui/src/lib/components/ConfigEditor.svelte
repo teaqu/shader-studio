@@ -111,10 +111,7 @@
 </script>
 
 <div class="config-editor">
-  <div class="header">
-    <h1>Shader Configuration</h1>
-  </div>
-
+  <h1 class="main-title">Shader Configuration</h1>
   {#if error}
     <div class="error">
       <strong>Error:</strong>
@@ -124,7 +121,6 @@
 
   {#if config}
     <div class="config-content">
-      <!-- Tab Navigation -->
       <!-- Tab Navigation -->
       <div class="tab-navigation">
         {#each allTabs as tabName}
@@ -149,7 +145,7 @@
 
         {#if config && (["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes]) || !config?.passes.common)}
           <div class="add-tab-dropdown">
-            <button class="add-tab-btn" title="Add Buffer"> + </button>
+            <button class="add-tab-btn" title="Add Buffer">Add Buffer</button>
             <div class="dropdown-content">
               {#if !config?.passes.common}
                 <button
@@ -176,8 +172,8 @@
 
       <!-- Tab Content -->
       <div class="tab-content">
-        {#if activeTab === "Image"}
-          {#if activeTabConfig}
+        {#if activeTabConfig}
+          {#if activeTab === "Image"}
             <BufferConfig
               bufferName={activeTab}
               config={activeTabConfig}
@@ -186,18 +182,18 @@
               }}
               isImagePass={true}
             />
+          {:else}
+            <BufferConfig
+              bufferName={getActualBufferName(activeTab)}
+              config={activeTabConfig}
+              onUpdate={(bufferName, updatedConfig) => {
+                configEditor?.updateBuffer(
+                  bufferName,
+                  updatedConfig as BufferPass,
+                );
+              }}
+            />
           {/if}
-        {:else if activeTabConfig && activeTab !== "Image"}
-          <BufferConfig
-            bufferName={getActualBufferName(activeTab)}
-            config={activeTabConfig}
-            onUpdate={(bufferName, updatedConfig) => {
-              configEditor?.updateBuffer(
-                bufferName,
-                updatedConfig as BufferPass,
-              );
-            }}
-          />
         {/if}
       </div>
     </div>

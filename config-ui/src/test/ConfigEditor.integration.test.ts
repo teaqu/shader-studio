@@ -52,7 +52,7 @@ describe('ConfigEditor Integration Tests', () => {
       expect(imageButton).toBeInTheDocument();
       expect(imageButton).toHaveClass('active');
 
-      expect(screen.getByRole('button', { name: '+' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add Buffer' })).toBeInTheDocument();
     });
   });
 
@@ -110,8 +110,7 @@ describe('ConfigEditor Integration Tests', () => {
       );
       expect(tabButtons).toHaveLength(0);
 
-      expect(screen.getByRole('button', { name: '+' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '+' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add Buffer' })).toBeInTheDocument();
     });
   });
 
@@ -249,10 +248,8 @@ describe('ConfigEditor Integration Tests', () => {
         expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
       });
 
-      // Add texture channel
-      const addChannelButton = screen.getByText('+ Add Channel');
-      await user.click(addChannelButton);
-      await user.click(screen.getByText('iChannel0'));
+      // Add texture channel by clicking the + button for iChannel0
+      await user.click(screen.getByTitle('Add iChannel0'));
 
       // Set to texture type
       const typeSelect = screen.getByLabelText(/Type/) as HTMLSelectElement;
@@ -470,7 +467,7 @@ describe('CommonBuffer Tests', () => {
     });
 
     // Click add buffer button
-    await user.click(screen.getByRole('button', { name: '+' }));
+    await user.click(screen.getByTitle('Add Buffer'));
 
     // Click Common option
     await user.click(screen.getByText('Common'));
@@ -554,16 +551,15 @@ describe('CommonBuffer Tests', () => {
       expect(screen.getByText('Input Channels')).toBeInTheDocument();
     });
 
-    // Add a buffer input channel
-    await user.click(screen.getByText('+ Add Channel'));
-    await user.click(screen.getByText('iChannel1'));
-
-    // Set type to buffer for iChannel1
-    const typeSelect = document.getElementById('type-iChannel1') as HTMLSelectElement;
+    // Add a buffer input channel by clicking the + button for iChannel2
+    await user.click(screen.getByTitle('Add iChannel2'));
+    
+    // Set type to buffer for iChannel2
+    const typeSelect = document.getElementById('type-iChannel2') as HTMLSelectElement;
     await user.selectOptions(typeSelect, 'buffer');
 
-    // Verify that 'common' is NOT in the source options for iChannel1
-    const sourceSelect = document.getElementById('source-iChannel1') as HTMLSelectElement;
+    // Verify that 'common' is NOT in the source options for iChannel2
+    const sourceSelect = document.getElementById('source-iChannel2') as HTMLSelectElement;
     const sourceOptions = Array.from(sourceSelect.options).map(option => option.value);
     expect(sourceOptions).not.toContain('common');
     expect(sourceOptions).toEqual(['', 'BufferA', 'BufferB', 'BufferC', 'BufferD']);
