@@ -63,7 +63,7 @@ export class ShaderDebugManager {
     headerLineCount: number
   ): string | null {
     console.log('[ShaderDebug] === MODIFY SHADER ===');
-    console.log('[ShaderDebug] Line:', debugLine, '|', this.state.lineContent);
+    console.log('[ShaderDebug] Debug line number:', debugLine);
 
     if (!this.state.isActive || !this.state.lineContent) {
       console.log('[ShaderDebug] ❌ Not active or no line content');
@@ -72,6 +72,9 @@ export class ShaderDebugManager {
 
     const adjustedLine = debugLine;
     const lines = originalCode.split('\n');
+
+    console.log('[ShaderDebug] Cursor line content:', this.state.lineContent);
+    console.log('[ShaderDebug] Actual shader line:', lines[adjustedLine] || '<out of bounds>');
 
     // Find which function we're in
     const functionInfo = this.findEnclosingFunction(lines, adjustedLine);
@@ -342,12 +345,38 @@ export class ShaderDebugManager {
   }
 
   private findFunctionCall(lines: string[], functionName: string): { params: string; lineIndex: number } | null {
-    // Search for function calls in the code (not declarations)
+    // Search for function calls ONLY in mainImage (not in other helper functions)
     const callPattern = new RegExp(`${functionName}\\s*\\(([^)]*)\\)`, 'i');
     // Pattern to detect function declarations (has return type before function name)
     const declPattern = new RegExp(`^\\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\\s+${functionName}\\s*\\(`, 'i');
 
-    for (let i = 0; i < lines.length; i++) {
+    // Find mainImage function bounds
+    const mainImageStart = this.findMainImageStart(lines);
+    if (mainImageStart === -1) {
+      return null; // No mainImage found
+    }
+
+    // Find the end of mainImage
+    let braceDepth = 0;
+    let mainImageEnd = -1;
+    for (let i = mainImageStart; i < lines.length; i++) {
+      const line = lines[i];
+      for (const char of line) {
+        if (char === '{') braceDepth++;
+        if (char === '}') braceDepth--;
+      }
+      if (braceDepth === 0 && i > mainImageStart) {
+        mainImageEnd = i;
+        break;
+      }
+    }
+
+    if (mainImageEnd === -1) {
+      mainImageEnd = lines.length; // Fallback
+    }
+
+    // Search ONLY within mainImage bounds
+    for (let i = mainImageStart; i <= mainImageEnd; i++) {
       const line = lines[i];
 
       // Skip function declarations
@@ -365,7 +394,7 @@ export class ShaderDebugManager {
       }
     }
 
-    return null;
+    return null; // Not called in mainImage - will use defaults
   }
 
   /**
@@ -578,9 +607,14 @@ export class ShaderDebugManager {
   }
 
   private detectVariableAndType(lineContent: string, varTypes: Map<string, string>, functionReturnType?: string): { name: string; type: string } | null {
+    console.log('[ShaderDebug] === DETECT VARIABLE ===');
+    console.log('[ShaderDebug] Line:', lineContent);
+    console.log('[ShaderDebug] Available vars in scope:', Array.from(varTypes.keys()));
+
     // Check for return statements first
     const returnMatch = lineContent.match(/^\s*return\s+(.+);/);
     if (returnMatch && functionReturnType) {
+      console.log('[ShaderDebug] ✓ Matched return statement, type:', functionReturnType);
       // For return statements, create a temporary variable name
       return { name: '_dbgReturn', type: functionReturnType };
     }
@@ -599,58 +633,69 @@ export class ShaderDebugManager {
     for (const { pattern, type } of declPatterns) {
       const match = lineContent.match(pattern);
       if (match && match[2]) {
+        console.log(`[ShaderDebug] ✓ Matched declaration: ${match[2]} (${type})`);
         return { name: match[2], type };
       }
     }
+    console.log('[ShaderDebug] ✗ No declaration pattern matched');
 
     // If not a declaration, try to match a reassignment or compound assignment
     const assignPatterns = [
-      /(\w+)\s*\*=/, // uv *= rot
-      /(\w+)\s*\+=/, // uv += offset
-      /(\w+)\s*-=/, // uv -= offset
-      /(\w+)\s*\/=/, // uv /= scale
-      /(\w+)\s*=\s*(?!.*\b(vec4|vec3|vec2|float|mat2|mat3|mat4)\b)/, // uv = ... (not a declaration)
+      { pattern: /(\w+)\s*\*=/, name: 'compound *=' },
+      { pattern: /(\w+)\s*\+=/, name: 'compound +=' },
+      { pattern: /(\w+)\s*-=/, name: 'compound -=' },
+      { pattern: /(\w+)\s*\/=/, name: 'compound /=' },
+      // Match reassignment: variable = ... (but not type variable = ...)
+      // Check that line doesn't START with a type keyword before the variable
+      { pattern: /^\s*(\w+)\s*=(?!\s*=)/, name: 'reassignment' },
     ];
 
-    for (const pattern of assignPatterns) {
+    for (const { pattern, name } of assignPatterns) {
       const match = lineContent.match(pattern);
       if (match && match[1]) {
         const varName = match[1];
         const varType = varTypes.get(varName);
+        console.log(`[ShaderDebug] Trying ${name}: found var '${varName}', type: ${varType || 'NOT IN SCOPE'}`);
         if (varType) {
+          console.log(`[ShaderDebug] ✓ Matched ${name}: ${varName} (${varType})`);
           return { name: varName, type: varType };
         }
       }
     }
+    console.log('[ShaderDebug] ✗ No reassignment pattern matched');
 
     // Try to match member access assignments: uv.x *= ..., color.r = ..., etc.
     const memberAccessPatterns = [
-      /(\w+)\.[xyzw]\s*\*=/, // uv.x *= value
-      /(\w+)\.[xyzw]\s*\+=/, // uv.x += value
-      /(\w+)\.[xyzw]\s*-=/, // uv.x -= value
-      /(\w+)\.[xyzw]\s*\/=/, // uv.x /= value
-      /(\w+)\.[xyzw]\s*=/, // uv.x = value
-      /(\w+)\.[rgba]\s*\*=/, // color.r *= value
-      /(\w+)\.[rgba]\s*\+=/, // color.r += value
-      /(\w+)\.[rgba]\s*-=/, // color.r -= value
-      /(\w+)\.[rgba]\s*\/=/, // color.r /= value
-      /(\w+)\.[rgba]\s*=/, // color.r = value
-      /(\w+)\.[xy]+\s*\*=/, // uv.xy *= value (swizzle)
-      /(\w+)\.[xy]+\s*\+=/, // uv.xy += value
-      /(\w+)\.[xy]+\s*=/, // uv.xy = value
+      { pattern: /(\w+)\.[xyzw]\s*\*=/, name: 'member access *=' },
+      { pattern: /(\w+)\.[xyzw]\s*\+=/, name: 'member access +=' },
+      { pattern: /(\w+)\.[xyzw]\s*-=/, name: 'member access -=' },
+      { pattern: /(\w+)\.[xyzw]\s*\/=/, name: 'member access /=' },
+      { pattern: /(\w+)\.[xyzw]\s*=/, name: 'member access =' },
+      { pattern: /(\w+)\.[rgba]\s*\*=/, name: 'color member *=' },
+      { pattern: /(\w+)\.[rgba]\s*\+=/, name: 'color member +=' },
+      { pattern: /(\w+)\.[rgba]\s*-=/, name: 'color member -=' },
+      { pattern: /(\w+)\.[rgba]\s*\/=/, name: 'color member /=' },
+      { pattern: /(\w+)\.[rgba]\s*=/, name: 'color member =' },
+      { pattern: /(\w+)\.[xy]+\s*\*=/, name: 'swizzle *=' },
+      { pattern: /(\w+)\.[xy]+\s*\+=/, name: 'swizzle +=' },
+      { pattern: /(\w+)\.[xy]+\s*=/, name: 'swizzle =' },
     ];
 
-    for (const pattern of memberAccessPatterns) {
+    for (const { pattern, name } of memberAccessPatterns) {
       const match = lineContent.match(pattern);
       if (match && match[1]) {
         const varName = match[1];
         const varType = varTypes.get(varName);
+        console.log(`[ShaderDebug] Trying ${name}: found var '${varName}', type: ${varType || 'NOT IN SCOPE'}`);
         if (varType) {
+          console.log(`[ShaderDebug] ✓ Matched ${name}: ${varName} (${varType})`);
           return { name: varName, type: varType };
         }
       }
     }
+    console.log('[ShaderDebug] ✗ No member access pattern matched');
 
+    console.log('[ShaderDebug] ✗ Could not detect variable/type');
     return null;
   }
 
