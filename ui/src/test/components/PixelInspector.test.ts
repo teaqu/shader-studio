@@ -166,7 +166,7 @@ describe('PixelInspector Component', () => {
   });
 
   describe('Positioning', () => {
-    it('should position inspector offset from mouse position', () => {
+    it('should position inspector offset from mouse position (right side)', () => {
       const { container } = render(PixelInspector, {
         props: {
           ...defaultProps,
@@ -177,10 +177,60 @@ describe('PixelInspector Component', () => {
           fragCoord: { x: 400, y: 300 }
         }
       });
-      
-      const inspector = container.querySelector('.pixel-inspector');
+
+      const inspector = container.querySelector('.pixel-inspector') as HTMLElement;
       expect(inspector).toHaveStyle('left: 220px'); // mouseX + 20
       expect(inspector).toHaveStyle('top: 170px'); // mouseY + 20
+    });
+
+    it('should flip to left when would overflow on right side', () => {
+      // Mock window.innerWidth to be small enough to trigger overflow
+      Object.defineProperty(window, 'innerWidth', {
+        writable: true,
+        configurable: true,
+        value: 500
+      });
+
+      const { container } = render(PixelInspector, {
+        props: {
+          ...defaultProps,
+          isActive: true,
+          mouseX: 400, // Close to right edge
+          mouseY: 150,
+          rgb: { r: 255, g: 128, b: 64 },
+          fragCoord: { x: 400, y: 300 }
+        }
+      });
+
+      const inspector = container.querySelector('.pixel-inspector') as HTMLElement;
+      // Should flip left: mouseX - ESTIMATED_WIDTH - OFFSET = 400 - 250 - 20 = 130px
+      expect(inspector).toHaveStyle('left: 130px');
+      expect(inspector).toHaveStyle('top: 170px'); // mouseY + 20
+    });
+
+    it('should stay on right when enough space', () => {
+      // Mock window.innerWidth to be large enough
+      Object.defineProperty(window, 'innerWidth', {
+        writable: true,
+        configurable: true,
+        value: 1920
+      });
+
+      const { container } = render(PixelInspector, {
+        props: {
+          ...defaultProps,
+          isActive: true,
+          mouseX: 200,
+          mouseY: 150,
+          rgb: { r: 255, g: 128, b: 64 },
+          fragCoord: { x: 400, y: 300 }
+        }
+      });
+
+      const inspector = container.querySelector('.pixel-inspector') as HTMLElement;
+      // Should stay on right: mouseX + 20 = 220px
+      expect(inspector).toHaveStyle('left: 220px');
+      expect(inspector).toHaveStyle('top: 170px');
     });
   });
 

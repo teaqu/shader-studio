@@ -8,15 +8,26 @@
   export let canvasWidth: number = 0;
   export let canvasHeight: number = 0;
 
+  let inspectorElement: HTMLDivElement;
+  const OFFSET = 20; // Offset from mouse cursor
+  const ESTIMATED_WIDTH = 250; // Estimated inspector width
+
   $: displayX = mouseX;
   $: displayY = mouseY;
+
+  // Check if inspector would overflow on the right side
+  $: shouldFlipLeft = typeof window !== 'undefined' && (mouseX + OFFSET + ESTIMATED_WIDTH > window.innerWidth);
+
+  // Calculate position based on whether we need to flip
+  $: positionX = shouldFlipLeft ? mouseX - ESTIMATED_WIDTH - OFFSET : mouseX + OFFSET;
 </script>
 
 {#if isActive && rgb && fragCoord}
   <div
+    bind:this={inspectorElement}
     class="pixel-inspector"
     class:locked={isLocked}
-    style="left: {displayX + 20}px; top: {displayY + 20}px;"
+    style="left: {positionX}px; top: {displayY + OFFSET}px;"
   >
     <div class="inspector-content">
       <div class="color-preview" style="background-color: rgb({rgb.r}, {rgb.g}, {rgb.b});"></div>
