@@ -98,9 +98,33 @@ Here's an example of the configuration format.
 }
 ```
 
-## Debugging (Experemental)
+## Debug Mode
 
-Shader Studio can transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
+Shader Studio includes an interactive debug mode that lets you visualize intermediate shader values by hovering over any line in your GLSL code.
+
+![Debug Mode](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/line-debug.png)
+
+### How to Use
+
+1. Click the arrow icon in the menu bar to enable debug mode
+2. Hover your cursor over any line in your shader code
+3. The canvas will update to show the value at that line
+
+### Visualization
+
+Debug mode automatically detects the type of value on each line and visualizes it:
+
+- **`float`** → Grayscale (0.0 = black, 1.0 = white)
+- **`vec2`** → Red-Green channels (x → red, y → green)
+- **`vec3`** → Full RGB color
+- **`vec4`** → Full RGBA color
+- **`mat2`** → First two rows as vec4
+
+Debug mode works with many lines but not everything. Expect not all lines will work.
+
+## JavaScript Transpilation (Experimental)
+
+Shader Studio can also transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
 
 To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
 

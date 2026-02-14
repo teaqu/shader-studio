@@ -311,7 +311,9 @@
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
-      title={debugState?.isActive ? `Debugging line ${(debugState.currentLine ?? 0) + 1}` : "Enable debug mode"}
+      title={debugState?.isActive
+        ? `Debugging line ${(debugState.currentLine ?? 0) + 1}`
+        : "Enable debug mode"}
     >
       {@html debugIcon}
     </button>
@@ -378,3 +380,6 @@
     </div>
   </div>
 </div>
+
+<style>
+</style>

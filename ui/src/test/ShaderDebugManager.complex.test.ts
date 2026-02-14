@@ -72,9 +72,16 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     console.log('\n=== LINE 4: return in random() ===');
     console.log('Result:', result);
 
-    // TODO: This is experimental - helper function support
-    // For now, just check it doesn't crash
-    console.log('Status:', result ? 'Generated wrapper' : 'Returned null');
+    // Verify helper function debugging works
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should convert return to variable assignment
+      expect(result).toContain('float _dbgReturn = fract(sin(uv.x * 1920.');
+      // Should call random() with actual parameter from mainImage
+      expect(result).toContain('random(uv.xx)');
+      // Should execute mainImage up to the call point
+      expect(result).toContain('vec2 uv = fragCoord/iResolution.xy');
+    }
   });
 
   it('Line 9: vec2 uv declaration in mainImage', () => {
