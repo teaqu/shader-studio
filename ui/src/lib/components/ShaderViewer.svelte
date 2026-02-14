@@ -14,6 +14,8 @@
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import type { PixelInspectorState } from "../types/PixelInspectorState";
+  import { ShaderDebugManager } from "../ShaderDebugManager";
+  import type { ShaderDebugState } from "../types/ShaderDebugState";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -43,6 +45,14 @@
   let transport: Transport;
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
+  let shaderDebugManager: ShaderDebugManager | undefined;
+  let debugState: ShaderDebugState = {
+    isEnabled: false,
+    currentLine: null,
+    lineContent: null,
+    filePath: null,
+    isActive: false,
+  };
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -130,6 +140,13 @@
     pixelInspectorManager.toggleEnabled();
   }
 
+  function handleToggleDebugEnabled() {
+    if (!shaderDebugManager || !initialized) return;
+    shaderDebugManager.toggleEnabled();
+    // Trigger recompile to immediately show/hide debug visualization
+    shaderStudio.triggerDebugRecompile();
+  }
+
   function handleCanvasClick() {
     if (!pixelInspectorManager) return;
     pixelInspectorManager.handleCanvasClick();
@@ -151,7 +168,13 @@
       const shadderLocker = new ShaderLocker();
       const renderingEngine = new RenderingEngine();
 
-      shaderStudio = new ShaderStudio(transport, shadderLocker, renderingEngine);
+      // Initialize shader debug manager
+      shaderDebugManager = new ShaderDebugManager();
+      shaderDebugManager.setStateCallback((state) => {
+        debugState = state;
+      });
+
+      shaderStudio = new ShaderStudio(transport, shadderLocker, renderingEngine, shaderDebugManager);
 
       const success = await shaderStudio.initialize(glCanvas);
       if (!success) {
@@ -160,6 +183,15 @@
       }
 
       transport.onMessage(handleShaderMessage);
+      // Also handle cursor position messages
+      transport.onMessage((event: MessageEvent) => {
+        if (event.data.type === 'cursorPosition' && shaderStudio) {
+          const messageHandler = (shaderStudio as any).messageHandler;
+          if (messageHandler) {
+            messageHandler.handleCursorPositionMessage(event.data);
+          }
+        }
+      });
 
       timeManager = shaderStudio.getTimeManager();
 
@@ -257,6 +289,9 @@
       onZoomChange={handleZoomChange}
       onConfig={handleConfig}
       onToggleInspectorEnabled={handleToggleInspectorEnabled}
+      isDebugEnabled={debugState.isEnabled}
+      onToggleDebugEnabled={handleToggleDebugEnabled}
+      {debugState}
     />
   {/if}
   <ErrorDisplay

@@ -3,6 +3,7 @@ import { ShaderLocker } from "./ShaderLocker";
 import { MessageHandler } from "./transport/MessageHandler";
 import type { Transport } from "./transport/MessageTransport";
 import type { ErrorMessage, DebugMessage } from "@shader-studio/types";
+import { ShaderDebugManager } from "./ShaderDebugManager";
 
 export class ShaderStudio {
   private transport: Transport;
@@ -10,11 +11,13 @@ export class ShaderStudio {
   private renderingEngine!: RenderingEngine;
   private messageHandler!: MessageHandler;
   private shaderLocker!: ShaderLocker;
+  private shaderDebugManager: ShaderDebugManager;
 
-  constructor(transport: Transport, shaderLocker: ShaderLocker, renderingEngine: RenderingEngine) {
+  constructor(transport: Transport, shaderLocker: ShaderLocker, renderingEngine: RenderingEngine, shaderDebugManager: ShaderDebugManager) {
     this.transport = transport;
     this.shaderLocker = shaderLocker;
     this.renderingEngine = renderingEngine;
+    this.shaderDebugManager = shaderDebugManager;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -37,6 +40,7 @@ export class ShaderStudio {
         this.transport,
         this.renderingEngine,
         this.shaderLocker,
+        this.shaderDebugManager,
       );
 
       const debugMessage: DebugMessage = {
@@ -122,6 +126,12 @@ export class ShaderStudio {
 
   getRenderingEngine() {
     return this.renderingEngine;
+  }
+
+  triggerDebugRecompile(): void {
+    if (this.messageHandler) {
+      this.messageHandler.triggerDebugRecompile();
+    }
   }
 
   dispose(): void {

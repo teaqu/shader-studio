@@ -54,4 +54,14 @@ export interface ShaderSourceMessage extends BaseMessage {
   forceCleanup?: boolean;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage;
+export interface CursorPositionMessage extends BaseMessage {
+  type: "cursorPosition";
+  payload: {
+    line: number;
+    character: number;
+    lineContent: string;
+    filePath: string;
+  };
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage;

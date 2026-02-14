@@ -2,6 +2,7 @@ import type { RenderingEngine } from "../../../../rendering/src/types/RenderingE
 import type { ShaderLocker } from "../ShaderLocker";
 import type { Transport } from "./MessageTransport";
 import type {
+  CursorPositionMessage,
   ErrorMessage,
   LogMessage,
   RefreshMessage,
@@ -9,6 +10,7 @@ import type {
   WarningMessage
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
+import { ShaderDebugManager } from '../ShaderDebugManager';
 
 export class MessageHandler {
   private renderEngine: RenderingEngine;
@@ -17,16 +19,20 @@ export class MessageHandler {
   private bufferUpdater: BufferUpdater;
   private isHandlingMessage = false;
   private lastEvent: MessageEvent | null = null;
+  private shaderDebugManager: ShaderDebugManager;
+  private originalShaderCode: string | null = null;
 
   constructor(
     transport: Transport,
     renderEngine: RenderingEngine,
-    shaderLocker: ShaderLocker
+    shaderLocker: ShaderLocker,
+    shaderDebugManager: ShaderDebugManager
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
     this.shaderLocker = shaderLocker;
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
+    this.shaderDebugManager = shaderDebugManager;
   }
 
   public getLastEvent(): MessageEvent | null {
@@ -155,27 +161,30 @@ export class MessageHandler {
   }
 
   private processMainShaderCompilation(
-    message: ShaderSourceMessage, 
+    message: ShaderSourceMessage,
     event: MessageEvent
   ): void {
     const { code, config, path, buffers, forceCleanup } = message;
 
     this.isHandlingMessage = true;
+    this.lastEvent = event;
+
+    // Store original shader code
+    this.originalShaderCode = code;
+
     this.renderEngine.stopRenderLoop();
-    
+
     // If forceCleanup is requested (e.g., from refresh/config change), cleanup first
     if (forceCleanup) {
       this.cleanup();
     }
-    
+
     this.renderEngine.compileShaderPipeline(
       code,
       config,
       path,
       buffers,
     ).then(result => {
-      this.lastEvent = event;
-
       if (!result?.success) {
         this.sendErrorMessage(result?.error || "Unknown compilation error");
         return;
@@ -277,6 +286,123 @@ export class MessageHandler {
 
   private cleanup() {
     this.renderEngine.cleanup();
+  }
+
+  public handleCursorPositionMessage(message: CursorPositionMessage): void {
+    const { line, lineContent, filePath } = message.payload;
+
+    this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+
+    // If debug mode is active, recompile shader
+    if (this.shaderDebugManager.getState().isActive && this.originalShaderCode && this.lastEvent) {
+      this.recompileWithDebugMode();
+    }
+  }
+
+  public triggerDebugRecompile(): void {
+    this.recompileWithDebugMode();
+  }
+
+  private recompileWithDebugMode(): void {
+    if (!this.originalShaderCode || !this.lastEvent) {
+      return;
+    }
+
+    const message = this.lastEvent.data as ShaderSourceMessage;
+    const debugState = this.shaderDebugManager.getState();
+
+    if (!debugState.isActive) {
+      // Debug mode disabled, use original code
+      this.compileShaderCode(this.originalShaderCode, message, false);
+      return;
+    }
+
+    // Get header line count
+    const headerLineCount = this.getHeaderLineCount();
+
+    // Modify shader for debugging
+    const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
+      this.originalShaderCode,
+      debugState.currentLine!,
+      headerLineCount
+    );
+
+    if (modifiedCode) {
+      // Try to compile modified shader
+      this.compileShaderCode(modifiedCode, message, true);
+    } else {
+      // Modification failed, fall back to original
+      this.compileShaderCode(this.originalShaderCode, message, false);
+    }
+  }
+
+  private compileShaderCode(code: string, message: ShaderSourceMessage, isDebugMode: boolean): void {
+    // Store original code
+    if (!isDebugMode) {
+      this.originalShaderCode = code;
+    }
+
+    const { config, path, buffers } = message;
+
+    this.renderEngine.stopRenderLoop();
+
+    this.renderEngine.compileShaderPipeline(
+      code,
+      config,
+      path,
+      buffers,
+    ).then(result => {
+      if (!result?.success) {
+        // Compilation failed
+        if (isDebugMode && this.originalShaderCode) {
+          // Fall back to original shader
+          this.compileShaderCode(this.originalShaderCode, message, false);
+        } else {
+          this.sendErrorMessage(result?.error || "Unknown compilation error");
+        }
+        return;
+      }
+
+      // Send any warnings (e.g., video loading failures)
+      if (result.warnings && result.warnings.length > 0) {
+        for (const warning of result.warnings) {
+          this.sendWarningMessage(warning);
+        }
+      }
+
+      this.renderEngine.startRenderLoop();
+      this.sendSuccessMessages();
+    }).catch(err => {
+      console.error("MessageHandler: Error in compileShaderCode:", err);
+      if (isDebugMode && this.originalShaderCode) {
+        // Fall back to original shader
+        this.compileShaderCode(this.originalShaderCode, message, false);
+      } else {
+        this.sendErrorMessage(`Shader compilation error: ${err}`);
+      }
+    });
+  }
+
+  private getHeaderLineCount(): number {
+    // Hardcode based on ShaderCompiler.wrapShaderToyCode
+    const header = `
+precision highp float;
+out vec4 fragColor;
+#define HW_PERFORMANCE 1
+uniform vec3 iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform float iFrameRate;
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+uniform vec3 iChannelResolution[4];
+uniform vec4 iMouse;
+uniform int iFrame;
+uniform vec4 iDate;
+`;
+    return (header.match(/\n/g) || []).length;
   }
 
   public refresh(path?: string): void {
