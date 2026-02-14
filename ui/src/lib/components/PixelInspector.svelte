@@ -69,12 +69,7 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     font-family: var(--vscode-font-family, monospace);
     font-size: 12px;
-   
-
-  .pixel-inspector.locked {
-    border: 2px solid var(--vscode-button-background, #0e639c);
-    box-shadow: 0 4px 12px rgba(14, 99, 156, 0.5);
-  } color: var(--vscode-editor-foreground, #d4d4d4);
+    color: var(--vscode-editor-foreground, #d4d4d4);
   }
 
   .inspector-content {

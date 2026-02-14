@@ -7,7 +7,6 @@ import TimeControls from '../../lib/components/TimeControls.svelte';
 
 describe('TimeControls Component', () => {
   let mockTimeManager: any;
-  let mockOnTogglePause: any;
   let defaultProps: any;
 
   beforeEach(() => {
@@ -21,12 +20,10 @@ describe('TimeControls Component', () => {
       setTime: vi.fn(),
       isPaused: vi.fn(() => false),
     };
-    mockOnTogglePause = vi.fn();
 
     defaultProps = {
       timeManager: mockTimeManager,
       currentTime: 3.14,
-      onTogglePause: mockOnTogglePause,
     };
   });
 
