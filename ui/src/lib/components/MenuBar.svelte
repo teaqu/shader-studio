@@ -8,6 +8,7 @@
   import { qualityStore, type QualityMode } from "../stores/qualityStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   import TimeControls from "./TimeControls.svelte";
+  import type { ShaderDebugState } from "../types/ShaderDebugState";
 
   import resetIcon from "../../assets/reset.svg?raw";
   import refreshIcon from "../../assets/refresh.svg?raw";
@@ -21,6 +22,13 @@
   import menuIcon from "../../assets/menu.svg?raw";
   import configIcon from "../../assets/config.svg?raw";
   import inspectorIcon from "../../assets/inspector.svg?raw";
+
+  // Debug icon SVG
+  const debugIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m8 6 4-4 4 4"/>
+    <path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22"/>
+    <path d="m20 22-5-5"/>
+  </svg>`;
 
   import { piRequestFullScreen } from "../../../../vendor/pilibs/src/piWebUtils.js";
 
@@ -41,6 +49,9 @@
   export let onConfig: () => void = () => {};
   export let isInspectorEnabled: boolean = true;
   export let onToggleInspectorEnabled: () => void = () => {};
+  export let isDebugEnabled: boolean = false;
+  export let onToggleDebugEnabled: () => void = () => {};
+  export let debugState: ShaderDebugState | null = null;
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -295,6 +306,14 @@
       class:active={isInspectorEnabled}
     >
       {@html inspectorIcon}
+    </button>
+    <button
+      on:click={onToggleDebugEnabled}
+      aria-label="Toggle debug mode"
+      class:active={isDebugEnabled}
+      title={debugState?.isActive ? `Debugging line ${(debugState.currentLine ?? 0) + 1}` : "Enable debug mode"}
+    >
+      {@html debugIcon}
     </button>
     <button on:click={handleToggleLock} aria-label="Toggle lock">
       {#if isLocked}

@@ -14,6 +14,7 @@ import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
+import type { CursorPositionMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -30,6 +31,7 @@ export class ShaderStudio {
   private shaderCreator!: ShaderCreator;
   private configGenerator: ConfigGenerator;
   private errorHandler: ErrorHandler;
+  private cursorPositionTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -301,6 +303,13 @@ export class ShaderStudio {
         this.performShaderUpdate(editor);
       }
     });
+
+    // Track cursor position in GLSL editors for debug mode
+    this.context.subscriptions.push(
+      vscode.window.onDidChangeTextEditorSelection((event) => {
+        this.handleCursorPositionChange(event);
+      })
+    );
   }
 
   private isGlslEditor(editor: vscode.TextEditor): boolean {
@@ -311,6 +320,44 @@ export class ShaderStudio {
     if (this.messenger.hasActiveClients()) {
       this.shaderProvider.sendShaderToWebview(editor);
     }
+  }
+
+  private handleCursorPositionChange(event: vscode.TextEditorSelectionChangeEvent): void {
+    const editor = event.textEditor;
+
+    // Only track GLSL editors
+    if (!this.glslFileTracker.isGlslEditor(editor)) {
+      return;
+    }
+
+    // Only send on cursor movement (not text selection)
+    if (event.selections.some(sel => !sel.isEmpty)) {
+      return;
+    }
+
+    // Debounce to avoid excessive messages
+    if (this.cursorPositionTimeout) {
+      clearTimeout(this.cursorPositionTimeout);
+    }
+
+    this.cursorPositionTimeout = setTimeout(() => {
+      const line = editor.selection.active.line;
+      const character = editor.selection.active.character;
+      const lineContent = editor.document.lineAt(line).text;
+      const filePath = editor.document.uri.fsPath;
+
+      const message: CursorPositionMessage = {
+        type: "cursorPosition",
+        payload: {
+          line,
+          character,
+          lineContent,
+          filePath,
+        },
+      };
+
+      this.messenger.send(message);
+    }, 150); // 150ms debounce
   }
 
   private async toggleConfigView(): Promise<void> {
