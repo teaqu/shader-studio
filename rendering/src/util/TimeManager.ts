@@ -6,6 +6,9 @@ export class TimeManager {
     private frame = 0;
     private lastFrameTime = 0;
     private deltaTime = 0;
+    private speedMultiplier = 1.0;
+    private loopEnabled = false;
+    private loopDuration = 60; // Default to 1 minute
 
     constructor() {
         this.resetTime = performance.now() * 0.001;
@@ -48,9 +51,19 @@ export class TimeManager {
     public getCurrentTime(currentFrameTime: number): number {
         const currentTime = currentFrameTime * 0.001;
 
-        return this.paused
+        let time = this.paused
             ? (this.lastRealTime - this.resetTime) - this.pausedTime
             : (currentTime - this.resetTime) - this.pausedTime;
+
+        // Apply speed multiplier
+        time *= this.speedMultiplier;
+
+        // Apply loop if enabled
+        if (this.loopEnabled && this.loopDuration > 0) {
+            time = time % this.loopDuration;
+        }
+
+        return time;
     }
 
     public updateFrame(frameTimeMs: number): void {
@@ -89,5 +102,42 @@ export class TimeManager {
             currentDate.getMilliseconds() / 1000.0;
 
         return new Float32Array([year, month, day, timeInSeconds]);
+    }
+
+    public setSpeed(speed: number): void {
+        this.speedMultiplier = Math.max(0.25, Math.min(4.0, speed));
+    }
+
+    public getSpeed(): number {
+        return this.speedMultiplier;
+    }
+
+    public setLoopEnabled(enabled: boolean): void {
+        this.loopEnabled = enabled;
+    }
+
+    public isLoopEnabled(): boolean {
+        return this.loopEnabled;
+    }
+
+    public setLoopDuration(duration: number): void {
+        this.loopDuration = Math.max(0, duration);
+    }
+
+    public getLoopDuration(): number {
+        return this.loopDuration;
+    }
+
+    public setTime(time: number): void {
+        const currentTime = performance.now() * 0.001;
+        // Adjust the time accounting for speed multiplier
+        const adjustedTime = time / this.speedMultiplier;
+        this.resetTime = currentTime - adjustedTime;
+        this.pausedTime = 0;
+        this.lastFrameTime = currentTime;
+
+        if (this.paused) {
+            this.lastRealTime = currentTime;
+        }
     }
 }

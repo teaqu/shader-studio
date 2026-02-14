@@ -519,3 +519,316 @@ canvas {
     transform: translateY(0);
   }
 }
+
+/* Time Menu Styles */
+.time-menu-container {
+  position: relative;
+}
+
+.time-button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 13px) !important;
+  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-weight: var(--vscode-font-weight, normal);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.2s ease;
+  min-width: 5ch;
+  text-align: right;
+}
+
+.time-button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.time-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background-color: var(--vscode-notifications-background);
+  border: 1px solid var(--vscode-notifications-border);
+  border-radius: 6px;
+  padding: 1rem;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  animation: time-menu-appear 0.2s ease-out;
+}
+
+.time-section {
+  margin-bottom: 1rem;
+}
+
+.time-section:last-child {
+  margin-bottom: 0;
+}
+
+.time-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: var(--vscode-font-size, 12px);
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+@keyframes time-menu-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--vscode-font-size, 12px);
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+  padding: 0.3rem 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.loop-duration-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.5rem;
+}
+
+.loop-duration-option {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: none;
+  border: none;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 12px);
+  font-family: var(--vscode-font-family, sans-serif);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-radius: 4px;
+}
+
+.loop-duration-option:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.loop-duration-option.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.loop-duration-option.active:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.speed-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.speed-control label {
+  font-size: var(--vscode-font-size, 12px);
+  color: var(--vscode-editor-foreground);
+}
+
+.speed-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vscode-panel-border);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+}
+
+.speed-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+  border: none;
+}
+
+.speed-presets {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.speed-preset {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.3rem;
+  background: none;
+  border: none;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 11px);
+  font-family: var(--vscode-font-family, sans-serif);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-radius: 4px;
+}
+
+.speed-preset:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.speed-preset.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.speed-preset.active:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.scrub-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.time-scrub-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vscode-panel-border);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.time-scrub-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.time-scrub-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.scrub-duration-buttons {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+}
+
+.scrub-duration-option {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.3rem;
+  background: none;
+  border: none;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 11px);
+  font-family: var(--vscode-font-family, sans-serif);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-radius: 4px;
+}
+
+.scrub-duration-option:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.scrub-duration-option.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.scrub-duration-option.active:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.time-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.time-section-header h4 {
+  margin: 0;
+}
+
+.loop-toggle-button {
+  all: unset;
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+  opacity: 0.6;
+  width: 24px;
+  height: 24px;
+}
+
+.loop-toggle-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.loop-toggle-button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+  opacity: 1;
+}
+
+.loop-toggle-button.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  opacity: 1;
+}
+
+.loop-toggle-button.active:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}

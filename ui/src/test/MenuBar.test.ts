@@ -19,38 +19,46 @@ vi.mock('../lib/transport/TransportFactory', () => ({
 describe('MenuBar Component', () => {
   let mockTimeManager: any;
   let mockCanvas: HTMLCanvasElement;
-  
-  const defaultProps = {
-    timeManager: null,
-    currentFPS: 60.0,
-    canvasWidth: 800,
-    canvasHeight: 600,
-    isLocked: false,
-    isInspectorEnabled: false,
-    canvasElement: null,
-    onReset: vi.fn(),
-    onRefresh: vi.fn(),
-    onTogglePause: vi.fn(),
-    onToggleLock: vi.fn(),
-    onAspectRatioChange: vi.fn(),
-    onQualityChange: vi.fn(),
-    onZoomChange: vi.fn(),
-    onToggleInspectorEnabled: vi.fn()
-  };
+  let defaultProps: any;
 
   beforeEach(() => {
     mockTimeManager = {
       getCurrentTime: vi.fn().mockReturnValue(5.25),
-      isPaused: vi.fn().mockReturnValue(false)
+      isPaused: vi.fn().mockReturnValue(false),
+      getSpeed: vi.fn().mockReturnValue(1.0),
+      setSpeed: vi.fn(),
+      isLoopEnabled: vi.fn().mockReturnValue(false),
+      setLoopEnabled: vi.fn(),
+      getLoopDuration: vi.fn().mockReturnValue(60),
+      setLoopDuration: vi.fn(),
+      setTime: vi.fn()
     };
 
     mockCanvas = document.createElement('canvas');
     mockCanvas.width = 800;
     mockCanvas.height = 600;
 
+    defaultProps = {
+      timeManager: null,
+      currentFPS: 60.0,
+      canvasWidth: 800,
+      canvasHeight: 600,
+      isLocked: false,
+      isInspectorEnabled: false,
+      canvasElement: null,
+      onReset: vi.fn(),
+      onRefresh: vi.fn(),
+      onTogglePause: vi.fn(),
+      onToggleLock: vi.fn(),
+      onAspectRatioChange: vi.fn(),
+      onQualityChange: vi.fn(),
+      onZoomChange: vi.fn(),
+      onToggleInspectorEnabled: vi.fn()
+    };
+
     // Reset all mocks
     vi.clearAllMocks();
-    
+
     // Reset stores to default values
     currentTheme.set('light');
     aspectRatioStore.setMode('16:9');
@@ -79,14 +87,14 @@ describe('MenuBar Component', () => {
     });
 
     it('should display current time when timeManager is provided', () => {
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          timeManager: mockTimeManager 
-        } 
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          timeManager: mockTimeManager
+        }
       });
-      
-      expect(screen.getByText('5.25')).toBeInTheDocument();
+
+      expect(screen.getByText('5.25s')).toBeInTheDocument();
     });
   });
 
@@ -638,8 +646,8 @@ describe('MenuBar Component', () => {
         } 
       });
 
-      // Should show 0.00 for time when no timeManager
-      expect(screen.getByText('0.00')).toBeInTheDocument();
+      // Should show 0.00s for time when no timeManager
+      expect(screen.getByText('0.00s')).toBeInTheDocument();
       // Should still show FPS
       expect(screen.getByText('60.0 FPS')).toBeInTheDocument();
     });
@@ -648,7 +656,14 @@ describe('MenuBar Component', () => {
       // Mock timeManager to return different values
       const mockTimeManagerWithValues = {
         getCurrentTime: vi.fn().mockReturnValue(10.5),
-        isPaused: vi.fn().mockReturnValue(false)
+        isPaused: vi.fn().mockReturnValue(false),
+        getSpeed: vi.fn().mockReturnValue(1.0),
+        setSpeed: vi.fn(),
+        isLoopEnabled: vi.fn().mockReturnValue(false),
+        setLoopEnabled: vi.fn(),
+        getLoopDuration: vi.fn().mockReturnValue(60),
+        setLoopDuration: vi.fn(),
+        setTime: vi.fn()
       };
 
       render(MenuBar, { 
@@ -659,7 +674,7 @@ describe('MenuBar Component', () => {
       });
 
       // Should show the time from timeManager
-      expect(screen.getByText('10.50')).toBeInTheDocument();
+      expect(screen.getByText('10.50s')).toBeInTheDocument();
       expect(mockTimeManagerWithValues.getCurrentTime).toHaveBeenCalled();
     });
   });
