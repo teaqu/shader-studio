@@ -3,7 +3,6 @@
 
   export let timeManager: any;
   export let currentTime: number = 0.0;
-  export let onTogglePause: () => void = () => {};
 
   // Initialize state from timeManager
   let timeSpeed = timeManager?.getSpeed() ?? 1.0;

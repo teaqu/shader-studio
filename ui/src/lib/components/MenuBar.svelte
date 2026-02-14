@@ -210,7 +210,7 @@
         {@html pauseIcon}
       {/if}
     </button>
-    <TimeControls {timeManager} {currentTime} {onTogglePause} />
+    <TimeControls {timeManager} {currentTime} />
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
       <button

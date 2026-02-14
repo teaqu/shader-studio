@@ -109,6 +109,12 @@
   }
 </script>
 
-<div class="canvas-container" on:click={handleClick}>
+<div
+  class="canvas-container"
+  role="button"
+  tabindex="0"
+  on:click={handleClick}
+  on:keydown={(e) => e.key === 'Enter' && handleClick(e)}
+>
   <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
 </div>
