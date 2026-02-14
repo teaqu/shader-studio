@@ -6,7 +6,6 @@ import { PanelManager } from "./PanelManager";
 import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
-import { ConfigEditorProvider } from "./ConfigEditorProvider";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
@@ -24,7 +23,6 @@ export class ShaderStudio {
   private messenger: Messenger;
   private context: vscode.ExtensionContext;
   private logger!: Logger;
-  private configEditorProvider: vscode.Disposable;
   private sShaderExplorerProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
@@ -60,12 +58,6 @@ export class ShaderStudio {
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
 
-    // Register custom editor for .sha.json files
-    this.configEditorProvider = ConfigEditorProvider.register(
-      context,
-      this.shaderProvider,
-    );
-
     // Register shader explorer
     this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
 
@@ -83,7 +75,6 @@ export class ShaderStudio {
   public dispose(): void {
     this.webServer.stopWebServer();
     this.messenger.close();
-    this.configEditorProvider.dispose();
     this.sShaderExplorerProvider.dispose();
     this.errorHandler.dispose();
     this.logger.info("Shader extension disposed");

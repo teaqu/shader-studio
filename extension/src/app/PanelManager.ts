@@ -6,6 +6,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import type { ShaderConfig } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -94,12 +95,49 @@ export class PanelManager {
       );
     }
 
+    // Handle messages from webview
+    panel.webview.onDidReceiveMessage((message) => {
+      this.handleWebviewMessage(message, panel);
+    });
+
     panel.onDidDispose(() => {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
     });
 
     this.logger.info("Webview panel created");
+  }
+
+  private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
+    if (message.type === 'updateConfig') {
+      await this.handleConfigUpdate(message.payload);
+    }
+  }
+
+  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string }): Promise<void> {
+    try {
+      // Find the current shader path from the active or last viewed GLSL file
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        this.logger.warn("No active shader to update config for");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+
+      // Write the config to file
+      fs.writeFileSync(configPath, payload.text, 'utf-8');
+      this.logger.info(`Config updated: ${configPath}`);
+
+      // Trigger shader refresh
+      setTimeout(() => {
+        this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+      }, 150);
+    } catch (error) {
+      this.logger.error(`Failed to update config: ${error}`);
+      vscode.window.showErrorMessage(`Failed to update shader config: ${error}`);
+    }
   }
 
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {
