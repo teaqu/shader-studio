@@ -141,7 +141,8 @@ export class ShaderDebugManager {
 
   /**
    * Removes control flow keywords (if, else, for, while) from truncated code
-   * to avoid unclosed braces and ensure clean execution
+   * to avoid unclosed braces and ensure clean execution.
+   * For loops: extracts initialization and executes body once.
    */
   private removeControlFlowKeywords(lines: string[], mainImageStart: number): string[] {
     const result: string[] = [];
@@ -149,9 +150,19 @@ export class ShaderDebugManager {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Skip lines that are only control flow statements
-      // Match: if (...) {, else {, } else {, for (...) {, while (...) {
-      const isControlFlow = /^\s*(if|else|for|while)\s*[\(\{]/.test(line) ||
+      // Special handling for 'for' loops - extract initialization and run body once
+      const forLoopMatch = line.match(/^\s*for\s*\(\s*(.+?)\s*;\s*.+?\s*;\s*.+?\s*\)\s*\{?\s*$/);
+      if (forLoopMatch && i >= mainImageStart) {
+        // Extract initialization (e.g., "int i = 0" from "for (int i = 0; i < 10; i++)")
+        const initialization = forLoopMatch[1].trim();
+        const indent = line.match(/^(\s*)/)?.[1] || '';
+        result.push(`${indent}${initialization};  // Loop init (first iteration only)`);
+        continue;
+      }
+
+      // Skip lines that are only control flow statements (if, else, while)
+      // Match: if (...) {, else {, } else {, while (...) {
+      const isControlFlow = /^\s*(if|else|while)\s*[\(\{]/.test(line) ||
                            /^\s*\}\s*else\s*\{?\s*$/.test(line);
 
       if (isControlFlow && i >= mainImageStart) {
