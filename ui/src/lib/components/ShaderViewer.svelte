@@ -32,8 +32,9 @@
   let mouseY = 0;
   let pixelRGB: { r: number; g: number; b: number } | null = null;
   let fragCoord: { x: number; y: number } | null = null;
+  let pendingPixelRead: number | null = null;
 
- let shaderStudio: ShaderStudio;
+  let shaderStudio: ShaderStudio;
   let transport: Transport;
   let timeManager: any = null;
 
@@ -97,21 +98,15 @@
     if (!initialized) return;
     const timeManager = shaderStudio.getTimeManager();
     const wasPaused = timeManager.isPaused();
-    
+
     shaderStudio.handleTogglePause();
-    
-    // When pausing and inspector is enabled, activate inspector
-    if (!wasPaused && isInspectorEnabled) {
-      isInspectorActive = true;
-      // Stop render loop (pause already happened via handleTogglePause)
+
+    // Manage render loop based on pause state
+    if (!wasPaused) {
+      // Just paused - stop render loop
       shaderStudio.getRenderingEngine().stopRenderLoop();
-    } else if (wasPaused) {
-      // When resuming, deactivate inspector
-      isInspectorActive = false;
-      isInspectorLocked = false;
-      pixelRGB = null;
-      fragCoord = null;
-      // Restart render loop
+    } else {
+      // Just resumed - restart render loop
       shaderStudio.getRenderingEngine().startRenderLoop();
     }
   }
@@ -136,23 +131,23 @@
 
   function handleToggleInspectorEnabled() {
     isInspectorEnabled = !isInspectorEnabled;
-    
-    // If enabling, pause and activate inspector immediately
-    if (isInspectorEnabled && initialized && shaderStudio) {
-      const timeManager = shaderStudio.getTimeManager();
-      if (!timeManager.isPaused()) {
-        shaderStudio.handleTogglePause();
-      }
+
+    // If enabling, activate inspector (works while playing or paused)
+    if (isInspectorEnabled) {
       isInspectorActive = true;
-      shaderStudio.getRenderingEngine().stopRenderLoop();
     }
-    
-    // If disabling while inspector is active, just deactivate it (don't resume)
-    if (!isInspectorEnabled && isInspectorActive) {
+
+    // If disabling, deactivate inspector and clear data
+    if (!isInspectorEnabled) {
       isInspectorActive = false;
       isInspectorLocked = false;
       pixelRGB = null;
       fragCoord = null;
+      // Cancel any pending pixel read
+      if (pendingPixelRead !== null) {
+        cancelAnimationFrame(pendingPixelRead);
+        pendingPixelRead = null;
+      }
     }
   }
 
@@ -179,7 +174,7 @@
 
     // Get canvas bounding rect
     const rect = glCanvas.getBoundingClientRect();
-    
+
     // Calculate position within canvas (accounting for canvas scaling)
     const canvasX = ((event.clientX - rect.left) / rect.width) * glCanvas.width;
     const canvasY = ((event.clientY - rect.top) / rect.height) * glCanvas.height;
@@ -187,26 +182,46 @@
     // Check if mouse is within canvas bounds
     if (canvasX >= 0 && canvasX < glCanvas.width && canvasY >= 0 && canvasY < glCanvas.height) {
       const renderEngine = shaderStudio.getRenderingEngine();
-      
-      // Force a single frame render (this sets running=true, renders, sets running=false)
-      renderEngine.render();
-      
-      // Read pixel immediately after render
-      const pixel = renderEngine.readPixel(
-        Math.floor(canvasX),
-        Math.floor(canvasY)
-      );
+      const timeManager = shaderStudio.getTimeManager();
 
-      if (pixel) {
-        pixelRGB = { r: pixel.r, g: pixel.g, b: pixel.b };
-        fragCoord = { 
-          x: canvasX, 
-          y: glCanvas.height - canvasY
-        };
-      } else {
-        pixelRGB = null;
-        fragCoord = null;
+      // Cancel any pending pixel read
+      if (pendingPixelRead !== null) {
+        cancelAnimationFrame(pendingPixelRead);
+        pendingPixelRead = null;
       }
+
+      if (timeManager.isPaused()) {
+        // When paused, render and read immediately
+        renderEngine.render();
+        readPixelAtPosition(canvasX, canvasY);
+      } else {
+        // When playing, wait for next frame to ensure we read after render completes
+        pendingPixelRead = requestAnimationFrame(() => {
+          readPixelAtPosition(canvasX, canvasY);
+          pendingPixelRead = null;
+        });
+      }
+    } else {
+      pixelRGB = null;
+      fragCoord = null;
+    }
+  }
+
+  function readPixelAtPosition(canvasX: number, canvasY: number) {
+    if (!glCanvas || !initialized) return;
+
+    const renderEngine = shaderStudio.getRenderingEngine();
+    const pixel = renderEngine.readPixel(
+      Math.floor(canvasX),
+      Math.floor(canvasY)
+    );
+
+    if (pixel) {
+      pixelRGB = { r: pixel.r, g: pixel.g, b: pixel.b };
+      fragCoord = {
+        x: canvasX,
+        y: glCanvas.height - canvasY
+      };
     } else {
       pixelRGB = null;
       fragCoord = null;
@@ -282,6 +297,10 @@
   });
 
   onDestroy(() => {
+    // Cancel any pending pixel read
+    if (pendingPixelRead !== null) {
+      cancelAnimationFrame(pendingPixelRead);
+    }
     if (shaderStudio) {
       shaderStudio.dispose();
     }

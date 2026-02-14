@@ -21,5 +21,6 @@ export interface RenderingEngine {
   render(time?: number): void;
   getCurrentFPS(): number;
   cleanup(): void;
+  readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null;
   dispose(): void;
 }
