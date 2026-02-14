@@ -291,6 +291,15 @@ export class MessageHandler {
   public handleCursorPositionMessage(message: CursorPositionMessage): void {
     const { line, lineContent, filePath } = message.payload;
 
+    // If shader is locked, only debug lines from the locked shader
+    if (this.shaderLocker.isLocked()) {
+      const lockedPath = this.shaderLocker.getLockedShaderPath();
+      if (lockedPath && filePath !== lockedPath) {
+        // Cursor is in a different file than the locked shader - ignore
+        return;
+      }
+    }
+
     this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
 
     // If debug mode is active, recompile shader
