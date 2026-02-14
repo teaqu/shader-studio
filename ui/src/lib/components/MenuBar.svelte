@@ -288,6 +288,13 @@
     </div>
   </div>
   <div class="right-group">
+    <button
+      on:click={onToggleInspectorEnabled}
+      aria-label="Toggle inspector"
+      class:active={isInspectorEnabled}
+    >
+      {@html inspectorIcon}
+    </button>
     <button on:click={handleToggleLock} aria-label="Toggle lock">
       {#if isLocked}
         {@html lockIcon}
@@ -346,14 +353,6 @@
               <span>Fullscreen</span>
             </button>
           {/if}
-          <button
-            class="options-menu-item"
-            on:click={() => { showOptionsMenu = false; onToggleInspectorEnabled(); }}
-            aria-label="Toggle pixel inspector"
-          >
-            {@html inspectorIcon}
-            <span>{isInspectorEnabled ? 'Disable' : 'Enable'} Inspector</span>
-          </button>
         </div>
       {/if}
     </div>
