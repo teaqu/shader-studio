@@ -129,4 +129,111 @@ describe('ShaderDebugManager - Variable Declarations', () => {
       expect(result).toContain('fragColor = vec4(wp, 1.0)');
     }
   });
+
+  it('should handle multi-line variable declaration', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 col = palette(length(uv) + iTime/4.0,
+      vec3(0.5, 0.5, 0.5),
+      vec3(0.5, 0.5, 0.5),
+      vec3(1.0, 1.0, 1.0),
+      vec3(0.263, 0.416, 0.557)
+    );
+    fragColor = vec4(col, 1.0);
+}`;
+
+    // Debug first line of multi-line declaration
+    manager.updateDebugLine(2, '    vec3 col = palette(length(uv) + iTime/4.0,', 'test.glsl');
+    const result = manager.modifyShaderForDebugging(shader, 2, 0);
+
+    console.log('\n=== MULTI-LINE: Variable declaration spanning multiple lines ===');
+    console.log('Result:', result);
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should detect col as vec3
+      expect(result).toContain('vec3 col = palette');
+      expect(result).toContain('fragColor = vec4(col, 1.0)');
+    }
+  });
+
+  it('should handle multi-line assignment (not declaration)', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 col;
+    col = palette(length(uv) + iTime/4.0,
+      vec3(0.5, 0.5, 0.5),
+      vec3(0.5, 0.5, 0.5)
+    );
+    fragColor = vec4(col, 1.0);
+}`;
+
+    // Debug first line of multi-line assignment
+    manager.updateDebugLine(3, '    col = palette(length(uv) + iTime/4.0,', 'test.glsl');
+    const result = manager.modifyShaderForDebugging(shader, 3, 0);
+
+    console.log('\n=== MULTI-LINE: Assignment spanning multiple lines ===');
+    console.log('Result:', result);
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should detect col as vec3 from earlier declaration
+      expect(result).toContain('vec3 col;');
+      expect(result).toContain('col = palette');
+      expect(result).toContain('fragColor = vec4(col, 1.0)');
+    }
+  });
+
+  it('should handle assignment split with equals on first line and value on next', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 wp;
+    wp =
+      smoothstep(1.4, 0.5, fract(vec3(uv.x))) * 1.5;
+    fragColor = vec4(wp, 1.0);
+}`;
+
+    // Debug first line of split assignment (just "wp =")
+    manager.updateDebugLine(3, '    wp = ', 'test.glsl');
+    const result = manager.modifyShaderForDebugging(shader, 3, 0);
+
+    console.log('\n=== MULTI-LINE: Assignment split across lines (wp = on one line) ===');
+    console.log('Result:', result);
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should detect wp as vec3
+      expect(result).toContain('vec3 wp;');
+      expect(result).toContain('wp =');
+      expect(result).toContain('smoothstep');
+      expect(result).toContain('fragColor = vec4(wp, 1.0)');
+    }
+  });
+
+  it('should handle hovering over middle line of multi-line declaration', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 col = palette(length(uv) + iTime/4.0,
+      vec3(0.5, 0.5, 0.5),
+      vec3(0.5, 0.5, 0.5),
+      vec3(1.0, 1.0, 1.0),
+      vec3(0.263, 0.416, 0.557)
+    );
+    fragColor = vec4(col, 1.0);
+}`;
+
+    // Debug MIDDLE line of multi-line declaration (not the first line!)
+    manager.updateDebugLine(3, '      vec3(0.5, 0.5, 0.5),', 'test.glsl');
+    const result = manager.modifyShaderForDebugging(shader, 3, 0);
+
+    console.log('\n=== MULTI-LINE: Hovering over middle line ===');
+    console.log('Result:', result);
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should still detect col as vec3 by combining all lines
+      expect(result).toContain('vec3 col = palette');
+      expect(result).toContain('fragColor = vec4(col, 1.0)');
+    }
+  });
 });

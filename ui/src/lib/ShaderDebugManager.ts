@@ -93,8 +93,10 @@ export class ShaderDebugManager {
       }
     }
 
-    // Detect variable and type at this line
-    const varInfo = this.detectVariableAndType(this.state.lineContent, varTypes, functionReturnType);
+    // Detect variable and type at this line (supports multi-line statements)
+    // Use actual shader line content, not cursor line content
+    const actualLineContent = lines[adjustedLine] || '';
+    const varInfo = this.detectVariableAndType(actualLineContent, varTypes, functionReturnType, lines, adjustedLine);
     if (!varInfo) {
       console.log('[ShaderDebug] ❌ Could not detect variable/type');
       this.setDebugStatus('failed', 'Could not detect variable or type from line');
@@ -108,7 +110,22 @@ export class ShaderDebugManager {
     if (functionInfo.name === 'mainImage') {
       // Inside mainImage - truncate and close
       console.log('[ShaderDebug] Path: mainImage truncation');
-      const truncatedLines = lines.slice(0, adjustedLine + 1);
+
+      // Find the end of the statement (may span multiple lines)
+      let endLine = adjustedLine;
+      const debugLineContent = lines[adjustedLine].trim();
+      if (!debugLineContent.endsWith(';') && !debugLineContent.endsWith('{') && !debugLineContent.endsWith('}')) {
+        // Multi-line statement - find where it ends
+        for (let i = adjustedLine + 1; i < lines.length && i < adjustedLine + 10; i++) {
+          if (lines[i].trim().endsWith(';')) {
+            endLine = i;
+            break;
+          }
+        }
+        console.log('[ShaderDebug] Multi-line statement extends to line', endLine);
+      }
+
+      const truncatedLines = lines.slice(0, endLine + 1);
 
       // Remove control flow keywords (if, else, for, while) to avoid unclosed braces
       const cleanedLines = this.removeControlFlowKeywords(truncatedLines, functionInfo.start);
@@ -606,13 +623,71 @@ export class ShaderDebugManager {
     return varTypes;
   }
 
-  private detectVariableAndType(lineContent: string, varTypes: Map<string, string>, functionReturnType?: string): { name: string; type: string } | null {
+  private detectVariableAndType(
+    lineContent: string,
+    varTypes: Map<string, string>,
+    functionReturnType?: string,
+    lines?: string[],
+    lineIndex?: number
+  ): { name: string; type: string } | null {
     console.log('[ShaderDebug] === DETECT VARIABLE ===');
     console.log('[ShaderDebug] Line:', lineContent);
     console.log('[ShaderDebug] Available vars in scope:', Array.from(varTypes.keys()));
 
+    // Handle multi-line statements: detect if we're anywhere in a multi-line statement
+    let fullStatement = lineContent;
+    if (lines && lineIndex !== undefined) {
+      const trimmed = lineContent.trim();
+
+      // Check if current line is part of a multi-line statement
+      // A line is part of multi-line if:
+      // 1. Current line doesn't end with ; (incomplete statement), OR
+      // 2. Previous line doesn't end with ; (continuation of previous line)
+      const currentLineIncomplete = !trimmed.endsWith(';') &&
+                                    !trimmed.endsWith('{') &&
+                                    !trimmed.endsWith('}') &&
+                                    !trimmed.startsWith('//');  // Not a comment
+
+      const prevLineIncomplete = lineIndex > 0 &&
+                                 !lines[lineIndex - 1].trim().endsWith(';') &&
+                                 !lines[lineIndex - 1].trim().endsWith('{') &&
+                                 !lines[lineIndex - 1].trim().endsWith('}');
+
+      const isPartOfMultiLine = currentLineIncomplete || prevLineIncomplete;
+
+      if (isPartOfMultiLine) {
+        // Find the START of the statement by looking backwards
+        let startLine = lineIndex;
+        for (let i = lineIndex - 1; i >= 0 && i >= lineIndex - 10; i--) {
+          const prevLine = lines[i].trim();
+          if (prevLine.endsWith(';') || prevLine.endsWith('{') || prevLine.endsWith('}')) {
+            // Found the end of the previous statement
+            startLine = i + 1;
+            break;
+          }
+          if (i === 0) {
+            startLine = 0;
+          }
+        }
+
+        // Find the END of the statement by looking forwards
+        let endLine = lineIndex;
+        for (let i = lineIndex; i < lines.length && i < lineIndex + 10; i++) {
+          if (lines[i].trim().endsWith(';')) {
+            endLine = i;
+            break;
+          }
+        }
+
+        // Combine all lines from start to end
+        const statementLines = lines.slice(startLine, endLine + 1);
+        fullStatement = statementLines.join(' ');
+        console.log(`[ShaderDebug] Multi-line statement detected (lines ${startLine}-${endLine}), combined:`, fullStatement);
+      }
+    }
+
     // Check for return statements first
-    const returnMatch = lineContent.match(/^\s*return\s+(.+);/);
+    const returnMatch = fullStatement.match(/^\s*return\s+(.+);/);
     if (returnMatch && functionReturnType) {
       console.log('[ShaderDebug] ✓ Matched return statement, type:', functionReturnType);
       // For return statements, create a temporary variable name
@@ -631,7 +706,7 @@ export class ShaderDebugManager {
     ];
 
     for (const { pattern, type } of declPatterns) {
-      const match = lineContent.match(pattern);
+      const match = fullStatement.match(pattern);
       if (match && match[2]) {
         console.log(`[ShaderDebug] ✓ Matched declaration: ${match[2]} (${type})`);
         return { name: match[2], type };
@@ -651,7 +726,7 @@ export class ShaderDebugManager {
     ];
 
     for (const { pattern, name } of assignPatterns) {
-      const match = lineContent.match(pattern);
+      const match = fullStatement.match(pattern);
       if (match && match[1]) {
         const varName = match[1];
         const varType = varTypes.get(varName);
@@ -682,7 +757,7 @@ export class ShaderDebugManager {
     ];
 
     for (const { pattern, name } of memberAccessPatterns) {
-      const match = lineContent.match(pattern);
+      const match = fullStatement.match(pattern);
       if (match && match[1]) {
         const varName = match[1];
         const varType = varTypes.get(varName);
