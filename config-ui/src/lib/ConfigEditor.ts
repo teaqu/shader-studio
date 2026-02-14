@@ -2,6 +2,7 @@ import type { ShaderConfig, BufferPass, ImagePass } from './types/ShaderConfig';
 
 export class ConfigEditor {
     private config: ShaderConfig | null = null;
+    private pathMap: Record<string, string> = {};
     private vsCodeApi: any = null;
     private onConfigUpdate?: (config: ShaderConfig | null) => void;
     private onError?: (error: string | null) => void;
@@ -35,6 +36,9 @@ export class ConfigEditor {
     private handleMessage(message: any): void {
         switch (message.type) {
             case 'update':
+                if (message.pathMap) {
+                    this.pathMap = message.pathMap;
+                }
                 this.parseAndUpdateConfig(message.text);
                 break;
             case 'error':
@@ -76,6 +80,13 @@ export class ConfigEditor {
             this.setError(errorMessage);
             this.setConfig(null);
         }
+    }
+
+    /**
+     * Get the webview URI for a given path
+     */
+    public getWebviewUri(path: string): string | undefined {
+        return this.pathMap[path];
     }
 
     /**
