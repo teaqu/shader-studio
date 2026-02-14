@@ -11,6 +11,8 @@
   import PixelInspector from "./PixelInspector.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
+  import { PixelInspectorManager } from "../PixelInspectorManager";
+  import type { PixelInspectorState } from "../types/PixelInspectorState";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -25,18 +27,20 @@
   let canvasWidth = 0;
   let canvasHeight = 0;
   let zoomLevel = 1.0;
-  let isInspectorEnabled = false;
-  let isInspectorActive = false;
-  let isInspectorLocked = false;
-  let mouseX = 0;
-  let mouseY = 0;
-  let pixelRGB: { r: number; g: number; b: number } | null = null;
-  let fragCoord: { x: number; y: number } | null = null;
-  let pendingPixelRead: number | null = null;
+  let inspectorState: PixelInspectorState = {
+    isEnabled: false,
+    isActive: false,
+    isLocked: false,
+    mouseX: 0,
+    mouseY: 0,
+    pixelRGB: null,
+    fragCoord: null,
+  };
 
   let shaderStudio: ShaderStudio;
   let transport: Transport;
   let timeManager: any = null;
+  let pixelInspectorManager: PixelInspectorManager | undefined;
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -130,102 +134,18 @@
   }
 
   function handleToggleInspectorEnabled() {
-    isInspectorEnabled = !isInspectorEnabled;
-
-    // If enabling, activate inspector (works while playing or paused)
-    if (isInspectorEnabled) {
-      isInspectorActive = true;
-    }
-
-    // If disabling, deactivate inspector and clear data
-    if (!isInspectorEnabled) {
-      isInspectorActive = false;
-      isInspectorLocked = false;
-      pixelRGB = null;
-      fragCoord = null;
-      // Cancel any pending pixel read
-      if (pendingPixelRead !== null) {
-        cancelAnimationFrame(pendingPixelRead);
-        pendingPixelRead = null;
-      }
-    }
+    if (!pixelInspectorManager) return;
+    pixelInspectorManager.toggleEnabled();
   }
 
   function handleCanvasClick(event: MouseEvent) {
-    if (!isInspectorActive) return;
-    
-    // Toggle inspector lock state
-    isInspectorLocked = !isInspectorLocked;
-    
-    // If we just locked, update the pixel data one more time
-    if (isInspectorLocked) {
-      handleCanvasMouseMove(event);
-    }
+    if (!pixelInspectorManager) return;
+    pixelInspectorManager.handleCanvasClick(event);
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
-    if (!isInspectorActive || !initialized || !glCanvas || isInspectorLocked) {
-      return;
-    }
-
-    // Get mouse position relative to the viewport
-    mouseX = event.clientX;
-    mouseY = event.clientY;
-
-    // Get canvas bounding rect
-    const rect = glCanvas.getBoundingClientRect();
-
-    // Calculate position within canvas (accounting for canvas scaling)
-    const canvasX = ((event.clientX - rect.left) / rect.width) * glCanvas.width;
-    const canvasY = ((event.clientY - rect.top) / rect.height) * glCanvas.height;
-
-    // Check if mouse is within canvas bounds
-    if (canvasX >= 0 && canvasX < glCanvas.width && canvasY >= 0 && canvasY < glCanvas.height) {
-      const renderEngine = shaderStudio.getRenderingEngine();
-      const timeManager = shaderStudio.getTimeManager();
-
-      // Cancel any pending pixel read
-      if (pendingPixelRead !== null) {
-        cancelAnimationFrame(pendingPixelRead);
-        pendingPixelRead = null;
-      }
-
-      if (timeManager.isPaused()) {
-        // When paused, render and read immediately
-        renderEngine.render();
-        readPixelAtPosition(canvasX, canvasY);
-      } else {
-        // When playing, wait for next frame to ensure we read after render completes
-        pendingPixelRead = requestAnimationFrame(() => {
-          readPixelAtPosition(canvasX, canvasY);
-          pendingPixelRead = null;
-        });
-      }
-    } else {
-      pixelRGB = null;
-      fragCoord = null;
-    }
-  }
-
-  function readPixelAtPosition(canvasX: number, canvasY: number) {
-    if (!glCanvas || !initialized) return;
-
-    const renderEngine = shaderStudio.getRenderingEngine();
-    const pixel = renderEngine.readPixel(
-      Math.floor(canvasX),
-      Math.floor(canvasY)
-    );
-
-    if (pixel) {
-      pixelRGB = { r: pixel.r, g: pixel.g, b: pixel.b };
-      fragCoord = {
-        x: canvasX,
-        y: glCanvas.height - canvasY
-      };
-    } else {
-      pixelRGB = null;
-      fragCoord = null;
-    }
+    if (!pixelInspectorManager || !initialized) return;
+    pixelInspectorManager.handleMouseMove(event);
   }
 
   function handleErrorDismiss() {
@@ -250,6 +170,16 @@
       transport.onMessage(handleShaderMessage);
 
       timeManager = shaderStudio.getTimeManager();
+
+      // Initialize pixel inspector manager
+      pixelInspectorManager = new PixelInspectorManager((state) => {
+        inspectorState = state;
+      });
+      pixelInspectorManager.initialize(
+        shaderStudio.getRenderingEngine(),
+        timeManager,
+        glCanvas
+      );
 
       initialized = true;
 
@@ -297,9 +227,8 @@
   });
 
   onDestroy(() => {
-    // Cancel any pending pixel read
-    if (pendingPixelRead !== null) {
-      cancelAnimationFrame(pendingPixelRead);
+    if (pixelInspectorManager) {
+      pixelInspectorManager.dispose();
     }
     if (shaderStudio) {
       shaderStudio.dispose();
@@ -313,7 +242,7 @@
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
   <ShaderCanvas
     {zoomLevel}
-    {isInspectorActive}
+    isInspectorActive={inspectorState.isActive}
     onCanvasReady={handleCanvasReady}
     onCanvasResize={handleCanvasResize}
     onCanvasClick={handleCanvasClick}
@@ -325,7 +254,7 @@
       {canvasWidth}
       {canvasHeight}
       {isLocked}
-      {isInspectorEnabled}
+      isInspectorEnabled={inspectorState.isEnabled}
       canvasElement={glCanvas}
       onReset={handleReset}
       onRefresh={handleRefresh}
@@ -344,12 +273,12 @@
     onDismiss={handleErrorDismiss}
   />
   <PixelInspector
-    isActive={isInspectorActive}
-    isLocked={isInspectorLocked}
-    {mouseX}
-    {mouseY}
-    rgb={pixelRGB}
-    {fragCoord}
+    isActive={inspectorState.isActive}
+    isLocked={inspectorState.isLocked}
+    mouseX={inspectorState.mouseX}
+    mouseY={inspectorState.mouseY}
+    rgb={inspectorState.pixelRGB}
+    fragCoord={inspectorState.fragCoord}
     {canvasWidth}
     {canvasHeight}
   />
