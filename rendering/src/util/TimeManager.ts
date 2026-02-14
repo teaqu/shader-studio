@@ -105,7 +105,22 @@ export class TimeManager {
     }
 
     public setSpeed(speed: number): void {
-        this.speedMultiplier = Math.max(0.25, Math.min(4.0, speed));
+        // Preserve current time when changing speed
+        const currentTime = performance.now() * 0.001;
+        const currentShaderTime = this.getCurrentTime(currentTime * 1000);
+
+        // Update speed multiplier
+        const newSpeed = Math.max(0.25, Math.min(4.0, speed));
+
+        // Adjust resetTime so current shader time stays the same
+        // currentShaderTime = (currentTime - resetTime - pausedTime) * newSpeed
+        // resetTime = currentTime - (currentShaderTime / newSpeed) - pausedTime
+        this.resetTime = currentTime - (currentShaderTime / newSpeed) - this.pausedTime;
+        this.speedMultiplier = newSpeed;
+
+        if (this.paused) {
+            this.lastRealTime = currentTime;
+        }
     }
 
     public getSpeed(): number {

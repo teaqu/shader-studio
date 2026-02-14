@@ -123,8 +123,8 @@ describe('TimeManager', () => {
             expect(timeManager.isLoopEnabled()).toBe(false);
         });
 
-        it('should initialize with default loop duration of 2π', () => {
-            expect(timeManager.getLoopDuration()).toBeCloseTo(Math.PI * 2, 2);
+        it('should initialize with default loop duration of 60s (1 minute)', () => {
+            expect(timeManager.getLoopDuration()).toBe(60);
         });
 
         it('should enable and disable loop', () => {
@@ -332,17 +332,17 @@ describe('TimeManager', () => {
             // Pause
             timeManager.togglePause();
 
-            // Change speed while paused (affects how existing time is displayed)
+            // Change speed while paused (preserves current time)
             timeManager.setSpeed(2.0);
-            // At 2x speed, 2 seconds of real time = 4 seconds of shader time
+            // Time should stay at 2 seconds (preserved when speed changes)
             time = timeManager.getCurrentTime(mockPerformanceNow);
-            expect(time).toBeCloseTo(4.0, 1);
+            expect(time).toBeCloseTo(2.0, 1);
 
             // Resume and advance 1 real second (= 2 shader seconds at 2x)
             timeManager.togglePause();
             mockPerformanceNow += 1000;
             time = timeManager.getCurrentTime(mockPerformanceNow);
-            expect(time).toBeCloseTo(6.0, 1); // 4 + (1 * 2x speed)
+            expect(time).toBeCloseTo(4.0, 1); // 2 + (1 * 2x speed)
         });
 
         it('should handle loop with varying speeds', () => {
@@ -354,16 +354,16 @@ describe('TimeManager', () => {
             let time = timeManager.getCurrentTime(mockPerformanceNow);
             expect(time).toBeCloseTo(5.0, 1);
 
-            // Change to 2x speed - this retroactively affects time calculation
-            // 5 real seconds at 2x = 10 shader seconds, which loops to 0
+            // Change to 2x speed - preserves current time
+            // Time stays at 5 seconds when speed changes
             timeManager.setSpeed(2.0);
             time = timeManager.getCurrentTime(mockPerformanceNow);
-            expect(time).toBeCloseTo(0.0, 1); // 10 % 10 = 0
+            expect(time).toBeCloseTo(5.0, 1);
 
             // Advance 0.5 real seconds = 1 shader second at 2x
             mockPerformanceNow += 500;
             time = timeManager.getCurrentTime(mockPerformanceNow);
-            expect(time).toBeCloseTo(1.0, 1); // (5.5 * 2) % 10 = 11 % 10 = 1
+            expect(time).toBeCloseTo(6.0, 1); // 5 + 1
         });
 
         it('should handle scrubbing, then looping', () => {
