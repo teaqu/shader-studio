@@ -6,4 +6,5 @@ export interface PixelInspectorState {
   mouseY: number;
   pixelRGB: { r: number; g: number; b: number } | null;
   fragCoord: { x: number; y: number } | null;
+  canvasPosition: { x: number; y: number } | null;
 }
