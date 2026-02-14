@@ -9,6 +9,7 @@
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
   import PixelInspector from "./PixelInspector.svelte";
+  import InspectorCrosshair from "./InspectorCrosshair.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
@@ -35,6 +36,7 @@
     mouseY: 0,
     pixelRGB: null,
     fragCoord: null,
+    canvasPosition: null,
   };
 
   let shaderStudio: ShaderStudio;
@@ -281,5 +283,11 @@
     fragCoord={inspectorState.fragCoord}
     {canvasWidth}
     {canvasHeight}
+  />
+  <InspectorCrosshair
+    isVisible={inspectorState.isLocked && inspectorState.canvasPosition !== null}
+    canvasX={inspectorState.canvasPosition?.x ?? 0}
+    canvasY={inspectorState.canvasPosition?.y ?? 0}
+    canvasElement={glCanvas}
   />
 </div>

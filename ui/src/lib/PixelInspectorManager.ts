@@ -11,6 +11,7 @@ export class PixelInspectorManager {
     mouseY: 0,
     pixelRGB: null,
     fragCoord: null,
+    canvasPosition: null,
   };
 
   private pendingPixelRead: number | null = null;
@@ -52,6 +53,7 @@ export class PixelInspectorManager {
       this.state.isLocked = false;
       this.state.pixelRGB = null;
       this.state.fragCoord = null;
+      this.state.canvasPosition = null;
       this.cancelPendingRead();
       this.stopContinuousUpdate();
     }
@@ -101,6 +103,7 @@ export class PixelInspectorManager {
       this.lastCanvasPosition = null;
       this.state.pixelRGB = null;
       this.state.fragCoord = null;
+      this.state.canvasPosition = null;
     }
 
     // Always notify state change immediately for smooth mouse position updates
@@ -121,9 +124,14 @@ export class PixelInspectorManager {
         x: canvasX,
         y: this.glCanvas.height - canvasY,
       };
+      this.state.canvasPosition = {
+        x: canvasX,
+        y: canvasY,
+      };
     } else {
       this.state.pixelRGB = null;
       this.state.fragCoord = null;
+      this.state.canvasPosition = null;
     }
 
     this.notifyStateChange();
