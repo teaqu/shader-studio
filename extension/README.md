@@ -98,7 +98,7 @@ Here's an example of the configuration format.
 }
 ```
 
-## Debug Mode
+## Debug Mode (Experimental)
 
 Shader Studio includes an interactive debug mode that lets you visualize intermediate shader values by hovering over any line in your GLSL code.
 

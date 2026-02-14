@@ -179,4 +179,77 @@ describe('ShaderDebugManager - Loop Handling', () => {
       expect(result).not.toContain('for (int i = 0; i < 10; i++)');
     }
   });
+
+  it('should handle loop inside helper function', () => {
+    const shader = `vec2 foldX(vec2 p) {
+    p.x = abs(p.x);
+    return p;
+}
+
+float sdBox( vec2 p, vec2 b ) {
+    vec2 q = abs(p) - b;
+    return length(max(q,0.0)) + min(max(q.x,q.y),0.0);
+}
+
+float dTree(vec2 p) {
+    float scale = 0.8;
+    vec2 size = vec2(0.01, .20);
+    float d = sdBox(p, size);
+    for (int i = 0; i < 4; i++) {
+        vec2 q = foldX(p);
+        q.y -= size.y;
+        q.xy *= rotate(-0.5);
+        d = min(d, sdBox(p, size));
+        p = q;
+        size *= scale;
+    }
+    return d;
+}
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = fragCoord / iResolution.xy;
+    uv -= 0.5;
+    uv.y += 0.25;
+    uv /= 0.9;
+    float tree = step(0.01, dTree(uv));
+    fragColor = vec4(vec3(tree), 1.0);
+}`;
+
+    // Debug line 8: vec2 q = foldX(p);
+    manager.updateDebugLine(16, '        vec2 q = foldX(p);', 'test.glsl');
+    const result = manager.modifyShaderForDebugging(shader, 16, 0);
+
+    console.log('\n=== LOOP IN HELPER: Debug line inside for loop in helper function ===');
+    console.log('Result:', result);
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Should preserve helper functions before dTree
+      expect(result).toContain('vec2 foldX(vec2 p)');
+      expect(result).toContain('float sdBox( vec2 p, vec2 b )');
+
+      // Should change dTree return type from float to vec2 (type of debug variable)
+      expect(result).toContain('vec2 dTree(vec2 p)');
+      expect(result).not.toContain('float dTree(vec2 p)');
+
+      // Should extract loop initialization
+      expect(result).toContain('int i = 0;  // Loop init (first iteration only)');
+
+      // Should NOT contain the for loop line
+      expect(result).not.toContain('for (int i = 0; i < 4; i++)');
+
+      // Should include the debug line
+      expect(result).toContain('vec2 q = foldX(p)');
+
+      // Should return the debug variable from function
+      expect(result).toContain('return q;');
+
+      // Should create wrapper mainImage that calls dTree with actual params
+      expect(result).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)');
+
+      // Should visualize vec2 from the function call
+      expect(result).toContain('fragColor = vec4(');
+    }
+  });
 });

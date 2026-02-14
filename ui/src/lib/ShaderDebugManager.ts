@@ -111,13 +111,20 @@ export class ShaderDebugManager {
       // Inside mainImage - truncate and close
       console.log('[ShaderDebug] Path: mainImage truncation');
 
+      // Helper to strip comments from a line
+      const stripComments = (line: string): string => {
+        const commentIndex = line.indexOf('//');
+        return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+      };
+
       // Find the end of the statement (may span multiple lines)
       let endLine = adjustedLine;
-      const debugLineContent = lines[adjustedLine].trim();
+      const debugLineContent = stripComments(lines[adjustedLine]).trim();
       if (!debugLineContent.endsWith(';') && !debugLineContent.endsWith('{') && !debugLineContent.endsWith('}')) {
         // Multi-line statement - find where it ends
         for (let i = adjustedLine + 1; i < lines.length && i < adjustedLine + 10; i++) {
-          if (lines[i].trim().endsWith(';')) {
+          const lineWithoutComment = stripComments(lines[i]).trim();
+          if (lineWithoutComment.endsWith(';')) {
             endLine = i;
             break;
           }
@@ -325,6 +332,23 @@ export class ShaderDebugManager {
           const indent = line.match(/^\s*/)?.[0] || '  ';
           line = `${indent}${varInfo.type} ${varInfo.name} = ${expression};`;
         }
+      }
+
+      // Handle for loops - extract initialization only (skip loop itself)
+      const forLoopMatch = line.match(/^\s*for\s*\(\s*(.+?)\s*;\s*.+?\s*;\s*.+?\s*\)\s*\{?\s*$/);
+      if (forLoopMatch && i > functionInfo.start) {
+        // Extract initialization (e.g., "int i = 0" from "for (int i = 0; i < 10; i++)")
+        const initialization = forLoopMatch[1].trim();
+        const indent = line.match(/^(\s*)/)?.[1] || '';
+        line = `${indent}${initialization};  // Loop init (first iteration only)`;
+      }
+
+      // Skip control flow statements (if, else, while) - but NOT the function signature
+      const isControlFlow = /^\s*(if|else|while)\s*[\(\{]/.test(line) ||
+                           /^\s*\}\s*else\s*\{?\s*$/.test(line);
+      if (isControlFlow && i > functionInfo.start) {
+        // Skip this line (it's a control flow statement inside the function)
+        continue;
       }
 
       functionLines.push(line);
@@ -637,7 +661,13 @@ export class ShaderDebugManager {
     // Handle multi-line statements: detect if we're anywhere in a multi-line statement
     let fullStatement = lineContent;
     if (lines && lineIndex !== undefined) {
-      const trimmed = lineContent.trim();
+      // Helper to strip comments from a line
+      const stripComments = (line: string): string => {
+        const commentIndex = line.indexOf('//');
+        return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+      };
+
+      const trimmed = stripComments(lineContent).trim();
 
       // Check if current line is part of a multi-line statement
       // A line is part of multi-line if:
@@ -646,12 +676,16 @@ export class ShaderDebugManager {
       const currentLineIncomplete = !trimmed.endsWith(';') &&
                                     !trimmed.endsWith('{') &&
                                     !trimmed.endsWith('}') &&
-                                    !trimmed.startsWith('//');  // Not a comment
+                                    trimmed.length > 0;  // Not an empty line
 
       const prevLineIncomplete = lineIndex > 0 &&
-                                 !lines[lineIndex - 1].trim().endsWith(';') &&
-                                 !lines[lineIndex - 1].trim().endsWith('{') &&
-                                 !lines[lineIndex - 1].trim().endsWith('}');
+                                 (() => {
+                                   const prevLineTrimmed = stripComments(lines[lineIndex - 1]).trim();
+                                   return prevLineTrimmed.length > 0 &&
+                                          !prevLineTrimmed.endsWith(';') &&
+                                          !prevLineTrimmed.endsWith('{') &&
+                                          !prevLineTrimmed.endsWith('}');
+                                 })();
 
       const isPartOfMultiLine = currentLineIncomplete || prevLineIncomplete;
 
@@ -659,9 +693,9 @@ export class ShaderDebugManager {
         // Find the START of the statement by looking backwards
         let startLine = lineIndex;
         for (let i = lineIndex - 1; i >= 0 && i >= lineIndex - 10; i--) {
-          const prevLine = lines[i].trim();
-          if (prevLine.endsWith(';') || prevLine.endsWith('{') || prevLine.endsWith('}')) {
-            // Found the end of the previous statement
+          const prevLine = stripComments(lines[i]).trim();
+          if (prevLine.endsWith(';') || prevLine.endsWith('{') || prevLine.endsWith('}') || prevLine.length === 0) {
+            // Found the end of the previous statement (or blank line/comment)
             startLine = i + 1;
             break;
           }
@@ -673,7 +707,8 @@ export class ShaderDebugManager {
         // Find the END of the statement by looking forwards
         let endLine = lineIndex;
         for (let i = lineIndex; i < lines.length && i < lineIndex + 10; i++) {
-          if (lines[i].trim().endsWith(';')) {
+          const line = stripComments(lines[i]).trim();
+          if (line.endsWith(';')) {
             endLine = i;
             break;
           }
