@@ -38,6 +38,8 @@ If you click on the resolution on the menubar there are some options to change h
 
 Click on the time display in the menu bar to access playback controls:
 
+<img src="https://github.com/teaqu/shader-studio/blob/main/assets/time-controls.png?raw=true" alt="time controls" width="250"/>
+
 - **Time Scrubbing**: Use the slider to seek to any point in time within the current range
 - **Time Range Presets**: Quickly set the time range to 2π, 10s, 30s, 1m, or 2m (default: 1m)
 - **Loop Mode**: Toggle looping to repeat the shader from 0 to the selected time range
