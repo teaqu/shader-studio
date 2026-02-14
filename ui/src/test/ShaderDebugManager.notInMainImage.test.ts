@@ -49,7 +49,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       // Should include the function
       expect(result).toContain('vec2 sdCutHollowSphere( vec3 p, float r, float h, float t )');
       expect(result).toContain('vec2 q = vec2( length(p.xz), p.y )');
-      expect(result).toContain('return _dbgReturn');
+      expect(result).toContain('return q;');
 
       // Should generate mainImage with DEFAULT parameters (not the ones from someOtherFunction)
       expect(result).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)');
