@@ -66,7 +66,14 @@ vi.mock('../../lib/ShaderStudio', () => {
     getCurrentFPS(): number {
       return 60.0;
     }
-    
+
+    getRenderingEngine(): any {
+      return {
+        readPixel: vi.fn().mockReturnValue({ r: 255, g: 128, b: 64, a: 255 }),
+        render: vi.fn(),
+      };
+    }
+
     dispose(): void {
       // Mock implementation
     }
