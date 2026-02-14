@@ -10,12 +10,16 @@
   import ErrorDisplay from "./ErrorDisplay.svelte";
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
+  import ConfigPanel from "./config/ConfigPanel.svelte";
+  import ResizeHandle from "./ResizeHandle.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import type { PixelInspectorState } from "../types/PixelInspectorState";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
+  import { configPanelStore } from "../stores/configPanelStore";
+  import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -53,6 +57,21 @@
     filePath: null,
     isActive: false,
   };
+
+  // Config panel state
+  let configPanelVisible = false;
+  let splitRatio = 0.6;
+  let currentConfig: ShaderConfig | null = null;
+  let pathMap: Record<string, string> = {};
+
+  // Subscribe to config panel store
+  onMount(() => {
+    const unsubscribe = configPanelStore.subscribe((state) => {
+      configPanelVisible = state.isVisible;
+      splitRatio = state.splitRatio;
+    });
+    return unsubscribe;
+  });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -147,6 +166,14 @@
     shaderStudio.triggerDebugRecompile();
   }
 
+  function handleToggleConfigPanel() {
+    configPanelStore.toggle();
+  }
+
+  function handleSplitResize(ratio: number) {
+    configPanelStore.setSplitRatio(ratio);
+  }
+
   function handleCanvasClick() {
     if (!pixelInspectorManager) return;
     pixelInspectorManager.handleCanvasClick();
@@ -217,6 +244,12 @@
     if (!initialized) return;
 
     try {
+      // Extract config and pathMap from shader source messages
+      if (event.data.type === 'shaderSource') {
+        currentConfig = event.data.config || null;
+        pathMap = event.data.pathMap || {};
+      }
+
       shaderStudio.handleShaderMessage(event);
       // Update the UI lock state to reflect the current state
       isLocked = shaderStudio.getIsLocked();
@@ -264,13 +297,26 @@
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <ShaderCanvas
-    {zoomLevel}
-    isInspectorActive={inspectorState.isActive}
-    onCanvasReady={handleCanvasReady}
-    onCanvasResize={handleCanvasResize}
-    onCanvasClick={handleCanvasClick}
-  />
+  <div class="canvas-section" style="flex: {splitRatio}">
+    <ShaderCanvas
+      {zoomLevel}
+      isInspectorActive={inspectorState.isActive}
+      onCanvasReady={handleCanvasReady}
+      onCanvasResize={handleCanvasResize}
+      onCanvasClick={handleCanvasClick}
+    />
+  </div>
+  {#if configPanelVisible}
+    <ResizeHandle onResize={handleSplitResize} />
+    <div class="config-section" style="flex: {1 - splitRatio}">
+      <ConfigPanel
+        config={currentConfig}
+        {pathMap}
+        {transport}
+        isVisible={configPanelVisible}
+      />
+    </div>
+  {/if}
   {#if initialized}
     <MenuBar
       {timeManager}
@@ -292,6 +338,8 @@
       isDebugEnabled={debugState.isEnabled}
       onToggleDebugEnabled={handleToggleDebugEnabled}
       {debugState}
+      isConfigPanelVisible={configPanelVisible}
+      onToggleConfigPanel={handleToggleConfigPanel}
     />
   {/if}
   <ErrorDisplay

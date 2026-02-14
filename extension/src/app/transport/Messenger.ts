@@ -54,4 +54,17 @@ export class Messenger {
   public hasActiveClients(): boolean {
     return this.transports.some(transport => transport.hasActiveClients());
   }
+
+  public getWebview(): any | null {
+    // Get the first webview from WebviewTransport
+    for (const transport of this.transports) {
+      if ('getWebview' in transport && typeof (transport as any).getWebview === 'function') {
+        const webview = (transport as any).getWebview();
+        if (webview) {
+          return webview;
+        }
+      }
+    }
+    return null;
+  }
 }

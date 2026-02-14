@@ -52,6 +52,8 @@
   export let isDebugEnabled: boolean = false;
   export let onToggleDebugEnabled: () => void = () => {};
   export let debugState: ShaderDebugState | null = null;
+  export let isConfigPanelVisible: boolean = false;
+  export let onToggleConfigPanel: () => void = () => {};
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -317,6 +319,14 @@
     >
       {@html debugIcon}
     </button>
+    <button
+      on:click={onToggleConfigPanel}
+      aria-label="Toggle config panel"
+      class:active={isConfigPanelVisible}
+      title="Toggle shader configuration panel"
+    >
+      {@html configIcon}
+    </button>
     <button on:click={handleToggleLock} aria-label="Toggle lock">
       {#if isLocked}
         {@html lockIcon}
@@ -341,14 +351,6 @@
           >
             {@html refreshIcon}
             <span>Refresh</span>
-          </button>
-          <button
-            class="options-menu-item"
-            on:click={handleConfig}
-            aria-label="Open shader config"
-          >
-            {@html configIcon}
-            <span>Config</span>
           </button>
           {#if showThemeButton}
             <button

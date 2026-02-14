@@ -100,31 +100,7 @@
       }
     ],
     "menus": {
-      "editor/title": [
-        {
-          "command": "shader-studio.toggleConfigView",
-          "when": "resourceFilename =~ /.*\\.sha\\.json$/ && !activeCustomEditorId",
-          "group": "navigation@1"
-        },
-        {
-          "command": "shader-studio.toggleConfigViewToSource",
-          "when": "activeCustomEditorId == shader-studio.configEditor",
-          "group": "navigation@1"
-        }
-      ]
     },
-    "customEditors": [
-      {
-        "viewType": "shader-studio.configEditor",
-        "displayName": "Shader Config Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.sha.json"
-          }
-        ],
-        "priority": "default"
-      }
-    ],
     "configuration": {
       "title": "Shader Studio",
       "properties": {
