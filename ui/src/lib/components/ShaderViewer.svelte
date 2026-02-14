@@ -102,19 +102,9 @@
 
   function handleTogglePause() {
     if (!initialized) return;
-    const timeManager = shaderStudio.getTimeManager();
-    const wasPaused = timeManager.isPaused();
-
     shaderStudio.handleTogglePause();
-
-    // Manage render loop based on pause state
-    if (!wasPaused) {
-      // Just paused - stop render loop
-      shaderStudio.getRenderingEngine().stopRenderLoop();
-    } else {
-      // Just resumed - restart render loop
-      shaderStudio.getRenderingEngine().startRenderLoop();
-    }
+    // Don't stop the render loop when paused - keep rendering so scrubbing works
+    // The TimeManager handles not advancing time when paused
   }
 
   function handleToggleLock() {

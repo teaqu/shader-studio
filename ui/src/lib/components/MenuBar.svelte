@@ -7,6 +7,7 @@
   } from "../stores/aspectRatioStore";
   import { qualityStore, type QualityMode } from "../stores/qualityStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
+  import TimeControls from "./TimeControls.svelte";
 
   import resetIcon from "../../assets/reset.svg?raw";
   import refreshIcon from "../../assets/refresh.svg?raw";
@@ -198,7 +199,7 @@
         {@html pauseIcon}
       {/if}
     </button>
-    <div class="menu-title fixed-width">{currentTime.toFixed(2)}</div>
+    <TimeControls {timeManager} {currentTime} {onTogglePause} />
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
       <button

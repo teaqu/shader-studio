@@ -59,7 +59,14 @@ vi.mock('../../lib/ShaderStudio', () => {
     getTimeManager(): any {
       return {
         getCurrentTime: () => 0.0,
-        isPaused: () => false
+        isPaused: () => false,
+        getSpeed: () => 1.0,
+        setSpeed: vi.fn(),
+        isLoopEnabled: () => false,
+        setLoopEnabled: vi.fn(),
+        getLoopDuration: () => Math.PI * 2,
+        setLoopDuration: vi.fn(),
+        setTime: vi.fn()
       };
     }
     
