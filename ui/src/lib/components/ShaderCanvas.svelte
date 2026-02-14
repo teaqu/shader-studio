@@ -66,6 +66,9 @@
     };
   });
 
+  let mouseDownPosition: { x: number; y: number } | null = null;
+  const CLICK_THRESHOLD = 5; // pixels
+
   function setupInputHandling() {
     if (glCanvas) {
       // Make canvas focusable for keyboard events
@@ -75,10 +78,25 @@
   }
 
   function handleMouseDown(event: MouseEvent) {
+    mouseDownPosition = { x: event.clientX, y: event.clientY };
     if (isInspectorActive) {
       event.stopPropagation();
       event.preventDefault();
     }
+  }
+
+  function handleClick(event: MouseEvent) {
+    // Only trigger click if mouse hasn't moved much (not a drag)
+    if (mouseDownPosition) {
+      const dx = Math.abs(event.clientX - mouseDownPosition.x);
+      const dy = Math.abs(event.clientY - mouseDownPosition.y);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= CLICK_THRESHOLD) {
+        onCanvasClick(event);
+      }
+    }
+    mouseDownPosition = null;
   }
 
   $: if (glCanvas) {
@@ -91,6 +109,6 @@
   }
 </script>
 
-<div class="canvas-container" on:click={onCanvasClick}>
+<div class="canvas-container" on:click={handleClick}>
   <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
 </div>
