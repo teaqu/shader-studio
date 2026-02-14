@@ -1,0 +1,32 @@
+{
+  "image": {
+    "path": "./image.glsl",
+    "inputs": {
+      "iChannel0": {
+        "type": "texture",
+        "path": "./textures/test.png",
+        "filter": "mipmap",
+        "wrap": "repeat",
+        "vflip": true
+      },
+      "iChannel1": {
+        "type": "buffer",
+        "source": "BufferA"
+      },
+      "iChannel2": {
+        "type": "keyboard"
+      }
+    }
+  },
+  "BufferA": {
+    "path": "./bufferA.glsl",
+    "inputs": {
+      "iChannel0": {
+        "type": "video",
+        "path": "./videos/test.mp4",
+        "filter": "linear",
+        "wrap": "clamp"
+      }
+    }
+  }
+}

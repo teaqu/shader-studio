@@ -4,6 +4,8 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { ShaderProvider } from "./ShaderProvider";
 import { Constants } from "./Constants";
+import { ConfigPathConverter } from "./transport/ConfigPathConverter";
+import type { ShaderConfig } from "@shader-studio/types";
 
 export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
     private logger: Logger;
@@ -32,12 +34,19 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken,
     ): Promise<void> {
+        // Get workspace folders for resource access
+        const workspaceFolders = vscode.workspace.workspaceFolders?.map(folder => folder.uri) || [];
+        // Get the directory containing the config file
+        const configDir = vscode.Uri.file(path.dirname(document.uri.fsPath));
+
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [
                 vscode.Uri.file(
                     path.join(this.context.extensionPath, "config-ui-dist"),
                 ),
+                configDir,
+                ...workspaceFolders,
             ],
         };
 
@@ -46,9 +55,46 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
         );
 
         function updateWebview() {
+            const configText = document.getText();
+            const pathMap: Record<string, string> = {};
+
+            // Create a map of original paths to webview URIs for previews
+            try {
+                if (configText.trim()) {
+                    const config: ShaderConfig = JSON.parse(configText);
+                    const configDir = path.dirname(document.uri.fsPath);
+
+                    // Collect all texture/video paths and convert them
+                    for (const passName of Object.keys(config.passes || {})) {
+                        const pass = config.passes[passName as keyof typeof config.passes];
+                        if (pass && typeof pass === 'object' && 'inputs' in pass) {
+                            const inputs = pass.inputs;
+                            if (inputs) {
+                                for (const key of Object.keys(inputs)) {
+                                    const input = inputs[key as keyof typeof inputs];
+                                    if (input && typeof input === 'object' && 'path' in input && input.path) {
+                                        const originalPath = input.path as string;
+                                        // Resolve relative path to absolute
+                                        const absolutePath = path.isAbsolute(originalPath)
+                                            ? originalPath
+                                            : path.join(configDir, originalPath);
+                                        // Convert to webview URI
+                                        const webviewUri = ConfigPathConverter.convertUriForClient(absolutePath, webviewPanel.webview);
+                                        pathMap[originalPath] = webviewUri;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to process config paths:", error);
+            }
+
             webviewPanel.webview.postMessage({
                 type: "update",
-                text: document.getText(),
+                text: configText,
+                pathMap: pathMap
             });
         }
 

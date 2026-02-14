@@ -69,6 +69,10 @@
     return tabName === "Common" ? "common" : tabName;
   }
 
+  function getWebviewUri(path: string): string | undefined {
+    return configEditor?.getWebviewUri(path);
+  }
+
   // Reactive statement to ensure tabs update when config changes
   $: allTabs = (() => {
     const tabs = ["Image"];
@@ -180,6 +184,7 @@
               onUpdate={(passName, updatedConfig) => {
                 configEditor?.updateImagePass(updatedConfig);
               }}
+              {getWebviewUri}
               isImagePass={true}
             />
           {:else}
@@ -192,6 +197,7 @@
                   updatedConfig as BufferPass,
                 );
               }}
+              {getWebviewUri}
             />
           {/if}
         {/if}

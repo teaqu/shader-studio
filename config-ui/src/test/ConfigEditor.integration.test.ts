@@ -196,10 +196,24 @@ describe('ConfigEditor Integration Tests', () => {
       simulateVSCodeMessage(createMockConfig(testConfig as ShaderConfig));
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Path/)).toBeInTheDocument();
+        expect(screen.getByText('iChannel0')).toBeInTheDocument();
       });
 
-      const pathInput = screen.getByLabelText(/Path/) as HTMLInputElement;
+      // Click the configured channel box to open modal
+      // Find the channel name and click its parent channel box
+      const iChannel0Name = screen.getByRole('heading', { name: 'iChannel0' });
+      const iChannel0Box = iChannel0Name.closest('.channel-box');
+      expect(iChannel0Box).toBeInTheDocument();
+      await user.click(iChannel0Box!);
+
+      // Wait for modal to open
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('Configure iChannel0')).toBeInTheDocument();
+      });
+
+      // Find and verify path input in modal
+      const pathInput = screen.getByLabelText(/Path:/) as HTMLInputElement;
       expect(pathInput.value).toBe('./textures/test.png');
 
       // Clear the path
@@ -209,8 +223,13 @@ describe('ConfigEditor Integration Tests', () => {
         expect(pathInput.value).toBe('');
       });
 
-      // Verify the config was updated with empty string
+      // Click Save button
+      const saveButton = screen.getByRole('button', { name: /Save/i });
+      await user.click(saveButton);
+
+      // Verify the modal closed and config was updated with empty string
       await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mockPostMessage).toHaveBeenCalled();
         const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
         expect(lastCall[0]).toEqual(
@@ -246,32 +265,43 @@ describe('ConfigEditor Integration Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Image' })).toBeInTheDocument();
+        expect(screen.getByText('iChannel0')).toBeInTheDocument();
       });
 
-      // Add texture channel by clicking the + button for iChannel0
-      await user.click(screen.getByTitle('Add iChannel0'));
+      // Click empty iChannel0 box to open modal
+      // Find the channel name and click its parent channel box
+      const iChannel0Name = screen.getByRole('heading', { name: 'iChannel0' });
+      const iChannel0Box = iChannel0Name.closest('.channel-box');
+      expect(iChannel0Box).toBeInTheDocument();
+      await user.click(iChannel0Box!);
+
+      // Wait for modal to open
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('Configure iChannel0')).toBeInTheDocument();
+      });
 
       // Set to texture type
-      const typeSelect = screen.getByLabelText(/Type/) as HTMLSelectElement;
+      const typeSelect = screen.getByLabelText(/Type:/) as HTMLSelectElement;
       await user.selectOptions(typeSelect, 'texture');
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Path/)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Filter/)).toBeInTheDocument();
-        expect(screen.getByLabelText(/Wrap/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Path:/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Filter:/)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Wrap:/)).toBeInTheDocument();
         expect(screen.getByLabelText(/Vertical Flip/)).toBeInTheDocument();
       });
 
       // Configure all texture properties
-      const pathInput = screen.getByLabelText(/Path/) as HTMLInputElement;
-      const filterSelect = screen.getByLabelText(/Filter/) as HTMLSelectElement;
-      const wrapSelect = screen.getByLabelText(/Wrap/) as HTMLSelectElement;
+      const pathInput = screen.getByLabelText(/Path:/) as HTMLInputElement;
+      const filterSelect = screen.getByLabelText(/Filter:/) as HTMLSelectElement;
+      const wrapSelect = screen.getByLabelText(/Wrap:/) as HTMLSelectElement;
       const vflipCheckbox = screen.getByLabelText(/Vertical Flip/) as HTMLInputElement;
 
       await user.type(pathInput, './textures/complete-test.jpg');
       await user.selectOptions(filterSelect, 'linear');
       await user.selectOptions(wrapSelect, 'clamp');
-      
+
       // vflip should be checked by default, so uncheck it
       if (vflipCheckbox.checked) {
         await user.click(vflipCheckbox);
@@ -284,8 +314,13 @@ describe('ConfigEditor Integration Tests', () => {
         expect(vflipCheckbox.checked).toBe(false);
       });
 
-      // Verify final configuration contains all properties
+      // Click Save button
+      const saveButton = screen.getByRole('button', { name: /Save/i });
+      await user.click(saveButton);
+
+      // Verify modal closed and final configuration contains all properties
       await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
         const configText = lastCall[0].text;
         expect(configText).toContain('./textures/complete-test.jpg');
@@ -335,17 +370,29 @@ describe('ConfigEditor Integration Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'BufferA' })).toHaveClass('active');
-        // Use specific IDs to avoid ambiguity with multiple path inputs
+        // Use specific ID for BufferA path input
         expect(screen.getByLabelText('Path:', { selector: 'input[id="path-BufferA"]' })).toBeInTheDocument();
+        // Verify iChannel0 is visible
+        expect(screen.getByText('iChannel0')).toBeInTheDocument();
       });
 
-      // Find texture-specific inputs by their specific IDs
-      const bufferPathInput = screen.getByLabelText('Path:', { selector: 'input[id="path-BufferA"]' }) as HTMLInputElement;
-      const texturePathInput = screen.getByLabelText('Path:', { selector: 'input[id="path-iChannel0"]' }) as HTMLInputElement;
-      expect(texturePathInput.value).toBe('./textures/buffer-texture.png');
+      // Click iChannel0 box to open modal
+      // Find the channel name and click its parent channel box
+      const iChannel0Name = screen.getByRole('heading', { name: 'iChannel0' });
+      const iChannel0Box = iChannel0Name.closest('.channel-box');
+      expect(iChannel0Box).toBeInTheDocument();
+      await user.click(iChannel0Box!);
 
-      const filterSelect = screen.getByLabelText(/Filter/) as HTMLSelectElement;
-      const wrapSelect = screen.getByLabelText(/Wrap/) as HTMLSelectElement;
+      // Wait for modal to open
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText('Configure iChannel0')).toBeInTheDocument();
+      });
+
+      // Find inputs in modal using specific IDs to avoid ambiguity
+      const texturePathInput = screen.getByLabelText('Path:', { selector: '#path-iChannel0' }) as HTMLInputElement;
+      const filterSelect = screen.getByLabelText(/Filter:/) as HTMLSelectElement;
+      const wrapSelect = screen.getByLabelText(/Wrap:/) as HTMLSelectElement;
       const vflipCheckbox = screen.getByLabelText(/Vertical Flip/) as HTMLInputElement;
 
       // Verify initial values
@@ -361,8 +408,13 @@ describe('ConfigEditor Integration Tests', () => {
         expect(texturePathInput.value).toBe('');
       });
 
-      // Verify empty path is reflected in JSON
+      // Click Save button
+      const saveButton = screen.getByRole('button', { name: /Save/i });
+      await user.click(saveButton);
+
+      // Verify modal closed and empty path is reflected in JSON
       await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         const lastCall = mockPostMessage.mock.calls[mockPostMessage.mock.calls.length - 1];
         expect(lastCall[0]).toEqual(
           expect.objectContaining({
@@ -549,20 +601,36 @@ describe('CommonBuffer Tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Input Channels')).toBeInTheDocument();
+      expect(screen.getByText('iChannel2')).toBeInTheDocument();
     });
 
-    // Add a buffer input channel by clicking the + button for iChannel2
-    await user.click(screen.getByTitle('Add iChannel2'));
-    
+    // Click empty iChannel2 box to open modal
+    // Find the channel name and click its parent channel box
+    const iChannel2Name = screen.getByRole('heading', { name: 'iChannel2' });
+    const iChannel2Box = iChannel2Name.closest('.channel-box');
+    expect(iChannel2Box).toBeInTheDocument();
+    await user.click(iChannel2Box!);
+
+    // Wait for modal to open
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Configure iChannel2')).toBeInTheDocument();
+    });
+
     // Set type to buffer for iChannel2
-    const typeSelect = document.getElementById('type-iChannel2') as HTMLSelectElement;
+    const typeSelect = screen.getByLabelText(/Type:/) as HTMLSelectElement;
     await user.selectOptions(typeSelect, 'buffer');
 
+    // Wait for source dropdown to appear
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Source:/)).toBeInTheDocument();
+    });
+
     // Verify that 'common' is NOT in the source options for iChannel2
-    const sourceSelect = document.getElementById('source-iChannel2') as HTMLSelectElement;
+    const sourceSelect = screen.getByLabelText(/Source:/) as HTMLSelectElement;
     const sourceOptions = Array.from(sourceSelect.options).map(option => option.value);
     expect(sourceOptions).not.toContain('common');
-    expect(sourceOptions).toEqual(['', 'BufferA', 'BufferB', 'BufferC', 'BufferD']);
+    expect(sourceOptions).toEqual(['BufferA', 'BufferB', 'BufferC', 'BufferD']);
   });
 
   it('should validate common buffer configuration structure', async () => {
