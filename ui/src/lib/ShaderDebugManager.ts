@@ -7,6 +7,8 @@ export class ShaderDebugManager {
     lineContent: null,
     filePath: null,
     isActive: false,
+    lastStatus: 'idle',
+    lastError: null,
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -45,6 +47,12 @@ export class ShaderDebugManager {
     }
   }
 
+  private setDebugStatus(status: 'success' | 'failed' | 'idle', error: string | null = null): void {
+    this.state.lastStatus = status;
+    this.state.lastError = error;
+    this.notifyStateChange();
+  }
+
   /**
    * Modifies shader code to execute up to the debug line
    * Returns modified code or null if modification fails
@@ -54,7 +62,11 @@ export class ShaderDebugManager {
     debugLine: number,
     headerLineCount: number
   ): string | null {
+    console.log('[ShaderDebug] === MODIFY SHADER ===');
+    console.log('[ShaderDebug] Line:', debugLine, '|', this.state.lineContent);
+
     if (!this.state.isActive || !this.state.lineContent) {
+      console.log('[ShaderDebug] ❌ Not active or no line content');
       return null;
     }
 
@@ -63,19 +75,36 @@ export class ShaderDebugManager {
 
     // Find which function we're in
     const functionInfo = this.findEnclosingFunction(lines, adjustedLine);
+    console.log('[ShaderDebug] Function:', functionInfo.name || 'none');
 
-    // Build variable type map from all previous lines
-    const varTypes = this.buildVariableTypeMap(lines, adjustedLine);
+    // Build variable type map from all previous lines AND function parameters
+    const varTypes = this.buildVariableTypeMap(lines, adjustedLine, functionInfo);
+
+    // Extract function return type if we're in a function
+    let functionReturnType: string | undefined;
+    if (functionInfo.name && functionInfo.start >= 0) {
+      const funcLine = lines[functionInfo.start];
+      const returnTypeMatch = funcLine.match(/^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\s+\w+\s*\(/);
+      if (returnTypeMatch) {
+        functionReturnType = returnTypeMatch[1];
+      }
+    }
 
     // Detect variable and type at this line
-    const varInfo = this.detectVariableAndType(this.state.lineContent, varTypes);
+    const varInfo = this.detectVariableAndType(this.state.lineContent, varTypes, functionReturnType);
     if (!varInfo) {
+      console.log('[ShaderDebug] ❌ Could not detect variable/type');
+      this.setDebugStatus('failed', 'Could not detect variable or type from line');
       return null; // Can't determine variable or type
     }
+    console.log('[ShaderDebug] ✓ Detected:', varInfo.name, `(${varInfo.type})`);
+
+
 
 
     if (functionInfo.name === 'mainImage') {
       // Inside mainImage - truncate and close
+      console.log('[ShaderDebug] Path: mainImage truncation');
       const truncatedLines = lines.slice(0, adjustedLine + 1);
 
       // Remove control flow keywords (if, else, for, while) to avoid unclosed braces
@@ -84,18 +113,29 @@ export class ShaderDebugManager {
       const returnStatement = this.generateReturnStatementForVar(varInfo.type, varInfo.name);
       cleanedLines.push(returnStatement);
       cleanedLines.push('}');
-      return cleanedLines.join('\n');
+      const result = cleanedLines.join('\n');
+      this.setDebugStatus('success');
+      console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
+      return result;
     } else if (functionInfo.name) {
       // Inside another function - extract function and create wrapper
-      return this.wrapFunctionForDebugging(
+      console.log('[ShaderDebug] Path: helper function wrapper');
+      const result = this.wrapFunctionForDebugging(
         lines,
         functionInfo,
         adjustedLine,
         varInfo
       );
+      this.setDebugStatus('success');
+      console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
+      return result;
     } else {
       // Not in any function (one-liner) - create minimal mainImage
-      return this.wrapOneLinerForDebugging(this.state.lineContent, varInfo);
+      console.log('[ShaderDebug] Path: one-liner wrapper');
+      const result = this.wrapOneLinerForDebugging(this.state.lineContent, varInfo);
+      this.setDebugStatus('success');
+      console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
+      return result;
     }
   }
 
@@ -235,12 +275,33 @@ export class ShaderDebugManager {
     // Extract the function up to the debug line
     const functionLines = [];
     for (let i = functionInfo.start; i <= debugLine; i++) {
-      functionLines.push(lines[i]);
+      let line = lines[i];
+
+      // If this is the function signature line, update return type to match actual debug type
+      if (i === functionInfo.start) {
+        // Replace declared return type with actual type from debug line
+        line = line.replace(
+          /^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\s+\w+\s*\()/,
+          `${varInfo.type}$2`
+        );
+      }
+
+      // If this is the debug line and it's a return statement, convert it to a variable assignment
+      if (i === debugLine && varInfo.name === '_dbgReturn') {
+        const returnMatch = line.match(/^\s*return\s+(.+);/);
+        if (returnMatch) {
+          const expression = returnMatch[1];
+          const indent = line.match(/^\s*/)?.[0] || '  ';
+          line = `${indent}${varInfo.type} ${varInfo.name} = ${expression};`;
+        }
+      }
+
+      functionLines.push(line);
     }
 
-    // Add return statement
-    const returnStatement = this.generateReturnStatementForVar(varInfo.type, varInfo.name);
-    functionLines.push(returnStatement);
+    // Add return statement for the debug value (don't visualize inside the function!)
+    const indent = '  ';
+    functionLines.push(`${indent}return ${varInfo.name};`);
     functionLines.push('}');
 
     // Create wrapper mainImage that calls this function
@@ -249,8 +310,8 @@ export class ShaderDebugManager {
     wrapper.push(...functionLines);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    // Try to call the function with sensible default values
-    const call = this.generateFunctionCall(functionInfo.name!, varInfo);
+    // Call the function with actual parameters from mainImage
+    const call = this.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -269,14 +330,215 @@ export class ShaderDebugManager {
     return wrapper.join('\n');
   }
 
-  private generateFunctionCall(functionName: string, varInfo: { name: string; type: string }): string {
-    // Generate a call with sensible defaults
-    // This is a heuristic - might not work for all functions
-    return `  float result = ${functionName}(fragCoord / iResolution.xy, iTime);\n  fragColor = vec4(vec3(result), 1.0);`;
+  private findFunctionCall(lines: string[], functionName: string): { params: string; lineIndex: number } | null {
+    // Search for function calls in the code (not declarations)
+    const callPattern = new RegExp(`${functionName}\\s*\\(([^)]*)\\)`, 'i');
+    // Pattern to detect function declarations (has return type before function name)
+    const declPattern = new RegExp(`^\\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\\s+${functionName}\\s*\\(`, 'i');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Skip function declarations
+      if (declPattern.test(line)) {
+        continue;
+      }
+
+      // Look for function calls
+      const match = line.match(callPattern);
+      if (match) {
+        return {
+          params: match[1].trim(),
+          lineIndex: i
+        };
+      }
+    }
+
+    return null;
   }
 
-  private buildVariableTypeMap(lines: string[], upToLine: number): Map<string, string> {
+  /**
+   * Parse function signature and generate default parameters
+   */
+  private generateDefaultParameters(
+    lines: string[],
+    functionInfo: { name: string | null; start: number; end: number }
+  ): { args: string; setup: string[] } {
+    const setup: string[] = [];
+    const args: string[] = [];
+
+    // Get function signature
+    const funcLine = lines[functionInfo.start];
+
+    // Match function parameters: type name, type name, ...
+    // Pattern: (type name, type name, ...)
+    const paramsMatch = funcLine.match(/\(([^)]*)\)/);
+
+    if (!paramsMatch || !paramsMatch[1].trim()) {
+      // No parameters
+      return { args: '', setup: [] };
+    }
+
+    const paramsStr = paramsMatch[1];
+
+    // Split by comma, but be careful with nested types like sampler2D
+    const paramPairs = paramsStr.split(',').map(p => p.trim());
+
+    for (const pair of paramPairs) {
+      // Match: type name (e.g., "vec2 st", "float radius")
+      const match = pair.match(/^\s*(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)\s*$/);
+
+      if (match) {
+        const type = match[1];
+
+        switch (type) {
+          case 'vec2':
+            // Use uv for vec2 parameters
+            if (!setup.some(s => s.includes('vec2 uv'))) {
+              setup.push('  vec2 uv = fragCoord / iResolution.xy;');
+            }
+            args.push('uv');
+            break;
+          case 'vec3':
+            args.push('vec3(0.5)');
+            break;
+          case 'vec4':
+            args.push('vec4(0.5)');
+            break;
+          case 'float':
+            args.push('0.5');
+            break;
+          case 'int':
+            args.push('1');
+            break;
+          case 'bool':
+            args.push('true');
+            break;
+          case 'mat2':
+            args.push('mat2(1.0)');
+            break;
+          case 'mat3':
+            args.push('mat3(1.0)');
+            break;
+          case 'mat4':
+            args.push('mat4(1.0)');
+            break;
+          case 'sampler2D':
+            args.push('iChannel0');
+            break;
+          default:
+            args.push('0.0');
+        }
+      }
+    }
+
+    return {
+      args: args.join(', '),
+      setup
+    };
+  }
+
+  private generateFunctionCall(
+    lines: string[],
+    functionName: string,
+    functionInfo: { name: string | null; start: number; end: number },
+    varInfo: { name: string; type: string }
+  ): string {
+    // Find where this function is called
+    const callInfo = this.findFunctionCall(lines, functionName);
+
+    if (!callInfo) {
+      // Function not called - generate default parameters based on function signature
+      const params = this.generateDefaultParameters(lines, functionInfo);
+      const resultType = varInfo.type;
+      const resultVisualization = this.generateReturnStatementForVar(resultType, 'result');
+
+      // Generate setup code (like uv declaration) if needed by parameters
+      const setupCode = params.setup.length > 0 ? params.setup.join('\n') + '\n' : '';
+
+      return `${setupCode}  ${resultType} result = ${functionName}(${params.args});\n${resultVisualization}`;
+    }
+
+    // Build code that executes mainImage up to the call point
+    // This ensures all variables used in the call parameters have values
+    const mainImageStart = this.findMainImageStart(lines);
+    if (mainImageStart === -1) {
+      // No mainImage found, use defaults
+      return `  vec2 uv = fragCoord / iResolution.xy;\n  float result = ${functionName}(${callInfo.params});\n  fragColor = vec4(vec3(result), 1.0);`;
+    }
+
+    // Execute mainImage up to (but not including) the line with the function call
+    const setupLines: string[] = [];
+    for (let i = mainImageStart + 1; i < callInfo.lineIndex; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      // Skip control flow, braces, and empty lines
+      if (!/^\s*(if|else|for|while|}\s*else)\s*[\(\{]/.test(line) &&
+          trimmed !== '}' &&
+          trimmed !== '{' &&
+          trimmed !== '') {
+        setupLines.push(line);
+      }
+    }
+
+    // Check if call parameters reference undefined variables
+    // If so, fall back to default parameters
+    const callParamNames = callInfo.params.split(',').map(p => p.trim()).filter(p => p);
+    const mainImageVarTypes = this.buildVariableTypeMap(lines, callInfo.lineIndex, { name: 'mainImage', start: mainImageStart, end: -1 });
+
+    const hasUndefinedParams = callParamNames.some(param => {
+      // Check if param is a variable name (not a literal like 0.5 or vec2(1.0))
+      const isVarName = /^[a-zA-Z_]\w*(\.[xyzwrgba]+)?$/.test(param);
+      if (!isVarName) return false; // Literals are fine
+
+      // Extract base variable name (e.g., "uv" from "uv.x")
+      const baseName = param.split('.')[0];
+      return !mainImageVarTypes.has(baseName);
+    });
+
+    if (hasUndefinedParams) {
+      // Call uses undefined parameters - fall back to defaults
+      const params = this.generateDefaultParameters(lines, functionInfo);
+      const resultType = varInfo.type;
+      const resultVisualization = this.generateReturnStatementForVar(resultType, 'result');
+      const setupCode = params.setup.length > 0 ? params.setup.join('\n') + '\n' : '';
+      return `${setupCode}  ${resultType} result = ${functionName}(${params.args});\n${resultVisualization}`;
+    }
+
+    // Generate the function call with actual parameters
+    const resultType = varInfo.type;
+    const resultVisualization = this.generateReturnStatementForVar(resultType, 'result');
+
+    return `${setupLines.join('\n')}\n  ${resultType} result = ${functionName}(${callInfo.params});\n${resultVisualization}`;
+  }
+
+  private buildVariableTypeMap(
+    lines: string[],
+    upToLine: number,
+    functionInfo: { name: string | null; start: number; end: number }
+  ): Map<string, string> {
     const varTypes = new Map<string, string>();
+
+    // First, add function parameters if we're inside a function
+    if (functionInfo.name && functionInfo.start >= 0) {
+      const funcLine = lines[functionInfo.start];
+      const paramsMatch = funcLine.match(/\(([^)]*)\)/);
+
+      if (paramsMatch && paramsMatch[1].trim()) {
+        const paramsStr = paramsMatch[1];
+        const paramPairs = paramsStr.split(',').map(p => p.trim());
+
+        for (const pair of paramPairs) {
+          // Match: type name (e.g., "vec2 p", "float radius", "out vec4 fragColor")
+          const match = pair.match(/(?:in|out|inout)?\s*(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)/);
+          if (match) {
+            const type = match[1];
+            const name = match[2];
+            varTypes.set(name, type);
+          }
+        }
+      }
+    }
 
     // Scan all lines up to and including the debug line
     for (let i = 0; i <= upToLine && i < lines.length; i++) {
@@ -304,7 +566,14 @@ export class ShaderDebugManager {
     return varTypes;
   }
 
-  private detectVariableAndType(lineContent: string, varTypes: Map<string, string>): { name: string; type: string } | null {
+  private detectVariableAndType(lineContent: string, varTypes: Map<string, string>, functionReturnType?: string): { name: string; type: string } | null {
+    // Check for return statements first
+    const returnMatch = lineContent.match(/^\s*return\s+(.+);/);
+    if (returnMatch && functionReturnType) {
+      // For return statements, create a temporary variable name
+      return { name: '_dbgReturn', type: functionReturnType };
+    }
+
     // First, try to match a variable declaration on this line
     const declPatterns = [
       { pattern: /\s*(vec4)\s+(\w+)\s*=/, type: 'vec4' },
