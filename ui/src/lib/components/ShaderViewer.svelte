@@ -140,9 +140,9 @@
     pixelInspectorManager.toggleEnabled();
   }
 
-  function handleCanvasClick(event: MouseEvent) {
+  function handleCanvasClick() {
     if (!pixelInspectorManager) return;
-    pixelInspectorManager.handleCanvasClick(event);
+    pixelInspectorManager.handleCanvasClick();
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
