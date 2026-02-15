@@ -162,6 +162,16 @@
   function handleToggleDebugEnabled() {
     if (!shaderDebugManager || !initialized) return;
     shaderDebugManager.toggleEnabled();
+
+    // Send debug mode state to extension
+    const debugState = shaderDebugManager.getState();
+    transport.postMessage({
+      type: 'debugModeState',
+      payload: {
+        enabled: debugState.isEnabled
+      }
+    });
+
     // Trigger recompile to immediately show/hide debug visualization
     shaderStudio.triggerDebugRecompile();
   }
