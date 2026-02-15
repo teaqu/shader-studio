@@ -1,14 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { ShaderDebugManager } from '../lib/ShaderDebugManager';
+import { describe, it, expect } from 'vitest';
+import { ShaderDebugger } from '../../debug/ShaderDebugger';
 
-describe('ShaderDebugManager - Variable Declarations', () => {
-  let manager: ShaderDebugManager;
-
-  beforeEach(() => {
-    manager = new ShaderDebugManager();
-    manager.toggleEnabled();
-  });
-
+describe('ShaderDebugger - Variable Declarations', () => {
   it('should handle variable declared without initialization, then assigned', () => {
     const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord)
 {
@@ -26,19 +19,13 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(wp,1.0);
 }`;
 
-    // Debug line 10: wp = smoothstep(1.4, 0.5, fract(vec3(fuv.x))) * 1.5;
-    manager.updateDebugLine(10, '    wp = smoothstep(1.4, 0.5, fract(vec3(fuv.x))) * 1.5;', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 10, 0);
-
-    console.log('\n=== DECLARATION: Variable declared then assigned (with vec3 in expression) ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 10, '    wp = smoothstep(1.4, 0.5, fract(vec3(fuv.x))) * 1.5;');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should detect wp as vec3
       expect(result).toContain('vec3 wp;');
       expect(result).toContain('wp = smoothstep(1.4, 0.5, fract(vec3(fuv.x))) * 1.5');
-      expect(result).toContain('fragColor = vec4(wp, 1.0)'); // Should visualize wp as vec3
+      expect(result).toContain('fragColor = vec4(wp, 1.0)');
     }
   });
 
@@ -50,11 +37,7 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(color, 1.0);
 }`;
 
-    manager.updateDebugLine(3, '    color = vec3(uv, 0.5);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== DECLARATION: Assignment with vec3() constructor ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    color = vec3(uv, 0.5);');
 
     expect(result).not.toBeNull();
     if (result) {
@@ -73,14 +56,7 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(vec3(x), 1.0);
 }`;
 
-    // Line 3 has == comparison, should not be detected
-    manager.updateDebugLine(3, '    if (x == 0.5) {', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== DECLARATION: Should not match == comparison ===');
-    console.log('Result:', result);
-
-    // Should fail to detect because == is not an assignment
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    if (x == 0.5) {');
     expect(result).toBeNull();
   });
 
@@ -94,12 +70,7 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(wp, 1.0);
 }`;
 
-    // Debug second assignment
-    manager.updateDebugLine(4, '    wp = smoothstep(0.1, 2.4, fract(vec3(uv.x))) + 1.0;', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 4, 0);
-
-    console.log('\n=== DECLARATION: Second assignment to same variable ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 4, '    wp = smoothstep(0.1, 2.4, fract(vec3(uv.x))) + 1.0;');
 
     expect(result).not.toBeNull();
     if (result) {
@@ -117,11 +88,7 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(wp, 1.0);
 }`;
 
-    manager.updateDebugLine(3, '    wp *= mix(vec3(0.2), vec3(0.9), uv.x);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== DECLARATION: Compound assignment with vec3 in expression ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    wp *= mix(vec3(0.2), vec3(0.9), uv.x);');
 
     expect(result).not.toBeNull();
     if (result) {
@@ -142,16 +109,10 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(col, 1.0);
 }`;
 
-    // Debug first line of multi-line declaration
-    manager.updateDebugLine(2, '    vec3 col = palette(length(uv) + iTime/4.0,', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 2, 0);
-
-    console.log('\n=== MULTI-LINE: Variable declaration spanning multiple lines ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '    vec3 col = palette(length(uv) + iTime/4.0,');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should detect col as vec3
       expect(result).toContain('vec3 col = palette');
       expect(result).toContain('fragColor = vec4(col, 1.0)');
     }
@@ -168,16 +129,10 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(col, 1.0);
 }`;
 
-    // Debug first line of multi-line assignment
-    manager.updateDebugLine(3, '    col = palette(length(uv) + iTime/4.0,', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== MULTI-LINE: Assignment spanning multiple lines ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    col = palette(length(uv) + iTime/4.0,');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should detect col as vec3 from earlier declaration
       expect(result).toContain('vec3 col;');
       expect(result).toContain('col = palette');
       expect(result).toContain('fragColor = vec4(col, 1.0)');
@@ -193,16 +148,10 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(wp, 1.0);
 }`;
 
-    // Debug first line of split assignment (just "wp =")
-    manager.updateDebugLine(3, '    wp = ', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== MULTI-LINE: Assignment split across lines (wp = on one line) ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    wp = ');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should detect wp as vec3
       expect(result).toContain('vec3 wp;');
       expect(result).toContain('wp =');
       expect(result).toContain('smoothstep');
@@ -222,16 +171,10 @@ describe('ShaderDebugManager - Variable Declarations', () => {
     fragColor = vec4(col, 1.0);
 }`;
 
-    // Debug MIDDLE line of multi-line declaration (not the first line!)
-    manager.updateDebugLine(3, '      vec3(0.5, 0.5, 0.5),', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 3, 0);
-
-    console.log('\n=== MULTI-LINE: Hovering over middle line ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '      vec3(0.5, 0.5, 0.5),');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should still detect col as vec3 by combining all lines
       expect(result).toContain('vec3 col = palette');
       expect(result).toContain('fragColor = vec4(col, 1.0)');
     }
