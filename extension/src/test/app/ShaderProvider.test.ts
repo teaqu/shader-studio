@@ -203,7 +203,14 @@ suite('ShaderProvider Test Suite', () => {
                 document: {
                     getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
                     uri: { fsPath: shaderPath },
-                    languageId: 'glsl'
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}' })
+                },
+                selection: {
+                    active: {
+                        line: 0,
+                        character: 0
+                    }
                 }
             };
 
@@ -232,7 +239,14 @@ suite('ShaderProvider Test Suite', () => {
                 document: {
                     getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
                     uri: { fsPath: shaderPath },
-                    languageId: 'glsl'
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}' })
+                },
+                selection: {
+                    active: {
+                        line: 0,
+                        character: 0
+                    }
                 }
             };
 
@@ -260,7 +274,14 @@ suite('ShaderProvider Test Suite', () => {
                 document: {
                     getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
                     uri: { fsPath: shaderPath },
-                    languageId: 'glsl'
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}' })
+                },
+                selection: {
+                    active: {
+                        line: 0,
+                        character: 0
+                    }
                 }
             };
 
@@ -279,6 +300,126 @@ suite('ShaderProvider Test Suite', () => {
             const message = sendSpy.firstCall.args[0];
             assert.strictEqual(message.type, 'shaderSource');
             assert.strictEqual(message.forceCleanup, undefined);
+        });
+
+        test('should NOT include cursor position when debug mode is disabled', () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const lineText = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns(lineText),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: lineText })
+                },
+                selection: {
+                    active: {
+                        line: 5,
+                        character: 10
+                    }
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            provider.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.cursorPosition, undefined, 'cursorPosition should NOT be present when debug is disabled');
+        });
+
+        test('should include cursor position when debug mode is enabled', () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const lineText = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+
+            // Create provider with debug mode enabled
+            let debugModeEnabled = true;
+            const providerWithDebug = new ShaderProvider(mockMessenger, () => debugModeEnabled);
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns(lineText),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: lineText })
+                },
+                selection: {
+                    active: {
+                        line: 5,
+                        character: 10
+                    }
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            providerWithDebug.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.called(sendSpy);
+            const message = sendSpy.lastCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.ok(message.cursorPosition, 'cursorPosition should be present when debug is enabled');
+            assert.strictEqual(message.cursorPosition.line, 5);
+            assert.strictEqual(message.cursorPosition.character, 10);
+            assert.strictEqual(message.cursorPosition.lineContent, lineText);
+            assert.strictEqual(message.cursorPosition.filePath, shaderPath);
+        });
+
+        test('should include cursor position with correct line content when debug is enabled', () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const line3Text = '  vec2 uv = fragCoord / iResolution.xy;';
+
+            // Create provider with debug mode enabled
+            let debugModeEnabled = true;
+            const providerWithDebug = new ShaderProvider(mockMessenger, () => debugModeEnabled);
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns('void mainImage() {...}'),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: line3Text })
+                },
+                selection: {
+                    active: {
+                        line: 3,
+                        character: 15
+                    }
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            providerWithDebug.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.called(sendSpy);
+            const message = sendSpy.lastCall.args[0];
+            assert.strictEqual(message.cursorPosition.line, 3);
+            assert.strictEqual(message.cursorPosition.lineContent, line3Text);
         });
 
         test('should show warning for GLSL files without mainImage', () => {

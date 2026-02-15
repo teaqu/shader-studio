@@ -30,6 +30,7 @@ export class ShaderStudio {
   private configGenerator: ConfigGenerator;
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
+  private isDebugModeEnabled = false;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -47,8 +48,15 @@ export class ShaderStudio {
     
     const errorHandler = new ErrorHandler(outputChannel, diagnosticCollection);
     this.errorHandler = errorHandler;
-    this.messenger = new Messenger(outputChannel, errorHandler);
-    this.shaderProvider = new ShaderProvider(this.messenger);
+    this.messenger = new Messenger(
+      outputChannel,
+      errorHandler,
+      (enabled) => this.setDebugModeEnabled(enabled)
+    );
+    this.shaderProvider = new ShaderProvider(
+      this.messenger,
+      () => this.isDebugModeEnabled
+    );
     this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
     this.panelManager = new PanelManager(
       context,
@@ -70,6 +78,15 @@ export class ShaderStudio {
 
   public isDevelopmentMode(): boolean {
     return this.context.extensionMode === vscode.ExtensionMode.Development;
+  }
+
+  public getDebugModeEnabled(): boolean {
+    return this.isDebugModeEnabled;
+  }
+
+  public setDebugModeEnabled(enabled: boolean): void {
+    this.isDebugModeEnabled = enabled;
+    this.logger.debug(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   public dispose(): void {
@@ -326,12 +343,11 @@ export class ShaderStudio {
       return;
     }
 
-    // Debounce to avoid excessive messages
-    if (this.cursorPositionTimeout) {
-      clearTimeout(this.cursorPositionTimeout);
-    }
+    this.sendCursorPosition(editor);
+  }
 
-    this.cursorPositionTimeout = setTimeout(() => {
+  private sendCursorPosition(editor: vscode.TextEditor, debounce: boolean = true): void {
+    const sendMessage = () => {
       const line = editor.selection.active.line;
       const character = editor.selection.active.character;
       const lineContent = editor.document.lineAt(line).text;
@@ -348,7 +364,19 @@ export class ShaderStudio {
       };
 
       this.messenger.send(message);
-    }, 150); // 150ms debounce
+    };
+
+    if (debounce) {
+      // Debounce to avoid excessive messages when moving cursor
+      if (this.cursorPositionTimeout) {
+        clearTimeout(this.cursorPositionTimeout);
+      }
+
+      this.cursorPositionTimeout = setTimeout(sendMessage, 150);
+    } else {
+      // Send immediately (for document changes)
+      sendMessage();
+    }
   }
 
   private async toggleConfigView(): Promise<void> {

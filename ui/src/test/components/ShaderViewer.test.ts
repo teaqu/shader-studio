@@ -81,6 +81,10 @@ vi.mock('../../lib/ShaderStudio', () => {
       };
     }
 
+    triggerDebugRecompile(): void {
+      // Mock implementation
+    }
+
     dispose(): void {
       // Mock implementation
     }
@@ -250,7 +254,7 @@ describe('ShaderViewer', () => {
 
   it('should not handle config request when not initialized', async () => {
     const onInitialized = vi.fn();
-    
+
     const { container } = render(ShaderViewer, {
       onInitialized
     });
@@ -258,5 +262,111 @@ describe('ShaderViewer', () => {
     // The config button should not be present before initialization
     const configButton = container.querySelector('[aria-label="Open shader config"]');
     expect(configButton).toBeFalsy();
+  });
+
+  it('should toggle debug mode and send debugModeState message when enabled', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Clear any initialization messages
+    vi.clearAllMocks();
+
+    // Find and click the debug toggle button
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+
+    // Should post a debugModeState message with enabled: true
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'debugModeState',
+      payload: {
+        enabled: true
+      }
+    });
+  });
+
+  it('should toggle debug mode off and send debugModeState message when disabled', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Clear any initialization messages
+    vi.clearAllMocks();
+
+    // Click debug button twice to enable then disable
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+
+    // First click - enable
+    await fireEvent.click(debugButton);
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'debugModeState',
+      payload: {
+        enabled: true
+      }
+    });
+
+    // Clear mocks
+    vi.clearAllMocks();
+
+    // Second click - disable
+    await fireEvent.click(debugButton);
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'debugModeState',
+      payload: {
+        enabled: false
+      }
+    });
+  });
+
+  it('should not send debugModeState message before initialization', async () => {
+    const { container } = render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Before initialization, the debug button should not be present
+    const debugButton = container.querySelector('[aria-label="Toggle debug mode"]');
+    expect(debugButton).toBeFalsy();
+
+    // No messages should be sent
+    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('should handle multiple debug toggle clicks correctly', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Clear any initialization messages
+    vi.clearAllMocks();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+
+    // Multiple toggles
+    for (let i = 0; i < 5; i++) {
+      await fireEvent.click(debugButton);
+
+      const expectedEnabled = (i + 1) % 2 === 1; // Odd clicks = enabled, even clicks = disabled
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'debugModeState',
+        payload: {
+          enabled: expectedEnabled
+        }
+      });
+
+      vi.clearAllMocks();
+    }
   });
 });
