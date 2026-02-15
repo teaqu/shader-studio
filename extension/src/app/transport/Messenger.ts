@@ -10,10 +10,11 @@ export class Messenger {
 
   constructor(
     outputChannel: vscode.LogOutputChannel,
-    errorHandler: ErrorHandler
+    errorHandler: ErrorHandler,
+    onDebugModeChanged?: (enabled: boolean) => void
   ) {
     this.errorHandler = errorHandler;
-    this.messageHandler = new MessageHandler(outputChannel, errorHandler);
+    this.messageHandler = new MessageHandler(outputChannel, errorHandler, onDebugModeChanged);
   }
 
   public getErrorHandler(): ErrorHandler {

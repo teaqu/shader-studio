@@ -1,16 +1,19 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, WarningMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage } from "@shader-studio/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, WarningMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage, DebugModeStateMessage } from "@shader-studio/types";
 import { PathResolver } from "../PathResolver";
 import { ErrorHandler } from "../ErrorHandler";
 
 export class MessageHandler {
   private errorHandler: ErrorHandler;
-  
+  private onDebugModeChanged?: (enabled: boolean) => void;
+
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     errorHandler: ErrorHandler,
+    onDebugModeChanged?: (enabled: boolean) => void,
   ) {
     this.errorHandler = errorHandler;
+    this.onDebugModeChanged = onDebugModeChanged;
   }
 
   public handleMessage(message: MessageEvent): void {
@@ -46,6 +49,9 @@ export class MessageHandler {
           break;
         case "showConfig":
           this.handleShowConfigMessage(message);
+          break;
+        case "debugModeState":
+          this.handleDebugModeStateMessage(message);
           break;
         default:
           this.outputChannel.debug(`Unknown message type: ${message.type}`);
@@ -131,6 +137,15 @@ export class MessageHandler {
     } else {
       this.outputChannel.info("No config path provided, requesting config generation");
       vscode.commands.executeCommand('shader-studio.generateConfigFromUI');
+    }
+  }
+
+  private handleDebugModeStateMessage(message: DebugModeStateMessage): void {
+    const enabled = message.payload.enabled;
+    this.outputChannel.info(`Debug mode state changed: ${enabled ? 'enabled' : 'disabled'}`);
+
+    if (this.onDebugModeChanged) {
+      this.onDebugModeChanged(enabled);
     }
   }
 }

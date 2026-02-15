@@ -460,7 +460,7 @@ suite('Shader Studio Test Suite', () => {
 
   test('refreshCurrentShader should call sendShaderToWebview with forceCleanup when active GLSL editor exists', async () => {
     const mockEditor = createMockGLSLEditor();
-    
+
     // Mock active editor is a GLSL editor
     sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
 
@@ -471,5 +471,161 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderSpy);
     sinon.assert.calledWith(sendShaderSpy, mockEditor, { forceCleanup: true });
+  });
+
+  suite('sendCursorPosition debounce tests', () => {
+    let clock: sinon.SinonFakeTimers;
+    let messengerSendSpy: sinon.SinonSpy;
+    let mockEditor: vscode.TextEditor;
+
+    setup(() => {
+      clock = sandbox.useFakeTimers();
+
+      // Create mock editor with lineAt method
+      mockEditor = createMockGLSLEditor();
+      (mockEditor.document as any).lineAt = sandbox.stub().returns({
+        text: '  vec2 uv = fragCoord / iResolution.xy;',
+        range: new vscode.Range(5, 0, 5, 40),
+        rangeIncludingLineBreak: new vscode.Range(5, 0, 6, 0),
+        firstNonWhitespaceCharacterIndex: 2,
+        isEmptyOrWhitespace: false,
+      });
+
+      mockEditor.selection = new vscode.Selection(5, 10, 5, 10);
+
+      messengerSendSpy = sandbox.spy(shaderStudio['messenger'], 'send');
+    });
+
+    teardown(() => {
+      clock.restore();
+    });
+
+    test('should debounce cursor position messages by default', () => {
+      // Call sendCursorPosition with default debounce (true)
+      shaderStudio['sendCursorPosition'](mockEditor);
+
+      // Message should not be sent immediately
+      sinon.assert.notCalled(messengerSendSpy);
+
+      // Advance time by 149ms (just before the 150ms threshold)
+      clock.tick(149);
+      sinon.assert.notCalled(messengerSendSpy);
+
+      // Advance time by 1ms more (total 150ms)
+      clock.tick(1);
+      sinon.assert.calledOnce(messengerSendSpy);
+
+      // Verify the message contains cursor position data
+      const message = messengerSendSpy.getCall(0).args[0];
+      assert.strictEqual(message.type, 'cursorPosition');
+      assert.strictEqual(message.payload.line, 5);
+      assert.strictEqual(message.payload.character, 10);
+      assert.strictEqual(message.payload.lineContent, '  vec2 uv = fragCoord / iResolution.xy;');
+      assert.strictEqual(message.payload.filePath, '/mock/path/shader.glsl');
+    });
+
+    test('should send cursor position immediately when debounce is false', () => {
+      // Call sendCursorPosition with debounce: false
+      shaderStudio['sendCursorPosition'](mockEditor, false);
+
+      // Message should be sent immediately without waiting
+      sinon.assert.calledOnce(messengerSendSpy);
+
+      const message = messengerSendSpy.getCall(0).args[0];
+      assert.strictEqual(message.type, 'cursorPosition');
+      assert.strictEqual(message.payload.line, 5);
+      assert.strictEqual(message.payload.character, 10);
+    });
+
+    test('should cancel previous debounced call when called again before timeout', () => {
+      // First call at position (5, 10)
+      shaderStudio['sendCursorPosition'](mockEditor);
+
+      // Advance time by 100ms (not enough to trigger)
+      clock.tick(100);
+      sinon.assert.notCalled(messengerSendSpy);
+
+      // Move cursor to position (7, 15)
+      mockEditor.selection = new vscode.Selection(7, 15, 7, 15);
+      (mockEditor.document as any).lineAt = sandbox.stub().returns({
+        text: '  fragColor = vec4(1.0);',
+        range: new vscode.Range(7, 0, 7, 25),
+        rangeIncludingLineBreak: new vscode.Range(7, 0, 8, 0),
+        firstNonWhitespaceCharacterIndex: 2,
+        isEmptyOrWhitespace: false,
+      });
+
+      // Second call (should cancel the first)
+      shaderStudio['sendCursorPosition'](mockEditor);
+
+      // Advance time by another 100ms (total 200ms from first call, 100ms from second)
+      clock.tick(100);
+      sinon.assert.notCalled(messengerSendSpy);
+
+      // Advance time by 50ms more (150ms from second call)
+      clock.tick(50);
+
+      // Should only send the second position, not the first
+      sinon.assert.calledOnce(messengerSendSpy);
+
+      const message = messengerSendSpy.getCall(0).args[0];
+      assert.strictEqual(message.payload.line, 7);
+      assert.strictEqual(message.payload.character, 15);
+      assert.strictEqual(message.payload.lineContent, '  fragColor = vec4(1.0);');
+    });
+
+    test('should handle rapid cursor movements and only send final position', () => {
+      // Simulate rapid cursor movements
+      for (let i = 0; i < 10; i++) {
+        mockEditor.selection = new vscode.Selection(i, i * 2, i, i * 2);
+        shaderStudio['sendCursorPosition'](mockEditor);
+        clock.tick(50); // Each movement 50ms apart
+      }
+
+      // At this point, 500ms have passed, but only the last call should matter
+      // The last call was at 450ms, so we need to wait 150ms from that point
+
+      // No messages should have been sent yet (each call cancels the previous)
+      sinon.assert.notCalled(messengerSendSpy);
+
+      // Advance to 150ms after the last call
+      clock.tick(100); // Total: 600ms, which is 150ms after the last call at 450ms
+
+      // Should send only the final position
+      sinon.assert.calledOnce(messengerSendSpy);
+
+      const message = messengerSendSpy.getCall(0).args[0];
+      assert.strictEqual(message.payload.line, 9);
+      assert.strictEqual(message.payload.character, 18);
+    });
+
+    test('should allow multiple immediate sends when debounce is false', () => {
+      // Call multiple times with debounce: false
+      for (let i = 0; i < 5; i++) {
+        mockEditor.selection = new vscode.Selection(i, i, i, i);
+        shaderStudio['sendCursorPosition'](mockEditor, false);
+      }
+
+      // All 5 messages should be sent immediately
+      sinon.assert.callCount(messengerSendSpy, 5);
+
+      // Verify each message was sent with correct position
+      for (let i = 0; i < 5; i++) {
+        const message = messengerSendSpy.getCall(i).args[0];
+        assert.strictEqual(message.payload.line, i);
+        assert.strictEqual(message.payload.character, i);
+      }
+    });
+
+    test('should use 150ms debounce delay', () => {
+      shaderStudio['sendCursorPosition'](mockEditor);
+
+      // Test specific timing
+      clock.tick(149);
+      sinon.assert.notCalled(messengerSendSpy);
+
+      clock.tick(1); // Exactly 150ms
+      sinon.assert.calledOnce(messengerSendSpy);
+    });
   });
 });

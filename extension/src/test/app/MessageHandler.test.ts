@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
 import { ErrorHandler } from '../../app/ErrorHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -328,5 +328,88 @@ suite('MessageHandler Test Suite', () => {
     const setCall = (mockDiagnosticCollection.set as any).getCall(0);
     assert.ok(setCall.args[1][0].message.includes('Video is not loading'));
     assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Warning);
+  });
+
+  test('should handle debugModeState message when debug mode is enabled', () => {
+    const debugModeMessage: DebugModeStateMessage = {
+      type: 'debugModeState',
+      payload: {
+        enabled: true
+      }
+    };
+
+    messageHandler.handleMessage(debugModeMessage);
+
+    // Verify the state change was logged
+    sinon.assert.calledWith(mockOutputChannel.info as any, 'Debug mode state changed: enabled');
+  });
+
+  test('should handle debugModeState message when debug mode is disabled', () => {
+    const debugModeMessage: DebugModeStateMessage = {
+      type: 'debugModeState',
+      payload: {
+        enabled: false
+      }
+    };
+
+    messageHandler.handleMessage(debugModeMessage);
+
+    // Verify the state change was logged
+    sinon.assert.calledWith(mockOutputChannel.info as any, 'Debug mode state changed: disabled');
+  });
+
+  test('should call onDebugModeChanged callback when provided and debug mode changes', () => {
+    const onDebugModeChangedCallback = sandbox.stub();
+    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
+    const messageHandlerWithCallback = new MessageHandler(
+      mockOutputChannel,
+      errorHandler,
+      onDebugModeChangedCallback
+    );
+
+    const debugModeMessage: DebugModeStateMessage = {
+      type: 'debugModeState',
+      payload: {
+        enabled: true
+      }
+    };
+
+    messageHandlerWithCallback.handleMessage(debugModeMessage);
+
+    // Verify callback was called with the enabled state
+    sinon.assert.calledOnce(onDebugModeChangedCallback);
+    sinon.assert.calledWith(onDebugModeChangedCallback, true);
+
+    // Reset and test with disabled
+    onDebugModeChangedCallback.resetHistory();
+
+    const debugModeDisabledMessage: DebugModeStateMessage = {
+      type: 'debugModeState',
+      payload: {
+        enabled: false
+      }
+    };
+
+    messageHandlerWithCallback.handleMessage(debugModeDisabledMessage);
+
+    sinon.assert.calledOnce(onDebugModeChangedCallback);
+    sinon.assert.calledWith(onDebugModeChangedCallback, false);
+  });
+
+  test('should not throw error when onDebugModeChanged callback is not provided', () => {
+    const debugModeMessage: DebugModeStateMessage = {
+      type: 'debugModeState',
+      payload: {
+        enabled: true
+      }
+    };
+
+    // Should not throw error even without callback
+    assert.doesNotThrow(() => {
+      messageHandler.handleMessage(debugModeMessage);
+    });
+
+    // Verify the state change was still logged
+    sinon.assert.calledWith(mockOutputChannel.info as any, 'Debug mode state changed: enabled');
   });
 });
