@@ -1,14 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { ShaderDebugManager } from '../lib/ShaderDebugManager';
+import { describe, it, expect } from 'vitest';
+import { ShaderDebugger } from '../../debug/ShaderDebugger';
 
-describe('ShaderDebugManager - Loop Handling', () => {
-  let manager: ShaderDebugManager;
-
-  beforeEach(() => {
-    manager = new ShaderDebugManager();
-    manager.toggleEnabled();
-  });
-
+describe('ShaderDebugger - Loop Handling', () => {
   it('should extract loop initialization and run body once', () => {
     const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
@@ -21,24 +14,13 @@ describe('ShaderDebugManager - Loop Handling', () => {
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
 
-    manager.updateDebugLine(4, '    float x = float(i) * 0.1;', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 4, 0);
-
-    console.log('\n=== LOOP: Debug line inside for loop ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 4, '    float x = float(i) * 0.1;');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should extract loop initialization
       expect(result).toContain('int i = 0;  // Loop init (first iteration only)');
-
-      // Should NOT contain the for loop line
       expect(result).not.toContain('for (int i = 0; i < 10; i++)');
-
-      // Should include the debug line
       expect(result).toContain('float x = float(i) * 0.1');
-
-      // Should visualize the float using variable name directly
       expect(result).toContain('fragColor = vec4(vec3(x), 1.0)');
     }
   });
@@ -56,26 +38,15 @@ describe('ShaderDebugManager - Loop Handling', () => {
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
 
-    manager.updateDebugLine(5, '      float val = float(i + j);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 5, 0);
-
-    console.log('\n=== NESTED LOOPS: Debug line inside nested for loops ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 5, '      float val = float(i + j);');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should extract both loop initializations
       expect(result).toContain('int i = 0;  // Loop init (first iteration only)');
       expect(result).toContain('int j = 0;  // Loop init (first iteration only)');
-
-      // Should NOT contain the for loop lines
       expect(result).not.toContain('for (int i = 0; i < 10; i++)');
       expect(result).not.toContain('for (int j = 0; j < 5; j++)');
-
-      // Should include the debug line
       expect(result).toContain('float val = float(i + j)');
-
-      // Should visualize the float using variable name directly
       expect(result).toContain('fragColor = vec4(vec3(val), 1.0)');
     }
   });
@@ -92,21 +63,12 @@ describe('ShaderDebugManager - Loop Handling', () => {
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
 
-    manager.updateDebugLine(5, '    float x = float(i) * 0.1;', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 5, 0);
-
-    console.log('\n=== LOOP: For loop with pre-declared variable ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 5, '    float x = float(i) * 0.1;');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should extract loop initialization (just assignment, no declaration)
       expect(result).toContain('i = 0;  // Loop init (first iteration only)');
-
-      // Should NOT contain the for loop line
       expect(result).not.toContain('for (i = 0; i < 10; i++)');
-
-      // Should include the debug line
       expect(result).toContain('float x = float(i) * 0.1');
     }
   });
@@ -122,21 +84,12 @@ describe('ShaderDebugManager - Loop Handling', () => {
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
 
-    manager.updateDebugLine(4, '    vec3 color = vec3(t);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 4, 0);
-
-    console.log('\n=== LOOP: Float loop variable ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 4, '    vec3 color = vec3(t);');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should extract loop initialization with float
       expect(result).toContain('float t = 0.0;  // Loop init (first iteration only)');
-
-      // Should include the debug line
       expect(result).toContain('vec3 color = vec3(t)');
-
-      // Should visualize the vec3 using variable name directly
       expect(result).toContain('fragColor = vec4(color, 1.0)');
     }
   });
@@ -150,8 +103,7 @@ describe('ShaderDebugManager - Loop Handling', () => {
   }
 }`;
 
-    manager.updateDebugLine(4, '    float x = float(i);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 4, 0);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 4, '    float x = float(i);');
 
     expect(result).not.toBeNull();
     if (result) {
@@ -170,8 +122,7 @@ describe('ShaderDebugManager - Loop Handling', () => {
   }
 }`;
 
-    manager.updateDebugLine(5, '    float x = float(i);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 5, 0);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 5, '    float x = float(i);');
 
     expect(result).not.toBeNull();
     if (result) {
@@ -216,39 +167,19 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     fragColor = vec4(vec3(tree), 1.0);
 }`;
 
-    // Debug line 8: vec2 q = foldX(p);
-    manager.updateDebugLine(16, '        vec2 q = foldX(p);', 'test.glsl');
-    const result = manager.modifyShaderForDebugging(shader, 16, 0);
-
-    console.log('\n=== LOOP IN HELPER: Debug line inside for loop in helper function ===');
-    console.log('Result:', result);
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 16, '        vec2 q = foldX(p);');
 
     expect(result).not.toBeNull();
     if (result) {
-      // Should preserve helper functions before dTree
       expect(result).toContain('vec2 foldX(vec2 p)');
       expect(result).toContain('float sdBox( vec2 p, vec2 b )');
-
-      // Should change dTree return type from float to vec2 (type of debug variable)
       expect(result).toContain('vec2 dTree(vec2 p)');
       expect(result).not.toContain('float dTree(vec2 p)');
-
-      // Should extract loop initialization
       expect(result).toContain('int i = 0;  // Loop init (first iteration only)');
-
-      // Should NOT contain the for loop line
       expect(result).not.toContain('for (int i = 0; i < 4; i++)');
-
-      // Should include the debug line
       expect(result).toContain('vec2 q = foldX(p)');
-
-      // Should return the debug variable from function
       expect(result).toContain('return q;');
-
-      // Should create wrapper mainImage that calls dTree with actual params
       expect(result).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)');
-
-      // Should visualize vec2 from the function call
       expect(result).toContain('fragColor = vec4(');
     }
   });

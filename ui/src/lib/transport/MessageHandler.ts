@@ -194,11 +194,9 @@ export class MessageHandler {
     const debugState = this.shaderDebugManager.getState();
 
     if (debugState.isActive && debugState.currentLine !== null) {
-      const headerLineCount = this.getHeaderLineCount();
       const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
         code,
         debugState.currentLine,
-        headerLineCount
       );
 
       if (modifiedCode) {
@@ -373,14 +371,10 @@ export class MessageHandler {
       return;
     }
 
-    // Get header line count
-    const headerLineCount = this.getHeaderLineCount();
-
     // Modify shader for debugging
     const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
       this.originalShaderCode,
       debugState.currentLine!,
-      headerLineCount
     );
 
     if (modifiedCode) {
@@ -437,28 +431,6 @@ export class MessageHandler {
         this.sendErrorMessage(`Shader compilation error: ${err}`);
       }
     });
-  }
-
-  private getHeaderLineCount(): number {
-    // Hardcode based on ShaderCompiler.wrapShaderToyCode
-    const header = `
-precision highp float;
-out vec4 fragColor;
-#define HW_PERFORMANCE 1
-uniform vec3 iResolution;
-uniform float iTime;
-uniform float iTimeDelta;
-uniform float iFrameRate;
-uniform sampler2D iChannel0;
-uniform sampler2D iChannel1;
-uniform sampler2D iChannel2;
-uniform sampler2D iChannel3;
-uniform vec3 iChannelResolution[4];
-uniform vec4 iMouse;
-uniform int iFrame;
-uniform vec4 iDate;
-`;
-    return (header.match(/\n/g) || []).length;
   }
 
   public refresh(path?: string): void {
