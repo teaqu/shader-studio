@@ -5,5 +5,6 @@ export { BufferManager } from './BufferManager';
 export { ShaderPipeline } from './ShaderPipeline';
 export { PassRenderer } from './PassRenderer';
 export { FrameRenderer } from './FrameRenderer';
+export * from './debug';
 export * from './types';
 export * from './models';
