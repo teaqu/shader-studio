@@ -10,9 +10,14 @@ export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
   private configProcessor: ShaderConfigProcessor;
+  private getDebugModeEnabled: () => boolean;
 
-  constructor(private messenger: Messenger) {
+  constructor(
+    private messenger: Messenger,
+    getDebugModeEnabled?: () => boolean
+  ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
+    this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
   }
 
   public sendShaderToWebview(
@@ -66,6 +71,20 @@ export class ShaderProvider {
       buffers,
       forceCleanup: options?.forceCleanup,
     };
+
+    // Only include cursor position if debug mode is enabled
+    if (this.getDebugModeEnabled()) {
+      const line = editor.selection.active.line;
+      const character = editor.selection.active.character;
+      const lineContent = editor.document.lineAt(line).text;
+
+      message.cursorPosition = {
+        line,
+        character,
+        lineContent,
+        filePath: shaderPath,
+      };
+    }
 
     this.messenger.send(message);
     this.logger.debug("Shader message sent to webview");
