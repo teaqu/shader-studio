@@ -21,18 +21,24 @@ export class MessageHandler {
   private lastEvent: MessageEvent | null = null;
   private shaderDebugManager: ShaderDebugManager;
   private originalShaderCode: string | null = null;
+  private onError?: (errors: string[]) => void;
+  private onSuccess?: () => void;
 
   constructor(
     transport: Transport,
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
-    shaderDebugManager: ShaderDebugManager
+    shaderDebugManager: ShaderDebugManager,
+    onError?: (errors: string[]) => void,
+    onSuccess?: () => void
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
     this.shaderLocker = shaderLocker;
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
     this.shaderDebugManager = shaderDebugManager;
+    this.onError = onError;
+    this.onSuccess = onSuccess;
   }
 
   public getLastEvent(): MessageEvent | null {
@@ -258,6 +264,11 @@ export class MessageHandler {
       payload: [error],
     };
     this.transport.postMessage(errorMessage);
+
+    // Notify local error callback
+    if (this.onError) {
+      this.onError([error]);
+    }
   }
 
   private sendWarningMessage(warning: string): void {
@@ -275,6 +286,11 @@ export class MessageHandler {
       payload: ["Shader compiled and linked"],
     };
     this.transport.postMessage(logMessage);
+
+    // Notify local success callback to clear errors
+    if (this.onSuccess) {
+      this.onSuccess();
+    }
   }
 
   private handleFatalError(err: unknown, event: MessageEvent): void {

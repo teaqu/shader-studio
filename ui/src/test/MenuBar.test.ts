@@ -834,4 +834,147 @@ describe('MenuBar Component', () => {
       expect(inspectorButton).not.toHaveClass('active');
     });
   });
+
+  describe('Error Tooltip Display', () => {
+    it('should not show error class on pause button when no errors', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: []
+        }
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).not.toHaveClass('error');
+    });
+
+    it('should show error class on pause button when errors exist', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Shader compilation failed', 'Line 42: syntax error']
+        }
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).toHaveClass('error');
+    });
+
+    it('should display error tooltip when errors exist', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Shader compilation failed']
+        }
+      });
+
+      const errorTooltip = screen.getByText('Shader compilation failed');
+      expect(errorTooltip).toBeInTheDocument();
+      expect(errorTooltip).toHaveClass('error-tooltip');
+    });
+
+    it('should not display error tooltip when no errors', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: []
+        }
+      });
+
+      const errorTooltip = screen.queryByText(/error/i);
+      expect(errorTooltip).not.toBeInTheDocument();
+    });
+
+    it('should display multiple errors joined by newline', () => {
+      const errors = ['Error 1: Compilation failed', 'Error 2: Syntax error'];
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors
+        }
+      });
+
+      // The errors should be displayed in the tooltip
+      const errorTooltip = screen.getByText((content, element) => {
+        return element?.classList.contains('error-tooltip') &&
+               content.includes('Error 1') &&
+               content.includes('Error 2');
+      });
+      expect(errorTooltip).toBeInTheDocument();
+    });
+
+    it('should update error display when errors prop changes', async () => {
+      const { rerender } = render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: []
+        }
+      });
+
+      let pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).not.toHaveClass('error');
+
+      // Update with errors
+      await rerender({
+        ...defaultProps,
+        errors: ['New error']
+      });
+
+      pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).toHaveClass('error');
+      expect(screen.getByText('New error')).toBeInTheDocument();
+    });
+
+    it('should remove error display when errors are cleared', async () => {
+      const { rerender } = render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Some error']
+        }
+      });
+
+      let pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).toHaveClass('error');
+      expect(screen.getByText('Some error')).toBeInTheDocument();
+
+      // Clear errors
+      await rerender({
+        ...defaultProps,
+        errors: []
+      });
+
+      pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).not.toHaveClass('error');
+      expect(screen.queryByText('Some error')).not.toBeInTheDocument();
+    });
+
+    it('should wrap pause button in container for tooltip positioning', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Test error']
+        }
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      const container = pauseButton.parentElement;
+      expect(container).toHaveClass('pause-button-container');
+    });
+
+    it('should still call onTogglePause when pause button with error is clicked', async () => {
+      const onTogglePause = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Error message'],
+          onTogglePause
+        }
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      await fireEvent.click(pauseButton);
+
+      expect(onTogglePause).toHaveBeenCalledOnce();
+    });
+  });
 });

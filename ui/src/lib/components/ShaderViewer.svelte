@@ -212,7 +212,22 @@
         debugState = state;
       });
 
-      shaderStudio = new ShaderStudio(transport, shadderLocker, renderingEngine, shaderDebugManager);
+      shaderStudio = new ShaderStudio(
+        transport,
+        shadderLocker,
+        renderingEngine,
+        shaderDebugManager,
+        (errorMessages) => {
+          // onError callback
+          errors = errorMessages;
+          showErrors = false; // Don't show modal, only show on button
+        },
+        () => {
+          // onSuccess callback
+          errors = [];
+          showErrors = false;
+        }
+      );
 
       const success = await shaderStudio.initialize(glCanvas);
       if (!success) {
@@ -325,6 +340,7 @@
       {canvasWidth}
       {canvasHeight}
       {isLocked}
+      {errors}
       isInspectorEnabled={inspectorState.isEnabled}
       canvasElement={glCanvas}
       onReset={handleReset}
@@ -355,11 +371,6 @@
       />
     </div>
   {/if}
-  <ErrorDisplay
-    {errors}
-    isVisible={showErrors}
-    onDismiss={handleErrorDismiss}
-  />
   <PixelInspector
     isActive={inspectorState.isActive}
     isLocked={inspectorState.isLocked}

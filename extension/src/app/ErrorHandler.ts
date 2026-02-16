@@ -8,7 +8,7 @@ export class ErrorHandler {
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
   private cleanupTimer: NodeJS.Timeout | null = null;
   private editorChangeDisposable: vscode.Disposable | null = null;
-  
+
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     private diagnosticCollection: vscode.DiagnosticCollection,
@@ -62,51 +62,51 @@ export class ErrorHandler {
     if (!message || !message.payload) {
       return; // Skip invalid messages
     }
-    
+
     let errorText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
-    
+
     if (!errorText) {
       return; // Skip empty messages
     }
-    
+
     // Normalize error message to extract the core issue (file path)
     const normalizedError = this.normalizeErrorMessage(errorText);
-    
+
     // Check if this normalized error was recently shown (debounce)
     const now = Date.now();
     const lastShown = this.recentErrors.get(normalizedError);
-    
+
     if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
       // Skip this error - it was shown recently
       console.log(`[ErrorHandler] Debounced: ${normalizedError} (${now - lastShown}ms ago)`);
       return;
     }
-    
+
     // Record this normalized error as shown
     this.recentErrors.set(normalizedError, now);
     console.log(`[ErrorHandler] Showing: ${normalizedError}`);
-    
+
     // Clean up old errors from the map (prevent memory leak)
     this.cleanupOldErrors(now);
-    
+
     this.outputChannel.error(errorText);
 
     const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
     if (match) {
       // Line-number errors: show at specific line
       const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
-      
+
       // Parse pass name from error message (format: "PassName: ERROR: ...")
       const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
       let targetUri: vscode.Uri | null = null;
-      
+
       if (passNameMatch && this.currentShaderConfig) {
         const passName = passNameMatch[1].trim();
         targetUri = this.getUriForPass(passName, this.currentShaderConfig);
       }
-      
+
       // Fallback to active editor if we can't determine the target file
       if (!targetUri) {
         const editor = vscode.window.activeTextEditor;
@@ -114,7 +114,7 @@ export class ErrorHandler {
           targetUri = editor.document.uri;
         }
       }
-      
+
       if (targetUri) {
         try {
           const document = vscode.workspace.textDocuments.find(doc => doc.uri === targetUri);
@@ -153,32 +153,32 @@ export class ErrorHandler {
     if (!message || !message.payload) {
       return; // Skip invalid messages
     }
-    
+
     let errorText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
-    
+
     if (!errorText) {
       return; // Skip empty messages
     }
-    
+
     // Normalize error message to extract the core issue (file path)
     const normalizedError = this.normalizeErrorMessage(errorText);
-    
+
     // Check if this normalized error was recently shown (debounce)
     const now = Date.now();
     const lastShown = this.recentErrors.get(normalizedError);
-    
+
     if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
       // Skip this error - it was shown recently
       console.log(`[ErrorHandler] Debounced persistent: ${normalizedError} (${now - lastShown}ms ago)`);
       return;
     }
-    
+
     // Record this normalized error as shown
     this.recentErrors.set(normalizedError, now);
     console.log(`[ErrorHandler] Showing persistent: ${normalizedError}`);
-    
+
     // Store the diagnostic for persistence
     const diagnosticInfo = this.createPersistentDiagnostic(errorText, message.type);
     if (diagnosticInfo) {
@@ -188,10 +188,10 @@ export class ErrorHandler {
       });
       this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
     }
-    
+
     // Clean up old errors from the map (prevent memory leak)
     this.cleanupOldErrors(now);
-    
+
     // Use appropriate log level based on message type
     if (message.type === 'warning') {
       this.outputChannel.warn(errorText);
@@ -205,7 +205,7 @@ export class ErrorHandler {
     // Keep persistent errors (warnings) until editor change
     this.diagnosticCollection.clear();
     this.restorePersistentErrors();
-    
+
     // Also log the success message for debugging
     this.outputChannel.debug("Shader compiled and linked");
   }
@@ -214,7 +214,7 @@ export class ErrorHandler {
     // Remove specific persistent error when it's actually fixed
     this.persistentErrors.delete(normalizedError);
     this.recentErrors.delete(normalizedError);
-    
+
     // Refresh diagnostics to show updated state
     this.restorePersistentErrors();
   }
@@ -233,12 +233,12 @@ export class ErrorHandler {
       const document = editor.document;
       if (document.lineCount > 0) {
         const range = document.lineAt(0).range; // Line 1 (0-indexed as 0)
-        
+
         // Use warning severity if message type is 'warning', otherwise error
-        const severity = messageType === 'warning' 
-          ? vscode.DiagnosticSeverity.Warning 
+        const severity = messageType === 'warning'
+          ? vscode.DiagnosticSeverity.Warning
           : vscode.DiagnosticSeverity.Error;
-          
+
         const diagnostic = new vscode.Diagnostic(
           range,
           errorText,
@@ -266,7 +266,7 @@ export class ErrorHandler {
       const filePath = pathMatch[1];
       return `FILE_NOT_FOUND:${filePath}`;
     }
-    
+
     // For other errors, just return the original text
     return errorText;
   }
@@ -277,7 +277,7 @@ export class ErrorHandler {
       if (passName === "Image") {
         return vscode.Uri.file(shaderConfig.shaderPath);
       }
-      
+
       // For other passes, look up the buffer file path
       if (shaderConfig.config.passes && shaderConfig.config.passes[passName]) {
         const passConfig = shaderConfig.config.passes[passName];
@@ -288,7 +288,7 @@ export class ErrorHandler {
           return fullPath;
         }
       }
-      
+
       return null;
     } catch (err) {
       this.outputChannel.error(`Error resolving URI for pass ${passName}: ${err}`);
