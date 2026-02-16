@@ -205,13 +205,6 @@ export class BufferConfig {
   validate(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Only validate path for BufferPass (not ImagePass)
-    if ('path' in this.config) {
-      if (this.config.path && !this.config.path.endsWith('.glsl')) {
-        errors.push('Shader file should have .glsl extension');
-      }
-    }
-
     // Validate input channels
     if (this.config.inputs) {
       for (const [channelName, input] of Object.entries(this.config.inputs)) {

@@ -160,6 +160,17 @@ export class ShaderPipeline {
       if (pass.name === "common") {
         continue;
       }
+
+      // Check if buffer pass has empty shader source (likely missing or invalid file)
+      if (!pass.shaderSrc || pass.shaderSrc.trim() === "") {
+        this.cleanupPartialShaders(newPassShaders);
+        const pathInfo = pass.path ? ` (path: "${pass.path}")` : "";
+        return {
+          success: false,
+          error: `${pass.name}: Buffer file not found or is empty${pathInfo}. Please check that the file exists and contains valid shader code.`,
+        };
+      }
+
       const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc, commonCode);
       const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode);
