@@ -231,7 +231,7 @@
       {/if}
     </div>
     <TimeControls {timeManager} {currentTime} />
-    <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
+    <div class="menu-title fps-display">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
       <button
         class="menu-title resolution-button"
