@@ -194,73 +194,48 @@ describe('ShaderViewer', () => {
     expect(container.querySelector('canvas')).toBeTruthy();
   });
 
-  it('should handle config request correctly', async () => {
-    render(ShaderViewer, {
-      onInitialized: vi.fn()
-    });
-
-    // Wait for initialization and MenuBar to render
-    await tick();
-    await tick();
-
-    // Open MenuBar options menu
-    const optionsButton = screen.getByLabelText('Open options menu');
-    await fireEvent.click(optionsButton);
-
-    // Click Config
-    const configButton = screen.getByLabelText('Open shader config');
-    await fireEvent.click(configButton);
-
-    // Should post a showConfig message with the .sha.json path
-    expect(mockTransport.postMessage).toHaveBeenCalledWith({
-      type: 'showConfig',
-      payload: {
-        shaderPath: '/mock/path/test.sha.json'
-      }
-    });
-  });
-
-  it('should handle config request when no shader path is available', async () => {
-    // Mock getLastShaderEvent to return null
-    const { ShaderStudio } = await import('../../lib/ShaderStudio');
-    const originalGetLastShaderEvent = ShaderStudio.prototype.getLastShaderEvent;
-    ShaderStudio.prototype.getLastShaderEvent = vi.fn().mockReturnValue(null);
-
-    render(ShaderViewer, {
-      onInitialized: vi.fn()
-    });
-
-    // Wait for initialization and MenuBar to render
-    await tick();
-    await tick();
-
-    // Open MenuBar options menu
-    const optionsButton = screen.getByLabelText('Open options menu');
-    await fireEvent.click(optionsButton);
-
-    // Click Config
-    const configButton = screen.getByLabelText('Open shader config');
-    await fireEvent.click(configButton);
-
-    // Should fall back to generateConfig when there is no shader path
-    expect(mockTransport.postMessage).toHaveBeenCalledWith({
-      type: 'generateConfig',
-      payload: {}
-    });
-
-    // Restore original method
-    ShaderStudio.prototype.getLastShaderEvent = originalGetLastShaderEvent;
-  });
-
-  it('should not handle config request when not initialized', async () => {
-    const onInitialized = vi.fn();
-
+  it('should toggle config panel when config panel button is clicked', async () => {
     const { container } = render(ShaderViewer, {
-      onInitialized
+      onInitialized: vi.fn()
     });
 
-    // The config button should not be present before initialization
-    const configButton = container.querySelector('[aria-label="Open shader config"]');
+    // Wait for initialization and MenuBar to render
+    await tick();
+    await tick();
+
+    // Config panel should not be visible initially
+    expect(container.querySelector('.config-section')).toBeFalsy();
+
+    // Click the config panel toggle button
+    const configButton = screen.getByLabelText('Toggle config panel');
+    await fireEvent.click(configButton);
+    await tick();
+
+    // Config panel should now be visible
+    expect(container.querySelector('.config-section')).toBeTruthy();
+  });
+
+  it('should display config panel button after initialization', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization and MenuBar to render
+    await tick();
+    await tick();
+
+    // Config panel button should be present
+    const configButton = screen.getByLabelText('Toggle config panel');
+    expect(configButton).toBeTruthy();
+  });
+
+  it('should not display config panel button before initialization', async () => {
+    const { container } = render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // The config panel button should not be present before initialization
+    const configButton = container.querySelector('[aria-label="Toggle config panel"]');
     expect(configButton).toBeFalsy();
   });
 

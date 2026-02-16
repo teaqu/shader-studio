@@ -16,13 +16,19 @@
   ) => void;
   export let getWebviewUri: (path: string) => string | undefined;
   export let isImagePass: boolean = false;
+  export let onCreateFile: ((bufferName: string) => void) | undefined = undefined;
+  export let suggestedPath: string = "";
 
   let bufferConfig: BufferConfig;
 
   $: bufferConfig = new BufferConfig(bufferName, config, onUpdate);
 
-  // Make the path reactive to prop changes
-  $: currentPath = "path" in config ? config.path : "";
+  // Make the path reactive to prop changes, but not while user is actively editing
+  let currentPath = "path" in config ? config.path : "";
+  let pathInputFocused = false;
+  $: if (!pathInputFocused) {
+    currentPath = "path" in config ? config.path : "";
+  }
 
   // Modal state
   let activeModalChannel: string | null = null;
@@ -51,13 +57,13 @@
       bufferConfig.updateInputChannel(channelName, input);
     }
     config = bufferConfig.getConfig();
-    closeChannelModal();
+    // Don't close modal - let user make multiple changes
   }
 
   function handleModalRemove(channelName: string) {
     bufferConfig.removeInputChannel(channelName);
     config = bufferConfig.getConfig();
-    closeChannelModal();
+    closeChannelModal(); // Close after removing
   }
 
 
@@ -65,41 +71,47 @@
 </script>
 
 <div class="buffer-config">
-  <h2 class="buffer-name">{bufferName}</h2>
-
   <div class="buffer-details">
     {#if !isImagePass}
       <div class="config-item">
-        <div class="input-group">
-          <label for="path-{bufferName}">Path:</label>
-          <input
-            id="path-{bufferName}"
-            type="text"
-            value={currentPath}
-            on:input={updatePath}
-            class="config-input"
-            class:error={!validation.isValid}
-            placeholder="e.g., ./buffer.glsl, @/shaders/buffer.glsl, or C:\path\to\buffer.glsl"
-          />
-          <span class="input-note">Relative, absolute, or @/ for workspace root</span>
-        </div>
-
-        {#if !validation.isValid}
-          <div class="validation-errors">
-            {#each validation.errors as error}
-              <p class="error-message">{error}</p>
-            {/each}
+          <div class="input-group">
+            <div class="input-row">
+              <label for="path-{bufferName}">Path:</label>
+              <input
+                id="path-{bufferName}"
+                type="text"
+                value={currentPath}
+                on:input={updatePath}
+                on:focus={() => pathInputFocused = true}
+                on:blur={() => pathInputFocused = false}
+                class="config-input"
+                class:error={!validation.isValid}
+                placeholder="e.g., ./buffer.glsl"
+              />
+              {#if !currentPath && onCreateFile && suggestedPath}
+                <button
+                  class="create-file-btn"
+                  on:click={() => onCreateFile && onCreateFile(bufferName)}
+                >
+                  Create {suggestedPath}
+                </button>
+              {/if}
+            </div>
+            <span class="input-note">Relative, absolute, or @/ for workspace root</span>
           </div>
-        {/if}
+
+          {#if !validation.isValid}
+            <div class="validation-errors">
+              {#each validation.errors as error}
+                <p class="error-message">{error}</p>
+              {/each}
+            </div>
+          {/if}
       </div>
     {/if}
 
     {#if bufferName !== "common"}
     <div class="config-item">
-      <div class="section-header">
-        <h3>Input Channels</h3>
-      </div>
-
       <div class="channels-grid">
         {#each ["iChannel0", "iChannel1", "iChannel2", "iChannel3"] as channelName}
           {@const input =
@@ -135,9 +147,6 @@
 />
 
 <style>
-  .buffer-name {
-    margin-top: 0;
-  }
   .buffer-config {
     padding: 0;
   }
@@ -172,17 +181,28 @@
     border-color: var(--vscode-inputValidation-errorBorder, #f44336);
   }
 
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-row .config-input {
+    flex: 1;
+  }
+
   .input-note {
+    display: block;
     font-size: 12px;
     color: var(--vscode-descriptionForeground, #666);
     font-style: italic;
+    margin-top: 10px;
   }
 
   .channels-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;
-    margin-top: 16px;
   }
 
   .channel-box {
@@ -232,6 +252,21 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--vscode-tab-activeForeground, #333);
+  }
+
+  .create-file-btn {
+    padding: 4px 12px;
+    font-size: 13px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .create-file-btn:hover {
+    background: var(--vscode-button-hoverBackground);
   }
 
 </style>

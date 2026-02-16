@@ -9,10 +9,20 @@
   let imageError = false;
   let imageElement: HTMLImageElement | null = null;
 
-  // Get the webview URI for the image path
+  // Use resolved_path (webview URI) for image display, fall back to pathMap lookup or raw path
   $: imageSrc = channelInput && channelInput.type === "texture" && channelInput.path
-    ? getWebviewUri(channelInput.path) || channelInput.path
+    ? channelInput.resolved_path || getWebviewUri(channelInput.path) || channelInput.path
     : "";
+
+  // Apply vflip: Shadertoy convention is vflip=true (default), so flip when vflip is false/unchecked
+  $: isFlipped = channelInput && channelInput.type === "texture" && channelInput.vflip === false;
+  $: isGrayscale = channelInput && channelInput.type === "texture" && channelInput.grayscale === true;
+
+  // Build CSS transform/filter string
+  $: imageStyle = [
+    isFlipped ? 'transform: scaleY(-1)' : '',
+    isGrayscale ? 'filter: grayscale(100%)' : '',
+  ].filter(Boolean).join('; ');
 
   function handleImageLoad() {
     imageLoaded = true;
@@ -52,19 +62,10 @@
           on:error={handleImageError}
           class="preview-image"
           class:loaded={imageLoaded}
+          style={imageStyle}
         />
-        {#if imageError}
-          <div class="preview-fallback">
-            <div class="texture-icon-grid">
-              <div class="texture-square"></div>
-              <div class="texture-square"></div>
-              <div class="texture-square"></div>
-              <div class="texture-square"></div>
-            </div>
-            <div class="fallback-text">Texture</div>
-          </div>
-        {/if}
-      {:else}
+      {/if}
+      {#if !imageLoaded}
         <div class="preview-fallback">
           <div class="texture-icon-grid">
             <div class="texture-square"></div>
@@ -74,10 +75,11 @@
           </div>
           <div class="fallback-text">Texture</div>
         </div>
+      {:else}
+        <div class="preview-overlay">
+          <span class="preview-label">Texture</span>
+        </div>
       {/if}
-      <div class="preview-overlay">
-        <span class="preview-label">Texture</span>
-      </div>
     </div>
   {:else if channelInput.type === "video"}
     <!-- Video preview -->
@@ -101,9 +103,6 @@
         <div class="buffer-layer layer-3"></div>
       </div>
       <div class="buffer-name">{channelInput.source || "Buffer"}</div>
-      <div class="preview-overlay">
-        <span class="preview-label">Buffer</span>
-      </div>
     </div>
   {:else if channelInput.type === "keyboard"}
     <!-- Keyboard preview -->
@@ -117,9 +116,6 @@
         <div class="keyboard-key"></div>
       </div>
       <div class="keyboard-label">Keyboard</div>
-      <div class="preview-overlay">
-        <span class="preview-label">Keyboard</span>
-      </div>
     </div>
   {/if}
 </div>
@@ -131,7 +127,7 @@
     position: relative;
     overflow: hidden;
     background: var(--vscode-editor-background, #1e1e1e);
-    border-radius: 4px;
+    border-radius: 4px 4px 0 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -143,13 +139,13 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     color: var(--vscode-descriptionForeground, #888);
     height: 100%;
   }
 
   .empty-icon {
-    font-size: 48px;
+    font-size: 24px;
     opacity: 0.5;
   }
 
@@ -184,11 +180,11 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
   }
 
   .fallback-text {
-    font-size: 14px;
+    font-size: 10px;
     color: var(--vscode-descriptionForeground, #888);
   }
 
@@ -196,15 +192,15 @@
   .texture-icon-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    width: 80px;
-    height: 80px;
+    gap: 4px;
+    width: 36px;
+    height: 36px;
   }
 
   .texture-square {
     background: rgba(255, 255, 255, 0.2);
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 2px;
   }
 
   .texture-square:nth-child(1) {
@@ -229,7 +225,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 6px;
     width: 100%;
     height: 100%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -237,8 +233,8 @@
 
   .buffer-layers {
     position: relative;
-    width: 80px;
-    height: 60px;
+    width: 36px;
+    height: 28px;
   }
 
   .buffer-layer {
@@ -246,8 +242,8 @@
     width: 100%;
     height: 100%;
     background: rgba(255, 255, 255, 0.9);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   }
 
   .buffer-layer.layer-1 {
@@ -258,24 +254,24 @@
   }
 
   .buffer-layer.layer-2 {
-    top: 4px;
-    left: 4px;
+    top: 2px;
+    left: 2px;
     transform: rotate(0deg);
     opacity: 0.7;
   }
 
   .buffer-layer.layer-3 {
-    top: 8px;
-    left: 8px;
+    top: 4px;
+    left: 4px;
     transform: rotate(3deg);
     opacity: 0.9;
   }
 
   .buffer-name {
-    font-size: 16px;
+    font-size: 11px;
     font-weight: 600;
     color: white;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   /* Video preview */
@@ -293,35 +289,35 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 6px;
   }
 
   .video-play-button {
-    width: 80px;
-    height: 80px;
+    width: 36px;
+    height: 36px;
     background: rgba(255, 255, 255, 0.2);
-    border: 3px solid rgba(255, 255, 255, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.8);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   }
 
   .play-triangle {
     width: 0;
     height: 0;
-    border-left: 24px solid rgba(255, 255, 255, 0.9);
-    border-top: 14px solid transparent;
-    border-bottom: 14px solid transparent;
-    margin-left: 6px;
+    border-left: 12px solid rgba(255, 255, 255, 0.9);
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    margin-left: 3px;
   }
 
   .video-label {
-    font-size: 16px;
+    font-size: 11px;
     font-weight: 600;
     color: white;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   /* Keyboard preview */
@@ -330,7 +326,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 6px;
     width: 100%;
     height: 100%;
     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
@@ -339,23 +335,23 @@
   .keyboard-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    padding: 12px;
+    gap: 3px;
+    padding: 6px;
   }
 
   .keyboard-key {
-    width: 24px;
-    height: 24px;
+    width: 12px;
+    height: 12px;
     background: rgba(255, 255, 255, 0.9);
-    border-radius: 3px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   .keyboard-label {
-    font-size: 16px;
+    font-size: 11px;
     font-weight: 600;
     color: white;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   /* Preview overlay (bottom gradient with label) */
@@ -364,7 +360,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 8px 12px;
+    padding: 4px 6px;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
     display: flex;
     align-items: center;
@@ -373,7 +369,7 @@
 
   .preview-label {
     color: white;
-    font-size: 12px;
+    font-size: 9px;
     font-weight: 500;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }

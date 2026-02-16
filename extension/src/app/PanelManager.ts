@@ -111,6 +111,8 @@ export class PanelManager {
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
     if (message.type === 'updateConfig') {
       await this.handleConfigUpdate(message.payload);
+    } else if (message.type === 'createBufferFile') {
+      await this.handleCreateBufferFile(message.payload);
     }
   }
 
@@ -137,6 +139,36 @@ export class PanelManager {
     } catch (error) {
       this.logger.error(`Failed to update config: ${error}`);
       vscode.window.showErrorMessage(`Failed to update shader config: ${error}`);
+    }
+  }
+
+  private async handleCreateBufferFile(payload: { bufferName: string; filePath: string }): Promise<void> {
+    try {
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        this.logger.warn("No active shader to create buffer file for");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const shaderDir = path.dirname(shaderPath);
+      const bufferFilePath = path.join(shaderDir, payload.filePath);
+
+      // Only create if file doesn't exist
+      if (!fs.existsSync(bufferFilePath)) {
+        let template: string;
+        if (payload.bufferName === 'common') {
+          template = `// Common functions shared across all passes\n`;
+        } else {
+          template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
+        }
+        fs.writeFileSync(bufferFilePath, template, 'utf-8');
+        this.logger.info(`Created buffer file: ${bufferFilePath}`);
+      } else {
+        this.logger.info(`Buffer file already exists: ${bufferFilePath}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create buffer file: ${error}`);
     }
   }
 

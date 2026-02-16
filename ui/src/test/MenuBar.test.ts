@@ -53,7 +53,19 @@ describe('MenuBar Component', () => {
       onAspectRatioChange: vi.fn(),
       onQualityChange: vi.fn(),
       onZoomChange: vi.fn(),
-      onToggleInspectorEnabled: vi.fn()
+      onToggleInspectorEnabled: vi.fn(),
+      isDebugEnabled: false,
+      onToggleDebugEnabled: vi.fn(),
+      debugState: {
+        isEnabled: false,
+        currentLine: null,
+        lineContent: null,
+        filePath: null,
+        isActive: false
+      },
+      isConfigPanelVisible: false,
+      onToggleConfigPanel: vi.fn(),
+      onConfig: vi.fn()
     };
 
     // Reset all mocks
@@ -611,29 +623,46 @@ describe('MenuBar Component', () => {
     });
   });
 
-  describe('Config Button', () => {
-    it('should call onConfig and close options menu when config button is clicked', async () => {
-      const onConfig = vi.fn();
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          onConfig 
-        } 
+  describe('Config Panel Button', () => {
+    it('should call onToggleConfigPanel when config panel button is clicked', async () => {
+      const onToggleConfigPanel = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onToggleConfigPanel
+        }
       });
 
-      // Open options menu
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      // Click config button
-      const configButton = screen.getByLabelText('Open shader config');
+      // Click config panel toggle button (now in main toolbar)
+      const configButton = screen.getByLabelText('Toggle config panel');
       await fireEvent.click(configButton);
 
-      // Verify onConfig was called
-      expect(onConfig).toHaveBeenCalledTimes(1);
-      
-      // Verify options menu is closed
-      expect(screen.queryByLabelText('Open shader config')).not.toBeInTheDocument();
+      // Verify onToggleConfigPanel was called
+      expect(onToggleConfigPanel).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show active state when config panel is visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isConfigPanelVisible: true
+        }
+      });
+
+      const configButton = screen.getByLabelText('Toggle config panel');
+      expect(configButton.classList.contains('active')).toBe(true);
+    });
+
+    it('should not show active state when config panel is hidden', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isConfigPanelVisible: false
+        }
+      });
+
+      const configButton = screen.getByLabelText('Toggle config panel');
+      expect(configButton.classList.contains('active')).toBe(false);
     });
   });
 

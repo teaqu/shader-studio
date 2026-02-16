@@ -6,6 +6,7 @@ export interface BufferConfigInput {
 export interface TextureConfigInput {
     type: 'texture';
     path: string;
+    resolved_path?: string;
     filter?: "linear" | "nearest" | "mipmap";
     wrap?: "repeat" | "clamp";
     vflip?: boolean;
@@ -15,6 +16,7 @@ export interface TextureConfigInput {
 export interface VideoConfigInput {
     type: 'video';
     path: string;
+    resolved_path?: string;
     filter?: "linear" | "nearest" | "mipmap";
     wrap?: "repeat" | "clamp";
     vflip?: boolean;

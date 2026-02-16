@@ -222,14 +222,14 @@ export class ShaderPipeline {
             vflip: input.vflip,
             grayscale: input.grayscale
           };
-          await this.resourceManager.loadImageTexture(input.path, textureOptions);
+          await this.resourceManager.loadImageTexture(input.resolved_path || input.path, textureOptions);
         } else if (input?.type === "video" && input.path) {
           const videoOptions = {
             filter: input.filter,
             wrap: input.wrap,
             vflip: input.vflip
           };
-          const result = await this.resourceManager.loadVideoTexture(input.path, videoOptions);
+          const result = await this.resourceManager.loadVideoTexture(input.resolved_path || input.path, videoOptions);
           if (result.warning) {
             warnings.push(result.warning);
           }
