@@ -493,6 +493,196 @@ describe("ShaderPipeline", () => {
         });
     });
 
+    describe("error handling for missing buffer files", () => {
+        it("should return error when buffer pass has empty shader source", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: "buffer-a.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                BufferA: "" // Empty buffer content
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("BufferA");
+            expect(result.error).toContain("not found or is empty");
+            expect(result.error).toContain("buffer-a.glsl");
+        });
+
+        it("should return error when buffer pass has only whitespace", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferB: { path: "buffer-b.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                BufferB: "   \n\t  " // Only whitespace
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("BufferB");
+            expect(result.error).toContain("not found or is empty");
+            expect(result.error).toContain("buffer-b.glsl");
+        });
+
+        it("should return error when buffer is missing from buffers object", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: "buffer-a.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                // BufferA is missing
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("BufferA");
+            expect(result.error).toContain("not found or is empty");
+        });
+
+        it("should succeed when all buffers have valid content", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: "buffer-a.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                BufferA: "void main() { gl_FragColor = vec4(0.5); }"
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it("should include path in error message when buffer is empty", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferC: { path: "path/to/buffer-c.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                BufferC: ""
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("path/to/buffer-c.glsl");
+            expect(result.error).toContain("Please check that the file exists");
+        });
+
+        it("should handle multiple missing buffers by reporting the first one", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: "buffer-a.glsl", inputs: {} },
+                    BufferB: { path: "buffer-b.glsl", inputs: {} }
+                }
+            };
+            const buffers = {
+                BufferA: "", // Empty
+                BufferB: "" // Also empty
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            expect(result.success).toBe(false);
+            // Should fail on first buffer encountered
+            expect(result.error).toContain("Buffer");
+            expect(result.error).toContain("not found or is empty");
+        });
+
+        it("should not error on empty Image pass (uses main code)", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} }
+                }
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                {}
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it("should not validate common buffer as it can be empty", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    common: { inputs: {} }
+                }
+            };
+            const buffers = {
+                common: "" // Common can be empty
+            };
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+            );
+
+            // Should succeed because common buffer is filtered out when empty
+            expect(result.success).toBe(true);
+        });
+    });
+
     describe("cleanup", () => {
         it("should call cleanup on all managed components", () => {
             shaderPipeline.cleanup();
