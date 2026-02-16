@@ -46,7 +46,7 @@ export class ShaderProcessor {
     }
 
     try {
-      const codeToCompile = this.getCodeToCompile(code);
+      const codeToCompile = this.getDebugCodeToCompile(code);
       const result = await this.renderEngine.compileShaderPipeline(
         codeToCompile,
         config,
@@ -58,7 +58,11 @@ export class ShaderProcessor {
       if (!result?.success) {
         // If debug mode compilation failed, try original code
         if (codeToCompile !== code) {
-          return await this.compileAndStartRenderLoop(code, config, path, buffers);
+          const fallbackResult = await this.compile(code, config, path, buffers);
+          if (fallbackResult.success) {
+            this.renderEngine.startRenderLoop();
+          }
+          return fallbackResult;
         }
 
         return {
@@ -84,7 +88,7 @@ export class ShaderProcessor {
     }
   }
 
-  private getCodeToCompile(originalCode: string): string {
+  private getDebugCodeToCompile(originalCode: string): string {
     const debugState = this.shaderDebugManager.getState();
 
     if (debugState.isActive && debugState.currentLine !== null) {
@@ -101,7 +105,7 @@ export class ShaderProcessor {
     return originalCode;
   }
 
-  private async compileAndStartRenderLoop(
+  private async compile(
     code: string,
     config: any,
     path: string,
@@ -121,7 +125,6 @@ export class ShaderProcessor {
       };
     }
 
-    this.renderEngine.startRenderLoop();
     return {
       success: true,
       warnings: result.warnings
@@ -152,67 +155,35 @@ export class ShaderProcessor {
     }
   }
 
-  public async recompileWithDebugMode(message: ShaderSourceMessage): Promise<CompilationResult> {
+  public async debugCompile(message: ShaderSourceMessage): Promise<CompilationResult> {
     if (!this.originalShaderCode) {
-      return { success: true }; // Nothing to recompile
+      return { success: true };
     }
 
+    const { config, path, buffers } = message;
     const debugState = this.shaderDebugManager.getState();
 
-    if (!debugState.isActive) {
-      // Debug mode disabled, use original code
-      return await this.compileWithDebugFallback(this.originalShaderCode, message, false);
-    }
+    this.renderEngine.stopRenderLoop();
 
-    // Modify shader for debugging
+    // Get debug-modified code (debug mode is guaranteed to be active)
     const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
       this.originalShaderCode,
       debugState.currentLine!,
     );
 
-    if (modifiedCode) {
-      // Try to compile modified shader
-      return await this.compileWithDebugFallback(modifiedCode, message, true);
-    } else {
-      // Modification failed, fall back to original
-      return await this.compileWithDebugFallback(this.originalShaderCode, message, false);
-    }
-  }
+    // Try compilation with debug-modified code, or original if modification failed
+    let result = await this.compile(modifiedCode || this.originalShaderCode, config, path, buffers);
 
-  private async compileWithDebugFallback(
-    code: string,
-    message: ShaderSourceMessage,
-    isDebugMode: boolean
-  ): Promise<CompilationResult> {
-    // Store original code
-    if (!isDebugMode) {
-      this.originalShaderCode = code;
+    // If failed and modified code was used, try original
+    if (!result.success && modifiedCode) {
+      result = await this.compile(this.originalShaderCode, config, path, buffers);
     }
 
-    const { config, path, buffers } = message;
-
-    this.renderEngine.stopRenderLoop();
-
-    try {
-      const result = await this.compileAndStartRenderLoop(code, config, path, buffers);
-
-      if (!result?.success && isDebugMode && this.originalShaderCode) {
-        // Compilation failed in debug mode - fall back to original shader
-        return await this.compileWithDebugFallback(this.originalShaderCode, message, false);
-      }
-
-      return result;
-    } catch (err) {
-      console.error("ShaderProcessor: Error in compileWithDebugFallback:", err);
-      if (isDebugMode && this.originalShaderCode) {
-        // Fall back to original shader
-        return await this.compileWithDebugFallback(this.originalShaderCode, message, false);
-      } else {
-        return {
-          success: false,
-          error: `Shader compilation error: ${err}`
-        };
-      }
+    // Start render loop if compilation succeeded
+    if (result.success) {
+      this.renderEngine.startRenderLoop();
     }
+
+    return result;
   }
 }

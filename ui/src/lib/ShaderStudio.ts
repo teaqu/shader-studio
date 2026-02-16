@@ -4,6 +4,7 @@ import { MessageHandler } from "./transport/MessageHandler";
 import type { Transport } from "./transport/MessageTransport";
 import type { ErrorMessage, DebugMessage } from "@shader-studio/types";
 import { ShaderDebugManager } from "./ShaderDebugManager";
+import type { CompilationResult } from "./ShaderProcessor";
 
 export class ShaderStudio {
   private transport: Transport;
@@ -12,23 +13,17 @@ export class ShaderStudio {
   private messageHandler!: MessageHandler;
   private shaderLocker!: ShaderLocker;
   private shaderDebugManager: ShaderDebugManager;
-  private onError?: (errors: string[]) => void;
-  private onSuccess?: () => void;
 
   constructor(
     transport: Transport,
     shaderLocker: ShaderLocker,
     renderingEngine: RenderingEngine,
-    shaderDebugManager: ShaderDebugManager,
-    onError?: (errors: string[]) => void,
-    onSuccess?: () => void
+    shaderDebugManager: ShaderDebugManager
   ) {
     this.transport = transport;
     this.shaderLocker = shaderLocker;
     this.renderingEngine = renderingEngine;
     this.shaderDebugManager = shaderDebugManager;
-    this.onError = onError;
-    this.onSuccess = onSuccess;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -51,9 +46,7 @@ export class ShaderStudio {
         this.transport,
         this.renderingEngine,
         this.shaderLocker,
-        this.shaderDebugManager,
-        this.onError,
-        this.onSuccess,
+        this.shaderDebugManager
       );
 
       const debugMessage: DebugMessage = {
@@ -81,10 +74,10 @@ export class ShaderStudio {
     this.renderingEngine.handleCanvasResize(width, height);
   }
 
-  handleShaderMessage(
+  async handleShaderMessage(
     event: MessageEvent,
-  ): void {
-    this.messageHandler.handleShaderMessage(event);
+  ): Promise<CompilationResult | undefined> {
+    return await this.messageHandler.handleShaderMessage(event);
   }
 
   handleReset(onComplete?: () => void): void {

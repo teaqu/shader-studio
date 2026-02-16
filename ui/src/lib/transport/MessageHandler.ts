@@ -11,7 +11,7 @@ import type {
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
 import { ShaderDebugManager } from '../ShaderDebugManager';
-import { ShaderProcessor } from '../ShaderProcessor';
+import { ShaderProcessor, type CompilationResult } from '../ShaderProcessor';
 
 export class MessageHandler {
   private renderEngine: RenderingEngine;
@@ -21,24 +21,18 @@ export class MessageHandler {
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
   private shaderDebugManager: ShaderDebugManager;
-  private onError?: (errors: string[]) => void;
-  private onSuccess?: () => void;
 
   constructor(
     transport: Transport,
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
-    shaderDebugManager: ShaderDebugManager,
-    onError?: (errors: string[]) => void,
-    onSuccess?: () => void
+    shaderDebugManager: ShaderDebugManager
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
     this.shaderLocker = shaderLocker;
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
     this.shaderDebugManager = shaderDebugManager;
-    this.onError = onError;
-    this.onSuccess = onSuccess;
 
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
   }
@@ -47,15 +41,15 @@ export class MessageHandler {
     return this.lastEvent;
   }
 
-  public handleShaderMessage(
+  public async handleShaderMessage(
     event: MessageEvent,
-  ): void {
+  ): Promise<CompilationResult | undefined> {
     try {
       const message = event.data as ShaderSourceMessage;
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
 
       if (!this.isValidShaderMessage(type)) {
-        return;
+        return undefined;
       }
 
       // Update cursor position if provided
@@ -74,26 +68,29 @@ export class MessageHandler {
         if (lockedPath === undefined || lockedPath !== path) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
-            return;
+            return undefined;
           }
 
           // Check if this is a common buffer file update
           if (this.isCommonBufferFile(path)) {
             // For common buffer files, we need special handling since they don't have mainImage
-            this.handleCommonBufferUpdate(path, buffers, code);
-            return;
+            return await this.handleCommonBufferUpdate(path, buffers, code);
           }
 
           const bufferUpdateResult = this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
-          return;
+          return undefined;
         }
       }
 
-      this.processMainShaderCompilation(message, event);
+      return await this.processMainShaderCompilation(message, event);
 
     } catch (err) {
-    this.handleFatalError(err, event);
+      this.handleFatalError(err, event);
+      return {
+        success: false,
+        error: `Fatal error: ${err}`
+      };
     }
   }
 
@@ -122,30 +119,32 @@ export class MessageHandler {
     return isCommon || pathContainsCommon;
   }
 
-  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, code: string): Promise<void> {
+  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, code: string): Promise<CompilationResult> {
     // For common buffer updates when shader is locked, we need to refresh the locked shader
     // to pick up the new common buffer content, not update the common buffer directly
     const lockedPath = this.shaderLocker.getLockedShaderPath();
     if (lockedPath) {
       // Request a refresh of the locked shader to pick up the new common buffer content
       this.refresh(lockedPath);
-      return;
+      return { success: true };
     }
 
     // If no locked shader, delegate to shader processor
     const result = await this.shaderProcessor.processCommonBufferUpdate(code);
     this.handleCompilationResult(result);
+    return result;
   }
 
   private async processMainShaderCompilation(
     message: ShaderSourceMessage,
     event: MessageEvent
-  ): Promise<void> {
+  ): Promise<CompilationResult> {
     this.lastEvent = event;
 
     // Delegate to shader processor
     const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false);
     this.handleCompilationResult(result);
+    return result;
   }
 
   private handleCompilationResult(result: { success: boolean; error?: string; warnings?: string[] }): void {
@@ -171,11 +170,6 @@ export class MessageHandler {
       payload: [error],
     };
     this.transport.postMessage(errorMessage);
-
-    // Notify local error callback
-    if (this.onError) {
-      this.onError([error]);
-    }
   }
 
   private sendWarningMessage(warning: string): void {
@@ -193,11 +187,6 @@ export class MessageHandler {
       payload: ["Shader compiled and linked"],
     };
     this.transport.postMessage(logMessage);
-
-    // Notify local success callback to clear errors
-    if (this.onSuccess) {
-      this.onSuccess();
-    }
   }
 
   private handleFatalError(err: unknown, event: MessageEvent): void {
@@ -270,22 +259,23 @@ export class MessageHandler {
 
     // If debug mode is active, recompile shader
     if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getOriginalShaderCode() && this.lastEvent) {
-      this.recompileWithDebugMode();
+      this.debugCompile();
     }
   }
 
   public triggerDebugRecompile(): void {
-    this.recompileWithDebugMode();
+    this.debugCompile();
   }
 
-  private async recompileWithDebugMode(): Promise<void> {
+  private async debugCompile(): Promise<CompilationResult | undefined> {
     if (!this.shaderProcessor.getOriginalShaderCode() || !this.lastEvent) {
-      return;
+      return undefined;
     }
 
     const message = this.lastEvent.data as ShaderSourceMessage;
-    const result = await this.shaderProcessor.recompileWithDebugMode(message);
+    const result = await this.shaderProcessor.debugCompile(message);
     this.handleCompilationResult(result);
+    return result;
   }
 
   public refresh(path?: string): void {

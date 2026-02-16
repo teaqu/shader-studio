@@ -29,7 +29,6 @@
   let initialized = false;
   let isLocked = false;
   let errors: string[] = [];
-  let showErrors = false;
   let currentFPS = 0;
   let canvasWidth = 0;
   let canvasHeight = 0;
@@ -196,7 +195,6 @@
   }
 
   function handleErrorDismiss() {
-    showErrors = false;
     errors = [];
   }
 
@@ -216,17 +214,7 @@
         transport,
         shadderLocker,
         renderingEngine,
-        shaderDebugManager,
-        (errorMessages) => {
-          // onError callback
-          errors = errorMessages;
-          showErrors = false; // Don't show modal, only show on button
-        },
-        () => {
-          // onSuccess callback
-          errors = [];
-          showErrors = false;
-        }
+        shaderDebugManager
       );
 
       const success = await shaderStudio.initialize(glCanvas);
@@ -266,7 +254,7 @@
     }
   }
 
-  function handleShaderMessage(event: MessageEvent) {
+  async function handleShaderMessage(event: MessageEvent) {
     if (!initialized) return;
 
     try {
@@ -277,7 +265,17 @@
         shaderPath = event.data.path || "";
       }
 
-      shaderStudio.handleShaderMessage(event);
+      const result = await shaderStudio.handleShaderMessage(event);
+
+      // Update errors state based on compilation result
+      if (result) {
+        if (result.success) {
+          errors = [];
+        } else {
+          errors = result.error ? [result.error] : [];
+        }
+      }
+
       // Update the UI lock state to reflect the current state
       isLocked = shaderStudio.getIsLocked();
     } catch (err) {
@@ -294,7 +292,6 @@
 
   function addError(message: string) {
     errors = [...errors, message];
-    showErrors = true;
     if (transport) {
       transport.postMessage({ type: "error", payload: [message] });
     }

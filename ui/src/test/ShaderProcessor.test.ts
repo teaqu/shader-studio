@@ -325,7 +325,7 @@ describe('ShaderProcessor', () => {
     });
   });
 
-  describe('recompileWithDebugMode', () => {
+  describe('debugCompile', () => {
     it('should return success if no original shader code exists', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
@@ -335,7 +335,7 @@ describe('ShaderProcessor', () => {
         buffers: {},
       };
 
-      const result = await shaderProcessor.recompileWithDebugMode(message);
+      const result = await shaderProcessor.debugCompile(message);
 
       expect(result.success).toBe(true);
       expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
@@ -367,7 +367,7 @@ describe('ShaderProcessor', () => {
         filePath: null,
       });
 
-      const result = await shaderProcessor.recompileWithDebugMode(message);
+      const result = await shaderProcessor.debugCompile(message);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         originalCode,
@@ -406,7 +406,7 @@ describe('ShaderProcessor', () => {
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
 
-      const result = await shaderProcessor.recompileWithDebugMode(message);
+      const result = await shaderProcessor.debugCompile(message);
 
       expect(mockShaderDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(originalCode, 10);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
@@ -445,7 +445,7 @@ describe('ShaderProcessor', () => {
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(null);
 
-      const result = await shaderProcessor.recompileWithDebugMode(message);
+      const result = await shaderProcessor.debugCompile(message);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         originalCode,
