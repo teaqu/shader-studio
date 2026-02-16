@@ -202,8 +202,9 @@ canvas {
 }
 
 .menu-title.fixed-width {
-  min-width: 5ch;
-  text-align: right;
+  width: 8ch;
+  text-align: left;
+  display: inline-block;
 }
 
 .menu-bar button {
@@ -564,7 +565,7 @@ canvas {
   position: relative;
 }
 
-.time-button {
+.menu-bar .time-button {
   cursor: pointer;
   background: none;
   border: none;
@@ -572,17 +573,21 @@ canvas {
   border-radius: 4px;
   color: var(--vscode-editor-foreground);
   font-size: var(--vscode-font-size, 13px) !important;
-  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif) !important;
   font-weight: var(--vscode-font-weight, normal);
-  font-feature-settings: "tnum" 1;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" 1 !important;
   transition: background-color 0.2s ease;
-  min-width: 5ch;
-  text-align: right;
+  text-align: left;
+  flex: 0 0 auto;
 }
 
 .time-button:hover {
   background-color: var(--vscode-list-hoverBackground);
+}
+
+.menu-bar .fps-display {
+  flex: 0 0 auto;
 }
 
 .time-menu {
