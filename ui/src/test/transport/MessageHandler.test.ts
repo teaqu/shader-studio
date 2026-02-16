@@ -56,7 +56,7 @@ describe("MessageHandler", () => {
     mockShaderProcessor = {
       processMainShaderCompilation: vi.fn().mockResolvedValue({ success: true }),
       processCommonBufferUpdate: vi.fn().mockResolvedValue({ success: true }),
-      recompileWithDebugMode: vi.fn().mockResolvedValue({ success: true }),
+      debugCompile: vi.fn().mockResolvedValue({ success: true }),
       getOriginalShaderCode: vi.fn().mockReturnValue(null),
       isCurrentlyProcessing: vi.fn().mockReturnValue(false),
     };
@@ -566,16 +566,7 @@ describe("MessageHandler", () => {
       });
     });
 
-    it('should notify local error callback when compilation fails', async () => {
-      const onErrorCallback = vi.fn();
-      const localMessageHandler = new MessageHandler(
-        mockTransport as unknown as Transport,
-        mockRenderingEngine as unknown as RenderingEngine,
-        mockShaderLocker as unknown as ShaderLocker,
-        shaderDebugManager,
-        onErrorCallback
-      );
-
+    it('should return error result when compilation fails', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: false,
@@ -592,22 +583,15 @@ describe("MessageHandler", () => {
         },
       };
 
-      await localMessageHandler.handleShaderMessage(event as any);
+      const result = await messageHandler.handleShaderMessage(event as any);
 
-      expect(onErrorCallback).toHaveBeenCalledWith(['Test error']);
+      expect(result).toEqual({
+        success: false,
+        error: 'Test error'
+      });
     });
 
-    it('should notify local success callback when compilation succeeds', async () => {
-      const onSuccessCallback = vi.fn();
-      const localMessageHandler = new MessageHandler(
-        mockTransport as unknown as Transport,
-        mockRenderingEngine as unknown as RenderingEngine,
-        mockShaderLocker as unknown as ShaderLocker,
-        shaderDebugManager,
-        undefined,
-        onSuccessCallback
-      );
-
+    it('should return success result when compilation succeeds', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true
@@ -623,9 +607,11 @@ describe("MessageHandler", () => {
         },
       };
 
-      await localMessageHandler.handleShaderMessage(event as any);
+      const result = await messageHandler.handleShaderMessage(event as any);
 
-      expect(onSuccessCallback).toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true
+      });
     });
 
     it('should not send warning messages when warnings is undefined', async () => {
@@ -805,7 +791,7 @@ describe("MessageHandler", () => {
       messageHandler.handleCursorPositionMessage(message);
 
       // Should trigger recompile with debug mode
-      expect(mockShaderProcessor.recompileWithDebugMode).toHaveBeenCalledWith(initialEvent.data);
+      expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(initialEvent.data);
     });
 
     it('should trigger debug recompile via triggerDebugRecompile', async () => {
@@ -829,7 +815,7 @@ describe("MessageHandler", () => {
 
       messageHandler.triggerDebugRecompile();
 
-      expect(mockShaderProcessor.recompileWithDebugMode).toHaveBeenCalledWith(initialEvent.data);
+      expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(initialEvent.data);
     });
 
     it('should not recompile if no original shader code exists', () => {
@@ -837,7 +823,7 @@ describe("MessageHandler", () => {
 
       messageHandler.triggerDebugRecompile();
 
-      expect(mockShaderProcessor.recompileWithDebugMode).not.toHaveBeenCalled();
+      expect(mockShaderProcessor.debugCompile).not.toHaveBeenCalled();
     });
 
     it('should delegate to ShaderProcessor when cursor position is provided', async () => {

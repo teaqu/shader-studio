@@ -398,72 +398,22 @@ describe('ShaderStudio', () => {
     });
   });
 
-  describe('error handling callbacks', () => {
-    it('should accept error and success callbacks in constructor', () => {
-      const onError = vi.fn();
-      const onSuccess = vi.fn();
+  describe('initialization', () => {
+    it('should successfully initialize', async () => {
+      const result = await shaderStudio.initialize(mockCanvas);
 
-      const shaderStudioWithCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any,
-        onError,
-        onSuccess
-      );
-
-      expect(shaderStudioWithCallbacks).toBeDefined();
-    });
-
-    it('should pass callbacks to MessageHandler during initialization', async () => {
-      const onError = vi.fn();
-      const onSuccess = vi.fn();
-
-      const shaderStudioWithCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any,
-        onError,
-        onSuccess
-      );
-
-      await shaderStudioWithCallbacks.initialize(mockCanvas);
-
-      // Verify MessageHandler was created with callbacks
-      const messageHandler = (shaderStudioWithCallbacks as any).messageHandler;
+      expect(result).toBe(true);
+      const messageHandler = (shaderStudio as any).messageHandler;
       expect(messageHandler).toBeDefined();
     });
 
-    it('should work without error and success callbacks', async () => {
-      const shaderStudioWithoutCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any
-      );
-
-      const result = await shaderStudioWithoutCallbacks.initialize(mockCanvas);
-
-      expect(result).toBe(true);
-    });
-
-    it('should handle initialization errors when error callback is provided', async () => {
-      const onError = vi.fn();
+    it('should handle initialization errors', async () => {
       const error = new Error('Render init failed');
       (mockRenderingEngine.initialize as any).mockImplementation(() => {
         throw error;
       });
 
-      const shaderStudioWithCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any,
-        onError
-      );
-
-      const result = await shaderStudioWithCallbacks.initialize(mockCanvas);
+      const result = await shaderStudio.initialize(mockCanvas);
 
       expect(result).toBe(false);
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
@@ -472,19 +422,10 @@ describe('ShaderStudio', () => {
       });
     });
 
-    it('should handle WebGL2 not supported error with error callback', async () => {
-      const onError = vi.fn();
+    it('should handle WebGL2 not supported error', async () => {
       vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
 
-      const shaderStudioWithCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any,
-        onError
-      );
-
-      const result = await shaderStudioWithCallbacks.initialize(mockCanvas);
+      const result = await shaderStudio.initialize(mockCanvas);
 
       expect(result).toBe(false);
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
