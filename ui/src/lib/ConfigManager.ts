@@ -6,6 +6,7 @@ export class ConfigManager {
     private pathMap: Record<string, string> = {};
     private transport: Transport | null = null;
     private onConfigChange?: (config: ShaderConfig) => void;
+    private shaderPath: string = "";
 
     constructor(
         transport: Transport,
@@ -20,6 +21,59 @@ export class ConfigManager {
      */
     public setConfig(config: ShaderConfig | null): void {
         this.config = config;
+    }
+
+    /**
+     * Create a minimal default configuration
+     */
+    private createDefaultConfig(): ShaderConfig {
+        return {
+            version: "1.0",
+            passes: {
+                Image: {
+                    inputs: {}
+                }
+            }
+        };
+    }
+
+    /**
+     * Ensure config exists, creating a default one if needed
+     */
+    private ensureConfig(): void {
+        if (!this.config) {
+            this.config = this.createDefaultConfig();
+        }
+    }
+
+    /**
+     * Set the shader file path (used for generating buffer filenames)
+     */
+    public setShaderPath(shaderPath: string): void {
+        this.shaderPath = shaderPath;
+    }
+
+    /**
+     * Get the shader file path
+     */
+    public getShaderPath(): string {
+        return this.shaderPath;
+    }
+
+    /**
+     * Generate a buffer file path based on the current shader name
+     * e.g., myshader.glsl → myshader.buffera.glsl
+     */
+    public generateBufferPath(bufferName: string): string {
+        if (!this.shaderPath) return '';
+
+        // Extract just the filename without path
+        const parts = this.shaderPath.replace(/\\/g, '/').split('/');
+        const filename = parts[parts.length - 1];
+        const baseName = filename.replace(/\.glsl$/, '');
+
+        const suffix = bufferName.toLowerCase();
+        return `${baseName}.${suffix}.glsl`;
     }
 
     /**
@@ -81,15 +135,16 @@ export class ConfigManager {
      * Add a specific buffer to the configuration
      */
     addSpecificBuffer(bufferName: string): boolean {
-        if (!this.config) return false;
+        // Ensure config exists (create default if null)
+        this.ensureConfig();
 
         // Check if buffer already exists
-        if (this.config.passes[bufferName as keyof typeof this.config.passes]) return false;
+        if (this.config!.passes[bufferName as keyof typeof this.config.passes]) return false;
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 [bufferName]: {
                     path: '',
                     inputs: {}
@@ -98,6 +153,20 @@ export class ConfigManager {
         };
         this.updateConfig(updatedConfig);
         return true;
+    }
+
+    /**
+     * Send a message to the extension to create a buffer file
+     */
+    createBufferFile(bufferName: string, filePath: string): void {
+        if (!this.transport) return;
+        this.transport.postMessage({
+            type: 'createBufferFile',
+            payload: {
+                bufferName,
+                filePath
+            }
+        });
     }
 
     /**
@@ -144,12 +213,12 @@ export class ConfigManager {
      * Update an entire buffer configuration
      */
     updateBuffer(bufferName: string, bufferConfig: BufferPass): boolean {
-        if (!this.config) return false;
+        this.ensureConfig();
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 [bufferName]: bufferConfig
             }
         };
@@ -161,12 +230,12 @@ export class ConfigManager {
      * Update the Image pass configuration
      */
     updateImagePass(imageConfig: ImagePass): boolean {
-        if (!this.config) return false;
+        this.ensureConfig();
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 Image: imageConfig
             }
         };
@@ -192,19 +261,22 @@ export class ConfigManager {
      * Add a common buffer pass to the configuration
      */
     public addCommonBuffer(): boolean {
-        if (!this.config || !this.config.passes.common) {
-            if (!this.config) return false;
-            
-            this.config.passes.common = {
-                path: "common.glsl"
-                // No inputs for common buffer
-            };
-            
-            // Trigger UI update
-            this.updateConfig(this.config);
-            return true;
+        // Ensure config exists (create default if null)
+        this.ensureConfig();
+
+        // Check if common buffer already exists
+        if (this.config!.passes.common) {
+            return false; // Already exists
         }
-        return false; // Already exists
+
+        this.config!.passes.common = {
+            path: ''
+            // No inputs for common buffer
+        };
+
+        // Trigger UI update
+        this.updateConfig(this.config!);
+        return true;
     }
 
     getBufferList(): string[] {
@@ -300,11 +372,16 @@ export class ConfigManager {
         // Send update back via transport
         if (this.transport) {
             console.log('Sending updateConfig message via transport');
+            // Strip resolved_path from config before saving - it's only for rendering
+            const cleanText = JSON.stringify(newConfig, (key, value) => {
+                if (key === 'resolved_path') return undefined;
+                return value;
+            }, 2);
             this.transport.postMessage({
                 type: 'updateConfig',
                 payload: {
                     config: newConfig,
-                    text: JSON.stringify(newConfig, null, 2)
+                    text: cleanText
                 }
             });
         } else {

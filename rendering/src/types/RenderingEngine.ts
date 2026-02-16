@@ -9,7 +9,7 @@ export interface RenderingEngine {
     code: string,
     config: ShaderConfig | null,
     path: string,
-    buffers?: Record<string, string>
+    buffers?: Record<string, string>,
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;

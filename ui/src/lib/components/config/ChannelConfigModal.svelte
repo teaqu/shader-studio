@@ -13,10 +13,41 @@
 
   let modalContent: HTMLElement;
   let tempInput: ConfigInput | undefined;
+  let initializedWithInput: ConfigInput | undefined = undefined;
 
-  // Initialize temp input when modal opens
-  $: if (isOpen) {
-    tempInput = channelInput ? { ...channelInput } : undefined;
+  // Initialize temp input ONLY when modal first opens
+  // Don't update if modal is already open and user is editing
+  $: {
+    if (isOpen) {
+      // Only initialize if this is a new modal session
+      // (channelInput changed or modal just opened)
+      if (channelInput !== initializedWithInput) {
+        initializedWithInput = channelInput;
+        if (channelInput) {
+          tempInput = { ...channelInput };
+          // Note: Don't transform paths here - show exactly what's in the config
+          // The config should contain the original user-entered paths
+        } else {
+          tempInput = undefined;
+        }
+      }
+    } else {
+      // Reset when modal closes
+      initializedWithInput = undefined;
+    }
+  }
+
+  // When parent config updates with resolved_path, merge it into tempInput
+  // without resetting user edits (e.g. after autoSave round-trip to extension)
+  // Only apply if paths match - prevents old resolved_path from being re-applied
+  // after user changes the path to something different
+  $: if (isOpen && tempInput && channelInput && 'resolved_path' in channelInput) {
+    const parentResolved = (channelInput as any).resolved_path;
+    const parentPath = 'path' in channelInput ? channelInput.path : undefined;
+    const tempPath = 'path' in tempInput ? tempInput.path : undefined;
+    if (parentResolved && parentPath === tempPath && (tempInput as any).resolved_path !== parentResolved) {
+      tempInput = { ...tempInput, resolved_path: parentResolved } as ConfigInput;
+    }
   }
 
   function handleBackdropClick(event: MouseEvent) {
@@ -32,14 +63,15 @@
     }
   }
 
-  function handleSave() {
+  function handleRemove() {
+    onRemove(channelName);
+  }
+
+  // Auto-save helper - calls onSave whenever tempInput changes
+  function autoSave() {
     if (tempInput) {
       onSave(channelName, tempInput);
     }
-  }
-
-  function handleRemove() {
-    onRemove(channelName);
   }
 
   function updateInputType(newType: "buffer" | "texture" | "video" | "keyboard") {
@@ -63,6 +95,7 @@
         type: "keyboard",
       };
     }
+    autoSave();
   }
 
   function updateBufferSource(source: "BufferA" | "BufferB" | "BufferC" | "BufferD") {
@@ -71,16 +104,48 @@
         ...tempInput,
         source,
       };
+      autoSave();
     }
   }
 
   function updatePath(path: string) {
     if (tempInput && (tempInput.type === "texture" || tempInput.type === "video")) {
+      // Ensure we don't save webview URIs - extract original path if needed
+      const cleanPath = extractOriginalPath(path);
+      // Clear resolved_path so preview re-resolves for the new path
+      const { resolved_path, ...rest } = tempInput as any;
       tempInput = {
-        ...tempInput,
-        path,
-      };
+        ...rest,
+        path: cleanPath,
+      } as ConfigInput;
+      autoSave();
     }
+  }
+
+  // Extract original file path from webview URI if present
+  function extractOriginalPath(path: string): string {
+    // If path is a webview URI, extract the original file path
+    if (path.includes('vscode-resource') || path.includes('vscode-cdn')) {
+      try {
+        // Webview URIs typically have format: https://...vscode-...net/actual/file/path
+        // Extract everything after the domain
+        const match = path.match(/vscode-[^/]+\.net(\/.*?)(?:[?#]|$)/);
+        if (match && match[1]) {
+          // Decode any URL encoding
+          return decodeURIComponent(match[1]);
+        }
+
+        // Fallback: try to find a file path pattern (starts with / or C:/)
+        const decoded = decodeURIComponent(path);
+        const pathMatch = decoded.match(/([A-Za-z]:[\\\/]|\/)[^?#]*/);
+        if (pathMatch) {
+          return pathMatch[0];
+        }
+      } catch (e) {
+        console.warn('Failed to extract path from webview URI:', e);
+      }
+    }
+    return path;
   }
 
   function updateFilter(filter: "linear" | "nearest" | "mipmap") {
@@ -89,6 +154,7 @@
         ...tempInput,
         filter,
       };
+      autoSave();
     }
   }
 
@@ -98,6 +164,7 @@
         ...tempInput,
         wrap,
       };
+      autoSave();
     }
   }
 
@@ -107,6 +174,7 @@
         ...tempInput,
         vflip,
       };
+      autoSave();
     }
   }
 
@@ -116,6 +184,7 @@
         ...tempInput,
         grayscale,
       };
+      autoSave();
     }
   }
 
@@ -149,7 +218,9 @@
       <div class="modal-body">
         <!-- Preview -->
         <div class="modal-preview">
-          <ChannelPreview channelInput={tempInput} {getWebviewUri} />
+          {#key tempInput?.type === 'texture' ? tempInput?.path : tempInput?.type}
+            <ChannelPreview channelInput={tempInput} {getWebviewUri} />
+          {/key}
         </div>
 
         <!-- Type Selector -->
@@ -200,57 +271,61 @@
             />
           </div>
 
-          <div class="input-group">
-            <label for="filter-{channelName}">Filter:</label>
-            <select
-              id="filter-{channelName}"
-              value={tempInput.filter || "mipmap"}
-              on:change={(e) => updateFilter(e.currentTarget.value as any)}
-              class="input-select"
-            >
-              <option value="mipmap">Mipmap</option>
-              <option value="linear">Linear</option>
-              <option value="nearest">Nearest</option>
-            </select>
+          <div class="input-row">
+            <div class="input-group">
+              <label for="filter-{channelName}">Filter:</label>
+              <select
+                id="filter-{channelName}"
+                value={tempInput.filter || "mipmap"}
+                on:change={(e) => updateFilter(e.currentTarget.value as any)}
+                class="input-select"
+              >
+                <option value="mipmap">Mipmap</option>
+                <option value="linear">Linear</option>
+                <option value="nearest">Nearest</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="wrap-{channelName}">Wrap:</label>
+              <select
+                id="wrap-{channelName}"
+                value={tempInput.wrap || "repeat"}
+                on:change={(e) => updateWrap(e.currentTarget.value as any)}
+                class="input-select"
+              >
+                <option value="repeat">Repeat</option>
+                <option value="clamp">Clamp</option>
+              </select>
+            </div>
           </div>
 
-          <div class="input-group">
-            <label for="wrap-{channelName}">Wrap:</label>
-            <select
-              id="wrap-{channelName}"
-              value={tempInput.wrap || "repeat"}
-              on:change={(e) => updateWrap(e.currentTarget.value as any)}
-              class="input-select"
-            >
-              <option value="repeat">Repeat</option>
-              <option value="clamp">Clamp</option>
-            </select>
-          </div>
+          <div class="input-row">
+            <div class="input-group checkbox-group">
+              <label for="vflip-{channelName}">
+                <input
+                  id="vflip-{channelName}"
+                  type="checkbox"
+                  checked={tempInput.vflip ?? true}
+                  on:change={(e) => updateVFlip(e.currentTarget.checked)}
+                  class="input-checkbox"
+                />
+                Vertical Flip
+              </label>
+            </div>
 
-          <div class="input-group checkbox-group">
-            <label for="vflip-{channelName}">
-              <input
-                id="vflip-{channelName}"
-                type="checkbox"
-                checked={tempInput.vflip ?? true}
-                on:change={(e) => updateVFlip(e.currentTarget.checked)}
-                class="input-checkbox"
-              />
-              Vertical Flip
-            </label>
-          </div>
-
-          <div class="input-group checkbox-group">
-            <label for="grayscale-{channelName}">
-              <input
-                id="grayscale-{channelName}"
-                type="checkbox"
-                checked={tempInput.grayscale ?? false}
-                on:change={(e) => updateGrayscale(e.currentTarget.checked)}
-                class="input-checkbox"
-              />
-              Grayscale
-            </label>
+            <div class="input-group checkbox-group">
+              <label for="grayscale-{channelName}">
+                <input
+                  id="grayscale-{channelName}"
+                  type="checkbox"
+                  checked={tempInput.grayscale ?? false}
+                  on:change={(e) => updateGrayscale(e.currentTarget.checked)}
+                  class="input-checkbox"
+                />
+                Grayscale
+              </label>
+            </div>
           </div>
         {/if}
 
@@ -267,44 +342,48 @@
             />
           </div>
 
-          <div class="input-group">
-            <label for="filter-{channelName}">Filter:</label>
-            <select
-              id="filter-{channelName}"
-              value={tempInput.filter || "linear"}
-              on:change={(e) => updateFilter(e.currentTarget.value as any)}
-              class="input-select"
-            >
-              <option value="linear">Linear</option>
-              <option value="nearest">Nearest</option>
-              <option value="mipmap">Mipmap</option>
-            </select>
+          <div class="input-row">
+            <div class="input-group">
+              <label for="filter-{channelName}">Filter:</label>
+              <select
+                id="filter-{channelName}"
+                value={tempInput.filter || "linear"}
+                on:change={(e) => updateFilter(e.currentTarget.value as any)}
+                class="input-select"
+              >
+                <option value="linear">Linear</option>
+                <option value="nearest">Nearest</option>
+                <option value="mipmap">Mipmap</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="wrap-{channelName}">Wrap:</label>
+              <select
+                id="wrap-{channelName}"
+                value={tempInput.wrap || "clamp"}
+                on:change={(e) => updateWrap(e.currentTarget.value as any)}
+                class="input-select"
+              >
+                <option value="clamp">Clamp</option>
+                <option value="repeat">Repeat</option>
+              </select>
+            </div>
           </div>
 
-          <div class="input-group">
-            <label for="wrap-{channelName}">Wrap:</label>
-            <select
-              id="wrap-{channelName}"
-              value={tempInput.wrap || "clamp"}
-              on:change={(e) => updateWrap(e.currentTarget.value as any)}
-              class="input-select"
-            >
-              <option value="clamp">Clamp</option>
-              <option value="repeat">Repeat</option>
-            </select>
-          </div>
-
-          <div class="input-group checkbox-group">
-            <label for="vflip-{channelName}">
-              <input
-                id="vflip-{channelName}"
-                type="checkbox"
-                checked={tempInput.vflip ?? true}
-                on:change={(e) => updateVFlip(e.currentTarget.checked)}
-                class="input-checkbox"
-              />
-              Vertical Flip
-            </label>
+          <div class="input-row">
+            <div class="input-group checkbox-group">
+              <label for="vflip-{channelName}">
+                <input
+                  id="vflip-{channelName}"
+                  type="checkbox"
+                  checked={tempInput.vflip ?? true}
+                  on:change={(e) => updateVFlip(e.currentTarget.checked)}
+                  class="input-checkbox"
+                />
+                Vertical Flip
+              </label>
+            </div>
           </div>
         {/if}
 
@@ -323,11 +402,8 @@
           </button>
         {/if}
         <div class="footer-spacer"></div>
-        <button class="btn-secondary" on:click={onClose}>
-          Cancel
-        </button>
-        <button class="btn-primary" on:click={handleSave} disabled={!tempInput}>
-          Save
+        <button class="btn-primary" on:click={onClose}>
+          Close
         </button>
       </div>
     </div>
@@ -335,10 +411,102 @@
 {/if}
 
 <style>
-  .modal-preview {
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+
+  .modal-content {
+    background: var(--vscode-editor-background, #1e1e1e);
+    border: 1px solid var(--vscode-panel-border, #3c3c3c);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    max-width: 600px;
     width: 100%;
-    max-width: 400px;
-    margin: 0 auto 20px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+    background: var(--vscode-editor-background, #1e1e1e);
+  }
+
+  .modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-foreground, #cccccc);
+  }
+
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--vscode-panel-border, #3c3c3c);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: var(--vscode-editor-background, #1e1e1e);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 12px;
+  }
+
+  .input-row .input-group {
+    flex: 1;
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .input-group label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #cccccc);
+  }
+
+  .input-select,
+  .input-text {
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    font-size: 14px;
+  }
+
+  .input-select:focus,
+  .input-text:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+  .modal-preview {
+    width: 120px;
+    margin: 0 auto 16px;
   }
 
   .input-note {
@@ -373,7 +541,6 @@
   }
 
   .btn-primary,
-  .btn-secondary,
   .btn-remove {
     padding: 8px 16px;
     border: none;
@@ -389,22 +556,8 @@
     color: var(--vscode-button-foreground, white);
   }
 
-  .btn-primary:hover:not(:disabled) {
+  .btn-primary:hover {
     background: var(--vscode-button-hoverBackground, #005a9e);
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    background: var(--vscode-button-secondaryBackground, #3c3c3c);
-    color: var(--vscode-button-secondaryForeground, white);
-  }
-
-  .btn-secondary:hover {
-    background: var(--vscode-button-secondaryHoverBackground, #4c4c4c);
   }
 
   .btn-remove {

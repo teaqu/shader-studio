@@ -55,7 +55,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'video.mp4'));
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, './video.mp4');
         });
 
         test('should call handlePersistentError when video file not found', () => {
@@ -95,8 +95,8 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'video1.mp4'));
-            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, path.join('/path/to', 'video2.mp4'));
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, './video1.mp4');
+            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, './video2.mp4');
         });
 
         test('should handle mixed texture and video inputs', () => {
@@ -115,8 +115,8 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, path.join('/path/to', 'texture.png'));
-            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, path.join('/path/to', 'video.mp4'));
+            assert.strictEqual(config.passes.Image.inputs.iChannel0.path, './texture.png');
+            assert.strictEqual(config.passes.Image.inputs.iChannel1.path, './video.mp4');
         });
 
         test('should handle video inputs in buffer passes', () => {
@@ -137,7 +137,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
             
             configProcessor.processConfig(config as any, '/path/to/shader.glsl', {});
             
-            assert.strictEqual(config.passes.BufferA.inputs.iChannel0.path, path.join('/path/to', 'video.mp4'));
+            assert.strictEqual(config.passes.BufferA.inputs.iChannel0.path, './video.mp4');
         });
 
         test('should not modify inputs without path', () => {

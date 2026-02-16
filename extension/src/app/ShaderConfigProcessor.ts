@@ -159,12 +159,13 @@ export class ShaderConfigProcessor {
       });
     }
 
-    pass.path = bufferPath;
+    // Don't mutate pass.path - keep the original relative path for UI display
+    // The resolved absolute path is only needed for loading buffer content above
   }
 
   /**
    * Process texture inputs in a shader pass.
-   * Resolves relative texture paths to absolute paths.
+   * Validates that texture/video files exist without mutating the original paths.
    */
   private processInputs(
     pass: any,
@@ -181,9 +182,9 @@ export class ShaderConfigProcessor {
         const imgPath = PathResolver.resolvePath(shaderPath, input.path);
 
         if (fs.existsSync(imgPath)) {
-          input.path = imgPath;
+          // Don't mutate input.path - keep the original relative path
           this.logger.debug(
-            `Resolved image path for ${passName}.inputs.${key}: ${imgPath}`,
+            `Validated image path for ${passName}.inputs.${key}: ${imgPath}`,
           );
         } else {
           this.errorHandler.handlePersistentError({
@@ -195,9 +196,9 @@ export class ShaderConfigProcessor {
         const videoPath = PathResolver.resolvePath(shaderPath, input.path);
 
         if (fs.existsSync(videoPath)) {
-          input.path = videoPath;
+          // Don't mutate input.path - keep the original relative path
           this.logger.debug(
-            `Resolved video path for ${passName}.inputs.${key}: ${videoPath}`,
+            `Validated video path for ${passName}.inputs.${key}: ${videoPath}`,
           );
         } else {
           this.errorHandler.handlePersistentError({

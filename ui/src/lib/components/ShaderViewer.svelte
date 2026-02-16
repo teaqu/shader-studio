@@ -63,6 +63,7 @@
   let splitRatio = 0.6;
   let currentConfig: ShaderConfig | null = null;
   let pathMap: Record<string, string> = {};
+  let shaderPath: string = "";
 
   // Subscribe to config panel store
   onMount(() => {
@@ -258,6 +259,7 @@
       if (event.data.type === 'shaderSource') {
         currentConfig = event.data.config || null;
         pathMap = event.data.pathMap || {};
+        shaderPath = event.data.path || "";
       }
 
       shaderStudio.handleShaderMessage(event);
@@ -307,7 +309,7 @@
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <div class="canvas-section" style="flex: {splitRatio}">
+  <div class="canvas-section" style="flex: {configPanelVisible ? splitRatio : 1}">
     <ShaderCanvas
       {zoomLevel}
       isInspectorActive={inspectorState.isActive}
@@ -316,17 +318,6 @@
       onCanvasClick={handleCanvasClick}
     />
   </div>
-  {#if configPanelVisible}
-    <ResizeHandle onResize={handleSplitResize} />
-    <div class="config-section" style="flex: {1 - splitRatio}">
-      <ConfigPanel
-        config={currentConfig}
-        {pathMap}
-        {transport}
-        isVisible={configPanelVisible}
-      />
-    </div>
-  {/if}
   {#if initialized}
     <MenuBar
       {timeManager}
@@ -351,6 +342,18 @@
       isConfigPanelVisible={configPanelVisible}
       onToggleConfigPanel={handleToggleConfigPanel}
     />
+  {/if}
+  {#if configPanelVisible}
+    <ResizeHandle onResize={handleSplitResize} />
+    <div class="config-section" style="flex: {1 - splitRatio}">
+      <ConfigPanel
+        config={currentConfig}
+        {pathMap}
+        {transport}
+        {shaderPath}
+        isVisible={configPanelVisible}
+      />
+    </div>
   {/if}
   <ErrorDisplay
     {errors}

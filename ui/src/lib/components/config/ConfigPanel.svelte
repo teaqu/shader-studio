@@ -8,6 +8,7 @@
   export let config: ShaderConfig | null = null;
   export let pathMap: Record<string, string> = {};
   export let transport: Transport;
+  export let shaderPath: string = "";
   export let isVisible: boolean = true;
 
   let configManager: ConfigManager;
@@ -38,6 +39,22 @@
 
   $: if (configManager && pathMap) {
     configManager.setPathMap(pathMap);
+  }
+
+  $: if (configManager && shaderPath) {
+    configManager.setShaderPath(shaderPath);
+  }
+
+  function handleCreateFile(bufferName: string) {
+    if (!configManager) return;
+    const filePath = configManager.generateBufferPath(bufferName);
+    if (!filePath) return;
+
+    // Update the buffer path in config
+    configManager.updateBufferPath(bufferName, filePath);
+
+    // Send message to extension to create the file
+    configManager.createBufferFile(bufferName, filePath);
   }
 
   function addCommonBuffer() {
@@ -84,7 +101,8 @@
       "Reactive getAllTabs - configManager available:",
       !!configManager,
     );
-    if (config && configManager) {
+    // Always show at least the Image tab, even without config
+    if (configManager) {
       const bufferList = configManager.getBufferList();
       console.log("Reactive buffer list:", bufferList);
       // Add common after Image, then other buffers
@@ -104,108 +122,100 @@
   }
 
   // Reactive statement to get the current active tab's config
+  // Provides default empty config when no config file exists
   $: activeTabConfig = (() => {
-    if (!configManager || !config) return null;
-
     const actualBufferName = getActualBufferName(activeTab);
 
     if (activeTab === "Image") {
-      return config.passes.Image;
+      // Return actual config or default empty ImagePass
+      return config?.passes?.Image || { path: "", inputs: {} };
     } else {
-      return configManager.getBuffer(actualBufferName);
+      // Return actual buffer config or default empty BufferPass
+      return config?.passes?.[actualBufferName as keyof typeof config.passes] || { path: "", inputs: {} };
     }
   })();
 </script>
 
 <div class="config-panel" class:visible={isVisible}>
-  {#if config}
-    <div class="config-content">
-      <!-- Tab Navigation -->
-      <div class="tab-navigation">
-        {#each allTabs as tabName}
-          <div class="tab-wrapper">
-            <button
-              class="tab-button {activeTab === tabName ? 'active' : ''}"
-              on:click={() => switchTab(tabName)}
+  <div class="config-content">
+    <!-- Tab Navigation - Always visible -->
+    <div class="tab-navigation">
+      {#each allTabs as tabName}
+        <button
+          class="tab-button {activeTab === tabName ? 'active' : ''}"
+          on:click={() => switchTab(tabName)}
+        >
+          <span class="tab-label">{tabName}</span>
+          {#if tabName !== "Image" && config}
+            <span
+              class="tab-close"
+              role="button"
+              tabindex="-1"
+              on:click|stopPropagation={() => removeBuffer(tabName)}
+              title="Remove {tabName}"
             >
-              {tabName}
-            </button>
-            {#if tabName !== "Image"}
+              ×
+            </span>
+          {/if}
+        </button>
+      {/each}
+
+      {#if (!config || (["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes]) || !config?.passes.common))}
+        <div class="add-tab-dropdown">
+          <button class="add-tab-btn" title="Add Buffer">Add Buffer</button>
+          <div class="dropdown-content">
+            {#if !config?.passes?.common}
               <button
-                class="remove-tab-btn"
-                on:click={() => removeBuffer(tabName)}
-                title="Remove {tabName}"
+                class="dropdown-item"
+                on:click={() => addCommonBuffer()}
               >
-                ×
+                Common
               </button>
             {/if}
-          </div>
-        {/each}
-
-        {#if config && (["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes]) || !config?.passes.common)}
-          <div class="add-tab-dropdown">
-            <button class="add-tab-btn" title="Add Buffer">Add Buffer</button>
-            <div class="dropdown-content">
-              {#if !config?.passes.common}
+            {#each ["BufferA", "BufferB", "BufferC", "BufferD"] as bufferName}
+              {#if !config?.passes?.[bufferName as keyof typeof config.passes]}
                 <button
                   class="dropdown-item"
-                  on:click={() => addCommonBuffer()}
+                  on:click={() => addSpecificBuffer(bufferName)}
                 >
-                  Common
+                  {bufferName}
                 </button>
               {/if}
-              {#each ["BufferA", "BufferB", "BufferC", "BufferD"] as bufferName}
-                {#if !config?.passes[bufferName as keyof typeof config.passes]}
-                  <button
-                    class="dropdown-item"
-                    on:click={() => addSpecificBuffer(bufferName)}
-                  >
-                    {bufferName}
-                  </button>
-                {/if}
-              {/each}
-            </div>
+            {/each}
           </div>
-        {/if}
-      </div>
+        </div>
+      {/if}
+    </div>
 
-      <!-- Tab Content -->
-      <div class="tab-content">
-        {#if activeTabConfig}
-          {#if activeTab === "Image"}
-            <BufferConfig
-              bufferName={activeTab}
-              config={activeTabConfig}
-              onUpdate={(passName, updatedConfig) => {
-                configManager?.updateImagePass(updatedConfig);
-              }}
-              {getWebviewUri}
-              isImagePass={true}
-            />
-          {:else}
-            <BufferConfig
-              bufferName={getActualBufferName(activeTab)}
-              config={activeTabConfig}
-              onUpdate={(bufferName, updatedConfig) => {
-                configManager?.updateBuffer(
-                  bufferName,
-                  updatedConfig as BufferPass,
-                );
-              }}
-              {getWebviewUri}
-            />
-          {/if}
-        {/if}
-      </div>
+    <!-- Tab Content -->
+    <div class="tab-content">
+      {#if activeTab === "Image"}
+        <BufferConfig
+          bufferName={activeTab}
+          config={activeTabConfig}
+          onUpdate={(_passName, updatedConfig) => {
+            configManager?.updateImagePass(updatedConfig);
+          }}
+          {getWebviewUri}
+          isImagePass={true}
+        />
+      {:else}
+        <BufferConfig
+          bufferName={getActualBufferName(activeTab)}
+          config={activeTabConfig}
+          onUpdate={(bufferName, updatedConfig) => {
+            configManager?.updateBuffer(
+              bufferName,
+              updatedConfig as BufferPass,
+            );
+          }}
+          {getWebviewUri}
+          onCreateFile={handleCreateFile}
+          suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
+        />
+      {/if}
     </div>
-  {:else}
-    <div class="loading">
-      <div class="placeholder">
-        <p>No configuration available</p>
-        <p class="hint">Open a shader file to view its configuration</p>
-      </div>
-    </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -219,20 +229,5 @@
 
   .config-panel.visible {
     display: flex;
-  }
-
-  .loading {
-    padding: 20px;
-    text-align: center;
-  }
-
-  .placeholder {
-    color: var(--vscode-descriptionForeground);
-  }
-
-  .hint {
-    font-size: 0.9em;
-    margin-top: 8px;
-    opacity: 0.7;
   }
 </style>

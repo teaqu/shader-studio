@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import type { ShaderConfig } from "@shader-studio/types";
 
 /**
@@ -7,25 +8,24 @@ import type { ShaderConfig } from "@shader-studio/types";
  */
 export class ConfigPathConverter {
   /**
-   * Process a message config to convert absolute texture paths to webview URIs.
+   * Process a message config to add resolved_path (webview URI) alongside original path.
+   * The original path is preserved for display in the UI config panel.
    */
   public static processConfigPaths(
-    message: { type: string; config: ShaderConfig; [key: string]: any },
+    message: { type: string; config: ShaderConfig; path?: string; [key: string]: any },
     webview: vscode.Webview,
     options: { skipVideoProcessing?: boolean } = {}
   ): typeof message {
-    console.log(`ConfigPathConverter: Processing config paths for message type: ${message.type}`);
-    
     // Clone the message to avoid modifying the original
     const processedMessage = JSON.parse(JSON.stringify(message));
     const config = processedMessage.config;
 
     if (!config?.passes) {
-      console.log(`ConfigPathConverter: No passes found in config`);
       return processedMessage;
     }
 
-    console.log(`ConfigPathConverter: Processing ${Object.keys(config.passes).length} passes`);
+    // Use the shader path's directory to resolve relative paths
+    const configDir = processedMessage.path ? path.dirname(processedMessage.path) : '';
 
     // Process all passes in the passes object
     for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
@@ -40,8 +40,12 @@ export class ConfigPathConverter {
           const input = pass.inputs[key as keyof typeof pass.inputs];
           if (input && input.path) {
             if (input.type === "texture" || (input.type === "video" && !options.skipVideoProcessing)) {
-              console.log(`ConfigPathConverter: Found ${input.type} input: ${input.path}`);
-              input.path = this.convertUriForClient(input.path, webview);
+              // Resolve relative path to absolute before converting to webview URI
+              const absolutePath = path.isAbsolute(input.path)
+                ? input.path
+                : path.join(configDir, input.path);
+              // Add resolved_path for rendering, keep original path for UI display
+              input.resolved_path = this.convertUriForClient(absolutePath, webview);
             }
           }
         }
@@ -56,9 +60,7 @@ export class ConfigPathConverter {
    */
   public static convertUriForClient(filePath: string, webview: vscode.Webview): string {
     try {
-      console.log(`ConfigPathConverter: Converting path: ${filePath}`);
       const webviewUri = webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
-      console.log(`ConfigPathConverter: File converted to webview URI: ${webviewUri}`);
       return webviewUri;
     } catch (error) {
       console.error(`ConfigPathConverter: Error converting ${filePath}:`, error);

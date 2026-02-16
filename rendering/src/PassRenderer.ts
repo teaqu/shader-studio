@@ -118,7 +118,8 @@ export class PassRenderer {
       if (input) {
         if (input.type === "texture" && input.path) {
           const imageCache = this.resourceManager.getImageTextureCache();
-          textureBindings[i] = imageCache[input.path] || defaultTexture;
+          // Look up by resolved_path first (webview URI used for loading), then fall back to path
+          textureBindings[i] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
         } else if (input.type === "keyboard") {
           this.resourceManager.updateKeyboardTexture(
             this.keyboardManager.getKeyHeld(),
@@ -132,9 +133,11 @@ export class PassRenderer {
             textureBindings[i] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
           } else if (passBuffers[input.source]) {
             textureBindings[i] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
+          } else {
+            textureBindings[i] = defaultTexture;
           }
         } else if (input.type === "video" && input.path) {
-          textureBindings[i] = this.resourceManager.getVideoTexture(input.path) || defaultTexture;
+          textureBindings[i] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
         }
       }
     }
