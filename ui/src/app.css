@@ -223,6 +223,45 @@ canvas {
   color: var(--vscode-button-foreground);
 }
 
+.menu-bar button.error {
+  color: var(--vscode-errorForeground);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+.menu-bar button.error:hover {
+  background-color: var(--vscode-inputValidation-errorBorder);
+  color: var(--vscode-button-foreground);
+}
+
+.pause-button-container {
+  position: relative;
+  display: inline-block;
+}
+
+.error-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background-color: var(--vscode-inputValidation-errorBackground);
+  color: var(--vscode-errorForeground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  width: max-content;
+  max-width: min(700px, 70vw);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease-in;
+}
+
+.pause-button-container:hover .error-tooltip {
+  opacity: 1;
+}
+
 .error-overlay {
   position: fixed;
   top: 0;

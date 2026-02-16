@@ -12,12 +12,23 @@ export class ShaderStudio {
   private messageHandler!: MessageHandler;
   private shaderLocker!: ShaderLocker;
   private shaderDebugManager: ShaderDebugManager;
+  private onError?: (errors: string[]) => void;
+  private onSuccess?: () => void;
 
-  constructor(transport: Transport, shaderLocker: ShaderLocker, renderingEngine: RenderingEngine, shaderDebugManager: ShaderDebugManager) {
+  constructor(
+    transport: Transport,
+    shaderLocker: ShaderLocker,
+    renderingEngine: RenderingEngine,
+    shaderDebugManager: ShaderDebugManager,
+    onError?: (errors: string[]) => void,
+    onSuccess?: () => void
+  ) {
     this.transport = transport;
     this.shaderLocker = shaderLocker;
     this.renderingEngine = renderingEngine;
     this.shaderDebugManager = shaderDebugManager;
+    this.onError = onError;
+    this.onSuccess = onSuccess;
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -41,6 +52,8 @@ export class ShaderStudio {
         this.renderingEngine,
         this.shaderLocker,
         this.shaderDebugManager,
+        this.onError,
+        this.onSuccess,
       );
 
       const debugMessage: DebugMessage = {

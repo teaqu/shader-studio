@@ -38,6 +38,7 @@
   export let canvasHeight: number = 0;
   export let isLocked: boolean = false;
   export let canvasElement: HTMLCanvasElement | null = null;
+  export let errors: string[] = [];
 
   export let onReset: () => void = () => {};
   export let onRefresh: () => void = () => {};
@@ -54,6 +55,14 @@
   export let debugState: ShaderDebugState | null = null;
   export let isConfigPanelVisible: boolean = false;
   export let onToggleConfigPanel: () => void = () => {};
+
+  $: hasErrors = errors.length > 0;
+  $: errorMessage = hasErrors ? errors.join('\n') : '';
+
+  // Debug logging
+  $: if (errors.length > 0) {
+    console.log('[MenuBar] Errors updated:', errors, 'hasErrors:', hasErrors);
+  }
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -205,13 +214,22 @@
     <button on:click={onReset} aria-label="Reset shader">
       {@html resetIcon}
     </button>
-    <button on:click={onTogglePause} aria-label="Toggle pause">
-      {#if isPaused}
-        {@html playIcon}
-      {:else}
-        {@html pauseIcon}
+    <div class="pause-button-container">
+      <button
+        on:click={onTogglePause}
+        aria-label="Toggle pause"
+        class:error={hasErrors}
+      >
+        {#if isPaused}
+          {@html playIcon}
+        {:else}
+          {@html pauseIcon}
+        {/if}
+      </button>
+      {#if hasErrors}
+        <div class="error-tooltip">{errorMessage}</div>
       {/if}
-    </button>
+    </div>
     <TimeControls {timeManager} {currentTime} />
     <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">

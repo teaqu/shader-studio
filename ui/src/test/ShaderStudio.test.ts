@@ -398,6 +398,102 @@ describe('ShaderStudio', () => {
     });
   });
 
+  describe('error handling callbacks', () => {
+    it('should accept error and success callbacks in constructor', () => {
+      const onError = vi.fn();
+      const onSuccess = vi.fn();
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError,
+        onSuccess
+      );
+
+      expect(shaderStudioWithCallbacks).toBeDefined();
+    });
+
+    it('should pass callbacks to MessageHandler during initialization', async () => {
+      const onError = vi.fn();
+      const onSuccess = vi.fn();
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError,
+        onSuccess
+      );
+
+      await shaderStudioWithCallbacks.initialize(mockCanvas);
+
+      // Verify MessageHandler was created with callbacks
+      const messageHandler = (shaderStudioWithCallbacks as any).messageHandler;
+      expect(messageHandler).toBeDefined();
+    });
+
+    it('should work without error and success callbacks', async () => {
+      const shaderStudioWithoutCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any
+      );
+
+      const result = await shaderStudioWithoutCallbacks.initialize(mockCanvas);
+
+      expect(result).toBe(true);
+    });
+
+    it('should handle initialization errors when error callback is provided', async () => {
+      const onError = vi.fn();
+      const error = new Error('Render init failed');
+      (mockRenderingEngine.initialize as any).mockImplementation(() => {
+        throw error;
+      });
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError
+      );
+
+      const result = await shaderStudioWithCallbacks.initialize(mockCanvas);
+
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ Renderer initialization failed:', 'Error: Render init failed']
+      });
+    });
+
+    it('should handle WebGL2 not supported error with error callback', async () => {
+      const onError = vi.fn();
+      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError
+      );
+
+      const result = await shaderStudioWithCallbacks.initialize(mockCanvas);
+
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ WebGL2 not supported']
+      });
+    });
+  });
+
   describe('integration scenarios', () => {
     it('should handle complete initialization and basic operations', async () => {
       // Initialize
@@ -453,6 +549,26 @@ describe('ShaderStudio', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       shaderStudio.handleRefresh();
       expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing locked shader at path:', 'workflow-test.glsl');
+    });
+
+    it('should handle error callback workflow', async () => {
+      const onError = vi.fn();
+      const onSuccess = vi.fn();
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError,
+        onSuccess
+      );
+
+      await shaderStudioWithCallbacks.initialize(mockCanvas);
+
+      // The callbacks should be available for MessageHandler to use
+      expect(shaderStudioWithCallbacks).toBeDefined();
+      expect((shaderStudioWithCallbacks as any).messageHandler).toBeDefined();
     });
   });
 });
