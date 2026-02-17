@@ -210,9 +210,12 @@ canvas {
 .menu-bar button {
   all: unset;
   cursor: pointer;
-  padding: 0.2rem 0.6rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 4px;
   color: var(--vscode-editor-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .menu-bar button:hover {
