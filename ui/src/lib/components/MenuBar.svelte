@@ -345,7 +345,7 @@
     >
       {@html configIcon}
     </button>
-    <button on:click={handleToggleLock} aria-label="Toggle lock">
+    <button on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked}>
       {#if isLocked}
         {@html lockIcon}
       {:else}
