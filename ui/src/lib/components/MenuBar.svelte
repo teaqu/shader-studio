@@ -321,6 +321,7 @@
   </div>
   <div class="right-group">
     <button
+      class="collapse-inspector"
       on:click={onToggleInspectorEnabled}
       aria-label="Toggle inspector"
       class:active={isInspectorEnabled}
@@ -328,6 +329,7 @@
       {@html inspectorIcon}
     </button>
     <button
+      class="collapse-debug"
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
@@ -338,6 +340,7 @@
       {@html debugIcon}
     </button>
     <button
+      class="collapse-config"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
       class:active={isConfigPanelVisible}
@@ -345,7 +348,7 @@
     >
       {@html configIcon}
     </button>
-    <button on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked}>
+    <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked}>
       {#if isLocked}
         {@html lockIcon}
       {:else}
@@ -362,6 +365,46 @@
       </button>
       {#if showOptionsMenu}
         <div class="options-menu">
+          <button
+            class="options-menu-item show-inspector"
+            on:click={() => { onToggleInspectorEnabled(); showOptionsMenu = false; }}
+            aria-label="Toggle inspector"
+            class:active={isInspectorEnabled}
+          >
+            {@html inspectorIcon}
+            <span>Inspector</span>
+          </button>
+          <button
+            class="options-menu-item show-debug"
+            on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
+            aria-label="Toggle debug mode"
+            class:active={isDebugEnabled}
+          >
+            {@html debugIcon}
+            <span>Debug</span>
+          </button>
+          <button
+            class="options-menu-item show-config"
+            on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}
+            aria-label="Toggle config panel"
+            class:active={isConfigPanelVisible}
+          >
+            {@html configIcon}
+            <span>Config</span>
+          </button>
+          <button
+            class="options-menu-item show-lock"
+            on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
+            aria-label="Toggle lock"
+            class:active={isLocked}
+          >
+            {#if isLocked}
+              {@html lockIcon}
+            {:else}
+              {@html unlockIcon}
+            {/if}
+            <span>{isLocked ? 'Unlock' : 'Lock'}</span>
+          </button>
           <button
             class="options-menu-item"
             on:click={handleRefresh}
