@@ -266,10 +266,15 @@
       }
 
       // Extract config and pathMap from shader source messages
+      // When locked, only accept config from the locked shader's path
       if (event.data.type === 'shaderSource') {
-        currentConfig = event.data.config || null;
-        pathMap = event.data.pathMap || {};
-        shaderPath = event.data.path || "";
+        const locked = shaderStudio.getIsLocked();
+        const lockedPath = shaderStudio.getLockedShaderPath();
+        if (!locked || lockedPath === event.data.path) {
+          currentConfig = event.data.config || null;
+          pathMap = event.data.pathMap || {};
+          shaderPath = event.data.path || "";
+        }
       }
 
       const result = await shaderStudio.handleShaderMessage(event);

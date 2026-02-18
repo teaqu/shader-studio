@@ -114,6 +114,10 @@ export class ShaderStudio {
     return this.shaderLocker.isLocked();
   }
 
+  getLockedShaderPath(): string | undefined {
+    return this.shaderLocker.getLockedShaderPath();
+  }
+
   stopRenderLoop(): void {
     this.renderingEngine.stopRenderLoop();
   }
