@@ -637,6 +637,7 @@ suite('Shader Studio Test Suite', () => {
     });
 
     test('refreshCurrentShader should send error to UI when no GLSL file available', async () => {
+      // No active editor and no last viewed file
       sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
       shaderStudio['glslFileTracker'].setLastViewedGlslFile(null as any);
 

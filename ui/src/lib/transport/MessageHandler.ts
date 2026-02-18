@@ -62,16 +62,6 @@ export class MessageHandler {
         }
       }
 
-      // Update cursor position if provided
-      if (cursorPosition) {
-        const { line, lineContent, filePath } = cursorPosition;
-
-        // If shader is locked, only debug lines from the locked shader
-        if (!this.shaderLocker.isLocked() || this.shaderLocker.getLockedShaderPath() === filePath) {
-          this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
-        }
-      }
-
       if (this.shaderLocker.isLocked()) {
         const lockedPath = this.shaderLocker.getLockedShaderPath();
 
