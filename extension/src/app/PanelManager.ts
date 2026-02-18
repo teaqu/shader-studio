@@ -6,7 +6,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -138,7 +138,8 @@ export class PanelManager {
       }, 150);
     } catch (error) {
       this.logger.error(`Failed to update config: ${error}`);
-      vscode.window.showErrorMessage(`Failed to update shader config: ${error}`);
+      const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to update shader config: ${error}`] };
+      this.messenger.send(errorMsg);
     }
   }
 

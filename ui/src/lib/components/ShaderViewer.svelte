@@ -258,6 +258,13 @@
     if (!initialized) return;
 
     try {
+      // Handle error messages from the extension directly in the UI
+      if (event.data.type === 'error') {
+        const payload = event.data.payload;
+        errors = Array.isArray(payload) ? payload : [payload];
+        return;
+      }
+
       // Extract config and pathMap from shader source messages
       if (event.data.type === 'shaderSource') {
         currentConfig = event.data.config || null;

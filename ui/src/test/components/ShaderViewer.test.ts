@@ -344,4 +344,74 @@ describe('ShaderViewer', () => {
       vi.clearAllMocks();
     }
   });
+
+  it('should show error on pause button when extension sends error message', async () => {
+    const { container } = render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Get the message handler registered via transport.onMessage
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(onMessageCalls.length).toBeGreaterThan(0);
+    const messageHandler = onMessageCalls[0][0];
+
+    // Simulate extension sending an error message
+    await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
+    await tick();
+
+    // The pause button should have the error class
+    const pauseButton = screen.getByLabelText('Toggle pause');
+    expect(pauseButton.classList.contains('error')).toBe(true);
+  });
+
+  it('should display error tooltip when extension sends error message', async () => {
+    const { container } = render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Get the message handler
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    // Simulate extension sending an error message
+    await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
+    await tick();
+
+    // Error tooltip should be visible
+    const tooltip = container.querySelector('.error-tooltip');
+    expect(tooltip).toBeTruthy();
+    expect(tooltip!.textContent).toContain('Missing mainImage function');
+  });
+
+  it('should not echo error messages back to extension', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Get the message handler before clearing mocks
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    // Clear mocks to ignore initialization messages
+    vi.clearAllMocks();
+
+    // Simulate extension sending an error message
+    await messageHandler({ data: { type: 'error', payload: ['Test error'] } });
+    await tick();
+
+    // Should NOT post any message back to the extension
+    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+  });
 });
