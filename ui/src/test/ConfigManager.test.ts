@@ -349,5 +349,28 @@ describe('ConfigManager', () => {
       configManager.setShaderPath('/path/to/shader.glsl');
       expect(configManager.getShaderPath()).toBe('/path/to/shader.glsl');
     });
+
+    it('should include shaderPath in updateConfig messages', () => {
+      configManager.setShaderPath('/path/to/shader.glsl');
+      configManager.updateImagePass({ inputs: {} });
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          shaderPath: '/path/to/shader.glsl'
+        })
+      });
+    });
+
+    it('should include empty shaderPath when not set', () => {
+      configManager.updateImagePass({ inputs: {} });
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          shaderPath: ''
+        })
+      });
+    });
   });
 });

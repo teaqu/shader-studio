@@ -381,7 +381,8 @@ export class ConfigManager {
                 type: 'updateConfig',
                 payload: {
                     config: newConfig,
-                    text: cleanText
+                    text: cleanText,
+                    shaderPath: this.shaderPath
                 }
             });
         } else {

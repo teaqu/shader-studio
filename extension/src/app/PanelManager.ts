@@ -116,16 +116,20 @@ export class PanelManager {
     }
   }
 
-  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string }): Promise<void> {
+  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string; shaderPath?: string }): Promise<void> {
     try {
-      // Find the current shader path from the active or last viewed GLSL file
-      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
-      if (!editor) {
-        this.logger.warn("No active shader to update config for");
-        return;
+      // Use the shader path from the payload (ensures locked shader writes to correct file)
+      // Fall back to active/last viewed editor
+      let shaderPath = payload.shaderPath;
+      if (!shaderPath) {
+        const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+        if (!editor) {
+          this.logger.warn("No active shader to update config for");
+          return;
+        }
+        shaderPath = editor.document.uri.fsPath;
       }
 
-      const shaderPath = editor.document.uri.fsPath;
       const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
 
       // Write the config to file
