@@ -178,6 +178,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.8rem;
   border-top: 1px solid var(--vscode-panel-border);
   height: 30px;
   flex-shrink: 0;
@@ -329,12 +330,14 @@ canvas {
   position: relative;
 }
 
-.resolution-button {
+.menu-bar .resolution-button {
   cursor: pointer;
   background: none;
   border: none;
   padding: 0.2rem 0.6rem;
   border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
   color: var(--vscode-editor-foreground);
   font-size: var(--vscode-font-size, 13px) !important;
   font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
@@ -344,7 +347,7 @@ canvas {
   transition: background-color 0.2s ease;
 }
 
-.resolution-button:hover {
+.menu-bar .resolution-button:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
@@ -580,22 +583,22 @@ canvas {
   display: none !important;
 }
 
-@container (max-width: 540px) {
+@container (max-width: 570px) {
   .collapse-lock { display: none !important; }
   .show-lock { display: flex !important; }
 }
 
-@container (max-width: 480px) {
+@container (max-width: 510px) {
   .collapse-config { display: none !important; }
   .show-config { display: flex !important; }
 }
 
-@container (max-width: 420px) {
+@container (max-width: 450px) {
   .collapse-debug { display: none !important; }
   .show-debug { display: flex !important; }
 }
 
-@container (max-width: 360px) {
+@container (max-width: 390px) {
   .collapse-inspector { display: none !important; }
   .show-inspector { display: flex !important; }
 }
