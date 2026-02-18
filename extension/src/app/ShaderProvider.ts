@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
+import * as path from "path";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import { isGlslDocument } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
-import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
+import { ConfigPathConverter } from "./transport/ConfigPathConverter";
+import type { ShaderConfig, ShaderSourceMessage, ErrorMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
   private logger = Logger.getInstance();
@@ -45,9 +47,11 @@ export class ShaderProvider {
 
     // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
-      vscode.window.showWarningMessage(
-        "GLSL file ignored: missing mainImage function.",
-      );
+      const errorMsg: ErrorMessage = {
+        type: "error",
+        payload: ["Missing mainImage function"],
+      };
+      this.messenger.send(errorMsg);
       return;
     }
 
@@ -63,6 +67,9 @@ export class ShaderProvider {
       `Sending ${Object.keys(buffers).length} buffer(s)`,
     );
 
+    // Build path map for resource URIs
+    const pathMap = this.buildPathMap(config, shaderPath);
+
     const message: ShaderSourceMessage = {
       type: "shaderSource",
       code,
@@ -70,6 +77,7 @@ export class ShaderProvider {
       path: shaderPath,
       buffers,
       forceCleanup: options?.forceCleanup,
+      pathMap,
     };
 
     // Only include cursor position if debug mode is enabled
@@ -110,9 +118,11 @@ export class ShaderProvider {
 
       // Ignore GLSL files that do not contain mainImage
       if (!code.includes("mainImage")) {
-        vscode.window.showWarningMessage(
-          "GLSL file ignored: missing mainImage function.",
-        );
+        const errorMsg: ErrorMessage = {
+          type: "error",
+          payload: ["Missing mainImage function"],
+        };
+        this.messenger.send(errorMsg);
         return;
       }
 
@@ -128,6 +138,9 @@ export class ShaderProvider {
         `Sending ${Object.keys(buffers).length} buffer(s)`,
       );
 
+      // Build path map for resource URIs
+      const pathMap = this.buildPathMap(config, shaderPath);
+
       const message: ShaderSourceMessage = {
         type: "shaderSource",
         code,
@@ -135,6 +148,7 @@ export class ShaderProvider {
         path: shaderPath,
         buffers,
         forceCleanup: options?.forceCleanup,
+        pathMap,
       };
 
       this.messenger.send(message);
@@ -149,6 +163,53 @@ export class ShaderProvider {
    */
   public removeActiveShader(shaderPath: string): void {
     this.activeShaders.delete(shaderPath);
+  }
+
+  /**
+   * Build a path map for converting resource paths to webview URIs
+   */
+  private buildPathMap(config: ShaderConfig | null, shaderPath: string): Record<string, string> {
+    const pathMap: Record<string, string> = {};
+
+    if (!config) {
+      return pathMap;
+    }
+
+    try {
+      const configDir = path.dirname(shaderPath);
+      const webview = this.messenger.getWebview();
+
+      if (!webview) {
+        return pathMap;
+      }
+
+      // Collect all texture/video paths and convert them
+      for (const passName of Object.keys(config.passes || {})) {
+        const pass = config.passes[passName as keyof typeof config.passes];
+        if (pass && typeof pass === 'object' && 'inputs' in pass) {
+          const inputs = pass.inputs;
+          if (inputs) {
+            for (const key of Object.keys(inputs)) {
+              const input = inputs[key as keyof typeof inputs];
+              if (input && typeof input === 'object' && 'path' in input && input.path) {
+                const originalPath = input.path as string;
+                // Resolve relative path to absolute
+                const absolutePath = path.isAbsolute(originalPath)
+                  ? originalPath
+                  : path.join(configDir, originalPath);
+                // Convert to webview URI
+                const webviewUri = ConfigPathConverter.convertUriForClient(absolutePath, webview);
+                pathMap[originalPath] = webviewUri;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to build path map: ${error}`);
+    }
+
+    return pathMap;
   }
 
   /**
@@ -197,12 +258,16 @@ export class ShaderProvider {
             imageCode = buffers.Image || "";
           }
 
+          // Build path map for resource URIs
+          const pathMap = this.buildPathMap(config, activeShaderPath);
+
           const message: ShaderSourceMessage = {
             type: "shaderSource",
             code: imageCode,
             config,
             path: activeShaderPath,
             buffers,
+            pathMap,
           };
 
           this.messenger.send(message);

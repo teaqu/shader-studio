@@ -209,8 +209,9 @@ suite('WebviewTransport Test Suite', () => {
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
         
         assert.strictEqual(sentMessage.type, 'shaderSource');
-        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockUri.toString());
-        
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockUri.toString());
+
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
@@ -295,8 +296,10 @@ suite('WebviewTransport Test Suite', () => {
         transport.send(message);
         
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockUri1.toString());
-        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockUri2.toString());
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/texture1.png');
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockUri1.toString());
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, '/path/to/texture2.jpg');
+        assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockUri2.toString());
     });
 
     suite('handleVideoPaths', () => {
@@ -339,7 +342,8 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockVideoUri.toString());
         });
 
         test('should convert supported video format (.webm) to webview URI', () => {
@@ -367,7 +371,8 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video.webm');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockVideoUri.toString());
         });
 
         test('should skip video if file does not exist', () => {
@@ -393,9 +398,9 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            // ConfigPathConverter will still convert the path even if file doesn't exist
-            // The file existence check is now handled by localResourceRoots logic
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, 'file:///mock/uri');
+            // Path is preserved, resolved_path has the webview URI
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/nonexistent.mp4');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, 'file:///mock/uri');
         });
 
         test('should add video directory to localResourceRoots', () => {
@@ -422,10 +427,9 @@ suite('WebviewTransport Test Suite', () => {
             
             transport.send(message);
             
-            // ConfigPathConverter now handles video path conversion to webview URIs
-            // localResourceRoots is only updated for non-webview URIs, so it remains empty
-            // This is expected behavior since webview URIs don't need localResourceRoots
-            assert.strictEqual((mockWebview.options.localResourceRoots || []).length, 0);
+            // Video path is preserved as the original path, so its directory
+            // gets added to localResourceRoots for webview access
+            assert.strictEqual((mockWebview.options.localResourceRoots || []).length, 1);
         });
 
         test('should handle multiple video inputs', () => {
@@ -458,9 +462,11 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            // ConfigPathConverter will convert both paths
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockVideoUri1.toString());
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockVideoUri2.toString());
+            // Path is preserved, resolved_path has the webview URI
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video1.mp4');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockVideoUri1.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, '/path/to/video2.mp4');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockVideoUri2.toString());
         });
 
         test('should handle mixed texture and video inputs', () => {
@@ -493,9 +499,11 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            // ConfigPathConverter will convert both paths
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, mockTextureUri.toString());
-            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, mockVideoUri.toString());
+            // Path is preserved, resolved_path has the webview URI
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockTextureUri.toString());
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, '/path/to/video.mp4');
+            assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockVideoUri.toString());
         });
 
         test('should handle video inputs in buffer passes', () => {
@@ -525,7 +533,8 @@ suite('WebviewTransport Test Suite', () => {
             transport.send(message);
             
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-            assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.path, mockVideoUri.toString());
+            assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.path, '/path/to/video.mp4');
+            assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.resolved_path, mockVideoUri.toString());
         });
     });
 });

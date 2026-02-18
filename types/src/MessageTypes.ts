@@ -52,6 +52,7 @@ export interface ShaderSourceMessage extends BaseMessage {
   path: string;
   buffers: Record<string, string>;
   forceCleanup?: boolean;
+  pathMap?: Record<string, string>;
   cursorPosition?: {
     line: number;
     character: number;
@@ -70,6 +71,14 @@ export interface CursorPositionMessage extends BaseMessage {
   };
 }
 
+export interface UpdateConfigMessage extends BaseMessage {
+  type: "updateConfig";
+  payload: {
+    config: any;
+    text: string;
+  };
+}
+
 export interface DebugModeStateMessage extends BaseMessage {
   type: "debugModeState";
   payload: {
@@ -77,4 +86,4 @@ export interface DebugModeStateMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | DebugModeStateMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage;

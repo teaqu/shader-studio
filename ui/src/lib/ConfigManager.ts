@@ -1,85 +1,86 @@
-import type { ShaderConfig, BufferPass, ImagePass } from './types/ShaderConfig';
+import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
+import type { Transport } from './transport/MessageTransport';
 
-export class ConfigEditor {
+export class ConfigManager {
     private config: ShaderConfig | null = null;
     private pathMap: Record<string, string> = {};
-    private vsCodeApi: any = null;
-    private onConfigUpdate?: (config: ShaderConfig | null) => void;
-    private onError?: (error: string | null) => void;
+    private transport: Transport | null = null;
+    private onConfigChange?: (config: ShaderConfig) => void;
+    private shaderPath: string = "";
 
     constructor(
-        onConfigUpdate?: (config: ShaderConfig | null) => void,
-        onError?: (error: string | null) => void
+        transport: Transport,
+        onConfigChange?: (config: ShaderConfig) => void
     ) {
-        this.onConfigUpdate = onConfigUpdate;
-        this.onError = onError;
+        this.transport = transport;
+        this.onConfigChange = onConfigChange;
     }
 
     /**
-     * Initialize the config editor with VS Code API
+     * Set the current configuration
      */
-    initialize(): void {
-        // Initialize VS Code API if available
-        if (typeof (window as any).acquireVsCodeApi !== 'undefined') {
-            this.vsCodeApi = (window as any).acquireVsCodeApi();
-        }
-
-        // Listen for config updates from VS Code
-        window.addEventListener('message', (event) => {
-            this.handleMessage(event.data);
-        });
+    public setConfig(config: ShaderConfig | null): void {
+        this.config = config;
     }
 
     /**
-     * Handle messages from VS Code
+     * Create a minimal default configuration
      */
-    private handleMessage(message: any): void {
-        switch (message.type) {
-            case 'update':
-                if (message.pathMap) {
-                    this.pathMap = message.pathMap;
+    private createDefaultConfig(): ShaderConfig {
+        return {
+            version: "1.0",
+            passes: {
+                Image: {
+                    inputs: {}
                 }
-                this.parseAndUpdateConfig(message.text);
-                break;
-            case 'error':
-                console.error('Error from VS Code:', message.text);
-                this.setError(message.text);
-                this.setConfig(null);
-                break;
+            }
+        };
+    }
+
+    /**
+     * Ensure config exists, creating a default one if needed
+     */
+    private ensureConfig(): void {
+        if (!this.config) {
+            this.config = this.createDefaultConfig();
         }
     }
 
     /**
-     * Parse config text and update internal state
+     * Set the shader file path (used for generating buffer filenames)
      */
-    private parseAndUpdateConfig(text: string): void {
-        try {
-            const trimmedText = text.trim();
-            if (trimmedText) {
-                const parsedConfig = JSON.parse(trimmedText);
-                console.log('Parsed config from VS Code:', parsedConfig);
-                this.setConfig(parsedConfig);
-                this.setError(null);
-            } else {
-                // Initialize with default config structure
-                const defaultConfig: ShaderConfig = {
-                    version: "1.0",
-                    passes: {
-                        Image: {
-                            inputs: {}
-                        }
-                    }
-                };
-                console.log('Using default config');
-                this.setConfig(defaultConfig);
-                this.setError(null);
-            }
-        } catch (e) {
-            const errorMessage = `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`;
-            console.error('Config parse error:', errorMessage);
-            this.setError(errorMessage);
-            this.setConfig(null);
-        }
+    public setShaderPath(shaderPath: string): void {
+        this.shaderPath = shaderPath;
+    }
+
+    /**
+     * Get the shader file path
+     */
+    public getShaderPath(): string {
+        return this.shaderPath;
+    }
+
+    /**
+     * Generate a buffer file path based on the current shader name
+     * e.g., myshader.glsl → myshader.buffera.glsl
+     */
+    public generateBufferPath(bufferName: string): string {
+        if (!this.shaderPath) return '';
+
+        // Extract just the filename without path
+        const parts = this.shaderPath.replace(/\\/g, '/').split('/');
+        const filename = parts[parts.length - 1];
+        const baseName = filename.replace(/\.glsl$/, '');
+
+        const suffix = bufferName.toLowerCase();
+        return `${baseName}.${suffix}.glsl`;
+    }
+
+    /**
+     * Set the path map for resolving resource URIs
+     */
+    public setPathMap(pathMap: Record<string, string>): void {
+        this.pathMap = pathMap;
     }
 
     /**
@@ -134,15 +135,16 @@ export class ConfigEditor {
      * Add a specific buffer to the configuration
      */
     addSpecificBuffer(bufferName: string): boolean {
-        if (!this.config) return false;
+        // Ensure config exists (create default if null)
+        this.ensureConfig();
 
         // Check if buffer already exists
-        if (this.config.passes[bufferName as keyof typeof this.config.passes]) return false;
+        if (this.config!.passes[bufferName as keyof typeof this.config.passes]) return false;
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 [bufferName]: {
                     path: '',
                     inputs: {}
@@ -151,6 +153,20 @@ export class ConfigEditor {
         };
         this.updateConfig(updatedConfig);
         return true;
+    }
+
+    /**
+     * Send a message to the extension to create a buffer file
+     */
+    createBufferFile(bufferName: string, filePath: string): void {
+        if (!this.transport) return;
+        this.transport.postMessage({
+            type: 'createBufferFile',
+            payload: {
+                bufferName,
+                filePath
+            }
+        });
     }
 
     /**
@@ -197,12 +213,12 @@ export class ConfigEditor {
      * Update an entire buffer configuration
      */
     updateBuffer(bufferName: string, bufferConfig: BufferPass): boolean {
-        if (!this.config) return false;
+        this.ensureConfig();
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 [bufferName]: bufferConfig
             }
         };
@@ -214,12 +230,12 @@ export class ConfigEditor {
      * Update the Image pass configuration
      */
     updateImagePass(imageConfig: ImagePass): boolean {
-        if (!this.config) return false;
+        this.ensureConfig();
 
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 Image: imageConfig
             }
         };
@@ -245,19 +261,22 @@ export class ConfigEditor {
      * Add a common buffer pass to the configuration
      */
     public addCommonBuffer(): boolean {
-        if (!this.config || !this.config.passes.common) {
-            if (!this.config) return false;
-            
-            this.config.passes.common = {
-                path: "common.glsl"
-                // No inputs for common buffer
-            };
-            
-            // Trigger UI update
-            this.updateConfig(this.config);
-            return true;
+        // Ensure config exists (create default if null)
+        this.ensureConfig();
+
+        // Check if common buffer already exists
+        if (this.config!.passes.common) {
+            return false; // Already exists
         }
-        return false; // Already exists
+
+        this.config!.passes.common = {
+            path: ''
+            // No inputs for common buffer
+        };
+
+        // Trigger UI update
+        this.updateConfig(this.config!);
+        return true;
     }
 
     getBufferList(): string[] {
@@ -339,41 +358,35 @@ export class ConfigEditor {
     }
 
     /**
-     * Update the configuration and notify VS Code
+     * Update the configuration and notify via transport
      */
     private updateConfig(newConfig: ShaderConfig): void {
         console.log('Updating config:', newConfig);
-        this.setConfig(newConfig);
+        this.config = newConfig;
 
-        // Send update back to VS Code
-        if (this.vsCodeApi) {
-            console.log('Sending updateConfig message to VS Code');
-            this.vsCodeApi.postMessage({
+        // Notify change callback
+        if (this.onConfigChange) {
+            this.onConfigChange(newConfig);
+        }
+
+        // Send update back via transport
+        if (this.transport) {
+            console.log('Sending updateConfig message via transport');
+            // Strip resolved_path from config before saving - it's only for rendering
+            const cleanText = JSON.stringify(newConfig, (key, value) => {
+                if (key === 'resolved_path') return undefined;
+                return value;
+            }, 2);
+            this.transport.postMessage({
                 type: 'updateConfig',
-                config: newConfig,
-                text: JSON.stringify(newConfig, null, 2)
+                payload: {
+                    config: newConfig,
+                    text: cleanText,
+                    shaderPath: this.shaderPath
+                }
             });
         } else {
-            console.warn('VS Code API not available');
-        }
-    }
-
-    /**
-     * Set the configuration and notify listeners
-     */
-    private setConfig(config: ShaderConfig | null): void {
-        this.config = config;
-        if (this.onConfigUpdate) {
-            this.onConfigUpdate(config);
-        }
-    }
-
-    /**
-     * Set error state and notify listeners
-     */
-    private setError(error: string | null): void {
-        if (this.onError) {
-            this.onError(error);
+            console.warn('Transport not available');
         }
     }
 

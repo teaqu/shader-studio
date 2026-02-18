@@ -11,16 +11,16 @@ import type {
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
 import { ShaderDebugManager } from '../ShaderDebugManager';
+import { ShaderProcessor, type CompilationResult } from '../ShaderProcessor';
 
 export class MessageHandler {
   private renderEngine: RenderingEngine;
   private shaderLocker: ShaderLocker;
   private transport: Transport;
   private bufferUpdater: BufferUpdater;
-  private isHandlingMessage = false;
+  private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
   private shaderDebugManager: ShaderDebugManager;
-  private originalShaderCode: string | null = null;
 
   constructor(
     transport: Transport,
@@ -33,21 +33,33 @@ export class MessageHandler {
     this.shaderLocker = shaderLocker;
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
     this.shaderDebugManager = shaderDebugManager;
+
+    this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
   }
 
   public getLastEvent(): MessageEvent | null {
     return this.lastEvent;
   }
 
-  public handleShaderMessage(
+  public async handleShaderMessage(
     event: MessageEvent,
-  ): void {
+  ): Promise<CompilationResult | undefined> {
     try {
       const message = event.data as ShaderSourceMessage;
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
 
       if (!this.isValidShaderMessage(type)) {
-        return;
+        return undefined;
+      }
+
+      // Update cursor position if provided
+      if (cursorPosition) {
+        const { line, lineContent, filePath } = cursorPosition;
+
+        // If shader is locked, only debug lines from the locked shader
+        if (!this.shaderLocker.isLocked() || this.shaderLocker.getLockedShaderPath() === filePath) {
+          this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+        }
       }
 
       // Update cursor position if provided
@@ -66,31 +78,34 @@ export class MessageHandler {
         if (lockedPath === undefined || lockedPath !== path) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
-            return;
+            return undefined;
           }
 
           // Check if this is a common buffer file update
           if (this.isCommonBufferFile(path)) {
             // For common buffer files, we need special handling since they don't have mainImage
-            this.handleCommonBufferUpdate(path, buffers, code);
-            return;
+            return await this.handleCommonBufferUpdate(path, buffers, code);
           }
 
           const bufferUpdateResult = this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
-          return;
+          return undefined;
         }
       }
 
-      this.processMainShaderCompilation(message, event);
+      return await this.processMainShaderCompilation(message, event);
 
     } catch (err) {
-    this.handleFatalError(err, event);
+      this.handleFatalError(err, event);
+      return {
+        success: false,
+        error: `Fatal error: ${err}`
+      };
     }
   }
 
   private isValidShaderMessage(type: string): boolean {
-    return type === "shaderSource" && !this.isHandlingMessage;
+    return type === "shaderSource" && !this.shaderProcessor.isCurrentlyProcessing();
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
@@ -100,156 +115,63 @@ export class MessageHandler {
   private isCommonBufferFile(filePath: string): boolean {
     // Check if the file path indicates this is a common buffer file
     const filename = filePath.split(/[\\/]/).pop();
-    
+
     if (!filename) {
       return false;
     }
-    
+
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
     const isCommon = nameWithoutExt.toLowerCase() === 'common';
-    
+
     // Also check if the path contains 'common' as a fallback
     const pathContainsCommon = filePath.toLowerCase().includes('common');
-    
+
     return isCommon || pathContainsCommon;
   }
 
-  private handleCommonBufferUpdate(path: string, buffers: Record<string, string>, code: string): void {
+  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, code: string): Promise<CompilationResult> {
     // For common buffer updates when shader is locked, we need to refresh the locked shader
     // to pick up the new common buffer content, not update the common buffer directly
-    try {
-      const lockedPath = this.shaderLocker.getLockedShaderPath();
-      if (lockedPath) {
-        // Request a refresh of the locked shader to pick up the new common buffer content
-        this.refresh(lockedPath);
-        return;
-      }
-      
-      // If no locked shader, fall back to direct common buffer update
-      this.renderEngine.stopRenderLoop();
-      
-      this.renderEngine.updateBufferAndRecompile('common', code)
-        .then(result => {
-          if (!result?.success) {
-            const errorMessage: ErrorMessage = {
-              type: "error",
-              payload: [result?.error || "Unknown compilation error"],
-            };
-            this.transport.postMessage(errorMessage);
-            return;
-          }
-          
-          this.renderEngine.startRenderLoop();
-          
-          // Send success message to clear previous errors
-          const logMessage: LogMessage = {
-            type: "log",
-            payload: [`Common buffer updated and pipeline recompiled`],
-          };
-          this.transport.postMessage(logMessage);
-        })
-        .catch(err => {
-          console.error("MessageHandler: Error in handleCommonBufferUpdate:", err);
-          
-          // Try to send error message, but don't throw if this fails too
-          try {
-            const errorMessage: ErrorMessage = {
-              type: "error",
-              payload: [`Common buffer update error: ${err}`],
-            };
-            this.transport.postMessage(errorMessage);
-          } catch (transportErr) {
-            console.error(
-              "MessageHandler: Failed to send error message:",
-              transportErr,
-            );
-          }
-        });
-    } catch (err) {
-      console.error("MessageHandler: Fatal error in handleCommonBufferUpdate:", err);
+    const lockedPath = this.shaderLocker.getLockedShaderPath();
+    if (lockedPath) {
+      // Request a refresh of the locked shader to pick up the new common buffer content
+      this.refresh(lockedPath);
+      return { success: true };
     }
+
+    // If no locked shader, delegate to shader processor
+    const result = await this.shaderProcessor.processCommonBufferUpdate(code);
+    this.handleCompilationResult(result);
+    return result;
   }
 
-  private processMainShaderCompilation(
+  private async processMainShaderCompilation(
     message: ShaderSourceMessage,
     event: MessageEvent
-  ): void {
-    const { code, config, path, buffers, forceCleanup } = message;
-
-    this.isHandlingMessage = true;
+  ): Promise<CompilationResult> {
     this.lastEvent = event;
 
-    // Store original shader code
-    this.originalShaderCode = code;
+    // Delegate to shader processor
+    const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false);
+    this.handleCompilationResult(result);
+    return result;
+  }
 
-    this.renderEngine.stopRenderLoop();
-
-    // If forceCleanup is requested (e.g., from refresh/config change), cleanup first
-    if (forceCleanup) {
-      this.cleanup();
-    }
-
-    // Determine which code to compile (original or debug-modified)
-    let codeToCompile = code;
-    const debugState = this.shaderDebugManager.getState();
-
-    if (debugState.isActive && debugState.currentLine !== null) {
-      const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
-        code,
-        debugState.currentLine,
-      );
-
-      if (modifiedCode) {
-        codeToCompile = modifiedCode;
-      }
-    }
-
-    this.renderEngine.compileShaderPipeline(
-      codeToCompile,
-      config,
-      path,
-      buffers,
-    ).then(result => {
-      if (!result?.success) {
-        // If debug mode compilation failed, fall back to original
-        if (codeToCompile !== code) {
-          return this.renderEngine.compileShaderPipeline(code, config, path, buffers)
-            .then(fallbackResult => {
-              if (!fallbackResult?.success) {
-                this.sendErrorMessage(fallbackResult?.error || "Unknown compilation error");
-                return;
-              }
-
-              if (fallbackResult.warnings && fallbackResult.warnings.length > 0) {
-                for (const warning of fallbackResult.warnings) {
-                  this.sendWarningMessage(warning);
-                }
-              }
-
-              this.renderEngine.startRenderLoop();
-              this.sendSuccessMessages();
-            });
-        }
-
-        this.sendErrorMessage(result?.error || "Unknown compilation error");
-        return;
-      }
-
-      // Send any warnings (e.g., video loading failures)
+  private handleCompilationResult(result: { success: boolean; error?: string; warnings?: string[] }): void {
+    if (result.success) {
+      // Send warnings first if any
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
           this.sendWarningMessage(warning);
         }
       }
 
-      this.renderEngine.startRenderLoop();
+      // Then send success
       this.sendSuccessMessages();
-    }).catch(err => {
-      console.error("MessageHandler: Error in processMainShaderCompilation:", err);
-      this.sendErrorMessage(`Shader compilation error: ${err}`);
-    }).finally(() => {
-      this.isHandlingMessage = false;
-    });
+    } else {
+      // Send error
+      this.sendErrorMessage(result.error || "Unknown compilation error");
+    }
   }
 
   private sendErrorMessage(error: string): void {
@@ -284,8 +206,6 @@ export class MessageHandler {
       err instanceof Error ? err.stack : "No stack",
     );
     console.error("MessageHandler: Event data:", event.data);
-
-    this.isHandlingMessage = false;
 
     // Try to send error message, but don't throw if this fails too
     try {
@@ -348,89 +268,24 @@ export class MessageHandler {
     this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
 
     // If debug mode is active, recompile shader
-    if (this.shaderDebugManager.getState().isActive && this.originalShaderCode && this.lastEvent) {
-      this.recompileWithDebugMode();
+    if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getOriginalShaderCode() && this.lastEvent) {
+      this.debugCompile();
     }
   }
 
   public triggerDebugRecompile(): void {
-    this.recompileWithDebugMode();
+    this.debugCompile();
   }
 
-  private recompileWithDebugMode(): void {
-    if (!this.originalShaderCode || !this.lastEvent) {
-      return;
+  private async debugCompile(): Promise<CompilationResult | undefined> {
+    if (!this.shaderProcessor.getOriginalShaderCode() || !this.lastEvent) {
+      return undefined;
     }
 
     const message = this.lastEvent.data as ShaderSourceMessage;
-    const debugState = this.shaderDebugManager.getState();
-
-    if (!debugState.isActive) {
-      // Debug mode disabled, use original code
-      this.compileShaderCode(this.originalShaderCode, message, false);
-      return;
-    }
-
-    // Modify shader for debugging
-    const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
-      this.originalShaderCode,
-      debugState.currentLine!,
-    );
-
-    if (modifiedCode) {
-      // Try to compile modified shader
-      this.compileShaderCode(modifiedCode, message, true);
-    } else {
-      // Modification failed, fall back to original
-      this.compileShaderCode(this.originalShaderCode, message, false);
-    }
-  }
-
-  private compileShaderCode(code: string, message: ShaderSourceMessage, isDebugMode: boolean): void {
-    // Store original code
-    if (!isDebugMode) {
-      this.originalShaderCode = code;
-    }
-
-    const { config, path, buffers } = message;
-
-    this.renderEngine.stopRenderLoop();
-
-    this.renderEngine.compileShaderPipeline(
-      code,
-      config,
-      path,
-      buffers,
-    ).then(result => {
-      if (!result?.success) {
-        // Compilation failed
-        if (isDebugMode && this.originalShaderCode) {
-          // Fall back to original shader
-          this.compileShaderCode(this.originalShaderCode, message, false);
-        } else {
-          this.sendErrorMessage(result?.error || "Unknown compilation error");
-        }
-        return;
-      }
-
-      // Send any warnings (e.g., video loading failures)
-      if (result.warnings && result.warnings.length > 0) {
-        for (const warning of result.warnings) {
-          this.sendWarningMessage(warning);
-        }
-      }
-
-      this.renderEngine.startRenderLoop();
-      this.sendSuccessMessages();
-    }).catch(err => {
-      console.error("MessageHandler: Error in compileShaderCode:", err);
-      if (isDebugMode && this.originalShaderCode) {
-        // Fall back to original shader
-        this.compileShaderCode(this.originalShaderCode, message, false);
-      } else {
-        this.sendErrorMessage(`Shader compilation error: ${err}`);
-      }
-    });
+    const result = await this.shaderProcessor.debugCompile(message);
+    this.handleCompilationResult(result);
+    return result;
   }
 
   public refresh(path?: string): void {

@@ -6,6 +6,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -94,12 +95,86 @@ export class PanelManager {
       );
     }
 
+    // Handle messages from webview
+    panel.webview.onDidReceiveMessage((message) => {
+      this.handleWebviewMessage(message, panel);
+    });
+
     panel.onDidDispose(() => {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
     });
 
     this.logger.info("Webview panel created");
+  }
+
+  private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
+    if (message.type === 'updateConfig') {
+      await this.handleConfigUpdate(message.payload);
+    } else if (message.type === 'createBufferFile') {
+      await this.handleCreateBufferFile(message.payload);
+    }
+  }
+
+  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string; shaderPath?: string }): Promise<void> {
+    try {
+      // Use the shader path from the payload (ensures locked shader writes to correct file)
+      // Fall back to active/last viewed editor
+      let shaderPath = payload.shaderPath;
+      if (!shaderPath) {
+        const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+        if (!editor) {
+          this.logger.warn("No active shader to update config for");
+          return;
+        }
+        shaderPath = editor.document.uri.fsPath;
+      }
+
+      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+
+      // Write the config to file
+      fs.writeFileSync(configPath, payload.text, 'utf-8');
+      this.logger.info(`Config updated: ${configPath}`);
+
+      // Trigger shader refresh
+      setTimeout(() => {
+        this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+      }, 150);
+    } catch (error) {
+      this.logger.error(`Failed to update config: ${error}`);
+      const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to update shader config: ${error}`] };
+      this.messenger.send(errorMsg);
+    }
+  }
+
+  private async handleCreateBufferFile(payload: { bufferName: string; filePath: string }): Promise<void> {
+    try {
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        this.logger.warn("No active shader to create buffer file for");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const shaderDir = path.dirname(shaderPath);
+      const bufferFilePath = path.join(shaderDir, payload.filePath);
+
+      // Only create if file doesn't exist
+      if (!fs.existsSync(bufferFilePath)) {
+        let template: string;
+        if (payload.bufferName === 'common') {
+          template = `// Common functions shared across all passes\n`;
+        } else {
+          template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
+        }
+        fs.writeFileSync(bufferFilePath, template, 'utf-8');
+        this.logger.info(`Created buffer file: ${bufferFilePath}`);
+      } else {
+        this.logger.info(`Buffer file already exists: ${bufferFilePath}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create buffer file: ${error}`);
+    }
   }
 
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {

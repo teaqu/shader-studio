@@ -17,14 +17,12 @@
     "build:types": "npm run build -w types",
     "build:extension": "npm run build:types && npm run build -w extension",
     "build:ui": "npm run build:types && npm run build -w ui",
-    "build:config-ui": "npm run build:types && npm run build -w config-ui",
     "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",
     "compile:extension": "npm run compile -w extension",
     "dev:ui": "npm run dev -w ui",
     "dev:shader-explorer": "npm run dev -w shader-explorer",
-    "dev:config-ui": "npm run dev -w config-ui",
     "test": "npm run test --workspaces --if-present",
-    "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist config-ui/node_modules config-ui/dist types/node_modules types/dist",
+    "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist types/node_modules types/dist",
     "watch:extension": "npm run watch -w extension"
   },
   "devDependencies": {

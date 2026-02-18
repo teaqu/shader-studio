@@ -75,8 +75,10 @@ suite('ConfigPathConverter Test Suite', () => {
         );
         
         assert.strictEqual(processedMessage.type, 'shaderSource');
-        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
-        
+        // Path should be preserved, resolved_path should have webview URI
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/texture.png');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
         // Original should not be mutated
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
@@ -152,8 +154,10 @@ suite('ConfigPathConverter Test Suite', () => {
             mockWebview
         );
         
-        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockUri1.toString());
-        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, mockUri2.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/texture1.png');
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri1.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, '/absolute/path/to/texture2.png');
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockUri2.toString());
     });
 
     test('processConfigPaths processes multiple passes', () => {
@@ -191,8 +195,10 @@ suite('ConfigPathConverter Test Suite', () => {
             mockWebview
         );
         
-        assert.strictEqual((result.config.passes.BufferA?.inputs as any).iChannel0.path, mockUri.toString());
-        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
+        assert.strictEqual((result.config.passes.BufferA?.inputs as any).iChannel0.path, '/absolute/path/to/texture.png');
+        assert.strictEqual((result.config.passes.BufferA?.inputs as any).iChannel0.resolved_path, mockUri.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/texture.png');
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
     });
 
     test('processConfigPaths handles non-texture inputs', () => {
@@ -251,8 +257,10 @@ suite('ConfigPathConverter Test Suite', () => {
         );
         
         assert.strictEqual(processedMessage.type, 'shaderSource');
-        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, mockUri.toString());
-        
+        // Path should be preserved, resolved_path should have webview URI
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/video.mp4');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
         // Original should not be mutated
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/video.mp4');
     });
@@ -294,8 +302,10 @@ suite('ConfigPathConverter Test Suite', () => {
             mockWebview
         );
         
-        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, mockTextureUri.toString());
-        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, mockVideoUri.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/texture.png');
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.resolved_path, mockTextureUri.toString());
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.path, '/absolute/path/to/video.mp4');
+        assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockVideoUri.toString());
     });
 
     test('processConfigPaths handles video input with additional properties', () => {
@@ -329,7 +339,8 @@ suite('ConfigPathConverter Test Suite', () => {
         );
         
         const input = (result.config.passes.Image.inputs as any).iChannel0;
-        assert.strictEqual(input.path, mockUri.toString());
+        assert.strictEqual(input.path, '/absolute/path/to/video.mp4');
+        assert.strictEqual(input.resolved_path, mockUri.toString());
         assert.strictEqual(input.type, 'video');
         assert.strictEqual(input.filter, 'linear');
         assert.strictEqual(input.wrap, 'clamp');

@@ -153,27 +153,50 @@ describe("TextureCache", () => {
       expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(texture2);
     });
 
-    it("should destroy default texture", () => {
+    it("should preserve default texture during cleanup", () => {
       const defaultTexture = textureCache.getDefaultTexture();
-      
+
       textureCache.cleanup();
-      
-      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(defaultTexture);
+
+      expect(textureCache.getDefaultTexture()).toBe(defaultTexture);
     });
 
     it("should clear cache after cleanup", () => {
       const mockTexture = createMockTexture();
       textureCache.cacheTexture("image.jpg", mockTexture);
-      
+
       textureCache.cleanup();
-      
+
       const cache = textureCache.getImageTextureCache();
       expect(cache).toEqual({});
     });
+  });
 
-    it("should set default texture to null after cleanup", () => {
-      textureCache.cleanup();
-      
+  describe("dispose", () => {
+    it("should destroy all cached textures", () => {
+      const texture1 = createMockTexture();
+      const texture2 = createMockTexture();
+
+      textureCache.cacheTexture("image1.jpg", texture1);
+      textureCache.cacheTexture("image2.jpg", texture2);
+
+      textureCache.dispose();
+
+      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(texture1);
+      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(texture2);
+    });
+
+    it("should destroy default texture", () => {
+      const defaultTexture = textureCache.getDefaultTexture();
+
+      textureCache.dispose();
+
+      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(defaultTexture);
+    });
+
+    it("should set default texture to null after dispose", () => {
+      textureCache.dispose();
+
       expect(textureCache.getDefaultTexture()).toBeNull();
     });
   });

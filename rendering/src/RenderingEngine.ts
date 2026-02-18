@@ -111,7 +111,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   ): Promise<CompilationResult | undefined> {
     // Save the config for later use
     this.currentConfig = config;
-    
+
     // Validate config before processing
     if (config) {
       const validation = ConfigValidator.validateConfig(config);

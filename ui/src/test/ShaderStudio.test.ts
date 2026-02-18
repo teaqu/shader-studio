@@ -398,6 +398,43 @@ describe('ShaderStudio', () => {
     });
   });
 
+  describe('initialization', () => {
+    it('should successfully initialize', async () => {
+      const result = await shaderStudio.initialize(mockCanvas);
+
+      expect(result).toBe(true);
+      const messageHandler = (shaderStudio as any).messageHandler;
+      expect(messageHandler).toBeDefined();
+    });
+
+    it('should handle initialization errors', async () => {
+      const error = new Error('Render init failed');
+      (mockRenderingEngine.initialize as any).mockImplementation(() => {
+        throw error;
+      });
+
+      const result = await shaderStudio.initialize(mockCanvas);
+
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ Renderer initialization failed:', 'Error: Render init failed']
+      });
+    });
+
+    it('should handle WebGL2 not supported error', async () => {
+      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
+
+      const result = await shaderStudio.initialize(mockCanvas);
+
+      expect(result).toBe(false);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['❌ WebGL2 not supported']
+      });
+    });
+  });
+
   describe('integration scenarios', () => {
     it('should handle complete initialization and basic operations', async () => {
       // Initialize
@@ -453,6 +490,26 @@ describe('ShaderStudio', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       shaderStudio.handleRefresh();
       expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing locked shader at path:', 'workflow-test.glsl');
+    });
+
+    it('should handle error callback workflow', async () => {
+      const onError = vi.fn();
+      const onSuccess = vi.fn();
+
+      const shaderStudioWithCallbacks = new ShaderStudio(
+        mockTransport,
+        mockShaderLocker,
+        mockRenderingEngine,
+        undefined as any,
+        onError,
+        onSuccess
+      );
+
+      await shaderStudioWithCallbacks.initialize(mockCanvas);
+
+      // The callbacks should be available for MessageHandler to use
+      expect(shaderStudioWithCallbacks).toBeDefined();
+      expect((shaderStudioWithCallbacks as any).messageHandler).toBeDefined();
     });
   });
 });
