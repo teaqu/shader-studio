@@ -6,7 +6,7 @@ import { Logger } from "./services/Logger";
 import { isGlslDocument } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
-import type { ShaderConfig, ShaderSourceMessage } from "@shader-studio/types";
+import type { ShaderConfig, ShaderSourceMessage, ErrorMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
   private logger = Logger.getInstance();
@@ -47,9 +47,11 @@ export class ShaderProvider {
 
     // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
-      vscode.window.showWarningMessage(
-        "GLSL file ignored: missing mainImage function.",
-      );
+      const errorMsg: ErrorMessage = {
+        type: "error",
+        payload: ["Missing mainImage function"],
+      };
+      this.messenger.send(errorMsg);
       return;
     }
 
@@ -116,9 +118,11 @@ export class ShaderProvider {
 
       // Ignore GLSL files that do not contain mainImage
       if (!code.includes("mainImage")) {
-        vscode.window.showWarningMessage(
-          "GLSL file ignored: missing mainImage function.",
-        );
+        const errorMsg: ErrorMessage = {
+          type: "error",
+          payload: ["Missing mainImage function"],
+        };
+        this.messenger.send(errorMsg);
         return;
       }
 

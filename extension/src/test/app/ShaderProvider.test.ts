@@ -422,7 +422,27 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.cursorPosition.lineContent, line3Text);
         });
 
-        test('should show warning for GLSL files without mainImage', () => {
+        test('should send error to UI for GLSL files without mainImage', () => {
+            const shaderPath = '/path/to/shader.glsl';
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns('void someFunction() {}'),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl'
+                }
+            };
+
+            provider.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.calledOnce(sendSpy);
+            sinon.assert.calledWith(sendSpy, {
+                type: 'error',
+                payload: ['Missing mainImage function']
+            });
+        });
+
+        test('should not show VS Code warning for GLSL files without mainImage', () => {
             const shaderPath = '/path/to/shader.glsl';
 
             const mockEditor = {
@@ -437,9 +457,7 @@ suite('ShaderProvider Test Suite', () => {
 
             provider.sendShaderToWebview(mockEditor as any);
 
-            sinon.assert.calledOnce(showWarningStub);
-            sinon.assert.calledWith(showWarningStub, "GLSL file ignored: missing mainImage function.");
-            sinon.assert.notCalled(sendSpy);
+            sinon.assert.notCalled(showWarningStub);
         });
     });
 
@@ -502,6 +520,36 @@ suite('ShaderProvider Test Suite', () => {
             const message = sendSpy.firstCall.args[0];
             assert.strictEqual(message.type, 'shaderSource');
             assert.strictEqual(message.forceCleanup, undefined);
+        });
+
+        test('should send error to UI for files without mainImage', async () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void someFunction() {}');
+
+            await provider.sendShaderFromPath(shaderPath);
+
+            sinon.assert.calledOnce(sendSpy);
+            sinon.assert.calledWith(sendSpy, {
+                type: 'error',
+                payload: ['Missing mainImage function']
+            });
+        });
+
+        test('should not show VS Code warning for files without mainImage', async () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void someFunction() {}');
+
+            const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
+
+            await provider.sendShaderFromPath(shaderPath);
+
+            sinon.assert.notCalled(showWarningStub);
         });
     });
 });

@@ -13,7 +13,7 @@ import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
-import type { CursorPositionMessage } from "@shader-studio/types";
+import type { CursorPositionMessage, ErrorMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -404,9 +404,8 @@ export class ShaderStudio {
         this.logger.warn(
           "No active GLSL editor and no last viewed file to refresh",
         );
-        vscode.window.showWarningMessage(
-          "No GLSL file to refresh. Open a .glsl file first.",
-        );
+        const errorMsg: ErrorMessage = { type: "error", payload: ["No GLSL file to refresh. Open a .glsl file first."] };
+        this.messenger.send(errorMsg);
       }
     }
   }
@@ -417,9 +416,8 @@ export class ShaderStudio {
     try {
       if (!fs.existsSync(shaderPath)) {
         this.logger.warn(`Shader file not found at path: ${shaderPath}`);
-        vscode.window.showWarningMessage(
-          `Shader file not found: ${shaderPath}`,
-        );
+        const errorMsg: ErrorMessage = { type: "error", payload: [`Shader file not found: ${shaderPath}`] };
+        this.messenger.send(errorMsg);
         return;
       }
 
@@ -431,9 +429,8 @@ export class ShaderStudio {
       this.logger.error(
         `Failed to refresh shader at path '${shaderPath}': ${error}`,
       );
-      vscode.window.showErrorMessage(
-        `Failed to refresh shader at '${shaderPath}': ${error}`,
-      );
+      const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to refresh shader: ${error}`] };
+      this.messenger.send(errorMsg);
     }
   }
 
