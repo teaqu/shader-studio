@@ -521,20 +521,23 @@ canvas {
   background-color: var(--vscode-notifications-background);
   border: 1px solid var(--vscode-notifications-border);
   border-radius: 6px;
-  padding: 0.5rem 0;
-  width: fit-content;
+  padding: 0.5rem 0.4rem;
   min-width: 160px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1001;
   animation: options-menu-appear 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
 }
 
-.options-menu-item {
+.menu-bar .options-menu-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
   width: 100%;
-  padding: 0.6rem 1rem;
+  padding: 0.5rem 0.6rem;
+  box-sizing: border-box;
+  border-radius: 4px;
   background: none;
   border: none;
   color: var(--vscode-editor-foreground);
@@ -545,16 +548,16 @@ canvas {
   transition: background-color 0.2s ease;
 }
 
-.options-menu-item:hover {
+.menu-bar .options-menu-item:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
-.options-menu-item.active {
+.menu-bar .options-menu-item.active {
   background-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
 }
 
-.options-menu-item span {
+.menu-bar .options-menu-item span {
   flex: 1;
 }
 
