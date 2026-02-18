@@ -36,6 +36,7 @@ suite('PanelManager Test Suite', () => {
         } as any;
 
         mockMessenger = {
+            send: sandbox.stub(),
             addTransport: sandbox.stub().returns(undefined),
             removeTransport: sandbox.stub().returns(undefined),
             getErrorHandler: sandbox.stub().returns({
@@ -336,15 +337,124 @@ suite('PanelManager Test Suite', () => {
         test('should handle malformed HTML gracefully', () => {
             const malformedHtml = '<body>Just some content</body>';
             readFileSyncStub.returns(malformedHtml);
-            
+
             panelManager.createPanel();
 
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
-            
+
             // Should fallback to prepending CSP
             assert.ok(html.includes('<head>'), 'Should add head tag as fallback');
             assert.ok(html.includes('Content-Security-Policy'), 'Should add CSP as fallback');
+        });
+    });
+
+    suite('handleConfigUpdate error handling', () => {
+        test('should send error to UI when config update fails', async () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/path/to/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+
+            // Make glslFileTracker return an editor
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            // Make writeFileSync throw
+            sandbox.stub(fs, 'writeFileSync').throws(new Error('Write failed'));
+
+            await (panelManager as any).handleConfigUpdate({ config: {}, text: '{}' });
+
+            sinon.assert.calledOnce(mockMessenger.send as sinon.SinonStub);
+            const message = (mockMessenger.send as sinon.SinonStub).firstCall.args[0];
+            assert.strictEqual(message.type, 'error');
+            assert.ok(message.payload[0].includes('Failed to update shader config'));
+        });
+
+        test('should not show VS Code error when config update fails', async () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/path/to/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            sandbox.stub(fs, 'writeFileSync').throws(new Error('Write failed'));
+
+            const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
+
+            await (panelManager as any).handleConfigUpdate({ config: {}, text: '{}' });
+
+            sinon.assert.notCalled(showErrorStub);
+        });
+
+        test('should use shaderPath from payload when provided', async () => {
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            // Don't set up any active editor - the payload path should be used instead
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}',
+                shaderPath: '/locked/shader.glsl'
+            });
+
+            sinon.assert.calledOnce(writeStub);
+            const writtenPath = writeStub.firstCall.args[0];
+            assert.strictEqual(writtenPath, '/locked/shader.sha.json');
+        });
+
+        test('should fall back to active editor when no shaderPath in payload', async () => {
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/active/editor.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}'
+            });
+
+            sinon.assert.calledOnce(writeStub);
+            const writtenPath = writeStub.firstCall.args[0];
+            assert.strictEqual(writtenPath, '/active/editor.sha.json');
+        });
+
+        test('should refresh the correct shader after config update with payload path', async () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}',
+                shaderPath: '/locked/shader.glsl'
+            });
+
+            // Advance past the 150ms setTimeout
+            clock.tick(200);
+
+            sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
+            const refreshedPath = (mockShaderProvider as any).sendShaderFromPath.firstCall.args[0];
+            assert.strictEqual(refreshedPath, '/locked/shader.glsl');
+
+            clock.restore();
         });
     });
 });

@@ -4,6 +4,7 @@ import { MessageHandler } from "./transport/MessageHandler";
 import type { Transport } from "./transport/MessageTransport";
 import type { ErrorMessage, DebugMessage } from "@shader-studio/types";
 import { ShaderDebugManager } from "./ShaderDebugManager";
+import type { CompilationResult } from "./ShaderProcessor";
 
 export class ShaderStudio {
   private transport: Transport;
@@ -13,7 +14,12 @@ export class ShaderStudio {
   private shaderLocker!: ShaderLocker;
   private shaderDebugManager: ShaderDebugManager;
 
-  constructor(transport: Transport, shaderLocker: ShaderLocker, renderingEngine: RenderingEngine, shaderDebugManager: ShaderDebugManager) {
+  constructor(
+    transport: Transport,
+    shaderLocker: ShaderLocker,
+    renderingEngine: RenderingEngine,
+    shaderDebugManager: ShaderDebugManager
+  ) {
     this.transport = transport;
     this.shaderLocker = shaderLocker;
     this.renderingEngine = renderingEngine;
@@ -40,7 +46,7 @@ export class ShaderStudio {
         this.transport,
         this.renderingEngine,
         this.shaderLocker,
-        this.shaderDebugManager,
+        this.shaderDebugManager
       );
 
       const debugMessage: DebugMessage = {
@@ -68,10 +74,10 @@ export class ShaderStudio {
     this.renderingEngine.handleCanvasResize(width, height);
   }
 
-  handleShaderMessage(
+  async handleShaderMessage(
     event: MessageEvent,
-  ): void {
-    this.messageHandler.handleShaderMessage(event);
+  ): Promise<CompilationResult | undefined> {
+    return await this.messageHandler.handleShaderMessage(event);
   }
 
   handleReset(onComplete?: () => void): void {
@@ -106,6 +112,10 @@ export class ShaderStudio {
 
   getIsLocked(): boolean {
     return this.shaderLocker.isLocked();
+  }
+
+  getLockedShaderPath(): string | undefined {
+    return this.shaderLocker.getLockedShaderPath();
   }
 
   stopRenderLoop(): void {

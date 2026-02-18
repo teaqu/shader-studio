@@ -426,6 +426,83 @@ describe("PassRenderer", () => {
       );
     });
 
+    it("should look up texture by resolved_path when available", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "canvas.png", resolved_path: "https://webview-uri/canvas.png" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockImageTexture = createMockTexture(256, 256);
+
+      // Texture is cached under the resolved_path key (webview URI)
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "https://webview-uri/canvas.png": mockImageTexture
+      });
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      // Should bind the texture found via resolved_path, not the default
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        mockImageTexture,
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture()
+      );
+    });
+
+    it("should fall back to path when resolved_path is not in cache", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "/absolute/texture.png", resolved_path: "https://missing-uri" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockImageTexture = createMockTexture(128, 128);
+
+      // Texture is cached under the original path (resolved_path not in cache)
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "/absolute/texture.png": mockImageTexture
+      });
+
+      const uniforms = {
+        res: [800, 600, 1],
+        time: 1.0,
+        timeDelta: 0.016,
+        frameRate: 60,
+        mouse: [0, 0, 0, 0],
+        frame: 1,
+        date: [2023, 1, 1, 0]
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.AttachTextures).toHaveBeenCalledWith(
+        4,
+        mockImageTexture,
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture(),
+        mockResourceManager.getDefaultTexture()
+      );
+    });
+
     it("should not call getVideoTexture when video input has no path", () => {
       const passConfig: Pass = {
         name: "TestPass",

@@ -139,4 +139,9 @@ export class WebviewTransport implements MessageTransport {
   public hasActiveClients(): boolean {
     return this.panels.size > 0;
   }
+
+  public getWebview(): vscode.Webview | null {
+    const firstPanel = this.panels.values().next().value;
+    return firstPanel?.webview ?? null;
+  }
 }

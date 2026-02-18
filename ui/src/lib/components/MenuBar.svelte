@@ -38,6 +38,7 @@
   export let canvasHeight: number = 0;
   export let isLocked: boolean = false;
   export let canvasElement: HTMLCanvasElement | null = null;
+  export let errors: string[] = [];
 
   export let onReset: () => void = () => {};
   export let onRefresh: () => void = () => {};
@@ -52,6 +53,16 @@
   export let isDebugEnabled: boolean = false;
   export let onToggleDebugEnabled: () => void = () => {};
   export let debugState: ShaderDebugState | null = null;
+  export let isConfigPanelVisible: boolean = false;
+  export let onToggleConfigPanel: () => void = () => {};
+
+  $: hasErrors = errors.length > 0;
+  $: errorMessage = hasErrors ? errors.join('\n') : '';
+
+  // Debug logging
+  $: if (errors.length > 0) {
+    console.log('[MenuBar] Errors updated:', errors, 'hasErrors:', hasErrors);
+  }
 
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
@@ -203,15 +214,24 @@
     <button on:click={onReset} aria-label="Reset shader">
       {@html resetIcon}
     </button>
-    <button on:click={onTogglePause} aria-label="Toggle pause">
-      {#if isPaused}
-        {@html playIcon}
-      {:else}
-        {@html pauseIcon}
+    <div class="pause-button-container">
+      <button
+        on:click={onTogglePause}
+        aria-label="Toggle pause"
+        class:error={hasErrors}
+      >
+        {#if isPaused}
+          {@html playIcon}
+        {:else}
+          {@html pauseIcon}
+        {/if}
+      </button>
+      {#if hasErrors}
+        <div class="error-tooltip">{errorMessage}</div>
       {/if}
-    </button>
+    </div>
     <TimeControls {timeManager} {currentTime} />
-    <div class="menu-title fixed-width">{currentFPS.toFixed(1)} FPS</div>
+    <div class="menu-title fps-display">{currentFPS.toFixed(1)} FPS</div>
     <div class="resolution-menu-container">
       <button
         class="menu-title resolution-button"
@@ -301,6 +321,7 @@
   </div>
   <div class="right-group">
     <button
+      class="collapse-inspector"
       on:click={onToggleInspectorEnabled}
       aria-label="Toggle inspector"
       class:active={isInspectorEnabled}
@@ -308,6 +329,7 @@
       {@html inspectorIcon}
     </button>
     <button
+      class="collapse-debug"
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
@@ -317,7 +339,16 @@
     >
       {@html debugIcon}
     </button>
-    <button on:click={handleToggleLock} aria-label="Toggle lock">
+    <button
+      class="collapse-config"
+      on:click={onToggleConfigPanel}
+      aria-label="Toggle config panel"
+      class:active={isConfigPanelVisible}
+      title="Toggle shader configuration panel"
+    >
+      {@html configIcon}
+    </button>
+    <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked}>
       {#if isLocked}
         {@html lockIcon}
       {:else}
@@ -335,20 +366,52 @@
       {#if showOptionsMenu}
         <div class="options-menu">
           <button
+            class="options-menu-item show-inspector"
+            on:click={() => { onToggleInspectorEnabled(); showOptionsMenu = false; }}
+            aria-label="Toggle inspector"
+            class:active={isInspectorEnabled}
+          >
+            {@html inspectorIcon}
+            <span>Inspector</span>
+          </button>
+          <button
+            class="options-menu-item show-debug"
+            on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
+            aria-label="Toggle debug mode"
+            class:active={isDebugEnabled}
+          >
+            {@html debugIcon}
+            <span>Debug</span>
+          </button>
+          <button
+            class="options-menu-item show-config"
+            on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}
+            aria-label="Toggle config panel"
+            class:active={isConfigPanelVisible}
+          >
+            {@html configIcon}
+            <span>Config</span>
+          </button>
+          <button
+            class="options-menu-item show-lock"
+            on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
+            aria-label="Toggle lock"
+            class:active={isLocked}
+          >
+            {#if isLocked}
+              {@html lockIcon}
+            {:else}
+              {@html unlockIcon}
+            {/if}
+            <span>{isLocked ? 'Unlock' : 'Lock'}</span>
+          </button>
+          <button
             class="options-menu-item"
             on:click={handleRefresh}
             aria-label="Refresh shader"
           >
             {@html refreshIcon}
             <span>Refresh</span>
-          </button>
-          <button
-            class="options-menu-item"
-            on:click={handleConfig}
-            aria-label="Open shader config"
-          >
-            {@html configIcon}
-            <span>Config</span>
           </button>
           {#if showThemeButton}
             <button

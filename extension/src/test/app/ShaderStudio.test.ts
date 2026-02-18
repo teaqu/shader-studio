@@ -628,4 +628,88 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.calledOnce(messengerSendSpy);
     });
   });
+
+  suite('error messages sent to UI', () => {
+    let messengerSendSpy: sinon.SinonSpy;
+
+    setup(() => {
+      messengerSendSpy = sandbox.spy(shaderStudio['messenger'], 'send');
+    });
+
+    test('refreshCurrentShader should send error to UI when no GLSL file available', async () => {
+      sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      shaderStudio['glslFileTracker'].setLastViewedGlslFile(null as any);
+
+      await shaderStudio['refreshCurrentShader']();
+
+      const errorCall = messengerSendSpy.getCalls().find(
+        (call: sinon.SinonSpyCall) => call.args[0].type === 'error'
+      );
+      assert.ok(errorCall, 'Should send error message to UI');
+      assert.deepStrictEqual(errorCall!.args[0].payload, ['No GLSL file to refresh. Open a .glsl file first.']);
+    });
+
+    test('refreshCurrentShader should not show VS Code warning when no GLSL file available', async () => {
+      sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      shaderStudio['glslFileTracker'].setLastViewedGlslFile(null as any);
+
+      const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
+
+      await shaderStudio['refreshCurrentShader']();
+
+      sinon.assert.notCalled(showWarningStub);
+    });
+
+    test('refreshSpecificShaderByPath should send error to UI when file not found', async () => {
+      const fs = require('fs');
+      fs.existsSync.returns(false);
+
+      await shaderStudio['refreshSpecificShaderByPath']('/nonexistent/shader.glsl');
+
+      const errorCall = messengerSendSpy.getCalls().find(
+        (call: sinon.SinonSpyCall) => call.args[0].type === 'error'
+      );
+      assert.ok(errorCall, 'Should send error message to UI');
+      assert.ok(errorCall!.args[0].payload[0].includes('Shader file not found'));
+    });
+
+    test('refreshSpecificShaderByPath should not show VS Code warning when file not found', async () => {
+      const fs = require('fs');
+      fs.existsSync.returns(false);
+
+      const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
+
+      await shaderStudio['refreshSpecificShaderByPath']('/nonexistent/shader.glsl');
+
+      sinon.assert.notCalled(showWarningStub);
+    });
+
+    test('refreshSpecificShaderByPath should send error to UI on exception', async () => {
+      const fs = require('fs');
+      fs.existsSync.returns(true);
+
+      sandbox.stub(shaderStudio['shaderProvider'], 'sendShaderFromPath').rejects(new Error('Test error'));
+
+      await shaderStudio['refreshSpecificShaderByPath']('/path/to/shader.glsl');
+
+      const errorCall = messengerSendSpy.getCalls().find(
+        (call: sinon.SinonSpyCall) => call.args[0].type === 'error'
+      );
+      assert.ok(errorCall, 'Should send error message to UI');
+      assert.ok(errorCall!.args[0].payload[0].includes('Failed to refresh shader'));
+    });
+
+    test('refreshSpecificShaderByPath should not show VS Code error on exception', async () => {
+      const fs = require('fs');
+      fs.existsSync.returns(true);
+
+      sandbox.stub(shaderStudio['shaderProvider'], 'sendShaderFromPath').rejects(new Error('Test error'));
+
+      const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
+
+      await shaderStudio['refreshSpecificShaderByPath']('/path/to/shader.glsl');
+
+      sinon.assert.notCalled(showErrorStub);
+    });
+  });
 });

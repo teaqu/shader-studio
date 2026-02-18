@@ -4,7 +4,6 @@ export class BufferConfig {
   private bufferName: string;
   private config: BufferPass | ImagePass;
   private onUpdate?: (bufferName: string, config: BufferPass | ImagePass) => void;
-
   constructor(
     bufferName: string,
     config: BufferPass | ImagePass,
@@ -206,17 +205,6 @@ export class BufferConfig {
   validate(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Only validate path for BufferPass (not ImagePass)
-    if ('path' in this.config) {
-      if (!this.config.path || this.config.path.trim() === '') {
-        errors.push('Shader file path is required');
-      }
-
-      if (this.config.path && !this.config.path.endsWith('.glsl')) {
-        errors.push('Shader file should have .glsl extension');
-      }
-    }
-
     // Validate input channels
     if (this.config.inputs) {
       for (const [channelName, input] of Object.entries(this.config.inputs)) {
@@ -253,8 +241,8 @@ export class BufferConfig {
 
   private validateBufferInput(input: any): boolean {
     const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-    return input.source && 
-           validSources.includes(input.source) && 
+    return input.source &&
+           validSources.includes(input.source) &&
            input.source !== 'common';
   }
 

@@ -10,12 +10,16 @@
   import ErrorDisplay from "./ErrorDisplay.svelte";
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
+  import ConfigPanel from "./config/ConfigPanel.svelte";
+  import ResizeHandle from "./ResizeHandle.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import type { PixelInspectorState } from "../types/PixelInspectorState";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
+  import { configPanelStore } from "../stores/configPanelStore";
+  import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -25,7 +29,6 @@
   let initialized = false;
   let isLocked = false;
   let errors: string[] = [];
-  let showErrors = false;
   let currentFPS = 0;
   let canvasWidth = 0;
   let canvasHeight = 0;
@@ -53,6 +56,22 @@
     filePath: null,
     isActive: false,
   };
+
+  // Config panel state
+  let configPanelVisible = false;
+  let splitRatio = 0.6;
+  let currentConfig: ShaderConfig | null = null;
+  let pathMap: Record<string, string> = {};
+  let shaderPath: string = "";
+
+  // Subscribe to config panel store
+  onMount(() => {
+    const unsubscribe = configPanelStore.subscribe((state) => {
+      configPanelVisible = state.isVisible;
+      splitRatio = state.splitRatio;
+    });
+    return unsubscribe;
+  });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     glCanvas = canvas;
@@ -157,6 +176,14 @@
     shaderStudio.triggerDebugRecompile();
   }
 
+  function handleToggleConfigPanel() {
+    configPanelStore.toggle();
+  }
+
+  function handleSplitResize(ratio: number) {
+    configPanelStore.setSplitRatio(ratio);
+  }
+
   function handleCanvasClick() {
     if (!pixelInspectorManager) return;
     pixelInspectorManager.handleCanvasClick();
@@ -168,7 +195,6 @@
   }
 
   function handleErrorDismiss() {
-    showErrors = false;
     errors = [];
   }
 
@@ -184,7 +210,12 @@
         debugState = state;
       });
 
-      shaderStudio = new ShaderStudio(transport, shadderLocker, renderingEngine, shaderDebugManager);
+      shaderStudio = new ShaderStudio(
+        transport,
+        shadderLocker,
+        renderingEngine,
+        shaderDebugManager
+      );
 
       const success = await shaderStudio.initialize(glCanvas);
       if (!success) {
@@ -223,11 +254,40 @@
     }
   }
 
-  function handleShaderMessage(event: MessageEvent) {
+  async function handleShaderMessage(event: MessageEvent) {
     if (!initialized) return;
 
     try {
-      shaderStudio.handleShaderMessage(event);
+      // Handle error messages from the extension directly in the UI
+      if (event.data.type === 'error') {
+        const payload = event.data.payload;
+        errors = Array.isArray(payload) ? payload : [payload];
+        return;
+      }
+
+      // Extract config and pathMap from shader source messages
+      // When locked, only accept config from the locked shader's path
+      if (event.data.type === 'shaderSource') {
+        const locked = shaderStudio.getIsLocked();
+        const lockedPath = shaderStudio.getLockedShaderPath();
+        if (!locked || lockedPath === event.data.path) {
+          currentConfig = event.data.config || null;
+          pathMap = event.data.pathMap || {};
+          shaderPath = event.data.path || "";
+        }
+      }
+
+      const result = await shaderStudio.handleShaderMessage(event);
+
+      // Update errors state based on compilation result
+      if (result) {
+        if (result.success) {
+          errors = [];
+        } else {
+          errors = result.error ? [result.error] : [];
+        }
+      }
+
       // Update the UI lock state to reflect the current state
       isLocked = shaderStudio.getIsLocked();
     } catch (err) {
@@ -244,7 +304,6 @@
 
   function addError(message: string) {
     errors = [...errors, message];
-    showErrors = true;
     if (transport) {
       transport.postMessage({ type: "error", payload: [message] });
     }
@@ -274,13 +333,15 @@
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <ShaderCanvas
-    {zoomLevel}
-    isInspectorActive={inspectorState.isActive}
-    onCanvasReady={handleCanvasReady}
-    onCanvasResize={handleCanvasResize}
-    onCanvasClick={handleCanvasClick}
-  />
+  <div class="canvas-section" style="flex: {configPanelVisible ? splitRatio : 1}">
+    <ShaderCanvas
+      {zoomLevel}
+      isInspectorActive={inspectorState.isActive}
+      onCanvasReady={handleCanvasReady}
+      onCanvasResize={handleCanvasResize}
+      onCanvasClick={handleCanvasClick}
+    />
+  </div>
   {#if initialized}
     <MenuBar
       {timeManager}
@@ -288,6 +349,7 @@
       {canvasWidth}
       {canvasHeight}
       {isLocked}
+      {errors}
       isInspectorEnabled={inspectorState.isEnabled}
       canvasElement={glCanvas}
       onReset={handleReset}
@@ -302,13 +364,22 @@
       isDebugEnabled={debugState.isEnabled}
       onToggleDebugEnabled={handleToggleDebugEnabled}
       {debugState}
+      isConfigPanelVisible={configPanelVisible}
+      onToggleConfigPanel={handleToggleConfigPanel}
     />
   {/if}
-  <ErrorDisplay
-    {errors}
-    isVisible={showErrors}
-    onDismiss={handleErrorDismiss}
-  />
+  {#if configPanelVisible}
+    <ResizeHandle onResize={handleSplitResize} />
+    <div class="config-section" style="flex: {1 - splitRatio}">
+      <ConfigPanel
+        config={currentConfig}
+        {pathMap}
+        {transport}
+        {shaderPath}
+        isVisible={configPanelVisible}
+      />
+    </div>
+  {/if}
   <PixelInspector
     isActive={inspectorState.isActive}
     isLocked={inspectorState.isLocked}
