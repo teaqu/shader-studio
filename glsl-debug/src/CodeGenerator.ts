@@ -22,39 +22,148 @@ export class CodeGenerator {
     }
   }
 
-  static removeControlFlowKeywords(lines: string[], mainImageStart: number): string[] {
+  /**
+   * Counts unmatched opening braces after functionStart and appends
+   * the right number of closing braces. Keeps all lines intact.
+   */
+  static closeOpenBraces(lines: string[], functionStart: number): string[] {
+    const result = [...lines];
+    let braceDepth = 0;
+
+    for (let i = functionStart; i < lines.length; i++) {
+      for (const char of lines[i]) {
+        if (char === '{') braceDepth++;
+        if (char === '}') braceDepth--;
+      }
+    }
+
+    // Append closing braces to balance
+    for (let i = 0; i < braceDepth; i++) {
+      result.push('}');
+    }
+
+    return result;
+  }
+
+  /**
+   * Finds for/while loops after functionStart and injects iteration capping.
+   * Only injects capping code for loops in the loopMaxIterations map.
+   * Loops not in the map are left unmodified (unlimited).
+   */
+  static capLoopIterations(
+    lines: string[],
+    functionStart: number,
+    loopMaxIterations: Map<number, number>,
+  ): string[] {
+    if (loopMaxIterations.size === 0) {
+      return [...lines];
+    }
+
     const result: string[] = [];
+    let loopIndex = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Special handling for 'for' loops - extract initialization and run body once
-      const forLoopMatch = line.match(/^\s*for\s*\(\s*(.+?)\s*;\s*.+?\s*;\s*.+?\s*\)\s*\{?\s*$/);
-      if (forLoopMatch && i >= mainImageStart) {
-        const initialization = forLoopMatch[1].trim();
-        const indent = line.match(/^(\s*)/)?.[1] || '';
-        result.push(`${indent}${initialization};  // Loop init (first iteration only)`);
-        continue;
-      }
+      if (i > functionStart) {
+        const isForLoop = /^\s*for\s*\(/.test(line);
+        const isWhileLoop = /^\s*while\s*\(/.test(line);
 
-      // Skip lines that are only control flow statements (if, else, while)
-      const isControlFlow = /^\s*(if|else|while)\s*[\(\{]/.test(line) ||
-                           /^\s*\}\s*else\s*\{?\s*$/.test(line);
+        if (isForLoop || isWhileLoop) {
+          const maxIter = loopMaxIterations.get(loopIndex);
 
-      if (isControlFlow && i >= mainImageStart) {
-        continue;
-      }
+          if (maxIter !== undefined) {
+            const indent = line.match(/^(\s*)/)?.[1] || '';
+            const bodyIndent = indent + '  ';
 
-      // Remove closing braces that would close control flow blocks
-      const trimmed = line.trim();
-      if (trimmed === '}' && i >= mainImageStart && i < lines.length - 1) {
-        continue;
+            // Insert counter declaration before the loop
+            result.push(`${indent}int _dbgIter${loopIndex} = 0;`);
+            result.push(line);
+
+            // Find the opening brace (same line or next)
+            const hasBraceOnSameLine = line.includes('{');
+            if (!hasBraceOnSameLine) {
+              // Look for brace on next line
+              if (i + 1 < lines.length && lines[i + 1].trim() === '{') {
+                i++;
+                result.push(lines[i]);
+              }
+            }
+
+            // Insert break condition as first statement in loop body
+            result.push(`${bodyIndent}if (++_dbgIter${loopIndex} > ${maxIter}) break;`);
+          } else {
+            result.push(line);
+          }
+
+          loopIndex++;
+          continue;
+        }
       }
 
       result.push(line);
     }
 
     return result;
+  }
+
+  /**
+   * Inserts a shadow variable when the debug line is inside a containing loop.
+   * Declares `{type} _dbgShadow;` before the outermost containing loop,
+   * and inserts `_dbgShadow = {varName};` after the debug line.
+   * Returns the modified lines and the shadow variable name (or null if no shadow needed).
+   */
+  static insertShadowVariable(
+    lines: string[],
+    debugLineIndex: number,
+    varInfo: VarInfo,
+    containingLoops: { lineNumber: number }[],
+  ): { lines: string[]; shadowVarName: string | null } {
+    if (containingLoops.length === 0) {
+      return { lines: [...lines], shadowVarName: null };
+    }
+
+    const shadowVarName = '_dbgShadow';
+    const outermostLoopLine = containingLoops[0].lineNumber;
+    const result: string[] = [];
+
+    // Find the outermost loop line index within the provided lines array.
+    // The lineNumber in containingLoops is an absolute line number from the original source,
+    // but we need to find it within the given lines array.
+    let outermostLoopIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      // Match by content — find the loop header line
+      const line = lines[i];
+      const isForLoop = /^\s*for\s*\(/.test(line);
+      const isWhileLoop = /^\s*while\s*\(/.test(line);
+      if ((isForLoop || isWhileLoop) && i <= debugLineIndex) {
+        // Check if this is the outermost loop by checking if it's at the right position
+        // We scan from the start, and the first loop we find at or before the debug line
+        // that matches should be the outermost
+        if (outermostLoopIndex === -1) {
+          outermostLoopIndex = i;
+        }
+      }
+    }
+
+    if (outermostLoopIndex === -1) {
+      return { lines: [...lines], shadowVarName: null };
+    }
+
+    const indent = lines[outermostLoopIndex].match(/^(\s*)/)?.[1] || '  ';
+    const debugIndent = lines[debugLineIndex]?.match(/^(\s*)/)?.[1] || '    ';
+
+    for (let i = 0; i < lines.length; i++) {
+      if (i === outermostLoopIndex) {
+        result.push(`${indent}${varInfo.type} ${shadowVarName};`);
+      }
+      result.push(lines[i]);
+      if (i === debugLineIndex) {
+        result.push(`${debugIndent}${shadowVarName} = ${varInfo.name};`);
+      }
+    }
+
+    return { lines: result, shadowVarName };
   }
 
   static generateDefaultParameters(
@@ -142,15 +251,25 @@ export class CodeGenerator {
     lines: string[],
     functionInfo: FunctionInfo,
     debugLine: number,
-    varInfo: VarInfo
+    varInfo: VarInfo,
+    containingLoops: { lineNumber: number; endLine: number }[] = [],
+    loopMaxIterations: Map<number, number> = new Map(),
   ): string {
     const helperFunctions: string[] = [];
     for (let i = 0; i < functionInfo.start; i++) {
       helperFunctions.push(lines[i]);
     }
 
+    // Determine truncation end: outermost loop endLine or debug line
+    let truncationEnd: number;
+    if (containingLoops.length > 0) {
+      truncationEnd = containingLoops[0].endLine;
+    } else {
+      truncationEnd = debugLine;
+    }
+
     const functionLines = [];
-    for (let i = functionInfo.start; i <= debugLine; i++) {
+    for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
       if (i === functionInfo.start) {
@@ -169,29 +288,36 @@ export class CodeGenerator {
         }
       }
 
-      const forLoopMatch = line.match(/^\s*for\s*\(\s*(.+?)\s*;\s*.+?\s*;\s*.+?\s*\)\s*\{?\s*$/);
-      if (forLoopMatch && i > functionInfo.start) {
-        const initialization = forLoopMatch[1].trim();
-        const indent = line.match(/^(\s*)/)?.[1] || '';
-        line = `${indent}${initialization};  // Loop init (first iteration only)`;
-      }
-
-      const isControlFlow = /^\s*(if|else|while)\s*[\(\{]/.test(line) ||
-                           /^\s*\}\s*else\s*\{?\s*$/.test(line);
-      if (isControlFlow && i > functionInfo.start) {
-        continue;
-      }
-
       functionLines.push(line);
     }
 
+    // Insert shadow variable if inside a loop
+    const debugLineIndexInFunc = debugLine - functionInfo.start;
+    const loopsRelativeToFunc = containingLoops.map(l => ({
+      lineNumber: l.lineNumber - functionInfo.start,
+      endLine: l.endLine - functionInfo.start,
+    }));
+    const { lines: withShadow, shadowVarName } = CodeGenerator.insertShadowVariable(
+      functionLines, debugLineIndexInFunc, varInfo, loopsRelativeToFunc
+    );
+
+    // Cap loops
+    const cappedLines = CodeGenerator.capLoopIterations(withShadow, 0, loopMaxIterations);
+
+    // Close open braces from truncated control flow
+    const closedLines = CodeGenerator.closeOpenBraces(cappedLines, 0);
+
+    // Insert return before the appended closing braces
+    const originalLength = cappedLines.length;
+    const result = closedLines.slice(0, originalLength);
     const indent = '  ';
-    functionLines.push(`${indent}return ${varInfo.name};`);
-    functionLines.push('}');
+    const returnVar = shadowVarName || varInfo.name;
+    result.push(`${indent}return ${returnVar};`);
+    result.push(...closedLines.slice(originalLength));
 
     const wrapper = [];
     wrapper.push(...helperFunctions);
-    wrapper.push(...functionLines);
+    wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo);

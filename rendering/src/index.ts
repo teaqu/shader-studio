@@ -6,6 +6,6 @@ export { ShaderPipeline } from './ShaderPipeline';
 export { PassRenderer } from './PassRenderer';
 export { FrameRenderer } from './FrameRenderer';
 export { GlslParser, CodeGenerator, ShaderDebugger } from '@shader-studio/glsl-debug';
-export type { FunctionInfo, VarInfo } from '@shader-studio/glsl-debug';
+export type { FunctionInfo, VarInfo, ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext } from '@shader-studio/glsl-debug';
 export * from './types';
 export * from './models';

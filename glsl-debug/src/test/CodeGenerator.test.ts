@@ -36,47 +36,211 @@ describe("CodeGenerator", () => {
     });
   });
 
-  describe("removeControlFlowKeywords", () => {
-    it("should strip if/else statements after mainImageStart", () => {
+  describe("closeOpenBraces", () => {
+    it("should append closing braces for unmatched opens after functionStart", () => {
       const lines = [
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  vec2 uv = fragCoord / iResolution.xy;",
         "  if (uv.x > 0.5) {",
         "    uv.x = 1.0;",
-        "  }",
       ];
-      const result = CodeGenerator.removeControlFlowKeywords(lines, 0);
-      expect(result).toContain(lines[0]);
-      expect(result).toContain(lines[1]);
-      expect(result).not.toContain(lines[2]); // if removed
-      expect(result).toContain(lines[3]); // body kept
-      // Closing brace on last line is kept (only stripped when not the final line)
-      expect(result).toContain(lines[4]);
+      const result = CodeGenerator.closeOpenBraces(lines, 0);
+      // Original lines preserved
+      expect(result[0]).toBe(lines[0]);
+      expect(result[1]).toBe(lines[1]);
+      expect(result[2]).toBe(lines[2]);
+      // Two closing braces appended (one for if, one for mainImage)
+      expect(result[3]).toBe('}');
+      expect(result[4]).toBe('}');
+      expect(result.length).toBe(5);
     });
 
-    it("should extract for-loop initialization", () => {
+    it("should handle nested braces", () => {
+      const lines = [
+        "void fn() {",
+        "  if (true) {",
+        "    for (int i = 0; i < 10; i++) {",
+        "      float x = 1.0;",
+      ];
+      const result = CodeGenerator.closeOpenBraces(lines, 0);
+      // 3 unmatched opens: fn, if, for
+      expect(result.length).toBe(7);
+      expect(result[4]).toBe('}');
+      expect(result[5]).toBe('}');
+      expect(result[6]).toBe('}');
+    });
+
+    it("should not count braces before functionStart", () => {
+      const lines = [
+        "float helper() {",
+        "  return 1.0;",
+        "}",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  float x = 1.0;",
+      ];
+      const result = CodeGenerator.closeOpenBraces(lines, 3);
+      // Only 1 unmatched open (mainImage), helper is balanced before functionStart
+      expect(result.length).toBe(6);
+      expect(result[5]).toBe('}');
+    });
+
+    it("should not append anything when braces are balanced", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  float x = 1.0;",
+        "}",
+      ];
+      const result = CodeGenerator.closeOpenBraces(lines, 0);
+      expect(result.length).toBe(3);
+    });
+  });
+
+  describe("capLoopIterations", () => {
+    it("should leave loops unmodified when map is empty", () => {
       const lines = [
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
         "  for (int i = 0; i < 10; i++) {",
         "    float x = 1.0;",
+        "  }",
+        "}",
       ];
-      const result = CodeGenerator.removeControlFlowKeywords(lines, 0);
-      expect(result[1]).toContain("int i = 0;");
-      expect(result[1]).toContain("Loop init");
+      const result = CodeGenerator.capLoopIterations(lines, 0, new Map());
+      expect(result).toEqual(lines);
     });
 
-    it("should preserve lines before mainImageStart", () => {
+    it("should inject counter and break for a for loop", () => {
       const lines = [
-        "if (true) {",  // Before mainImage — should be kept
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  for (int i = 0; i < 10; i++) {",
+        "    float x = 1.0;",
+        "  }",
+        "}",
+      ];
+      const result = CodeGenerator.capLoopIterations(lines, 0, new Map([[0, 5]]));
+      expect(result).toContain("  int _dbgIter0 = 0;");
+      expect(result).toContain("    if (++_dbgIter0 > 5) break;");
+    });
+
+    it("should inject counter and break for a while loop", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  while (x > 0.0) {",
+        "    x -= 0.1;",
+        "  }",
+        "}",
+      ];
+      const result = CodeGenerator.capLoopIterations(lines, 0, new Map([[0, 100]]));
+      expect(result).toContain("  int _dbgIter0 = 0;");
+      expect(result).toContain("    if (++_dbgIter0 > 100) break;");
+    });
+
+    it("should handle nested loops with unique counters", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  for (int i = 0; i < 10; i++) {",
+        "    for (int j = 0; j < 5; j++) {",
+        "      float x = 1.0;",
+        "    }",
+        "  }",
+        "}",
+      ];
+      const result = CodeGenerator.capLoopIterations(lines, 0, new Map([[0, 10], [1, 5]]));
+      expect(result).toContain("  int _dbgIter0 = 0;");
+      expect(result).toContain("    if (++_dbgIter0 > 10) break;");
+      expect(result).toContain("    int _dbgIter1 = 0;");
+      expect(result).toContain("      if (++_dbgIter1 > 5) break;");
+    });
+
+    it("should only cap loops in the map", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  for (int i = 0; i < 10; i++) {",
+        "    float x = 1.0;",
+        "  }",
+        "  for (int j = 0; j < 5; j++) {",
+        "    float y = 2.0;",
+        "  }",
+        "}",
+      ];
+      // Only cap the second loop (index 1)
+      const result = CodeGenerator.capLoopIterations(lines, 0, new Map([[1, 3]]));
+      expect(result.join('\n')).not.toContain("_dbgIter0");
+      expect(result).toContain("  int _dbgIter1 = 0;");
+      expect(result).toContain("    if (++_dbgIter1 > 3) break;");
+    });
+
+    it("should not modify loops before functionStart", () => {
+      const lines = [
+        "for (int i = 0; i < 10; i++) {",
         "  float x = 1.0;",
         "}",
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  if (false) {",  // After mainImage — should be stripped
-        "    float y = 2.0;",
+        "  float y = 2.0;",
+        "}",
       ];
-      const result = CodeGenerator.removeControlFlowKeywords(lines, 3);
-      expect(result).toContain(lines[0]); // kept (before mainImage)
-      expect(result).not.toContain(lines[4]); // stripped (after mainImage)
+      const result = CodeGenerator.capLoopIterations(lines, 3, new Map([[0, 5]]));
+      expect(result.join('\n')).not.toContain("_dbgIter");
+    });
+  });
+
+  describe("insertShadowVariable", () => {
+    it("should return unchanged lines when no containing loops", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  float x = 1.0;",
+        "}",
+      ];
+      const varInfo: VarInfo = { name: "x", type: "float" };
+      const { lines: result, shadowVarName } = CodeGenerator.insertShadowVariable(lines, 1, varInfo, []);
+      expect(shadowVarName).toBeNull();
+      expect(result).toEqual(lines);
+    });
+
+    it("should insert shadow declaration before outermost loop and assignment after debug line", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  for (int i = 0; i < 10; i++) {",
+        "    float x = float(i) * 0.1;",
+        "    uv.x += x;",
+        "  }",
+        "}",
+      ];
+      const varInfo: VarInfo = { name: "x", type: "float" };
+      const containingLoops = [{ lineNumber: 2 }];
+      const { lines: result, shadowVarName } = CodeGenerator.insertShadowVariable(lines, 3, varInfo, containingLoops);
+
+      expect(shadowVarName).toBe("_dbgShadow");
+      const joined = result.join('\n');
+      expect(joined).toContain('float _dbgShadow;');
+      expect(joined).toContain('_dbgShadow = x;');
+      // Shadow declaration should come before the for loop
+      const shadowIdx = result.findIndex(l => l.includes('float _dbgShadow;'));
+      const forIdx = result.findIndex(l => l.includes('for (int i'));
+      expect(shadowIdx).toBeLessThan(forIdx);
+    });
+
+    it("should handle nested loops — shadow declared before outermost", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  for (int i = 0; i < 5; i++) {",
+        "    for (int j = 0; j < 10; j++) {",
+        "      float val = compute(i, j);",
+        "      accumulate(val);",
+        "    }",
+        "    finalize(i);",
+        "  }",
+        "}",
+      ];
+      const varInfo: VarInfo = { name: "val", type: "float" };
+      // Both loops contain the debug line
+      const containingLoops = [{ lineNumber: 1 }, { lineNumber: 2 }];
+      const { lines: result, shadowVarName } = CodeGenerator.insertShadowVariable(lines, 3, varInfo, containingLoops);
+
+      expect(shadowVarName).toBe("_dbgShadow");
+      // Shadow declaration should be before the outer for loop
+      const shadowIdx = result.findIndex(l => l.includes('float _dbgShadow;'));
+      const outerForIdx = result.findIndex(l => l.includes('for (int i'));
+      expect(shadowIdx).toBeLessThan(outerForIdx);
     });
   });
 
