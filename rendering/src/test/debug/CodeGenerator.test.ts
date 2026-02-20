@@ -136,13 +136,13 @@ describe("CodeGenerator", () => {
       expect(result).toContain("float d = length(p) - 0.5;");
       expect(result).toContain("return d;");
       expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord)");
-      // Should call sdf with actual params from mainImage
+      // Should call sdf with default params
       expect(result).toContain("sdf(uv)");
     });
   });
 
   describe("generateFunctionCall", () => {
-    it("should use actual call parameters when found in mainImage", () => {
+    it("should always use default parameters based on function signature", () => {
       const lines = [
         "float sdf(vec2 p) {",
         "  return length(p);",
@@ -151,21 +151,6 @@ describe("CodeGenerator", () => {
         "  vec2 uv = fragCoord / iResolution.xy;",
         "  float d = sdf(uv);",
         "  fragColor = vec4(d);",
-        "}",
-      ];
-      const functionInfo: FunctionInfo = { name: "sdf", start: 0, end: 2 };
-      const varInfo: VarInfo = { name: "d", type: "float" };
-      const result = CodeGenerator.generateFunctionCall(lines, "sdf", functionInfo, varInfo);
-      expect(result).toContain("sdf(uv)");
-    });
-
-    it("should fall back to default parameters when function is not called", () => {
-      const lines = [
-        "float sdf(vec2 p) {",
-        "  return length(p);",
-        "}",
-        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  fragColor = vec4(1.0);",
         "}",
       ];
       const functionInfo: FunctionInfo = { name: "sdf", start: 0, end: 2 };

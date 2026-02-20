@@ -1,5 +1,4 @@
 import type { FunctionInfo, VarInfo } from './GlslParser';
-import { GlslParser } from './GlslParser';
 
 export class CodeGenerator {
   static generateReturnStatementForVar(varType: string, varName: string): string {
@@ -127,65 +126,16 @@ export class CodeGenerator {
     };
   }
 
-  private static buildCallResult(
-    functionName: string,
-    args: string,
-    varInfo: VarInfo,
-    setup: string[] = []
-  ): string {
-    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result');
-    const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
-    return `${setupCode}  ${varInfo.type} result = ${functionName}(${args});\n${visualization}`;
-  }
-
   static generateFunctionCall(
     lines: string[],
     functionName: string,
     functionInfo: FunctionInfo,
     varInfo: VarInfo
   ): string {
-    const callInfo = GlslParser.findFunctionCall(lines, functionName);
-
-    if (!callInfo) {
-      const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
-      return CodeGenerator.buildCallResult(functionName, params.args, varInfo, params.setup);
-    }
-
-    const mainImageStart = GlslParser.findMainImageStart(lines);
-    if (mainImageStart === -1) {
-      return `  vec2 uv = fragCoord / iResolution.xy;\n  float result = ${functionName}(${callInfo.params});\n  fragColor = vec4(vec3(result), 1.0);`;
-    }
-
-    // Extract mainImage setup lines up to the call point
-    const setupLines: string[] = [];
-    for (let i = mainImageStart + 1; i < callInfo.lineIndex; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      if (!/^\s*(if|else|for|while|}\s*else)\s*[\(\{]/.test(line) &&
-          trimmed !== '}' &&
-          trimmed !== '{' &&
-          trimmed !== '') {
-        setupLines.push(line);
-      }
-    }
-
-    // Check if call parameters reference undefined variables — fall back to defaults
-    const callParamNames = callInfo.params.split(',').map(p => p.trim()).filter(p => p);
-    const mainImageVarTypes = GlslParser.buildVariableTypeMap(lines, callInfo.lineIndex, { name: 'mainImage', start: mainImageStart, end: -1 });
-
-    const hasUndefinedParams = callParamNames.some(param => {
-      const isVarName = /^[a-zA-Z_]\w*(\.[xyzwrgba]+)?$/.test(param);
-      if (!isVarName) return false;
-      const baseName = param.split('.')[0];
-      return !mainImageVarTypes.has(baseName);
-    });
-
-    if (hasUndefinedParams) {
-      const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
-      return CodeGenerator.buildCallResult(functionName, params.args, varInfo, params.setup);
-    }
-
-    return CodeGenerator.buildCallResult(functionName, callInfo.params, varInfo, setupLines);
+    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result');
+    const setupCode = params.setup.length > 0 ? params.setup.join('\n') + '\n' : '';
+    return `${setupCode}  ${varInfo.type} result = ${functionName}(${params.args});\n${visualization}`;
   }
 
   static wrapFunctionForDebugging(

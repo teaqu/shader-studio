@@ -10,15 +10,6 @@ export interface VarInfo {
 }
 
 export class GlslParser {
-  static findMainImageStart(lines: string[]): number {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes('void mainImage')) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   static findEnclosingFunction(lines: string[], lineNum: number): FunctionInfo {
     // Look backwards to find function declaration
     // We count braces backwards - starting inside a function means we'll go negative
@@ -291,52 +282,4 @@ export class GlslParser {
     return null;
   }
 
-  static findFunctionCall(
-    lines: string[],
-    functionName: string
-  ): { params: string; lineIndex: number } | null {
-    const callPattern = new RegExp(`${functionName}\\s*\\(([^)]*)\\)`, 'i');
-    const declPattern = new RegExp(`^\\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\\s+${functionName}\\s*\\(`, 'i');
-
-    const mainImageStart = GlslParser.findMainImageStart(lines);
-    if (mainImageStart === -1) {
-      return null;
-    }
-
-    let braceDepth = 0;
-    let mainImageEnd = -1;
-    for (let i = mainImageStart; i < lines.length; i++) {
-      const line = lines[i];
-      for (const char of line) {
-        if (char === '{') braceDepth++;
-        if (char === '}') braceDepth--;
-      }
-      if (braceDepth === 0 && i > mainImageStart) {
-        mainImageEnd = i;
-        break;
-      }
-    }
-
-    if (mainImageEnd === -1) {
-      mainImageEnd = lines.length;
-    }
-
-    for (let i = mainImageStart; i <= mainImageEnd; i++) {
-      const line = lines[i];
-
-      if (declPattern.test(line)) {
-        continue;
-      }
-
-      const match = line.match(callPattern);
-      if (match) {
-        return {
-          params: match[1].trim(),
-          lineIndex: i
-        };
-      }
-    }
-
-    return null;
-  }
 }
