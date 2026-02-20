@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Variable Declarations', () => {
   it('should handle variable declared without initialization, then assigned', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Uncalled Functions', () => {
   it('should handle function with vec2 parameter (not called)', () => {

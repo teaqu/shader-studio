@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Multi-line UV reassignment', () => {
   it('should detect plain reassignment on line 3', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CodeGenerator } from "../../debug/CodeGenerator";
-import type { FunctionInfo, VarInfo } from "../../debug/GlslParser";
+import { CodeGenerator } from "../CodeGenerator";
+import type { FunctionInfo, VarInfo } from "../GlslParser";
 
 describe("CodeGenerator", () => {
   describe("generateReturnStatementForVar", () => {

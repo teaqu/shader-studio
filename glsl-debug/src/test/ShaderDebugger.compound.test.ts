@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Compound Assignments', () => {
   it('should truncate at compound assignment line', () => {
