@@ -8,6 +8,9 @@ export class ShaderDebugManager {
     lineContent: null,
     filePath: null,
     isActive: false,
+    functionContext: null,
+    isLineLocked: false,
+    isInlineRenderingEnabled: false,
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
