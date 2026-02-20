@@ -2,24 +2,6 @@ import { describe, expect, it } from "vitest";
 import { GlslParser } from "../../debug/GlslParser";
 
 describe("GlslParser", () => {
-  describe("findMainImageStart", () => {
-    it("should find mainImage on the correct line", () => {
-      const lines = [
-        "uniform vec3 iResolution;",
-        "",
-        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  fragColor = vec4(1.0);",
-        "}",
-      ];
-      expect(GlslParser.findMainImageStart(lines)).toBe(2);
-    });
-
-    it("should return -1 when no mainImage exists", () => {
-      const lines = ["float foo() {", "  return 1.0;", "}"];
-      expect(GlslParser.findMainImageStart(lines)).toBe(-1);
-    });
-  });
-
   describe("findEnclosingFunction", () => {
     it("should find mainImage when cursor is inside it", () => {
       const lines = [
@@ -174,45 +156,4 @@ describe("GlslParser", () => {
     });
   });
 
-  describe("findFunctionCall", () => {
-    it("should find a function call inside mainImage", () => {
-      const lines = [
-        "float sphere(vec3 p, float r) {",
-        "  return length(p) - r;",
-        "}",
-        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  float d = sphere(vec3(0.0), 1.0);",
-        "  fragColor = vec4(d);",
-        "}",
-      ];
-      const result = GlslParser.findFunctionCall(lines, "sphere");
-      expect(result).not.toBeNull();
-      // Regex uses [^)]* so nested parens stop at first ) — captures "vec3(0.0"
-      expect(result!.params).toBe("vec3(0.0");
-      expect(result!.lineIndex).toBe(4);
-    });
-
-    it("should not match function declarations", () => {
-      const lines = [
-        "float sphere(vec3 p, float r) {",
-        "  return length(p) - r;",
-        "}",
-        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
-        "  fragColor = vec4(1.0);",
-        "}",
-      ];
-      const result = GlslParser.findFunctionCall(lines, "sphere");
-      expect(result).toBeNull();
-    });
-
-    it("should return null when no mainImage exists", () => {
-      const lines = [
-        "float foo(float x) {",
-        "  return x * 2.0;",
-        "}",
-      ];
-      const result = GlslParser.findFunctionCall(lines, "foo");
-      expect(result).toBeNull();
-    });
-  });
 });

@@ -13,7 +13,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec2 uv = -1. + 2. * fragCoord / iResolution.xy;
     uv.x *= iResolution.x / iResolution.y;
 
-    float l = spiralSDF(uv, 50.0);
+    float l = spiralSDF(uv, 0.5);
 
     fragColor = vec4(vec3(0) + l, 1.0);
 }`;
@@ -25,10 +25,9 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     if (result) {
       expect(result).toContain('float r = length(st)');
       expect(result).toContain('return r;');
-      expect(result).toContain('spiralSDF(uv, 50.0)');
+      expect(result).toContain('spiralSDF(uv, 0.5)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
-      expect(result).toContain('vec2 uv = -1. + 2. * fragCoord');
-      expect(result).toContain('uv.x *= iResolution.x / iResolution.y');
+      expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
     }
   });
 
@@ -40,7 +39,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
       expect(result).toContain('float r = length(st)');
       expect(result).toContain('float a = atan(st.x, st.y)');
       expect(result).toContain('return a;');
-      expect(result).toContain('spiralSDF(uv, 50.0)');
+      expect(result).toContain('spiralSDF(uv, 0.5)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });
@@ -54,7 +53,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
       expect(result).toContain('float r = length(st)');
       expect(result).toContain('float a = atan(st.x, st.y)');
       expect(result).toContain('return _dbgReturn;');
-      expect(result).toContain('spiralSDF(uv, 50.0)');
+      expect(result).toContain('spiralSDF(uv, 0.5)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });

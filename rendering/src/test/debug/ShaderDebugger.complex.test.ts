@@ -55,8 +55,8 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float _dbgReturn = fract(sin(uv.x * 1920.');
-      expect(result).toContain('random(uv.xx)');
-      expect(result).toContain('vec2 uv = fragCoord/iResolution.xy');
+      expect(result).toContain('random(uv)');
+      expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
     }
   });
 

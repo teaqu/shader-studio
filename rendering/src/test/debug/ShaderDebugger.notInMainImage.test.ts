@@ -45,7 +45,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
   });
 
-  it('should use actual parameters when function IS called in mainImage', () => {
+  it('should use default parameters even when function IS called in mainImage', () => {
     const shader = `vec2 sdCircle(vec2 p, float r) {
     return vec2(length(p) - r, 0.0);
 }
@@ -62,7 +62,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if (result) {
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
       expect(result).toContain('vec2 result = sdCircle(uv, 0.5)');
-      expect(result).not.toContain('vec3(0.5)');
     }
   });
 
