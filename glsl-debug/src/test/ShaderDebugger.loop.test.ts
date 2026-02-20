@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Loop Handling', () => {
   it('should extract loop initialization and run body once', () => {

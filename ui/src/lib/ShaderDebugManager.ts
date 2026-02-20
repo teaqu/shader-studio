@@ -1,5 +1,5 @@
 import type { ShaderDebugState } from "./types/ShaderDebugState";
-import { ShaderDebugger } from "../../../rendering/src/debug/ShaderDebugger";
+import { ShaderDebugger } from "@shader-studio/glsl-debug";
 
 export class ShaderDebugManager {
   private state: ShaderDebugState = {

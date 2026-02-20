@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Function Not Called in mainImage', () => {
   it('should use default parameters when function is called in other helper functions but not in mainImage', () => {

@@ -22,6 +22,7 @@
     "svelte-check": "^4.0.8"
   },
   "dependencies": {
+    "@shader-studio/glsl-debug": "*",
     "@shader-studio/types": "*",
     "@shader-studio/rendering": "*"
   }

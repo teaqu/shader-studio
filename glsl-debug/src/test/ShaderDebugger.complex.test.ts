@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShaderDebugger } from '../../debug/ShaderDebugger';
+import { ShaderDebugger } from '../ShaderDebugger';
 
 describe('ShaderDebugger - Complex Shader', () => {
   const shader = `vec3 rainCol = vec3(0.5608, 0.4078, 0.9843);

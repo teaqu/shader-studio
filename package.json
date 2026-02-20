@@ -5,6 +5,7 @@
   "description": "A VS Code extension for viewing and editing shaders",
   "workspaces": [
     "types",
+    "glsl-debug",
     "rendering",
     "utils",
     "extension",

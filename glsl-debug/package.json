@@ -1,5 +1,5 @@
 {
-  "name": "@shader-studio/rendering",
+  "name": "@shader-studio/glsl-debug",
   "version": "0.0.1",
   "private": true,
   "main": "./dist/index.js",
@@ -13,10 +13,6 @@
   "files": [
     "dist"
   ],
-  "dependencies": {
-    "@shader-studio/glsl-debug": "*",
-    "@shader-studio/types": "*"
-  },
   "devDependencies": {
     "vitest": "*"
   }
