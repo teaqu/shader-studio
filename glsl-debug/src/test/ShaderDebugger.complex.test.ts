@@ -111,25 +111,27 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     }
   });
 
-  it('Line 18: float rain inside if', () => {
+  it('Line 18: float rain inside if — if preserved', () => {
     const result = ShaderDebugger.modifyShaderForDebugging(shader, 18, '      float rain = sin(uv.y * 4. + iTime * 9.0 * random(uv.xx));');
 
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float rain = sin(uv.y * 4.');
-      expect(result).not.toContain('if (uv.y > wave)');
+      // if/else are now preserved (not stripped)
+      expect(result).toContain('if (uv.y > wave)');
       expect(result).toContain('uv /= 3.0');
     }
   });
 
-  it('Line 20: col = mix inside if', () => {
+  it('Line 20: col = mix inside if — if preserved', () => {
     const result = ShaderDebugger.modifyShaderForDebugging(shader, 20, '      col = mix(rainCol * rain, skyCol, 0.6);');
 
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec3 col');
       expect(result).toContain('col = mix(rainCol * rain, skyCol, 0.6)');
-      expect(result).not.toContain('if (uv.y > wave)');
+      // if/else are now preserved (not stripped)
+      expect(result).toContain('if (uv.y > wave)');
       expect(result).toContain('uv /= 3.0');
       expect(result).toContain('float rain =');
       expect(result).toContain('rainCol *= step');
