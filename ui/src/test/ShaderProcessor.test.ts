@@ -23,6 +23,7 @@ describe('ShaderProcessor', () => {
       updateDebugLine: vi.fn(),
       toggleEnabled: vi.fn(),
       setStateCallback: vi.fn(),
+      setOriginalCode: vi.fn(),
     } as any;
 
     // Mock RenderingEngine
