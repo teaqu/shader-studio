@@ -73,6 +73,7 @@
   let splitRatio = 0.6;
   let currentConfig: ShaderConfig | null = null;
   let pathMap: Record<string, string> = {};
+  let bufferPathMap: Record<string, string> = {};
   let shaderPath: string = "";
 
   // Debug panel state
@@ -450,6 +451,7 @@
         if (!locked || lockedPath === event.data.path) {
           currentConfig = event.data.config || null;
           pathMap = event.data.pathMap || {};
+          bufferPathMap = event.data.bufferPathMap || {};
           shaderPath = event.data.path || "";
           currentShaderCode = event.data.code || "";
           // Sync editor overlay if it's showing the main shader
@@ -596,11 +598,13 @@
       <ConfigPanel
         config={currentConfig}
         {pathMap}
+        {bufferPathMap}
         {transport}
         {shaderPath}
         isVisible={configPanelVisible}
         onFileSelect={handleConfigFileSelect}
         selectedBuffer={editorBufferName}
+        {isLocked}
       />
     </div>
   {/if}

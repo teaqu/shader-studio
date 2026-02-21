@@ -53,6 +53,7 @@ export interface ShaderSourceMessage extends BaseMessage {
   buffers: Record<string, string>;
   forceCleanup?: boolean;
   pathMap?: Record<string, string>;
+  bufferPathMap?: Record<string, string>;
   cursorPosition?: {
     line: number;
     character: number;
@@ -98,4 +99,12 @@ export interface ToggleEditorOverlayMessage extends BaseMessage {
   type: "toggleEditorOverlay";
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage;
+export interface NavigateToBufferMessage extends BaseMessage {
+  type: "navigateToBuffer";
+  payload: {
+    bufferPath: string;
+    shaderPath: string;
+  };
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage;

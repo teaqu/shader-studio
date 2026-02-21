@@ -326,6 +326,156 @@ describe('ConfigPanel', () => {
     });
   });
 
+  describe('double-click sends navigateToBuffer', () => {
+    it('should send navigateToBuffer on double-click when locked and buffer has path', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+      const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap,
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: true,
+      });
+
+      await tick();
+
+      const tabs = getAllByRole('button');
+      const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
+      expect(bufferATab).toBeTruthy();
+      await fireEvent.dblClick(bufferATab!);
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'navigateToBuffer',
+        payload: {
+          bufferPath: '/path/bufferA.glsl',
+          shaderPath: '/path/shader.glsl',
+        }
+      });
+    });
+
+    it('should NOT send navigateToBuffer on single click', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+      const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap,
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: true,
+      });
+
+      await tick();
+
+      const tabs = getAllByRole('button');
+      const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
+      await fireEvent.click(bufferATab!);
+
+      // Single click should call onFileSelect, not postMessage for navigateToBuffer
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('should NOT send navigateToBuffer on double-click when not locked', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+      const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap,
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: false,
+      });
+
+      await tick();
+
+      const tabs = getAllByRole('button');
+      const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
+      await fireEvent.dblClick(bufferATab!);
+
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('should NOT send navigateToBuffer on double-click when buffer has no path', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+      const bufferPathMap = { Image: '/path/shader.glsl' }; // No BufferA path
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap,
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: true,
+      });
+
+      await tick();
+
+      const tabs = getAllByRole('button');
+      const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
+      await fireEvent.dblClick(bufferATab!);
+
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe('ConfigManager initialization', () => {
     it('should create ConfigManager with transport on mount', async () => {
       render(ConfigPanel, {

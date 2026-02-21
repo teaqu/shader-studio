@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderProvider } from '../../app/ShaderProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
+import { PathResolver } from '../../app/PathResolver';
 import { Logger } from '../../app/services/Logger';
 
 suite('ShaderProvider Test Suite', () => {
@@ -469,6 +470,71 @@ suite('ShaderProvider Test Suite', () => {
             provider.removeActiveShader(shaderPath);
 
             assert.strictEqual((provider as any).activeShaders.has(shaderPath), false);
+        });
+    });
+
+    suite('buildBufferPathMap', () => {
+        let resolvePathStub: sinon.SinonStub;
+
+        setup(() => {
+            resolvePathStub = sandbox.stub(PathResolver, 'resolvePath');
+            resolvePathStub.callsFake((_shaderPath: string, targetPath: string) => {
+                return `/resolved/${targetPath}`;
+            });
+        });
+
+        test('should map Image to shaderPath', () => {
+            const result = (provider as any).buildBufferPathMap(null, '/path/to/shader.glsl');
+            assert.strictEqual(result.Image, '/path/to/shader.glsl');
+        });
+
+        test('should map BufferA-D to resolved absolute paths', () => {
+            const config = {
+                version: '1.0',
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: 'bufferA.glsl', inputs: {} },
+                    BufferB: { path: 'bufferB.glsl', inputs: {} },
+                }
+            };
+
+            const result = (provider as any).buildBufferPathMap(config, '/path/to/shader.glsl');
+            assert.strictEqual(result.Image, '/path/to/shader.glsl');
+            assert.strictEqual(result.BufferA, '/resolved/bufferA.glsl');
+            assert.strictEqual(result.BufferB, '/resolved/bufferB.glsl');
+        });
+
+        test('should handle common buffer', () => {
+            const config = {
+                version: '1.0',
+                passes: {
+                    Image: { inputs: {} },
+                    common: { path: 'common.glsl', inputs: {} },
+                }
+            };
+
+            const result = (provider as any).buildBufferPathMap(config, '/path/to/shader.glsl');
+            assert.strictEqual(result.common, '/resolved/common.glsl');
+        });
+
+        test('should skip buffers without paths', () => {
+            const config = {
+                version: '1.0',
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: { inputs: {} },
+                }
+            };
+
+            const result = (provider as any).buildBufferPathMap(config, '/path/to/shader.glsl');
+            assert.strictEqual(result.Image, '/path/to/shader.glsl');
+            assert.strictEqual(result.BufferA, undefined);
+        });
+
+        test('should return only Image when config is null', () => {
+            const result = (provider as any).buildBufferPathMap(null, '/path/to/shader.glsl');
+            assert.deepStrictEqual(Object.keys(result), ['Image']);
+            assert.strictEqual(result.Image, '/path/to/shader.glsl');
         });
     });
 
