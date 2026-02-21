@@ -124,7 +124,6 @@ export class CodeGenerator {
     }
 
     const shadowVarName = '_dbgShadow';
-    const outermostLoopLine = containingLoops[0].lineNumber;
     const result: string[] = [];
 
     // Find the outermost loop line index within the provided lines array.
@@ -239,12 +238,28 @@ export class CodeGenerator {
     lines: string[],
     functionName: string,
     functionInfo: FunctionInfo,
-    varInfo: VarInfo
+    varInfo: VarInfo,
+    customParameters: Map<number, string> = new Map(),
   ): string {
     const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+    const defaultArgs = params.args ? params.args.split(', ') : [];
+
+    // Apply custom parameter overrides
+    const args = defaultArgs.map((arg, index) => {
+      const custom = customParameters.get(index);
+      return custom !== undefined ? custom : arg;
+    });
+
+    // If no args still reference 'uv', remove the uv setup line
+    let setup = [...params.setup];
+    const anyArgUsesUv = args.some(arg => arg === 'uv' || arg.includes('uv'));
+    if (!anyArgUsesUv) {
+      setup = setup.filter(s => !s.includes('vec2 uv'));
+    }
+
     const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result');
-    const setupCode = params.setup.length > 0 ? params.setup.join('\n') + '\n' : '';
-    return `${setupCode}  ${varInfo.type} result = ${functionName}(${params.args});\n${visualization}`;
+    const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
+    return `${setupCode}  ${varInfo.type} result = ${functionName}(${args.join(', ')});\n${visualization}`;
   }
 
   static wrapFunctionForDebugging(
@@ -254,6 +269,7 @@ export class CodeGenerator {
     varInfo: VarInfo,
     containingLoops: { lineNumber: number; endLine: number }[] = [],
     loopMaxIterations: Map<number, number> = new Map(),
+    customParameters: Map<number, string> = new Map(),
   ): string {
     const helperFunctions: string[] = [];
     for (let i = 0; i < functionInfo.start; i++) {
@@ -320,7 +336,50 @@ export class CodeGenerator {
     wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo);
+    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters);
+    wrapper.push(call);
+    wrapper.push('}');
+
+    return wrapper.join('\n');
+  }
+
+  /**
+   * Wraps a full (untruncated) function for debugging.
+   * Used when inside a non-mainImage function but no variable is detected on the
+   * current line — runs the entire function and visualizes its return value.
+   */
+  static wrapFullFunctionForDebugging(
+    lines: string[],
+    functionInfo: FunctionInfo,
+    returnType: string,
+    loopMaxIterations: Map<number, number> = new Map(),
+    customParameters: Map<number, string> = new Map(),
+  ): string {
+    // Everything before the function
+    const helperFunctions: string[] = [];
+    for (let i = 0; i < functionInfo.start; i++) {
+      helperFunctions.push(lines[i]);
+    }
+
+    // The full function body, unmodified
+    const functionLines: string[] = [];
+    for (let i = functionInfo.start; i <= functionInfo.end; i++) {
+      functionLines.push(lines[i]);
+    }
+
+    // Cap loops in the full function body
+    const cappedLines = CodeGenerator.capLoopIterations(functionLines, 0, loopMaxIterations);
+
+    // Build varInfo for the return type visualization
+    const varInfo: VarInfo = { name: 'result', type: returnType };
+
+    // Build the wrapper
+    const wrapper: string[] = [];
+    wrapper.push(...helperFunctions);
+    wrapper.push(...cappedLines);
+    wrapper.push('');
+    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters);
     wrapper.push(call);
     wrapper.push('}');
 
