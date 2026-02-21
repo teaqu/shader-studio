@@ -6,6 +6,7 @@ import { Logger } from "./services/Logger";
 import { isGlslDocument } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
+import { PathResolver } from "./PathResolver";
 import type { ShaderConfig, ShaderSourceMessage, ErrorMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
@@ -69,6 +70,7 @@ export class ShaderProvider {
 
     // Build path map for resource URIs
     const pathMap = this.buildPathMap(config, shaderPath);
+    const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
 
     const message: ShaderSourceMessage = {
       type: "shaderSource",
@@ -78,6 +80,7 @@ export class ShaderProvider {
       buffers,
       forceCleanup: options?.forceCleanup,
       pathMap,
+      bufferPathMap,
     };
 
     // Only include cursor position if debug mode is enabled
@@ -140,6 +143,7 @@ export class ShaderProvider {
 
       // Build path map for resource URIs
       const pathMap = this.buildPathMap(config, shaderPath);
+      const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
 
       const message: ShaderSourceMessage = {
         type: "shaderSource",
@@ -149,6 +153,7 @@ export class ShaderProvider {
         buffers,
         forceCleanup: options?.forceCleanup,
         pathMap,
+        bufferPathMap,
       };
 
       this.messenger.send(message);
@@ -213,6 +218,28 @@ export class ShaderProvider {
   }
 
   /**
+   * Build a map of buffer names to their absolute file paths.
+   * Used by the UI to sync buffer tab selection with VS Code editor tabs.
+   */
+  private buildBufferPathMap(config: ShaderConfig | null, shaderPath: string): Record<string, string> {
+    const bufferPathMap: Record<string, string> = { Image: shaderPath };
+
+    if (!config?.passes) {
+      return bufferPathMap;
+    }
+
+    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+      if (passName === 'Image') continue;
+      const pass = config.passes[passName];
+      if (pass && typeof pass === 'object' && 'path' in pass && pass.path && typeof pass.path === 'string') {
+        bufferPathMap[passName] = PathResolver.resolvePath(shaderPath, pass.path);
+      }
+    }
+
+    return bufferPathMap;
+  }
+
+  /**
    * Check if the given file path is used as a common buffer in any currently active shader config
    */
   private isCommonBufferFile(shaderPath: string): boolean {
@@ -260,6 +287,7 @@ export class ShaderProvider {
 
           // Build path map for resource URIs
           const pathMap = this.buildPathMap(config, activeShaderPath);
+          const bufferPathMap = this.buildBufferPathMap(config, activeShaderPath);
 
           const message: ShaderSourceMessage = {
             type: "shaderSource",
@@ -268,6 +296,7 @@ export class ShaderProvider {
             path: activeShaderPath,
             buffers,
             pathMap,
+            bufferPathMap,
           };
 
           this.messenger.send(message);

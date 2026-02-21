@@ -349,6 +349,166 @@ suite('PanelManager Test Suite', () => {
         });
     });
 
+    suite('handleNavigateToBuffer', () => {
+        test('should open buffer file in correct column when shader found in a group', async () => {
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(true);
+
+            const configStub = sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true)
+            } as any);
+
+            const shaderUri = vscode.Uri.file('/path/to/shader.glsl');
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [
+                    {
+                        viewColumn: vscode.ViewColumn.Two,
+                        tabs: []
+                    },
+                    {
+                        viewColumn: vscode.ViewColumn.One,
+                        tabs: [{
+                            input: { uri: shaderUri }
+                        }]
+                    }
+                ]
+            });
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '/path/to/bufferA.glsl', shaderPath: '/path/to/shader.glsl' },
+                mockPanel
+            );
+
+            sinon.assert.calledOnce(showTextDocStub);
+            const callArgs = showTextDocStub.firstCall.args;
+            assert.strictEqual(callArgs[0].fsPath, '/path/to/bufferA.glsl');
+            const opts = callArgs[1] as vscode.TextDocumentShowOptions;
+            assert.strictEqual(opts.viewColumn, vscode.ViewColumn.One);
+            assert.strictEqual(opts.preview, false);
+            assert.strictEqual(opts.preserveFocus, true);
+        });
+
+        test('should skip when navigateOnBufferSwitch setting is disabled', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(false)
+            } as any);
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '/path/to/bufferA.glsl', shaderPath: '/path/to/shader.glsl' },
+                {} as any
+            );
+
+            sinon.assert.notCalled(showTextDocStub);
+        });
+
+        test('should skip when buffer file does not exist', async () => {
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(false);
+
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true)
+            } as any);
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '/nonexistent/bufferA.glsl', shaderPath: '/path/to/shader.glsl' },
+                {} as any
+            );
+
+            sinon.assert.notCalled(showTextDocStub);
+        });
+
+        test('should skip when bufferPath is empty', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true)
+            } as any);
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '', shaderPath: '/path/to/shader.glsl' },
+                {} as any
+            );
+
+            sinon.assert.notCalled(showTextDocStub);
+        });
+
+        test('should never open in any webview panel column', async () => {
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(true);
+
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true)
+            } as any);
+
+            // Set up panels in the PanelManager - panel is in column Two
+            const mockInternalPanel = { viewColumn: vscode.ViewColumn.Two, dispose: sandbox.stub() } as any;
+            (panelManager as any).panels.add(mockInternalPanel);
+
+            // Shader is in column Two (same as panel) but also in column One
+            const shaderUri = vscode.Uri.file('/path/to/shader.glsl');
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [
+                    {
+                        viewColumn: vscode.ViewColumn.One,
+                        tabs: [{ input: { uri: shaderUri } }]
+                    },
+                    {
+                        viewColumn: vscode.ViewColumn.Two,
+                        tabs: [{ input: { uri: shaderUri } }]
+                    }
+                ]
+            });
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '/path/to/bufferA.glsl', shaderPath: '/path/to/shader.glsl' },
+                mockInternalPanel
+            );
+
+            sinon.assert.calledOnce(showTextDocStub);
+            // Should choose column One (not Two where the panel is)
+            const opts = showTextDocStub.firstCall.args[1] as vscode.TextDocumentShowOptions;
+            assert.strictEqual(opts.viewColumn, vscode.ViewColumn.One);
+        });
+
+        test('should open with preserveFocus: true and preview: false', async () => {
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(true);
+
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true)
+            } as any);
+
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [{
+                    viewColumn: vscode.ViewColumn.One,
+                    tabs: []
+                }]
+            });
+
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleNavigateToBuffer(
+                { bufferPath: '/path/to/bufferA.glsl', shaderPath: '/path/to/shader.glsl' },
+                { viewColumn: vscode.ViewColumn.Two } as any
+            );
+
+            sinon.assert.calledOnce(showTextDocStub);
+            const options = showTextDocStub.firstCall.args[1] as vscode.TextDocumentShowOptions;
+            assert.strictEqual(options.preserveFocus, true);
+            assert.strictEqual(options.preview, false);
+        });
+    });
+
     suite('handleConfigUpdate error handling', () => {
         test('should send error to UI when config update fails', async () => {
             const fs = require('fs');

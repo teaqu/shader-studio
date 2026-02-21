@@ -135,6 +135,11 @@
           ],
           "default": "gui",
           "description": "Default view for .sha.json files: 'gui' for the visual editor, 'code' for the JSON source. (requires restart)"
+        },
+        "shader-studio.navigateOnBufferSwitch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sync the active buffer between the config panel and VS Code editor (requires shader lock)"
         }
       }
     },
@@ -196,8 +201,8 @@
     "vsce-package": "npm run package && vsce package --no-dependencies",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "build:force": "cd ../types && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
-    "build": "cd ../types && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
+    "build:force": "cd ../types && npm run build && cd ../glsl-debug && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
+    "build": "cd ../types && npm run build && cd ../glsl-debug && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
     "build:shader-explorer": "cd ../shader-explorer && npm run build && npm run copy-to-extension",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",

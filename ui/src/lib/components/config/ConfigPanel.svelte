@@ -7,11 +7,13 @@
 
   export let config: ShaderConfig | null = null;
   export let pathMap: Record<string, string> = {};
+  export let bufferPathMap: Record<string, string> = {};
   export let transport: Transport;
   export let shaderPath: string = "";
   export let isVisible: boolean = true;
   export let onFileSelect: (bufferName: string) => void = () => {};
   export let selectedBuffer: string = "Image";
+  export let isLocked: boolean = false;
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
@@ -133,6 +135,18 @@
     onFileSelect(actualName);
   }
 
+  function handleTabDblClick(tabName: string) {
+    if (!isLocked) return;
+    const actualName = getActualBufferName(tabName);
+    const bufferPath = bufferPathMap[actualName];
+    if (bufferPath) {
+      transport.postMessage({
+        type: 'navigateToBuffer',
+        payload: { bufferPath, shaderPath }
+      });
+    }
+  }
+
   // Reactive statement to get the current active tab's config
   // Provides default empty config when no config file exists
   $: activeTabConfig = (() => {
@@ -156,6 +170,7 @@
         <button
           class="tab-button {activeTab === tabName ? 'active' : ''}"
           on:click={() => switchTab(tabName)}
+          on:dblclick={() => handleTabDblClick(tabName)}
         >
           <span class="tab-label">{tabName}</span>
           {#if tabName !== "Image" && config}

@@ -121,6 +121,8 @@ export class PanelManager {
       await this.overlayHandler.handleUpdateShaderSource(message.payload);
     } else if (message.type === 'requestFileContents') {
       await this.overlayHandler.handleRequestFileContents(message.payload, panel);
+    } else if (message.type === 'navigateToBuffer') {
+      await this.handleNavigateToBuffer(message.payload, panel);
     }
   }
 
@@ -183,6 +185,54 @@ export class PanelManager {
     } catch (error) {
       this.logger.error(`Failed to create buffer file: ${error}`);
     }
+  }
+
+  private async handleNavigateToBuffer(
+    payload: { bufferPath: string; shaderPath: string },
+    panel: vscode.WebviewPanel
+  ): Promise<void> {
+    const enabled = vscode.workspace.getConfiguration('shader-studio').get('navigateOnBufferSwitch', true);
+    if (!enabled) return;
+
+    if (!payload.bufferPath || !fs.existsSync(payload.bufferPath)) return;
+
+    const viewColumn = this.resolveTargetColumn(panel, payload.shaderPath);
+    const uri = vscode.Uri.file(payload.bufferPath);
+    await vscode.window.showTextDocument(uri, { viewColumn, preview: false, preserveFocus: true });
+  }
+
+  private resolveTargetColumn(panel: vscode.WebviewPanel, shaderPath: string): vscode.ViewColumn {
+    // Collect all webview panel columns to avoid
+    const panelColumns = new Set<vscode.ViewColumn>();
+    for (const p of this.panels) {
+      if (p.viewColumn !== undefined) {
+        panelColumns.add(p.viewColumn);
+      }
+    }
+
+    const tabGroups = vscode.window.tabGroups.all;
+
+    // Find the group containing the locked shader file
+    for (const group of tabGroups) {
+      if (panelColumns.has(group.viewColumn)) continue;
+      for (const tab of group.tabs) {
+        if (tab.input && typeof tab.input === 'object' && 'uri' in tab.input) {
+          const tabUri = (tab.input as { uri: vscode.Uri }).uri;
+          if (tabUri.fsPath === shaderPath) {
+            return group.viewColumn;
+          }
+        }
+      }
+    }
+
+    // Fall back to left-most non-panel group
+    for (const group of tabGroups) {
+      if (!panelColumns.has(group.viewColumn)) {
+        return group.viewColumn;
+      }
+    }
+
+    return vscode.ViewColumn.One;
   }
 
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {
