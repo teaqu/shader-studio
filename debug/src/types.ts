@@ -1,9 +1,10 @@
-export type ParameterMode = 'uv' | 'custom';
+export type ParameterMode = 'uv' | 'centered-uv' | 'custom' | 'preset';
 
 export interface DebugParameterInfo {
   name: string;              // parameter name from function signature (e.g. "p")
   type: string;              // GLSL type: "vec2", "float", etc.
   uvValue: string;           // UV-derived GLSL expression (e.g. "uv", "uv.x", "vec3(uv, 0.0)")
+  centeredUvValue: string;   // Centered UV expression: aspect-corrected, -1 to 1 range
   defaultCustomValue: string; // initial custom value (e.g. "0.5")
   mode: ParameterMode;       // 'uv' for vec2, 'custom' for others by default
   customValue: string;       // current custom value (editable, starts as defaultCustomValue)

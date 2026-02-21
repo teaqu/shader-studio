@@ -1,4 +1,4 @@
-import type { ShaderDebugState } from "./types/ShaderDebugState";
+import type { ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/glsl-debug";
 
 export class ShaderDebugManager {
@@ -11,10 +11,13 @@ export class ShaderDebugManager {
     functionContext: null,
     isLineLocked: false,
     isInlineRenderingEnabled: true,
+    normalizeMode: 'off' as NormalizeMode,
+    isStepEnabled: false,
+    stepEdge: 0.5,
+    debugError: null,
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
-  private onDisableCallback: (() => void) | null = null;
   private customParameters: Map<number, string> = new Map();
   private loopMaxIterations: Map<number, number> = new Map();
   private lastOriginalCode: string | null = null;
@@ -25,19 +28,11 @@ export class ShaderDebugManager {
     this.stateCallback = callback;
   }
 
-  public setOnDisableCallback(callback: () => void): void {
-    this.onDisableCallback = callback;
-  }
-
   public toggleEnabled(): void {
     this.state.isEnabled = !this.state.isEnabled;
-    if (this.state.isEnabled) {
-      this.state.isInlineRenderingEnabled = true;
-    } else {
-      this.state.isInlineRenderingEnabled = false;
+    if (!this.state.isEnabled) {
       this.state.isLineLocked = false;
       this.lockedFilePath = null;
-      this.onDisableCallback?.();
     }
     this.updateActiveState();
     this.notifyStateChange();
@@ -58,6 +53,7 @@ export class ShaderDebugManager {
     this.state.currentLine = line;
     this.state.lineContent = lineContent;
     this.state.filePath = filePath;
+    this.state.debugError = null;
     this.updateActiveState();
     this.updateFunctionContext();
     this.notifyStateChange();
@@ -110,6 +106,28 @@ export class ShaderDebugManager {
     this.notifyStateChange();
   }
 
+  public cycleNormalizeMode(): void {
+    const modes: NormalizeMode[] = ['off', 'soft', 'abs'];
+    const currentIndex = modes.indexOf(this.state.normalizeMode);
+    this.state.normalizeMode = modes[(currentIndex + 1) % modes.length];
+    this.notifyStateChange();
+  }
+
+  public toggleStep(): void {
+    this.state.isStepEnabled = !this.state.isStepEnabled;
+    this.notifyStateChange();
+  }
+
+  public setStepEdge(edge: number): void {
+    this.state.stepEdge = edge;
+    this.notifyStateChange();
+  }
+
+  public setDebugError(error: string | null): void {
+    this.state.debugError = error;
+    this.notifyStateChange();
+  }
+
   private updateActiveState(): void {
     this.state.isActive = this.state.isEnabled &&
                           this.state.currentLine !== null &&
@@ -145,8 +163,25 @@ export class ShaderDebugManager {
   }
 
   /**
+   * Applies normalize/step post-processing to the full shader output.
+   * Used when no line is selected or inline rendering is off.
+   */
+  public applyFullShaderPostProcessing(originalCode: string): string | null {
+    const stepEdge = this.state.isStepEnabled ? this.state.stepEdge : null;
+    if (this.state.normalizeMode === 'off' && stepEdge === null) {
+      return null;
+    }
+    return ShaderDebugger.applyFullShaderPostProcessing(
+      originalCode,
+      this.state.normalizeMode,
+      stepEdge,
+    );
+  }
+
+  /**
    * Modifies shader code to execute up to the debug line.
    * Returns modified code or null if modification fails or inline rendering is off.
+   * Falls back to full-shader post-processing when inline is off but normalize/step active.
    */
   public modifyShaderForDebugging(
     originalCode: string,
@@ -157,15 +192,26 @@ export class ShaderDebugManager {
     }
 
     if (!this.state.isInlineRenderingEnabled) {
-      return null;
+      return this.applyFullShaderPostProcessing(originalCode);
     }
 
-    return ShaderDebugger.modifyShaderForDebugging(
+    const result = ShaderDebugger.modifyShaderForDebugging(
       originalCode,
       debugLine,
       this.state.lineContent,
       this.loopMaxIterations,
       this.customParameters,
+      this.state.normalizeMode,
+      this.state.isStepEnabled ? this.state.stepEdge : null,
     );
+
+    if (result === null) {
+      this.state.debugError = 'No debuggable variable on this line';
+      this.notifyStateChange();
+    } else {
+      this.state.debugError = null;
+    }
+
+    return result;
   }
 }

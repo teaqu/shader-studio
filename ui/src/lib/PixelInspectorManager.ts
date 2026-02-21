@@ -4,7 +4,7 @@ import type { PixelInspectorState } from "./types/PixelInspectorState";
 
 export class PixelInspectorManager {
   private state: PixelInspectorState = {
-    isEnabled: false,
+    isEnabled: true,
     isActive: false,
     isLocked: false,
     mouseX: 0,
@@ -36,6 +36,12 @@ export class PixelInspectorManager {
     this.renderingEngine = renderingEngine;
     this.timeManager = timeManager;
     this.glCanvas = glCanvas;
+
+    if (this.state.isEnabled) {
+      this.state.isActive = true;
+      this.startContinuousUpdate();
+      this.notifyStateChange();
+    }
   }
 
   public getState(): PixelInspectorState {

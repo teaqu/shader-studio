@@ -20,6 +20,7 @@ export interface RenderingEngine {
   stopRenderLoop(): void;
   render(time?: number): void;
   getCurrentFPS(): number;
+  getUniforms(): import("../models").PassUniforms;
   cleanup(): void;
   readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null;
   dispose(): void;

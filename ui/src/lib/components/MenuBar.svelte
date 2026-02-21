@@ -21,13 +21,19 @@
   import fullscreenIcon from "../../assets/fullscreen.svg?raw";
   import menuIcon from "../../assets/menu.svg?raw";
   import configIcon from "../../assets/config.svg?raw";
-  import inspectorIcon from "../../assets/inspector.svg?raw";
-
-  // Debug icon SVG
+  // Bug icon SVG for debug toggle
   const debugIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="m8 6 4-4 4 4"/>
-    <path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22"/>
-    <path d="m20 22-5-5"/>
+    <path d="m8 2 1.88 1.88"/>
+    <path d="M14.12 3.88 16 2"/>
+    <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/>
+    <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/>
+    <path d="M12 20v-9"/>
+    <path d="M6.53 9C4.6 8.8 3 7.1 3 5"/>
+    <path d="M6 13H2"/>
+    <path d="M3 21c0-2.1 1.7-3.9 3.8-4"/>
+    <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/>
+    <path d="M22 13h-4"/>
+    <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>
   </svg>`;
 
   import { piRequestFullScreen } from "../../../../vendor/pilibs/src/piWebUtils.js";
@@ -48,8 +54,6 @@
   export let onQualityChange: (mode: QualityMode) => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
   export let onConfig: () => void = () => {};
-  export let isInspectorEnabled: boolean = true;
-  export let onToggleInspectorEnabled: () => void = () => {};
   export let isDebugEnabled: boolean = false;
   export let onToggleDebugEnabled: () => void = () => {};
   export let debugState: ShaderDebugState | null = null;
@@ -321,14 +325,6 @@
   </div>
   <div class="right-group">
     <button
-      class="collapse-inspector"
-      on:click={onToggleInspectorEnabled}
-      aria-label="Toggle inspector"
-      class:active={isInspectorEnabled}
-    >
-      {@html inspectorIcon}
-    </button>
-    <button
       class="collapse-debug"
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
@@ -365,15 +361,6 @@
       </button>
       {#if showOptionsMenu}
         <div class="options-menu">
-          <button
-            class="options-menu-item show-inspector"
-            on:click={() => { onToggleInspectorEnabled(); showOptionsMenu = false; }}
-            aria-label="Toggle inspector"
-            class:active={isInspectorEnabled}
-          >
-            {@html inspectorIcon}
-            <span>Inspector</span>
-          </button>
           <button
             class="options-menu-item show-debug"
             on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}

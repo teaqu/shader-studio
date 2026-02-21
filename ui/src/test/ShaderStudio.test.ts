@@ -37,6 +37,7 @@ describe('ShaderStudio', () => {
       togglePause: vi.fn().mockImplementation(() => {}),
       stopRenderLoop: vi.fn().mockImplementation(() => {}),
       getCurrentFPS: vi.fn().mockReturnValue(60),
+      getUniforms: vi.fn().mockReturnValue({ res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }),
       getTimeManager: vi.fn().mockReturnValue({}),
       dispose: vi.fn().mockImplementation(() => {}),
       compileShaderPipeline: vi.fn(),
@@ -332,6 +333,18 @@ describe('ShaderStudio', () => {
 
       expect(result).toBe(fps);
       expect(mockRenderingEngine.getCurrentFPS).toHaveBeenCalled();
+    });
+  });
+
+  describe('getUniforms', () => {
+    it('should delegate to rendering engine getUniforms', () => {
+      const mockUniforms = { res: [1920, 1080, 1.778], time: 5.0, timeDelta: 0.016, frameRate: 60, mouse: [100, 200, 0, 0], frame: 300, date: [2026, 1, 21, 45000] };
+      vi.spyOn(mockRenderingEngine, 'getUniforms').mockReturnValue(mockUniforms);
+
+      const result = shaderStudio.getUniforms();
+
+      expect(result).toBe(mockUniforms);
+      expect(mockRenderingEngine.getUniforms).toHaveBeenCalled();
     });
   });
 

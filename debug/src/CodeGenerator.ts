@@ -1,25 +1,110 @@
 import type { FunctionInfo, VarInfo } from './GlslParser';
 
 export class CodeGenerator {
-  static generateReturnStatementForVar(varType: string, varName: string): string {
-    switch (varType) {
-      case 'float':
-        return `  fragColor = vec4(vec3(${varName}), 1.0); // Debug: visualize float as grayscale`;
-      case 'vec2':
-        return `  fragColor = vec4(${varName}, 0.0, 1.0); // Debug: visualize vec2 (RG channels)`;
-      case 'vec3':
-        return `  fragColor = vec4(${varName}, 1.0); // Debug: visualize vec3 as RGB`;
-      case 'vec4':
-        return `  fragColor = ${varName}; // Debug: visualize vec4 directly`;
-      case 'mat2':
-        return `  fragColor = vec4(${varName}[0], ${varName}[1]); // Debug: visualize mat2 as vec4`;
-      case 'mat3':
-        return `  fragColor = vec4(${varName}[0], 1.0); // Debug: visualize mat3 first row`;
-      case 'mat4':
-        return `  fragColor = ${varName}[0]; // Debug: visualize mat4 first row`;
-      default:
-        return '  fragColor = vec4(1.0, 0.0, 1.0, 1.0); // Debug: unknown type';
+  /**
+   * Soft normalization: v / (|v| + 1) * 0.5 + 0.5
+   * Maps any range to 0-1: negative → below 0.5, positive → above 0.5, zero → 0.5 (gray).
+   */
+  private static softNormExpr(expr: string): string {
+    return `(${expr} / (abs(${expr}) + 1.0) * 0.5 + 0.5)`;
+  }
+
+  /**
+   * Abs normalization: abs(v) / (abs(v) + 1.0)
+   * Maps magnitude to 0-1: zero → 0 (black), large values → 1 (white).
+   */
+  private static absNormExpr(expr: string): string {
+    return `(abs(${expr}) / (abs(${expr}) + 1.0))`;
+  }
+
+  static generateReturnStatementForVar(varType: string, varName: string, normalizeMode: string = 'off', stepEdge: number | null = null): string {
+    let line: string;
+
+    if (normalizeMode === 'soft') {
+      switch (varType) {
+        case 'float': {
+          const n = CodeGenerator.softNormExpr(varName);
+          line = `  fragColor = vec4(vec3(${n}), 1.0); // Debug: soft normalized float`;
+          break;
+        }
+        case 'vec2': {
+          const n = `(${varName} / (abs(${varName}) + vec2(1.0)) * 0.5 + 0.5)`;
+          line = `  fragColor = vec4(${n}, 0.0, 1.0); // Debug: soft normalized vec2`;
+          break;
+        }
+        case 'vec3': {
+          const n = `(${varName} / (abs(${varName}) + vec3(1.0)) * 0.5 + 0.5)`;
+          line = `  fragColor = vec4(${n}, 1.0); // Debug: soft normalized vec3`;
+          break;
+        }
+        case 'vec4': {
+          const rgb = `(${varName}.rgb / (abs(${varName}.rgb) + vec3(1.0)) * 0.5 + 0.5)`;
+          line = `  fragColor = vec4(${rgb}, 1.0); // Debug: soft normalized vec4`;
+          break;
+        }
+        default:
+          line = CodeGenerator.generateReturnStatementForVar(varType, varName, 'off');
+      }
+    } else if (normalizeMode === 'abs') {
+      switch (varType) {
+        case 'float': {
+          const n = CodeGenerator.absNormExpr(varName);
+          line = `  fragColor = vec4(vec3(${n}), 1.0); // Debug: abs normalized float`;
+          break;
+        }
+        case 'vec2': {
+          const n = `(abs(${varName}) / (abs(${varName}) + vec2(1.0)))`;
+          line = `  fragColor = vec4(${n}, 0.0, 1.0); // Debug: abs normalized vec2`;
+          break;
+        }
+        case 'vec3': {
+          const n = `(abs(${varName}) / (abs(${varName}) + vec3(1.0)))`;
+          line = `  fragColor = vec4(${n}, 1.0); // Debug: abs normalized vec3`;
+          break;
+        }
+        case 'vec4': {
+          const rgb = `(abs(${varName}.rgb) / (abs(${varName}.rgb) + vec3(1.0)))`;
+          line = `  fragColor = vec4(${rgb}, 1.0); // Debug: abs normalized vec4`;
+          break;
+        }
+        default:
+          line = CodeGenerator.generateReturnStatementForVar(varType, varName, 'off');
+      }
+    } else {
+      switch (varType) {
+        case 'float':
+          line = `  fragColor = vec4(vec3(${varName}), 1.0); // Debug: visualize float as grayscale`;
+          break;
+        case 'vec2':
+          line = `  fragColor = vec4(${varName}, 0.0, 1.0); // Debug: visualize vec2 (RG channels)`;
+          break;
+        case 'vec3':
+          line = `  fragColor = vec4(${varName}, 1.0); // Debug: visualize vec3 as RGB`;
+          break;
+        case 'vec4':
+          line = `  fragColor = ${varName}; // Debug: visualize vec4 directly`;
+          break;
+        case 'mat2':
+          line = `  fragColor = vec4(${varName}[0], ${varName}[1]); // Debug: visualize mat2 as vec4`;
+          break;
+        case 'mat3':
+          line = `  fragColor = vec4(${varName}[0], 1.0); // Debug: visualize mat3 first row`;
+          break;
+        case 'mat4':
+          line = `  fragColor = ${varName}[0]; // Debug: visualize mat4 first row`;
+          break;
+        default:
+          line = '  fragColor = vec4(1.0, 0.0, 1.0, 1.0); // Debug: unknown type';
+      }
     }
+
+    // Step post-processing: apply binary threshold to the visualization
+    if (stepEdge !== null) {
+      const edge = stepEdge.toFixed(4);
+      line += `\n  fragColor = vec4(step(vec3(${edge}), fragColor.rgb), 1.0); // Debug: step threshold`;
+    }
+
+    return line;
   }
 
   /**
@@ -240,6 +325,8 @@ export class CodeGenerator {
     functionInfo: FunctionInfo,
     varInfo: VarInfo,
     customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string {
     const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
     const defaultArgs = params.args ? params.args.split(', ') : [];
@@ -257,7 +344,7 @@ export class CodeGenerator {
       setup = setup.filter(s => !s.includes('vec2 uv'));
     }
 
-    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result');
+    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result', normalizeMode, stepEdge);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
     return `${setupCode}  ${varInfo.type} result = ${functionName}(${args.join(', ')});\n${visualization}`;
   }
@@ -270,6 +357,8 @@ export class CodeGenerator {
     containingLoops: { lineNumber: number; endLine: number }[] = [],
     loopMaxIterations: Map<number, number> = new Map(),
     customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string {
     const helperFunctions: string[] = [];
     for (let i = 0; i < functionInfo.start; i++) {
@@ -336,7 +425,7 @@ export class CodeGenerator {
     wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters);
+    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -354,6 +443,8 @@ export class CodeGenerator {
     returnType: string,
     loopMaxIterations: Map<number, number> = new Map(),
     customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string {
     // Everything before the function
     const helperFunctions: string[] = [];
@@ -379,21 +470,91 @@ export class CodeGenerator {
     wrapper.push(...cappedLines);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters);
+    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
     return wrapper.join('\n');
   }
 
+  /**
+   * Applies post-processing (normalize/step) to the full mainImage output.
+   * Returns modified code or null if no post-processing is needed.
+   */
+  static applyOutputPostProcessing(
+    originalCode: string,
+    normalizeMode: string,
+    stepEdge: number | null,
+  ): string | null {
+    if (normalizeMode === 'off' && stepEdge === null) {
+      return null;
+    }
+
+    const lines = originalCode.split('\n');
+
+    // Find the mainImage function signature
+    let mainImageLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/void\s+mainImage\s*\(/.test(lines[i])) {
+        mainImageLine = i;
+        break;
+      }
+    }
+
+    if (mainImageLine === -1) {
+      return null;
+    }
+
+    // Find the closing brace by tracking brace depth
+    let braceDepth = 0;
+    let closingBraceLine = -1;
+    let braceStarted = false;
+
+    for (let i = mainImageLine; i < lines.length; i++) {
+      for (const char of lines[i]) {
+        if (char === '{') { braceDepth++; braceStarted = true; }
+        if (char === '}') { braceDepth--; }
+      }
+      if (braceStarted && braceDepth === 0) {
+        closingBraceLine = i;
+        break;
+      }
+    }
+
+    if (closingBraceLine === -1) {
+      return null;
+    }
+
+    // Build post-processing lines
+    const postLines: string[] = [];
+
+    if (normalizeMode === 'soft') {
+      postLines.push('  fragColor.rgb = fragColor.rgb / (abs(fragColor.rgb) + vec3(1.0)) * 0.5 + 0.5;');
+    } else if (normalizeMode === 'abs') {
+      postLines.push('  fragColor.rgb = abs(fragColor.rgb) / (abs(fragColor.rgb) + vec3(1.0));');
+    }
+
+    if (stepEdge !== null) {
+      const edge = stepEdge.toFixed(4);
+      postLines.push(`  fragColor = vec4(step(vec3(${edge}), fragColor.rgb), 1.0);`);
+    }
+
+    // Insert before closing brace
+    const result = [...lines];
+    result.splice(closingBraceLine, 0, ...postLines);
+    return result.join('\n');
+  }
+
   static wrapOneLinerForDebugging(
     lineContent: string,
-    varInfo: VarInfo
+    varInfo: VarInfo,
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string {
     const wrapper = [];
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     wrapper.push(`  ${lineContent.trim()}`);
-    wrapper.push(`  ${CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name)}`);
+    wrapper.push(`  ${CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge)}`);
     wrapper.push('}');
     return wrapper.join('\n');
   }

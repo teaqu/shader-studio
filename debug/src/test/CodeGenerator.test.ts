@@ -34,6 +34,74 @@ describe("CodeGenerator", () => {
       const result = CodeGenerator.generateReturnStatementForVar("sampler2D", "tex");
       expect(result).toContain("1.0, 0.0, 1.0, 1.0");
     });
+
+    it("should apply soft normalization for float", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "soft");
+      expect(result).toContain("abs(d)");
+      expect(result).toContain("0.5");
+      expect(result).toContain("soft normalized");
+    });
+
+    it("should apply soft normalization for vec3", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("vec3", "col", "soft");
+      expect(result).toContain("abs(col)");
+      expect(result).toContain("vec3(1.0)");
+      expect(result).toContain("soft normalized");
+    });
+
+    it("should apply abs normalization for float", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "abs");
+      expect(result).toContain("abs(d)");
+      expect(result).not.toContain("0.5 + 0.5");
+      expect(result).toContain("abs normalized");
+    });
+
+    it("should apply abs normalization for vec3", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("vec3", "col", "abs");
+      expect(result).toContain("abs(col)");
+      expect(result).toContain("abs normalized");
+    });
+
+    it("should not apply normalization when mode is off", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "off");
+      expect(result).not.toContain("abs");
+      expect(result).toContain("grayscale");
+    });
+
+    it("should apply step post-processing to raw float", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "off", 0.75);
+      expect(result).toContain("vec3(d)"); // raw visualization
+      expect(result).toContain("step(vec3(0.7500), fragColor.rgb)"); // step post-process
+      expect(result).toContain("step threshold");
+    });
+
+    it("should apply step post-processing to raw vec3", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("vec3", "col", "off", 0.5);
+      expect(result).toContain("vec4(col, 1.0)"); // raw visualization
+      expect(result).toContain("step(vec3(0.5000), fragColor.rgb)"); // step post-process
+    });
+
+    it("should combine step with soft normalization", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "soft", 0.5);
+      expect(result).toContain("abs(d)"); // soft normalization
+      expect(result).toContain("step(vec3(0.5000), fragColor.rgb)"); // step post-process
+    });
+
+    it("should combine step with abs normalization", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("vec3", "col", "abs", 0.3);
+      expect(result).toContain("abs(col)"); // abs normalization
+      expect(result).toContain("step(vec3(0.3000), fragColor.rgb)"); // step post-process
+    });
+
+    it("should not apply step when edge is null", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "off", null);
+      expect(result).not.toContain("step threshold");
+    });
+
+    it("should not apply step by default (no edge parameter)", () => {
+      const result = CodeGenerator.generateReturnStatementForVar("float", "d", "off");
+      expect(result).not.toContain("step threshold");
+    });
   });
 
   describe("closeOpenBraces", () => {
@@ -302,6 +370,49 @@ describe("CodeGenerator", () => {
       expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord)");
       // Should call sdf with default params
       expect(result).toContain("sdf(uv)");
+    });
+  });
+
+  describe("applyOutputPostProcessing", () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    it("should return null when no post-processing needed", () => {
+      const result = CodeGenerator.applyOutputPostProcessing(shader, 'off', null);
+      expect(result).toBeNull();
+    });
+
+    it("should inject soft normalization before closing brace", () => {
+      const result = CodeGenerator.applyOutputPostProcessing(shader, 'soft', null);
+      expect(result).not.toBeNull();
+      expect(result).toContain('fragColor.rgb = fragColor.rgb / (abs(fragColor.rgb) + vec3(1.0)) * 0.5 + 0.5;');
+    });
+
+    it("should inject abs normalization before closing brace", () => {
+      const result = CodeGenerator.applyOutputPostProcessing(shader, 'abs', null);
+      expect(result).not.toBeNull();
+      expect(result).toContain('fragColor.rgb = abs(fragColor.rgb) / (abs(fragColor.rgb) + vec3(1.0));');
+    });
+
+    it("should inject step threshold before closing brace", () => {
+      const result = CodeGenerator.applyOutputPostProcessing(shader, 'off', 0.5);
+      expect(result).not.toBeNull();
+      expect(result).toContain('step(vec3(0.5000), fragColor.rgb)');
+    });
+
+    it("should combine normalize and step", () => {
+      const result = CodeGenerator.applyOutputPostProcessing(shader, 'soft', 0.75);
+      expect(result).not.toBeNull();
+      expect(result).toContain('fragColor.rgb = fragColor.rgb / (abs(fragColor.rgb)');
+      expect(result).toContain('step(vec3(0.7500), fragColor.rgb)');
+    });
+
+    it("should return null when no mainImage function found", () => {
+      const noMain = `float sdf(vec2 p) { return length(p); }`;
+      const result = CodeGenerator.applyOutputPostProcessing(noMain, 'soft', null);
+      expect(result).toBeNull();
     });
   });
 

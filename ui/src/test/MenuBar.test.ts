@@ -44,7 +44,6 @@ describe('MenuBar Component', () => {
       canvasWidth: 800,
       canvasHeight: 600,
       isLocked: false,
-      isInspectorEnabled: false,
       canvasElement: null,
       onReset: vi.fn(),
       onRefresh: vi.fn(),
@@ -53,7 +52,6 @@ describe('MenuBar Component', () => {
       onAspectRatioChange: vi.fn(),
       onQualityChange: vi.fn(),
       onZoomChange: vi.fn(),
-      onToggleInspectorEnabled: vi.fn(),
       isDebugEnabled: false,
       onToggleDebugEnabled: vi.fn(),
       debugState: {
@@ -787,53 +785,7 @@ describe('MenuBar Component', () => {
     });
   });
 
-  describe('Inspector Enable/Disable', () => {
-    it('should render the inspector toggle button', async () => {
-      render(MenuBar, { props: defaultProps });
-
-      const inspectorButton = screen.getByLabelText('Toggle inspector');
-      expect(inspectorButton).toBeInTheDocument();
-    });
-
-    it('should call onToggleInspectorEnabled when inspector button is clicked', async () => {
-      const onToggleInspectorEnabled = vi.fn();
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          onToggleInspectorEnabled
-        }
-      });
-
-      const inspectorButton = screen.getByLabelText('Toggle inspector');
-      await fireEvent.click(inspectorButton);
-
-      expect(onToggleInspectorEnabled).toHaveBeenCalledOnce();
-    });
-
-    it('should have active class when inspector is enabled', async () => {
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          isInspectorEnabled: true
-        }
-      });
-
-      const inspectorButton = screen.getByLabelText('Toggle inspector');
-      expect(inspectorButton).toHaveClass('active');
-    });
-
-    it('should not have active class when inspector is disabled', async () => {
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          isInspectorEnabled: false
-        }
-      });
-
-      const inspectorButton = screen.getByLabelText('Toggle inspector');
-      expect(inspectorButton).not.toHaveClass('active');
-    });
-  });
+  // Inspector toggle has been moved to DebugPanel
 
   describe('Error Tooltip Display', () => {
     it('should not show error class on pause button when no errors', () => {
@@ -896,7 +848,8 @@ describe('MenuBar Component', () => {
 
       // The errors should be displayed in the tooltip
       const errorTooltip = screen.getByText((content, element) => {
-        return element?.classList.contains('error-tooltip') &&
+        if (!element) return false;
+        return element.classList.contains('error-tooltip') &&
                content.includes('Error 1') &&
                content.includes('Error 2');
       });
