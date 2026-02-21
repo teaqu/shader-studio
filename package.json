@@ -5,7 +5,7 @@
   "description": "A VS Code extension for viewing and editing shaders",
   "workspaces": [
     "types",
-    "glsl-debug",
+    "debug",
     "rendering",
     "utils",
     "extension",
@@ -16,6 +16,7 @@
   "scripts": {
     "build": "npm run build:types && npm run build --workspaces --if-present",
     "build:types": "npm run build -w types",
+    "build:debug": "npm run build -w debug",
     "build:extension": "npm run build:types && npm run build -w extension",
     "build:ui": "npm run build:types && npm run build -w ui",
     "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",

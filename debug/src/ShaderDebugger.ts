@@ -18,6 +18,7 @@ export class ShaderDebugger {
     debugLine: number,
     lineContent: string,
     loopMaxIterations: Map<number, number> = new Map(),
+    customParameters: Map<number, string> = new Map(),
   ): string | null {
     console.log('[ShaderDebug] === MODIFY SHADER ===');
     console.log('[ShaderDebug] Debug line number:', debugLine);
@@ -45,6 +46,11 @@ export class ShaderDebugger {
     const actualLineContent = lines[debugLine] || '';
     const varInfo = GlslParser.detectVariableAndType(actualLineContent, varTypes, functionReturnType, lines, debugLine);
     if (!varInfo) {
+      // Fourth code path: non-mainImage function with no variable → run full function
+      if (functionInfo.name && functionInfo.name !== 'mainImage' && functionReturnType && functionReturnType !== 'void') {
+        console.log('[ShaderDebug] Path: full function execution (no variable on line)');
+        return CodeGenerator.wrapFullFunctionForDebugging(lines, functionInfo, functionReturnType, loopMaxIterations, customParameters);
+      }
       console.log('[ShaderDebug] ❌ Could not detect variable/type');
       return null;
     }
@@ -58,7 +64,7 @@ export class ShaderDebugger {
     } else if (functionInfo.name) {
       console.log('[ShaderDebug] Path: helper function wrapper');
       const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
-      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations);
+      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters);
     } else {
       console.log('[ShaderDebug] Path: one-liner wrapper');
       result = CodeGenerator.wrapOneLinerForDebugging(lineContent, varInfo);
