@@ -87,6 +87,10 @@ vi.mock('../../lib/ShaderStudio', () => {
       return 60.0;
     }
 
+    getUniforms(): any {
+      return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] };
+    }
+
     getRenderingEngine(): any {
       return {
         readPixel: vi.fn().mockReturnValue({ r: 255, g: 128, b: 64, a: 255 }),

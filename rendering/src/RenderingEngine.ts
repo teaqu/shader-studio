@@ -218,6 +218,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.frameRenderer.getCurrentFPS();
   }
 
+  public getUniforms(): import("./models").PassUniforms {
+    return this.frameRenderer.getUniforms();
+  }
+
   public cleanup(): void {
     this.shaderPipeline.cleanup();
   }

@@ -59,6 +59,9 @@ export class ShaderProcessor {
       if (!result?.success) {
         // If debug mode compilation failed, try original code
         if (codeToCompile !== code) {
+          this.shaderDebugManager.setDebugError(
+            `Debug shader compilation failed: ${result?.error || 'unknown error'}`
+          );
           const fallbackResult = await this.compile(code, config, path, buffers);
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
@@ -100,6 +103,14 @@ export class ShaderProcessor {
 
       if (modifiedCode) {
         return modifiedCode;
+      }
+    }
+
+    // Fallback: apply full-shader post-processing (normalize/step without a specific line)
+    if (debugState.isEnabled) {
+      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(originalCode);
+      if (postProcessed) {
+        return postProcessed;
       }
     }
 
@@ -177,6 +188,9 @@ export class ShaderProcessor {
 
     // If failed and modified code was used, try original
     if (!result.success && modifiedCode) {
+      this.shaderDebugManager.setDebugError(
+        `Debug shader compilation failed: ${result.error || 'unknown error'}`
+      );
       result = await this.compile(this.originalShaderCode, config, path, buffers);
     }
 

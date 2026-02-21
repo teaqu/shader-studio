@@ -20,6 +20,8 @@ describe('ShaderProcessor', () => {
         filePath: null,
       }),
       modifyShaderForDebugging: vi.fn(),
+      applyFullShaderPostProcessing: vi.fn().mockReturnValue(null),
+      setDebugError: vi.fn(),
       updateDebugLine: vi.fn(),
       toggleEnabled: vi.fn(),
       setStateCallback: vi.fn(),

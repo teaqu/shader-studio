@@ -11,6 +11,7 @@
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
+  import DebugPanel from "./debug/DebugPanel.svelte";
   import ResizeHandle from "./ResizeHandle.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
@@ -19,6 +20,7 @@
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { configPanelStore } from "../stores/configPanelStore";
+  import { debugPanelStore } from "../stores/debugPanelStore";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
@@ -34,7 +36,7 @@
   let canvasHeight = 0;
   let zoomLevel = 1.0;
   let inspectorState: PixelInspectorState = {
-    isEnabled: false,
+    isEnabled: true,
     isActive: false,
     isLocked: false,
     mouseX: 0,
@@ -55,6 +57,13 @@
     lineContent: null,
     filePath: null,
     isActive: false,
+    functionContext: null,
+    isLineLocked: false,
+    isInlineRenderingEnabled: true,
+    normalizeMode: 'off' as const,
+    isStepEnabled: false,
+    stepEdge: 0.5,
+    debugError: null,
   };
 
   // Config panel state
@@ -64,13 +73,28 @@
   let pathMap: Record<string, string> = {};
   let shaderPath: string = "";
 
-  // Subscribe to config panel store
+  // Debug panel state
+  let debugPanelVisible = true;
+  let debugSplitRatio = 0.7;
+
+  $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
+  $: hasSidePanel = configPanelVisible || showDebugPanel;
+  $: canvasFlex = hasSidePanel ? (showDebugPanel ? debugSplitRatio : splitRatio) : 1;
+
+  // Subscribe to stores
   onMount(() => {
-    const unsubscribe = configPanelStore.subscribe((state) => {
+    const unsubConfig = configPanelStore.subscribe((state) => {
       configPanelVisible = state.isVisible;
       splitRatio = state.splitRatio;
     });
-    return unsubscribe;
+    const unsubDebug = debugPanelStore.subscribe((state) => {
+      debugPanelVisible = state.isVisible;
+      debugSplitRatio = state.splitRatio;
+    });
+    return () => {
+      unsubConfig();
+      unsubDebug();
+    };
   });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
@@ -182,6 +206,56 @@
 
   function handleSplitResize(ratio: number) {
     configPanelStore.setSplitRatio(ratio);
+  }
+
+  function handleDebugSplitResize(ratio: number) {
+    debugPanelStore.setSplitRatio(ratio);
+  }
+
+  function handleParameterChange(index: number, value: string) {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.setCustomParameter(index, value);
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleLoopMaxIterChange(loopIndex: number, maxIter: number | null) {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.setLoopMaxIterations(loopIndex, maxIter);
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleToggleLineLock() {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.toggleLineLock();
+  }
+
+  function handleToggleInlineRendering() {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.toggleInlineRendering();
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleCycleNormalize() {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.cycleNormalizeMode();
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleToggleStep() {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.toggleStep();
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleSetStepEdge(edge: number) {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.setStepEdge(edge);
+    shaderStudio.triggerDebugRecompile();
+  }
+
+  function getUniforms() {
+    if (!initialized || !shaderStudio) return null;
+    return shaderStudio.getUniforms();
   }
 
   function handleCanvasClick() {
@@ -333,7 +407,7 @@
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <div class="canvas-section" style="flex: {configPanelVisible ? splitRatio : 1}">
+  <div class="canvas-section" style="flex: {canvasFlex}">
     <ShaderCanvas
       {zoomLevel}
       isInspectorActive={inspectorState.isActive}
@@ -350,7 +424,6 @@
       {canvasHeight}
       {isLocked}
       {errors}
-      isInspectorEnabled={inspectorState.isEnabled}
       canvasElement={glCanvas}
       onReset={handleReset}
       onRefresh={handleRefresh}
@@ -360,13 +433,30 @@
       onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
       onConfig={handleConfig}
-      onToggleInspectorEnabled={handleToggleInspectorEnabled}
       isDebugEnabled={debugState.isEnabled}
       onToggleDebugEnabled={handleToggleDebugEnabled}
       {debugState}
       isConfigPanelVisible={configPanelVisible}
       onToggleConfigPanel={handleToggleConfigPanel}
     />
+  {/if}
+  {#if showDebugPanel}
+    <ResizeHandle onResize={handleDebugSplitResize} />
+    <div class="debug-section" style="flex: {1 - debugSplitRatio}">
+      <DebugPanel
+        {debugState}
+        {getUniforms}
+        isInspectorEnabled={inspectorState.isEnabled}
+        onParameterChange={handleParameterChange}
+        onLoopMaxIterChange={handleLoopMaxIterChange}
+        onToggleLineLock={handleToggleLineLock}
+        onToggleInspectorEnabled={handleToggleInspectorEnabled}
+        onToggleInlineRendering={handleToggleInlineRendering}
+        onCycleNormalize={handleCycleNormalize}
+        onToggleStep={handleToggleStep}
+        onSetStepEdge={handleSetStepEdge}
+      />
+    </div>
   {/if}
   {#if configPanelVisible}
     <ResizeHandle onResize={handleSplitResize} />

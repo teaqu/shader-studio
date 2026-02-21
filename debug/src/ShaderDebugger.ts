@@ -19,6 +19,8 @@ export class ShaderDebugger {
     lineContent: string,
     loopMaxIterations: Map<number, number> = new Map(),
     customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string | null {
     console.log('[ShaderDebug] === MODIFY SHADER ===');
     console.log('[ShaderDebug] Debug line number:', debugLine);
@@ -49,25 +51,26 @@ export class ShaderDebugger {
       // Fourth code path: non-mainImage function with no variable → run full function
       if (functionInfo.name && functionInfo.name !== 'mainImage' && functionReturnType && functionReturnType !== 'void') {
         console.log('[ShaderDebug] Path: full function execution (no variable on line)');
-        return CodeGenerator.wrapFullFunctionForDebugging(lines, functionInfo, functionReturnType, loopMaxIterations, customParameters);
+        return CodeGenerator.wrapFullFunctionForDebugging(lines, functionInfo, functionReturnType, loopMaxIterations, customParameters, normalizeMode, stepEdge);
       }
       console.log('[ShaderDebug] ❌ Could not detect variable/type');
       return null;
     }
     console.log('[ShaderDebug] ✓ Detected:', varInfo.name, `(${varInfo.type})`);
+    console.log('[ShaderDebug] normalizeMode:', normalizeMode);
 
     let result: string;
 
     if (functionInfo.name === 'mainImage') {
       console.log('[ShaderDebug] Path: mainImage truncation');
-      result = this.truncateMainImage(lines, debugLine, functionInfo.start, varInfo, loopMaxIterations);
+      result = this.truncateMainImage(lines, debugLine, functionInfo.start, varInfo, loopMaxIterations, normalizeMode, stepEdge);
     } else if (functionInfo.name) {
       console.log('[ShaderDebug] Path: helper function wrapper');
       const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
-      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters);
+      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge);
     } else {
       console.log('[ShaderDebug] Path: one-liner wrapper');
-      result = CodeGenerator.wrapOneLinerForDebugging(lineContent, varInfo);
+      result = CodeGenerator.wrapOneLinerForDebugging(lineContent, varInfo, normalizeMode, stepEdge);
     }
 
     console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
@@ -109,6 +112,18 @@ export class ShaderDebugger {
     };
   }
 
+  /**
+   * Applies normalize/step post-processing to the full shader output.
+   * Returns modified code or null if no post-processing is needed.
+   */
+  public static applyFullShaderPostProcessing(
+    originalCode: string,
+    normalizeMode: string,
+    stepEdge: number | null,
+  ): string | null {
+    return CodeGenerator.applyOutputPostProcessing(originalCode, normalizeMode, stepEdge);
+  }
+
   private static extractParameters(funcLine: string): DebugParameterInfo[] {
     const parameters: DebugParameterInfo[] = [];
     const paramsMatch = funcLine.match(/\(([^)]*)\)/);
@@ -120,18 +135,25 @@ export class ShaderDebugger {
     const paramPairs = paramsMatch[1].split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
-      const match = pair.match(/(?:in|out|inout)?\s*(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)/);
+      const match = pair.match(/(?:(in|out|inout)\s+)?(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)/);
       if (!match) continue;
 
-      const type = match[1];
-      const name = match[2];
+      const qualifier = match[1];
+      // Skip 'out' parameters — they are outputs, not inputs
+      if (qualifier === 'out') continue;
+
+      const type = match[2];
+      const name = match[3];
       const uvValue = ShaderDebugger.getUvValue(type);
       const defaultCustomValue = ShaderDebugger.getDefaultCustomValue(type);
+
+      const centeredUvValue = ShaderDebugger.getCenteredUvValue(type);
 
       parameters.push({
         name,
         type,
         uvValue,
+        centeredUvValue,
         defaultCustomValue,
         mode: type === 'vec2' ? 'uv' : 'custom',
         customValue: defaultCustomValue,
@@ -152,6 +174,27 @@ export class ShaderDebugger {
       case 'mat2': return 'mat2(uv.x)';
       case 'mat3': return 'mat3(uv.x)';
       case 'mat4': return 'mat4(uv.x)';
+      default: return '';
+    }
+  }
+
+  /**
+   * Returns a self-contained centered UV GLSL expression for the given type.
+   * Aspect-ratio-corrected, ranges roughly -1 to 1 in Y, -aspect to aspect in X.
+   * Uses fragCoord/iResolution directly (available in the mainImage wrapper scope).
+   */
+  private static getCenteredUvValue(type: string): string {
+    const cuv = '((fragCoord * 2.0 - iResolution.xy) / iResolution.y)';
+    switch (type) {
+      case 'vec2': return cuv;
+      case 'float': return `${cuv}.x`;
+      case 'vec3': return `vec3(${cuv}, 0.0)`;
+      case 'vec4': return `vec4(${cuv}, 0.0, 1.0)`;
+      case 'int': return `int(${cuv}.x * 10.0)`;
+      case 'bool': return 'fragCoord.x > iResolution.x * 0.5';
+      case 'mat2': return `mat2(${cuv}.x)`;
+      case 'mat3': return `mat3(${cuv}.x)`;
+      case 'mat4': return `mat4(${cuv}.x)`;
       default: return '';
     }
   }
@@ -290,6 +333,8 @@ export class ShaderDebugger {
     functionStart: number,
     varInfo: VarInfo,
     loopMaxIterations: Map<number, number> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
   ): string {
     const stripComments = (line: string): string => {
       const commentIndex = line.indexOf('//');
@@ -334,7 +379,7 @@ export class ShaderDebugger {
     const originalLength = withCappedLoops.length;
     const result = closedLines.slice(0, originalLength);
     const outputVar = shadowVarName || varInfo.name;
-    result.push(CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar));
+    result.push(CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar, normalizeMode, stepEdge));
     result.push(...closedLines.slice(originalLength));
     return result.join('\n');
   }

@@ -53,7 +53,7 @@ export class FrameRenderer {
     return this.fpsCalculator.getFPS();
   }
 
-  private getUniforms(): any {
+  public getUniforms(): any {
     return {
       res: new Float32Array([
         this.glCanvas.width,

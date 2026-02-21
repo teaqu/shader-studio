@@ -126,6 +126,10 @@ export class ShaderStudio {
     return this.renderingEngine.getCurrentFPS();
   }
 
+  getUniforms() {
+    return this.renderingEngine.getUniforms();
+  }
+
   getLastShaderEvent(): MessageEvent | null {
     return this.messageHandler.getLastEvent();
   }

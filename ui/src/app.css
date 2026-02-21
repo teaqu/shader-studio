@@ -932,6 +932,17 @@ canvas {
   overflow: hidden;
 }
 
+.debug-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
+  max-height: 50vh;
+  overflow: hidden;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+  flex-shrink: 0;
+}
+
 .config-section {
   display: flex;
   flex-direction: column;
