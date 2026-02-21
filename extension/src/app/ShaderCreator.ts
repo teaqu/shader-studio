@@ -2,12 +2,15 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
+import { GlslFileTracker } from "./GlslFileTracker";
 
 export class ShaderCreator {
   private logger: Logger;
+  private glslFileTracker: GlslFileTracker;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, glslFileTracker: GlslFileTracker) {
     this.logger = logger;
+    this.glslFileTracker = glslFileTracker;
   }
 
   private getShaderTemplate(): string {
@@ -24,30 +27,34 @@ export class ShaderCreator {
 }`;
   }
 
-  private findUniqueFileName(rootPath: string): string {
-    let filePath = path.join(rootPath, "shadertoy.glsl");
-    let counter = 1;
-
-    // Check if file exists and increment counter if needed
-    while (fs.existsSync(filePath)) {
-      filePath = path.join(rootPath, `shadertoy${counter}.glsl`);
-      counter++;
+  private getDefaultUri(): vscode.Uri {
+    const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
+    if (lastViewedFile) {
+      return vscode.Uri.file(path.join(path.dirname(lastViewedFile), "shadertoy.glsl"));
     }
 
-    return filePath;
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      return vscode.Uri.file(path.join(workspaceFolders[0].uri.fsPath, "shadertoy.glsl"));
+    }
+
+    return vscode.Uri.file("shadertoy.glsl");
   }
 
   async create(): Promise<void> {
     try {
-      // Get the workspace root folder
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        vscode.window.showErrorMessage("No workspace folder is open");
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: this.getDefaultUri(),
+        filters: { "GLSL Shader": ["glsl"] },
+        title: "New Shader",
+      });
+
+      // User cancelled
+      if (!uri) {
         return;
       }
 
-      const rootPath = workspaceFolders[0].uri.fsPath;
-      const filePath = this.findUniqueFileName(rootPath);
+      const filePath = uri.fsPath;
 
       // Create a basic shader template
       const shaderTemplate = this.getShaderTemplate();
@@ -56,8 +63,7 @@ export class ShaderCreator {
       fs.writeFileSync(filePath, shaderTemplate);
 
       // Open the newly created file
-      const fileUri = vscode.Uri.file(filePath);
-      const document = await vscode.workspace.openTextDocument(fileUri);
+      const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document, {
         preview: false,
       });

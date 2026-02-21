@@ -44,7 +44,7 @@ export class ShaderStudio {
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
-    this.shaderCreator = new ShaderCreator(this.logger);
+    this.shaderCreator = new ShaderCreator(this.logger, this.glslFileTracker);
     
     const errorHandler = new ErrorHandler(outputChannel, diagnosticCollection);
     this.errorHandler = errorHandler;
