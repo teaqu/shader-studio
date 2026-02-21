@@ -31,6 +31,16 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.commands.executeCommand('workbench.action.reloadWindow');
 					}
 				});
+			} else if (event.affectsConfiguration('shader-studio.enableSnippets')) {
+				await updateSnippetsContribution();
+				vscode.window.showInformationMessage(
+					'Extension restart required to apply snippet settings.',
+					'Restart Now'
+				).then(selection => {
+					if (selection === 'Restart Now') {
+						vscode.commands.executeCommand('workbench.action.reloadWindow');
+					}
+				});
 			} else if (event.affectsConfiguration('shader-studio.webSocketPort')) {
 				vscode.window.showInformationMessage(
 					'Extension restart required to apply the new WebSocket port configuration.',
@@ -111,6 +121,47 @@ export async function updateCustomEditorPriority(): Promise<void> {
     console.log(`Updated custom editor priority to: ${newPriority}`);
   } catch (error) {
     console.error(`Failed to update custom editor priority: ${error}`);
+  }
+}
+
+// Update snippets contribution in package.json based on enableSnippets setting
+async function updateSnippetsContribution(): Promise<void> {
+  try {
+    const extension = vscode.extensions.getExtension('teaqu.shader-studio');
+    if (!extension) {
+      return;
+    }
+
+    const extensionPath = extension.extensionPath;
+    const packageJsonPath = require('path').join(extensionPath, 'package.json');
+    const fs = require('fs');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
+    const config = vscode.workspace.getConfiguration('shader-studio');
+    const enabled = config.get<boolean>('enableSnippets', true);
+
+    if (enabled) {
+      if (!packageJson.contributes.snippets) {
+        packageJson.contributes.snippets = [
+          { language: "glsl", path: "./snippets/sdf-2d.code-snippets" },
+          { language: "glsl", path: "./snippets/sdf-3d.code-snippets" },
+          { language: "glsl", path: "./snippets/sdf-operations.code-snippets" },
+          { language: "glsl", path: "./snippets/transformations.code-snippets" },
+          { language: "glsl", path: "./snippets/ray-marching.code-snippets" },
+          { language: "glsl", path: "./snippets/noise.code-snippets" },
+          { language: "glsl", path: "./snippets/math.code-snippets" },
+          { language: "glsl", path: "./snippets/color.code-snippets" },
+          { language: "glsl", path: "./snippets/coordinates.code-snippets" },
+          { language: "glsl", path: "./snippets/templates.code-snippets" }
+        ];
+      }
+    } else {
+      delete packageJson.contributes.snippets;
+    }
+
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+  } catch (error) {
+    console.error(`Failed to update snippets contribution: ${error}`);
   }
 }
 

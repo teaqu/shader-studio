@@ -1,0 +1,103 @@
+{
+  "TX Infinite Repeat": {
+    "prefix": "tx-repeat",
+    "body": [
+      "vec3 opRep(vec3 p, vec3 c) {",
+      "\treturn mod(p + 0.5 * c, c) - 0.5 * c;",
+      "}"
+    ],
+    "description": "Infinite domain repetition in 3D"
+  },
+  "TX Limited Repeat": {
+    "prefix": "tx-repeat-limited",
+    "body": [
+      "vec3 opRepLim(vec3 p, float c, vec3 l) {",
+      "\treturn p - c * clamp(round(p / c), -l, l);",
+      "}"
+    ],
+    "description": "Limited domain repetition in 3D (IQ)"
+  },
+  "TX Symmetry": {
+    "prefix": "tx-symmetry",
+    "body": [
+      "// Mirror symmetry — apply before SDF evaluation",
+      "p.${1:x} = abs(p.${1:x});"
+    ],
+    "description": "Mirror symmetry along an axis"
+  },
+  "TX Elongation": {
+    "prefix": "tx-elongate",
+    "body": [
+      "vec3 opElongate(vec3 p, vec3 h) {",
+      "\treturn p - clamp(p, -h, h);",
+      "}"
+    ],
+    "description": "Elongate a primitive along axes (IQ)"
+  },
+  "TX Revolution": {
+    "prefix": "tx-revolution",
+    "body": [
+      "vec2 opRevolution(vec3 p, float o) {",
+      "\treturn vec2(length(p.xz) - o, p.y);",
+      "}"
+    ],
+    "description": "Turn a 2D SDF into 3D via revolution around Y axis (IQ)"
+  },
+  "TX Rotate 2D": {
+    "prefix": "tx-rot2d",
+    "body": [
+      "mat2 rot2d(float a) {",
+      "\tfloat c = cos(a), s = sin(a);",
+      "\treturn mat2(c, -s, s, c);",
+      "}"
+    ],
+    "description": "2D rotation matrix"
+  },
+  "TX Rotate X": {
+    "prefix": "tx-rotx",
+    "body": [
+      "mat3 rotX(float a) {",
+      "\tfloat c = cos(a), s = sin(a);",
+      "\treturn mat3(1, 0, 0, 0, c, -s, 0, s, c);",
+      "}"
+    ],
+    "description": "3D rotation matrix around X axis"
+  },
+  "TX Rotate Y": {
+    "prefix": "tx-roty",
+    "body": [
+      "mat3 rotY(float a) {",
+      "\tfloat c = cos(a), s = sin(a);",
+      "\treturn mat3(c, 0, s, 0, 1, 0, -s, 0, c);",
+      "}"
+    ],
+    "description": "3D rotation matrix around Y axis"
+  },
+  "TX Rotate Z": {
+    "prefix": "tx-rotz",
+    "body": [
+      "mat3 rotZ(float a) {",
+      "\tfloat c = cos(a), s = sin(a);",
+      "\treturn mat3(c, -s, 0, s, c, 0, 0, 0, 1);",
+      "}"
+    ],
+    "description": "3D rotation matrix around Z axis"
+  },
+  "TX Rotate Arbitrary Axis": {
+    "prefix": "tx-rot3d",
+    "body": [
+      "mat3 rot3d(vec3 axis, float angle) {",
+      "\tvec3 a = normalize(axis);",
+      "\tfloat s = sin(angle);",
+      "\tfloat c = cos(angle);",
+      "\tfloat oc = 1.0 - c;",
+      "\treturn mat3(",
+      "\t\toc * a.x * a.x + c,       oc * a.x * a.y - a.z * s, oc * a.z * a.x + a.y * s,",
+      "\t\toc * a.x * a.y + a.z * s, oc * a.y * a.y + c,       oc * a.y * a.z - a.x * s,",
+      "\t\toc * a.z * a.x - a.y * s, oc * a.y * a.z + a.x * s, oc * a.z * a.z + c",
+      "\t);",
+      "}"
+    ],
+    "description": "3D rotation matrix around an arbitrary axis (Rodrigues' rotation formula)"
+  }
+}
