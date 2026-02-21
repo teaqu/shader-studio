@@ -38,6 +38,7 @@ export class ShaderProcessor {
 
     this.isProcessing = true;
     this.originalShaderCode = code;
+    this.shaderDebugManager.setOriginalCode(code);
 
     this.renderEngine.stopRenderLoop();
 
