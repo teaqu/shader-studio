@@ -1,0 +1,133 @@
+{
+  "SDF 3D Sphere": {
+    "prefix": "sdf3d-sphere",
+    "body": [
+      "float sdSphere(vec3 p, float r) {",
+      "\treturn length(p) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D sphere"
+  },
+  "SDF 3D Box": {
+    "prefix": "sdf3d-box",
+    "body": [
+      "float sdBox(vec3 p, vec3 b) {",
+      "\tvec3 q = abs(p) - b;",
+      "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D box"
+  },
+  "SDF 3D Rounded Box": {
+    "prefix": "sdf3d-rounded-box",
+    "body": [
+      "float sdRoundBox(vec3 p, vec3 b, float r) {",
+      "\tvec3 q = abs(p) - b + r;",
+      "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D rounded box"
+  },
+  "SDF 3D Torus": {
+    "prefix": "sdf3d-torus",
+    "body": [
+      "float sdTorus(vec3 p, vec2 t) {",
+      "\t// t.x = major radius, t.y = minor radius",
+      "\tvec2 q = vec2(length(p.xz) - t.x, p.y);",
+      "\treturn length(q) - t.y;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D torus"
+  },
+  "SDF 3D Cylinder": {
+    "prefix": "sdf3d-cylinder",
+    "body": [
+      "float sdCylinder(vec3 p, float h, float r) {",
+      "\tvec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cylinder"
+  },
+  "SDF 3D Cone": {
+    "prefix": "sdf3d-cone",
+    "body": [
+      "float sdCone(vec3 p, vec2 c, float h) {",
+      "\t// c = vec2(sin, cos) of the cone angle",
+      "\tvec2 q = h * vec2(c.x / c.y, -1.0);",
+      "\tvec2 w = vec2(length(p.xz), p.y);",
+      "\tvec2 a = w - q * clamp(dot(w, q) / dot(q, q), 0.0, 1.0);",
+      "\tvec2 b = w - q * vec2(clamp(w.x / q.x, 0.0, 1.0), 1.0);",
+      "\tfloat k = sign(q.y);",
+      "\tfloat d = min(dot(a, a), dot(b, b));",
+      "\tfloat s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));",
+      "\treturn sqrt(d) * sign(s);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cone (IQ)"
+  },
+  "SDF 3D Capsule": {
+    "prefix": "sdf3d-capsule",
+    "body": [
+      "float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {",
+      "\tvec3 pa = p - a, ba = b - a;",
+      "\tfloat h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);",
+      "\treturn length(pa - ba * h) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D capsule (line segment with radius)"
+  },
+  "SDF 3D Plane": {
+    "prefix": "sdf3d-plane",
+    "body": [
+      "float sdPlane(vec3 p, vec3 n, float h) {",
+      "\t// n must be normalized",
+      "\treturn dot(p, n) + h;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D plane"
+  },
+  "SDF 3D Ellipsoid": {
+    "prefix": "sdf3d-ellipsoid",
+    "body": [
+      "float sdEllipsoid(vec3 p, vec3 r) {",
+      "\tfloat k0 = length(p / r);",
+      "\tfloat k1 = length(p / (r * r));",
+      "\treturn k0 * (k0 - 1.0) / k1;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D ellipsoid (approximate)"
+  },
+  "SDF 3D Octahedron": {
+    "prefix": "sdf3d-octahedron",
+    "body": [
+      "float sdOctahedron(vec3 p, float s) {",
+      "\tp = abs(p);",
+      "\tfloat m = p.x + p.y + p.z - s;",
+      "\tvec3 q;",
+      "\tif (3.0 * p.x < m) q = p.xyz;",
+      "\telse if (3.0 * p.y < m) q = p.yzx;",
+      "\telse if (3.0 * p.z < m) q = p.zxy;",
+      "\telse return m * 0.57735027;",
+      "\tfloat k = clamp(0.5 * (q.z - q.y + s), 0.0, s);",
+      "\treturn length(vec3(q.x, q.y - s + k, q.z - k));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D octahedron (IQ)"
+  },
+  "SDF 3D Hex Prism": {
+    "prefix": "sdf3d-hexprism",
+    "body": [
+      "float sdHexPrism(vec3 p, vec2 h) {",
+      "\tconst vec3 k = vec3(-0.8660254, 0.5, 0.57735);",
+      "\tp = abs(p);",
+      "\tp.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;",
+      "\tvec2 d = vec2(",
+      "\t\tlength(p.xy - vec2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),",
+      "\t\tp.z - h.y);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D hexagonal prism (IQ)"
+  }
+}

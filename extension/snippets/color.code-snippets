@@ -1,0 +1,98 @@
+{
+  "Color IQ Palette": {
+    "prefix": "color-palette",
+    "body": [
+      "// Cosine color palette (IQ)",
+      "// http://iquilezles.org/articles/palettes/",
+      "vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {",
+      "\treturn a + b * cos(6.28318 * (c * t + d));",
+      "}",
+      "",
+      "// Example: rainbow",
+      "// palette(t, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67))"
+    ],
+    "description": "IQ's cosine-based color palette with example"
+  },
+  "Color RGB to HSV": {
+    "prefix": "color-rgb2hsv",
+    "body": [
+      "vec3 rgb2hsv(vec3 c) {",
+      "\tvec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);",
+      "\tvec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));",
+      "\tvec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));",
+      "\tfloat d = q.x - min(q.w, q.y);",
+      "\tfloat e = 1.0e-10;",
+      "\treturn vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);",
+      "}"
+    ],
+    "description": "Convert RGB to HSV color space"
+  },
+  "Color HSV to RGB": {
+    "prefix": "color-hsv2rgb",
+    "body": [
+      "vec3 hsv2rgb(vec3 c) {",
+      "\tvec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);",
+      "\tvec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);",
+      "\treturn c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);",
+      "}"
+    ],
+    "description": "Convert HSV to RGB color space"
+  },
+  "Color RGB to HSL": {
+    "prefix": "color-rgb2hsl",
+    "body": [
+      "vec3 rgb2hsl(vec3 c) {",
+      "\tfloat cMin = min(min(c.r, c.g), c.b);",
+      "\tfloat cMax = max(max(c.r, c.g), c.b);",
+      "\tfloat delta = cMax - cMin;",
+      "\tfloat l = (cMax + cMin) / 2.0;",
+      "\tfloat s = 0.0;",
+      "\tfloat h = 0.0;",
+      "\tif (delta > 0.0) {",
+      "\t\ts = (l < 0.5) ? delta / (cMax + cMin) : delta / (2.0 - cMax - cMin);",
+      "\t\tif (c.r == cMax) h = (c.g - c.b) / delta;",
+      "\t\telse if (c.g == cMax) h = 2.0 + (c.b - c.r) / delta;",
+      "\t\telse h = 4.0 + (c.r - c.g) / delta;",
+      "\t\th = fract(h / 6.0);",
+      "\t}",
+      "\treturn vec3(h, s, l);",
+      "}"
+    ],
+    "description": "Convert RGB to HSL color space"
+  },
+  "Color HSL to RGB": {
+    "prefix": "color-hsl2rgb",
+    "body": [
+      "vec3 hsl2rgb(vec3 c) {",
+      "\tvec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);",
+      "\treturn c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));",
+      "}"
+    ],
+    "description": "Convert HSL to RGB color space"
+  },
+  "Color ACES Tone Mapping": {
+    "prefix": "color-aces",
+    "body": [
+      "// ACES filmic tone mapping (Krzysztof Narkowicz approximation)",
+      "vec3 aces(vec3 x) {",
+      "\tconst float a = 2.51;",
+      "\tconst float b = 0.03;",
+      "\tconst float c = 2.43;",
+      "\tconst float d = 0.59;",
+      "\tconst float e = 0.14;",
+      "\treturn clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);",
+      "}"
+    ],
+    "description": "ACES filmic tone mapping curve"
+  },
+  "Color Gamma Correction": {
+    "prefix": "color-gamma",
+    "body": [
+      "// Linear to sRGB gamma correction",
+      "vec3 gammaCorrect(vec3 col) {",
+      "\treturn pow(col, vec3(1.0 / 2.2));",
+      "}"
+    ],
+    "description": "Linear to sRGB gamma correction (1/2.2)"
+  }
+}

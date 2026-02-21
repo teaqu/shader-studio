@@ -1,0 +1,106 @@
+{
+  "Coord Polar": {
+    "prefix": "coord-polar",
+    "body": [
+      "// Cartesian to polar coordinates",
+      "vec2 toPolar(vec2 p) {",
+      "\treturn vec2(length(p), atan(p.y, p.x));",
+      "}"
+    ],
+    "description": "Convert cartesian to polar coordinates (radius, angle)"
+  },
+  "Coord Polar Inverse": {
+    "prefix": "coord-polar-inv",
+    "body": [
+      "// Polar to cartesian coordinates",
+      "vec2 fromPolar(vec2 p) {",
+      "\treturn p.x * vec2(cos(p.y), sin(p.y));",
+      "}"
+    ],
+    "description": "Convert polar to cartesian coordinates"
+  },
+  "Coord Pmod": {
+    "prefix": "coord-pmod",
+    "body": [
+      "// Polar modular repetition (radial symmetry)",
+      "// Derived from hg_sdf/Mercury library",
+      "float pmod(inout vec2 p, float n) {",
+      "\tfloat angle = 3.14159265 / n;",
+      "\tfloat a = atan(p.y, p.x) + angle;",
+      "\tfloat r = length(p);",
+      "\tfloat c = floor(a / (2.0 * angle));",
+      "\ta = mod(a, 2.0 * angle) - angle;",
+      "\tp = vec2(cos(a), sin(a)) * r;",
+      "\tif (abs(c) >= n) c = abs(c);",
+      "\treturn c;",
+      "}"
+    ],
+    "description": "Polar modular repetition for radial symmetry (hg_sdf/Mercury)"
+  },
+  "Coord Spherical": {
+    "prefix": "coord-spherical",
+    "body": [
+      "// Cartesian to spherical coordinates",
+      "vec3 toSpherical(vec3 p) {",
+      "\tfloat r = length(p);",
+      "\tfloat theta = acos(p.y / r);",
+      "\tfloat phi = atan(p.z, p.x);",
+      "\treturn vec3(r, theta, phi);",
+      "}"
+    ],
+    "description": "Convert cartesian to spherical coordinates (r, theta, phi)"
+  },
+  "Coord Spherical Inverse": {
+    "prefix": "coord-spherical-inv",
+    "body": [
+      "// Spherical to cartesian coordinates",
+      "vec3 fromSpherical(vec3 s) {",
+      "\t// s = (radius, theta, phi)",
+      "\treturn s.x * vec3(",
+      "\t\tsin(s.y) * cos(s.z),",
+      "\t\tcos(s.y),",
+      "\t\tsin(s.y) * sin(s.z)",
+      "\t);",
+      "}"
+    ],
+    "description": "Convert spherical to cartesian coordinates"
+  },
+  "Coord UV Center": {
+    "prefix": "coord-uv-center",
+    "body": [
+      "// Center UV coordinates (-1 to 1)",
+      "vec2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;"
+    ],
+    "description": "Center UV coordinates to -1..1 range (Shadertoy convention)"
+  },
+  "Coord UV Aspect": {
+    "prefix": "coord-uv-aspect",
+    "body": [
+      "// Aspect-corrected centered UVs",
+      "vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;"
+    ],
+    "description": "Aspect-ratio corrected centered UVs"
+  },
+  "Coord Tile": {
+    "prefix": "coord-tile",
+    "body": [
+      "// Tiling / repeating UV coordinates",
+      "vec2 tile(vec2 uv, float n) {",
+      "\treturn fract(uv * n);",
+      "}"
+    ],
+    "description": "Simple tiling/repeating UV coordinates"
+  },
+  "Coord Spiral": {
+    "prefix": "coord-spiral",
+    "body": [
+      "// Spiral coordinates",
+      "vec2 spiral(vec2 p, float turns) {",
+      "\tfloat r = length(p);",
+      "\tfloat a = atan(p.y, p.x);",
+      "\treturn vec2(r, a / 6.28318 + r * turns);",
+      "}"
+    ],
+    "description": "Spiral coordinate transformation"
+  }
+}

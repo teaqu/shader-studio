@@ -1,0 +1,110 @@
+{
+  "Ray March Loop": {
+    "prefix": "ray-march",
+    "body": [
+      "float rayMarch(vec3 ro, vec3 rd) {",
+      "\tfloat t = 0.0;",
+      "\tfor (int i = 0; i < ${1:128}; i++) {",
+      "\t\tvec3 p = ro + rd * t;",
+      "\t\tfloat d = ${2:map}(p);",
+      "\t\tif (d < ${3:0.001} || t > ${4:100.0}) break;",
+      "\t\tt += d;",
+      "\t}",
+      "\treturn t;",
+      "}"
+    ],
+    "description": "Standard sphere-tracing ray march loop"
+  },
+  "Ray Camera Setup": {
+    "prefix": "ray-camera",
+    "body": [
+      "// Camera setup",
+      "vec3 ro = vec3(${1:0.0, 2.0, -5.0});  // ray origin",
+      "vec3 ta = vec3(${2:0.0, 0.0, 0.0});    // look-at target",
+      "vec3 ww = normalize(ta - ro);",
+      "vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));",
+      "vec3 vv = cross(uu, ww);",
+      "vec3 rd = normalize(uv.x * uu + uv.y * vv + ${3:1.5} * ww);"
+    ],
+    "description": "Standard ray marching camera setup with look-at"
+  },
+  "Ray Surface Normal": {
+    "prefix": "ray-normal",
+    "body": [
+      "vec3 calcNormal(vec3 p) {",
+      "\tconst float h = 0.0001;",
+      "\tconst vec2 k = vec2(1, -1);",
+      "\treturn normalize(",
+      "\t\tk.xyy * ${1:map}(p + k.xyy * h) +",
+      "\t\tk.yyx * ${1:map}(p + k.yyx * h) +",
+      "\t\tk.yxy * ${1:map}(p + k.yxy * h) +",
+      "\t\tk.xxx * ${1:map}(p + k.xxx * h)",
+      "\t);",
+      "}"
+    ],
+    "description": "Compute surface normal using the tetrahedron technique (IQ)"
+  },
+  "Ray Soft Shadow": {
+    "prefix": "ray-shadow",
+    "body": [
+      "float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {",
+      "\tfloat res = 1.0;",
+      "\tfloat t = mint;",
+      "\tfor (int i = 0; i < ${1:64}; i++) {",
+      "\t\tfloat h = ${2:map}(ro + rd * t);",
+      "\t\tif (h < 0.001) return 0.0;",
+      "\t\tres = min(res, k * h / t);",
+      "\t\tt += h;",
+      "\t\tif (t > maxt) break;",
+      "\t}",
+      "\treturn res;",
+      "}"
+    ],
+    "description": "Soft shadow calculation via ray marching (IQ)"
+  },
+  "Ray Ambient Occlusion": {
+    "prefix": "ray-ao",
+    "body": [
+      "float calcAO(vec3 p, vec3 n) {",
+      "\tfloat occ = 0.0;",
+      "\tfloat sca = 1.0;",
+      "\tfor (int i = 0; i < 5; i++) {",
+      "\t\tfloat h = 0.01 + 0.12 * float(i) / 4.0;",
+      "\t\tfloat d = ${1:map}(p + h * n);",
+      "\t\tocc += (h - d) * sca;",
+      "\t\tsca *= 0.95;",
+      "\t}",
+      "\treturn clamp(1.0 - 3.0 * occ, 0.0, 1.0);",
+      "}"
+    ],
+    "description": "Ambient occlusion calculation (IQ)"
+  },
+  "Ray Scene Map": {
+    "prefix": "ray-map",
+    "body": [
+      "float map(vec3 p) {",
+      "\tfloat d = ${1:sdSphere(p, 1.0)};",
+      "\t$0",
+      "\treturn d;",
+      "}"
+    ],
+    "description": "Scene distance function (map) template"
+  },
+  "Ray AA Supersampling": {
+    "prefix": "ray-aa",
+    "body": [
+      "// Anti-aliasing supersampling (2x2)",
+      "vec3 tot = vec3(0.0);",
+      "for (int m = 0; m < 2; m++)",
+      "for (int n = 0; n < 2; n++) {",
+      "\tvec2 o = vec2(float(m), float(n)) / 2.0 - 0.25;",
+      "\tvec2 uv = (2.0 * (fragCoord + o) - iResolution.xy) / iResolution.y;",
+      "",
+      "\tvec3 col = ${1:render}(uv);",
+      "\ttot += col;",
+      "}",
+      "tot /= 4.0;"
+    ],
+    "description": "2x2 anti-aliasing supersampling loop for Shadertoy"
+  }
+}

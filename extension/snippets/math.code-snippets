@@ -1,0 +1,92 @@
+{
+  "Math PI": {
+    "prefix": "math-pi",
+    "body": "#define PI 3.14159265359",
+    "description": "PI constant"
+  },
+  "Math TAU": {
+    "prefix": "math-tau",
+    "body": "#define TAU 6.28318530718",
+    "description": "TAU (2*PI) constant"
+  },
+  "Math E": {
+    "prefix": "math-e",
+    "body": "#define E 2.71828182846",
+    "description": "Euler's number constant"
+  },
+  "Math DEG2RAD": {
+    "prefix": "math-deg2rad",
+    "body": "#define DEG2RAD 0.01745329252",
+    "description": "Degrees to radians conversion factor (PI/180)"
+  },
+  "Math RAD2DEG": {
+    "prefix": "math-rad2deg",
+    "body": "#define RAD2DEG 57.2957795131",
+    "description": "Radians to degrees conversion factor (180/PI)"
+  },
+  "Math SQRT2": {
+    "prefix": "math-sqrt2",
+    "body": "#define SQRT2 1.41421356237",
+    "description": "Square root of 2 constant"
+  },
+  "Math EPSILON": {
+    "prefix": "math-epsilon",
+    "body": "#define EPSILON 0.0001",
+    "description": "Small epsilon value for floating point comparisons"
+  },
+  "Math Fibonacci Spiral": {
+    "prefix": "math-fibonacci",
+    "body": [
+      "// Golden ratio / Fibonacci spiral sampling",
+      "const float PHI = 1.61803398875;",
+      "const float GA = 2.39996322972; // golden angle = PI * (3.0 - sqrt(5.0))",
+      "",
+      "vec2 fibonacci(int i, int n) {",
+      "\tfloat theta = float(i) * GA;",
+      "\tfloat r = sqrt(float(i) + 0.5) / sqrt(float(n));",
+      "\treturn r * vec2(cos(theta), sin(theta));",
+      "}"
+    ],
+    "description": "Fibonacci spiral point distribution (golden angle sampling)"
+  },
+  "Math Remap": {
+    "prefix": "math-remap",
+    "body": [
+      "float remap(float value, float inMin, float inMax, float outMin, float outMax) {",
+      "\treturn outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);",
+      "}"
+    ],
+    "description": "Remap a value from one range to another"
+  },
+  "Math Saturate": {
+    "prefix": "math-saturate",
+    "body": [
+      "float saturate(float x) {",
+      "\treturn clamp(x, 0.0, 1.0);",
+      "}"
+    ],
+    "description": "Clamp a value to [0, 1] range"
+  },
+  "Math Cubic Smoothstep": {
+    "prefix": "math-smoothstep3",
+    "body": [
+      "// Cubic smoothstep (same as built-in smoothstep)",
+      "float smoothstep3(float x) {",
+      "\tx = clamp(x, 0.0, 1.0);",
+      "\treturn x * x * (3.0 - 2.0 * x);",
+      "}"
+    ],
+    "description": "Cubic Hermite smoothstep (C1 continuous, same as built-in)"
+  },
+  "Math Quintic Smoothstep": {
+    "prefix": "math-smoothstep5",
+    "body": [
+      "// Quintic smoothstep (smoother, C2 continuous)",
+      "float smoothstep5(float x) {",
+      "\tx = clamp(x, 0.0, 1.0);",
+      "\treturn x * x * x * (x * (x * 6.0 - 15.0) + 10.0);",
+      "}"
+    ],
+    "description": "Quintic smoothstep (C2 continuous, Ken Perlin's improved version)"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "SDF Op Union": {
+    "prefix": "sdfop-union",
+    "body": [
+      "float opUnion(float d1, float d2) {",
+      "\treturn min(d1, d2);",
+      "}"
+    ],
+    "description": "Boolean union of two distance fields"
+  },
+  "SDF Op Intersection": {
+    "prefix": "sdfop-intersection",
+    "body": [
+      "float opIntersection(float d1, float d2) {",
+      "\treturn max(d1, d2);",
+      "}"
+    ],
+    "description": "Boolean intersection of two distance fields"
+  },
+  "SDF Op Subtraction": {
+    "prefix": "sdfop-subtraction",
+    "body": [
+      "float opSubtraction(float d1, float d2) {",
+      "\treturn max(-d1, d2);",
+      "}"
+    ],
+    "description": "Boolean subtraction of two distance fields (d1 subtracted from d2)"
+  },
+  "SDF Op Smooth Union": {
+    "prefix": "sdfop-smooth-union",
+    "body": [
+      "float opSmoothUnion(float d1, float d2, float k) {",
+      "\tfloat h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);",
+      "\treturn mix(d2, d1, h) - k * h * (1.0 - h);",
+      "}"
+    ],
+    "description": "Smooth union of two distance fields (IQ)"
+  },
+  "SDF Op Smooth Intersection": {
+    "prefix": "sdfop-smooth-intersection",
+    "body": [
+      "float opSmoothIntersection(float d1, float d2, float k) {",
+      "\tfloat h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);",
+      "\treturn mix(d2, d1, h) + k * h * (1.0 - h);",
+      "}"
+    ],
+    "description": "Smooth intersection of two distance fields (IQ)"
+  },
+  "SDF Op Smooth Subtraction": {
+    "prefix": "sdfop-smooth-subtraction",
+    "body": [
+      "float opSmoothSubtraction(float d1, float d2, float k) {",
+      "\tfloat h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);",
+      "\treturn mix(d2, -d1, h) + k * h * (1.0 - h);",
+      "}"
+    ],
+    "description": "Smooth subtraction of two distance fields (IQ)"
+  },
+  "SDF Op Round": {
+    "prefix": "sdfop-round",
+    "body": [
+      "float opRound(float d, float r) {",
+      "\treturn d - r;",
+      "}"
+    ],
+    "description": "Round an existing distance field by subtracting a radius"
+  },
+  "SDF Op Onion": {
+    "prefix": "sdfop-onion",
+    "body": [
+      "float opOnion(float d, float t) {",
+      "\treturn abs(d) - t;",
+      "}"
+    ],
+    "description": "Create a hollow shell (onion) from a distance field"
+  }
+}

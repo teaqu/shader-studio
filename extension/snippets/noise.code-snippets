@@ -1,0 +1,212 @@
+{
+  "Noise Value 2D": {
+    "prefix": "noise-value2d",
+    "body": [
+      "float valueNoise(vec2 p) {",
+      "\tvec2 i = floor(p);",
+      "\tvec2 f = fract(p);",
+      "\tf = f * f * (3.0 - 2.0 * f);",
+      "\tfloat a = hash21(i);",
+      "\tfloat b = hash21(i + vec2(1.0, 0.0));",
+      "\tfloat c = hash21(i + vec2(0.0, 1.0));",
+      "\tfloat d = hash21(i + vec2(1.0, 1.0));",
+      "\treturn mix(mix(a, b, f.x), mix(c, d, f.x), f.y);",
+      "}"
+    ],
+    "description": "2D value noise (requires hash21 function)"
+  },
+  "Noise Gradient 2D": {
+    "prefix": "noise-gradient2d",
+    "body": [
+      "float gradientNoise(vec2 p) {",
+      "\tvec2 i = floor(p);",
+      "\tvec2 f = fract(p);",
+      "\tvec2 u = f * f * (3.0 - 2.0 * f);",
+      "\treturn mix(mix(dot(hash22(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),",
+      "\t               dot(hash22(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),",
+      "\t           mix(dot(hash22(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),",
+      "\t               dot(hash22(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);",
+      "}"
+    ],
+    "description": "2D gradient (Perlin-style) noise (requires hash22 function)"
+  },
+  "Noise Simplex 2D": {
+    "prefix": "noise-simplex2d",
+    "body": [
+      "// Simplex noise 2D — adapted from Ashima Arts (MIT license)",
+      "vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }",
+      "vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }",
+      "vec3 permute(vec3 x) { return mod289(((x * 34.0) + 10.0) * x); }",
+      "",
+      "float snoise(vec2 v) {",
+      "\tconst vec4 C = vec4(0.211324865405187, 0.366025403784439,",
+      "\t\t-0.577350269189626, 0.024390243902439);",
+      "\tvec2 i = floor(v + dot(v, C.yy));",
+      "\tvec2 x0 = v - i + dot(i, C.xx);",
+      "\tvec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);",
+      "\tvec4 x12 = x0.xyxy + C.xxzz;",
+      "\tx12.xy -= i1;",
+      "\ti = mod289(i);",
+      "\tvec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));",
+      "\tvec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);",
+      "\tm = m * m;",
+      "\tm = m * m;",
+      "\tvec3 x = 2.0 * fract(p * C.www) - 1.0;",
+      "\tvec3 h = abs(x) - 0.5;",
+      "\tvec3 ox = floor(x + 0.5);",
+      "\tvec3 a0 = x - ox;",
+      "\tm *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);",
+      "\tvec3 g;",
+      "\tg.x = a0.x * x0.x + h.x * x0.y;",
+      "\tg.yz = a0.yz * x12.xz + h.yz * x12.yw;",
+      "\treturn 130.0 * dot(m, g);",
+      "}"
+    ],
+    "description": "2D simplex noise (Ashima Arts, MIT license)"
+  },
+  "Noise Voronoi": {
+    "prefix": "noise-voronoi",
+    "body": [
+      "float voronoi(vec2 p) {",
+      "\tvec2 n = floor(p);",
+      "\tvec2 f = fract(p);",
+      "\tfloat md = 8.0;",
+      "\tfor (int j = -1; j <= 1; j++)",
+      "\tfor (int i = -1; i <= 1; i++) {",
+      "\t\tvec2 g = vec2(float(i), float(j));",
+      "\t\tvec2 o = hash22(n + g);",
+      "\t\tvec2 r = g + o - f;",
+      "\t\tfloat d = dot(r, r);",
+      "\t\tmd = min(md, d);",
+      "\t}",
+      "\treturn sqrt(md);",
+      "}"
+    ],
+    "description": "2D Voronoi / cellular noise (requires hash22 function)"
+  },
+  "Noise FBM": {
+    "prefix": "noise-fbm",
+    "body": [
+      "float fbm(vec2 p) {",
+      "\tfloat f = 0.0;",
+      "\tfloat a = 0.5;",
+      "\tfor (int i = 0; i < ${1:6}; i++) {",
+      "\t\tf += a * ${2:valueNoise}(p);",
+      "\t\tp *= 2.0;",
+      "\t\ta *= 0.5;",
+      "\t}",
+      "\treturn f;",
+      "}"
+    ],
+    "description": "Fractal Brownian Motion (FBM) — octave layering of a noise function"
+  },
+  "Noise Value 3D": {
+    "prefix": "noise-value3d",
+    "body": [
+      "float valueNoise3D(vec3 p) {",
+      "\tvec3 i = floor(p);",
+      "\tvec3 f = fract(p);",
+      "\tf = f * f * (3.0 - 2.0 * f);",
+      "\treturn mix(",
+      "\t\tmix(mix(hash31(i + vec3(0, 0, 0)), hash31(i + vec3(1, 0, 0)), f.x),",
+      "\t\t    mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x), f.y),",
+      "\t\tmix(mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x),",
+      "\t\t    mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x), f.y),",
+      "\t\tf.z);",
+      "}"
+    ],
+    "description": "3D value noise (requires hash31 function)"
+  },
+  "Noise Domain Warping": {
+    "prefix": "noise-domain-warp",
+    "body": [
+      "// Domain warping (IQ)",
+      "float domainWarp(vec2 p) {",
+      "\tvec2 q = vec2(",
+      "\t\t${1:fbm}(p + vec2(0.0, 0.0)),",
+      "\t\t${1:fbm}(p + vec2(5.2, 1.3))",
+      "\t);",
+      "\tvec2 r = vec2(",
+      "\t\t${1:fbm}(p + 4.0 * q + vec2(1.7, 9.2)),",
+      "\t\t${1:fbm}(p + 4.0 * q + vec2(8.3, 2.8))",
+      "\t);",
+      "\treturn ${1:fbm}(p + 4.0 * r);",
+      "}"
+    ],
+    "description": "Domain warping pattern using nested FBM (IQ)"
+  },
+  "Hash 1 to 1": {
+    "prefix": "noise-hash11",
+    "body": [
+      "float hash11(float p) {",
+      "\tp = fract(p * 0.1031);",
+      "\tp *= p + 33.33;",
+      "\tp *= p + p;",
+      "\treturn fract(p);",
+      "}"
+    ],
+    "description": "Hash function: float -> float (Dave Hoskins)"
+  },
+  "Hash 1 to 2": {
+    "prefix": "noise-hash12",
+    "body": [
+      "float hash12(vec2 p) {",
+      "\tvec3 p3 = fract(vec3(p.xyx) * 0.1031);",
+      "\tp3 += dot(p3, p3.yzx + 33.33);",
+      "\treturn fract((p3.x + p3.y) * p3.z);",
+      "}"
+    ],
+    "description": "Hash function: vec2 -> float (Dave Hoskins)"
+  },
+  "Hash 2 to 1": {
+    "prefix": "noise-hash21",
+    "body": [
+      "float hash21(vec2 p) {",
+      "\treturn fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);",
+      "}"
+    ],
+    "description": "Hash function: vec2 -> float (classic sin hash)"
+  },
+  "Hash 2 to 2": {
+    "prefix": "noise-hash22",
+    "body": [
+      "vec2 hash22(vec2 p) {",
+      "\tvec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));",
+      "\tp3 += dot(p3, p3.yzx + 33.33);",
+      "\treturn fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;",
+      "}"
+    ],
+    "description": "Hash function: vec2 -> vec2 (Dave Hoskins)"
+  },
+  "Hash 3 to 1": {
+    "prefix": "noise-hash31",
+    "body": [
+      "float hash31(vec3 p) {",
+      "\tp = fract(p * 0.1031);",
+      "\tp += dot(p, p.zyx + 31.32);",
+      "\treturn fract((p.x + p.y) * p.z);",
+      "}"
+    ],
+    "description": "Hash function: vec3 -> float (Dave Hoskins)"
+  },
+  "Hash 3 to 3": {
+    "prefix": "noise-hash33",
+    "body": [
+      "vec3 hash33(vec3 p) {",
+      "\tp = fract(p * vec3(0.1031, 0.1030, 0.0973));",
+      "\tp += dot(p, p.yxz + 33.33);",
+      "\treturn fract((p.xxy + p.yxx) * p.zyx);",
+      "}"
+    ],
+    "description": "Hash function: vec3 -> vec3 (Dave Hoskins)"
+  },
+  "Hash Simple": {
+    "prefix": "noise-hash",
+    "body": [
+      "float hash(float n) {",
+      "\treturn fract(sin(n) * 43758.5453123);",
+      "}"
+    ],
+    "description": "Simple hash function: float -> float (classic sin hash)"
+  }
+}
