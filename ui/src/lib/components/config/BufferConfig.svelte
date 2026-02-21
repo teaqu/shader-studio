@@ -97,7 +97,7 @@
                 </button>
               {/if}
             </div>
-            <span class="input-note">Relative, absolute, or @/ for workspace root</span>
+            <span class="input-note">Relative, absolute, or @ for workspace root</span>
           </div>
 
           {#if !validation.isValid}
