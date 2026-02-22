@@ -6,12 +6,14 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { OverlayPanelHandler } from "./OverlayPanelHandler";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
+  private overlayHandler: OverlayPanelHandler;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -21,6 +23,7 @@ export class PanelManager {
   ) {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
+    this.overlayHandler = new OverlayPanelHandler();
     this.messenger.addTransport(this.webviewTransport);
   }
 
@@ -115,9 +118,9 @@ export class PanelManager {
     } else if (message.type === 'createBufferFile') {
       await this.handleCreateBufferFile(message.payload);
     } else if (message.type === 'updateShaderSource') {
-      await this.handleUpdateShaderSource(message.payload);
+      await this.overlayHandler.handleUpdateShaderSource(message.payload);
     } else if (message.type === 'requestFileContents') {
-      await this.handleRequestFileContents(message.payload, panel);
+      await this.overlayHandler.handleRequestFileContents(message.payload, panel);
     }
   }
 
@@ -149,103 +152,6 @@ export class PanelManager {
       this.logger.error(`Failed to update config: ${error}`);
       const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to update shader config: ${error}`] };
       this.messenger.send(errorMsg);
-    }
-  }
-
-  private async handleUpdateShaderSource(payload: { code: string; path: string }): Promise<void> {
-    try {
-      const filePath = payload?.path;
-      const code = payload?.code;
-      this.logger.info(`Updating shader source: ${filePath} (${code?.length ?? 0} chars)`);
-
-      if (!filePath || !code) {
-        this.logger.warn(`Missing path or code in updateShaderSource payload`);
-        return;
-      }
-
-      // Try to find an open TextDocument for this file
-      const uri = vscode.Uri.file(filePath);
-      const openDoc = vscode.workspace.textDocuments.find(
-        (doc) => doc.uri.fsPath === uri.fsPath
-      );
-
-      if (openDoc) {
-        // Apply edit via WorkspaceEdit to update the open document
-        this.logger.debug(`Found open document, applying WorkspaceEdit`);
-        const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(
-          openDoc.positionAt(0),
-          openDoc.positionAt(openDoc.getText().length)
-        );
-        edit.replace(uri, fullRange, code);
-        const applied = await vscode.workspace.applyEdit(edit);
-        this.logger.debug(`WorkspaceEdit applied: ${applied}`);
-        if (applied) {
-          await openDoc.save();
-          this.logger.debug(`Document saved`);
-        }
-      } else {
-        // File not open — write directly to disk
-        // The UI handles recompilation directly, so no need to trigger a shader refresh
-        this.logger.debug(`No open document, writing directly to file`);
-        fs.writeFileSync(filePath, code, 'utf-8');
-      }
-    } catch (error) {
-      this.logger.error(`Failed to update shader source: ${error}`);
-    }
-  }
-
-  private async handleRequestFileContents(
-    payload: { bufferName: string; shaderPath: string },
-    panel: vscode.WebviewPanel,
-  ): Promise<void> {
-    try {
-      const { bufferName, shaderPath: mainShaderPath } = payload;
-      if (!mainShaderPath || !bufferName) return;
-
-      // Load the config to find the buffer's relative path
-      const configPath = mainShaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
-      if (!fs.existsSync(configPath)) {
-        this.logger.warn(`Config file not found: ${configPath}`);
-        return;
-      }
-
-      const configText = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configText);
-      const pass = config?.passes?.[bufferName];
-      if (!pass?.path) {
-        this.logger.warn(`No path found for buffer ${bufferName}`);
-        return;
-      }
-
-      // Resolve the buffer file path relative to the main shader
-      const shaderDir = path.dirname(mainShaderPath);
-      const bufferFilePath = path.resolve(shaderDir, pass.path);
-
-      if (!fs.existsSync(bufferFilePath)) {
-        this.logger.warn(`Buffer file not found: ${bufferFilePath}`);
-        panel.webview.postMessage({
-          type: 'fileContents',
-          payload: { code: '', path: bufferFilePath, bufferName },
-        });
-        return;
-      }
-
-      // Prefer in-memory document if open
-      const uri = vscode.Uri.file(bufferFilePath);
-      const openDoc = vscode.workspace.textDocuments.find(
-        (doc) => doc.uri.fsPath === uri.fsPath,
-      );
-      const code = openDoc ? openDoc.getText() : fs.readFileSync(bufferFilePath, 'utf-8');
-
-      panel.webview.postMessage({
-        type: 'fileContents',
-        payload: { code, path: bufferFilePath, bufferName },
-      });
-
-      this.logger.info(`Sent file contents for ${bufferName}: ${bufferFilePath}`);
-    } catch (error) {
-      this.logger.error(`Failed to read file contents: ${error}`);
     }
   }
 

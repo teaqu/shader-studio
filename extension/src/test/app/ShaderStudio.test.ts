@@ -473,6 +473,28 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderSpy, mockEditor, { forceCleanup: true });
   });
 
+  test('toggleEditorOverlay command should send ToggleEditorOverlayMessage via messenger', () => {
+    const messengerSendSpy = sandbox.spy(shaderStudio['messenger'], 'send');
+
+    // Get the command handler that was registered
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const toggleOverlayCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.toggleEditorOverlay'
+    );
+
+    assert.ok(toggleOverlayCall, 'toggleEditorOverlay command should be registered');
+
+    // Execute the command handler
+    toggleOverlayCall.args[1]();
+
+    // Verify it sent a ToggleEditorOverlayMessage
+    const overlayCall = messengerSendSpy.getCalls().find(
+      (call: sinon.SinonSpyCall) => call.args[0].type === 'toggleEditorOverlay'
+    );
+    assert.ok(overlayCall, 'Should send toggleEditorOverlay message');
+    assert.strictEqual(overlayCall!.args[0].type, 'toggleEditorOverlay');
+  });
+
   suite('sendCursorPosition debounce tests', () => {
     let clock: sinon.SinonFakeTimers;
     let messengerSendSpy: sinon.SinonSpy;
