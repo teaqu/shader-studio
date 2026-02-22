@@ -13,7 +13,7 @@ import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
-import type { CursorPositionMessage, ErrorMessage } from "@shader-studio/types";
+import type { CursorPositionMessage, ErrorMessage, ToggleEditorOverlayMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -282,6 +282,14 @@ export class ShaderStudio {
       vscode.commands.registerCommand("shader-studio.openSettings", () => {
         this.logger.info("shader-studio.openSettings command executed");
         this.openSettings();
+      }),
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.toggleEditorOverlay", () => {
+        this.logger.info("shader-studio.toggleEditorOverlay command executed");
+        const message: ToggleEditorOverlayMessage = { type: "toggleEditorOverlay" };
+        this.messenger.send(message);
       }),
     );
   }

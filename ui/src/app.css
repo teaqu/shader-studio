@@ -564,6 +564,12 @@ canvas {
   flex: 1;
 }
 
+.menu-bar .options-submenu-item {
+  padding-left: 2rem;
+  font-size: var(--vscode-font-size, 12px);
+  opacity: 0.85;
+}
+
 @keyframes options-menu-appear {
   from {
     opacity: 0;
@@ -577,15 +583,21 @@ canvas {
 
 /* Collapsible toolbar buttons - hide progressively as panel shrinks */
 .show-lock,
+.show-editor,
 .show-config,
 .show-debug,
 .show-inspector {
   display: none !important;
 }
 
-@container (max-width: 570px) {
+@container (max-width: 610px) {
   .collapse-lock { display: none !important; }
   .show-lock { display: flex !important; }
+}
+
+@container (max-width: 570px) {
+  .collapse-editor { display: none !important; }
+  .show-editor { display: flex !important; }
 }
 
 @container (max-width: 510px) {
@@ -930,6 +942,7 @@ canvas {
   min-height: 200px;
   flex-shrink: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .debug-section {
