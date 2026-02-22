@@ -668,46 +668,7 @@ describe('MenuBar Component', () => {
     });
   });
 
-  describe('Editor Overlay Button', () => {
-    it('should call onToggleEditorOverlay when editor overlay button is clicked', async () => {
-      const onToggleEditorOverlay = vi.fn();
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          onToggleEditorOverlay
-        }
-      });
-
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
-      await fireEvent.click(editorButton);
-
-      expect(onToggleEditorOverlay).toHaveBeenCalledTimes(1);
-    });
-
-    it('should show active state when editor overlay is visible', async () => {
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          isEditorOverlayVisible: true
-        }
-      });
-
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
-      expect(editorButton.classList.contains('active')).toBe(true);
-    });
-
-    it('should not show active state when editor overlay is hidden', async () => {
-      render(MenuBar, {
-        props: {
-          ...defaultProps,
-          isEditorOverlayVisible: false
-        }
-      });
-
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
-      expect(editorButton.classList.contains('active')).toBe(false);
-    });
-
+  describe('Editor Overlay in Options Menu', () => {
     it('should show Editor option in options menu', async () => {
       render(MenuBar, { props: defaultProps });
 
@@ -729,11 +690,33 @@ describe('MenuBar Component', () => {
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
-      // There are two with same aria-label: toolbar button and options menu item
-      const menuItems = screen.getAllByLabelText('Toggle editor overlay');
-      await fireEvent.click(menuItems[menuItems.length - 1]);
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      await fireEvent.click(editorButton);
 
       expect(onToggleEditorOverlay).toHaveBeenCalled();
+    });
+
+    it('should show active state on editor option when overlay is visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      expect(editorButton.classList.contains('active')).toBe(true);
+    });
+
+    it('should not have editor overlay button in main toolbar', () => {
+      render(MenuBar, { props: defaultProps });
+
+      // Before opening options menu, there should be no editor overlay button
+      const editorButton = screen.queryByLabelText('Toggle editor overlay');
+      expect(editorButton).not.toBeInTheDocument();
     });
   });
 

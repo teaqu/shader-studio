@@ -346,15 +346,6 @@
       {@html debugIcon}
     </button>
     <button
-      class="collapse-editor"
-      on:click={onToggleEditorOverlay}
-      aria-label="Toggle editor overlay"
-      class:active={isEditorOverlayVisible}
-      title="Toggle editor overlay"
-    >
-      {@html editorIcon}
-    </button>
-    <button
       class="collapse-config"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
