@@ -98,22 +98,22 @@ describe('BufferUpdater', () => {
     });
 
     it('should handle compilation errors', async () => {
-      (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({ 
-        success: false, 
-        error: 'Compilation failed' 
+      (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
+        success: false,
+        errors: ['Compilation failed']
       });
 
       bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, '');
-      
+
       await vi.waitFor(() => {
         expect(mockRenderEngine.stopRenderLoop).toHaveBeenCalled();
       });
-      
+
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
-      
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({ 
-        type: 'error', 
-        payload: ['Compilation failed'] 
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'error',
+        payload: ['Compilation failed']
       });
     });
 

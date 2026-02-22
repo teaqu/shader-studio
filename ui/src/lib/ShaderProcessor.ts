@@ -4,7 +4,7 @@ import type { ShaderSourceMessage } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
-  error?: string;
+  errors?: string[];
   warnings?: string[];
 }
 
@@ -60,7 +60,7 @@ export class ShaderProcessor {
         // If debug mode compilation failed, try original code
         if (codeToCompile !== code) {
           this.shaderDebugManager.setDebugError(
-            `Debug shader compilation failed: ${result?.error || 'unknown error'}`
+            `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
           const fallbackResult = await this.compile(code, config, path, buffers);
           if (fallbackResult.success) {
@@ -71,7 +71,7 @@ export class ShaderProcessor {
 
         return {
           success: false,
-          error: result?.error || "Unknown compilation error"
+          errors: result?.errors || ["Unknown compilation error"]
         };
       }
 
@@ -85,7 +85,7 @@ export class ShaderProcessor {
       console.error("ShaderProcessor: Error in processMainShaderCompilation:", err);
       return {
         success: false,
-        error: `Shader compilation error: ${err}`
+        errors: [`Shader compilation error: ${err}`]
       };
     } finally {
       this.isProcessing = false;
@@ -133,7 +133,7 @@ export class ShaderProcessor {
     if (!result?.success) {
       return {
         success: false,
-        error: result?.error || "Unknown compilation error"
+        errors: result?.errors || ["Unknown compilation error"]
       };
     }
 
@@ -152,7 +152,7 @@ export class ShaderProcessor {
       if (!result?.success) {
         return {
           success: false,
-          error: result?.error || "Unknown compilation error"
+          errors: result?.errors || ["Unknown compilation error"]
         };
       }
 
@@ -162,7 +162,7 @@ export class ShaderProcessor {
       console.error("ShaderProcessor: Error in processCommonBufferUpdate:", err);
       return {
         success: false,
-        error: `Common buffer update error: ${err}`
+        errors: [`Common buffer update error: ${err}`]
       };
     }
   }
@@ -189,7 +189,7 @@ export class ShaderProcessor {
     // If failed and modified code was used, try original
     if (!result.success && modifiedCode) {
       this.shaderDebugManager.setDebugError(
-        `Debug shader compilation failed: ${result.error || 'unknown error'}`
+        `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
       result = await this.compile(this.originalShaderCode, config, path, buffers);
     }

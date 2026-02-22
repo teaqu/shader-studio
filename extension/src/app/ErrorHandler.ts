@@ -2,48 +2,40 @@ import * as vscode from "vscode";
 import { ErrorMessage, WarningMessage } from "@shader-studio/types";
 
 export class ErrorHandler {
-  private currentShaderConfig: { config: any; shaderPath: string } | null = null;
+  private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
   private recentErrors = new Map<string, number>();
   private readonly DEBOUNCE_MS = 500; // 0.5 second debounce
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
   private cleanupTimer: NodeJS.Timeout | null = null;
-  private editorChangeDisposable: vscode.Disposable | null = null;
+  private textChangeDisposable: vscode.Disposable | null = null;
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     private diagnosticCollection: vscode.DiagnosticCollection,
   ) {
-    // Listen for editor changes
     this.setupEditorChangeListener();
   }
 
   public dispose(): void {
-    // Clean up timer when ErrorHandler is disposed
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
-    // Clean up editor change listener
-    if (this.editorChangeDisposable) {
-      this.editorChangeDisposable.dispose();
-      this.editorChangeDisposable = null;
+    if (this.textChangeDisposable) {
+      this.textChangeDisposable.dispose();
+      this.textChangeDisposable = null;
     }
   }
 
-  public setShaderConfig(config: { config: any; shaderPath: string } | null): void {
+  public setShaderConfig(config: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null): void {
     this.currentShaderConfig = config;
   }
 
   private setupEditorChangeListener(): void {
-    // Listen for active editor changes to clear persistent errors
-    this.editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(() => {
-      // Clear persistent errors when switching editors
-      this.clearPersistentErrors();
-    });
-
-    // Also listen for text changes in the active editor to clear persistent errors
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      // Only clear if it's the active editor and a GLSL file
+    // Clear diagnostics when a GLSL file is edited, since recompilation will
+    // produce fresh errors. Don't clear on editor switch — errors on other
+    // files (e.g. common buffer) must remain visible.
+    this.textChangeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && event.document === activeEditor.document && activeEditor.document.languageId === 'glsl') {
         this.clearPersistentErrors();
@@ -55,7 +47,6 @@ export class ErrorHandler {
     // Clear all persistent errors when editor changes
     this.persistentErrors.clear();
     this.diagnosticCollection.clear();
-    console.log('[ErrorHandler] Cleared persistent errors on editor change');
   }
 
   public handleError(message: ErrorMessage): void {
@@ -63,90 +54,112 @@ export class ErrorHandler {
       return; // Skip invalid messages
     }
 
-    let errorText = Array.isArray(message.payload)
-      ? message.payload.join(" ")
-      : message.payload;
+    const errors = Array.isArray(message.payload) ? message.payload : [message.payload];
 
-    if (!errorText) {
+    if (errors.length === 0) {
       return; // Skip empty messages
     }
 
-    // Normalize error message to extract the core issue (file path)
-    const normalizedError = this.normalizeErrorMessage(errorText);
-
-    // Check if this normalized error was recently shown (debounce)
     const now = Date.now();
-    const lastShown = this.recentErrors.get(normalizedError);
 
-    if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
-      // Skip this error - it was shown recently
-      console.log(`[ErrorHandler] Debounced: ${normalizedError} (${now - lastShown}ms ago)`);
-      return;
-    }
+    // Accumulate diagnostics per URI
+    const diagnosticsMap = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
 
-    // Record this normalized error as shown
-    this.recentErrors.set(normalizedError, now);
-    console.log(`[ErrorHandler] Showing: ${normalizedError}`);
-
-    // Clean up old errors from the map (prevent memory leak)
-    this.cleanupOldErrors(now);
-
-    this.outputChannel.error(errorText);
-
-    const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
-    if (match) {
-      // Line-number errors: show at specific line
-      const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
-
-      // Parse pass name from error message (format: "PassName: ERROR: ...")
-      const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
-      let targetUri: vscode.Uri | null = null;
-
-      if (passNameMatch && this.currentShaderConfig) {
-        const passName = passNameMatch[1].trim();
-        targetUri = this.getUriForPass(passName, this.currentShaderConfig);
+    for (const errorText of errors) {
+      if (!errorText) {
+        continue;
       }
 
-      // Fallback to active editor if we can't determine the target file
-      if (!targetUri) {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === "glsl") {
-          targetUri = editor.document.uri;
+      // Normalize error message to extract the core issue (file path)
+      const normalizedError = this.normalizeErrorMessage(errorText);
+
+      // Check if this normalized error was recently shown (debounce)
+      const lastShown = this.recentErrors.get(normalizedError);
+
+      if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
+        continue;
+      }
+
+      // Record this normalized error as shown
+      this.recentErrors.set(normalizedError, now);
+
+      this.outputChannel.error(errorText);
+
+      const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
+      if (match) {
+        const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
+
+        // Parse pass name from error message (format: "PassName: ERROR: ...")
+        const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
+        let targetUri: vscode.Uri | null = null;
+
+        if (passNameMatch && this.currentShaderConfig) {
+          const passName = passNameMatch[1].trim();
+          targetUri = this.getUriForPass(passName, this.currentShaderConfig);
         }
-      }
 
-      if (targetUri) {
-        try {
-          const document = vscode.workspace.textDocuments.find(doc => doc.uri === targetUri);
-          if (document && lineNum < document.lineCount) {
-            const range = document.lineAt(lineNum).range;
+        // Fallback to active editor if we can't determine the target file
+        if (!targetUri) {
+          const editor = vscode.window.activeTextEditor;
+          if (editor && editor.document.languageId === "glsl") {
+            targetUri = editor.document.uri;
+          }
+        }
+
+        if (targetUri) {
+          try {
+            const document = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === targetUri!.fsPath);
+            let range: vscode.Range;
+            if (document && lineNum < document.lineCount) {
+              range = document.lineAt(lineNum).range;
+            } else {
+              range = new vscode.Range(lineNum, 0, lineNum, 0);
+            }
             const diagnostic = new vscode.Diagnostic(
               range,
               errorText,
               vscode.DiagnosticSeverity.Error,
             );
-            this.diagnosticCollection.set(targetUri, [diagnostic]);
+
+            const key = targetUri.fsPath;
+            if (!diagnosticsMap.has(key)) {
+              diagnosticsMap.set(key, { uri: targetUri, diagnostics: [] });
+            }
+            diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
+          } catch (err) {
+            this.outputChannel.error(`Failed to create diagnostic: ${err}`);
           }
-        } catch (err) {
-          this.outputChannel.error(`Failed to create diagnostic: ${err}`);
         }
-      }
-    } else {
-      // All non-line-number errors: show at line 1
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        const document = editor.document;
-        if (document.lineCount > 0) {
-          const range = document.lineAt(0).range; // Line 1 (0-indexed as 0)
-          const diagnostic = new vscode.Diagnostic(
-            range,
-            errorText,
-            vscode.DiagnosticSeverity.Error,
-          );
-          this.diagnosticCollection.set(document.uri, [diagnostic]);
+      } else {
+        // All non-line-number errors: show at line 1
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+          const document = editor.document;
+          if (document.lineCount > 0) {
+            const range = document.lineAt(0).range;
+            const diagnostic = new vscode.Diagnostic(
+              range,
+              errorText,
+              vscode.DiagnosticSeverity.Error,
+            );
+
+            const key = document.uri.fsPath;
+            if (!diagnosticsMap.has(key)) {
+              diagnosticsMap.set(key, { uri: document.uri, diagnostics: [] });
+            }
+            diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
+          }
         }
       }
     }
+
+    // Set all accumulated diagnostics at once per URI
+    for (const { uri, diagnostics } of diagnosticsMap.values()) {
+      this.diagnosticCollection.set(uri, diagnostics);
+    }
+
+    // Clean up old errors from the map (prevent memory leak)
+    this.cleanupOldErrors(now);
   }
 
   public handlePersistentError(message: ErrorMessage | WarningMessage): void {
@@ -170,14 +183,11 @@ export class ErrorHandler {
     const lastShown = this.recentErrors.get(normalizedError);
 
     if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
-      // Skip this error - it was shown recently
-      console.log(`[ErrorHandler] Debounced persistent: ${normalizedError} (${now - lastShown}ms ago)`);
       return;
     }
 
     // Record this normalized error as shown
     this.recentErrors.set(normalizedError, now);
-    console.log(`[ErrorHandler] Showing persistent: ${normalizedError}`);
 
     // Store the diagnostic for persistence
     const diagnosticInfo = this.createPersistentDiagnostic(errorText, message.type);
@@ -271,14 +281,19 @@ export class ErrorHandler {
     return errorText;
   }
 
-  private getUriForPass(passName: string, shaderConfig: { config: any; shaderPath: string }): vscode.Uri | null {
+  private getUriForPass(passName: string, shaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> }): vscode.Uri | null {
     try {
+      // Use bufferPathMap if available (already has resolved absolute paths)
+      if (shaderConfig.bufferPathMap && shaderConfig.bufferPathMap[passName]) {
+        return vscode.Uri.file(shaderConfig.bufferPathMap[passName]);
+      }
+
       // If it's the main Image pass, return the main shader file
       if (passName === "Image") {
         return vscode.Uri.file(shaderConfig.shaderPath);
       }
 
-      // For other passes, look up the buffer file path
+      // For other passes, look up the buffer file path from config
       if (shaderConfig.config.passes && shaderConfig.config.passes[passName]) {
         const passConfig = shaderConfig.config.passes[passName];
         if (passConfig.path) {

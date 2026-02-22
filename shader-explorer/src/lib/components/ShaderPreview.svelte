@@ -169,7 +169,7 @@
         
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
-        console.error('Failed to compile shader:', shader.name, result?.error);
+        console.error('Failed to compile shader:', shader.name, result?.errors);
         compilationFailed = true;
         onCompilationFailed?.();
         // Still clean up on failure
@@ -216,7 +216,7 @@
         // Start the render loop for interactive preview
         engine.startRenderLoop();
       } else {
-        console.error('Failed to compile shader on hover:', shader.name, result?.error);
+        console.error('Failed to compile shader on hover:', shader.name, result?.errors);
         cleanupHoverRendering();
       }
     } catch (err) {

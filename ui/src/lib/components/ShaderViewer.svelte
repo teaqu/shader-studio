@@ -295,7 +295,7 @@
           errors = [];
           renderingEngine.startRenderLoop();
         } else {
-          errors = result.error ? [result.error] : [];
+          errors = result.errors ? result.errors : [];
         }
       }
     }
@@ -475,7 +475,7 @@
         if (result.success) {
           errors = [];
         } else {
-          errors = result.error ? [result.error] : [];
+          errors = result.errors && result.errors.length > 0 ? result.errors : [];
         }
       }
 
@@ -604,7 +604,7 @@
         isVisible={configPanelVisible}
         onFileSelect={handleConfigFileSelect}
         selectedBuffer={editorBufferName}
-        {isLocked}
+        isLocked={isLocked}
       />
     </div>
   {/if}

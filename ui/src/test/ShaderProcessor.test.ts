@@ -161,7 +161,7 @@ describe('ShaderProcessor', () => {
       const errorMessage = 'Shader compilation failed';
       (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
         success: false,
-        error: errorMessage,
+        errors: [errorMessage],
       });
 
       const message: ShaderSourceMessage = {
@@ -175,7 +175,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe(errorMessage);
+      expect(result.errors).toEqual([errorMessage]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
 
@@ -247,7 +247,7 @@ describe('ShaderProcessor', () => {
 
       // First call (debug) fails, second call (original) succeeds
       (mockRenderEngine.compileShaderPipeline as any)
-        .mockResolvedValueOnce({ success: false, error: 'Debug compilation failed' })
+        .mockResolvedValueOnce({ success: false, errors: ['Debug compilation failed'] })
         .mockResolvedValueOnce({ success: true });
 
       const message: ShaderSourceMessage = {
@@ -281,7 +281,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe(`Shader compilation error: ${error}`);
+      expect(result.errors).toEqual([`Shader compilation error: ${error}`]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
   });
@@ -302,7 +302,7 @@ describe('ShaderProcessor', () => {
       const errorMessage = 'Common buffer compilation failed';
       (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
         success: false,
-        error: errorMessage,
+        errors: [errorMessage],
       });
 
       const code = 'invalid common code';
@@ -310,7 +310,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processCommonBufferUpdate(code);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe(errorMessage);
+      expect(result.errors).toEqual([errorMessage]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
 
@@ -323,7 +323,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processCommonBufferUpdate(code);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe(`Common buffer update error: ${error}`);
+      expect(result.errors).toEqual([`Common buffer update error: ${error}`]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
   });

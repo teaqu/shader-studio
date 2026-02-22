@@ -6,7 +6,7 @@ export class ShaderCompiler {
   public wrapShaderToyCode(
     code: string,
     commonCode?: string,
-  ): { wrappedCode: string; headerLineCount: number } {
+  ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
     let header = `
 precision highp float;
 out vec4 fragColor;
@@ -25,13 +25,15 @@ uniform int iFrame;
 uniform vec4 iDate;
 `;
 
+    let commonCodeLineCount = 0;
     if (commonCode) {
+      commonCodeLineCount = (commonCode.match(/\n/g) || []).length + 1;
       header += commonCode + "\n";
     }
 
     const shaderCode = header + code + "\nvoid main() {\n mainImage(fragColor, gl_FragCoord.xy);\n}";
     const headerLineCount = (header.match(/\n/g) || []).length;
-    return { wrappedCode: shaderCode, headerLineCount };
+    return { wrappedCode: shaderCode, headerLineCount, commonCodeLineCount };
   }
 
   public compileShader(shaderSrc: string, commonCode?: string): PiShader | null {

@@ -89,7 +89,7 @@ export class MessageHandler {
       this.handleFatalError(err, event);
       return {
         success: false,
-        error: `Fatal error: ${err}`
+        errors: [`Fatal error: ${err}`]
       };
     }
   }
@@ -147,7 +147,7 @@ export class MessageHandler {
     return result;
   }
 
-  private handleCompilationResult(result: { success: boolean; error?: string; warnings?: string[] }): void {
+  private handleCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
     if (result.success) {
       // Send warnings first if any
       if (result.warnings && result.warnings.length > 0) {
@@ -159,15 +159,15 @@ export class MessageHandler {
       // Then send success
       this.sendSuccessMessages();
     } else {
-      // Send error
-      this.sendErrorMessage(result.error || "Unknown compilation error");
+      // Send all errors in a single message
+      this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
     }
   }
 
-  private sendErrorMessage(error: string): void {
+  private sendErrorMessage(errors: string[]): void {
     const errorMessage: ErrorMessage = {
       type: "error",
-      payload: [error],
+      payload: errors,
     };
     this.transport.postMessage(errorMessage);
   }

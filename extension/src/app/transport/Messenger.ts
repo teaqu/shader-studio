@@ -23,6 +23,15 @@ export class Messenger {
 
   public send(message: any): void {
     try {
+      // Track shader config for error attribution
+      if (message.type === "shaderSource") {
+        this.errorHandler.setShaderConfig({
+          config: message.config,
+          shaderPath: message.path,
+          bufferPathMap: message.bufferPathMap,
+        });
+      }
+
       // Send to all transports
       this.transports.forEach((transport, index) => {
         try {
