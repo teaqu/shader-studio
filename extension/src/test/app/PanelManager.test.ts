@@ -457,4 +457,69 @@ suite('PanelManager Test Suite', () => {
             clock.restore();
         });
     });
+
+    suite('handleWebviewMessage routing', () => {
+        let mockWebviewPanel: any;
+
+        setup(() => {
+            mockWebviewPanel = createMockWebviewPanel();
+        });
+
+        test('should route updateShaderSource to OverlayPanelHandler', async () => {
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            // No open documents
+            sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'updateShaderSource', payload: { code: 'void mainImage() {}', path: '/test/shader.glsl' } },
+                mockWebviewPanel
+            );
+
+            // The OverlayPanelHandler should have written the file since no doc was open
+            sinon.assert.calledOnce(writeStub);
+            assert.strictEqual(writeStub.firstCall.args[0], '/test/shader.glsl');
+            assert.strictEqual(writeStub.firstCall.args[1], 'void mainImage() {}');
+        });
+
+        test('should route requestFileContents to OverlayPanelHandler', async () => {
+            const fs = require('fs');
+            const existsStub = sandbox.stub(fs, 'existsSync');
+            const readStub = sandbox.stub(fs, 'readFileSync');
+
+            existsStub.withArgs('/test/shader.sha.json').returns(true);
+            existsStub.withArgs('/test/common.glsl').returns(true);
+            readStub.withArgs('/test/shader.sha.json', 'utf-8').returns(JSON.stringify({
+                passes: { common: { path: 'common.glsl' } }
+            }));
+            readStub.withArgs('/test/common.glsl', 'utf-8').returns('// common code');
+
+            sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'requestFileContents', payload: { bufferName: 'common', shaderPath: '/test/shader.glsl' } },
+                mockWebviewPanel
+            );
+
+            sinon.assert.calledOnce(mockWebviewPanel.webview.postMessage);
+            const message = mockWebviewPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(message.type, 'fileContents');
+            assert.strictEqual(message.payload.code, '// common code');
+            assert.strictEqual(message.payload.bufferName, 'common');
+        });
+
+        test('should not route unknown message types', async () => {
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'unknownType', payload: {} },
+                mockWebviewPanel
+            );
+
+            sinon.assert.notCalled(writeStub);
+            sinon.assert.notCalled(mockWebviewPanel.webview.postMessage);
+        });
+    });
 });
