@@ -109,10 +109,15 @@ export class PanelManager {
   }
 
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
+    this.logger.debug(`Webview message received: ${message.type}`);
     if (message.type === 'updateConfig') {
       await this.handleConfigUpdate(message.payload);
     } else if (message.type === 'createBufferFile') {
       await this.handleCreateBufferFile(message.payload);
+    } else if (message.type === 'updateShaderSource') {
+      await this.handleUpdateShaderSource(message.payload);
+    } else if (message.type === 'requestFileContents') {
+      await this.handleRequestFileContents(message.payload, panel);
     }
   }
 
@@ -147,6 +152,103 @@ export class PanelManager {
     }
   }
 
+  private async handleUpdateShaderSource(payload: { code: string; path: string }): Promise<void> {
+    try {
+      const filePath = payload?.path;
+      const code = payload?.code;
+      this.logger.info(`Updating shader source: ${filePath} (${code?.length ?? 0} chars)`);
+
+      if (!filePath || !code) {
+        this.logger.warn(`Missing path or code in updateShaderSource payload`);
+        return;
+      }
+
+      // Try to find an open TextDocument for this file
+      const uri = vscode.Uri.file(filePath);
+      const openDoc = vscode.workspace.textDocuments.find(
+        (doc) => doc.uri.fsPath === uri.fsPath
+      );
+
+      if (openDoc) {
+        // Apply edit via WorkspaceEdit to update the open document
+        this.logger.debug(`Found open document, applying WorkspaceEdit`);
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+          openDoc.positionAt(0),
+          openDoc.positionAt(openDoc.getText().length)
+        );
+        edit.replace(uri, fullRange, code);
+        const applied = await vscode.workspace.applyEdit(edit);
+        this.logger.debug(`WorkspaceEdit applied: ${applied}`);
+        if (applied) {
+          await openDoc.save();
+          this.logger.debug(`Document saved`);
+        }
+      } else {
+        // File not open — write directly to disk
+        // The UI handles recompilation directly, so no need to trigger a shader refresh
+        this.logger.debug(`No open document, writing directly to file`);
+        fs.writeFileSync(filePath, code, 'utf-8');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update shader source: ${error}`);
+    }
+  }
+
+  private async handleRequestFileContents(
+    payload: { bufferName: string; shaderPath: string },
+    panel: vscode.WebviewPanel,
+  ): Promise<void> {
+    try {
+      const { bufferName, shaderPath: mainShaderPath } = payload;
+      if (!mainShaderPath || !bufferName) return;
+
+      // Load the config to find the buffer's relative path
+      const configPath = mainShaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      if (!fs.existsSync(configPath)) {
+        this.logger.warn(`Config file not found: ${configPath}`);
+        return;
+      }
+
+      const configText = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configText);
+      const pass = config?.passes?.[bufferName];
+      if (!pass?.path) {
+        this.logger.warn(`No path found for buffer ${bufferName}`);
+        return;
+      }
+
+      // Resolve the buffer file path relative to the main shader
+      const shaderDir = path.dirname(mainShaderPath);
+      const bufferFilePath = path.resolve(shaderDir, pass.path);
+
+      if (!fs.existsSync(bufferFilePath)) {
+        this.logger.warn(`Buffer file not found: ${bufferFilePath}`);
+        panel.webview.postMessage({
+          type: 'fileContents',
+          payload: { code: '', path: bufferFilePath, bufferName },
+        });
+        return;
+      }
+
+      // Prefer in-memory document if open
+      const uri = vscode.Uri.file(bufferFilePath);
+      const openDoc = vscode.workspace.textDocuments.find(
+        (doc) => doc.uri.fsPath === uri.fsPath,
+      );
+      const code = openDoc ? openDoc.getText() : fs.readFileSync(bufferFilePath, 'utf-8');
+
+      panel.webview.postMessage({
+        type: 'fileContents',
+        payload: { code, path: bufferFilePath, bufferName },
+      });
+
+      this.logger.info(`Sent file contents for ${bufferName}: ${bufferFilePath}`);
+    } catch (error) {
+      this.logger.error(`Failed to read file contents: ${error}`);
+    }
+  }
+
   private async handleCreateBufferFile(payload: { bufferName: string; filePath: string }): Promise<void> {
     try {
       const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
@@ -178,8 +280,6 @@ export class PanelManager {
   }
 
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {
-    console.log('PanelManager: setupWebviewHtml called');
-    
     const htmlPath = path.join(
       this.context.extensionPath,
       "ui-dist",
@@ -187,11 +287,10 @@ export class PanelManager {
     );
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
 
-    console.log(`PanelManager: Read HTML from ${htmlPath}`);
-    console.log(`PanelManager: First 200 chars of HTML: ${rawHtml.substring(0, 200)}`);
+    let processedHtml = rawHtml;
 
     // Convert relative resource URLs to webview URIs
-    let processedHtml = rawHtml.replace(
+    processedHtml = processedHtml.replace(
       /(src|href)="\.?\/([^"]+)"/g,
       (_, attr, file) => {
         const filePath = path.join(
@@ -209,29 +308,30 @@ export class PanelManager {
     const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
     const cspMatch = processedHtml.match(cspPattern);
     
-    console.log(`PanelManager: Webview CSP source: ${panel.webview.cspSource}`);
-    
     if (cspMatch) {
       // Update existing CSP to include media-src
       const existingCsp = cspMatch[1];
-      console.log(`PanelManager: Found existing CSP: ${existingCsp}`);
       
       // Use the actual webview.cspSource which should include the CDN domain
       const mediaSrc = `media-src ${panel.webview.cspSource} blob:`;
-      const updatedCsp = existingCsp.includes('media-src') 
+      const workerSrc = `worker-src ${panel.webview.cspSource} blob:`;
+      let updatedCsp = existingCsp.includes('media-src')
         ? existingCsp.replace(/media-src[^;]*/, mediaSrc)
         : `${existingCsp}; ${mediaSrc}`;
+      updatedCsp = updatedCsp.includes('worker-src')
+        ? updatedCsp.replace(/worker-src[^;]*/, workerSrc)
+        : `${updatedCsp}; ${workerSrc}`;
       
       processedHtml = processedHtml.replace(
         cspPattern,
         `<meta http-equiv="Content-Security-Policy" content="${updatedCsp}">`
       );
-      console.log(`PanelManager: Updated CSP to: ${updatedCsp}`);
+      this.logger.debug(`Updated CSP to: ${updatedCsp}`);
       this.logger.debug("Updated existing CSP for video support");
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
       
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);
@@ -248,19 +348,19 @@ export class PanelManager {
                          `\n    ${newCsp}` + 
                          processedHtml.slice(afterHeadIndex);
           
-          console.log(`PanelManager: Added nonce-based CSP after <head> tag`);
+          this.logger.debug(`Added nonce-based CSP after <head> tag`);
         } else {
           // No head tag found, add it
           const afterHtmlIndex = processedHtml.indexOf(htmlMatch[0]) + htmlMatch[0].length;
           processedHtml = processedHtml.slice(0, afterHtmlIndex) + 
                          `\n  <head>\n    ${newCsp}\n  </head>` + 
                          processedHtml.slice(afterHtmlIndex);
-          console.log(`PanelManager: Added nonce-based CSP with new <head> tag`);
+          this.logger.debug(`Added nonce-based CSP with new <head> tag`);
         }
       } else {
         // Fallback: just prepend
         processedHtml = `<head>${newCsp}</head>\n` + processedHtml;
-        console.log(`PanelManager: Added nonce-based CSP at document start as fallback`);
+        this.logger.debug(`Added nonce-based CSP at document start as fallback`);
       }
     }
 

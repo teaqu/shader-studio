@@ -59,6 +59,16 @@
   export let debugState: ShaderDebugState | null = null;
   export let isConfigPanelVisible: boolean = false;
   export let onToggleConfigPanel: () => void = () => {};
+  export let isEditorOverlayVisible: boolean = false;
+  export let onToggleEditorOverlay: () => void = () => {};
+  export let isVimModeEnabled: boolean = false;
+  export let onToggleVimMode: () => void = () => {};
+
+  // Editor icon SVG (code brackets)
+  const editorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="16 18 22 12 16 6"/>
+    <polyline points="8 6 2 12 8 18"/>
+  </svg>`;
 
   $: hasErrors = errors.length > 0;
   $: errorMessage = hasErrors ? errors.join('\n') : '';
@@ -336,6 +346,15 @@
       {@html debugIcon}
     </button>
     <button
+      class="collapse-editor"
+      on:click={onToggleEditorOverlay}
+      aria-label="Toggle editor overlay"
+      class:active={isEditorOverlayVisible}
+      title="Toggle editor overlay"
+    >
+      {@html editorIcon}
+    </button>
+    <button
       class="collapse-config"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
@@ -370,6 +389,25 @@
             {@html debugIcon}
             <span>Debug</span>
           </button>
+          <button
+            class="options-menu-item show-editor"
+            on:click={() => { onToggleEditorOverlay(); showOptionsMenu = false; }}
+            aria-label="Toggle editor overlay"
+            class:active={isEditorOverlayVisible}
+          >
+            {@html editorIcon}
+            <span>Editor</span>
+          </button>
+          {#if isEditorOverlayVisible}
+            <button
+              class="options-menu-item options-submenu-item"
+              on:click={() => { onToggleVimMode(); }}
+              aria-label="Toggle vim mode"
+              class:active={isVimModeEnabled}
+            >
+              <span>Vim Mode</span>
+            </button>
+          {/if}
           <button
             class="options-menu-item show-config"
             on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}

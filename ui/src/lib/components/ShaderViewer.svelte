@@ -12,6 +12,7 @@
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
+  import EditorOverlay from "./EditorOverlay.svelte";
   import ResizeHandle from "./ResizeHandle.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
@@ -21,6 +22,7 @@
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
+  import { editorOverlayStore } from "../stores/editorOverlayStore";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
@@ -81,6 +83,30 @@
   $: hasSidePanel = configPanelVisible || showDebugPanel;
   $: canvasFlex = hasSidePanel ? (showDebugPanel ? debugSplitRatio : splitRatio) : 1;
 
+  // Editor overlay state
+  let editorOverlayVisible = false;
+  let editorVimMode = false;
+  let currentShaderCode: string = "";
+
+  // Editor file tracking (which file the overlay is editing)
+  let editorBufferName: string = "Image";
+  let editorFilePath: string = "";
+  let editorFileCode: string = "";
+
+  // Derive available buffer names from config
+  $: editorBufferNames = (() => {
+    const names = ["Image"];
+    if (currentConfig?.passes) {
+      if (currentConfig.passes.common) names.push("common");
+      for (const name of ["BufferA", "BufferB", "BufferC", "BufferD"]) {
+        if (currentConfig.passes[name as keyof typeof currentConfig.passes]) {
+          names.push(name);
+        }
+      }
+    }
+    return names;
+  })();
+
   // Subscribe to stores
   onMount(() => {
     const unsubConfig = configPanelStore.subscribe((state) => {
@@ -95,6 +121,15 @@
       unsubConfig();
       unsubDebug();
     };
+  });
+
+  // Subscribe to editor overlay store
+  onMount(() => {
+    const unsubscribe = editorOverlayStore.subscribe((state) => {
+      editorOverlayVisible = state.isVisible;
+      editorVimMode = state.vimMode;
+    });
+    return unsubscribe;
   });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
@@ -202,6 +237,67 @@
 
   function handleToggleConfigPanel() {
     configPanelStore.toggle();
+  }
+
+  function handleToggleEditorOverlay() {
+    editorOverlayStore.toggle();
+  }
+
+  function handleToggleVimMode() {
+    editorOverlayStore.toggleVimMode();
+  }
+
+  function handleConfigFileSelect(bufferName: string) {
+    if (!initialized) return;
+    editorBufferName = bufferName;
+
+    if (bufferName === "Image") {
+      // Switch back to the main shader file
+      editorFilePath = shaderPath;
+      editorFileCode = currentShaderCode;
+    } else {
+      // Request the buffer file contents from the extension
+      transport.postMessage({
+        type: 'requestFileContents',
+        payload: {
+          bufferName,
+          shaderPath,
+        },
+      });
+    }
+  }
+
+  async function handleEditorCodeChange(code: string) {
+    if (!initialized) return;
+    // Update editor-local state
+    editorFileCode = code;
+
+    if (editorBufferName === "Image") {
+      // Main shader file: also update currentShaderCode and do direct recompile
+      currentShaderCode = code;
+      const lastEvent = shaderStudio.getLastShaderEvent();
+      if (lastEvent) {
+        const syntheticEvent = new MessageEvent('message', {
+          data: {
+            ...lastEvent.data,
+            code,
+          },
+        });
+        handleShaderMessage(syntheticEvent);
+      }
+    } else {
+      // Buffer file: directly update the buffer and recompile the pipeline
+      const renderingEngine = shaderStudio.getRenderingEngine();
+      const result = await renderingEngine.updateBufferAndRecompile(editorBufferName, code);
+      if (result) {
+        if (result.success) {
+          errors = [];
+          renderingEngine.startRenderLoop();
+        } else {
+          errors = result.error ? [result.error] : [];
+        }
+      }
+    }
   }
 
   function handleSplitResize(ratio: number) {
@@ -339,6 +435,13 @@
         return;
       }
 
+      // Handle file contents response for editor overlay
+      if (event.data.type === 'fileContents') {
+        editorFilePath = event.data.payload.path || "";
+        editorFileCode = event.data.payload.code || "";
+        return;
+      }
+
       // Extract config and pathMap from shader source messages
       // When locked, only accept config from the locked shader's path
       if (event.data.type === 'shaderSource') {
@@ -348,7 +451,19 @@
           currentConfig = event.data.config || null;
           pathMap = event.data.pathMap || {};
           shaderPath = event.data.path || "";
+          currentShaderCode = event.data.code || "";
+          // Sync editor overlay if it's showing the main shader
+          if (editorBufferName === "Image") {
+            editorFilePath = shaderPath;
+            editorFileCode = currentShaderCode;
+          }
         }
+      }
+
+      // Handle toggle editor overlay message from extension
+      if (event.data.type === 'toggleEditorOverlay') {
+        editorOverlayStore.toggle();
+        return;
       }
 
       const result = await shaderStudio.handleShaderMessage(event);
@@ -415,6 +530,19 @@
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
     />
+    {#if initialized}
+      <EditorOverlay
+        isVisible={editorOverlayVisible}
+        shaderCode={editorFileCode}
+        shaderPath={editorFilePath}
+        {transport}
+        onCodeChange={handleEditorCodeChange}
+        vimMode={editorVimMode}
+        bufferNames={editorBufferNames}
+        activeBufferName={editorBufferName}
+        onBufferSwitch={handleConfigFileSelect}
+      />
+    {/if}
   </div>
   {#if initialized}
     <MenuBar
@@ -438,6 +566,10 @@
       {debugState}
       isConfigPanelVisible={configPanelVisible}
       onToggleConfigPanel={handleToggleConfigPanel}
+      isEditorOverlayVisible={editorOverlayVisible}
+      onToggleEditorOverlay={handleToggleEditorOverlay}
+      isVimModeEnabled={editorVimMode}
+      onToggleVimMode={handleToggleVimMode}
     />
   {/if}
   {#if showDebugPanel}
@@ -467,6 +599,8 @@
         {transport}
         {shaderPath}
         isVisible={configPanelVisible}
+        onFileSelect={handleConfigFileSelect}
+        selectedBuffer={editorBufferName}
       />
     </div>
   {/if}

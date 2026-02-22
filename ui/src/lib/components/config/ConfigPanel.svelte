@@ -10,9 +10,19 @@
   export let transport: Transport;
   export let shaderPath: string = "";
   export let isVisible: boolean = true;
+  export let onFileSelect: (bufferName: string) => void = () => {};
+  export let selectedBuffer: string = "Image";
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
+
+  // Sync activeTab when parent changes selectedBuffer
+  $: {
+    const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
+    if (displayName !== activeTab) {
+      activeTab = displayName;
+    }
+  }
 
   onMount(() => {
     console.log("ConfigPanel component mounted");
@@ -119,6 +129,8 @@
 
   function switchTab(tabName: string) {
     activeTab = tabName;
+    const actualName = getActualBufferName(tabName);
+    onFileSelect(actualName);
   }
 
   // Reactive statement to get the current active tab's config

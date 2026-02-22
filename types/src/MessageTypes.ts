@@ -86,4 +86,16 @@ export interface DebugModeStateMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage;
+export interface UpdateShaderSourceMessage extends BaseMessage {
+  type: "updateShaderSource";
+  payload: {
+    code: string;
+    path: string;
+  };
+}
+
+export interface ToggleEditorOverlayMessage extends BaseMessage {
+  type: "toggleEditorOverlay";
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage;

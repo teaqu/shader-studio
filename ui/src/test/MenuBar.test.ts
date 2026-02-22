@@ -63,7 +63,11 @@ describe('MenuBar Component', () => {
       },
       isConfigPanelVisible: false,
       onToggleConfigPanel: vi.fn(),
-      onConfig: vi.fn()
+      onConfig: vi.fn(),
+      isEditorOverlayVisible: false,
+      onToggleEditorOverlay: vi.fn(),
+      isVimModeEnabled: false,
+      onToggleVimMode: vi.fn()
     };
 
     // Reset all mocks
@@ -661,6 +665,140 @@ describe('MenuBar Component', () => {
 
       const configButton = screen.getByLabelText('Toggle config panel');
       expect(configButton.classList.contains('active')).toBe(false);
+    });
+  });
+
+  describe('Editor Overlay Button', () => {
+    it('should call onToggleEditorOverlay when editor overlay button is clicked', async () => {
+      const onToggleEditorOverlay = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onToggleEditorOverlay
+        }
+      });
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      await fireEvent.click(editorButton);
+
+      expect(onToggleEditorOverlay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show active state when editor overlay is visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true
+        }
+      });
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      expect(editorButton.classList.contains('active')).toBe(true);
+    });
+
+    it('should not show active state when editor overlay is hidden', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: false
+        }
+      });
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      expect(editorButton.classList.contains('active')).toBe(false);
+    });
+
+    it('should show Editor option in options menu', async () => {
+      render(MenuBar, { props: defaultProps });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByText('Editor')).toBeInTheDocument();
+    });
+
+    it('should call onToggleEditorOverlay from options menu', async () => {
+      const onToggleEditorOverlay = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onToggleEditorOverlay
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      // There are two with same aria-label: toolbar button and options menu item
+      const menuItems = screen.getAllByLabelText('Toggle editor overlay');
+      await fireEvent.click(menuItems[menuItems.length - 1]);
+
+      expect(onToggleEditorOverlay).toHaveBeenCalled();
+    });
+  });
+
+  describe('Vim Mode Toggle', () => {
+    it('should show vim mode toggle in options menu when editor is visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByText('Vim Mode')).toBeInTheDocument();
+    });
+
+    it('should not show vim mode toggle when editor is hidden', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: false
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.queryByText('Vim Mode')).not.toBeInTheDocument();
+    });
+
+    it('should call onToggleVimMode when vim mode toggle is clicked', async () => {
+      const onToggleVimMode = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true,
+          onToggleVimMode
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const vimButton = screen.getByLabelText('Toggle vim mode');
+      await fireEvent.click(vimButton);
+
+      expect(onToggleVimMode).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show active state on vim mode toggle when enabled', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true,
+          isVimModeEnabled: true
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const vimButton = screen.getByLabelText('Toggle vim mode');
+      expect(vimButton.classList.contains('active')).toBe(true);
     });
   });
 

@@ -29,6 +29,42 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
 
+// Mock monaco-editor — the static import in EditorOverlay.svelte would crash
+// jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
+vi.mock('monaco-editor', () => ({
+  editor: {
+    create: vi.fn(() => ({
+      dispose: vi.fn(),
+      getValue: vi.fn(() => ''),
+      setValue: vi.fn(),
+      getPosition: vi.fn(),
+      setPosition: vi.fn(),
+      getScrollTop: vi.fn(() => 0),
+      setScrollTop: vi.fn(),
+      hasTextFocus: vi.fn(() => false),
+      onDidChangeModelContent: vi.fn(),
+    })),
+    defineTheme: vi.fn(),
+  },
+  languages: {
+    register: vi.fn(),
+    setMonarchTokensProvider: vi.fn(),
+    getLanguages: vi.fn(() => []),
+  },
+}));
+
+// Mock monaco-vim — requires browser APIs not available in jsdom
+vi.mock('monaco-vim', () => ({
+  initVimMode: vi.fn(() => ({
+    dispose: vi.fn(),
+  })),
+  VimMode: {
+    Vim: {
+      defineEx: vi.fn(),
+    },
+  },
+}));
+
 // Mock VS Code API
 (global as any).acquireVsCodeApi = vi.fn(() => ({
   postMessage: vi.fn(),

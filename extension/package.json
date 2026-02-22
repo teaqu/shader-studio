@@ -97,6 +97,10 @@
       {
         "command": "shader-studio.transpileGlslToJs",
         "title": "Shader Studio: Transpile GLSL to JavaScript (for debugging)"
+      },
+      {
+        "command": "shader-studio.toggleEditorOverlay",
+        "title": "Shader Studio: Toggle Editor Overlay"
       }
     ],
     "menus": {
