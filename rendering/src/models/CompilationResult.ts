@@ -1,5 +1,5 @@
 export interface CompilationResult {
   success: boolean;
-  error?: string;
+  errors?: string[];
   warnings?: string[];
 }

@@ -514,9 +514,10 @@ describe("ShaderPipeline", () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain("BufferA");
-            expect(result.error).toContain("not found or is empty");
-            expect(result.error).toContain("buffer-a.glsl");
+            expect(result.errors).toBeDefined();
+            expect(result.errors![0]).toContain("BufferA");
+            expect(result.errors![0]).toContain("not found or is empty");
+            expect(result.errors![0]).toContain("buffer-a.glsl");
         });
 
         it("should return error when buffer pass has only whitespace", async () => {
@@ -539,9 +540,10 @@ describe("ShaderPipeline", () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain("BufferB");
-            expect(result.error).toContain("not found or is empty");
-            expect(result.error).toContain("buffer-b.glsl");
+            expect(result.errors).toBeDefined();
+            expect(result.errors![0]).toContain("BufferB");
+            expect(result.errors![0]).toContain("not found or is empty");
+            expect(result.errors![0]).toContain("buffer-b.glsl");
         });
 
         it("should return error when buffer is missing from buffers object", async () => {
@@ -564,8 +566,9 @@ describe("ShaderPipeline", () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain("BufferA");
-            expect(result.error).toContain("not found or is empty");
+            expect(result.errors).toBeDefined();
+            expect(result.errors![0]).toContain("BufferA");
+            expect(result.errors![0]).toContain("not found or is empty");
         });
 
         it("should succeed when all buffers have valid content", async () => {
@@ -610,8 +613,9 @@ describe("ShaderPipeline", () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain("path/to/buffer-c.glsl");
-            expect(result.error).toContain("Please check that the file exists");
+            expect(result.errors).toBeDefined();
+            expect(result.errors![0]).toContain("path/to/buffer-c.glsl");
+            expect(result.errors![0]).toContain("Please check that the file exists");
         });
 
         it("should handle multiple missing buffers by reporting the first one", async () => {
@@ -637,8 +641,9 @@ describe("ShaderPipeline", () => {
 
             expect(result.success).toBe(false);
             // Should fail on first buffer encountered
-            expect(result.error).toContain("Buffer");
-            expect(result.error).toContain("not found or is empty");
+            expect(result.errors).toBeDefined();
+            expect(result.errors![0]).toContain("Buffer");
+            expect(result.errors![0]).toContain("not found or is empty");
         });
 
         it("should not error on empty Image pass (uses main code)", async () => {

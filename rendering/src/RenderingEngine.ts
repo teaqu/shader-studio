@@ -118,7 +118,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       if (!validation.isValid) {
         return {
           success: false,
-          error: `Invalid shader configuration: ${validation.errors.join(', ')}`,
+          errors: [`Invalid shader configuration: ${validation.errors.join(', ')}`],
         };
       }
     }
@@ -145,7 +145,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (!bufferPass) {
       return {
         success: false,
-        error: `Buffer '${bufferName}' not found in current shader`,
+        errors: [`Buffer '${bufferName}' not found in current shader`],
       };
     }
 
@@ -154,7 +154,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (!imagePass) {
       return {
         success: false,
-        error: "No Image pass found in current shader",
+        errors: ["No Image pass found in current shader"],
       };
     }
 

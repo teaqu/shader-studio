@@ -23,7 +23,8 @@ export class MessageHandler {
         const shaderMsg = message as ShaderSourceMessage;
         const shaderConfig = {
           config: shaderMsg.config,
-          shaderPath: shaderMsg.path
+          shaderPath: shaderMsg.path,
+          bufferPathMap: shaderMsg.bufferPathMap,
         };
         this.errorHandler.setShaderConfig(shaderConfig);
       }

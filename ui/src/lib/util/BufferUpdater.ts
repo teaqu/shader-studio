@@ -53,7 +53,7 @@ export class BufferUpdater {
           if (!result?.success) {
             const errorMessage: ErrorMessage = {
               type: "error",
-              payload: [result?.error || "Unknown compilation error"],
+              payload: result?.errors || ["Unknown compilation error"],
             };
             this.transport.postMessage(errorMessage);
             return;

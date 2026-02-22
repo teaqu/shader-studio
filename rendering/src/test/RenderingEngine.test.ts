@@ -93,7 +93,7 @@ describe("RenderingEngine", () => {
 
       expect(mockValidateConfig).toHaveBeenCalledWith(config);
       expect(result!.success).toBe(false);
-      expect(result!.error).toContain('Invalid shader configuration: Test validation error');
+      expect(result!.errors![0]).toContain('Invalid shader configuration: Test validation error');
       expect(mockPipeline.compileShaderPipeline).not.toHaveBeenCalled();
     });
 
@@ -228,9 +228,9 @@ describe("RenderingEngine", () => {
       );
 
       // Mock compilation failure
-      const mockCompileResult = { 
-        success: false, 
-        error: 'Buffer compilation failed' 
+      const mockCompileResult = {
+        success: false,
+        errors: ['Buffer compilation failed']
       };
       mockPipeline.compileShaderPipeline.mockResolvedValue(mockCompileResult);
 
@@ -240,9 +240,9 @@ describe("RenderingEngine", () => {
         'broken buffer content'
       );
 
-      expect(result).toEqual({ 
-        success: false, 
-        error: 'Buffer compilation failed' 
+      expect(result).toEqual({
+        success: false,
+        errors: ['Buffer compilation failed']
       });
     });
 
@@ -257,7 +257,7 @@ describe("RenderingEngine", () => {
 
       expect(result).toEqual({
         success: false,
-        error: "Buffer 'BufferA' not found in current shader"
+        errors: ["Buffer 'BufferA' not found in current shader"]
       });
     });
   });

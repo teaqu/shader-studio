@@ -406,7 +406,7 @@ describe("MessageHandler", () => {
       // Mock failed buffer update
       mockRenderingEngine.updateBufferAndRecompile.mockResolvedValue({
         success: false,
-        error: 'Compilation failed'
+        errors: ['Compilation failed']
       });
 
       const event: MessageEvent = {
@@ -521,7 +521,7 @@ describe("MessageHandler", () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: false,
-        error: 'Compilation failed'
+        errors: ['Compilation failed']
       });
 
       const event = {
@@ -570,7 +570,7 @@ describe("MessageHandler", () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: false,
-        error: 'Test error'
+        errors: ['Test error']
       });
 
       const event = {
@@ -587,7 +587,7 @@ describe("MessageHandler", () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'Test error'
+        errors: ['Test error']
       });
     });
 

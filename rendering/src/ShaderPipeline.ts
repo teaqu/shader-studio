@@ -167,26 +167,39 @@ export class ShaderPipeline {
         const pathInfo = pass.path ? ` (path: "${pass.path}")` : "";
         return {
           success: false,
-          error: `${pass.name}: Buffer file not found or is empty${pathInfo}. Please check that the file exists and contains valid shader code.`,
+          errors: [`${pass.name}: Buffer file not found or is empty${pathInfo}. Please check that the file exists and contains valid shader code.`],
         };
       }
 
-      const { headerLineCount: svelteHeaderLines } = this.shaderCompiler
+      const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc, commonCode);
       const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode);
 
       if (!shader || !shader.mResult) {
-        const err = shader ? ShaderErrorFormatter.formatShaderError(
+        this.cleanupPartialShaders(newPassShaders);
+
+        if (!shader) {
+          return {
+            success: false,
+            errors: [`${pass.name}: Failed to compile shader`],
+          };
+        }
+
+        const formattedErrors = ShaderErrorFormatter.formatShaderError(
           shader.mInfo,
           this.renderer,
           svelteHeaderLines,
-        ) : "Failed to compile shader";
+          commonCodeLineCount,
+        );
 
-        this.cleanupPartialShaders(newPassShaders);
+        const errors: string[] = formattedErrors.map(err => {
+          const errorPassName = err.isCommonBufferError ? "common" : pass.name;
+          return `${errorPassName}: ${err.message}`;
+        });
 
         return {
           success: false,
-          error: `${pass.name}: ${err}`,
+          errors: errors.length > 0 ? errors : [`${pass.name}: Failed to compile shader`],
         };
       }
 
