@@ -131,6 +131,8 @@ export class PanelManager {
     } else if (message.type === 'requestWorkspaceFiles') {
       console.log('PanelManager: Received requestWorkspaceFiles message', message.payload);
       await this.handleRequestWorkspaceFiles(message.payload, panel);
+    } else if (message.type === 'forkShader') {
+      await this.handleForkShader(message.payload, panel);
     }
   }
 
@@ -268,6 +270,63 @@ export class PanelManager {
         payload: { files: [] },
       };
       panel.webview.postMessage(response);
+    }
+  }
+
+  private async handleForkShader(
+    payload: { shaderPath: string },
+    panel: vscode.WebviewPanel,
+  ): Promise<void> {
+    try {
+      const sourcePath = payload.shaderPath;
+      if (!sourcePath || !fs.existsSync(sourcePath)) {
+        this.logger.warn("No shader path to fork");
+        return;
+      }
+
+      const sourceDir = path.dirname(sourcePath);
+      const sourceExt = path.extname(sourcePath);
+      // Strip any existing numeric suffix (e.g. "shader.2" → "shader")
+      const rawBase = path.basename(sourcePath, sourceExt);
+      const rootBase = rawBase.replace(/\.\d+$/, '');
+
+      // Find next available integer suffix
+      let counter = 1;
+      while (fs.existsSync(path.join(sourceDir, `${rootBase}.${counter}${sourceExt}`))) {
+        counter++;
+      }
+
+      const result = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(sourceDir, `${rootBase}.${counter}${sourceExt}`)),
+        filters: { 'GLSL Shader': ['glsl'] },
+      });
+
+      if (!result) {
+        return;
+      }
+
+      const destPath = result.fsPath;
+
+      // Copy the .glsl file
+      fs.copyFileSync(sourcePath, destPath);
+      this.logger.info(`Forked shader: ${sourcePath} → ${destPath}`);
+
+      // Copy .sha.json if it exists
+      const sourceConfigPath = sourcePath.replace(/\.(glsl|frag)$/, '.sha.json');
+      if (fs.existsSync(sourceConfigPath)) {
+        const destConfigPath = destPath.replace(/\.(glsl|frag)$/, '.sha.json');
+        fs.copyFileSync(sourceConfigPath, destConfigPath);
+        this.logger.info(`Forked config: ${sourceConfigPath} → ${destConfigPath}`);
+      }
+
+      // Open the new file
+      const doc = await vscode.workspace.openTextDocument(result);
+      const viewColumn = this.resolveTargetColumn(panel, sourcePath);
+      await vscode.window.showTextDocument(doc, { viewColumn, preview: false });
+    } catch (error) {
+      this.logger.error(`Failed to fork shader: ${error}`);
+      const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to fork shader: ${error}`] };
+      this.messenger.send(errorMsg);
     }
   }
 

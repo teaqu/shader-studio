@@ -262,6 +262,14 @@
     editorOverlayStore.toggleVimMode();
   }
 
+  function handleFork() {
+    if (!initialized) return;
+    transport.postMessage({
+      type: 'forkShader',
+      payload: { shaderPath }
+    });
+  }
+
   function handleConfigFileSelect(bufferName: string) {
     if (!initialized) return;
     editorBufferName = bufferName;
@@ -587,6 +595,7 @@
       onToggleEditorOverlay={handleToggleEditorOverlay}
       isVimModeEnabled={editorVimMode}
       onToggleVimMode={handleToggleVimMode}
+      onFork={handleFork}
     />
   {/if}
   {#if showDebugPanel}

@@ -746,6 +746,41 @@ describe('ShaderViewer', () => {
     expect(true).toBe(true);
   });
 
+  it('should send forkShader message when fork button is clicked', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+
+    // Wait for initialization
+    await tick();
+    await tick();
+
+    // Get the message handler to send a shaderSource to set shaderPath
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/my-shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/my-shader.glsl' },
+      },
+    });
+    await tick();
+
+    // Clear mocks to ignore initialization messages
+    vi.clearAllMocks();
+
+    // Click the fork button
+    const forkButton = screen.getByLabelText('Fork shader');
+    await fireEvent.click(forkButton);
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'forkShader',
+      payload: { shaderPath: '/test/my-shader.glsl' }
+    });
+  });
+
   it('should update config when locked and same shader path arrives', async () => {
     let studioInstance: any;
     const onInitialized = vi.fn((data: any) => {

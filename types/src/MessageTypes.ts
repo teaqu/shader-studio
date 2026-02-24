@@ -124,4 +124,9 @@ export interface WorkspaceFilesMessage extends BaseMessage {
   payload: { files: WorkspaceFileInfo[] };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage;
+export interface ForkShaderMessage extends BaseMessage {
+  type: "forkShader";
+  payload: { shaderPath: string };
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage;

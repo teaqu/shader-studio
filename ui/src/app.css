@@ -583,6 +583,7 @@ canvas {
 
 /* Collapsible toolbar buttons - hide progressively as panel shrinks */
 .show-lock,
+.show-fork,
 .show-editor,
 .show-config,
 .show-debug,
@@ -593,6 +594,11 @@ canvas {
 @container (max-width: 610px) {
   .collapse-lock { display: none !important; }
   .show-lock { display: flex !important; }
+}
+
+@container (max-width: 580px) {
+  .collapse-fork { display: none !important; }
+  .show-fork { display: flex !important; }
 }
 
 @container (max-width: 570px) {

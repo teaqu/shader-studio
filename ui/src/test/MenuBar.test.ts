@@ -67,7 +67,8 @@ describe('MenuBar Component', () => {
       isEditorOverlayVisible: false,
       onToggleEditorOverlay: vi.fn(),
       isVimModeEnabled: false,
-      onToggleVimMode: vi.fn()
+      onToggleVimMode: vi.fn(),
+      onFork: vi.fn()
     };
 
     // Reset all mocks
@@ -787,6 +788,60 @@ describe('MenuBar Component', () => {
 
       const vimButton = screen.getByLabelText('Toggle vim mode');
       expect(vimButton.classList.contains('active')).toBe(true);
+    });
+  });
+
+  describe('Fork Button', () => {
+    it('should render fork button in toolbar', () => {
+      render(MenuBar, { props: defaultProps });
+
+      const forkButton = screen.getByLabelText('Fork shader');
+      expect(forkButton).toBeInTheDocument();
+    });
+
+    it('should call onFork when fork button is clicked', async () => {
+      const onFork = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onFork
+        }
+      });
+
+      const forkButton = screen.getByLabelText('Fork shader');
+      await fireEvent.click(forkButton);
+
+      expect(onFork).toHaveBeenCalledOnce();
+    });
+
+    it('should show fork option in options menu', async () => {
+      render(MenuBar, { props: defaultProps });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByText('Fork')).toBeInTheDocument();
+    });
+
+    it('should call onFork from options menu and close menu', async () => {
+      const onFork = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onFork
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      // Find the fork button in the options menu (second one with Fork shader label)
+      const forkButtons = screen.getAllByLabelText('Fork shader');
+      await fireEvent.click(forkButtons[forkButtons.length - 1]);
+
+      expect(onFork).toHaveBeenCalledOnce();
+      // Menu should be closed
+      expect(screen.queryByText('Fork')).not.toBeInTheDocument();
     });
   });
 
