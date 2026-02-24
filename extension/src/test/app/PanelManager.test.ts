@@ -679,6 +679,128 @@ suite('PanelManager Test Suite', () => {
         });
     });
 
+    suite('handleForkShader', () => {
+        test('should copy .glsl file and open new document when save dialog confirmed', async () => {
+            const fs = require('fs');
+            const existsStub = sandbox.stub(fs, 'existsSync');
+            existsStub.withArgs('/path/to/shader.glsl').returns(true);
+            existsStub.withArgs('/path/to/shader.1.glsl').returns(false);
+            existsStub.withArgs('/path/to/shader.sha.json').returns(false);
+            const copyStub = sandbox.stub(fs, 'copyFileSync');
+
+            const destUri = vscode.Uri.file('/path/to/shader.1.glsl');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(destUri);
+
+            const mockDoc = {} as any;
+            sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDoc);
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [{ viewColumn: vscode.ViewColumn.One, tabs: [] }]
+            });
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleForkShader(
+                { shaderPath: '/path/to/shader.glsl' },
+                mockPanel
+            );
+
+            sinon.assert.calledOnce(copyStub);
+            assert.strictEqual(copyStub.firstCall.args[0], '/path/to/shader.glsl');
+            assert.strictEqual(copyStub.firstCall.args[1], '/path/to/shader.1.glsl');
+
+            sinon.assert.calledOnce(showTextDocStub);
+        });
+
+        test('should also copy .sha.json when it exists', async () => {
+            const fs = require('fs');
+            const existsStub = sandbox.stub(fs, 'existsSync');
+            existsStub.withArgs('/path/to/shader.glsl').returns(true);
+            existsStub.withArgs('/path/to/shader.1.glsl').returns(false);
+            existsStub.withArgs('/path/to/shader.sha.json').returns(true);
+            const copyStub = sandbox.stub(fs, 'copyFileSync');
+
+            const destUri = vscode.Uri.file('/path/to/shader.1.glsl');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(destUri);
+            sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+            sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [{ viewColumn: vscode.ViewColumn.One, tabs: [] }]
+            });
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleForkShader(
+                { shaderPath: '/path/to/shader.glsl' },
+                mockPanel
+            );
+
+            assert.strictEqual(copyStub.callCount, 2);
+            assert.strictEqual(copyStub.secondCall.args[0], '/path/to/shader.sha.json');
+            assert.strictEqual(copyStub.secondCall.args[1], '/path/to/shader.1.sha.json');
+        });
+
+        test('should do nothing when save dialog is cancelled', async () => {
+            const fs = require('fs');
+            const existsStub = sandbox.stub(fs, 'existsSync');
+            existsStub.withArgs('/path/to/shader.glsl').returns(true);
+            existsStub.withArgs('/path/to/shader.1.glsl').returns(false);
+            const copyStub = sandbox.stub(fs, 'copyFileSync');
+
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+            const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleForkShader(
+                { shaderPath: '/path/to/shader.glsl' },
+                mockPanel
+            );
+
+            sinon.assert.notCalled(copyStub);
+            sinon.assert.notCalled(showTextDocStub);
+        });
+
+        test('should do nothing when shaderPath is empty', async () => {
+            const fs = require('fs');
+            const copyStub = sandbox.stub(fs, 'copyFileSync');
+            const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog');
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleForkShader(
+                { shaderPath: '' },
+                mockPanel
+            );
+
+            sinon.assert.notCalled(showSaveStub);
+            sinon.assert.notCalled(copyStub);
+        });
+
+        test('should send error message when fork fails', async () => {
+            const fs = require('fs');
+            const existsStub = sandbox.stub(fs, 'existsSync');
+            existsStub.withArgs('/path/to/shader.glsl').returns(true);
+            existsStub.withArgs('/path/to/shader.1.glsl').returns(false);
+            sandbox.stub(fs, 'copyFileSync').throws(new Error('Copy failed'));
+
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/path/to/dest.glsl'));
+
+            const mockPanel = { viewColumn: vscode.ViewColumn.Two } as any;
+
+            await (panelManager as any).handleForkShader(
+                { shaderPath: '/path/to/shader.glsl' },
+                mockPanel
+            );
+
+            sinon.assert.calledOnce(mockMessenger.send as sinon.SinonStub);
+            const message = (mockMessenger.send as sinon.SinonStub).firstCall.args[0];
+            assert.strictEqual(message.type, 'error');
+            assert.ok(message.payload[0].includes('Failed to fork shader'));
+        });
+    });
+
     suite('handleWebviewMessage routing', () => {
         let mockWebviewPanel: any;
 
@@ -741,6 +863,20 @@ suite('PanelManager Test Suite', () => {
 
             sinon.assert.calledOnce(handleStub);
             assert.deepStrictEqual(handleStub.firstCall.args[0], { extensions: ['png'], shaderPath: '/test.glsl' });
+            assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
+        });
+
+        test('routes forkShader message to handler', async () => {
+            const handleStub = sandbox.stub(panelManager as any, 'handleForkShader').resolves();
+            const mockPanel = { webview: {} } as any;
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'forkShader', payload: { shaderPath: '/test/shader.glsl' } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(handleStub);
+            assert.deepStrictEqual(handleStub.firstCall.args[0], { shaderPath: '/test/shader.glsl' });
             assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
         });
 

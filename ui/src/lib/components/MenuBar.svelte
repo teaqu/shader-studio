@@ -63,6 +63,16 @@
   export let onToggleEditorOverlay: () => void = () => {};
   export let isVimModeEnabled: boolean = false;
   export let onToggleVimMode: () => void = () => {};
+  export let onFork: () => void = () => {};
+
+  // Fork icon SVG (copy/branch)
+  const forkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="18" r="3"/>
+    <circle cx="6" cy="6" r="3"/>
+    <circle cx="18" cy="6" r="3"/>
+    <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/>
+    <path d="M12 12v3"/>
+  </svg>`;
 
   // Editor icon SVG (code brackets)
   const editorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -355,6 +365,14 @@
       {@html editorIcon}
     </button>
     <button
+      class="collapse-fork"
+      on:click={() => { onFork(); }}
+      aria-label="Fork shader"
+      title="Fork shader to a new file"
+    >
+      {@html forkIcon}
+    </button>
+    <button
       class="collapse-config"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
@@ -408,6 +426,14 @@
               <span>Vim Mode</span>
             </button>
           {/if}
+          <button
+            class="options-menu-item show-fork"
+            on:click={() => { onFork(); showOptionsMenu = false; }}
+            aria-label="Fork shader"
+          >
+            {@html forkIcon}
+            <span>Fork</span>
+          </button>
           <button
             class="options-menu-item show-config"
             on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}
