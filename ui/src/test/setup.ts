@@ -32,6 +32,7 @@ import '@testing-library/jest-dom';
 // Mock monaco-editor — the static import in EditorOverlay.svelte would crash
 // jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
 vi.mock('monaco-editor', () => ({
+  MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
   editor: {
     create: vi.fn(() => ({
       dispose: vi.fn(),
@@ -43,8 +44,12 @@ vi.mock('monaco-editor', () => ({
       setScrollTop: vi.fn(),
       hasTextFocus: vi.fn(() => false),
       onDidChangeModelContent: vi.fn(),
+      getModel: vi.fn(() => ({
+        getLineMaxColumn: vi.fn(() => 80),
+      })),
     })),
     defineTheme: vi.fn(),
+    setModelMarkers: vi.fn(),
   },
   languages: {
     register: vi.fn(),

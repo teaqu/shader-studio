@@ -557,6 +557,7 @@
         bufferNames={editorBufferNames}
         activeBufferName={editorBufferName}
         onBufferSwitch={handleConfigFileSelect}
+        {errors}
       />
     {/if}
   </div>
