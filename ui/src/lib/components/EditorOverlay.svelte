@@ -13,6 +13,7 @@
   export let bufferNames: string[] = ["Image"];
   export let activeBufferName: string = "Image";
   export let onBufferSwitch: (bufferName: string) => void = () => {};
+  export let errors: string[] = [];
 
   let containerEl: HTMLDivElement;
   let statusBarEl: HTMLDivElement;
@@ -164,6 +165,11 @@
         'editorLineNumber.foreground': '#858585',
         'editorLineNumber.activeForeground': '#c6c6c6',
         'editorCursor.foreground': '#ffffff',
+        'editorError.foreground': '#ff2020',
+        'editorError.border': '#00000000',
+        'editorGutter.modifiedBackground': '#00000000',
+        'editorGutter.addedBackground': '#00000000',
+        'editorGutter.deletedBackground': '#00000000',
       },
     });
 
@@ -210,6 +216,18 @@
         const name = params?.args?.[0];
         if (name) switchToNamedBuffer(name);
       });
+      vim.defineEx('lnext', 'lne', () => {
+        editor?.getAction('editor.action.marker.next')?.run();
+      });
+      vim.defineEx('lprev', 'lp', () => {
+        editor?.getAction('editor.action.marker.prev')?.run();
+      });
+
+      // ]d / [d — next/prev diagnostic
+      vim.mapCommand(']d', 'action', 'editor.action.marker.next', {}, { context: 'normal' });
+      vim.mapCommand('[d', 'action', 'editor.action.marker.prev', {}, { context: 'normal' });
+      // gl — show hover (error tooltip) at cursor
+      vim.mapCommand('gl', 'action', 'editor.action.showHover', {}, { context: 'normal' });
 
       vimCommandsRegistered = true;
     } catch (e) {
@@ -254,7 +272,7 @@
       lineHeight: 20,
       padding: { top: 8 },
       folding: false,
-      glyphMargin: false,
+      glyphMargin: true,
       lineDecorationsWidth: 0,
       lineNumbers: "on",
       lineNumbersMinChars: 4,
@@ -343,6 +361,40 @@
     }
   }
 
+  // React to error changes — set Monaco markers
+  $: if (editor) {
+    updateErrorMarkers(errors);
+  }
+
+  function updateErrorMarkers(errs: string[]) {
+    if (!editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Parse errors for the active buffer, extract line numbers
+    const bufferPrefix = activeBufferName === "Image" ? "Image" : activeBufferName;
+    const markers: monaco.editor.IMarkerData[] = [];
+
+    for (const err of errs) {
+      // Format: "BufferName: ERROR: 0:LINE: message"
+      const match = err.match(new RegExp(`^${bufferPrefix}: ERROR: 0:(\\d+):\\s*(.+)`, 's'));
+      if (match) {
+        const line = parseInt(match[1], 10);
+        const message = match[2].trim();
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: line,
+          startColumn: 1,
+          endLineNumber: line,
+          endColumn: model.getLineMaxColumn(line),
+          message,
+        });
+      }
+    }
+
+    monaco.editor.setModelMarkers(model, 'glsl', markers);
+  }
+
   // React to external shader code changes.
   // When the file path changes (buffer switch), always apply the new content.
   // When the same file updates, only apply if the editor doesn't have focus.
@@ -426,6 +478,7 @@
     font-size: 12px;
     color: #d4d4d4;
     background: rgba(10, 10, 10, 0.85);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
     padding: 0 8px;
     line-height: 20px;
     flex-shrink: 0;
@@ -498,5 +551,31 @@
   /* Active line number in gutter */
   .editor-overlay :global(.monaco-editor .active-line-number) {
     color: #c6c6c6 !important;
+  }
+
+  /* Glyph margin background (for error icons) */
+  .editor-overlay :global(.monaco-editor .margin-view-overlays .cgmr) {
+    background: rgba(10, 10, 10, 0.82);
+  }
+
+  /* Error squiggly — fully opaque red */
+  .editor-overlay :global(.monaco-editor .squiggly-error) {
+    opacity: 1 !important;
+  }
+
+  /* Hover widget (error tooltips) */
+  .editor-overlay :global(.monaco-editor .monaco-hover) {
+    background: rgba(30, 30, 30, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .monaco-hover-content) {
+    background: transparent !important;
+    color: #d4d4d4 !important;
+  }
+
+  /* Hover status bar (bottom of hover widget) */
+  .editor-overlay :global(.monaco-editor .monaco-hover .hover-row.status-bar) {
+    background: rgba(255, 255, 255, 0.05) !important;
   }
 </style>
