@@ -7,6 +7,7 @@ import { WebviewTransport } from "./transport/WebviewTransport";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
+import { WorkspaceFileScanner } from "./WorkspaceFileScanner";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
@@ -35,10 +36,6 @@ export class PanelManager {
     return Array.from(this.panels);
   }
 
-  private createWebviewPanel(editor: vscode.TextEditor | null): void {
-    this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
-  }
-
   public createPanel(): void {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
 
@@ -55,6 +52,10 @@ export class PanelManager {
   public async createPanelInNewWindow(): Promise<void> {
     this.createPanel();
     await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
+  }
+
+  private createWebviewPanel(editor: vscode.TextEditor | null): void {
+    this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }
 
   private createWebviewPanelInColumn(
@@ -99,8 +100,12 @@ export class PanelManager {
     }
 
     // Handle messages from webview
-    panel.webview.onDidReceiveMessage((message) => {
-      this.handleWebviewMessage(message, panel);
+    panel.webview.onDidReceiveMessage(async (message) => {
+      try {
+        await this.handleWebviewMessage(message, panel);
+      } catch (error) {
+        console.error('PanelManager: Unhandled error in webview message handler:', error);
+      }
     });
 
     panel.onDidDispose(() => {
@@ -123,6 +128,9 @@ export class PanelManager {
       await this.overlayHandler.handleRequestFileContents(message.payload, panel);
     } else if (message.type === 'navigateToBuffer') {
       await this.handleNavigateToBuffer(message.payload, panel);
+    } else if (message.type === 'requestWorkspaceFiles') {
+      console.log('PanelManager: Received requestWorkspaceFiles message', message.payload);
+      await this.handleRequestWorkspaceFiles(message.payload, panel);
     }
   }
 
@@ -233,6 +241,34 @@ export class PanelManager {
     }
 
     return vscode.ViewColumn.One;
+  }
+
+  private async handleRequestWorkspaceFiles(
+    payload: { extensions: string[]; shaderPath: string },
+    panel: vscode.WebviewPanel,
+  ): Promise<void> {
+    try {
+      console.log('PanelManager: Scanning workspace files for extensions:', payload.extensions);
+      const files = await WorkspaceFileScanner.scanFiles(
+        payload.extensions,
+        payload.shaderPath,
+        panel.webview,
+      );
+      console.log(`PanelManager: Found ${files.length} workspace files`);
+      const response = {
+        type: "workspaceFiles",
+        payload: { files },
+      };
+      panel.webview.postMessage(response);
+    } catch (error) {
+      console.error(`PanelManager: Failed to scan workspace files:`, error);
+      this.logger.error(`Failed to scan workspace files: ${error}`);
+      const response = {
+        type: "workspaceFiles",
+        payload: { files: [] },
+      };
+      panel.webview.postMessage(response);
+    }
   }
 
   private setupWebviewHtml(panel: vscode.WebviewPanel): void {

@@ -70,8 +70,8 @@ describe('PixelInspectorManager', () => {
     it('should initialize with correct default state', () => {
       const state = manager.getState();
 
-      expect(state.isEnabled).toBe(true);
-      expect(state.isActive).toBe(true);
+      expect(state.isEnabled).toBe(false);
+      expect(state.isActive).toBe(false);
       expect(state.isLocked).toBe(false);
       expect(state.mouseX).toBe(0);
       expect(state.mouseY).toBe(0);
@@ -82,26 +82,26 @@ describe('PixelInspectorManager', () => {
   });
 
   describe('toggleEnabled', () => {
-    it('should disable inspector and deactivate it', () => {
-      manager.toggleEnabled(); // Disable (starts enabled)
-      const state = manager.getState();
-
-      expect(state.isEnabled).toBe(false);
-      expect(state.isActive).toBe(false);
-      expect(stateCallback).toHaveBeenCalled();
-    });
-
-    it('should re-enable inspector and activate it', () => {
-      manager.toggleEnabled(); // Disable
-      manager.toggleEnabled(); // Re-enable
+    it('should enable inspector and activate it', () => {
+      manager.toggleEnabled(); // Enable (starts disabled)
       const state = manager.getState();
 
       expect(state.isEnabled).toBe(true);
       expect(state.isActive).toBe(true);
+      expect(stateCallback).toHaveBeenCalled();
+    });
+
+    it('should disable inspector after enabling', () => {
+      manager.toggleEnabled(); // Enable
+      manager.toggleEnabled(); // Disable
+      const state = manager.getState();
+
+      expect(state.isEnabled).toBe(false);
+      expect(state.isActive).toBe(false);
     });
 
     it('should clear state when disabling', () => {
-      // Already enabled, simulate some state
+      manager.toggleEnabled(); // Enable first
       const mockEvent = { clientX: 100, clientY: 100 } as MouseEvent;
       manager.handleMouseMove(mockEvent);
 
@@ -113,21 +113,86 @@ describe('PixelInspectorManager', () => {
       expect(state.canvasPosition).toBeNull();
     });
 
-    it('should start continuous updates on initialize when enabled', () => {
-      // Already enabled by default, initialize starts continuous updates
+    it('should start continuous updates when enabled', () => {
+      (window.requestAnimationFrame as any).mockClear();
+      manager.toggleEnabled(); // Enable
       expect(window.requestAnimationFrame).toHaveBeenCalled();
     });
 
     it('should stop continuous updates when disabled', () => {
-      manager.toggleEnabled(); // Disable (starts enabled)
+      manager.toggleEnabled(); // Enable first
+      manager.toggleEnabled(); // Disable
       expect(window.cancelAnimationFrame).toHaveBeenCalled();
     });
   });
 
-  describe('handleCanvasClick', () => {
-    // Inspector starts enabled and active after initialize()
+  describe('setEnabled', () => {
+    it('should enable when disabled', () => {
+      manager.setEnabled(true);
+      const state = manager.getState();
 
+      expect(state.isEnabled).toBe(true);
+      expect(state.isActive).toBe(true);
+      expect(stateCallback).toHaveBeenCalled();
+    });
+
+    it('should disable when enabled', () => {
+      manager.setEnabled(true);
+      stateCallback.mockClear();
+      manager.setEnabled(false);
+      const state = manager.getState();
+
+      expect(state.isEnabled).toBe(false);
+      expect(state.isActive).toBe(false);
+      expect(stateCallback).toHaveBeenCalled();
+    });
+
+    it('should be a no-op when already enabled', () => {
+      manager.setEnabled(true);
+      stateCallback.mockClear();
+      manager.setEnabled(true);
+
+      expect(stateCallback).not.toHaveBeenCalled();
+    });
+
+    it('should be a no-op when already disabled', () => {
+      // Manager starts disabled
+      stateCallback.mockClear();
+      manager.setEnabled(false);
+
+      expect(stateCallback).not.toHaveBeenCalled();
+    });
+
+    it('should start continuous updates when enabling', () => {
+      (window.requestAnimationFrame as any).mockClear();
+      manager.setEnabled(true);
+      expect(window.requestAnimationFrame).toHaveBeenCalled();
+    });
+
+    it('should stop continuous updates when disabling', () => {
+      manager.setEnabled(true);
+      manager.setEnabled(false);
+      expect(window.cancelAnimationFrame).toHaveBeenCalled();
+    });
+
+    it('should clear state when disabling', () => {
+      manager.setEnabled(true);
+      const mockEvent = { clientX: 100, clientY: 100 } as MouseEvent;
+      manager.handleMouseMove(mockEvent);
+
+      manager.setEnabled(false);
+      const state = manager.getState();
+
+      expect(state.pixelRGB).toBeNull();
+      expect(state.fragCoord).toBeNull();
+      expect(state.canvasPosition).toBeNull();
+      expect(state.isLocked).toBe(false);
+    });
+  });
+
+  describe('handleCanvasClick', () => {
     it('should toggle lock state', () => {
+      manager.toggleEnabled(); // Enable first
       manager.handleCanvasClick();
       expect(manager.getState().isLocked).toBe(true);
 
@@ -136,7 +201,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should not do anything if inspector is not active', () => {
-      manager.toggleEnabled(); // Disable (starts enabled)
+      // Inspector starts disabled
       const stateBefore = manager.getState();
 
       manager.handleCanvasClick();
@@ -146,6 +211,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should keep continuous updates running when locked', () => {
+      manager.toggleEnabled(); // Enable first
       manager.handleCanvasClick(); // Lock
       const state = manager.getState();
 
@@ -156,9 +222,8 @@ describe('PixelInspectorManager', () => {
   });
 
   describe('handleMouseMove', () => {
-    // Inspector starts enabled and active after initialize()
-
     it('should update mouse position immediately', () => {
+      manager.toggleEnabled(); // Enable first
       const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
       manager.handleMouseMove(mockEvent);
       const state = manager.getState();
@@ -168,6 +233,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should not update position when locked', () => {
+      manager.toggleEnabled(); // Enable first
       manager.handleCanvasClick(); // Lock
 
       const mockEvent1 = { clientX: 100, clientY: 200 } as MouseEvent;
@@ -183,8 +249,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should not update position when inspector is not active', () => {
-      manager.toggleEnabled(); // Disable (starts enabled)
-
+      // Inspector starts disabled - no need to toggle
       const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
       manager.handleMouseMove(mockEvent);
       const state = manager.getState();
@@ -194,6 +259,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should calculate canvas coordinates correctly', () => {
+      manager.toggleEnabled(); // Enable first
       const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
       manager.handleMouseMove(mockEvent);
 
@@ -203,6 +269,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should clear pixel data when mouse is outside canvas bounds', () => {
+      manager.toggleEnabled(); // Enable first
       // First, set some position inside canvas
       const mockEvent1 = { clientX: 400, clientY: 300 } as MouseEvent;
       manager.handleMouseMove(mockEvent1);
@@ -218,6 +285,7 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should notify state change immediately', () => {
+      manager.toggleEnabled(); // Enable first
       stateCallback.mockClear();
       const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
       manager.handleMouseMove(mockEvent);
@@ -227,7 +295,9 @@ describe('PixelInspectorManager', () => {
   });
 
   describe('Continuous Pixel Reading', () => {
-    // Inspector starts enabled and active after initialize()
+    beforeEach(() => {
+      manager.toggleEnabled(); // Enable inspector for all pixel reading tests
+    });
 
     it('should read pixels continuously when active', () => {
       const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
@@ -330,7 +400,7 @@ describe('PixelInspectorManager', () => {
 
   describe('Disposal', () => {
     it('should stop continuous updates on dispose', () => {
-      // Inspector starts enabled with continuous updates running
+      manager.toggleEnabled(); // Enable first so continuous updates are running
       manager.dispose();
 
       expect(window.cancelAnimationFrame).toHaveBeenCalled();
@@ -346,8 +416,11 @@ describe('PixelInspectorManager', () => {
   });
 
   describe('Performance - No Lag When Playing', () => {
+    beforeEach(() => {
+      manager.toggleEnabled(); // Enable inspector for performance tests
+    });
+
     it('should not render on every mouse move when playing', () => {
-      // Inspector starts enabled
       (mockTimeManager.isPaused as any).mockReturnValue(false);
 
       // Move mouse multiple times
@@ -361,8 +434,6 @@ describe('PixelInspectorManager', () => {
     });
 
     it('should update mouse position smoothly (not throttled)', () => {
-      // Inspector starts enabled
-
       const positions = [
         { clientX: 100, clientY: 100 },
         { clientX: 110, clientY: 110 },

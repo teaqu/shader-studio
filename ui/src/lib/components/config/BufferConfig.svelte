@@ -18,6 +18,8 @@
   export let isImagePass: boolean = false;
   export let onCreateFile: ((bufferName: string) => void) | undefined = undefined;
   export let suggestedPath: string = "";
+  export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let shaderPath: string = "";
 
   let bufferConfig: BufferConfig;
 
@@ -144,6 +146,8 @@
   onClose={closeChannelModal}
   onSave={handleModalSave}
   onRemove={handleModalRemove}
+  {postMessage}
+  {shaderPath}
 />
 
 <style>

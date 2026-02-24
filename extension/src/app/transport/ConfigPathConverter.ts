@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import type { ShaderConfig } from "@shader-studio/types";
+import { PathResolver } from "../PathResolver";
 
 /**
  * Utility for converting config paths to webview URIs.
@@ -40,10 +41,11 @@ export class ConfigPathConverter {
           const input = pass.inputs[key as keyof typeof pass.inputs];
           if (input && input.path) {
             if (input.type === "texture" || (input.type === "video" && !options.skipVideoProcessing)) {
-              // Resolve relative path to absolute before converting to webview URI
-              const absolutePath = path.isAbsolute(input.path)
-                ? input.path
-                : path.join(configDir, input.path);
+              // Resolve path to absolute (handles @ workspace-relative, absolute, and relative paths)
+              const shaderPath = processedMessage.path || '';
+              const absolutePath = shaderPath
+                ? PathResolver.resolvePath(shaderPath, input.path)
+                : (path.isAbsolute(input.path) ? input.path : path.join(configDir, input.path));
               // Add resolved_path for rendering, keep original path for UI display
               input.resolved_path = this.convertUriForClient(absolutePath, webview);
             }

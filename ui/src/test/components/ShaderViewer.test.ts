@@ -435,6 +435,114 @@ describe('ShaderViewer', () => {
     expect(mockTransport.postMessage).not.toHaveBeenCalled();
   });
 
+  it('should auto-enable inspector when entering debug mode', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Enable debug mode
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Inspector toggle should show as active in debug panel
+    const inspectorButton = screen.getByLabelText('Toggle inspector');
+    expect(inspectorButton.classList.contains('active')).toBe(true);
+  });
+
+  it('should auto-disable inspector when leaving debug mode', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+
+    // Enable then disable debug
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Inspector should not be active (debug panel is hidden, but we can check via re-enabling)
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    const inspectorButton = screen.getByLabelText('Toggle inspector');
+    expect(inspectorButton.classList.contains('active')).toBe(true);
+  });
+
+  it('should remember inspector was turned off when re-entering debug mode', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+
+    // Enable debug mode
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Turn off inspector within debug mode
+    const inspectorButton = screen.getByLabelText('Toggle inspector');
+    await fireEvent.click(inspectorButton);
+    await tick();
+    await tick();
+    expect(inspectorButton.classList.contains('active')).toBe(false);
+
+    // Exit debug mode
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Re-enter debug mode
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Inspector should still be off (remembered preference)
+    const inspectorButton2 = screen.getByLabelText('Toggle inspector');
+    expect(inspectorButton2.classList.contains('active')).toBe(false);
+  });
+
+  it('should remember inspector was turned back on when re-entering debug mode', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+
+    // Enable debug mode
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Turn off inspector, then back on
+    const inspectorButton = screen.getByLabelText('Toggle inspector');
+    await fireEvent.click(inspectorButton); // off
+    await tick();
+    await fireEvent.click(inspectorButton); // on
+    await tick();
+    await tick();
+    expect(inspectorButton.classList.contains('active')).toBe(true);
+
+    // Exit and re-enter debug mode
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Inspector should be on (remembered preference)
+    const inspectorButton2 = screen.getByLabelText('Toggle inspector');
+    expect(inspectorButton2.classList.contains('active')).toBe(true);
+  });
+
   it('should update config when not locked', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

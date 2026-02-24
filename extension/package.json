@@ -202,7 +202,7 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "build:force": "cd ../types && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
-    "build": "cd ../types && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./",
+    "build": "cd ../types && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build && cd ../extension && npm run build:ui && npm run build:shader-explorer && tsc -p ./ && node esbuild.js",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
     "build:shader-explorer": "cd ../shader-explorer && npm run build && npm run copy-to-extension",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
