@@ -8,60 +8,67 @@ describe('ChannelConfigModal', () => {
   let mockOnClose: ReturnType<typeof vi.fn>;
   let mockOnSave: ReturnType<typeof vi.fn>;
   let mockOnRemove: ReturnType<typeof vi.fn>;
+  let mockPostMessage: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockGetWebviewUri = vi.fn((path: string) => `webview://path/${path}`);
     mockOnClose = vi.fn();
     mockOnSave = vi.fn();
     mockOnRemove = vi.fn();
+    mockPostMessage = vi.fn();
     vi.clearAllMocks();
+  });
+
+  const defaultProps = () => ({
+    isOpen: true,
+    channelName: 'iChannel0',
+    channelInput: undefined as ConfigInput | undefined,
+    getWebviewUri: mockGetWebviewUri,
+    onClose: mockOnClose,
+    onSave: mockOnSave,
+    onRemove: mockOnRemove,
+    postMessage: mockPostMessage,
+    shaderPath: '/test/shader.glsl',
   });
 
   describe('Modal Display', () => {
     it('should not render when isOpen is false', () => {
       const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
         isOpen: false,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       expect(container.querySelector('.modal-overlay')).toBeFalsy();
     });
 
     it('should render modal when isOpen is true', () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
       expect(screen.getByText('Configure iChannel0')).toBeInTheDocument();
-      expect(screen.getByLabelText('Type:')).toBeInTheDocument();
     });
 
-    it('should display modal as overlay with proper z-index', () => {
-      const { container } = render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+    it('should display tab bar with all tabs', () => {
+      render(ChannelConfigModal, defaultProps());
+
+      expect(screen.getByRole('tab', { name: 'Misc' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Textures' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Cubemaps' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Volumes' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Videos' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Music' })).toBeInTheDocument();
+    });
+
+    it('should show prompt when no tab is active', () => {
+      render(ChannelConfigModal, defaultProps());
+
+      expect(screen.getByText(/Select a category/)).toBeInTheDocument();
+    });
+
+    it('should display modal as overlay', () => {
+      const { container } = render(ChannelConfigModal, defaultProps());
 
       const overlay = container.querySelector('.modal-overlay');
       expect(overlay).toBeTruthy();
-
-      // Check that it has fixed positioning styles (will be in computed styles)
       const modalContent = container.querySelector('.modal-content');
       expect(modalContent).toBeTruthy();
     });
@@ -69,15 +76,7 @@ describe('ChannelConfigModal', () => {
 
   describe('Modal Closing', () => {
     it('should call onClose when Close button is clicked', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
       const closeButton = screen.getByText('Close');
       await fireEvent.click(closeButton);
@@ -86,15 +85,7 @@ describe('ChannelConfigModal', () => {
     });
 
     it('should call onClose when Escape key is pressed', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
       await fireEvent.keyDown(window, { key: 'Escape' });
 
@@ -102,15 +93,7 @@ describe('ChannelConfigModal', () => {
     });
 
     it('should call onClose when clicking modal backdrop', async () => {
-      const { container } = render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      const { container } = render(ChannelConfigModal, defaultProps());
 
       const overlay = container.querySelector('.modal-overlay');
       await fireEvent.click(overlay!);
@@ -119,15 +102,7 @@ describe('ChannelConfigModal', () => {
     });
 
     it('should not close when clicking modal content', async () => {
-      const { container } = render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      const { container } = render(ChannelConfigModal, defaultProps());
 
       const modalContent = container.querySelector('.modal-content');
       await fireEvent.click(modalContent!);
@@ -136,85 +111,63 @@ describe('ChannelConfigModal', () => {
     });
   });
 
-  describe('Auto-Save on Type Selection', () => {
-    it('should auto-save when selecting buffer type', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+  describe('Tab Selection and Auto-Save', () => {
+    it('should auto-save when clicking Misc tab and selecting buffer', async () => {
+      render(ChannelConfigModal, defaultProps());
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'buffer' } });
+      const miscTab = screen.getByRole('tab', { name: 'Misc' });
+      await fireEvent.click(miscTab);
 
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      // Clicking Misc defaults to buffer
       expect(mockOnSave).toHaveBeenCalledWith('iChannel0', {
         type: 'buffer',
         source: 'BufferA'
       });
     });
 
-    it('should auto-save when selecting texture type', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel1',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+    it('should auto-save when clicking Textures tab', async () => {
+      render(ChannelConfigModal, defaultProps());
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'texture' } });
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      await fireEvent.click(texturesTab);
 
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
-      expect(mockOnSave).toHaveBeenCalledWith('iChannel1', {
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', {
         type: 'texture',
         path: ''
       });
     });
 
-    it('should auto-save when selecting video type', async () => {
+    it('should auto-save when clicking Videos tab', async () => {
       render(ChannelConfigModal, {
-        isOpen: true,
+        ...defaultProps(),
         channelName: 'iChannel2',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'video' } });
+      const videosTab = screen.getByRole('tab', { name: 'Videos' });
+      await fireEvent.click(videosTab);
 
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
       expect(mockOnSave).toHaveBeenCalledWith('iChannel2', {
         type: 'video',
         path: ''
       });
     });
 
-    it('should auto-save when selecting keyboard type', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
+    it('should auto-save when selecting keyboard from Misc tab', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
         channelName: 'iChannel3',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'keyboard' } });
+      // Click Misc tab first
+      const miscTab = screen.getByRole('tab', { name: 'Misc' });
+      await fireEvent.click(miscTab);
 
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
+      // Click keyboard card — use the .misc-card-label to find the right button
+      const labels = container.querySelectorAll('.misc-card-label');
+      const keyboardLabel = Array.from(labels).find(el => el.textContent === 'Keyboard');
+      const keyboardButton = keyboardLabel?.closest('button');
+      await fireEvent.click(keyboardButton!);
+
       expect(mockOnSave).toHaveBeenCalledWith('iChannel3', {
         type: 'keyboard'
       });
@@ -228,20 +181,18 @@ describe('ChannelConfigModal', () => {
         source: 'BufferA'
       };
 
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
         channelInput: bufferInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      const sourceSelect = screen.getByLabelText('Source:') as HTMLSelectElement;
-      await fireEvent.change(sourceSelect, { target: { value: 'BufferB' } });
+      // Misc tab should be active with buffer cards
+      // Click BufferB card — use .misc-card-label to find the right button
+      const labels = container.querySelectorAll('.misc-card-label');
+      const bufferBLabel = Array.from(labels).find(el => el.textContent === 'BufferB');
+      const bufferBButton = bufferBLabel?.closest('button');
+      await fireEvent.click(bufferBButton!);
 
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
       expect(mockOnSave).toHaveBeenCalledWith('iChannel0', {
         type: 'buffer',
         source: 'BufferB'
@@ -257,13 +208,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
@@ -283,13 +229,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const filterSelect = screen.getByLabelText('Filter:') as HTMLSelectElement;
@@ -308,13 +249,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const wrapSelect = screen.getByLabelText('Wrap:') as HTMLSelectElement;
@@ -334,13 +270,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const vflipCheckbox = screen.getByLabelText('Vertical Flip') as HTMLInputElement;
@@ -360,13 +291,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const grayscaleCheckbox = screen.getByLabelText('Grayscale') as HTMLInputElement;
@@ -387,13 +313,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: videoInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
@@ -413,13 +334,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: videoInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const filterSelect = screen.getByLabelText('Filter:') as HTMLSelectElement;
@@ -440,28 +356,15 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: existingInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       expect(screen.getByText('Remove')).toBeInTheDocument();
     });
 
     it('should not show Remove button when channel has no input', () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
       expect(screen.queryByText('Remove')).not.toBeInTheDocument();
     });
@@ -473,13 +376,8 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: existingInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
       const removeButton = screen.getByText('Remove');
@@ -490,29 +388,8 @@ describe('ChannelConfigModal', () => {
     });
   });
 
-  describe('Keyboard Input Display', () => {
-    it('should display keyboard info when keyboard type is selected', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
-
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'keyboard' } });
-
-      // Wait for the keyboard input note to appear
-      const keyboardNote = await screen.findByText(/Keyboard input provides/i);
-      expect(keyboardNote).toBeInTheDocument();
-    });
-  });
-
   describe('Initial State', () => {
-    it('should initialize with existing texture input', () => {
+    it('should initialize with existing texture input and Textures tab active', () => {
       const textureInput: ConfigInput = {
         type: 'texture',
         path: './existing.png',
@@ -521,43 +398,53 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      expect(typeSelect.value).toBe('texture');
+      // Textures tab should be active
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      expect(texturesTab.getAttribute('aria-selected')).toBe('true');
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       expect(pathInput.value).toBe('./existing.png');
     });
 
-    it('should initialize with existing buffer input', () => {
+    it('should initialize with existing buffer input and Misc tab active', () => {
       const bufferInput: ConfigInput = {
         type: 'buffer',
         source: 'BufferC'
       };
 
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
         channelInput: bufferInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      expect(typeSelect.value).toBe('buffer');
+      // Misc tab should be active
+      const miscTab = screen.getByRole('tab', { name: 'Misc' });
+      expect(miscTab.getAttribute('aria-selected')).toBe('true');
 
-      const sourceSelect = screen.getByLabelText('Source:') as HTMLSelectElement;
-      expect(sourceSelect.value).toBe('BufferC');
+      // BufferC card should be selected — use .misc-card-label to find the right button
+      const labels = container.querySelectorAll('.misc-card-label');
+      const bufferCLabel = Array.from(labels).find(el => el.textContent === 'BufferC');
+      const bufferCButton = bufferCLabel?.closest('button');
+      expect(bufferCButton?.classList.contains('selected')).toBe(true);
+    });
+
+    it('should initialize with existing video input and Videos tab active', () => {
+      const videoInput: ConfigInput = {
+        type: 'video',
+        path: './test.mp4'
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+      });
+
+      const videosTab = screen.getByRole('tab', { name: 'Videos' });
+      expect(videosTab.getAttribute('aria-selected')).toBe('true');
     });
   });
 
@@ -569,16 +456,10 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      // The path input should show the original path exactly as provided
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       expect(pathInput.value).toBe('test.jpg');
     });
@@ -590,21 +471,14 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      // Simulate pasting a webview URI into the path input
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       const webviewUri = 'https://file%2B.vscode-resource.vscode-cdn.net/Users/calum/test.jpg';
       await fireEvent.input(pathInput, { target: { value: webviewUri } });
 
-      // onSave should be called with the extracted original path, not the webview URI
       expect(mockOnSave).toHaveBeenCalled();
       const savedInput = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1][1];
       expect(savedInput.type).toBe('texture');
@@ -613,31 +487,20 @@ describe('ChannelConfigModal', () => {
     });
 
     it('should preserve normal paths without modification', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
-      // Select texture type
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'texture' } });
+      // Click Textures tab
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      await fireEvent.click(texturesTab);
 
-      // Verify that texture type was selected and saved
       expect(mockOnSave).toHaveBeenCalled();
-      const textureTypeCall = mockOnSave.mock.calls.find(call => call[1].type === 'texture');
+      const textureTypeCall = mockOnSave.mock.calls.find((call: any) => call[1].type === 'texture');
       expect(textureTypeCall).toBeTruthy();
       expect(textureTypeCall![1]).toEqual({ type: 'texture', path: '' });
 
-      // Wait for texture-specific Path input to appear
       const pathInput = await screen.findByLabelText('Path:', {}, { timeout: 2000 }) as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: './normal/path.jpg' } });
 
-      // The path should be saved as-is
       const savedInput = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1][1];
       expect(savedInput.path).toBe('./normal/path.jpg');
     });
@@ -651,20 +514,13 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: { ...textureInput, resolved_path: 'https://webview-uri/old-texture.png' } as any,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      // User types a new path
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: 'new-texture.png' } });
 
-      // The saved input should NOT carry the old resolved_path
       expect(mockOnSave).toHaveBeenCalled();
       const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
       const savedInput = lastCall[1];
@@ -680,31 +536,23 @@ describe('ChannelConfigModal', () => {
         path: 'canvas.png'
       };
 
-      const defaultProps = {
-        isOpen: true,
-        channelName: 'iChannel0',
+      const props = {
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       };
 
-      const { rerender } = render(ChannelConfigModal, defaultProps);
+      const { rerender } = render(ChannelConfigModal, props);
 
-      // Verify initial path displayed
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       expect(pathInput.value).toBe('canvas.png');
 
-      // Simulate parent updating channelInput with resolved_path (round-trip from extension)
       const updatedInput: any = {
         type: 'texture',
         path: 'canvas.png',
         resolved_path: 'https://webview-uri/canvas.png'
       };
-      await rerender({ ...defaultProps, channelInput: updatedInput });
+      await rerender({ ...props, channelInput: updatedInput });
 
-      // Path input should still show original path
       expect(pathInput.value).toBe('canvas.png');
     });
 
@@ -714,38 +562,26 @@ describe('ChannelConfigModal', () => {
         path: 'paw.jpg'
       };
 
-      const defaultProps = {
-        isOpen: true,
-        channelName: 'iChannel0',
+      const props = {
+        ...defaultProps(),
         channelInput: { ...textureInput, resolved_path: 'https://webview-uri/paw.jpg' } as any,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       };
 
-      const { rerender } = render(ChannelConfigModal, defaultProps);
+      const { rerender } = render(ChannelConfigModal, props);
 
-      // User types a different path (e.g. a typo)
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: 'paw.jpgf' } });
 
-      // The saved input should have the new path and no resolved_path
       expect(mockOnSave).toHaveBeenCalled();
       const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
       const savedInput = lastCall[1];
       expect(savedInput.path).toBe('paw.jpgf');
       expect(savedInput.resolved_path).toBeUndefined();
 
-      // Simulate parent re-rendering with old resolved_path (from old config round-trip)
-      // The parent still has 'paw.jpg' with its resolved_path
-      await rerender({ ...defaultProps });
+      await rerender({ ...props });
 
-      // The old resolved_path should NOT be merged because paths don't match
-      // Verify by checking the last save - path should still be 'paw.jpgf'
       const latestCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
       expect(latestCall[1].path).toBe('paw.jpgf');
-      // resolved_path should not have been re-applied
       expect(latestCall[1].resolved_path).toBeUndefined();
     });
 
@@ -756,31 +592,23 @@ describe('ChannelConfigModal', () => {
         filter: 'linear'
       };
 
-      const defaultProps = {
-        isOpen: true,
-        channelName: 'iChannel0',
+      const props = {
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       };
 
-      const { rerender } = render(ChannelConfigModal, defaultProps);
+      const { rerender } = render(ChannelConfigModal, props);
 
-      // User changes filter
       const filterSelect = screen.getByLabelText('Filter:') as HTMLSelectElement;
       await fireEvent.change(filterSelect, { target: { value: 'nearest' } });
 
-      // Parent sends back resolved_path
       const updatedInput: any = {
         type: 'texture',
         path: 'original.png',
         resolved_path: 'https://webview-uri/original.png'
       };
-      await rerender({ ...defaultProps, channelInput: updatedInput });
+      await rerender({ ...props, channelInput: updatedInput });
 
-      // The auto-save should have captured the filter change
       expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
         filter: 'nearest'
       }));
@@ -789,21 +617,12 @@ describe('ChannelConfigModal', () => {
 
   describe('Modal Stays Open During Edits', () => {
     it('should not call onClose when auto-saving changes', async () => {
-      render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
-        channelInput: undefined,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
-      });
+      render(ChannelConfigModal, defaultProps());
 
-      // Select texture type
-      const typeSelect = screen.getByLabelText('Type:') as HTMLSelectElement;
-      await fireEvent.change(typeSelect, { target: { value: 'texture' } });
+      // Click Textures tab
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      await fireEvent.click(texturesTab);
 
-      // Auto-save should be called, but not onClose
       expect(mockOnSave).toHaveBeenCalled();
       expect(mockOnClose).not.toHaveBeenCalled();
     });
@@ -815,16 +634,10 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      // Make multiple changes
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: './texture1.png' } });
       await fireEvent.input(pathInput, { target: { value: './texture2.png' } });
@@ -835,7 +648,6 @@ describe('ChannelConfigModal', () => {
       const wrapSelect = screen.getByLabelText('Wrap:') as HTMLSelectElement;
       await fireEvent.change(wrapSelect, { target: { value: 'clamp' } });
 
-      // onSave should be called multiple times, but onClose should never be called
       expect(mockOnSave.mock.calls.length).toBeGreaterThan(1);
       expect(mockOnClose).not.toHaveBeenCalled();
     });
@@ -847,26 +659,89 @@ describe('ChannelConfigModal', () => {
       };
 
       render(ChannelConfigModal, {
-        isOpen: true,
-        channelName: 'iChannel0',
+        ...defaultProps(),
         channelInput: textureInput,
-        getWebviewUri: mockGetWebviewUri,
-        onClose: mockOnClose,
-        onSave: mockOnSave,
-        onRemove: mockOnRemove
       });
 
-      // Make some changes
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: './new.png' } });
 
       expect(mockOnClose).not.toHaveBeenCalled();
 
-      // Click Close button
       const closeButton = screen.getByText('Close');
       await fireEvent.click(closeButton);
 
       expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('In-Progress Tabs', () => {
+    it('should show in-progress placeholder for Cubemaps tab', async () => {
+      render(ChannelConfigModal, defaultProps());
+
+      const cubemapsTab = screen.getByRole('tab', { name: 'Cubemaps' });
+      await fireEvent.click(cubemapsTab);
+
+      expect(screen.getByText('Cubemap support is in progress')).toBeInTheDocument();
+    });
+
+    it('should show in-progress placeholder for Music tab', async () => {
+      render(ChannelConfigModal, defaultProps());
+
+      const musicTab = screen.getByRole('tab', { name: 'Music' });
+      await fireEvent.click(musicTab);
+
+      expect(screen.getByText('Music support is in progress')).toBeInTheDocument();
+    });
+
+    it('should show in-progress placeholder for Volumes tab', async () => {
+      render(ChannelConfigModal, defaultProps());
+
+      const volumesTab = screen.getByRole('tab', { name: 'Volumes' });
+      await fireEvent.click(volumesTab);
+
+      expect(screen.getByText('Volume support is in progress')).toBeInTheDocument();
+    });
+  });
+
+  describe('Tab Switching', () => {
+    it('should switch between tabs and update input type', async () => {
+      render(ChannelConfigModal, defaultProps());
+
+      // Click Textures tab
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      await fireEvent.click(texturesTab);
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'texture' }));
+
+      // Switch to Videos tab
+      const videosTab = screen.getByRole('tab', { name: 'Videos' });
+      await fireEvent.click(videosTab);
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'video' }));
+
+      // Switch to Misc tab
+      const miscTab = screen.getByRole('tab', { name: 'Misc' });
+      await fireEvent.click(miscTab);
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'buffer' }));
+    });
+
+    it('should not re-save when clicking the already active tab with matching type', async () => {
+      const textureInput: ConfigInput = {
+        type: 'texture',
+        path: './test.png'
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: textureInput,
+      });
+
+      // Textures tab should already be active
+      mockOnSave.mockClear();
+      const texturesTab = screen.getByRole('tab', { name: 'Textures' });
+      await fireEvent.click(texturesTab);
+
+      // Should not trigger a save since type matches
+      expect(mockOnSave).not.toHaveBeenCalled();
     });
   });
 });

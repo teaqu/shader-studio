@@ -225,6 +225,8 @@
           }}
           {getWebviewUri}
           isImagePass={true}
+          postMessage={(msg) => transport.postMessage(msg)}
+          {shaderPath}
         />
       {:else}
         <BufferConfig
@@ -239,6 +241,8 @@
           {getWebviewUri}
           onCreateFile={handleCreateFile}
           suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
+          postMessage={(msg) => transport.postMessage(msg)}
+          {shaderPath}
         />
       {/if}
     </div>

@@ -264,6 +264,12 @@
       cursorStyle: "line",
       cursorWidth: 2,
       cursorBlinking: "smooth",
+      guides: {
+        indentation: false,
+        bracketPairs: false,
+        highlightActiveIndentation: false,
+        bracketPairsHorizontal: false,
+      },
     });
 
     editor.onDidChangeModelContent(() => {

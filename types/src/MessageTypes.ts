@@ -107,4 +107,21 @@ export interface NavigateToBufferMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage;
+export interface WorkspaceFileInfo {
+  name: string;
+  workspacePath: string;
+  thumbnailUri: string;
+  isSameDirectory: boolean;
+}
+
+export interface RequestWorkspaceFilesMessage extends BaseMessage {
+  type: "requestWorkspaceFiles";
+  payload: { extensions: string[]; shaderPath: string };
+}
+
+export interface WorkspaceFilesMessage extends BaseMessage {
+  type: "workspaceFiles";
+  payload: { files: WorkspaceFileInfo[] };
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage;

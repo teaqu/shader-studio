@@ -4,7 +4,7 @@ import * as path from "path";
 /**
  * Resolves paths for shader files and their dependencies.
  * Supports three types of paths:
- * - @/ prefix: Workspace-relative paths (e.g., @/buffers/test.glsl)
+ * - @ prefix: Workspace-relative paths (e.g., @/buffers/test.glsl)
  * - Absolute paths: Full paths (e.g., C:\path\file.glsl or /usr/path/file.glsl)
  * - Relative paths: Paths relative to the shader file directory (e.g., ../buffers/test.glsl)
  */

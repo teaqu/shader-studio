@@ -93,9 +93,11 @@
     <button
       class="header-btn has-tooltip"
       class:active={isInspectorEnabled}
+      class:disabled={!debugState.isEnabled}
       on:click={onToggleInspectorEnabled}
+      disabled={!debugState.isEnabled}
       aria-label="Toggle inspector"
-      data-tooltip="Pixel Inspector"
+      data-tooltip="Pixel Inspector{!debugState.isEnabled ? ' (enable debug first)' : ''}"
     >
       {@html inspectorIcon}
     </button>
@@ -276,6 +278,15 @@
   .header-btn.active {
     color: var(--vscode-editor-foreground);
     border-color: var(--vscode-focusBorder);
+  }
+
+  .header-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .header-btn:disabled:hover {
+    background: none;
   }
 
   /* CSS tooltips via data-tooltip attribute */

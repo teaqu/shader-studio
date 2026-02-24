@@ -38,7 +38,7 @@
   let canvasHeight = 0;
   let zoomLevel = 1.0;
   let inspectorState: PixelInspectorState = {
-    isEnabled: true,
+    isEnabled: false,
     isActive: false,
     isLocked: false,
     mouseX: 0,
@@ -52,6 +52,7 @@
   let transport: Transport;
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
+  let debugInspectorEnabled = true; // remember inspector preference across debug sessions
   let shaderDebugManager: ShaderDebugManager | undefined;
   let debugState: ShaderDebugState = {
     isEnabled: false,
@@ -216,7 +217,10 @@
 
   function handleToggleInspectorEnabled() {
     if (!pixelInspectorManager) return;
+    // Don't allow enabling inspector when debug is off
+    if (!pixelInspectorManager.getState().isEnabled && !shaderDebugManager?.getState().isEnabled) return;
     pixelInspectorManager.toggleEnabled();
+    debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
   }
 
   function handleToggleDebugEnabled() {
@@ -231,6 +235,16 @@
         enabled: debugState.isEnabled
       }
     });
+
+    // Restore inspector preference when debug turns on, save & disable when debug turns off
+    if (pixelInspectorManager) {
+      if (debugState.isEnabled) {
+        pixelInspectorManager.setEnabled(debugInspectorEnabled);
+      } else {
+        debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
+        pixelInspectorManager.setEnabled(false);
+      }
+    }
 
     // Trigger recompile to immediately show/hide debug visualization
     shaderStudio.triggerDebugRecompile();

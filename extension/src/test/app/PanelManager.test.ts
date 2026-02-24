@@ -6,6 +6,7 @@ import { PanelManager } from '../../app/PanelManager';
 import { Messenger } from '../../app/transport/Messenger';
 import { WebviewTransport } from '../../app/transport/WebviewTransport';
 import { ShaderProvider } from '../../app/ShaderProvider';
+import { WorkspaceFileScanner } from '../../app/WorkspaceFileScanner';
 import { Logger } from '../../app/services/Logger';
 
 suite('PanelManager Test Suite', () => {
@@ -618,6 +619,66 @@ suite('PanelManager Test Suite', () => {
         });
     });
 
+    suite('handleRequestWorkspaceFiles', () => {
+        test('calls WorkspaceFileScanner.scanFiles and sends workspaceFiles response to panel', async () => {
+            const mockFiles = [
+                { name: 'texture.png', workspacePath: '@/texture.png', thumbnailUri: 'vscode-webview://mock/texture.png', isSameDirectory: true },
+            ];
+            const scanFilesStub = sandbox.stub(WorkspaceFileScanner, 'scanFiles').resolves(mockFiles);
+
+            const mockPanel = {
+                webview: {
+                    postMessage: sandbox.stub().resolves(true),
+                },
+            };
+
+            const payload = { extensions: ['png', 'jpg'], shaderPath: '/test/shader.glsl' };
+            await (panelManager as any).handleRequestWorkspaceFiles(payload, mockPanel);
+
+            sinon.assert.calledOnce(scanFilesStub);
+            sinon.assert.calledWith(scanFilesStub, payload.extensions, payload.shaderPath, mockPanel.webview);
+
+            sinon.assert.calledOnce(mockPanel.webview.postMessage as sinon.SinonStub);
+            const response = (mockPanel.webview.postMessage as sinon.SinonStub).firstCall.args[0];
+            assert.strictEqual(response.type, 'workspaceFiles');
+            assert.deepStrictEqual(response.payload.files, mockFiles);
+        });
+
+        test('sends empty files array on scanner error', async () => {
+            sandbox.stub(WorkspaceFileScanner, 'scanFiles').rejects(new Error('Scan failed'));
+
+            const mockPanel = {
+                webview: {
+                    postMessage: sandbox.stub().resolves(true),
+                },
+            };
+
+            const payload = { extensions: ['png'], shaderPath: '/test/shader.glsl' };
+            await (panelManager as any).handleRequestWorkspaceFiles(payload, mockPanel);
+
+            sinon.assert.calledOnce(mockPanel.webview.postMessage as sinon.SinonStub);
+            const response = (mockPanel.webview.postMessage as sinon.SinonStub).firstCall.args[0];
+            assert.strictEqual(response.type, 'workspaceFiles');
+            assert.deepStrictEqual(response.payload.files, []);
+        });
+
+        test('passes correct args (extensions, shaderPath, webview) to scanner', async () => {
+            const scanFilesStub = sandbox.stub(WorkspaceFileScanner, 'scanFiles').resolves([]);
+
+            const mockWebview = { postMessage: sandbox.stub().resolves(true) };
+            const mockPanel = { webview: mockWebview };
+
+            const payload = { extensions: ['mp4', 'webm'], shaderPath: '/workspace/shaders/test.glsl' };
+            await (panelManager as any).handleRequestWorkspaceFiles(payload, mockPanel);
+
+            sinon.assert.calledOnce(scanFilesStub);
+            const args = scanFilesStub.firstCall.args;
+            assert.deepStrictEqual(args[0], ['mp4', 'webm']);
+            assert.strictEqual(args[1], '/workspace/shaders/test.glsl');
+            assert.strictEqual(args[2], mockWebview);
+        });
+    });
+
     suite('handleWebviewMessage routing', () => {
         let mockWebviewPanel: any;
 
@@ -667,6 +728,20 @@ suite('PanelManager Test Suite', () => {
             assert.strictEqual(message.type, 'fileContents');
             assert.strictEqual(message.payload.code, '// common code');
             assert.strictEqual(message.payload.bufferName, 'common');
+        });
+
+        test('routes requestWorkspaceFiles message to handler', async () => {
+            const handleStub = sandbox.stub(panelManager as any, 'handleRequestWorkspaceFiles').resolves();
+            const mockPanel = { webview: {} } as any;
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'requestWorkspaceFiles', payload: { extensions: ['png'], shaderPath: '/test.glsl' } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(handleStub);
+            assert.deepStrictEqual(handleStub.firstCall.args[0], { extensions: ['png'], shaderPath: '/test.glsl' });
+            assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
         });
 
         test('should not route unknown message types', async () => {

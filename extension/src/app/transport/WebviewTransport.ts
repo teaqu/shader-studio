@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import { ConfigPathConverter } from "./ConfigPathConverter";
+import { PathResolver } from "../PathResolver";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
@@ -99,8 +100,11 @@ export class WebviewTransport implements MessageTransport {
     }
 
     // Add video directories to localResourceRoots
+    const shaderPath = message.path || '';
     for (const videoPath of videoPaths) {
-      const videoDir = path.dirname(videoPath);
+      // Resolve @ and relative paths to absolute
+      const resolvedVideoPath = shaderPath ? PathResolver.resolvePath(shaderPath, videoPath) : videoPath;
+      const videoDir = path.dirname(resolvedVideoPath);
       const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
       const videoDirUri = vscode.Uri.file(videoDir);
       

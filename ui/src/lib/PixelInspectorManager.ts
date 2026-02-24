@@ -4,7 +4,7 @@ import type { PixelInspectorState } from "./types/PixelInspectorState";
 
 export class PixelInspectorManager {
   private state: PixelInspectorState = {
-    isEnabled: true,
+    isEnabled: false,
     isActive: false,
     isLocked: false,
     mouseX: 0,
@@ -48,10 +48,14 @@ export class PixelInspectorManager {
     return { ...this.state };
   }
 
-  public toggleEnabled(): void {
-    this.state.isEnabled = !this.state.isEnabled;
+  public setEnabled(enabled: boolean): void {
+    if (this.state.isEnabled === enabled) {
+      return;
+    }
 
-    if (this.state.isEnabled) {
+    this.state.isEnabled = enabled;
+
+    if (enabled) {
       this.state.isActive = true;
       this.startContinuousUpdate();
     } else {
@@ -65,6 +69,10 @@ export class PixelInspectorManager {
     }
 
     this.notifyStateChange();
+  }
+
+  public toggleEnabled(): void {
+    this.setEnabled(!this.state.isEnabled);
   }
 
   public handleCanvasClick(): void {

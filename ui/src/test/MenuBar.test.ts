@@ -678,6 +678,21 @@ describe('MenuBar Component', () => {
       expect(screen.getByText('Editor')).toBeInTheDocument();
     });
 
+    it('should call onToggleEditorOverlay from main toolbar button', async () => {
+      const onToggleEditorOverlay = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onToggleEditorOverlay
+        }
+      });
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      await fireEvent.click(editorButton);
+
+      expect(onToggleEditorOverlay).toHaveBeenCalled();
+    });
+
     it('should call onToggleEditorOverlay from options menu', async () => {
       const onToggleEditorOverlay = vi.fn();
       render(MenuBar, {
@@ -690,13 +705,14 @@ describe('MenuBar Component', () => {
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
-      await fireEvent.click(editorButton);
+      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
+      // Click the one inside the options menu (second one)
+      await fireEvent.click(editorButtons[editorButtons.length - 1]);
 
       expect(onToggleEditorOverlay).toHaveBeenCalled();
     });
 
-    it('should show active state on editor option when overlay is visible', async () => {
+    it('should show active state on editor button when overlay is visible', async () => {
       render(MenuBar, {
         props: {
           ...defaultProps,
@@ -704,19 +720,8 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
       const editorButton = screen.getByLabelText('Toggle editor overlay');
       expect(editorButton.classList.contains('active')).toBe(true);
-    });
-
-    it('should not have editor overlay button in main toolbar', () => {
-      render(MenuBar, { props: defaultProps });
-
-      // Before opening options menu, there should be no editor overlay button
-      const editorButton = screen.queryByLabelText('Toggle editor overlay');
-      expect(editorButton).not.toBeInTheDocument();
     });
   });
 
