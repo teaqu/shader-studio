@@ -223,11 +223,22 @@
         editor?.getAction('editor.action.marker.prev')?.run();
       });
 
+      // Custom vim actions that trigger Monaco editor commands
+      vim.defineAction('nextDiagnostic', () => {
+        editor?.trigger('vim', 'editor.action.marker.next', null);
+      });
+      vim.defineAction('prevDiagnostic', () => {
+        editor?.trigger('vim', 'editor.action.marker.prev', null);
+      });
+      vim.defineAction('showHover', () => {
+        editor?.trigger('vim', 'editor.action.showHover', null);
+      });
+
       // ]d / [d — next/prev diagnostic
-      vim.mapCommand(']d', 'action', 'editor.action.marker.next', {}, { context: 'normal' });
-      vim.mapCommand('[d', 'action', 'editor.action.marker.prev', {}, { context: 'normal' });
+      vim.mapCommand(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
+      vim.mapCommand('[d', 'action', 'prevDiagnostic', {}, { context: 'normal' });
       // gl — show hover (error tooltip) at cursor
-      vim.mapCommand('gl', 'action', 'editor.action.showHover', {}, { context: 'normal' });
+      vim.mapCommand('gl', 'action', 'showHover', {}, { context: 'normal' });
 
       vimCommandsRegistered = true;
     } catch (e) {
@@ -558,7 +569,11 @@
     background: rgba(10, 10, 10, 0.82);
   }
 
-  /* Error squiggly — fully opaque red */
+  /* Error squiggly — raise above the semi-transparent text backgrounds */
+  .editor-overlay :global(.monaco-editor .view-overlays) {
+    z-index: 1 !important;
+    pointer-events: none;
+  }
   .editor-overlay :global(.monaco-editor .squiggly-error) {
     opacity: 1 !important;
   }
