@@ -588,7 +588,7 @@
 
   /* Selection styling */
   .editor-overlay :global(.monaco-editor .selected-text) {
-    background: rgba(38, 79, 120, 0.7) !important;
+    background: rgba(255, 255, 255, 0.3) !important;
   }
 
   /* Hide scrollbars */
