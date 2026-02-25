@@ -273,6 +273,7 @@
       scrollbar: {
         vertical: "hidden",
         horizontal: "hidden",
+        useShadows: false,
       },
       overviewRulerLanes: 0,
       overviewRulerBorder: false,
@@ -282,6 +283,7 @@
       fontSize: 14,
       lineHeight: 20,
       padding: { top: 8 },
+      stickyScroll: { enabled: false },
       folding: false,
       glyphMargin: true,
       lineDecorationsWidth: 0,
