@@ -260,6 +260,27 @@
     }
   }
 
+  function updateBlankLineDecorations() {
+    if (!editor || !containerEl) return;
+    const model = editor.getModel();
+    if (!model) return;
+    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+    const padding = editor.getOption(monaco.editor.EditorOption.padding);
+    const topPad = padding?.top ?? 0;
+    requestAnimationFrame(() => {
+      const viewLines = containerEl.querySelectorAll('.view-lines .view-line');
+      viewLines.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const top = parseFloat(htmlEl.style.top);
+        if (isNaN(top)) return;
+        const lineNum = Math.round((top - topPad) / lineHeight) + 1;
+        const isBlank = lineNum >= 1 && lineNum <= model!.getLineCount()
+          && model!.getLineContent(lineNum).trim() === '';
+        htmlEl.classList.toggle('blank-line', isBlank);
+      });
+    });
+  }
+
   function createEditor() {
     if (!containerEl || editor) return;
 
@@ -285,8 +306,8 @@
       padding: { top: 8 },
       stickyScroll: { enabled: false },
       folding: false,
-      glyphMargin: true,
-      lineDecorationsWidth: 0,
+      glyphMargin: false,
+      lineDecorationsWidth: 4,
       lineNumbers: "on",
       lineNumbersMinChars: 4,
       scrollBeyondLastLine: false,
@@ -303,8 +324,11 @@
       },
     });
 
+    editor.onDidScrollChange(() => updateBlankLineDecorations());
+
     editor.onDidChangeModelContent(() => {
       if (!editor) return;
+      updateBlankLineDecorations();
       const code = editor.getValue();
       if (code === undefined || !shaderPath) return;
 
@@ -336,6 +360,7 @@
       enableVim();
     }
 
+    updateBlankLineDecorations();
     editorReady = true;
   }
 
@@ -517,8 +542,13 @@
   /* Semi-transparent background on the inline text content */
   .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
     background: rgba(10, 10, 10, 0.82);
-    border-radius: 0 2px 2px 0;
+    border-radius: 0;
     padding-right: 4px;
+  }
+
+  /* No background for blank lines */
+  .editor-overlay :global(.monaco-editor .view-line.blank-line > span) {
+    background: transparent !important;
   }
 
   /* Line numbers with matching background */
@@ -566,12 +596,7 @@
     color: #c6c6c6 !important;
   }
 
-  /* Glyph margin background (for error icons) */
-  .editor-overlay :global(.monaco-editor .margin-view-overlays .cgmr) {
-    background: rgba(10, 10, 10, 0.82);
-  }
-
-  /* Error squiggly — raise above the semi-transparent text backgrounds */
+/* Error squiggly — raise above the semi-transparent text backgrounds */
   .editor-overlay :global(.monaco-editor .view-overlays) {
     z-index: 1 !important;
     pointer-events: none;
