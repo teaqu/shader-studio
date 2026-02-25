@@ -144,18 +144,18 @@
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'keyword', foreground: 'C586C0' },
-        { token: 'keyword.preprocessor', foreground: '9B9B9B' },
-        { token: 'support.function', foreground: 'DCDCAA' },
-        { token: 'variable.predefined', foreground: '4FC1FF' },
-        { token: 'number', foreground: 'B5CEA8' },
-        { token: 'number.float', foreground: 'B5CEA8' },
-        { token: 'number.hex', foreground: 'B5CEA8' },
-        { token: 'comment', foreground: '6A9955' },
-        { token: 'string', foreground: 'CE9178' },
-        { token: 'operator', foreground: 'D4D4D4' },
-        { token: 'delimiter', foreground: 'D4D4D4' },
-        { token: 'identifier', foreground: '9CDCFE' },
+        { token: 'keyword', foreground: 'FF50EE' },
+        { token: 'keyword.preprocessor', foreground: 'E0E0E0' },
+        { token: 'support.function', foreground: 'FFEE30' },
+        { token: 'variable.predefined', foreground: '30EEFF' },
+        { token: 'number', foreground: 'B0FF70' },
+        { token: 'number.float', foreground: 'B0FF70' },
+        { token: 'number.hex', foreground: 'B0FF70' },
+        { token: 'comment', foreground: '40CC40' },
+        { token: 'string', foreground: 'FF8050' },
+        { token: 'operator', foreground: 'F8F8F8' },
+        { token: 'delimiter', foreground: 'F8F8F8' },
+        { token: 'identifier', foreground: 'FFFFFF' },
       ],
       colors: {
         'editor.background': '#00000000',
@@ -541,9 +541,10 @@
 
   /* Semi-transparent background on the inline text content */
   .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
-    background: rgba(10, 10, 10, 0.82);
+    background: rgba(10, 10, 10, 0.65);
     border-radius: 0;
     padding-right: 4px;
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
   }
 
   /* No background for blank lines */
@@ -553,7 +554,7 @@
 
   /* Line numbers with matching background */
   .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
-    background: rgba(10, 10, 10, 0.82);
+    background: rgba(10, 10, 10, 0.65);
     border-radius: 0;
     padding-left: 4px;
     padding-right: 8px;
