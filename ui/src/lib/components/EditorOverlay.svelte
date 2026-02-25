@@ -59,9 +59,13 @@
           'centroid', 'flat', 'smooth', 'noperspective',
           'break', 'continue', 'do', 'for', 'while', 'switch', 'case', 'default',
           'if', 'else', 'in', 'out', 'inout',
-          'float', 'int', 'uint', 'void', 'bool',
           'true', 'false',
           'invariant', 'precise', 'discard', 'return',
+          'struct',
+          'lowp', 'mediump', 'highp', 'precision',
+        ],
+        types: [
+          'float', 'int', 'uint', 'void', 'bool',
           'mat2', 'mat3', 'mat4', 'mat2x2', 'mat2x3', 'mat2x4',
           'mat3x2', 'mat3x3', 'mat3x4', 'mat4x2', 'mat4x3', 'mat4x4',
           'vec2', 'vec3', 'vec4', 'ivec2', 'ivec3', 'ivec4',
@@ -70,8 +74,6 @@
           'samplerCubeShadow', 'sampler2DArray', 'sampler2DArrayShadow',
           'isampler2D', 'isampler3D', 'isamplerCube', 'isampler2DArray',
           'usampler2D', 'usampler3D', 'usamplerCube', 'usampler2DArray',
-          'struct',
-          'lowp', 'mediump', 'highp', 'precision',
         ],
         builtins: [
           'radians', 'degrees', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
@@ -109,6 +111,7 @@
               cases: {
                 '@shadertoyUniforms': 'variable.predefined',
                 '@builtins': 'support.function',
+                '@types': 'type',
                 '@keywords': 'keyword',
                 '@default': 'identifier',
               }
@@ -144,15 +147,16 @@
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'keyword', foreground: 'FF50EE' },
-        { token: 'keyword.preprocessor', foreground: 'E0E0E0' },
-        { token: 'support.function', foreground: 'FFEE30' },
-        { token: 'variable.predefined', foreground: '30EEFF' },
-        { token: 'number', foreground: 'B0FF70' },
-        { token: 'number.float', foreground: 'B0FF70' },
-        { token: 'number.hex', foreground: 'B0FF70' },
-        { token: 'comment', foreground: '40CC40' },
-        { token: 'string', foreground: 'FF8050' },
+        { token: 'keyword', foreground: 'FF70FF' },
+        { token: 'keyword.preprocessor', foreground: 'F0F0F0' },
+        { token: 'support.function', foreground: 'FFF550' },
+        { token: 'variable.predefined', foreground: '50F5FF' },
+        { token: 'type', foreground: 'CC99FF' },
+        { token: 'number', foreground: 'FF88CC' },
+        { token: 'number.float', foreground: 'FF88CC' },
+        { token: 'number.hex', foreground: 'FF88CC' },
+        { token: 'comment', foreground: '60DD60' },
+        { token: 'string', foreground: 'FFA070' },
         { token: 'operator', foreground: 'F8F8F8' },
         { token: 'delimiter', foreground: 'F8F8F8' },
         { token: 'identifier', foreground: 'FFFFFF' },
@@ -515,7 +519,7 @@
     font-family: monospace;
     font-size: 12px;
     color: #d4d4d4;
-    background: rgba(10, 10, 10, 0.85);
+    background: rgba(10, 10, 10, 0.75);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     padding: 0 8px;
     line-height: 20px;
@@ -541,7 +545,7 @@
 
   /* Semi-transparent background on the inline text content */
   .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
-    background: rgba(10, 10, 10, 0.65);
+    background: rgba(10, 10, 10, 0.75);
     border-radius: 0;
     padding-right: 4px;
     text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
@@ -554,7 +558,7 @@
 
   /* Line numbers with matching background */
   .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
-    background: rgba(10, 10, 10, 0.65);
+    background: rgba(10, 10, 10, 0.75);
     border-radius: 0;
     padding-left: 4px;
     padding-right: 8px;
