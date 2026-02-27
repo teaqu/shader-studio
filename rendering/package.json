@@ -8,7 +8,8 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.browser.config.ts"
   },
   "files": [
     "dist"
@@ -18,6 +19,9 @@
     "@shader-studio/types": "*"
   },
   "devDependencies": {
+    "@vitest/browser": "^4.0.18",
+    "@vitest/browser-playwright": "^4.0.18",
+    "playwright": "^1.58.2",
     "vitest": "*"
   }
 }
