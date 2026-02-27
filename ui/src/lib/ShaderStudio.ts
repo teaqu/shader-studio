@@ -8,7 +8,6 @@ import type { CompilationResult } from "./ShaderProcessor";
 
 export class ShaderStudio {
   private transport: Transport;
-  private glCanvas: HTMLCanvasElement | null = null;
   private renderingEngine!: RenderingEngine;
   private messageHandler!: MessageHandler;
   private shaderLocker!: ShaderLocker;
@@ -27,18 +26,6 @@ export class ShaderStudio {
   }
 
   async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
-    this.glCanvas = glCanvas;
-
-    const gl = glCanvas.getContext("webgl2");
-    if (!gl) {
-      const errorMessage: ErrorMessage = {
-        type: "error",
-        payload: ["❌ WebGL2 not supported"],
-      };
-      this.transport.postMessage(errorMessage);
-      return false;
-    }
-
     try {
       this.renderingEngine.initialize(glCanvas, true); // Enable preserveDrawingBuffer for pixel reading
 
@@ -64,14 +51,6 @@ export class ShaderStudio {
       this.transport.postMessage(errorMessage);
       return false;
     }
-  }
-
-  public handleCanvasResize(width: number, height: number): void {
-    if (!this.glCanvas) {
-      return;
-    }
-
-    this.renderingEngine.handleCanvasResize(width, height);
   }
 
   async handleShaderMessage(
@@ -100,10 +79,6 @@ export class ShaderStudio {
     }
   }
 
-  handleTogglePause(): void {
-    this.renderingEngine.togglePause();
-  }
-
   handleToggleLock(): void {
     const lastEvent = this.messageHandler.getLastEvent();
     const currentShaderPath = lastEvent?.data?.path;
@@ -118,24 +93,8 @@ export class ShaderStudio {
     return this.shaderLocker.getLockedShaderPath();
   }
 
-  stopRenderLoop(): void {
-    this.renderingEngine.stopRenderLoop();
-  }
-
-  getCurrentFPS(): number {
-    return this.renderingEngine.getCurrentFPS();
-  }
-
-  getUniforms() {
-    return this.renderingEngine.getUniforms();
-  }
-
   getLastShaderEvent(): MessageEvent | null {
     return this.messageHandler.getLastEvent();
-  }
-
-  getTimeManager(): any {
-    return this.renderingEngine.getTimeManager();
   }
 
   getRenderingEngine() {
@@ -145,13 +104,6 @@ export class ShaderStudio {
   triggerDebugRecompile(): void {
     if (this.messageHandler) {
       this.messageHandler.triggerDebugRecompile();
-    }
-  }
-
-  dispose(): void {
-    // Clean up resources
-    if (this.renderingEngine) {
-      this.renderingEngine.dispose();
     }
   }
 }

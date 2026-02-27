@@ -3,7 +3,7 @@ import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 
 export interface RenderingEngine {
-  initialize(glCanvas: HTMLCanvasElement): void;
+  initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
   handleCanvasResize(width: number, height: number): void;
   compileShaderPipeline(
     code: string,

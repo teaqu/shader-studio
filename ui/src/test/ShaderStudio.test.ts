@@ -3,7 +3,7 @@ import { ShaderStudio } from '../lib/ShaderStudio';
 import { ShaderLocker } from '../lib/ShaderLocker';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types';
-import type { ErrorMessage, DebugMessage, ShaderSourceMessage } from '@shader-studio/types';
+import { ShaderDebugManager } from '../lib/ShaderDebugManager';
 
 // Mock implementations
 describe('ShaderStudio', () => {
@@ -81,7 +81,7 @@ describe('ShaderStudio', () => {
     // Mock getContext
     vi.spyOn(mockCanvas, 'getContext').mockReturnValue(mockGL);
 
-    shaderStudio = new ShaderStudio(mockTransport, mockShaderLocker, mockRenderingEngine);
+    shaderStudio = new ShaderStudio(mockTransport, mockShaderLocker, mockRenderingEngine, new ShaderDebugManager());
   });
 
   describe('constructor', () => {
@@ -95,23 +95,10 @@ describe('ShaderStudio', () => {
       const result = await shaderStudio.initialize(mockCanvas);
 
       expect(result).toBe(true);
-      expect(mockCanvas.getContext).toHaveBeenCalledWith('webgl2');
       expect(mockRenderingEngine.initialize).toHaveBeenCalledWith(mockCanvas, true);
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
         type: 'debug',
         payload: ['Svelte with piLibs initialized']
-      });
-    });
-
-    it('should return false when WebGL2 is not supported', async () => {
-      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
-
-      const result = await shaderStudio.initialize(mockCanvas);
-
-      expect(result).toBe(false);
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'error',
-        payload: ['❌ WebGL2 not supported']
       });
     });
 
@@ -128,29 +115,6 @@ describe('ShaderStudio', () => {
         type: 'error',
         payload: ['❌ Renderer initialization failed:', 'Error: Initialization failed']
       });
-    });
-  });
-
-  describe('handleCanvasResize', () => {
-    beforeEach(async () => {
-      await shaderStudio.initialize(mockCanvas);
-    });
-
-    it('should call rendering engine handleCanvasResize', () => {
-      const width = 800;
-      const height = 600;
-
-      shaderStudio.handleCanvasResize(width, height);
-
-      expect(mockRenderingEngine.handleCanvasResize).toHaveBeenCalledWith(width, height);
-    });
-
-    it('should return early if canvas is not initialized', () => {
-      const newShaderStudio = new ShaderStudio(mockTransport, mockShaderLocker, mockRenderingEngine);
-      
-      newShaderStudio.handleCanvasResize(800, 600);
-
-      expect(mockRenderingEngine.handleCanvasResize).not.toHaveBeenCalled();
     });
   });
 
@@ -174,7 +138,7 @@ describe('ShaderStudio', () => {
       const mockMessageHandler = {
         handleShaderMessage: vi.fn().mockResolvedValue(undefined)
       };
-      
+
       // Replace the message handler property
       Object.defineProperty(shaderStudio, 'messageHandler', {
         value: mockMessageHandler,
@@ -194,7 +158,7 @@ describe('ShaderStudio', () => {
 
     it('should call message handler reset with callback', () => {
       const onComplete = vi.fn();
-      
+
       // Mock the message handler method
       vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
         reset: vi.fn()
@@ -259,14 +223,6 @@ describe('ShaderStudio', () => {
     });
   });
 
-  describe('handleTogglePause', () => {
-    it('should call rendering engine togglePause', () => {
-      shaderStudio.handleTogglePause();
-
-      expect(mockRenderingEngine.togglePause).toHaveBeenCalled();
-    });
-  });
-
   describe('handleToggleLock', () => {
     beforeEach(async () => {
       await shaderStudio.initialize(mockCanvas);
@@ -316,38 +272,6 @@ describe('ShaderStudio', () => {
     });
   });
 
-  describe('stopRenderLoop', () => {
-    it('should call rendering engine stopRenderLoop', () => {
-      shaderStudio.stopRenderLoop();
-
-      expect(mockRenderingEngine.stopRenderLoop).toHaveBeenCalled();
-    });
-  });
-
-  describe('getCurrentFPS', () => {
-    it('should return rendering engine current FPS', () => {
-      const fps = 75;
-      vi.spyOn(mockRenderingEngine, 'getCurrentFPS').mockReturnValue(fps);
-
-      const result = shaderStudio.getCurrentFPS();
-
-      expect(result).toBe(fps);
-      expect(mockRenderingEngine.getCurrentFPS).toHaveBeenCalled();
-    });
-  });
-
-  describe('getUniforms', () => {
-    it('should delegate to rendering engine getUniforms', () => {
-      const mockUniforms = { res: [1920, 1080, 1.778], time: 5.0, timeDelta: 0.016, frameRate: 60, mouse: [100, 200, 0, 0], frame: 300, date: [2026, 1, 21, 45000] };
-      vi.spyOn(mockRenderingEngine, 'getUniforms').mockReturnValue(mockUniforms);
-
-      const result = shaderStudio.getUniforms();
-
-      expect(result).toBe(mockUniforms);
-      expect(mockRenderingEngine.getUniforms).toHaveBeenCalled();
-    });
-  });
-
   describe('getLastShaderEvent', () => {
     beforeEach(async () => {
       await shaderStudio.initialize(mockCanvas);
@@ -375,39 +299,11 @@ describe('ShaderStudio', () => {
     });
   });
 
-  describe('getTimeManager', () => {
-    it('should return time manager from rendering engine', () => {
-      const mockTimeManager = {
-        isPaused: vi.fn().mockReturnValue(false),
-        togglePause: vi.fn(),
-        cleanup: vi.fn(),
-        getCurrentTime: vi.fn().mockReturnValue(0),
-        updateFrame: vi.fn(),
-        getDeltaTime: vi.fn().mockReturnValue(0.016),
-        getFrame: vi.fn().mockReturnValue(0),
-        incrementFrame: vi.fn(),
-        getCurrentDate: vi.fn().mockReturnValue(new Float32Array([2024, 0, 1, 0]))
-      } as any;
-      vi.spyOn(mockRenderingEngine, 'getTimeManager').mockReturnValue(mockTimeManager);
+  describe('getRenderingEngine', () => {
+    it('should return the rendering engine', () => {
+      const result = shaderStudio.getRenderingEngine();
 
-      const result = shaderStudio.getTimeManager();
-
-      expect(result).toBe(mockTimeManager);
-      expect(mockRenderingEngine.getTimeManager).toHaveBeenCalled();
-    });
-  });
-
-  describe('dispose', () => {
-    it('should call rendering engine dispose', () => {
-      shaderStudio.dispose();
-
-      expect(mockRenderingEngine.dispose).toHaveBeenCalled();
-    });
-
-    it('should handle disposal when rendering engine is undefined', () => {
-      const shaderStudioWithoutEngine = new ShaderStudio(mockTransport, mockShaderLocker, undefined as any);
-      
-      expect(() => shaderStudioWithoutEngine.dispose()).not.toThrow();
+      expect(result).toBe(mockRenderingEngine);
     });
   });
 
@@ -434,41 +330,16 @@ describe('ShaderStudio', () => {
         payload: ['❌ Renderer initialization failed:', 'Error: Render init failed']
       });
     });
-
-    it('should handle WebGL2 not supported error', async () => {
-      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
-
-      const result = await shaderStudio.initialize(mockCanvas);
-
-      expect(result).toBe(false);
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'error',
-        payload: ['❌ WebGL2 not supported']
-      });
-    });
   });
 
   describe('integration scenarios', () => {
-    it('should handle complete initialization and basic operations', async () => {
-      // Initialize
+    it('should handle complete initialization', async () => {
       const initResult = await shaderStudio.initialize(mockCanvas);
       expect(initResult).toBe(true);
 
-      // Handle resize
-      shaderStudio.handleCanvasResize(1024, 768);
-      expect(mockRenderingEngine.handleCanvasResize).toHaveBeenCalledWith(1024, 768);
-
-      // Toggle pause
-      shaderStudio.handleTogglePause();
-      expect(mockRenderingEngine.togglePause).toHaveBeenCalled();
-
-      // Get FPS
-      const fps = shaderStudio.getCurrentFPS();
-      expect(fps).toBe(60);
-
-      // Dispose
-      shaderStudio.dispose();
-      expect(mockRenderingEngine.dispose).toHaveBeenCalled();
+      // getRenderingEngine gives direct access
+      const engine = shaderStudio.getRenderingEngine();
+      expect(engine).toBe(mockRenderingEngine);
     });
 
     it('should handle lock/unlock workflow', async () => {
@@ -503,26 +374,6 @@ describe('ShaderStudio', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       shaderStudio.handleRefresh();
       expect(consoleSpy).toHaveBeenCalledWith('Shader Studio: Refreshing locked shader at path:', 'workflow-test.glsl');
-    });
-
-    it('should handle error callback workflow', async () => {
-      const onError = vi.fn();
-      const onSuccess = vi.fn();
-
-      const shaderStudioWithCallbacks = new ShaderStudio(
-        mockTransport,
-        mockShaderLocker,
-        mockRenderingEngine,
-        undefined as any,
-        onError,
-        onSuccess
-      );
-
-      await shaderStudioWithCallbacks.initialize(mockCanvas);
-
-      // The callbacks should be available for MessageHandler to use
-      expect(shaderStudioWithCallbacks).toBeDefined();
-      expect((shaderStudioWithCallbacks as any).messageHandler).toBeDefined();
     });
   });
 });

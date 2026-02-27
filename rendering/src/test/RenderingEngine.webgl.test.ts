@@ -1,98 +1,70 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
+
+vi.mock("../../../vendor/pilibs/src/piWebUtils", () => ({
+  piCreateGlContext: vi.fn(),
+}));
+
+const mockPiCreateGlContext = vi.mocked(piCreateGlContext);
 
 describe("RenderingEngine WebGL Initialization", () => {
-  let mockRenderer: any;
-  let mockInitialize: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    // Mock the Initialize method to track calls
-    mockInitialize = vi.fn().mockReturnValue(true);
-    
-    mockRenderer = {
-      Initialize: mockInitialize,
-      CreateTexture: vi.fn().mockReturnValue({ mObjectID: 1 }),
-      DestroyShader: vi.fn(),
-      CreateShader: vi.fn().mockReturnValue({
-        mResult: true,
-        mProgram: {},
-      }),
-      GetShaderHeaderLines: vi.fn().mockReturnValue(0),
-    };
-
-    vi.doMock("../../vendor/pilibs/src/piRenderer", () => ({
-      piRenderer: () => mockRenderer,
-    }));
-
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    mockPiCreateGlContext.mockReset();
   });
 
-  describe("WebGL context passing", () => {
-    it("should get WebGL2 context from canvas", () => {
-      const mockGL = { 
-        getExtension: vi.fn(),
-        createProgram: vi.fn(),
-        createShader: vi.fn(),
-      } as any;
+  describe("piCreateGlContext usage", () => {
+    it("should call piCreateGlContext with alpha disabled", async () => {
+      const mockGL = {} as any;
+      const mockCanvas = { addEventListener: vi.fn() } as any;
+      mockPiCreateGlContext.mockReturnValue(mockGL);
 
-      const mockCanvas = {
-        getContext: vi.fn().mockReturnValue(mockGL),
-        width: 800,
-        height: 600,
-        addEventListener: vi.fn(),
-      } as any;
+      // Dynamic import so vi.mock is applied before module loads
+      const { RenderingEngine } = await import("../RenderingEngine");
+      const engine = new RenderingEngine();
 
-      mockCanvas.getContext("webgl2");
-      
-      expect(mockCanvas.getContext).toHaveBeenCalledWith("webgl2");
-      expect(mockCanvas.getContext("webgl2")).toBe(mockGL);
+      try { engine.initialize(mockCanvas); } catch { /* piRenderer init may fail, that's OK */ }
+
+      expect(mockPiCreateGlContext).toHaveBeenCalledWith(
+        mockCanvas,
+        false, // useAlpha
+        false, // useDepth
+        false, // usePreserveBuffer (default)
+        false, // useSupersampling
+      );
     });
 
-    it("should throw error when WebGL2 is not available", () => {
-      const mockCanvas = {
-        getContext: vi.fn().mockReturnValue(null),
-        width: 800,
-        height: 600,
-        addEventListener: vi.fn(),
-      } as any;
+    it("should pass preserveDrawingBuffer to piCreateGlContext", async () => {
+      const mockGL = {} as any;
+      const mockCanvas = { addEventListener: vi.fn() } as any;
+      mockPiCreateGlContext.mockReturnValue(mockGL);
 
-      // This simulates what RenderingEngine.initialize does
-      const gl = mockCanvas.getContext("webgl2");
-      
-      expect(gl).toBeNull();
-      expect(() => {
-        if (!gl) {
-          throw new Error("WebGL2 not supported");
-        }
-      }).toThrow("WebGL2 not supported");
+      const { RenderingEngine } = await import("../RenderingEngine");
+      const engine = new RenderingEngine();
+
+      try { engine.initialize(mockCanvas, true); } catch { /* piRenderer init may fail */ }
+
+      expect(mockPiCreateGlContext).toHaveBeenCalledWith(
+        mockCanvas,
+        false, // useAlpha
+        false, // useDepth
+        true,  // usePreserveBuffer
+        false, // useSupersampling
+      );
     });
-  });
 
-  describe("Renderer initialization flow", () => {
-    it("should demonstrate the correct initialization sequence", () => {
-      const mockGL = { 
-        getExtension: vi.fn(),
-        createProgram: vi.fn(),
-        createShader: vi.fn(),
-      } as any;
+    it("should throw when piCreateGlContext returns null", async () => {
+      const mockCanvas = { addEventListener: vi.fn() } as any;
+      mockPiCreateGlContext.mockReturnValue(null);
 
-      const mockCanvas = {
-        getContext: vi.fn().mockReturnValue(mockGL),
-        width: 800,
-        height: 600,
-        addEventListener: vi.fn(),
-      } as any;
+      const { RenderingEngine } = await import("../RenderingEngine");
+      const engine = new RenderingEngine();
 
-      const gl = mockCanvas.getContext("webgl2");
-      expect(gl).toBe(mockGL);
-      
-      mockRenderer.Initialize(gl);
-      
-      expect(mockInitialize).toHaveBeenCalledWith(mockGL);
-      expect(mockInitialize).toHaveBeenCalledTimes(1);
+      expect(() => engine.initialize(mockCanvas)).toThrow("WebGL2 not supported");
     });
   });
 });

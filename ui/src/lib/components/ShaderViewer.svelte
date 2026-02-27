@@ -49,6 +49,7 @@
   };
 
   let shaderStudio: ShaderStudio;
+  let renderingEngine: RenderingEngine;
   let transport: Transport;
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
@@ -144,7 +145,7 @@
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    shaderStudio!.handleCanvasResize(width, height);
+    renderingEngine.handleCanvasResize(width, height);
   }
 
   function handleReset() {
@@ -192,7 +193,7 @@
 
   function handleTogglePause() {
     if (!initialized) return;
-    shaderStudio.handleTogglePause();
+    renderingEngine.togglePause();
     // Don't stop the render loop when paused - keep rendering so scrubbing works
     // The TimeManager handles not advancing time when paused
   }
@@ -310,7 +311,6 @@
       }
     } else {
       // Buffer file: directly update the buffer and recompile the pipeline
-      const renderingEngine = shaderStudio.getRenderingEngine();
       const result = await renderingEngine.updateBufferAndRecompile(editorBufferName, code);
       if (result) {
         if (result.success) {
@@ -374,7 +374,7 @@
 
   function getUniforms() {
     if (!initialized || !shaderStudio) return null;
-    return shaderStudio.getUniforms();
+    return renderingEngine.getUniforms();
   }
 
   function handleCanvasClick() {
@@ -395,7 +395,7 @@
     try {
       transport = createTransport();
       const shadderLocker = new ShaderLocker();
-      const renderingEngine = new RenderingEngine();
+      renderingEngine = new RenderingEngine();
 
       // Initialize shader debug manager
       shaderDebugManager = new ShaderDebugManager();
@@ -427,14 +427,14 @@
         }
       });
 
-      timeManager = shaderStudio.getTimeManager();
+      timeManager = renderingEngine.getTimeManager();
 
       // Initialize pixel inspector manager
       pixelInspectorManager = new PixelInspectorManager((state) => {
         inspectorState = state;
       });
       pixelInspectorManager.initialize(
-        shaderStudio.getRenderingEngine(),
+        renderingEngine,
         timeManager,
         glCanvas
       );
@@ -525,7 +525,7 @@
   onMount(() => {
     const fpsInterval = setInterval(() => {
       if (initialized && shaderStudio) {
-        currentFPS = shaderStudio.getCurrentFPS();
+        currentFPS = renderingEngine.getCurrentFPS();
       }
     }, 100);
 
@@ -536,8 +536,8 @@
     if (pixelInspectorManager) {
       pixelInspectorManager.dispose();
     }
-    if (shaderStudio) {
-      shaderStudio.dispose();
+    if (renderingEngine) {
+      renderingEngine.dispose();
     }
     if (transport) {
       transport.dispose();
