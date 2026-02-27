@@ -1,4 +1,5 @@
 import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
+import { piCreateGlContext } from "../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "./ResourceManager";
 import { BufferManager } from "./BufferManager";
@@ -32,13 +33,13 @@ export class RenderingEngine implements RenderingEngineInterface {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
 
-    const gl = glCanvas.getContext("webgl2", { preserveDrawingBuffer });
+    const gl = piCreateGlContext(glCanvas, false, false, preserveDrawingBuffer, false);
     if (!gl) {
       throw new Error("WebGL2 not supported");
     }
 
     this.renderer = piRenderer();
-    this.renderer.Initialize(gl);
+    this.renderer.Initialize(gl as WebGL2RenderingContext);
     this.shaderCompiler = new ShaderCompiler(this.renderer);
     this.resourceManager = new ResourceManager(this.renderer);
     this.bufferManager = new BufferManager(this.renderer);
