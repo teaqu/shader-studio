@@ -472,4 +472,116 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(fs).not.toContain("}#define");
     });
    });
+
+  describe("slotAssignments parameter", () => {
+    it("should declare 4 default channels when no slotAssignments provided", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel2;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel3;");
+      expect(wrappedCode).toContain("uniform vec3 iChannelResolution[4];");
+    });
+
+    it("should declare 4 default channels when slotAssignments is empty array", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, []);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel3;");
+      expect(wrappedCode).toContain("uniform vec3 iChannelResolution[4];");
+    });
+
+    it("should not generate alias uniforms for standard iChannel names at matching slots", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, [
+        { slot: 0, key: "iChannel0", isCustomName: false },
+        { slot: 1, key: "iChannel1", isCustomName: false },
+      ]);
+
+      // Should have exactly one declaration per iChannel
+      expect(wrappedCode.match(/uniform sampler2D iChannel0;/g)).toHaveLength(1);
+      expect(wrappedCode.match(/uniform sampler2D iChannel1;/g)).toHaveLength(1);
+    });
+
+    it("should generate alias uniforms for custom names", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, [
+        { slot: 0, key: "noiseMap", isCustomName: true },
+        { slot: 1, key: "prevFrame", isCustomName: true },
+      ]);
+
+      // Slot uniforms should still exist
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
+      // Custom aliases should also be declared
+      expect(wrappedCode).toContain("uniform sampler2D noiseMap;");
+      expect(wrappedCode).toContain("uniform sampler2D prevFrame;");
+    });
+
+    it("should declare more than 4 channels when slotAssignments is larger", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const slots = Array.from({ length: 6 }, (_, i) => ({
+        slot: i,
+        key: `iChannel${i}`,
+        isCustomName: false,
+      }));
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, slots);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel5;");
+      expect(wrappedCode).not.toContain("uniform sampler2D iChannel6;");
+      expect(wrappedCode).toContain("uniform vec3 iChannelResolution[6];");
+    });
+
+    it("should handle mix of custom and iChannel names", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, [
+        { slot: 0, key: "noiseMap", isCustomName: true },
+        { slot: 1, key: "iChannel1", isCustomName: false },
+        { slot: 2, key: "heightMap", isCustomName: true },
+      ]);
+
+      // All 4 slot uniforms (min 4)
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel2;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel3;");
+      // Custom aliases
+      expect(wrappedCode).toContain("uniform sampler2D noiseMap;");
+      expect(wrappedCode).toContain("uniform sampler2D heightMap;");
+      // iChannel1 should not get a duplicate alias
+      expect(wrappedCode.match(/uniform sampler2D iChannel1;/g)).toHaveLength(1);
+    });
+
+    it("should pass slotAssignments through compileShader", () => {
+      const mockShader = createMockShader();
+      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
+
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const slots = [
+        { slot: 0, key: "myTex", isCustomName: true },
+      ];
+      shaderCompiler.compileShader(code, undefined, slots);
+
+      const [, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
+      expect(fs).toContain("uniform sampler2D myTex;");
+      expect(fs).toContain("uniform sampler2D iChannel0;");
+    });
+
+    it("should support up to 16 channels", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const slots = Array.from({ length: 16 }, (_, i) => ({
+        slot: i,
+        key: `iChannel${i}`,
+        isCustomName: false,
+      }));
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, slots);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel15;");
+      expect(wrappedCode).toContain("uniform vec3 iChannelResolution[16];");
+    });
+  });
  });

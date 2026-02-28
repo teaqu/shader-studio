@@ -5,6 +5,7 @@ import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImageP
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
+import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
@@ -17,6 +18,7 @@ export class ShaderPipeline {
   private shaderPath = "";
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
+  private passSlotAssignments: Record<string, SlotAssignment[]> = {};
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -52,6 +54,10 @@ export class ShaderPipeline {
 
   public getPassShader(passName: string): PiShader | undefined {
     return this.passShaders[passName];
+  }
+
+  public getPassSlotAssignments(passName: string): SlotAssignment[] {
+    return this.passSlotAssignments[passName] ?? [];
   }
 
   public getPassBuffers(): Buffers {
@@ -171,9 +177,12 @@ export class ShaderPipeline {
         };
       }
 
+      const slotAssignments = assignInputSlots(pass.inputs);
+      this.passSlotAssignments[pass.name] = slotAssignments;
+
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, commonCode);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode);
+        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments);
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments);
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
@@ -237,8 +246,8 @@ export class ShaderPipeline {
   private async updateResources(): Promise<string[]> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
-      for (let i = 0; i < 4; i++) { // 4 channels (iChannel0-3)
-        const input = pass.inputs[`iChannel${i}`];
+      for (const key of Object.keys(pass.inputs)) {
+        const input = pass.inputs[key];
         if (input?.type === "texture" && input.path) {
           const textureOptions = {
             filter: input.filter,

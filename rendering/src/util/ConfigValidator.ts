@@ -62,17 +62,23 @@ export class ConfigValidator {
     }
   }
 
+  private static readonly MAX_CHANNELS = 16;
+  private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
   private static validateInputs(inputs: any, passName: string, errors: string[]): void {
     if (typeof inputs !== 'object') {
       errors.push(`${passName} pass inputs must be an object`);
       return;
     }
 
-    const validChannels = ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'];
-    
-    for (const channel in inputs) {
-      if (!validChannels.includes(channel)) {
-        errors.push(`${passName} pass has invalid input channel: ${channel}`);
+    const keys = Object.keys(inputs);
+    if (keys.length > this.MAX_CHANNELS) {
+      errors.push(`${passName} pass has too many input channels (max ${this.MAX_CHANNELS})`);
+    }
+
+    for (const channel of keys) {
+      if (!this.GLSL_IDENTIFIER.test(channel)) {
+        errors.push(`${passName} pass has invalid input channel name: ${channel}`);
         continue;
       }
 

@@ -1,4 +1,4 @@
-import type { BufferPass, ImagePass, ConfigInput } from './types/ShaderConfig';
+import type { BufferPass, ImagePass, ConfigInput } from '@shader-studio/types';
 
 export class BufferConfig {
   private bufferName: string;
@@ -169,13 +169,49 @@ export class BufferConfig {
   }
 
   /**
-   * Get available channel names
+   * Get the next suggested channel name (iChannel0, iChannel1, etc.)
    */
-  getAvailableChannels(): string[] {
-    const used = Object.keys(this.config.inputs || {});
-    return ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'].filter(
-      channel => !used.includes(channel)
-    );
+  getNextChannelName(): string {
+    const used = new Set(Object.keys(this.config.inputs || {}));
+    for (let i = 0; i < 16; i++) {
+      const name = `iChannel${i}`;
+      if (!used.has(name)) return name;
+    }
+    return `iChannel${used.size}`;
+  }
+
+  /**
+   * Check if more channels can be added (max 16)
+   */
+  canAddChannel(): boolean {
+    return Object.keys(this.config.inputs || {}).length < 16;
+  }
+
+  /**
+   * Rename an input channel key
+   */
+  renameInputChannel(oldName: string, newName: string): void {
+    if (!this.config.inputs || oldName === newName) return;
+    if (!newName || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) return;
+    if (this.config.inputs[newName as keyof typeof this.config.inputs]) return; // name already taken
+
+    const input = this.config.inputs[oldName as keyof typeof this.config.inputs];
+    if (!input) return;
+
+    const newInputs: Record<string, ConfigInput> = {};
+    for (const [key, value] of Object.entries(this.config.inputs)) {
+      if (key === oldName) {
+        newInputs[newName] = value;
+      } else {
+        newInputs[key] = value;
+      }
+    }
+
+    this.config = {
+      ...this.config,
+      inputs: newInputs
+    };
+    this.notifyUpdate();
   }
 
   /**

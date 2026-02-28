@@ -3,6 +3,8 @@ import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "./models";
 import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "./types/piRenderer";
 import type { KeyboardManager } from "./input/KeyboardManager";
+import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
+import { bindTextures } from "./util/TextureBinder";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
@@ -10,6 +12,7 @@ export class PassRenderer {
   private bufferManager: BufferManager;
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
+  private gl: WebGL2RenderingContext | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -23,6 +26,7 @@ export class PassRenderer {
     this.bufferManager = bufferManager;
     this.renderer = renderer;
     this.keyboardManager = keyboardManager;
+    this.gl = canvas.getContext("webgl2");
   }
 
   public renderPass(
@@ -33,7 +37,8 @@ export class PassRenderer {
   ): void {
     if (!shader) return;
 
-    const textureBindings = this.getTextureBindings(passConfig);
+    const slotAssignments = assignInputSlots(passConfig.inputs);
+    const textureBindings = this.getTextureBindings(passConfig, slotAssignments);
 
     if (target?.mTex0) {
       this.renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
@@ -52,93 +57,77 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
     this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
 
-    const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
+    const channelResolutions = this.getChannelResolutions(textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
 
-    this.renderer.AttachTextures(
-      4,
-      textureBindings[0],
-      textureBindings[1],
-      textureBindings[2],
-      textureBindings[3],
-    );
-    this.renderer.SetShaderTextureUnit("iChannel0", 0);
-    this.renderer.SetShaderTextureUnit("iChannel1", 1);
-    this.renderer.SetShaderTextureUnit("iChannel2", 2);
-    this.renderer.SetShaderTextureUnit("iChannel3", 3);
+    if (this.gl) {
+      bindTextures(this.gl, textureBindings);
+    }
+    // Bind iChannel{N} for all slots
+    for (let i = 0; i < textureBindings.length; i++) {
+      this.renderer.SetShaderTextureUnit(`iChannel${i}`, i);
+    }
+    // Bind custom name aliases
+    for (const { slot, key, isCustomName } of slotAssignments) {
+      if (isCustomName) {
+        this.renderer.SetShaderTextureUnit(key, slot);
+      }
+    }
 
     const posLoc = this.renderer.GetAttribLocation(shader, "position");
     this.renderer.DrawUnitQuad_XY(posLoc);
   }
 
-
   private getChannelResolutions(
-    passConfig: Pass,
-    textureBindings: (PiTexture | null)[]
+    textureBindings: (PiTexture | null)[],
   ): number[] {
-    // Returns a flat array of 12 floats representing 4 vec3 channel resolutions
-    // Format: [ch0.x, ch0.y, ch0.z, ch1.x, ch1.y, ch1.z, ch2.x, ch2.y, ch2.z, ch3.x, ch3.y, ch3.z]
     const resolutions: number[] = [];
-    
-    for (let i = 0; i < 4; i++) {
-      const texture = textureBindings[i];
-      const input = passConfig.inputs[`iChannel${i}`];
-      
-      if (texture && input) {
-        // For keyboard input: 256x3 (as per ShaderToy spec)
-        if (input.type === 'keyboard') {
-          resolutions.push(256, 3, 1);
-        } else {
-          // For textures, videos, and buffers: use actual texture dimensions
-          resolutions.push(texture.mXres, texture.mYres, 1);
-        }
+    for (const texture of textureBindings) {
+      if (texture) {
+        resolutions.push(texture.mXres, texture.mYres, 1);
       } else {
-        // No input or no texture: default to 0, 0, 0
         resolutions.push(0, 0, 0);
       }
     }
-    
     return resolutions;
   }
 
   private getTextureBindings(
     passConfig: Pass,
+    slotAssignments: SlotAssignment[],
   ): (PiTexture | null)[] {
+    const channelCount = Math.max(4, slotAssignments.length);
     const defaultTexture = this.resourceManager.getDefaultTexture();
     const passBuffers = this.bufferManager.getPassBuffers();
-    let textureBindings: (PiTexture | null)[] = [
-      defaultTexture,
-      defaultTexture,
-      defaultTexture,
-      defaultTexture,
-    ];
+    const textureBindings: (PiTexture | null)[] = new Array(channelCount).fill(defaultTexture);
 
-    for (let i = 0; i < 4; i++) {
-      const input = passConfig.inputs[`iChannel${i}`];
-      if (input) {
-        if (input.type === "texture" && input.path) {
-          const imageCache = this.resourceManager.getImageTextureCache();
-          // Look up by resolved_path first (webview URI used for loading), then fall back to path
-          textureBindings[i] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
-        } else if (input.type === "keyboard") {
-          this.resourceManager.updateKeyboardTexture(
-            this.keyboardManager.getKeyHeld(),
-            this.keyboardManager.getKeyPressed(),
-            this.keyboardManager.getKeyToggled(),
-          );
-          textureBindings[i] = this.resourceManager.getKeyboardTexture() ||
-            defaultTexture;
-        } else if (input.type === "buffer") {
-          if (input.source === passConfig.name) {
-            textureBindings[i] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
-          } else if (passBuffers[input.source]) {
-            textureBindings[i] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
-          } else {
-            textureBindings[i] = defaultTexture;
-          }
-        } else if (input.type === "video" && input.path) {
-          textureBindings[i] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
+    for (const { slot, key } of slotAssignments) {
+      const input = passConfig.inputs[key];
+      if (!input) {
+        textureBindings[slot] = defaultTexture;
+        continue;
+      }
+
+      if (input.type === "texture" && input.path) {
+        const imageCache = this.resourceManager.getImageTextureCache();
+        textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
+      } else if (input.type === "keyboard") {
+        this.resourceManager.updateKeyboardTexture(
+          this.keyboardManager.getKeyHeld(),
+          this.keyboardManager.getKeyPressed(),
+          this.keyboardManager.getKeyToggled(),
+        );
+        textureBindings[slot] = this.resourceManager.getKeyboardTexture() || defaultTexture;
+      } else if (input.type === "buffer") {
+        if (input.source === passConfig.name) {
+          textureBindings[slot] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
+        } else if (passBuffers[input.source]) {
+          textureBindings[slot] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
+        } else {
+          textureBindings[slot] = defaultTexture;
         }
+      } else if (input.type === "video" && input.path) {
+        textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
       }
     }
     return textureBindings;

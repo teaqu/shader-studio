@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BufferConfig } from '../lib/BufferConfig';
 import type { BufferPass, ImagePass } from '@shader-studio/types';
 
@@ -194,7 +194,7 @@ describe('BufferConfig', () => {
       expect(channel).toEqual({ type: 'texture', path: 'new.jpg' });
     });
 
-    it('should get available channels', () => {
+    it('should get next channel name', () => {
       const config: BufferPass = {
         path: 'shader.glsl',
         inputs: {
@@ -203,13 +203,152 @@ describe('BufferConfig', () => {
       };
       const bufferConfig = new BufferConfig('BufferA', config);
 
-      const available = bufferConfig.getAvailableChannels();
+      expect(bufferConfig.getNextChannelName()).toBe('iChannel1');
+      expect(bufferConfig.canAddChannel()).toBe(true);
+    });
 
-      expect(available).toHaveLength(3);
-      expect(available).toContain('iChannel1');
-      expect(available).toContain('iChannel2');
-      expect(available).toContain('iChannel3');
-      expect(available).not.toContain('iChannel0');
+    it('should rename input channel', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'texture.jpg' }
+        }
+      };
+      const onUpdate = vi.fn();
+      const bufferConfig = new BufferConfig('BufferA', config, onUpdate);
+
+      bufferConfig.renameInputChannel('iChannel0', 'noiseMap');
+      const updated = bufferConfig.getConfig();
+
+      expect(updated.inputs?.['noiseMap' as keyof typeof updated.inputs]).toEqual({ type: 'texture', path: 'texture.jpg' });
+      expect(updated.inputs?.['iChannel0' as keyof typeof updated.inputs]).toBeUndefined();
+      expect(onUpdate).toHaveBeenCalled();
+    });
+
+    it('should preserve key order when renaming', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'a.jpg' },
+          iChannel1: { type: 'texture', path: 'b.jpg' },
+          iChannel2: { type: 'texture', path: 'c.jpg' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.renameInputChannel('iChannel1', 'normalMap');
+      const keys = Object.keys(bufferConfig.getConfig().inputs || {});
+
+      expect(keys).toEqual(['iChannel0', 'normalMap', 'iChannel2']);
+    });
+
+    it('should not rename to invalid GLSL identifier', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'texture.jpg' }
+        }
+      };
+      const onUpdate = vi.fn();
+      const bufferConfig = new BufferConfig('BufferA', config, onUpdate);
+
+      bufferConfig.renameInputChannel('iChannel0', '0invalid');
+      expect(Object.keys(bufferConfig.getConfig().inputs || {})).toContain('iChannel0');
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should not rename to a name already in use', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'a.jpg' },
+          noiseMap: { type: 'texture', path: 'b.jpg' }
+        }
+      };
+      const onUpdate = vi.fn();
+      const bufferConfig = new BufferConfig('BufferA', config, onUpdate);
+
+      bufferConfig.renameInputChannel('iChannel0', 'noiseMap');
+      expect(Object.keys(bufferConfig.getConfig().inputs || {})).toContain('iChannel0');
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should not rename to the same name', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'texture.jpg' }
+        }
+      };
+      const onUpdate = vi.fn();
+      const bufferConfig = new BufferConfig('BufferA', config, onUpdate);
+
+      bufferConfig.renameInputChannel('iChannel0', 'iChannel0');
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should not rename to empty string', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'texture.jpg' }
+        }
+      };
+      const onUpdate = vi.fn();
+      const bufferConfig = new BufferConfig('BufferA', config, onUpdate);
+
+      bufferConfig.renameInputChannel('iChannel0', '');
+      expect(Object.keys(bufferConfig.getConfig().inputs || {})).toContain('iChannel0');
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should return false for canAddChannel at 16 channels', () => {
+      const inputs: Record<string, any> = {};
+      for (let i = 0; i < 16; i++) {
+        inputs[`ch${i}`] = { type: 'keyboard' };
+      }
+      const config: BufferPass = { path: 'shader.glsl', inputs };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      expect(bufferConfig.canAddChannel()).toBe(false);
+    });
+
+    it('should return true for canAddChannel under 16 channels', () => {
+      const inputs: Record<string, any> = {};
+      for (let i = 0; i < 15; i++) {
+        inputs[`ch${i}`] = { type: 'keyboard' };
+      }
+      const config: BufferPass = { path: 'shader.glsl', inputs };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      expect(bufferConfig.canAddChannel()).toBe(true);
+    });
+
+    it('should find next iChannel name skipping used ones', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' },
+          iChannel2: { type: 'keyboard' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      expect(bufferConfig.getNextChannelName()).toBe('iChannel1');
+    });
+
+    it('should find next iChannel name when custom names occupy slots', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          noiseMap: { type: 'texture', path: 'a.jpg' },
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      // noiseMap is not an iChannel name, so iChannel1 should be next
+      expect(bufferConfig.getNextChannelName()).toBe('iChannel1');
     });
   });
 });

@@ -149,7 +149,7 @@ describe("ConfigValidator", () => {
           passes: {
             Image: {
               inputs: {
-                iChannel5: { type: 'keyboard' }
+                "0invalid": { type: 'keyboard' }
               }
             }
           }
@@ -157,7 +157,193 @@ describe("ConfigValidator", () => {
 
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(false);
-        expect(result.errors).toContain('Image pass has invalid input channel: iChannel5');
+        expect(result.errors).toContain('Image pass has invalid input channel name: 0invalid');
+      });
+
+      it("should accept iChannel names beyond 3", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                iChannel5: { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should accept custom channel names", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                noiseMap: { type: 'keyboard' },
+                diffuseTexture: { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should accept exactly 16 input channels", () => {
+        const inputs: Record<string, any> = {};
+        for (let i = 0; i < 16; i++) {
+          inputs[`channel${i}`] = { type: 'keyboard' };
+        }
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: { inputs }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should reject more than 16 input channels", () => {
+        const inputs: Record<string, any> = {};
+        for (let i = 0; i < 17; i++) {
+          inputs[`channel${i}`] = { type: 'keyboard' };
+        }
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: { inputs }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Image pass has too many input channels (max 16)');
+      });
+
+      it("should accept names with leading underscore", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                _privateChannel: { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should accept UPPERCASE names", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                NOISE_MAP: { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should accept names with digits after first char", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                tex2D_normal3: { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("should reject names with hyphens", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                "noise-map": { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Image pass has invalid input channel name: noise-map');
+      });
+
+      it("should reject names with spaces", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                "noise map": { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Image pass has invalid input channel name: noise map');
+      });
+
+      it("should reject empty string as channel name", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                "": { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+      });
+
+      it("should report errors for invalid names but still validate valid ones", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                validName: { type: 'keyboard' },
+                "0bad": { type: 'keyboard' },
+                anotherValid: { type: 'keyboard' },
+                "has space": { type: 'keyboard' }
+              }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Image pass has invalid input channel name: 0bad');
+        expect(result.errors).toContain('Image pass has invalid input channel name: has space');
+        expect(result.errors).toHaveLength(2);
       });
 
       it("should reject non-object inputs", () => {
@@ -711,10 +897,9 @@ describe("ConfigValidator", () => {
 
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(false);
-        expect(result.errors).toHaveLength(5);
+        expect(result.errors).toHaveLength(4);
         expect(result.errors).toContain('Config must have a valid version string');
         expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
-        expect(result.errors).toContain('Image pass has invalid input channel: iChannel5');
         expect(result.errors).toContain('BufferA pass must have a valid path string');
       });
     });

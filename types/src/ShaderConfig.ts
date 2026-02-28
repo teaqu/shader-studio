@@ -29,12 +29,12 @@ export interface KeyboardConfigInput {
 export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | KeyboardConfigInput;
 
 export interface ImagePass {
-    inputs?: Partial<Record<`iChannel${0 | 1 | 2 | 3}`, ConfigInput>>;
+    inputs?: Record<string, ConfigInput>;
 }
 
 export interface BufferPass {
     path: string;
-    inputs?: Partial<Record<`iChannel${0 | 1 | 2 | 3}`, ConfigInput>>;
+    inputs?: Record<string, ConfigInput>;
 }
 
 export interface ShaderPasses {

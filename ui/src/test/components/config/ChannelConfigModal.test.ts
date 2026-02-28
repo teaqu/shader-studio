@@ -44,7 +44,7 @@ describe('ChannelConfigModal', () => {
     it('should render modal when isOpen is true', () => {
       render(ChannelConfigModal, defaultProps());
 
-      expect(screen.getByText('Configure iChannel0')).toBeInTheDocument();
+      expect(screen.getByText('iChannel0')).toBeInTheDocument();
     });
 
     it('should display tab bar with all tabs', () => {
@@ -701,6 +701,128 @@ describe('ChannelConfigModal', () => {
       await fireEvent.click(volumesTab);
 
       expect(screen.getByText('Volume support is in progress')).toBeInTheDocument();
+    });
+  });
+
+  describe('Channel Rename', () => {
+    let mockOnRename: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockOnRename = vi.fn();
+    });
+
+    it('should show rename button in the modal header', () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn');
+      expect(renameBtn).toBeTruthy();
+    });
+
+    it('should show name input when rename button is clicked', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      expect(nameInput).toBeTruthy();
+      expect(nameInput.value).toBe('iChannel0');
+    });
+
+    it('should call onRename with valid new name on Enter', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      await fireEvent.input(nameInput, { target: { value: 'noiseMap' } });
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
+
+      expect(mockOnRename).toHaveBeenCalledWith('iChannel0', 'noiseMap');
+    });
+
+    it('should show error for invalid GLSL identifier', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      await fireEvent.input(nameInput, { target: { value: '0invalid' } });
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
+
+      expect(mockOnRename).not.toHaveBeenCalled();
+      expect(container.textContent).toContain('Must be a valid GLSL identifier');
+    });
+
+    it('should show error for duplicate channel name', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0', 'noiseMap'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      await fireEvent.input(nameInput, { target: { value: 'noiseMap' } });
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
+
+      expect(mockOnRename).not.toHaveBeenCalled();
+      expect(container.textContent).toContain('Name already in use');
+    });
+
+    it('should cancel rename on Escape', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      await fireEvent.keyDown(nameInput, { key: 'Escape' });
+
+      expect(mockOnRename).not.toHaveBeenCalled();
+      // Name input should be hidden after cancel
+      expect(container.querySelector('.name-input')).toBeFalsy();
+    });
+
+    it('should cancel rename when submitting same name', async () => {
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        onRename: mockOnRename,
+        existingChannelNames: ['iChannel0'],
+      });
+
+      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      await fireEvent.click(renameBtn);
+
+      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      // Value is already 'iChannel0', just press Enter
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
+
+      expect(mockOnRename).not.toHaveBeenCalled();
     });
   });
 
