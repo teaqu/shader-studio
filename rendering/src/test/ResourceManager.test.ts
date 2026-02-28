@@ -36,33 +36,39 @@ const createMockVideoElement = (options: {
   return video;
 };
 
-// Mock the dependencies — Vitest 4 requires function/class for mocked constructors
+// Mock the dependencies
 vi.mock("../resources/TextureCache", () => ({
-  TextureCache: vi.fn().mockImplementation(function (this: any) {
-    this.getImageTextureCache = vi.fn().mockReturnValue({});
-    this.getDefaultTexture = vi.fn().mockReturnValue(null);
-    this.removeCachedTexture = vi.fn().mockReturnValue(null);
-    this.cacheTexture = vi.fn();
-    this.loadTextureFromUrl = vi.fn();
-    this.cleanup = vi.fn();
+  TextureCache: vi.fn().mockImplementation(function() {
+    return {
+      getImageTextureCache: vi.fn().mockReturnValue({}),
+      getDefaultTexture: vi.fn().mockReturnValue(null),
+      removeCachedTexture: vi.fn().mockReturnValue(null),
+      cacheTexture: vi.fn(),
+      loadTextureFromUrl: vi.fn(),
+      cleanup: vi.fn(),
+    };
   }),
 }));
 
 vi.mock("../resources/VideoTextureManager", () => ({
-  VideoTextureManager: vi.fn().mockImplementation(function (this: any) {
-    this.loadVideoTexture = vi.fn();
-    this.getVideoTexture = vi.fn();
-    this.pauseAll = vi.fn();
-    this.resumeAll = vi.fn();
-    this.cleanup = vi.fn();
+  VideoTextureManager: vi.fn().mockImplementation(function() {
+    return {
+      loadVideoTexture: vi.fn(),
+      getVideoTexture: vi.fn(),
+      pauseAll: vi.fn(),
+      resumeAll: vi.fn(),
+      cleanup: vi.fn(),
+    };
   }),
 }));
 
 vi.mock("../resources/ShaderKeyboardInput", () => ({
-  ShaderKeyboardInput: vi.fn().mockImplementation(function (this: any) {
-    this.getKeyboardTexture = vi.fn().mockReturnValue(null);
-    this.updateKeyboardTexture = vi.fn();
-    this.cleanup = vi.fn();
+  ShaderKeyboardInput: vi.fn().mockImplementation(function() {
+    return {
+      getKeyboardTexture: vi.fn().mockReturnValue(null),
+      updateKeyboardTexture: vi.fn(),
+      cleanup: vi.fn(),
+    };
   }),
 }));
 

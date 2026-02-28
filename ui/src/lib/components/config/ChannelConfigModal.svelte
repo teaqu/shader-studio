@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import ChannelPreview from "./ChannelPreview.svelte";
   import AssetBrowser from "./AssetBrowser.svelte";
@@ -18,8 +18,14 @@
   export let onClose: () => void;
   export let onSave: (channelName: string, input: ConfigInput) => void;
   export let onRemove: (channelName: string) => void;
+  export let onRename: ((oldName: string, newName: string) => void) | undefined = undefined;
+  export let existingChannelNames: string[] = [];
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let shaderPath: string = "";
+
+  let editingName = false;
+  let nameInput = "";
+  let nameError = "";
 
   type TabName = "Misc" | "Textures" | "Cubemaps" | "Volumes" | "Videos" | "Music";
   const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Volumes", "Videos", "Music"];
@@ -60,6 +66,8 @@
     } else {
       initializedWithInput = undefined;
       activeTab = null;
+      editingName = false;
+      nameError = "";
     }
   }
 
@@ -88,6 +96,53 @@
 
   function handleRemove() {
     onRemove(channelName);
+  }
+
+  async function startRename() {
+    nameInput = channelName;
+    nameError = "";
+    editingName = true;
+    await tick();
+    const input = modalContent?.querySelector('.name-input') as HTMLInputElement;
+    input?.focus();
+    input?.select();
+  }
+
+  function cancelRename() {
+    editingName = false;
+    nameError = "";
+  }
+
+  function submitRename() {
+    const trimmed = nameInput.trim();
+    if (!trimmed || trimmed === channelName) {
+      cancelRename();
+      return;
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+      nameError = "Must be a valid GLSL identifier";
+      return;
+    }
+    if (existingChannelNames.includes(trimmed)) {
+      nameError = "Name already in use";
+      return;
+    }
+    if (onRename) {
+      onRename(channelName, trimmed);
+    }
+    editingName = false;
+    nameError = "";
+  }
+
+  function handleNameKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelRename();
+    }
   }
 
   function autoSave() {
@@ -228,7 +283,30 @@
     <div class="modal-content" bind:this={modalContent} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <!-- Modal Header -->
       <div class="modal-header">
-        <h2 id="modal-title">Configure {channelName}</h2>
+        {#if editingName}
+          <div class="name-edit-row">
+            <input
+              type="text"
+              bind:value={nameInput}
+              on:keydown={handleNameKeydown}
+              on:blur={submitRename}
+              class="name-input"
+              class:name-error={nameError}
+            />
+            {#if nameError}
+              <span class="name-error-text">{nameError}</span>
+            {/if}
+          </div>
+        {:else}
+          <h2 id="modal-title" class="channel-title">
+            <span>{channelName}</span>
+            <button class="rename-btn" on:click|stopPropagation={startRename} title="Rename channel">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/>
+              </svg>
+            </button>
+          </h2>
+        {/if}
       </div>
 
       <!-- Tab Bar -->
@@ -582,6 +660,57 @@
     font-size: 18px;
     font-weight: 600;
     color: var(--vscode-foreground, #cccccc);
+  }
+
+  .channel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .rename-btn {
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    background: none;
+    border: none;
+    color: var(--vscode-descriptionForeground, #888);
+    cursor: pointer;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+
+  .rename-btn:hover {
+    opacity: 1;
+    color: var(--vscode-foreground, #cccccc);
+  }
+
+  .name-edit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .name-input {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 4px 8px;
+    background: var(--vscode-input-background, #2d2d2d);
+    color: var(--vscode-input-foreground, #cccccc);
+    border: 1px solid var(--vscode-focusBorder, #007acc);
+    border-radius: 4px;
+    outline: none;
+    font-family: inherit;
+  }
+
+  .name-input.name-error {
+    border-color: var(--vscode-inputValidation-errorBorder, #f44336);
+  }
+
+  .name-error-text {
+    font-size: 12px;
+    color: var(--vscode-errorForeground, #f48771);
   }
 
   .tab-bar {

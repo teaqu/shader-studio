@@ -488,7 +488,8 @@ describe("ShaderPipeline", () => {
             expect(result.success).toBe(true);
             expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
                 expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
-                expect.stringContaining("commonFunction")
+                expect.stringContaining("commonFunction"),
+                expect.any(Array)
             );
         });
     });
@@ -1247,6 +1248,106 @@ describe("ShaderPipeline", () => {
                 "buffer-color.jpg",
                 expect.objectContaining({ grayscale: undefined })
             );
+        });
+    });
+
+    describe("slot assignments", () => {
+        it("should store slot assignments after compilation", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            noiseMap: { type: "texture" as const, path: "noise.png" },
+                            iChannel1: { type: "keyboard" as const },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+
+            const assignments = shaderPipeline.getPassSlotAssignments("Image");
+            expect(assignments).toHaveLength(2);
+            expect(assignments[0]).toEqual({ slot: 0, key: "noiseMap", isCustomName: true });
+            expect(assignments[1]).toEqual({ slot: 1, key: "iChannel1", isCustomName: false });
+        });
+
+        it("should return empty array for non-existent pass", () => {
+            const assignments = shaderPipeline.getPassSlotAssignments("NonExistent");
+            expect(assignments).toEqual([]);
+        });
+
+        it("should store separate slot assignments per pass", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "texture" as const, path: "tex.png" },
+                        }
+                    },
+                    BufferA: {
+                        path: "buffer.glsl",
+                        inputs: {
+                            customInput: { type: "keyboard" as const },
+                        }
+                    }
+                }
+            };
+            const buffers = { BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}" };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", buffers);
+
+            const imageAssignments = shaderPipeline.getPassSlotAssignments("Image");
+            const bufferAssignments = shaderPipeline.getPassSlotAssignments("BufferA");
+
+            expect(imageAssignments[0].key).toBe("iChannel0");
+            expect(imageAssignments[0].isCustomName).toBe(false);
+            expect(bufferAssignments[0].key).toBe("customInput");
+            expect(bufferAssignments[0].isCustomName).toBe(true);
+        });
+
+        it("should pass slot assignments to compileShader", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            myTexture: { type: "texture" as const, path: "tex.png" },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+
+            expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
+                expect.any(String),
+                "",
+                [{ slot: 0, key: "myTexture", isCustomName: true }]
+            );
+        });
+    });
+
+    describe("updateResources with custom-named inputs", () => {
+        it("should load textures for custom-named inputs", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            noiseMap: { type: "texture" as const, path: "noise.png" },
+                            colorMap: { type: "texture" as const, path: "color.png" },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("noise.png", expect.any(Object));
+            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("color.png", expect.any(Object));
         });
     });
 });
