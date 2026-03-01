@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@shader-studio/glsl-debug": "*",
+    "@shader-studio/monaco": "*",
     "@shader-studio/rendering": "*",
     "@shader-studio/types": "*",
     "monaco-editor": "^0.55.1",

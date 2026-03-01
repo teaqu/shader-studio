@@ -5,7 +5,6 @@
   export let channelInput: ConfigInput | undefined;
   export let getWebviewUri: (path: string) => string | undefined;
 
-  let imageLoaded = false;
   let imageError = false;
   let imageElement: HTMLImageElement | null = null;
 
@@ -24,14 +23,8 @@
     isGrayscale ? 'filter: grayscale(100%)' : '',
   ].filter(Boolean).join('; ');
 
-  function handleImageLoad() {
-    imageLoaded = true;
-    imageError = false;
-  }
-
   function handleImageError() {
     imageError = true;
-    imageLoaded = false;
   }
 
   onDestroy(() => {
@@ -57,15 +50,12 @@
           bind:this={imageElement}
           src={imageSrc}
           alt="Texture preview"
-          loading="lazy"
-          on:load={handleImageLoad}
           on:error={handleImageError}
           class="preview-image"
-          class:loaded={imageLoaded}
           style={imageStyle}
         />
       {/if}
-      {#if !imageLoaded}
+      {#if imageError || !imageSrc}
         <div class="preview-fallback">
           <div class="texture-icon-grid">
             <div class="texture-square"></div>
@@ -161,12 +151,6 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  .preview-image.loaded {
-    opacity: 1;
   }
 
   /* Fallback states */

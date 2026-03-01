@@ -11,7 +11,9 @@
     "extension",
     "ui",
     "config-ui",
-    "shader-explorer"
+    "shader-explorer",
+    "monaco",
+    "snippet-library"
   ],
   "scripts": {
     "build": "npm run build:types && npm run build --workspaces --if-present",
@@ -20,9 +22,11 @@
     "build:extension": "npm run build:types && npm run build -w extension",
     "build:ui": "npm run build:types && npm run build -w ui",
     "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",
+    "build:snippet-library": "npm run build:types && npm run build -w snippet-library",
     "compile:extension": "npm run compile -w extension",
     "dev:ui": "npm run dev -w ui",
     "dev:shader-explorer": "npm run dev -w shader-explorer",
+    "dev:snippet-library": "npm run dev -w snippet-library",
     "test": "npm run test --workspaces --if-present",
     "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist types/node_modules types/dist",
     "watch:extension": "npm run watch -w extension"

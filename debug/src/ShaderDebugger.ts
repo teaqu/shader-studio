@@ -46,7 +46,16 @@ export class ShaderDebugger {
     }
 
     const actualLineContent = lines[debugLine] || '';
-    const varInfo = GlslParser.detectVariableAndType(actualLineContent, varTypes, functionReturnType, lines, debugLine);
+    let varInfo = GlslParser.detectVariableAndType(actualLineContent, varTypes, functionReturnType, lines, debugLine);
+
+    // If we detected a standalone function call, rewrite the line to capture its result
+    if (varInfo && varInfo.name === '_dbgCall') {
+      const trimmed = actualLineContent.trim().replace(/;$/, '');
+      lines[debugLine] = actualLineContent.replace(trimmed, `${varInfo.type} _dbgCall = ${trimmed}`);
+      // Update varInfo to use the temp variable with proper name
+      varInfo = { name: '_dbgCall', type: varInfo.type };
+    }
+
     if (!varInfo) {
       // Fourth code path: non-mainImage function with no variable → run full function
       if (functionInfo.name && functionInfo.name !== 'mainImage' && functionReturnType && functionReturnType !== 'void') {

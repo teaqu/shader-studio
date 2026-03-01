@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    exclude: [...configDefaults.exclude, 'src/test/e2e/**'],
+    exclude: [...configDefaults.exclude, 'src/test/e2e/**', '**/*.e2e.test.*'],
     coverage: {
       exclude: [
         'vendor/**',

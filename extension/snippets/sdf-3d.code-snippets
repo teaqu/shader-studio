@@ -6,7 +6,8 @@
       "\treturn length(p) - r;",
       "}"
     ],
-    "description": "Signed distance function for a 3D sphere"
+    "description": "Signed distance function for a 3D sphere",
+    "call": "sdSphere(p, 1.0)"
   },
   "SDF 3D Box": {
     "prefix": "sdf3d-box",
@@ -16,7 +17,8 @@
       "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);",
       "}"
     ],
-    "description": "Signed distance function for a 3D box"
+    "description": "Signed distance function for a 3D box",
+    "call": "sdBox(p, vec3(0.8, 0.6, 0.5))"
   },
   "SDF 3D Rounded Box": {
     "prefix": "sdf3d-rounded-box",
@@ -26,7 +28,8 @@
       "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;",
       "}"
     ],
-    "description": "Signed distance function for a 3D rounded box"
+    "description": "Signed distance function for a 3D rounded box",
+    "call": "sdRoundBox(p, vec3(0.7, 0.5, 0.4), 0.1)"
   },
   "SDF 3D Torus": {
     "prefix": "sdf3d-torus",
@@ -37,7 +40,8 @@
       "\treturn length(q) - t.y;",
       "}"
     ],
-    "description": "Signed distance function for a 3D torus"
+    "description": "Signed distance function for a 3D torus",
+    "call": "sdTorus(p, vec2(0.8, 0.3))"
   },
   "SDF 3D Cylinder": {
     "prefix": "sdf3d-cylinder",
@@ -47,7 +51,8 @@
       "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
       "}"
     ],
-    "description": "Signed distance function for a 3D cylinder"
+    "description": "Signed distance function for a 3D cylinder",
+    "call": "sdCylinder(p, 1.0, 0.5)"
   },
   "SDF 3D Cone": {
     "prefix": "sdf3d-cone",
@@ -64,7 +69,8 @@
       "\treturn sqrt(d) * sign(s);",
       "}"
     ],
-    "description": "Signed distance function for a 3D cone (IQ)"
+    "description": "Signed distance function for a 3D cone (IQ)",
+    "call": "sdCone(p - vec3(0.0, 1.0, 0.0), vec2(sin(0.5), cos(0.5)), 1.0)"
   },
   "SDF 3D Capsule": {
     "prefix": "sdf3d-capsule",
@@ -75,7 +81,8 @@
       "\treturn length(pa - ba * h) - r;",
       "}"
     ],
-    "description": "Signed distance function for a 3D capsule (line segment with radius)"
+    "description": "Signed distance function for a 3D capsule (line segment with radius)",
+    "call": "sdCapsule(p, vec3(0.0, -0.5, 0.0), vec3(0.0, 0.5, 0.0), 0.3)"
   },
   "SDF 3D Plane": {
     "prefix": "sdf3d-plane",
@@ -85,7 +92,48 @@
       "\treturn dot(p, n) + h;",
       "}"
     ],
-    "description": "Signed distance function for a 3D plane"
+    "description": "Signed distance function for a 3D plane",
+    "call": "sdPlane(p, vec3(0.0, 1.0, 0.0), 0.5)",
+    "example": [
+      "float sdPlane(vec3 p, vec3 n, float h) {",
+      "    return dot(p, n) + h;",
+      "}",
+      "",
+      "float map(vec3 p) {",
+      "    return sdPlane(p, vec3(0.0, 1.0, 0.0), 0.0);",
+      "}",
+      "",
+      "float rayMarch(vec3 ro, vec3 rd) {",
+      "    float t = 0.0;",
+      "    for (int i = 0; i < 128; i++) {",
+      "        float d = map(ro + rd * t);",
+      "        if (d < 0.001 || t > 100.0) break;",
+      "        t += d;",
+      "    }",
+      "    return t;",
+      "}",
+      "",
+      "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+      "    vec2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    vec3 ro = vec3(0.0, 1.5, -3.0);",
+      "    vec3 rd = normalize(vec3(uv.x, uv.y - 0.2, 1.5));",
+      "    float t = rayMarch(ro, rd);",
+      "    vec3 sky = mix(vec3(0.15, 0.18, 0.30), vec3(0.08, 0.08, 0.14), pow(max(uv.y + 0.2, 0.0), 0.8));",
+      "    vec3 col = sky;",
+      "    if (t < 100.0) {",
+      "        vec3 p = ro + rd * t;",
+      "        vec3 lightDir = normalize(vec3(0.6, 0.8, -0.5));",
+      "        float diff = max(dot(vec3(0.0, 1.0, 0.0), lightDir), 0.0);",
+      "        float checker = mod(floor(p.x) + floor(p.z), 2.0);",
+      "        vec3 base = mix(vec3(0.15, 0.30, 0.55), vec3(0.25, 0.45, 0.75), checker);",
+      "        col = base * (diff * 0.7 + 0.3);",
+      "        float fog = exp(-0.03 * t * t);",
+      "        col = mix(sky, col, fog);",
+      "    }",
+      "    col = pow(col, vec3(1.0 / 2.2));",
+      "    fragColor = vec4(col, 1.0);",
+      "}"
+    ]
   },
   "SDF 3D Ellipsoid": {
     "prefix": "sdf3d-ellipsoid",
@@ -96,7 +144,8 @@
       "\treturn k0 * (k0 - 1.0) / k1;",
       "}"
     ],
-    "description": "Signed distance function for a 3D ellipsoid (approximate)"
+    "description": "Signed distance function for a 3D ellipsoid (approximate)",
+    "call": "sdEllipsoid(p, vec3(1.0, 0.6, 0.4))"
   },
   "SDF 3D Octahedron": {
     "prefix": "sdf3d-octahedron",
@@ -113,7 +162,8 @@
       "\treturn length(vec3(q.x, q.y - s + k, q.z - k));",
       "}"
     ],
-    "description": "Signed distance function for a 3D octahedron (IQ)"
+    "description": "Signed distance function for a 3D octahedron (IQ)",
+    "call": "sdOctahedron(p, 1.0)"
   },
   "SDF 3D Hex Prism": {
     "prefix": "sdf3d-hexprism",
@@ -128,6 +178,7 @@
       "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
       "}"
     ],
-    "description": "Signed distance function for a 3D hexagonal prism (IQ)"
+    "description": "Signed distance function for a 3D hexagonal prism (IQ)",
+    "call": "sdHexPrism(p.xzy, vec2(0.6, 0.4))"
   }
 }

@@ -137,8 +137,8 @@ describe('EditorOverlay', () => {
       expect(monaco.editor.create).not.toHaveBeenCalled();
     });
 
-    it('should register GLSL language', async () => {
-      const monaco = await import('monaco-editor');
+    it('should call setupMonacoGlsl to register language and themes', async () => {
+      const { setupMonacoGlsl } = await import('@shader-studio/monaco');
 
       render(EditorOverlay, {
         props: {
@@ -149,26 +149,7 @@ describe('EditorOverlay', () => {
         },
       });
 
-      // Language registration should have been called
-      expect(monaco.languages.register).toHaveBeenCalled();
-    });
-
-    it('should define transparent theme', async () => {
-      const monaco = await import('monaco-editor');
-
-      render(EditorOverlay, {
-        props: {
-          isVisible: true,
-          shaderCode: '',
-          shaderPath: '/test.glsl',
-          transport: mockTransport,
-        },
-      });
-
-      expect(monaco.editor.defineTheme).toHaveBeenCalledWith(
-        'shader-studio-transparent',
-        expect.any(Object),
-      );
+      expect(setupMonacoGlsl).toHaveBeenCalled();
     });
   });
 });

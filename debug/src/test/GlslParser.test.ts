@@ -143,6 +143,61 @@ describe("GlslParser", () => {
       expect(result).toBeNull();
     });
 
+    it("should detect standalone function call returning vec3", () => {
+      const lines = [
+        "vec3 red() {",
+        "    return vec3(1.0, 0.0, 0.0);",
+        "}",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "    red();",
+        "}",
+      ];
+      const varTypes = new Map<string, string>();
+      const result = GlslParser.detectVariableAndType("    red();", varTypes, undefined, lines);
+      expect(result).toEqual({ name: "_dbgCall", type: "vec3" });
+    });
+
+    it("should detect standalone function call returning float", () => {
+      const lines = [
+        "float sdf(vec2 p) {",
+        "    return length(p) - 0.5;",
+        "}",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "    sdf(uv);",
+        "}",
+      ];
+      const varTypes = new Map<string, string>();
+      const result = GlslParser.detectVariableAndType("    sdf(uv);", varTypes, undefined, lines);
+      expect(result).toEqual({ name: "_dbgCall", type: "float" });
+    });
+
+    it("should not detect void function call", () => {
+      const lines = [
+        "void doNothing() {",
+        "}",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "    doNothing();",
+        "}",
+      ];
+      const varTypes = new Map<string, string>();
+      const result = GlslParser.detectVariableAndType("    doNothing();", varTypes, undefined, lines);
+      expect(result).toBeNull();
+    });
+
+    it("should not treat if/for/while as function calls", () => {
+      const varTypes = new Map<string, string>();
+      const lines = ["void mainImage(out vec4 fragColor, in vec2 fragCoord) {", "    if (true) {", "}"];
+      expect(GlslParser.detectVariableAndType("    if (true) {", varTypes, undefined, lines)).toBeNull();
+      expect(GlslParser.detectVariableAndType("    for (int i = 0; i < 10; i++) {", varTypes, undefined, lines)).toBeNull();
+      expect(GlslParser.detectVariableAndType("    while (true) {", varTypes, undefined, lines)).toBeNull();
+    });
+
+    it("should return null for function call with no lines context", () => {
+      const varTypes = new Map<string, string>();
+      const result = GlslParser.detectVariableAndType("    red();", varTypes);
+      expect(result).toBeNull();
+    });
+
     it("should handle multi-line statements", () => {
       const lines = [
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
@@ -153,6 +208,76 @@ describe("GlslParser", () => {
       const varTypes = new Map<string, string>();
       const result = GlslParser.detectVariableAndType(lines[2], varTypes, undefined, lines, 2);
       expect(result).toEqual({ name: "col", type: "vec3" });
+    });
+  });
+
+  describe("findFunctionReturnType", () => {
+    it("should find vec3 return type", () => {
+      const lines = [
+        "vec3 red() {",
+        "    return vec3(1.0, 0.0, 0.0);",
+        "}",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "red")).toBe("vec3");
+    });
+
+    it("should find float return type", () => {
+      const lines = [
+        "float sdf(vec2 p) {",
+        "    return length(p) - 0.5;",
+        "}",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "sdf")).toBe("float");
+    });
+
+    it("should find void return type", () => {
+      const lines = [
+        "void doNothing() {",
+        "}",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "doNothing")).toBe("void");
+    });
+
+    it("should find mat4 return type", () => {
+      const lines = ["mat4 identity() {", "    return mat4(1.0);", "}"];
+      expect(GlslParser.findFunctionReturnType(lines, "identity")).toBe("mat4");
+    });
+
+    it("should find int return type", () => {
+      const lines = ["int getIndex(float f) {", "    return int(f);", "}"];
+      expect(GlslParser.findFunctionReturnType(lines, "getIndex")).toBe("int");
+    });
+
+    it("should find bool return type", () => {
+      const lines = ["bool isValid(float f) {", "    return f > 0.0;", "}"];
+      expect(GlslParser.findFunctionReturnType(lines, "isValid")).toBe("bool");
+    });
+
+    it("should return null for unknown function", () => {
+      const lines = [
+        "vec3 red() {",
+        "    return vec3(1.0, 0.0, 0.0);",
+        "}",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "blue")).toBeNull();
+    });
+
+    it("should not match a function with a different name that contains the target name", () => {
+      const lines = [
+        "float redComponent(vec3 c) {",
+        "    return c.r;",
+        "}",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "red")).toBeNull();
+    });
+
+    it("should handle leading whitespace", () => {
+      const lines = [
+        "    vec3 indented() {",
+        "        return vec3(0.0);",
+        "    }",
+      ];
+      expect(GlslParser.findFunctionReturnType(lines, "indented")).toBe("vec3");
     });
   });
 

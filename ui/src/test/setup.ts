@@ -65,6 +65,14 @@ vi.mock('monaco-editor', () => ({
   },
 }));
 
+// Mock @shader-studio/monaco — delegates to mocked monaco-editor above
+vi.mock('@shader-studio/monaco', () => ({
+  setupMonacoGlsl: vi.fn(),
+  glslLanguageDefinition: {},
+  shaderStudioTheme: {},
+  shaderStudioTransparentTheme: {},
+}));
+
 // Mock monaco-vim — requires browser APIs not available in jsdom
 vi.mock('monaco-vim', () => ({
   initVimMode: vi.fn(() => ({

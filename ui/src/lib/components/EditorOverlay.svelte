@@ -3,6 +3,7 @@
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor";
   import { initVimMode, VimMode } from "monaco-vim";
+  import { setupMonacoGlsl } from "@shader-studio/monaco";
 
   export let isVisible: boolean = false;
   export let shaderCode: string = "";
@@ -22,163 +23,8 @@
   let editorReady = false;
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
-  let languageRegistered = false;
   let lastSentCode: string | null = null;
   let lastShaderPath: string = "";
-
-  // Provide a no-op worker stub. Monaco requires getWorker to return an
-  // object with postMessage/onmessage — returning undefined crashes it.
-  // We don't need language services (only Monarch syntax highlighting),
-  // so this stub satisfies the interface without requiring CSP blob: access.
-  if (typeof self !== 'undefined') {
-    self.MonacoEnvironment = {
-      getWorker() {
-        return {
-          postMessage() {},
-          onmessage: null,
-          terminate() {},
-          addEventListener() {},
-          removeEventListener() {},
-          dispatchEvent() { return false; },
-          onerror: null,
-          onmessageerror: null,
-        } as any;
-      },
-    };
-  }
-
-  function ensureLanguageSetup() {
-    if (languageRegistered) return;
-
-    if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'glsl')) {
-      monaco.languages.register({ id: 'glsl' });
-
-      monaco.languages.setMonarchTokensProvider('glsl', {
-        keywords: [
-          'attribute', 'const', 'uniform', 'varying', 'layout',
-          'centroid', 'flat', 'smooth', 'noperspective',
-          'break', 'continue', 'do', 'for', 'while', 'switch', 'case', 'default',
-          'if', 'else', 'in', 'out', 'inout',
-          'true', 'false',
-          'invariant', 'precise', 'discard', 'return',
-          'struct',
-          'lowp', 'mediump', 'highp', 'precision',
-        ],
-        types: [
-          'float', 'int', 'uint', 'void', 'bool',
-          'mat2', 'mat3', 'mat4', 'mat2x2', 'mat2x3', 'mat2x4',
-          'mat3x2', 'mat3x3', 'mat3x4', 'mat4x2', 'mat4x3', 'mat4x4',
-          'vec2', 'vec3', 'vec4', 'ivec2', 'ivec3', 'ivec4',
-          'uvec2', 'uvec3', 'uvec4', 'bvec2', 'bvec3', 'bvec4',
-          'sampler2D', 'sampler3D', 'samplerCube', 'sampler2DShadow',
-          'samplerCubeShadow', 'sampler2DArray', 'sampler2DArrayShadow',
-          'isampler2D', 'isampler3D', 'isamplerCube', 'isampler2DArray',
-          'usampler2D', 'usampler3D', 'usamplerCube', 'usampler2DArray',
-        ],
-        builtins: [
-          'radians', 'degrees', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
-          'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh',
-          'pow', 'exp', 'log', 'exp2', 'log2', 'sqrt', 'inversesqrt',
-          'abs', 'sign', 'floor', 'trunc', 'round', 'roundEven', 'ceil', 'fract',
-          'mod', 'modf', 'min', 'max', 'clamp', 'mix', 'step', 'smoothstep',
-          'isnan', 'isinf',
-          'length', 'distance', 'dot', 'cross', 'normalize', 'faceforward',
-          'reflect', 'refract',
-          'matrixCompMult', 'outerProduct', 'transpose', 'determinant', 'inverse',
-          'lessThan', 'lessThanEqual', 'greaterThan', 'greaterThanEqual',
-          'equal', 'notEqual', 'any', 'all', 'not',
-          'texture', 'textureSize', 'textureLod', 'textureOffset',
-          'texelFetch', 'texelFetchOffset', 'textureProj', 'textureGrad',
-          'dFdx', 'dFdy', 'fwidth',
-          'mainImage',
-        ],
-        shadertoyUniforms: [
-          'iResolution', 'iTime', 'iTimeDelta', 'iFrame', 'iFrameRate',
-          'iChannelTime', 'iChannelResolution', 'iMouse', 'iDate', 'iSampleRate',
-          'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3',
-        ],
-        operators: [
-          '=', '>', '<', '!', '~', '?', ':',
-          '==', '<=', '>=', '!=', '&&', '||', '++', '--',
-          '+', '-', '*', '/', '&', '|', '^', '%', '<<', '>>',
-          '+=', '-=', '*=', '/=', '&=', '|=', '^=', '%=', '<<=', '>>=',
-        ],
-        symbols: /[=><!~?:&|+\-*\/\^%]+/,
-        tokenizer: {
-          root: [
-            [/#\s*\w+/, 'keyword.preprocessor'],
-            [/[a-zA-Z_]\w*/, {
-              cases: {
-                '@shadertoyUniforms': 'variable.predefined',
-                '@builtins': 'support.function',
-                '@types': 'type',
-                '@keywords': 'keyword',
-                '@default': 'identifier',
-              }
-            }],
-            { include: '@whitespace' },
-            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
-            [/0[xX][0-9a-fA-F]+[uU]?/, 'number.hex'],
-            [/\d+[uU]?/, 'number'],
-            [/[{}()\[\]]/, '@brackets'],
-            [/@symbols/, {
-              cases: {
-                '@operators': 'operator',
-                '@default': '',
-              }
-            }],
-            [/[;,.]/, 'delimiter'],
-          ],
-          whitespace: [
-            [/[ \t\r\n]+/, 'white'],
-            [/\/\*/, 'comment', '@comment'],
-            [/\/\/.*$/, 'comment'],
-          ],
-          comment: [
-            [/[^\/*]+/, 'comment'],
-            [/\*\//, 'comment', '@pop'],
-            [/[\/*]/, 'comment'],
-          ],
-        },
-      } as any);
-    }
-
-    monaco.editor.defineTheme('shader-studio-transparent', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: 'keyword', foreground: 'FF70FF' },
-        { token: 'keyword.preprocessor', foreground: 'F0F0F0' },
-        { token: 'support.function', foreground: 'FFF550' },
-        { token: 'variable.predefined', foreground: '50F5FF' },
-        { token: 'type', foreground: 'CC99FF' },
-        { token: 'number', foreground: 'FFB866' },
-        { token: 'number.float', foreground: 'FFB866' },
-        { token: 'number.hex', foreground: 'FFB866' },
-        { token: 'comment', foreground: '4DBF4D' },
-        { token: 'string', foreground: 'FFA070' },
-        { token: 'operator', foreground: 'F8F8F8' },
-        { token: 'delimiter', foreground: 'F8F8F8' },
-        { token: 'identifier', foreground: 'FFFFFF' },
-      ],
-      colors: {
-        'editor.background': '#00000000',
-        'editor.lineHighlightBackground': '#ffffff12',
-        'editor.lineHighlightBorder': '#ffffff08',
-        'editorGutter.background': '#00000000',
-        'editorLineNumber.foreground': '#858585',
-        'editorLineNumber.activeForeground': '#c6c6c6',
-        'editorCursor.foreground': '#ffffff',
-        'editorError.foreground': '#ff2020',
-        'editorError.border': '#00000000',
-        'editorGutter.modifiedBackground': '#00000000',
-        'editorGutter.addedBackground': '#00000000',
-        'editorGutter.deletedBackground': '#00000000',
-      },
-    });
-
-    languageRegistered = true;
-  }
 
   function editorHasFocus(): boolean {
     if (!editor) return false;
@@ -272,6 +118,7 @@
     const padding = editor.getOption(monaco.editor.EditorOption.padding);
     const topPad = padding?.top ?? 0;
     requestAnimationFrame(() => {
+      if (!containerEl) return;
       const viewLines = containerEl.querySelectorAll('.view-lines .view-line');
       viewLines.forEach((el) => {
         const htmlEl = el as HTMLElement;
@@ -288,7 +135,7 @@
   function createEditor() {
     if (!containerEl || editor) return;
 
-    ensureLanguageSetup();
+    setupMonacoGlsl(monaco);
 
     editor = monaco.editor.create(containerEl, {
       value: shaderCode,

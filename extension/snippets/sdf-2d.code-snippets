@@ -6,7 +6,8 @@
       "\treturn length(p) - r;",
       "}"
     ],
-    "description": "Signed distance function for a 2D circle"
+    "description": "Signed distance function for a 2D circle",
+    "call": "sdCircle(p, 0.4)"
   },
   "SDF 2D Box": {
     "prefix": "sdf2d-box",
@@ -16,7 +17,19 @@
       "\treturn length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);",
       "}"
     ],
-    "description": "Signed distance function for a 2D box"
+    "description": "Signed distance function for a 2D box",
+    "call": "sdBox(p, vec2(0.4, 0.3))"
+  },
+  "SDF 2D Square": {
+    "prefix": "sdf2d-square",
+    "body": [
+      "float sdSquare(vec2 p, float s) {",
+      "\tvec2 d = abs(p) - s;",
+      "\treturn length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D square",
+    "call": "sdSquare(p, 0.4)"
   },
   "SDF 2D Rounded Box": {
     "prefix": "sdf2d-rounded-box",
@@ -29,7 +42,8 @@
       "\treturn min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r.x;",
       "}"
     ],
-    "description": "Signed distance function for a 2D rounded box with per-corner radii"
+    "description": "Signed distance function for a 2D rounded box with per-corner radii",
+    "call": "sdRoundedBox(p, vec2(0.4, 0.3), vec4(0.1, 0.05, 0.1, 0.05))"
   },
   "SDF 2D Line Segment": {
     "prefix": "sdf2d-segment",
@@ -40,7 +54,8 @@
       "\treturn length(pa - ba * h);",
       "}"
     ],
-    "description": "Signed distance function for a 2D line segment"
+    "description": "Signed distance function for a 2D line segment",
+    "call": "sdSegment(p, vec2(-0.4, -0.3), vec2(0.4, 0.3))"
   },
   "SDF 2D Triangle": {
     "prefix": "sdf2d-triangle",
@@ -59,7 +74,8 @@
       "\treturn -sqrt(d.x) * sign(d.y);",
       "}"
     ],
-    "description": "Signed distance function for a 2D triangle"
+    "description": "Signed distance function for a 2D triangle",
+    "call": "sdTriangle(p, vec2(0.0, 0.4), vec2(-0.4, -0.3), vec2(0.4, -0.3))"
   },
   "SDF 2D Hexagon": {
     "prefix": "sdf2d-hexagon",
@@ -72,7 +88,8 @@
       "\treturn length(p) * sign(p.y);",
       "}"
     ],
-    "description": "Signed distance function for a 2D regular hexagon"
+    "description": "Signed distance function for a 2D regular hexagon",
+    "call": "sdHexagon(p, 0.4)"
   },
   "SDF 2D Star": {
     "prefix": "sdf2d-star",
@@ -90,7 +107,8 @@
       "\treturn length(p) * sign(p.x);",
       "}"
     ],
-    "description": "Signed distance function for a 2D star polygon (IQ)"
+    "description": "Signed distance function for a 2D star polygon (IQ)",
+    "call": "sdStar(p, 0.4, 5, 2.5)"
   },
   "SDF 2D Ring": {
     "prefix": "sdf2d-ring",
@@ -99,7 +117,8 @@
       "\treturn abs(length(p) - r) - w;",
       "}"
     ],
-    "description": "Signed distance function for a 2D ring (annulus)"
+    "description": "Signed distance function for a 2D ring (annulus)",
+    "call": "sdRing(p, 0.35, 0.05)"
   },
   "SDF 2D Arc": {
     "prefix": "sdf2d-arc",
@@ -110,7 +129,8 @@
       "\treturn ((sc.y * p.x > sc.x * p.y) ? length(p - sc * ra) : abs(length(p) - ra)) - rb;",
       "}"
     ],
-    "description": "Signed distance function for a 2D arc (IQ)"
+    "description": "Signed distance function for a 2D arc (IQ)",
+    "call": "sdArc(p, vec2(sin(1.0), cos(1.0)), 0.4, 0.04)"
   },
   "SDF 2D Vesica": {
     "prefix": "sdf2d-vesica",
@@ -121,7 +141,8 @@
       "\treturn ((p.y - b) * d > p.x * b) ? length(p - vec2(0.0, b)) : length(p - vec2(-d, 0.0)) - r;",
       "}"
     ],
-    "description": "Signed distance function for a 2D vesica piscis (IQ)"
+    "description": "Signed distance function for a 2D vesica piscis (IQ)",
+    "call": "sdVesica(p, 0.5, 0.2)"
   },
   "SDF 2D Ellipse": {
     "prefix": "sdf2d-ellipse",
@@ -160,6 +181,7 @@
       "\treturn length(r - p) * sign(p.y - r.y);",
       "}"
     ],
-    "description": "Signed distance function for a 2D ellipse (IQ)"
+    "description": "Signed distance function for a 2D ellipse (IQ)",
+    "call": "sdEllipse(p, vec2(0.5, 0.3))"
   }
 }

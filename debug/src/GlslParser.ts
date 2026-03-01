@@ -278,7 +278,37 @@ export class GlslParser {
     }
     console.log('[ShaderDebug] ✗ No member access pattern matched');
 
+    // Try to match a standalone function call: funcName(...);
+    const funcCallMatch = fullStatement.match(/^\s*(\w+)\s*\(/);
+    if (funcCallMatch && lines) {
+      const funcName = funcCallMatch[1];
+      // Skip control flow keywords
+      if (!['if', 'for', 'while', 'switch', 'return'].includes(funcName)) {
+        const returnType = GlslParser.findFunctionReturnType(lines, funcName);
+        if (returnType && returnType !== 'void') {
+          console.log(`[ShaderDebug] ✓ Matched standalone function call: ${funcName}() returns ${returnType}`);
+          return { name: '_dbgCall', type: returnType };
+        }
+      }
+    }
+    console.log('[ShaderDebug] ✗ No standalone function call matched');
+
     console.log('[ShaderDebug] ✗ Could not detect variable/type');
+    return null;
+  }
+
+  /**
+   * Scan source lines for a function definition and return its return type.
+   * Matches: returnType funcName(...)
+   */
+  static findFunctionReturnType(lines: string[], funcName: string): string | null {
+    const pattern = new RegExp(`^\\s*(float|vec[234]|mat[234]|void|int|bool)\\s+${funcName}\\s*\\(`);
+    for (const line of lines) {
+      const match = line.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
     return null;
   }
 
