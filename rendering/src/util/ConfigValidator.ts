@@ -31,14 +31,18 @@ export class ConfigValidator {
       this.validateImagePass(config.passes.Image, errors);
     }
 
-    // Validate optional buffer passes
-    const bufferPassNames = ['BufferA', 'BufferB', 'BufferC', 'BufferD'] as const;
-    bufferPassNames.forEach(passName => {
+    // Validate buffer passes (any key except Image)
+    for (const passName of Object.keys(config.passes)) {
+      if (passName === 'Image') continue;
+      if (!this.GLSL_IDENTIFIER.test(passName)) {
+        errors.push(`Invalid pass name: ${passName}`);
+        continue;
+      }
       const pass = config.passes[passName];
       if (pass) {
         this.validateBufferPass(pass, passName, errors);
       }
-    });
+    }
 
     return {
       isValid: errors.length === 0,
@@ -53,8 +57,9 @@ export class ConfigValidator {
   }
 
   private static validateBufferPass(pass: any, passName: string, errors: string[]): void {
-    if (!pass.path || typeof pass.path !== 'string') {
-      errors.push(`${passName} pass must have a valid path string`);
+    // path can be empty or missing (buffer not yet configured) — just skip validation
+    if (pass.path !== undefined && typeof pass.path !== 'string') {
+      errors.push(`${passName} pass path must be a string`);
     }
 
     if (pass.inputs) {
@@ -109,10 +114,11 @@ export class ConfigValidator {
   }
 
   private static validateBufferInput(input: any): boolean {
-    const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-    return input.source && 
-           validSources.includes(input.source) && 
-           input.source !== 'common'; // Explicitly reject "common" as a source
+    return typeof input.source === 'string' &&
+           input.source.length > 0 &&
+           this.GLSL_IDENTIFIER.test(input.source) &&
+           input.source !== 'Image' &&
+           input.source !== 'common';
   }
 
   private static validateTextureInput(input: any): boolean {

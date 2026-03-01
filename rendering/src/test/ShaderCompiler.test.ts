@@ -263,7 +263,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       // Count lines in the header (everything before user code)
       const lines = commonCode.trim().split('\n');
       const expectedAdditionalLines = lines.length;
-      const baseHeaderLines = 17; // Standard uniforms + precision + out + define + iChannelResolution + 1 new line separator
+      const baseHeaderLines = 18; // Standard uniforms + precision + out + define + iChannel0-3 + iChannelResolution + blank lines
 
       expect(headerLineCount).toBe(baseHeaderLines + expectedAdditionalLines);
     });

@@ -13,8 +13,10 @@ vi.mock('../../../lib/ConfigManager', () => ({
     setPathMap: vi.fn(),
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue([]),
+    addBuffer: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
+    getConfig: vi.fn().mockReturnValue(null),
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
@@ -32,8 +34,10 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     setPathMap: vi.fn(),
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue(getBufferListReturn),
+    addBuffer: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
+    getConfig: vi.fn().mockReturnValue(null),
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
@@ -104,7 +108,7 @@ describe('ConfigPanel', () => {
       expect(container.querySelector('.tab-navigation')).toBeTruthy();
     });
 
-    it('should show Add Buffer button when no config', async () => {
+    it('should show add buffer button when no config', async () => {
       const { getByText } = render(ConfigPanel, {
         config: null,
         pathMap: {},
@@ -117,10 +121,10 @@ describe('ConfigPanel', () => {
 
       await tick();
 
-      expect(getByText('Add Buffer')).toBeTruthy();
+      expect(getByText('+ New')).toBeTruthy();
     });
 
-    it('should show Add Buffer button when buffers are available to add', async () => {
+    it('should show add buffer button when config exists', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -140,7 +144,7 @@ describe('ConfigPanel', () => {
 
       await tick();
 
-      expect(getByText('Add Buffer')).toBeTruthy();
+      expect(getByText('+ New')).toBeTruthy();
     });
   });
 
@@ -323,6 +327,97 @@ describe('ConfigPanel', () => {
 
       const activeTab = container.querySelector('.tab-button.active');
       expect(activeTab?.textContent).toContain('Common');
+    });
+  });
+
+  describe('add buffer', () => {
+    it('should switch to new tab after adding a buffer', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+        },
+      };
+
+      const updatedConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+        },
+      };
+
+      const mockManager = createMockConfigManager([]);
+      mockManager.addBuffer.mockReturnValue('BufferA');
+      mockManager.getConfig.mockReturnValue(updatedConfig);
+
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText, container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      // Hover over + New to show dropdown, then click Buffer
+      const addNewBtn = getByText('+ New');
+      await fireEvent.mouseEnter(addNewBtn.closest('.add-tab-dropdown')!);
+      const bufferItem = getByText('Buffer');
+      await fireEvent.click(bufferItem);
+      await tick();
+
+      expect(mockManager.addBuffer).toHaveBeenCalled();
+      expect(mockOnFileSelect).toHaveBeenCalledWith('BufferA');
+    });
+
+    it('should switch to Common tab after adding common buffer', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+        },
+      };
+
+      const updatedConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          common: { path: '' },
+        },
+      };
+
+      const mockManager = createMockConfigManager([]);
+      mockManager.addCommonBuffer.mockReturnValue(true);
+      mockManager.getConfig.mockReturnValue(updatedConfig);
+
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const addNewBtn = getByText('+ New');
+      await fireEvent.mouseEnter(addNewBtn.closest('.add-tab-dropdown')!);
+      const commonItem = getByText('Common');
+      await fireEvent.click(commonItem);
+      await tick();
+
+      expect(mockManager.addCommonBuffer).toHaveBeenCalled();
+      expect(mockOnFileSelect).toHaveBeenCalledWith('common');
     });
   });
 

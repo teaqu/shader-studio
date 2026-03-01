@@ -63,7 +63,7 @@ export class BufferConfig {
     if (!this.config.inputs) return;
 
     const newInputs = { ...this.config.inputs };
-    delete newInputs[channel as keyof typeof newInputs];
+    delete newInputs[channel];
 
     this.config = {
       ...this.config,
@@ -91,7 +91,7 @@ export class BufferConfig {
    */
   updateInputChannelPartial(channel: string, updates: Partial<ConfigInput>): void {
     console.log(`Updating input channel ${channel} with updates:`, updates);
-    const existingInput = this.config.inputs?.[channel as keyof typeof this.config.inputs];
+    const existingInput = this.config.inputs?.[channel];
 
     // Create a properly typed input based on the type
     let updatedInput: ConfigInput;
@@ -99,7 +99,7 @@ export class BufferConfig {
     if (updates.type === 'buffer') {
       updatedInput = {
         type: 'buffer',
-        source: (updates as any).source || (existingInput as any)?.source || 'BufferA'
+        source: (updates as any).source || (existingInput as any)?.source || ''
       };
     } else if (updates.type === 'texture') {
       updatedInput = {
@@ -128,7 +128,7 @@ export class BufferConfig {
       if (existing?.type === 'buffer') {
         updatedInput = {
           type: 'buffer',
-          source: (updates as any).source || existing.source || 'BufferA'
+          source: (updates as any).source || existing.source || ''
         };
       } else if (existing?.type === 'texture') {
         updatedInput = {
@@ -165,7 +165,7 @@ export class BufferConfig {
   }
 
   getInputChannel(channel: string): ConfigInput | undefined {
-    return this.config.inputs ? this.config.inputs[channel as keyof typeof this.config.inputs] : undefined;
+    return this.config.inputs ? this.config.inputs[channel] : undefined;
   }
 
   /**
@@ -193,9 +193,9 @@ export class BufferConfig {
   renameInputChannel(oldName: string, newName: string): void {
     if (!this.config.inputs || oldName === newName) return;
     if (!newName || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) return;
-    if (this.config.inputs[newName as keyof typeof this.config.inputs]) return; // name already taken
+    if (this.config.inputs[newName]) return; // name already taken
 
-    const input = this.config.inputs[oldName as keyof typeof this.config.inputs];
+    const input = this.config.inputs[oldName];
     if (!input) return;
 
     const newInputs: Record<string, ConfigInput> = {};
@@ -225,7 +225,7 @@ export class BufferConfig {
    * Check if a channel is available
    */
   isChannelAvailable(channel: string): boolean {
-    return !this.config.inputs || !this.config.inputs[channel as keyof typeof this.config.inputs];
+    return !this.config.inputs || !this.config.inputs[channel];
   }
 
   /**
@@ -275,10 +275,13 @@ export class BufferConfig {
     }
   }
 
+  private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
   private validateBufferInput(input: any): boolean {
-    const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-    return input.source &&
-           validSources.includes(input.source) &&
+    return typeof input.source === 'string' &&
+           input.source.length > 0 &&
+           BufferConfig.GLSL_IDENTIFIER.test(input.source) &&
+           input.source !== 'Image' &&
            input.source !== 'common';
   }
 

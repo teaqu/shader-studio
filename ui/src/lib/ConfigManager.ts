@@ -93,18 +93,20 @@ export class ConfigManager {
     /**
      * Get the next available buffer name (BufferA, BufferB, etc.)
      */
-    getNextBufferName(): string | null {
-        if (!this.config) return null;
+    getNextBufferName(): string {
+        if (!this.config) return 'BufferA';
 
-        const bufferOrder = ['BufferA', 'BufferB', 'BufferC', 'BufferD'];
-        
-        for (const bufferName of bufferOrder) {
-            if (!this.config.passes[bufferName as keyof typeof this.config.passes]) {
-                return bufferName;
+        const existingNames = new Set(Object.keys(this.config.passes));
+        for (let i = 0; i < 26; i++) {
+            const name = `Buffer${String.fromCharCode(65 + i)}`;
+            if (!existingNames.has(name)) {
+                return name;
             }
         }
-        
-        return null; // All buffers are already used
+        // Fallback beyond Z
+        let n = 1;
+        while (existingNames.has(`Buffer${n}`)) n++;
+        return `Buffer${n}`;
     }
 
     /**
@@ -114,21 +116,18 @@ export class ConfigManager {
         if (!this.config) return null;
 
         const bufferName = this.getNextBufferName();
-        if (bufferName) {
-            const updatedConfig = {
-                ...this.config,
-                passes: {
-                    ...this.config.passes,
-                    [bufferName]: {
-                        path: `${bufferName.toLowerCase()}.glsl`,
-                        inputs: {}
-                    }
+        const updatedConfig = {
+            ...this.config,
+            passes: {
+                ...this.config.passes,
+                [bufferName]: {
+                    path: '',
+                    inputs: {}
                 }
-            };
-            this.updateConfig(updatedConfig);
-            return bufferName;
-        }
-        return null;
+            }
+        };
+        this.updateConfig(updatedConfig);
+        return bufferName;
     }
 
     /**
@@ -139,7 +138,7 @@ export class ConfigManager {
         this.ensureConfig();
 
         // Check if buffer already exists
-        if (this.config!.passes[bufferName as keyof typeof this.config.passes]) return false;
+        if (this.config!.passes[bufferName]) return false;
 
         const updatedConfig = {
             ...this.config!,
@@ -176,11 +175,43 @@ export class ConfigManager {
         if (!this.config) return false;
 
         const updatedPasses = { ...this.config.passes };
-        delete updatedPasses[bufferName as keyof typeof updatedPasses];
+        delete updatedPasses[bufferName];
 
         const updatedConfig = {
             ...this.config,
             passes: updatedPasses
+        };
+        this.updateConfig(updatedConfig);
+        return true;
+    }
+
+    /**
+     * Rename a buffer pass
+     */
+    renameBuffer(oldName: string, newName: string): boolean {
+        if (!this.config) return false;
+        if (oldName === newName) return false;
+        if (oldName === 'Image' || oldName === 'common') return false;
+        if (newName === 'Image' || newName === 'common') return false;
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) return false;
+        if (this.config.passes[newName]) return false; // name taken
+
+        const pass = this.config.passes[oldName];
+        if (!pass) return false;
+
+        // Build new passes object preserving key order
+        const newPasses: Record<string, any> = {};
+        for (const [key, value] of Object.entries(this.config.passes)) {
+            if (key === oldName) {
+                newPasses[newName] = value;
+            } else {
+                newPasses[key] = value;
+            }
+        }
+
+        const updatedConfig = {
+            ...this.config,
+            passes: newPasses as typeof this.config.passes
         };
         this.updateConfig(updatedConfig);
         return true;
@@ -192,7 +223,7 @@ export class ConfigManager {
     updateBufferPath(bufferName: string, path: string): boolean {
         if (!this.config) return false;
 
-        const currentBuffer = this.config.passes[bufferName as keyof typeof this.config.passes] as BufferPass;
+        const currentBuffer = this.config.passes[bufferName] as BufferPass;
         if (!currentBuffer) return false;
 
         const updatedConfig = {
@@ -285,12 +316,8 @@ export class ConfigManager {
             return [];
         }
         console.log('getBufferList: config is:', this.config);
-        const result = ['common', 'BufferA', 'BufferB', 'BufferC', 'BufferD'].filter(
-            buffer => {
-                const exists = !!this.config!.passes[buffer as keyof typeof this.config.passes];
-                console.log(`getBufferList: ${buffer} exists?`, exists);
-                return exists;
-            }
+        const result = Object.keys(this.config!.passes).filter(
+            name => name !== 'Image'
         );
         console.log('getBufferList: final result:', result);
         return result;
@@ -299,7 +326,7 @@ export class ConfigManager {
      */
     getBuffer(bufferName: string): BufferPass | ImagePass | null {
         if (!this.config) return null;
-        const buffer = this.config.passes[bufferName as keyof typeof this.config.passes];
+        const buffer = this.config.passes[bufferName];
         return (buffer && typeof buffer === 'object') ? buffer as BufferPass | ImagePass : null;
     }
 

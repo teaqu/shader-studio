@@ -406,31 +406,67 @@ describe("ShaderPipeline", () => {
             expect(passes[0].shaderSrc).toBe(buffers.common);
         });
 
-        it("should use empty string for missing buffer code (except Image)", () => {
+        it("should skip buffer pass with empty path and no shader source", () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const config = {
                 passes: {
+                    Image: {},
+                    BufferA: { path: '', inputs: {} },
+                }
+            };
+            const buffers = {};
+
+            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+            buildPasses(shaderCode, config, buffers);
+
+            const passes = shaderPipeline.getPasses();
+            expect(passes).toHaveLength(1);
+            expect(passes[0].name).toBe("Image");
+        });
+
+        it("should skip buffer pass with no path and no shader source", () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {},
                     BufferA: { inputs: {} },
-                    BufferB: { inputs: {} },
+                }
+            };
+            const buffers = {};
+
+            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+            buildPasses(shaderCode, config, buffers);
+
+            const passes = shaderPipeline.getPasses();
+            expect(passes).toHaveLength(1);
+            expect(passes[0].name).toBe("Image");
+        });
+
+        it("should use empty string for missing buffer code when path exists", () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    BufferA: { path: 'a.glsl', inputs: {} },
+                    BufferB: { path: 'b.glsl', inputs: {} },
                     common: { inputs: {} },
                 }
             };
             const buffers = {
                 BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-                // BufferB and common are missing
+                // BufferB and common are missing from buffers
             };
-            
+
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
             buildPasses(shaderCode, config, buffers);
-            
+
             const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(2); // BufferA and BufferB (common is filtered out due to empty content)
-            
+
             const bufferAPass = passes.find(p => p.name === "BufferA");
             const bufferBPass = passes.find(p => p.name === "BufferB");
-            
+
             expect(bufferAPass?.shaderSrc).toBe("void main() { gl_FragColor = vec4(0.5); }");
-            expect(bufferBPass?.shaderSrc).toBe(""); // Missing buffer gets empty string
+            expect(bufferBPass?.shaderSrc).toBe(""); // Missing buffer code gets empty string but path exists
         });
 
         it("should preserve buffer inputs from config", () => {

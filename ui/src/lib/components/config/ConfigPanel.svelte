@@ -70,22 +70,18 @@
   }
 
   function addCommonBuffer() {
-    console.log("Adding Common buffer");
     const success = configManager?.addCommonBuffer();
-    console.log("Add Common buffer success:", success);
     if (success) {
-      activeTab = "Common";
-      console.log("Switched to tab:", activeTab);
+      config = configManager.getConfig();
+      switchTab("Common");
     }
   }
 
-  function addSpecificBuffer(bufferName: string) {
-    console.log("Adding specific buffer:", bufferName);
-    const success = configManager?.addSpecificBuffer(bufferName);
-    console.log("Add buffer success:", success);
-    if (success) {
-      activeTab = bufferName;
-      console.log("Switched to tab:", activeTab);
+  function addBuffer() {
+    const bufferName = configManager?.addBuffer();
+    if (bufferName) {
+      config = configManager.getConfig();
+      switchTab(bufferName);
     }
   }
 
@@ -108,24 +104,12 @@
   // Reactive statement to ensure tabs update when config changes
   $: allTabs = (() => {
     const tabs = ["Image"];
-    console.log("Reactive getAllTabs - config available:", !!config);
-    console.log(
-      "Reactive getAllTabs - configManager available:",
-      !!configManager,
-    );
-    // Always show at least the Image tab, even without config
-    if (configManager) {
-      const bufferList = configManager.getBufferList();
-      console.log("Reactive buffer list:", bufferList);
-      // Add common after Image, then other buffers
-      const commonBuffer = bufferList.find(buffer => buffer === "common");
-      const otherBuffers = bufferList.filter(buffer => buffer !== "common");
-      if (commonBuffer) {
-        tabs.push("Common"); // Add Common tab after Image
+    if (config?.passes) {
+      for (const name of Object.keys(config.passes)) {
+        if (name === "Image") continue;
+        tabs.push(name === "common" ? "Common" : name);
       }
-      tabs.push(...otherBuffers);
     }
-    console.log("Reactive final tabs:", tabs);
     return tabs;
   })();
 
@@ -157,7 +141,7 @@
       return config?.passes?.Image || { path: "", inputs: {} };
     } else {
       // Return actual buffer config or default empty BufferPass
-      return config?.passes?.[actualBufferName as keyof typeof config.passes] || { path: "", inputs: {} };
+      return config?.passes?.[actualBufferName] || { path: "", inputs: {} };
     }
   })();
 </script>
@@ -187,31 +171,15 @@
         </button>
       {/each}
 
-      {#if (!config || (["BufferA", "BufferB", "BufferC", "BufferD"].some((buffer) => !config?.passes[buffer as keyof typeof config.passes]) || !config?.passes.common))}
-        <div class="add-tab-dropdown">
-          <button class="add-tab-btn" title="Add Buffer">Add Buffer</button>
-          <div class="dropdown-content">
-            {#if !config?.passes?.common}
-              <button
-                class="dropdown-item"
-                on:click={() => addCommonBuffer()}
-              >
-                Common
-              </button>
-            {/if}
-            {#each ["BufferA", "BufferB", "BufferC", "BufferD"] as bufferName}
-              {#if !config?.passes?.[bufferName as keyof typeof config.passes]}
-                <button
-                  class="dropdown-item"
-                  on:click={() => addSpecificBuffer(bufferName)}
-                >
-                  {bufferName}
-                </button>
-              {/if}
-            {/each}
-          </div>
+      <div class="add-tab-dropdown">
+        <button class="add-tab-btn" title="Add new pass">+ New</button>
+        <div class="dropdown-content">
+          <button class="dropdown-item" on:click={() => addBuffer()}>Buffer</button>
+          {#if !config?.passes?.common}
+            <button class="dropdown-item" on:click={() => addCommonBuffer()}>Common</button>
+          {/if}
         </div>
-      {/if}
+      </div>
     </div>
 
     <!-- Tab Content -->

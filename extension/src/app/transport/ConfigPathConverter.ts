@@ -29,7 +29,7 @@ export class ConfigPathConverter {
     const configDir = processedMessage.path ? path.dirname(processedMessage.path) : '';
 
     // Process all passes in the passes object
-    for (const passName of Object.keys(config.passes) as Array<keyof typeof config.passes>) {
+    for (const passName of Object.keys(config.passes)) {
       const pass = config.passes[passName];
       if (!pass || typeof pass !== "object") {
         continue;

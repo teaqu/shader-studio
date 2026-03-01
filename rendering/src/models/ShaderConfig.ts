@@ -1,6 +1,6 @@
 export interface BufferConfigInput {
   type: 'buffer';
-  source: 'BufferA' | 'BufferB' | 'BufferC' | 'BufferD';
+  source: string;
 }
 
 export interface TextureConfigInput {
@@ -26,16 +26,3 @@ export interface VideoConfigInput {
 
 export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput;
 
-export interface ConfigPass {
-  path?: string;
-  inputs?: Record<`iChannel${0 | 1 | 2 | 3}`, ConfigInput>;
-}
-
-export interface ShaderConfig {
-  version: string;
-  Image: ConfigPass;
-  BufferA?: ConfigPass;
-  BufferB?: ConfigPass;
-  BufferC?: ConfigPass;
-  BufferD?: ConfigPass;
-}

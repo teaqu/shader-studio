@@ -185,6 +185,167 @@ suite('ConfigEditorProvider Test Suite', () => {
     sinon.assert.calledWith(mockShaderProvider.sendShaderFromPath, expectedShaderPath);
   });
 
+  suite('addNewEntry - dynamic buffer naming', () => {
+    test('should add BufferA when no buffers exist', async () => {
+      const fs = require('fs');
+
+      const mockContext = {
+        extensionPath: '/mock/extension/path',
+      } as any as vscode.ExtensionContext;
+
+      sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+      sandbox.stub(fs, 'existsSync').returns(false);
+
+      const mockShaderProvider = {
+        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromPath: sandbox.stub().resolves(),
+      } as any;
+
+      const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+      const configJson = { passes: { Image: { inputs: {} } } };
+      const configDocument = {
+        uri: vscode.Uri.file('/mock/path/shader.sha.json'),
+        getText: sandbox.stub().returns(JSON.stringify(configJson)),
+        lineCount: 1,
+      } as any;
+
+      const webviewPanel = createMockWebviewPanel();
+      let applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      let messageHandler: ((e: any) => void) | undefined;
+      (webviewPanel.webview.onDidReceiveMessage as sinon.SinonStub).callsFake((cb: any) => {
+        messageHandler = cb;
+        return { dispose: sandbox.stub() };
+      });
+
+      sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake(() => {
+        return { dispose: sandbox.stub() } as any;
+      });
+
+      await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+      assert.ok(messageHandler);
+      messageHandler!({ type: 'add' });
+
+      sinon.assert.calledOnce(applyEditStub);
+      const edit = applyEditStub.firstCall.args[0] as vscode.WorkspaceEdit;
+      const entries = edit.entries();
+      assert.ok(entries.length > 0);
+      const [, edits] = entries[0];
+      const newText = (edits[0] as vscode.TextEdit).newText;
+      const parsed = JSON.parse(newText);
+      assert.ok(parsed.passes.BufferA, 'Should have added BufferA');
+      assert.strictEqual(parsed.passes.BufferA.path, '');
+      assert.deepStrictEqual(parsed.passes.BufferA.inputs, {});
+    });
+
+    test('should add BufferB when BufferA already exists', async () => {
+      const fs = require('fs');
+
+      const mockContext = {
+        extensionPath: '/mock/extension/path',
+      } as any as vscode.ExtensionContext;
+
+      sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+      sandbox.stub(fs, 'existsSync').returns(false);
+
+      const mockShaderProvider = {
+        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromPath: sandbox.stub().resolves(),
+      } as any;
+
+      const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+      const configJson = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'a.glsl', inputs: {} }
+        }
+      };
+      const configDocument = {
+        uri: vscode.Uri.file('/mock/path/shader.sha.json'),
+        getText: sandbox.stub().returns(JSON.stringify(configJson)),
+        lineCount: 1,
+      } as any;
+
+      const webviewPanel = createMockWebviewPanel();
+      let applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      let messageHandler: ((e: any) => void) | undefined;
+      (webviewPanel.webview.onDidReceiveMessage as sinon.SinonStub).callsFake((cb: any) => {
+        messageHandler = cb;
+        return { dispose: sandbox.stub() };
+      });
+
+      sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake(() => {
+        return { dispose: sandbox.stub() } as any;
+      });
+
+      await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+      assert.ok(messageHandler);
+      messageHandler!({ type: 'add' });
+
+      sinon.assert.calledOnce(applyEditStub);
+      const edit = applyEditStub.firstCall.args[0] as vscode.WorkspaceEdit;
+      const [, edits] = edit.entries()[0];
+      const parsed = JSON.parse((edits[0] as vscode.TextEdit).newText);
+      assert.ok(parsed.passes.BufferB, 'Should have added BufferB');
+      assert.strictEqual(parsed.passes.BufferA.path, 'a.glsl');
+    });
+
+    test('should create passes object when document is empty', async () => {
+      const fs = require('fs');
+
+      const mockContext = {
+        extensionPath: '/mock/extension/path',
+      } as any as vscode.ExtensionContext;
+
+      sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+      sandbox.stub(fs, 'existsSync').returns(false);
+
+      const mockShaderProvider = {
+        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromPath: sandbox.stub().resolves(),
+      } as any;
+
+      const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+      const configDocument = {
+        uri: vscode.Uri.file('/mock/path/shader.sha.json'),
+        getText: sandbox.stub().returns('{ }'),
+        lineCount: 1,
+      } as any;
+
+      const webviewPanel = createMockWebviewPanel();
+      let applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      let messageHandler: ((e: any) => void) | undefined;
+      (webviewPanel.webview.onDidReceiveMessage as sinon.SinonStub).callsFake((cb: any) => {
+        messageHandler = cb;
+        return { dispose: sandbox.stub() };
+      });
+
+      sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake(() => {
+        return { dispose: sandbox.stub() } as any;
+      });
+
+      await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+      assert.ok(messageHandler);
+      messageHandler!({ type: 'add' });
+
+      sinon.assert.calledOnce(applyEditStub);
+      const edit = applyEditStub.firstCall.args[0] as vscode.WorkspaceEdit;
+      const [, edits] = edit.entries()[0];
+      const parsed = JSON.parse((edits[0] as vscode.TextEdit).newText);
+      assert.ok(parsed.passes, 'Should have created passes object');
+      assert.ok(parsed.passes.Image, 'Should have created Image pass');
+      assert.ok(parsed.passes.BufferA, 'Should have added BufferA');
+    });
+  });
+
   test('should pass forceCleanup option when refreshing shader by path', async () => {
     const fs = require('fs');
     const clock = sandbox.useFakeTimers({ shouldClearNativeTimers: true } as any);

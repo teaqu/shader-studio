@@ -84,11 +84,7 @@ export class ShaderConfigProcessor {
       return;
     }
 
-    for (
-      const passName of Object.keys(config.passes) as Array<
-        keyof typeof config.passes
-      >
-    ) {
+    for (const passName of Object.keys(config.passes)) {
       const pass = config.passes[passName];
       if (!pass || typeof pass !== "object") {
         continue;

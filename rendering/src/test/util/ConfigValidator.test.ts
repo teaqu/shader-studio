@@ -94,7 +94,7 @@ describe("ConfigValidator", () => {
     });
 
     describe("buffer pass validation", () => {
-      it("should validate BufferA pass without path", () => {
+      it("should accept buffer pass without path (not yet configured)", () => {
         const config: ShaderConfig = {
           version: "1.0",
           passes: {
@@ -104,11 +104,25 @@ describe("ConfigValidator", () => {
         };
 
         const result = ConfigValidator.validateConfig(config);
-        expect(result.isValid).toBe(false);
-        expect(result.errors).toContain('BufferA pass must have a valid path string');
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
       });
 
-      it("should validate BufferA pass with non-string path", () => {
+      it("should accept buffer pass with empty path", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            BufferA: { path: '', inputs: {} }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it("should reject buffer pass with non-string path", () => {
         const config = {
           version: "1.0",
           passes: {
@@ -121,7 +135,7 @@ describe("ConfigValidator", () => {
 
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(false);
-        expect(result.errors).toContain('BufferA pass must have a valid path string');
+        expect(result.errors).toContain('BufferA pass path must be a string');
       });
 
       it("should accept valid buffer passes", () => {
@@ -139,6 +153,36 @@ describe("ConfigValidator", () => {
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(true);
         expect(result.errors).toHaveLength(0);
+      });
+
+      it("should accept custom-named buffer passes", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            BlurPass: { path: "blur.glsl" },
+            GBuffer: { path: "gbuffer.glsl" },
+            depth_buffer: { path: "depth.glsl" }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it("should reject invalid pass names", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            "0invalid": { path: "test.glsl" }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Invalid pass name: 0invalid');
       });
     });
 
@@ -401,6 +445,25 @@ describe("ConfigValidator", () => {
           expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
         });
 
+        it("should accept buffer input with custom source name", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'buffer',
+                    source: 'BlurPass'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+        });
+
         it("should reject buffer input with invalid source", () => {
           const config = {
             version: "1.0",
@@ -409,7 +472,27 @@ describe("ConfigValidator", () => {
                 inputs: {
                   iChannel0: {
                     type: 'buffer',
-                    source: 'BufferZ'
+                    source: '0invalid'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject buffer input with Image as source", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'buffer',
+                    source: 'Image'
                   }
                 }
               }
@@ -897,10 +980,9 @@ describe("ConfigValidator", () => {
 
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(false);
-        expect(result.errors).toHaveLength(4);
+        expect(result.errors).toHaveLength(3);
         expect(result.errors).toContain('Config must have a valid version string');
         expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
-        expect(result.errors).toContain('BufferA pass must have a valid path string');
       });
     });
 
@@ -974,8 +1056,8 @@ describe("ConfigValidator", () => {
       });
 
       it("should validate against schema enum values", () => {
-        // Test all valid enum values from the schema
-        const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD'] as const;
+        // Test valid buffer source names (any GLSL identifier except Image/common)
+        const validSources = ['BufferA', 'BufferB', 'BufferC', 'BufferD', 'BlurPass', 'GBuffer'] as const;
         const validFilters = ['linear', 'nearest', 'mipmap'] as const;
         const validWraps = ['repeat', 'clamp'] as const;
 

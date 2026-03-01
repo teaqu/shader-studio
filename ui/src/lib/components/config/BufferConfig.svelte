@@ -86,7 +86,7 @@
     Object.keys(config.inputs)
       .sort((a, b) => a.localeCompare(b))
       .forEach(key => {
-        sorted[key] = config.inputs![key as keyof typeof config.inputs]!;
+        sorted[key] = config.inputs![key]!;
       });
     config = { ...config, inputs: sorted };
     onUpdate(bufferName, config);
@@ -173,7 +173,7 @@
       <div class="channels-grid">
         {#each channelNames as channelName}
           {@const input =
-            config.inputs?.[channelName as keyof typeof config.inputs]}
+            config.inputs?.[channelName]}
           <div
             class="channel-box {input ? 'configured' : 'empty'}"
             on:click={() => openChannelModal(channelName)}

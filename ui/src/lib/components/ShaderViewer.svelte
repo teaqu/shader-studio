@@ -100,9 +100,8 @@
   $: editorBufferNames = (() => {
     const names = ["Image"];
     if (currentConfig?.passes) {
-      if (currentConfig.passes.common) names.push("common");
-      for (const name of ["BufferA", "BufferB", "BufferC", "BufferD"]) {
-        if (currentConfig.passes[name as keyof typeof currentConfig.passes]) {
+      for (const name of Object.keys(currentConfig.passes)) {
+        if (name !== "Image") {
           names.push(name);
         }
       }
