@@ -22,7 +22,53 @@
   let shaderBuffers: Record<string, string> = {};
   let queueId: string = '';
   let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
-  
+  let prevWidth: number = 0;
+  let prevHeight: number = 0;
+  let resizeTimeout: number | null = null;
+
+  // Re-render when dimensions change (card size slider)
+  $effect(() => {
+    const w = width;
+    const h = height;
+
+    if (prevWidth === 0) {
+      // First run, just record initial size
+      prevWidth = w;
+      prevHeight = h;
+      return;
+    }
+
+    if (w !== prevWidth || h !== prevHeight) {
+      prevWidth = w;
+      prevHeight = h;
+
+      if (!shaderCode) return;
+
+      if (resizeTimeout !== null) {
+        window.clearTimeout(resizeTimeout);
+      }
+
+      resizeTimeout = window.setTimeout(async () => {
+        // Clear captured image so canvas reappears in DOM
+        capturedImage = '';
+        compilationFailed = false;
+        // Wait a tick for Svelte to render the canvas element
+        await new Promise(r => requestAnimationFrame(r));
+        if (canvas && shaderCode) {
+          await renderQueue.enqueue(`${queueId}-resize`, async () => {
+            await initializeRendering();
+          });
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (resizeTimeout !== null) {
+        window.clearTimeout(resizeTimeout);
+      }
+    };
+  });
+
   // Hover rendering state
   let isHovering: boolean = $state(false);
   let hoverCanvas: HTMLCanvasElement | null = null;

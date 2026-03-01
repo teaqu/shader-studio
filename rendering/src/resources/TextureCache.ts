@@ -24,7 +24,7 @@ export class TextureCache {
     options: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {}
   ): Promise<PiTexture> {
     return new Promise((resolve, reject) => {
-      const image = new window.Image();
+      const image = new Image();
       image.crossOrigin = "";
       
       image.onload = () => {

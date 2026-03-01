@@ -215,7 +215,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { grayscale: false });
       
@@ -245,7 +245,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { grayscale: true });
       
@@ -274,7 +274,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});
       
@@ -303,7 +303,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg");
       
@@ -334,7 +334,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { filter: "linear" });
       mockImage.onload();
@@ -361,7 +361,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { filter: "nearest" });
       mockImage.onload();
@@ -388,7 +388,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { filter: "mipmap" });
       mockImage.onload();
@@ -415,7 +415,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});
       mockImage.onload();
@@ -444,7 +444,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { wrap: "clamp" });
       mockImage.onload();
@@ -471,7 +471,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { wrap: "repeat" });
       mockImage.onload();
@@ -498,7 +498,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});
       mockImage.onload();
@@ -527,7 +527,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { vflip: true });
       mockImage.onload();
@@ -554,7 +554,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", { vflip: false });
       mockImage.onload();
@@ -581,7 +581,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});
       mockImage.onload();
@@ -610,7 +610,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {
         filter: "nearest",
@@ -642,7 +642,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {
         filter: "linear",
@@ -676,7 +676,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("invalid.jpg", {});
       
@@ -697,7 +697,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});
       mockImage.onload();
@@ -717,7 +717,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       
       const loadPromise = textureCache.loadTextureFromUrl("http://example.com/image.jpg", {});
       mockImage.onload();
@@ -737,7 +737,7 @@ describe("TextureCache", () => {
         src: "",
       };
       
-      (global as any).Image = vi.fn().mockImplementation(() => mockImage);
+      (global as any).Image = vi.fn().mockImplementation(function () { return mockImage; });
       (mockRenderer.CreateTextureFromImage as any).mockReturnValueOnce(null);
       
       const loadPromise = textureCache.loadTextureFromUrl("image.jpg", {});

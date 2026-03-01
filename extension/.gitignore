@@ -3,6 +3,7 @@ dist
 ui-dist
 config-ui-dist
 shader-explorer-dist
+snippet-library-dist
 node_modules
 vendor
 glsl-deps

@@ -229,7 +229,7 @@ describe('ChannelPreview', () => {
   });
 
   describe('Fallback on Load Failure', () => {
-    it('should show fallback when image has not loaded yet', () => {
+    it('should show overlay when image src is available', () => {
       const input: ConfigInput = {
         type: 'texture',
         path: 'test.png',
@@ -241,29 +241,10 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      // Image element exists but hasn't loaded yet - fallback should be visible
+      // Image element exists with valid src - overlay shows (not fallback)
       const img = container.querySelector('.preview-image') as HTMLImageElement;
       expect(img).toBeTruthy();
-      expect(img.classList.contains('loaded')).toBe(false);
-      expect(container.querySelector('.preview-fallback')).toBeTruthy();
-    });
-
-    it('should hide fallback after image loads successfully', async () => {
-      const input: ConfigInput = {
-        type: 'texture',
-        path: 'test.png',
-        resolved_path: 'https://webview-uri/test.png'
-      } as any;
-
-      const { container } = render(ChannelPreview, {
-        channelInput: input,
-        getWebviewUri: mockGetWebviewUri
-      });
-
-      const img = container.querySelector('.preview-image') as HTMLImageElement;
-      await fireEvent.load(img);
-
-      expect(img.classList.contains('loaded')).toBe(true);
+      expect(container.querySelector('.preview-overlay')).toBeTruthy();
       expect(container.querySelector('.preview-fallback')).toBeFalsy();
     });
 
@@ -282,12 +263,12 @@ describe('ChannelPreview', () => {
       const img = container.querySelector('.preview-image') as HTMLImageElement;
       await fireEvent.error(img);
 
-      expect(img.classList.contains('loaded')).toBe(false);
       expect(container.querySelector('.preview-fallback')).toBeTruthy();
+      expect(container.querySelector('.preview-overlay')).toBeFalsy();
     });
 
-    it('should show fallback when path has no resolved URI', () => {
-      // getWebviewUri returns undefined for unknown paths
+    it('should show overlay when path falls back to raw path', () => {
+      // getWebviewUri returns undefined, but raw path is used as fallback
       mockGetWebviewUri = vi.fn(() => undefined);
 
       const input: ConfigInput = {
@@ -300,9 +281,26 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      // Image element still renders (with raw path), fallback shows until load
+      // imageSrc falls back to raw path, so overlay shows
       const img = container.querySelector('.preview-image') as HTMLImageElement;
       expect(img).toBeTruthy();
+      expect(container.querySelector('.preview-overlay')).toBeTruthy();
+      expect(container.querySelector('.preview-fallback')).toBeFalsy();
+    });
+
+    it('should show fallback when no path is provided', () => {
+      const input: ConfigInput = {
+        type: 'texture',
+        path: ''
+      };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      // No imageSrc, so fallback shows
+      expect(container.querySelector('.preview-image')).toBeFalsy();
       expect(container.querySelector('.preview-fallback')).toBeTruthy();
     });
   });
@@ -400,19 +398,7 @@ describe('ChannelPreview', () => {
   });
 
   describe('Preview Overlay Labels', () => {
-    it('should not show overlay label for texture when image has not loaded', () => {
-      const input: ConfigInput = { type: 'texture', path: 'test.png' };
-      const { container } = render(ChannelPreview, {
-        channelInput: input,
-        getWebviewUri: mockGetWebviewUri
-      });
-
-      // Before image loads, fallback shows instead of overlay
-      expect(container.querySelector('.preview-overlay')).toBeFalsy();
-      expect(container.querySelector('.preview-fallback')).toBeTruthy();
-    });
-
-    it('should show overlay label for texture when image has loaded', async () => {
+    it('should show overlay label for texture when image src is available', () => {
       const input: ConfigInput = {
         type: 'texture',
         path: 'test.png',
@@ -423,12 +409,20 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      const img = container.querySelector('.preview-image') as HTMLImageElement;
-      await fireEvent.load(img);
-
       const overlay = container.querySelector('.preview-overlay');
       expect(overlay).toBeTruthy();
       expect(overlay?.textContent?.trim()).toBe('Texture');
+    });
+
+    it('should show fallback instead of overlay when no image src', () => {
+      const input: ConfigInput = { type: 'texture', path: '' };
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.preview-overlay')).toBeFalsy();
+      expect(container.querySelector('.preview-fallback')).toBeTruthy();
     });
 
     it('should show overlay label for video type', () => {
