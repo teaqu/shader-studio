@@ -168,7 +168,7 @@ export class BufferUpdater {
     }
     
     // Get the buffer pass config for the specified buffer name
-    const bufferPass = config.passes[bufferName as keyof typeof config.passes];
+    const bufferPass = config.passes[bufferName];
     if (!bufferPass || typeof bufferPass !== 'object' || !('path' in bufferPass)) {
       return null;
     }

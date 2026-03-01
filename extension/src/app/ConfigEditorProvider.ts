@@ -66,7 +66,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
 
                     // Collect all texture/video paths and convert them
                     for (const passName of Object.keys(config.passes || {})) {
-                        const pass = config.passes[passName as keyof typeof config.passes];
+                        const pass = config.passes[passName];
                         if (pass && typeof pass === 'object' && 'inputs' in pass) {
                             const inputs = pass.inputs;
                             if (inputs) {
@@ -210,9 +210,22 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
 
     private addNewEntry(document: vscode.TextDocument) {
         const json = this.getDocumentAsJson(document);
-        const character = json.BufferA ? "BufferB" : "BufferA";
-        json[character] = {
-            path: `${character.toLowerCase()}.glsl`,
+        if (!json.passes) {
+            json.passes = { Image: {} };
+        }
+        const existingNames = new Set(Object.keys(json.passes));
+        let bufferName = '';
+        for (let i = 0; i < 26; i++) {
+            const name = `Buffer${String.fromCharCode(65 + i)}`;
+            if (!existingNames.has(name)) { bufferName = name; break; }
+        }
+        if (!bufferName) {
+            let n = 1;
+            while (existingNames.has(`Buffer${n}`)) n++;
+            bufferName = `Buffer${n}`;
+        }
+        json.passes[bufferName] = {
+            path: '',
             inputs: {},
         };
         return this.updateTextDocument(document, json);

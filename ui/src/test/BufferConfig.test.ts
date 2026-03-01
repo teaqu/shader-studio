@@ -58,7 +58,7 @@ describe('BufferConfig', () => {
       const config: BufferPass = {
         path: 'shader.glsl',
         inputs: {
-          iChannel0: { type: 'buffer', source: 'InvalidBuffer' } as any
+          iChannel0: { type: 'buffer', source: '0invalid' } as any
         }
       };
       const bufferConfig = new BufferConfig('BufferA', config);
@@ -83,6 +83,63 @@ describe('BufferConfig', () => {
 
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+
+    it('should accept buffer input with custom source name', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'BlurPass' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject buffer input with Image as source', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'Image' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject buffer input with common as source', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'common' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+    });
+
+    it('should reject buffer input with empty source', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: '' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
     });
 
     it('should accept valid texture input', () => {
@@ -335,6 +392,31 @@ describe('BufferConfig', () => {
       const bufferConfig = new BufferConfig('BufferA', config);
 
       expect(bufferConfig.getNextChannelName()).toBe('iChannel1');
+    });
+
+    it('should default buffer source to empty string when creating new buffer input', () => {
+      const config: BufferPass = { path: 'shader.glsl', inputs: {} };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'buffer' });
+
+      const channel = bufferConfig.getInputChannel('iChannel0');
+      expect(channel).toEqual({ type: 'buffer', source: '' });
+    });
+
+    it('should preserve existing buffer source when updating without source', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'BlurPass' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'buffer' });
+
+      const channel = bufferConfig.getInputChannel('iChannel0');
+      expect(channel).toEqual({ type: 'buffer', source: 'BlurPass' });
     });
 
     it('should find next iChannel name when custom names occupy slots', () => {

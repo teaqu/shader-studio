@@ -26,17 +26,10 @@
         },
         "common": {
           "$ref": "#/definitions/BufferPass"
-        },
-        "BufferA": {
-          "$ref": "#/definitions/BufferPass"
-        },
-        "BufferB": {
-          "$ref": "#/definitions/BufferPass"
-        },
-        "BufferC": {
-          "$ref": "#/definitions/BufferPass"
-        },
-        "BufferD": {
+        }
+      },
+      "patternProperties": {
+        "^(?!Image$|common$)[a-zA-Z_][a-zA-Z0-9_]*$": {
           "$ref": "#/definitions/BufferPass"
         }
       },
@@ -91,8 +84,8 @@
             },
             "source": {
               "type": "string",
-              "enum": ["common", "BufferA", "BufferB", "BufferC", "BufferD"],
-              "description": "Source buffer name"
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+              "description": "Source buffer name (any valid GLSL identifier)"
             }
           },
           "additionalProperties": false

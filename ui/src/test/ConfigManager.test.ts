@@ -167,6 +167,27 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('addBuffer', () => {
+    it('should add a buffer with empty path', () => {
+      configManager.setConfig(createTestConfig());
+      const name = configManager.addBuffer();
+
+      expect(name).toBe('BufferA');
+      const config = configManager.getConfig();
+      expect(config!.passes.BufferA).toEqual({ path: '', inputs: {} });
+    });
+
+    it('should auto-name sequentially', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const name = configManager.addBuffer();
+      expect(name).toBe('BufferB');
+      expect(configManager.getConfig()!.passes.BufferB).toEqual({ path: '', inputs: {} });
+    });
+  });
+
   describe('addSpecificBuffer', () => {
     it('should create config when adding buffer with no existing config', () => {
       const result = configManager.addSpecificBuffer('BufferA');
@@ -201,6 +222,64 @@ describe('ConfigManager', () => {
       configManager.addCommonBuffer();
       const result = configManager.addCommonBuffer();
       expect(result).toBe(false);
+    });
+  });
+
+  describe('renameBuffer', () => {
+    it('should rename a buffer pass', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const result = configManager.renameBuffer('BufferA', 'BlurPass');
+      expect(result).toBe(true);
+      const updated = configManager.getConfig();
+      expect(updated!.passes.BlurPass).toEqual({ path: 'a.glsl', inputs: {} });
+      expect(updated!.passes.BufferA).toBeUndefined();
+    });
+
+    it('should reject renaming to same name', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.renameBuffer('BufferA', 'BufferA')).toBe(false);
+    });
+
+    it('should reject renaming Image or common', () => {
+      configManager.setConfig(createTestConfig());
+      expect(configManager.renameBuffer('Image', 'Foo')).toBe(false);
+      expect(configManager.renameBuffer('BufferA', 'Image')).toBe(false);
+      expect(configManager.renameBuffer('BufferA', 'common')).toBe(false);
+    });
+
+    it('should reject invalid GLSL identifiers', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.renameBuffer('BufferA', '0invalid')).toBe(false);
+      expect(configManager.renameBuffer('BufferA', 'has space')).toBe(false);
+    });
+
+    it('should reject renaming to existing name', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.renameBuffer('BufferA', 'BufferB')).toBe(false);
+    });
+
+    it('should preserve key order', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      configManager.renameBuffer('BufferA', 'BlurPass');
+      const keys = Object.keys(configManager.getConfig()!.passes);
+      expect(keys).toEqual(['Image', 'BlurPass', 'BufferB']);
     });
   });
 
@@ -274,8 +353,8 @@ describe('ConfigManager', () => {
   });
 
   describe('getNextBufferName', () => {
-    it('should return null when no config exists', () => {
-      expect(configManager.getNextBufferName()).toBeNull();
+    it('should return BufferA when no config exists', () => {
+      expect(configManager.getNextBufferName()).toBe('BufferA');
     });
 
     it('should return BufferA when no buffers exist', () => {
@@ -292,7 +371,7 @@ describe('ConfigManager', () => {
       expect(configManager.getNextBufferName()).toBe('BufferC');
     });
 
-    it('should return null when all buffers are used', () => {
+    it('should continue past BufferD', () => {
       const config = createTestConfig();
       config.passes.BufferA = { path: 'a.glsl', inputs: {} };
       config.passes.BufferB = { path: 'b.glsl', inputs: {} };
@@ -300,7 +379,7 @@ describe('ConfigManager', () => {
       config.passes.BufferD = { path: 'd.glsl', inputs: {} };
       configManager.setConfig(config);
 
-      expect(configManager.getNextBufferName()).toBeNull();
+      expect(configManager.getNextBufferName()).toBe('BufferE');
     });
   });
 

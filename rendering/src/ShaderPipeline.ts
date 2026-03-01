@@ -128,8 +128,16 @@ export class ShaderPipeline {
 
     this.passes = passNames
       .map(passName => {
-        const pass = config?.passes?.[passName as keyof typeof config.passes];
+        const pass = config?.passes?.[passName];
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
+
+        // Skip buffer passes with no path (not yet configured)
+        if (passName !== "Image") {
+          const bufferPath = (pass as BufferPass)?.path;
+          if (!bufferPath && !shaderSrc) {
+            return null;
+          }
+        }
 
         // Skip common buffer if there's no meaningful content
         if (passName === "common") {
