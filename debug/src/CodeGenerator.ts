@@ -125,6 +125,8 @@ export class CodeGenerator {
         return `  fragColor = vec4(float(${varName}), 0.0, 0.0, 0.0);`;
       case 'bool':
         return `  fragColor = vec4(${varName} ? 1.0 : 0.0, 0.0, 0.0, 0.0);`;
+      case 'mat2':
+        return `  fragColor = vec4(${varName}[0], ${varName}[1]);`;
       default:
         return `  fragColor = vec4(0.0);`;
     }

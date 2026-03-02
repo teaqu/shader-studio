@@ -11,7 +11,7 @@
   export let onExpandToggle: () => void = () => {};
 
   $: isScalar = variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool';
-  $: isVec = variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4';
+  $: isVec = variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4' || variable.varType === 'mat2';
   $: isColorVec = variable.varType === 'vec3' || variable.varType === 'vec4';
   $: isExpanded = variable.histogram !== null || variable.colorFrequencies !== null || variable.channelHistograms !== null;
   // Vec is "constant" across canvas if all channels have min === max
@@ -51,7 +51,7 @@
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
     <div class="thumb-col">
-      <CaptureThumbnail pixels={variable.thumbnail} size={40} />
+      <CaptureThumbnail pixels={variable.thumbnail} size={32} />
     </div>
   {/if}
 

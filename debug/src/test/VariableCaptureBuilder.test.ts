@@ -8,6 +8,13 @@ const simpleMainImage = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(col, 1.0);
 }`;
 
+const withMat2 = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  mat2 m = mat2(1.0, 0.0, 0.0, 1.0);
+  float d = length(uv);
+  fragColor = vec4(d);
+}`;
+
 const withMat4 = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
   mat4 m = mat4(1.0);
@@ -32,6 +39,14 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     expect(names).toContain("uv");
     expect(names).toContain("d");
     expect(names).toContain("col");
+  });
+
+  it("should include mat2 (capturable — fits in RGBA)", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withMat2, 3);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("m");
+    const m = vars.find(v => v.varName === "m");
+    expect(m?.varType).toBe("mat2");
   });
 
   it("should filter out mat4 (not capturable)", () => {
@@ -99,6 +114,14 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain("_dbgShadow");
+  });
+
+  it("should generate shader that packs mat2 columns into vec4", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      withMat2, 2, "m", "mat2", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("fragColor = vec4(m[0], m[1]);");
   });
 
   it("should work in whole-shader mode (debugLine=-1)", () => {

@@ -16,6 +16,11 @@
   function pct(freq: number): string {
     return (freq * 100).toFixed(1) + '%';
   }
+
+  function hex(r: number, g: number, b: number): string {
+    const toHex = (v: number) => Math.round(Math.min(Math.max(v, 0), 1) * 255).toString(16).padStart(2, '0');
+    return '#' + toHex(r) + toHex(g) + toHex(b);
+  }
 </script>
 
 <div class="color-freq-wrap">
@@ -36,6 +41,7 @@
     {#if hoveredIndex !== null}
       {@const c = colors[hoveredIndex]}
       <span class="swatch" style="background: {rgb(c.r, c.g, c.b)}"></span>
+      <span class="tooltip-hex">{hex(c.r, c.g, c.b)}</span>
       <span class="tooltip-val">({fmt(c.r)}, {fmt(c.g)}, {fmt(c.b)})</span>
       <span class="tooltip-pct">{pct(c.freq)}</span>
     {/if}
@@ -86,8 +92,13 @@
     flex-shrink: 0;
   }
 
-  .tooltip-val {
+  .tooltip-hex {
     color: var(--vscode-editor-foreground);
+    font-weight: 600;
+  }
+
+  .tooltip-val {
+    color: var(--vscode-descriptionForeground);
   }
 
   .tooltip-pct {

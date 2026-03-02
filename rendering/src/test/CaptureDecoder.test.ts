@@ -43,6 +43,15 @@ describe("CaptureDecoder.decodePixel", () => {
     expect(result[3]).toBeCloseTo(0.4);
   });
 
+  it("should return [R, G, B, A] for mat2 (4 components packed into RGBA)", () => {
+    const result = CaptureDecoder.decodePixel(rgba, "mat2");
+    expect(result).toHaveLength(4);
+    expect(result[0]).toBeCloseTo(0.1); // col0.x
+    expect(result[1]).toBeCloseTo(0.2); // col0.y
+    expect(result[2]).toBeCloseTo(0.3); // col1.x
+    expect(result[3]).toBeCloseTo(0.4); // col1.y
+  });
+
   it("should fallback to [R] for unknown type", () => {
     const result = CaptureDecoder.decodePixel(rgba, "mat4");
     expect(result).toHaveLength(1);

@@ -18,6 +18,7 @@ export class CaptureDecoder {
       case 'vec3':
         return [rgba[0], rgba[1], rgba[2]];
       case 'vec4':
+      case 'mat2':
         return [rgba[0], rgba[1], rgba[2], rgba[3]];
       default:
         return [rgba[0]];
