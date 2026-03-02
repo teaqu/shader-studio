@@ -587,14 +587,6 @@ canvas {
   margin: 4px 8px;
 }
 
-.menu-bar .options-menu-item .status-dot {
-  width: 6px;
-  height: 6px;
-  min-height: 6px;
-  border-radius: 50%;
-  background-color: var(--vscode-testing-iconPassed, #4caf50);
-  flex: 0 0 6px;
-}
 
 @keyframes options-menu-appear {
   from {

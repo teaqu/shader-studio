@@ -115,7 +115,13 @@ export class ShaderStudio {
       return;
     }
 
-    // Dynamically allocate a free port
+    const preferredPort = 51472;
+    if (this.createWebSocketTransport(preferredPort)) {
+      this.logger.info(`Using default WebSocket port: ${preferredPort}`);
+      return;
+    }
+
+    // Fall back to a dynamically allocated free port
     const server = net.createServer();
     server.listen(0, () => {
       const address = server.address() as net.AddressInfo;
@@ -130,7 +136,7 @@ export class ShaderStudio {
     });
   }
 
-  private createWebSocketTransport(port: number): void {
+  private createWebSocketTransport(port: number): boolean {
     try {
       this.webSocketTransport = new WebSocketTransport(
         port,
@@ -139,8 +145,10 @@ export class ShaderStudio {
       );
       this.messenger.addTransport(this.webSocketTransport);
       this.webServer.setWebSocketPort(port);
+      return true;
     } catch (error) {
       this.logger.error(`Failed to start WebSocket transport: ${error}`);
+      return false;
     }
   }
 

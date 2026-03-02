@@ -382,6 +382,59 @@ describe('AssetBrowser', () => {
     });
   });
 
+  describe('Transport onMessage (WebSocket)', () => {
+    it('should receive files via onMessage instead of window events', async () => {
+      let transportHandler: ((event: MessageEvent) => void) | null = null;
+      const mockOnMessage = vi.fn((handler: (event: MessageEvent) => void) => {
+        transportHandler = handler;
+      });
+
+      render(AssetBrowser, {
+        extensions: ['png', 'jpg'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onMessage: mockOnMessage,
+        onSelect: mockOnSelect,
+      });
+
+      expect(mockOnMessage).toHaveBeenCalledTimes(1);
+
+      // Simulate transport delivering workspaceFiles response
+      transportHandler!(new MessageEvent('message', {
+        data: {
+          type: 'workspaceFiles',
+          payload: { files: sampleFiles },
+        },
+      }));
+
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(screen.getByText('noise.png')).toBeInTheDocument();
+      expect(screen.getByText('gradient.jpg')).toBeInTheDocument();
+      expect(screen.getByText('sky.hdr')).toBeInTheDocument();
+      expect(screen.getByText('stone.png')).toBeInTheDocument();
+    });
+
+    it('should not add window event listener when onMessage is provided', () => {
+      const mockOnMessage = vi.fn();
+
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onMessage: mockOnMessage,
+        onSelect: mockOnSelect,
+      });
+
+      // window.addEventListener was spied in beforeEach
+      const addEventCalls = (window.addEventListener as any).mock?.calls || [];
+      const messageListenerAdded = addEventCalls.some(
+        (call: any[]) => call[0] === 'message'
+      );
+      expect(messageListenerAdded).toBe(false);
+    });
+  });
+
   describe('@/ Workspace Path Handling', () => {
     it('should return @/ prefixed path when selecting non-same-directory file', async () => {
       render(AssetBrowser, {
