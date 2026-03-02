@@ -145,6 +145,15 @@ export class PanelManager {
       } else if (cmd) {
         await vscode.commands.executeCommand(`shader-studio.${cmd}`);
       }
+    } else if (message.type === 'saveLayout') {
+      console.log('[PanelManager] saveLayout received, payload:', message.payload ? 'present' : 'null');
+      await this.context.workspaceState.update('shader-studio.dockviewLayout', message.payload);
+      console.log('[PanelManager] saveLayout persisted to workspaceState');
+    } else if (message.type === 'requestLayout') {
+      const layout = this.context.workspaceState.get('shader-studio.dockviewLayout', null);
+      console.log('[PanelManager] requestLayout received, saved layout:', layout ? 'found' : 'null');
+      panel.webview.postMessage({ type: 'restoreLayout', payload: layout });
+      console.log('[PanelManager] restoreLayout sent to webview');
     }
   }
 

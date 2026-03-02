@@ -13,7 +13,7 @@
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
-  import ResizeHandle from "./ResizeHandle.svelte";
+  import DockviewLayout from "./DockviewLayout.svelte";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
@@ -55,7 +55,7 @@
 
   let shaderStudio: ShaderStudio;
   let renderingEngine: RenderingEngine;
-  let transport: Transport;
+  let transport: Transport = createTransport();
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let debugInspectorEnabled = true; // remember inspector preference across debug sessions
@@ -85,7 +85,6 @@
 
   // Config panel state
   let configPanelVisible = false;
-  let splitRatio = 0.6;
   let currentConfig: ShaderConfig | null = null;
   let pathMap: Record<string, string> = {};
   let bufferPathMap: Record<string, string> = {};
@@ -93,11 +92,8 @@
 
   // Debug panel state
   let debugPanelVisible = true;
-  let debugSplitRatio = 0.7;
 
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
-  $: hasSidePanel = configPanelVisible || showDebugPanel;
-  $: canvasFlex = hasSidePanel ? (showDebugPanel ? debugSplitRatio : splitRatio) : 1;
 
   // Extract specific debug state fields so that capturedVariables changes
   // don't re-trigger the capture loop (Svelte tracks the whole object reference).
@@ -168,11 +164,9 @@
   onMount(() => {
     const unsubConfig = configPanelStore.subscribe((state) => {
       configPanelVisible = state.isVisible;
-      splitRatio = state.splitRatio;
     });
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
-      debugSplitRatio = state.splitRatio;
     });
     return () => {
       unsubConfig();
@@ -389,14 +383,6 @@
     }
   }
 
-  function handleSplitResize(ratio: number) {
-    configPanelStore.setSplitRatio(ratio);
-  }
-
-  function handleDebugSplitResize(ratio: number) {
-    debugPanelStore.setSplitRatio(ratio);
-  }
-
   function handleParameterChange(index: number, value: string) {
     if (!shaderDebugManager) return;
     shaderDebugManager.setCustomParameter(index, value);
@@ -518,7 +504,6 @@
 
   async function initializeApp() {
     try {
-      transport = createTransport();
       const shadderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
@@ -647,6 +632,11 @@
         return;
       }
 
+      if (event.data.type === 'resetLayout') {
+        handleResetLayout();
+        return;
+      }
+
       const result = await shaderStudio.handleShaderMessage(event);
 
       // Update errors state based on compilation result
@@ -689,6 +679,85 @@
     return () => clearInterval(fpsInterval);
   });
 
+  // Dockview functions, set when DockviewLayout is ready
+  let resetLayoutFn: (() => void) | null = null;
+  let showPreviewFn: (() => void) | null = null;
+  let previewVisible = true;
+  let previewAlone = true;
+
+  function handleResetLayout() {
+    if (resetLayoutFn) resetLayoutFn();
+  }
+
+  function handleShowPreview() {
+    if (showPreviewFn) showPreviewFn();
+  }
+
+  function handleDockviewReady(event: CustomEvent<{ resetLayout: () => void; showPreview: () => void }>) {
+    resetLayoutFn = event.detail.resetLayout;
+    showPreviewFn = event.detail.showPreview;
+  }
+
+  function handlePreviewVisibleChange(event: CustomEvent<boolean>) {
+    previewVisible = event.detail;
+  }
+
+  function handlePreviewAloneChange(event: CustomEvent<boolean>) {
+    previewAlone = event.detail;
+  }
+
+  function handleDebugClosed() {
+    // User closed the debug tab — disable debug mode
+    if (shaderDebugManager && debugState.isEnabled) {
+      handleToggleDebugEnabled();
+    }
+  }
+
+  function handleConfigClosed() {
+    // User closed the config tab — disable config panel
+    configPanelStore.setVisible(false);
+  }
+
+  // DOM teleport refs — these elements are rendered in our template (so Svelte manages reactivity)
+  // and then moved into dockview containers by the DockviewLayout component
+  let previewEl: HTMLElement;
+  let debugEl: HTMLElement;
+  let configEl: HTMLElement;
+
+  function mountPreview(container: HTMLElement): () => void {
+    if (previewEl) {
+      container.appendChild(previewEl);
+    }
+    return () => {
+      // Move element back to avoid it being destroyed by dockview
+      if (previewEl && previewEl.parentNode === container) {
+        container.removeChild(previewEl);
+      }
+    };
+  }
+
+  function mountDebug(container: HTMLElement): () => void {
+    if (debugEl) {
+      container.appendChild(debugEl);
+    }
+    return () => {
+      if (debugEl && debugEl.parentNode === container) {
+        container.removeChild(debugEl);
+      }
+    };
+  }
+
+  function mountConfig(container: HTMLElement): () => void {
+    if (configEl) {
+      container.appendChild(configEl);
+    }
+    return () => {
+      if (configEl && configEl.parentNode === container) {
+        container.removeChild(configEl);
+      }
+    };
+  }
+
   onDestroy(() => {
     if (variableCaptureManager) {
       variableCaptureManager.dispose();
@@ -706,7 +775,8 @@
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <div class="canvas-section" style="flex: {canvasFlex}">
+  <!-- Panel content rendered declaratively for Svelte reactivity, then teleported into dockview containers -->
+  <div class="dockview-panel-source" bind:this={previewEl}>
     <ShaderCanvas
       {zoomLevel}
       isInspectorActive={inspectorActive}
@@ -728,8 +798,101 @@
         {errors}
       />
     {/if}
+    {#if initialized && previewAlone && previewVisible}
+      <MenuBar
+        {timeManager}
+        {currentFPS}
+        {canvasWidth}
+        {canvasHeight}
+        {isLocked}
+        {errors}
+        canvasElement={glCanvas}
+        onReset={handleReset}
+        onRefresh={handleRefresh}
+        onTogglePause={handleTogglePause}
+        onToggleLock={handleToggleLock}
+        onAspectRatioChange={handleAspectRatioChange}
+        onQualityChange={handleQualityChange}
+        onZoomChange={handleZoomChange}
+        onConfig={handleConfig}
+        isDebugEnabled={debugState.isEnabled}
+        onToggleDebugEnabled={handleToggleDebugEnabled}
+        {debugState}
+        isConfigPanelVisible={configPanelVisible}
+        onToggleConfigPanel={handleToggleConfigPanel}
+        isEditorOverlayVisible={editorOverlayVisible}
+        onToggleEditorOverlay={handleToggleEditorOverlay}
+        isVimModeEnabled={editorVimMode}
+        onToggleVimMode={handleToggleVimMode}
+        onFork={handleFork}
+        onExtensionCommand={handleExtensionCommand}
+        {isInWindow}
+        {isWebServerRunning}
+        {hasShader}
+        onResetLayout={handleResetLayout}
+        {previewVisible}
+        onShowPreview={handleShowPreview}
+      />
+    {/if}
   </div>
-  {#if initialized}
+  <div class="dockview-panel-source" bind:this={debugEl}>
+    {#if showDebugPanel}
+      <DebugPanel
+        {debugState}
+        {getUniforms}
+        isInspectorEnabled={inspectorEnabled}
+        isInspectorActive={inspectorActive}
+        isInspectorLocked={inspectorLocked}
+        onParameterChange={handleParameterChange}
+        onLoopMaxIterChange={handleLoopMaxIterChange}
+        onToggleLineLock={handleToggleLineLock}
+        onToggleInspectorEnabled={handleToggleInspectorEnabled}
+        onToggleInlineRendering={handleToggleInlineRendering}
+        onCycleNormalize={handleCycleNormalize}
+        onToggleStep={handleToggleStep}
+        onSetStepEdge={handleSetStepEdge}
+        onToggleVariableInspector={handleToggleVariableInspector}
+        onExpandVarHistogram={handleExpandVarHistogram}
+        {sampleSize}
+        onChangeSampleSize={handleChangeSampleSize}
+        refreshMode={activeRefreshMode}
+        pollingMs={activePollingMs}
+        onChangeRefreshMode={handleChangeRefreshMode}
+        onChangePollingMs={handleChangePollingMs}
+        hasPixelSelected={hasPixelCapture}
+      />
+    {/if}
+  </div>
+  <div class="dockview-panel-source" bind:this={configEl}>
+    {#if configPanelVisible}
+      <ConfigPanel
+        config={currentConfig}
+        {pathMap}
+        {bufferPathMap}
+        {transport}
+        {shaderPath}
+        isVisible={configPanelVisible}
+        onFileSelect={handleConfigFileSelect}
+        selectedBuffer={editorBufferName}
+        isLocked={isLocked}
+      />
+    {/if}
+  </div>
+
+  <DockviewLayout
+    {mountPreview}
+    {mountDebug}
+    {mountConfig}
+    {showDebugPanel}
+    showConfigPanel={configPanelVisible}
+    {transport}
+    on:ready={handleDockviewReady}
+    on:previewVisibleChange={handlePreviewVisibleChange}
+    on:previewAloneChange={handlePreviewAloneChange}
+    on:debugClosed={handleDebugClosed}
+    on:configClosed={handleConfigClosed}
+  />
+  {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar
       {timeManager}
       {currentFPS}
@@ -760,52 +923,10 @@
       {isInWindow}
       {isWebServerRunning}
       {hasShader}
+      onResetLayout={handleResetLayout}
+      {previewVisible}
+      onShowPreview={handleShowPreview}
     />
-  {/if}
-  {#if showDebugPanel}
-    <ResizeHandle onResize={handleDebugSplitResize} />
-    <div class="debug-section" style="flex: {1 - debugSplitRatio}">
-      <DebugPanel
-        {debugState}
-        {getUniforms}
-        isInspectorEnabled={inspectorEnabled}
-        isInspectorActive={inspectorActive}
-        isInspectorLocked={inspectorLocked}
-        onParameterChange={handleParameterChange}
-        onLoopMaxIterChange={handleLoopMaxIterChange}
-        onToggleLineLock={handleToggleLineLock}
-        onToggleInspectorEnabled={handleToggleInspectorEnabled}
-        onToggleInlineRendering={handleToggleInlineRendering}
-        onCycleNormalize={handleCycleNormalize}
-        onToggleStep={handleToggleStep}
-        onSetStepEdge={handleSetStepEdge}
-        onToggleVariableInspector={handleToggleVariableInspector}
-        onExpandVarHistogram={handleExpandVarHistogram}
-        {sampleSize}
-        onChangeSampleSize={handleChangeSampleSize}
-        refreshMode={activeRefreshMode}
-        pollingMs={activePollingMs}
-        onChangeRefreshMode={handleChangeRefreshMode}
-        onChangePollingMs={handleChangePollingMs}
-        hasPixelSelected={hasPixelCapture}
-      />
-    </div>
-  {/if}
-  {#if configPanelVisible}
-    <ResizeHandle onResize={handleSplitResize} />
-    <div class="config-section" style="flex: {1 - splitRatio}">
-      <ConfigPanel
-        config={currentConfig}
-        {pathMap}
-        {bufferPathMap}
-        {transport}
-        {shaderPath}
-        isVisible={configPanelVisible}
-        onFileSelect={handleConfigFileSelect}
-        selectedBuffer={editorBufferName}
-        isLocked={isLocked}
-      />
-    </div>
   {/if}
   <PixelInspector
     isActive={inspectorState.isActive}
@@ -824,3 +945,16 @@
     canvasElement={glCanvas}
   />
 </div>
+
+<style>
+  /* Panel source elements are hidden when not yet teleported into dockview.
+     Once moved into a dockview panel container, the parent provides sizing. */
+  .dockview-panel-source {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+</style>

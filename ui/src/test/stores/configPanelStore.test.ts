@@ -16,19 +16,15 @@ describe('configPanelStore', () => {
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(false);
-    expect(state.splitRatio).toBe(0.6);
   });
 
-  it('should restore only splitRatio from localStorage, never isVisible', async () => {
+  it('should restore isVisible from localStorage', async () => {
     localStorage.setItem('shader-studio-config-panel-state', JSON.stringify({
       isVisible: true,
-      splitRatio: 0.5,
     }));
     const store = await importStore();
     const state = get(store);
-    // isVisible is always false on load, regardless of stored value
-    expect(state.isVisible).toBe(false);
-    expect(state.splitRatio).toBe(0.5);
+    expect(state.isVisible).toBe(true);
   });
 
   it('should fall back to defaults on invalid localStorage', async () => {
@@ -36,7 +32,6 @@ describe('configPanelStore', () => {
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(false);
-    expect(state.splitRatio).toBe(0.6);
   });
 
   it('toggle should flip isVisible', async () => {
@@ -53,31 +48,6 @@ describe('configPanelStore', () => {
     store.toggle();
     const stored = JSON.parse(localStorage.getItem('shader-studio-config-panel-state')!);
     expect(stored.isVisible).toBe(true);
-  });
-
-  it('setSplitRatio should update ratio', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.5);
-    expect(get(store).splitRatio).toBe(0.5);
-  });
-
-  it('setSplitRatio should clamp to min 0.3', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.1);
-    expect(get(store).splitRatio).toBe(0.3);
-  });
-
-  it('setSplitRatio should clamp to max 0.9', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.99);
-    expect(get(store).splitRatio).toBe(0.9);
-  });
-
-  it('setSplitRatio should persist to localStorage', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.7);
-    const stored = JSON.parse(localStorage.getItem('shader-studio-config-panel-state')!);
-    expect(stored.splitRatio).toBe(0.7);
   });
 
   it('setVisible should set visibility directly', async () => {

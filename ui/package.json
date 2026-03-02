@@ -26,6 +26,7 @@
     "@shader-studio/monaco": "*",
     "@shader-studio/rendering": "*",
     "@shader-studio/types": "*",
+    "dockview-core": "^5.0.0",
     "monaco-editor": "^0.55.1",
     "monaco-vim": "^0.4.4"
   }

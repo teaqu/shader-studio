@@ -99,6 +99,10 @@ export interface ToggleEditorOverlayMessage extends BaseMessage {
   type: "toggleEditorOverlay";
 }
 
+export interface ResetLayoutMessage extends BaseMessage {
+  type: "resetLayout";
+}
+
 export interface NavigateToBufferMessage extends BaseMessage {
   type: "navigateToBuffer";
   payload: {
@@ -129,4 +133,4 @@ export interface ForkShaderMessage extends BaseMessage {
   payload: { shaderPath: string };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage;
