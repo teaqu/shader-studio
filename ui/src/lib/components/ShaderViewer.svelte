@@ -827,7 +827,7 @@
         onFork={handleFork}
         onExtensionCommand={handleExtensionCommand}
         {isInWindow}
-        {isWebServerRunning}
+
         {hasShader}
         onResetLayout={handleResetLayout}
         {previewVisible}
@@ -921,7 +921,6 @@
       onFork={handleFork}
       onExtensionCommand={handleExtensionCommand}
       {isInWindow}
-      {isWebServerRunning}
       {hasShader}
       onResetLayout={handleResetLayout}
       {previewVisible}

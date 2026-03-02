@@ -2,8 +2,8 @@ import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { fileURLToPath } from "url";
 import type { ShaderConfig } from "@shader-studio/types";
-import { ConfigPathConverter } from "./ConfigPathConverter";
 import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
@@ -153,42 +153,74 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   private processConfigPaths(message: { type: string; config: ShaderConfig;[key: string]: any }): typeof message {
-    // Create a mock webview for ConfigPathConverter (it won't be used for videos)
-    const mockWebview = {
-      asWebviewUri: (uri: vscode.Uri) => uri,
-      cspSource: ''
-    } as vscode.Webview;
-    
-    const processedMessage = ConfigPathConverter.processConfigPaths(message, mockWebview, { skipVideoProcessing: true });
-    
-    // Handle video-specific logic for browser clients
-    this.handleVideoPaths(processedMessage);
-    
-    return processedMessage;
-  }
+    // Clone to avoid mutating the original message
+    const processedMessage = JSON.parse(JSON.stringify(message));
+    const config = processedMessage.config;
 
-  private handleVideoPaths(message: any): void {
-    if (!message.config?.passes) {
-      return;
+    if (!config?.passes) {
+      return processedMessage;
     }
 
-    for (const passName of Object.keys(message.config.passes)) {
-      const pass = message.config.passes[passName];
-      if (!pass?.inputs) {
-        continue;
-      }
+    const shaderPath = processedMessage.path || '';
+    const configDir = shaderPath ? path.dirname(shaderPath) : '';
+
+    for (const passName of Object.keys(config.passes)) {
+      const pass = config.passes[passName];
+      if (!pass?.inputs) continue;
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (input?.path && input.type === "video") {
-          // Browser clients need HTTP URLs via webserver
-          const config = vscode.workspace.getConfiguration('shader-studio');
-          const port = config.get<number>('webServerPort') || 3000;
-          input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
+        if (!input?.path) continue;
+        if (input.type !== 'texture' && input.type !== 'video') continue;
+
+        // Resolve to absolute path
+        let absolutePath: string;
+        if (input.path.startsWith('@/')) {
+          const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+          absolutePath = workspaceFolder
+            ? path.join(workspaceFolder.uri.fsPath, input.path.substring(2))
+            : input.path;
+        } else if (input.path.startsWith('file://')) {
+          absolutePath = this.normalizeLocalPath(input.path);
+        } else if (path.isAbsolute(input.path)) {
+          absolutePath = input.path;
+        } else {
+          absolutePath = configDir ? path.join(configDir, input.path) : input.path;
+        }
+
+        input.resolved_path = this.convertUriForClient(absolutePath);
+      }
+    }
+
+    // Also convert pathMap entries for config panel previews
+    if (processedMessage.pathMap) {
+      for (const key of Object.keys(processedMessage.pathMap)) {
+        const value = processedMessage.pathMap[key];
+        // Replace webview URIs with HTTP URLs
+        if (value && !value.startsWith('http://') && !value.startsWith('https://')) {
+          // Resolve the key (original path) to absolute, then convert
+          let absolutePath: string;
+          if (key.startsWith('@/')) {
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            absolutePath = workspaceFolder
+              ? path.join(workspaceFolder.uri.fsPath, key.substring(2))
+              : key;
+          } else if (key.startsWith('file://')) {
+            absolutePath = this.normalizeLocalPath(key);
+          } else if (path.isAbsolute(key)) {
+            absolutePath = key;
+          } else {
+            absolutePath = configDir ? path.join(configDir, key) : key;
+          }
+          processedMessage.pathMap[key] = this.convertUriForClient(absolutePath);
         }
       }
     }
+
+    return processedMessage;
   }
+
+
 
   private async handleClientRequest(data: any, ws: WebSocket): Promise<void> {
     try {
@@ -341,15 +373,34 @@ export class WebSocketTransport implements MessageTransport {
 
   // Legacy method for backward compatibility with tests
   public convertUriForClient(filePath: string): string {
+    const normalizedPath = this.normalizeLocalPath(filePath);
+
     // Handle local file paths for browser clients
-    if (filePath.match(/^[a-zA-Z]:|^\//)) {
+    if (normalizedPath.match(/^[a-zA-Z]:|^\//)) {
       // Looks like a local file path (Windows drive or Unix absolute path)
       // Browser clients need HTTP URLs due to CORS restrictions
       const config = vscode.workspace.getConfiguration('shader-studio');
       const port = config.get<number>('webServerPort') || 3000;
-      return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
+      return `http://localhost:${port}/textures/${encodeURIComponent(normalizedPath)}`;
     }
-    return filePath;
+    return normalizedPath;
+  }
+
+  private normalizeLocalPath(filePath: string): string {
+    if (!filePath.startsWith('file://')) {
+      return filePath;
+    }
+
+    try {
+      const normalized = fileURLToPath(filePath);
+      if (/^\/[a-zA-Z]:\//.test(normalized)) {
+        return normalized.slice(1);
+      }
+      return normalized;
+    } catch {
+      const withoutScheme = decodeURIComponent(filePath.replace(/^file:\/+/, ''));
+      return withoutScheme;
+    }
   }
 
   public close(): void {

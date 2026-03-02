@@ -65,7 +65,6 @@
   export let onToggleVimMode: () => void = () => {};
   export let onFork: () => void = () => {};
   export let onExtensionCommand: (command: string) => void = () => {};
-  export let isWebServerRunning: boolean = false;
   export let hasShader: boolean = false;
   export let onResetLayout: () => void = () => {};
   export let previewVisible: boolean = true;
@@ -104,12 +103,6 @@
     <polyline points="8 6 2 12 8 18"/>
   </svg>`;
 
-  const serverIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-    <line x1="6" y1="6" x2="6.01" y2="6"/>
-    <line x1="6" y1="18" x2="6.01" y2="18"/>
-  </svg>`;
 
 
   $: hasErrors = errors.length > 0;
@@ -188,6 +181,12 @@
     event.stopPropagation();
     showOptionsMenu = false;
     onRefresh();
+  }
+
+  function handleConfig(event: MouseEvent) {
+    event.stopPropagation();
+    showOptionsMenu = false;
+    onConfig();
   }
 
   function handleFullscreenToggle() {
@@ -561,17 +560,6 @@
           >
             {@html snippetIcon}
             <span>Snippet Library</span>
-          </button>
-          <button
-            class="options-menu-item"
-            on:click={() => { onExtensionCommand(isWebServerRunning ? 'stopWebServer' : 'startWebServer'); showOptionsMenu = false; }}
-            aria-label={isWebServerRunning ? 'Stop web server' : 'Start web server'}
-          >
-            {@html serverIcon}
-            <span>Web Server</span>
-            {#if isWebServerRunning}
-              <span class="status-dot"></span>
-            {/if}
           </button>
         </div>
       {/if}

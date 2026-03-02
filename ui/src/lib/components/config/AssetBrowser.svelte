@@ -6,6 +6,7 @@
   export let extensions: string[];
   export let shaderPath: string;
   export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let onSelect: (path: string) => void;
   export let selectedPath: string = "";
 
@@ -124,12 +125,18 @@
   }
 
   onMount(() => {
-    window.addEventListener("message", handleMessage);
+    if (onMessage) {
+      onMessage(handleMessage);
+    } else {
+      window.addEventListener("message", handleMessage);
+    }
     requestFiles();
   });
 
   onDestroy(() => {
-    window.removeEventListener("message", handleMessage);
+    if (!onMessage) {
+      window.removeEventListener("message", handleMessage);
+    }
     clearLoadingTimeout();
   });
 </script>

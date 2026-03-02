@@ -194,6 +194,7 @@
           {getWebviewUri}
           isImagePass={true}
           postMessage={(msg) => transport.postMessage(msg)}
+          onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
         />
       {:else}
@@ -210,6 +211,7 @@
           onCreateFile={handleCreateFile}
           suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
+          onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
         />
       {/if}

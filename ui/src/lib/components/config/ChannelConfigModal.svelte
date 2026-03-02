@@ -21,6 +21,7 @@
   export let onRename: ((oldName: string, newName: string) => void) | undefined = undefined;
   export let existingChannelNames: string[] = [];
   export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let shaderPath: string = "";
 
   let editingName = false;
@@ -370,6 +371,7 @@
               extensions={TEXTURE_EXTENSIONS}
               {shaderPath}
               {postMessage}
+              {onMessage}
               onSelect={handleAssetSelect}
               selectedPath={(tempInput?.type === "texture" && tempInput.path) || ""}
             />
@@ -510,6 +512,7 @@
               extensions={VIDEO_EXTENSIONS}
               {shaderPath}
               {postMessage}
+              {onMessage}
               onSelect={handleAssetSelect}
               selectedPath={(tempInput?.type === "video" && tempInput.path) || ""}
             />

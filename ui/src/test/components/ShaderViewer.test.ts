@@ -1099,26 +1099,22 @@ describe('ShaderViewer', () => {
     expect(screen.queryByLabelText('Open in new window')).toBeFalsy();
   });
 
-  it('should handle webServerState message and set isWebServerRunning', async () => {
-    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+  it('should handle webServerState message without error', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     const messageHandler = onMessageCalls[1][0];
 
-    // Send webServerState message indicating server is running
+    // Send webServerState message — should be handled without throwing
     await messageHandler({
       data: { type: 'webServerState', payload: { isRunning: true } }
     });
     await tick();
 
-    // Open options menu to check status dot is visible
-    const optionsButton = screen.getByLabelText('Open options menu');
-    await fireEvent.click(optionsButton);
-    await tick();
-
-    expect(container.querySelector('.status-dot')).toBeTruthy();
+    // Verify the component is still rendering normally
+    expect(screen.getByLabelText('Open options menu')).toBeTruthy();
   });
 
   it('should send extensionCommand message via handleExtensionCommand', async () => {

@@ -19,6 +19,7 @@
   export let onCreateFile: ((bufferName: string) => void) | undefined = undefined;
   export let suggestedPath: string = "";
   export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let shaderPath: string = "";
 
   let bufferConfig: BufferConfig;
@@ -221,6 +222,7 @@
   onRename={handleModalRename}
   existingChannelNames={Object.keys(config.inputs || {})}
   {postMessage}
+  {onMessage}
   {shaderPath}
 />
 
