@@ -32,6 +32,9 @@
   let glCanvas: HTMLCanvasElement;
   let initialized = false;
   let isLocked = false;
+  let isInWindow = false;
+  let isWebServerRunning = false;
+  let hasShader = false;
   let errors: string[] = [];
   let currentFPS = 0;
   let canvasWidth = 0;
@@ -224,7 +227,7 @@
   }
 
   function handleToggleDebugEnabled() {
-    if (!shaderDebugManager || !initialized) return;
+    if (!shaderDebugManager || !initialized || !hasShader) return;
     shaderDebugManager.toggleEnabled();
 
     // Send debug mode state to extension
@@ -251,6 +254,7 @@
   }
 
   function handleToggleConfigPanel() {
+    if (!hasShader) return;
     configPanelStore.toggle();
   }
 
@@ -268,6 +272,17 @@
       type: 'forkShader',
       payload: { shaderPath }
     });
+  }
+
+  function handleExtensionCommand(command: string) {
+    if (!initialized) return;
+    transport.postMessage({
+      type: 'extensionCommand',
+      payload: { command }
+    });
+    if (command === 'moveToNewWindow') {
+      isInWindow = true;
+    }
   }
 
   function handleConfigFileSelect(bufferName: string) {
@@ -438,6 +453,9 @@
         glCanvas
       );
 
+      // Start paused until a shader is loaded
+      renderingEngine.togglePause();
+
       initialized = true;
 
       onInitialized({ shaderStudio });
@@ -470,11 +488,19 @@
         const locked = shaderStudio.getIsLocked();
         const lockedPath = shaderStudio.getLockedShaderPath();
         if (!locked || lockedPath === event.data.path) {
+          // Unpause on first shader load
+          const isFirstShader = !hasShader && event.data.path;
           currentConfig = event.data.config || null;
           pathMap = event.data.pathMap || {};
           bufferPathMap = event.data.bufferPathMap || {};
           shaderPath = event.data.path || "";
           currentShaderCode = event.data.code || "";
+          if (shaderPath) {
+            hasShader = true;
+          }
+          if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
+            renderingEngine.togglePause();
+          }
           // Sync editor overlay if it's showing the main shader
           if (editorBufferName === "Image") {
             editorFilePath = shaderPath;
@@ -486,6 +512,22 @@
       // Handle toggle editor overlay message from extension
       if (event.data.type === 'toggleEditorOverlay') {
         editorOverlayStore.toggle();
+        return;
+      }
+
+      // Handle panel state (e.g. moved to new window)
+      if (event.data.type === 'panelState') {
+        if (event.data.payload?.isInWindow !== undefined) {
+          isInWindow = event.data.payload.isInWindow;
+        }
+        return;
+      }
+
+      // Handle web server state
+      if (event.data.type === 'webServerState') {
+        if (event.data.payload?.isRunning !== undefined) {
+          isWebServerRunning = event.data.payload.isRunning;
+        }
         return;
       }
 
@@ -595,6 +637,10 @@
       isVimModeEnabled={editorVimMode}
       onToggleVimMode={handleToggleVimMode}
       onFork={handleFork}
+      onExtensionCommand={handleExtensionCommand}
+      {isInWindow}
+      {isWebServerRunning}
+      {hasShader}
     />
   {/if}
   {#if showDebugPanel}

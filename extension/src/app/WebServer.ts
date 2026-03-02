@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Logger } from "./services/Logger";
 import { ShaderStudioStatusBar } from "./ShaderStudioStatusBar";
+import { Messenger } from "./transport/Messenger";
 import { getWebSocketPortFromConfig, injectPortIntoHtml } from "@shader-studio/utils";
 
 export class WebServer {
@@ -11,6 +12,7 @@ export class WebServer {
   private isServerRunning = false;
   private httpServer: http.Server | null = null;
   private statusBar: ShaderStudioStatusBar;
+  private messenger: Messenger | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -18,6 +20,19 @@ export class WebServer {
   ) {
     this.logger = Logger.getInstance();
     this.statusBar = new ShaderStudioStatusBar(context);
+  }
+
+  public setMessenger(messenger: Messenger): void {
+    this.messenger = messenger;
+  }
+
+  private broadcastServerState(): void {
+    if (this.messenger) {
+      this.messenger.send({
+        type: 'webServerState',
+        payload: { isRunning: this.isServerRunning }
+      });
+    }
   }
 
   private getWebServerPort(): number {
@@ -40,6 +55,7 @@ export class WebServer {
 
       this.isServerRunning = true;
       this.statusBar.updateServerStatus(true, httpPort);
+      this.broadcastServerState();
       this.logger.info(`HTTP server started on port ${httpPort}`);
     } catch (error) {
       this.logger.error(`Failed to start web server: ${error}`);
@@ -324,6 +340,7 @@ export class WebServer {
       }
       this.isServerRunning = false;
       this.statusBar.updateServerStatus(false);
+      this.broadcastServerState();
       this.logger.info("WebSocket and HTTP servers stopped");
     }
   }

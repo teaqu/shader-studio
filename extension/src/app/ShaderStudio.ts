@@ -67,6 +67,7 @@ export class ShaderStudio {
       this.glslFileTracker,
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
+    this.webServer.setMessenger(this.messenger);
 
     // Register shader explorer
     this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
@@ -450,6 +451,9 @@ export class ShaderStudio {
 
   private async openSettings(): Promise<void> {
     try {
+      // Focus ViewColumn.One so settings opens in the left pane
+      // (consistent with Shader Explorer and Snippet Library)
+      await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
         '^shader-studio.'

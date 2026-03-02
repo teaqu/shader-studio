@@ -880,6 +880,43 @@ suite('PanelManager Test Suite', () => {
             assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
         });
 
+        test('routes extensionCommand message to vscode.commands.executeCommand', async () => {
+            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'extensionCommand', payload: { command: 'newShader' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.calledOnce(execStub);
+            sinon.assert.calledWith(execStub, 'shader-studio.newShader');
+        });
+
+        test('extensionCommand moveToNewWindow reveals panel and moves to new window', async () => {
+            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            mockWebviewPanel.reveal = sandbox.stub();
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'extensionCommand', payload: { command: 'moveToNewWindow' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.calledOnce(mockWebviewPanel.reveal);
+            sinon.assert.calledOnce(execStub);
+            sinon.assert.calledWith(execStub, 'workbench.action.moveEditorToNewWindow');
+        });
+
+        test('extensionCommand does nothing when command is missing', async () => {
+            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'extensionCommand', payload: {} },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.notCalled(execStub);
+        });
+
         test('should not route unknown message types', async () => {
             const fs = require('fs');
             const writeStub = sandbox.stub(fs, 'writeFileSync');

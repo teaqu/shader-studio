@@ -64,6 +64,10 @@
   export let isVimModeEnabled: boolean = false;
   export let onToggleVimMode: () => void = () => {};
   export let onFork: () => void = () => {};
+  export let onExtensionCommand: (command: string) => void = () => {};
+  export let isInWindow: boolean = false;
+  export let isWebServerRunning: boolean = false;
+  export let hasShader: boolean = false;
 
   // Fork icon SVG (copy/branch)
   const forkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -78,6 +82,41 @@
   const editorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="16 18 22 12 16 6"/>
     <polyline points="8 6 2 12 8 18"/>
+  </svg>`;
+
+  // Icons for extension command menu items
+  const windowIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="3" width="20" height="14" rx="2"/>
+    <line x1="8" y1="21" x2="16" y2="21"/>
+    <line x1="12" y1="17" x2="12" y2="21"/>
+  </svg>`;
+
+  const newFileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="12" y1="18" x2="12" y2="12"/>
+    <line x1="9" y1="15" x2="15" y2="15"/>
+  </svg>`;
+
+  const explorerIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+  </svg>`;
+
+  const snippetIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="16 18 22 12 16 6"/>
+    <polyline points="8 6 2 12 8 18"/>
+  </svg>`;
+
+  const globeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="2" y1="12" x2="22" y2="12"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+  </svg>`;
+
+  const settingsIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+    <circle cx="12" cy="12" r="3"/>
   </svg>`;
 
   $: hasErrors = errors.length > 0;
@@ -349,6 +388,7 @@
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
+      disabled={!hasShader}
       title={debugState?.isActive
         ? `Debugging line ${(debugState.currentLine ?? 0) + 1}`
         : "Enable debug mode"}
@@ -377,6 +417,7 @@
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
       class:active={isConfigPanelVisible}
+      disabled={!hasShader}
       title="Toggle shader configuration panel"
     >
       {@html configIcon}
@@ -403,6 +444,7 @@
             on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
             aria-label="Toggle debug mode"
             class:active={isDebugEnabled}
+            disabled={!hasShader}
           >
             {@html debugIcon}
             <span>Debug</span>
@@ -439,6 +481,7 @@
             on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}
             aria-label="Toggle config panel"
             class:active={isConfigPanelVisible}
+            disabled={!hasShader}
           >
             {@html configIcon}
             <span>Config</span>
@@ -489,6 +532,61 @@
               <span>Fullscreen</span>
             </button>
           {/if}
+          <div class="options-menu-separator"></div>
+          {#if !isInWindow}
+            <button
+              class="options-menu-item"
+              on:click={() => { onExtensionCommand('moveToNewWindow'); showOptionsMenu = false; }}
+              aria-label="Open in new window"
+            >
+              {@html windowIcon}
+              <span>Open in Window</span>
+            </button>
+          {/if}
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
+            aria-label="New shader"
+          >
+            {@html newFileIcon}
+            <span>New Shader</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; }}
+            aria-label="Shader explorer"
+          >
+            {@html explorerIcon}
+            <span>Shader Explorer</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; }}
+            aria-label="Snippet library"
+          >
+            {@html snippetIcon}
+            <span>Snippet Library</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand(isWebServerRunning ? 'showWebServerMenu' : 'startWebServer'); showOptionsMenu = false; }}
+            aria-label="Web server"
+            class:active={isWebServerRunning}
+          >
+            {@html globeIcon}
+            <span>Web Server</span>
+            {#if isWebServerRunning}
+              <span class="status-dot"></span>
+            {/if}
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('openSettings'); showOptionsMenu = false; }}
+            aria-label="Settings"
+          >
+            {@html settingsIcon}
+            <span>Settings</span>
+          </button>
         </div>
       {/if}
     </div>

@@ -133,6 +133,18 @@ export class PanelManager {
       await this.handleRequestWorkspaceFiles(message.payload, panel);
     } else if (message.type === 'forkShader') {
       await this.handleForkShader(message.payload, panel);
+    } else if (message.type === 'extensionCommand') {
+      const cmd = message.payload?.command;
+      if (cmd === 'moveToNewWindow') {
+        panel.reveal();
+        await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
+        // Notify webview it's now in a separate window (delay for webview to settle)
+        setTimeout(() => {
+          panel.webview.postMessage({ type: 'panelState', payload: { isInWindow: true } });
+        }, 500);
+      } else if (cmd) {
+        await vscode.commands.executeCommand(`shader-studio.${cmd}`);
+      }
     }
   }
 

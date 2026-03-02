@@ -181,6 +181,117 @@ suite('WebServer Test Suite', () => {
         });
     });
 
+    suite('Messenger and Server State Broadcasting', () => {
+        test('setMessenger stores the messenger', () => {
+            webServer = new WebServer(mockContext);
+            const mockMessenger = { send: sandbox.stub() } as any;
+
+            webServer.setMessenger(mockMessenger);
+
+            assert.strictEqual((webServer as any).messenger, mockMessenger);
+        });
+
+        test('broadcastServerState sends webServerState via messenger', () => {
+            webServer = new WebServer(mockContext);
+            const mockMessenger = { send: sandbox.stub() } as any;
+            webServer.setMessenger(mockMessenger);
+
+            (webServer as any).broadcastServerState();
+
+            sinon.assert.calledOnce(mockMessenger.send);
+            const message = mockMessenger.send.firstCall.args[0];
+            assert.strictEqual(message.type, 'webServerState');
+            assert.strictEqual(message.payload.isRunning, false);
+        });
+
+        test('broadcastServerState does nothing without messenger', () => {
+            webServer = new WebServer(mockContext);
+            // No messenger set - should not throw
+            (webServer as any).broadcastServerState();
+        });
+
+        test('stopWebServer calls broadcastServerState with isRunning false', () => {
+            webServer = new WebServer(mockContext);
+            const mockMessenger = { send: sandbox.stub() } as any;
+            webServer.setMessenger(mockMessenger);
+
+            // Force server into running state
+            (webServer as any).isServerRunning = true;
+            (webServer as any).httpServer = { close: sandbox.stub() };
+
+            webServer.stopWebServer();
+
+            sinon.assert.calledOnce(mockMessenger.send);
+            const message = mockMessenger.send.firstCall.args[0];
+            assert.strictEqual(message.type, 'webServerState');
+            assert.strictEqual(message.payload.isRunning, false);
+        });
+
+        test('stopWebServer does nothing when server not running', () => {
+            webServer = new WebServer(mockContext);
+            const mockMessenger = { send: sandbox.stub() } as any;
+            webServer.setMessenger(mockMessenger);
+
+            webServer.stopWebServer();
+
+            sinon.assert.notCalled(mockMessenger.send);
+        });
+    });
+
+    suite('showWebServerMenu', () => {
+        test('shows QuickPick with open, copy, stop options', async () => {
+            webServer = new WebServer(mockContext);
+            const showQuickPickStub = sandbox.stub(vscode.window, 'showQuickPick').resolves(undefined);
+
+            await webServer.showWebServerMenu();
+
+            sinon.assert.calledOnce(showQuickPickStub);
+            const items = showQuickPickStub.firstCall.args[0] as any[];
+            assert.strictEqual(items.length, 3);
+            assert.strictEqual(items[0].action, 'open');
+            assert.strictEqual(items[1].action, 'copy');
+            assert.strictEqual(items[2].action, 'stop');
+        });
+
+        test('opens browser when open is selected', async () => {
+            webServer = new WebServer(mockContext);
+            sandbox.stub(vscode.window, 'showQuickPick').resolves({ action: 'open' } as any);
+            const openExternalStub = sandbox.stub(vscode.env, 'openExternal').resolves(true);
+
+            await webServer.showWebServerMenu();
+
+            sinon.assert.calledOnce(openExternalStub);
+        });
+
+        test('copies URL to clipboard when copy is selected', async () => {
+            webServer = new WebServer(mockContext);
+            sandbox.stub(vscode.window, 'showQuickPick').resolves({ action: 'copy' } as any);
+            // vscode.env.clipboard.writeText is non-configurable, so replace the whole clipboard
+            const writeTextStub = sandbox.stub().resolves();
+            sandbox.stub(vscode.env, 'clipboard').value({ writeText: writeTextStub, readText: sandbox.stub().resolves('') });
+            sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined as any);
+
+            await webServer.showWebServerMenu();
+
+            sinon.assert.calledOnce(writeTextStub);
+            sinon.assert.calledWith(writeTextStub, 'http://localhost:3000');
+        });
+
+        test('stops server when stop is selected', async () => {
+            webServer = new WebServer(mockContext);
+            sandbox.stub(vscode.window, 'showQuickPick').resolves({ action: 'stop' } as any);
+            sandbox.stub(vscode.window, 'showInformationMessage').resolves(undefined as any);
+
+            // Force server into running state
+            (webServer as any).isServerRunning = true;
+            (webServer as any).httpServer = { close: sandbox.stub() };
+
+            await webServer.showWebServerMenu();
+
+            assert.strictEqual(webServer.isRunning(), false);
+        });
+    });
+
     suite('WebSocket Port Injection', () => {
         let mockRequest: sinon.SinonStubbedInstance<http.IncomingMessage>;
         let mockResponse: sinon.SinonStubbedInstance<http.ServerResponse>;
