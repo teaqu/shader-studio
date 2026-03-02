@@ -636,7 +636,9 @@ suite('PanelManager Test Suite', () => {
             await (panelManager as any).handleRequestWorkspaceFiles(payload, mockPanel);
 
             sinon.assert.calledOnce(scanFilesStub);
-            sinon.assert.calledWith(scanFilesStub, payload.extensions, payload.shaderPath, mockPanel.webview);
+            assert.deepStrictEqual(scanFilesStub.firstCall.args[0], payload.extensions);
+            assert.strictEqual(scanFilesStub.firstCall.args[1], payload.shaderPath);
+            assert.strictEqual(typeof scanFilesStub.firstCall.args[2], 'function');
 
             sinon.assert.calledOnce(mockPanel.webview.postMessage as sinon.SinonStub);
             const response = (mockPanel.webview.postMessage as sinon.SinonStub).firstCall.args[0];
@@ -662,7 +664,7 @@ suite('PanelManager Test Suite', () => {
             assert.deepStrictEqual(response.payload.files, []);
         });
 
-        test('passes correct args (extensions, shaderPath, webview) to scanner', async () => {
+        test('passes extensions, shaderPath, and URI converter function to scanner', async () => {
             const scanFilesStub = sandbox.stub(WorkspaceFileScanner, 'scanFiles').resolves([]);
 
             const mockWebview = { postMessage: sandbox.stub().resolves(true) };
@@ -675,7 +677,7 @@ suite('PanelManager Test Suite', () => {
             const args = scanFilesStub.firstCall.args;
             assert.deepStrictEqual(args[0], ['mp4', 'webm']);
             assert.strictEqual(args[1], '/workspace/shaders/test.glsl');
-            assert.strictEqual(args[2], mockWebview);
+            assert.strictEqual(typeof args[2], 'function');
         });
     });
 
@@ -890,20 +892,6 @@ suite('PanelManager Test Suite', () => {
 
             sinon.assert.calledOnce(execStub);
             sinon.assert.calledWith(execStub, 'shader-studio.newShader');
-        });
-
-        test('extensionCommand moveToNewWindow reveals panel and moves to new window', async () => {
-            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-            mockWebviewPanel.reveal = sandbox.stub();
-
-            await (panelManager as any).handleWebviewMessage(
-                { type: 'extensionCommand', payload: { command: 'moveToNewWindow' } },
-                mockWebviewPanel,
-            );
-
-            sinon.assert.calledOnce(mockWebviewPanel.reveal);
-            sinon.assert.calledOnce(execStub);
-            sinon.assert.calledWith(execStub, 'workbench.action.moveEditorToNewWindow');
         });
 
         test('extensionCommand does nothing when command is missing', async () => {

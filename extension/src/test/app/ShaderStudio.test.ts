@@ -81,7 +81,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({
-      get: sandbox.stub().withArgs('webSocketPort').returns(51474 + Math.floor(Math.random() * 100))
+      get: sandbox.stub()
     } as any);
     sandbox.stub(vscode.window, 'registerCustomEditorProvider').returns({
       dispose: sandbox.stub()

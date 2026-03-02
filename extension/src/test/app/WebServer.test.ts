@@ -292,6 +292,113 @@ suite('WebServer Test Suite', () => {
         });
     });
 
+    suite('setWebSocketPort', () => {
+        test('stores port value for HTML injection', () => {
+            webServer = new WebServer(mockContext);
+
+            webServer.setWebSocketPort(55555);
+
+            assert.strictEqual((webServer as any).webSocketPort, 55555);
+        });
+
+        test('defaults to 0 when not set', () => {
+            webServer = new WebServer(mockContext);
+
+            assert.strictEqual((webServer as any).webSocketPort, 0);
+        });
+
+        test('can be updated multiple times', () => {
+            webServer = new WebServer(mockContext);
+
+            webServer.setWebSocketPort(1111);
+            assert.strictEqual((webServer as any).webSocketPort, 1111);
+
+            webServer.setWebSocketPort(2222);
+            assert.strictEqual((webServer as any).webSocketPort, 2222);
+        });
+    });
+
+    suite('Content Type Mapping', () => {
+        let mockHttpServer: EventEmitter;
+        let mockResponse: sinon.SinonStubbedInstance<http.ServerResponse>;
+
+        setup(() => {
+            mockHttpServer = new EventEmitter();
+            (mockHttpServer as any).listen = sandbox.stub();
+            (mockHttpServer as any).close = sandbox.stub();
+
+            const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
+                'fs': {
+                    readFile: sandbox.stub().callsFake((_filePath: string, callback: Function) => {
+                        callback(null, Buffer.from('file content'));
+                    }),
+                    existsSync: sandbox.stub().returns(true)
+                },
+                'http': {
+                    createServer: sandbox.stub().callsFake((handler: any) => {
+                        mockHttpServer.on('request', handler);
+                        return mockHttpServer;
+                    })
+                }
+            });
+            webServer = new ProxiedWebServer(mockContext);
+            webServer.startWebServer();
+
+            mockResponse = { writeHead: sandbox.stub(), end: sandbox.stub(), setHeader: sandbox.stub() } as any;
+        });
+
+        function requestFile(filename: string): string {
+            const mockRequest = { url: `/${filename}`, method: 'GET' } as any;
+            mockHttpServer.emit('request', mockRequest, mockResponse);
+            const headers = mockResponse.writeHead.lastCall.args[1] as any;
+            return headers['Content-Type'];
+        }
+
+        test('serves .ttf with font/ttf content type', () => {
+            assert.strictEqual(requestFile('codicon.ttf'), 'font/ttf');
+        });
+
+        test('serves .woff with font/woff content type', () => {
+            assert.strictEqual(requestFile('font.woff'), 'font/woff');
+        });
+
+        test('serves .woff2 with font/woff2 content type', () => {
+            assert.strictEqual(requestFile('font.woff2'), 'font/woff2');
+        });
+
+        test('serves .svg with image/svg+xml content type', () => {
+            assert.strictEqual(requestFile('icon.svg'), 'image/svg+xml');
+        });
+
+        test('serves .wasm with application/wasm content type', () => {
+            assert.strictEqual(requestFile('module.wasm'), 'application/wasm');
+        });
+
+        test('serves .js with application/javascript content type', () => {
+            assert.strictEqual(requestFile('app.js'), 'application/javascript');
+        });
+
+        test('serves .css with text/css content type', () => {
+            assert.strictEqual(requestFile('style.css'), 'text/css');
+        });
+
+        test('serves .json with application/json content type', () => {
+            assert.strictEqual(requestFile('data.json'), 'application/json');
+        });
+
+        test('serves .png with image/png content type', () => {
+            assert.strictEqual(requestFile('image.png'), 'image/png');
+        });
+
+        test('serves .jpg with image/jpeg content type', () => {
+            assert.strictEqual(requestFile('photo.jpg'), 'image/jpeg');
+        });
+
+        test('serves unknown extensions with text/html content type', () => {
+            assert.strictEqual(requestFile('file.xyz'), 'text/html');
+        });
+    });
+
     suite('WebSocket Port Injection', () => {
         let mockRequest: sinon.SinonStubbedInstance<http.IncomingMessage>;
         let mockResponse: sinon.SinonStubbedInstance<http.ServerResponse>;
@@ -327,9 +434,9 @@ suite('WebServer Test Suite', () => {
             mockResponse = { writeHead: sandbox.stub(), end: sandbox.stub(), setHeader: sandbox.stub() } as any;
         });
 
-        test('should inject configured WebSocket port into index.html', () => {
+        test('should inject WebSocket port set via setWebSocketPort into index.html', () => {
             const testPort = 9999;
-            mockWorkspaceConfig.get.withArgs('webSocketPort').returns(testPort);
+            webServer.setWebSocketPort(testPort);
 
             // When: The server receives a request for index.html
             mockHttpServer.emit('request', mockRequest, mockResponse);
@@ -345,17 +452,15 @@ suite('WebServer Test Suite', () => {
             }
         });
 
-        test('should inject default WebSocket port when not configured', () => {
-            mockWorkspaceConfig.get.withArgs('webSocketPort').returns(undefined);
-
-            // When: The server receives a request for index.html
+        test('should inject port 0 when setWebSocketPort has not been called', () => {
+            // When: The server receives a request for index.html (no setWebSocketPort called)
             mockHttpServer.emit('request', mockRequest, mockResponse);
 
-            // Then: The response should contain the default port script
+            // Then: The response should contain port 0 (default)
             const responseBody = mockResponse.end.getCall(0).args[0];
             const responseString = Buffer.isBuffer(responseBody) ? responseBody.toString() : responseBody;
-            const expectedScript = `<script>window.shaderViewConfig = { port: 51472 };</script>`;
-            assert.ok(responseString.includes(expectedScript), `HTML should contain the default port script. Got: ${responseString}`);
+            const expectedScript = `<script>window.shaderViewConfig = { port: 0 };</script>`;
+            assert.ok(responseString.includes(expectedScript), `HTML should contain port 0 when not set. Got: ${responseString}`);
         });
     });
 });

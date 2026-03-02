@@ -92,5 +92,4 @@ vi.mock('monaco-vim', () => ({
   setState: vi.fn()
 }));
 
-// Mock window.piRequestFullScreen for our fullscreen tests
-(global as any).piRequestFullScreen = vi.fn();
+

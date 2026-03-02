@@ -1,13 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import type { WorkspaceFileInfo } from "@shader-studio/types";
 
 export class WorkspaceFileScanner {
   public static async scanFiles(
     extensions: string[],
     shaderPath: string,
-    webview: vscode.Webview,
+    uriConverter: (filePath: string) => string,
   ): Promise<WorkspaceFileInfo[]> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -29,7 +28,7 @@ export class WorkspaceFileScanner {
         const relativePath = path.relative(workspaceRoot, filePath);
         const workspacePath = `@/${relativePath.replace(/\\/g, "/")}`;
         const isSameDirectory = path.dirname(filePath) === shaderDir;
-        const thumbnailUri = ConfigPathConverter.convertUriForClient(filePath, webview);
+        const thumbnailUri = uriConverter(filePath);
 
         files.push({
           name: fileName,

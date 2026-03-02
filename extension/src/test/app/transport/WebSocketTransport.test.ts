@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
+import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
 import { WebSocketTransport } from '../../../app/transport/WebSocketTransport';
+import { WorkspaceFileScanner } from '../../../app/WorkspaceFileScanner';
 
 suite('WebSocketTransport Test Suite', () => {
     let transport: WebSocketTransport;
@@ -212,6 +214,214 @@ suite('WebSocketTransport Test Suite', () => {
 
             // Should return unchanged since it doesn't match the local file pattern
             assert.strictEqual(result, relativePath);
+        });
+    });
+
+    suite('Client Request Handling', () => {
+        let vscodeConfigStub: sinon.SinonStub;
+        let mockConfig: any;
+
+        setup(() => {
+            transport = new WebSocketTransport(51483, mockShaderProvider, mockGlslFileTracker);
+
+            mockConfig = {
+                get: sandbox.stub().withArgs('webServerPort').returns(3000)
+            };
+            if (!(require('vscode').workspace.getConfiguration as any).isSinonProxy) {
+                vscodeConfigStub = sandbox.stub(require('vscode').workspace, 'getConfiguration').returns(mockConfig);
+            } else {
+                vscodeConfigStub = require('vscode').workspace.getConfiguration as sinon.SinonStub;
+                vscodeConfigStub.returns(mockConfig);
+            }
+        });
+
+        test('requestWorkspaceFiles returns files via WebSocket', async () => {
+            const mockFiles = [
+                { name: 'texture.png', workspacePath: '@/textures/texture.png', thumbnailUri: 'http://localhost:3000/textures/test', isSameDirectory: true },
+            ];
+            const scanStub = sandbox.stub(WorkspaceFileScanner, 'scanFiles').resolves(mockFiles);
+
+            const wsClients = (transport as any).wsClients as Set<WebSocket>;
+            wsClients.add(mockWsClient as any);
+
+            await (transport as any).handleClientRequest(
+                { type: 'requestWorkspaceFiles', payload: { extensions: ['png', 'jpg'], shaderPath: '/test/shader.glsl' } },
+                mockWsClient,
+            );
+
+            assert.ok(scanStub.calledOnce);
+            assert.deepStrictEqual(scanStub.firstCall.args[0], ['png', 'jpg']);
+            assert.strictEqual(scanStub.firstCall.args[1], '/test/shader.glsl');
+            assert.strictEqual(typeof scanStub.firstCall.args[2], 'function');
+
+            assert.ok(mockWsClient.send.calledOnce);
+            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
+            assert.strictEqual(response.type, 'workspaceFiles');
+            assert.strictEqual(response.payload.files.length, 1);
+            assert.strictEqual(response.payload.files[0].name, 'texture.png');
+        });
+
+        test('requestWorkspaceFiles uses HTTP URL converter', async () => {
+            let capturedConverter: ((path: string) => string) | undefined;
+            sandbox.stub(WorkspaceFileScanner, 'scanFiles').callsFake(async (_ext, _path, converter) => {
+                capturedConverter = converter;
+                return [];
+            });
+
+            const wsClients = (transport as any).wsClients as Set<WebSocket>;
+            wsClients.add(mockWsClient as any);
+
+            await (transport as any).handleClientRequest(
+                { type: 'requestWorkspaceFiles', payload: { extensions: ['png'], shaderPath: '/test/shader.glsl' } },
+                mockWsClient,
+            );
+
+            assert.ok(capturedConverter);
+            const result = capturedConverter!('/path/to/texture.png');
+            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent('/path/to/texture.png')}`);
+        });
+
+        test('requestWorkspaceFiles sends empty array on error', async () => {
+            sandbox.stub(WorkspaceFileScanner, 'scanFiles').rejects(new Error('scan failed'));
+
+            const wsClients = (transport as any).wsClients as Set<WebSocket>;
+            wsClients.add(mockWsClient as any);
+
+            await (transport as any).handleClientRequest(
+                { type: 'requestWorkspaceFiles', payload: { extensions: ['png'], shaderPath: '/test/shader.glsl' } },
+                mockWsClient,
+            );
+
+            assert.ok(mockWsClient.send.calledOnce);
+            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
+            assert.strictEqual(response.type, 'workspaceFiles');
+            assert.deepStrictEqual(response.payload.files, []);
+        });
+
+        test('updateConfig writes config and triggers shader refresh', async () => {
+            const fsWriteStub = sandbox.stub(require('fs'), 'writeFileSync');
+            mockShaderProvider.sendShaderFromPath = sandbox.stub();
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'updateConfig',
+                    payload: {
+                        config: { passes: {} },
+                        text: '{"passes":{}}',
+                        shaderPath: '/test/shader.glsl',
+                    },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(fsWriteStub.calledOnce);
+            assert.strictEqual(fsWriteStub.firstCall.args[0], '/test/shader.sha.json');
+            assert.strictEqual(fsWriteStub.firstCall.args[1], '{"passes":{}}');
+        });
+
+        test('createBufferFile creates file when it does not exist', async () => {
+            const mockEditor = { document: { uri: { fsPath: '/test/shader.glsl' } } };
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(false);
+            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'createBufferFile',
+                    payload: { bufferName: 'BufferA', filePath: 'bufferA.glsl' },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(writeStub.called);
+        });
+
+        test('updateShaderSource delegates to overlay handler', async () => {
+            const overlayHandler = (transport as any).overlayHandler;
+            const handleStub = sandbox.stub(overlayHandler, 'handleUpdateShaderSource').resolves();
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'updateShaderSource',
+                    payload: { code: 'void main() {}', path: '/test/shader.glsl' },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(handleStub.calledOnce);
+            assert.deepStrictEqual(handleStub.firstCall.args[0], { code: 'void main() {}', path: '/test/shader.glsl' });
+        });
+
+        test('requestFileContents sends file contents via WebSocket', async () => {
+            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(true);
+            const readStub = sandbox.stub(require('fs'), 'readFileSync');
+            readStub.withArgs('/test/shader.sha.json', 'utf-8').returns('{"passes":{"BufferA":{"path":"bufferA.glsl"}}}');
+            readStub.withArgs('/test/bufferA.glsl', 'utf-8').returns('// buffer code');
+
+            const wsClients = (transport as any).wsClients as Set<WebSocket>;
+            wsClients.add(mockWsClient as any);
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'requestFileContents',
+                    payload: { bufferName: 'BufferA', shaderPath: '/test/shader.glsl' },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(mockWsClient.send.calledOnce);
+            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
+            assert.strictEqual(response.type, 'fileContents');
+            assert.strictEqual(response.payload.code, '// buffer code');
+            assert.strictEqual(response.payload.bufferName, 'BufferA');
+        });
+
+        test('CLIENT_REQUEST_TYPES includes all non-panel-specific message types', () => {
+            const clientTypes = (WebSocketTransport as any).CLIENT_REQUEST_TYPES as Set<string>;
+
+            // Messages that should be handled directly by WebSocketTransport
+            assert.ok(clientTypes.has('requestWorkspaceFiles'), 'should handle requestWorkspaceFiles');
+            assert.ok(clientTypes.has('updateConfig'), 'should handle updateConfig');
+            assert.ok(clientTypes.has('createBufferFile'), 'should handle createBufferFile');
+            assert.ok(clientTypes.has('updateShaderSource'), 'should handle updateShaderSource');
+            assert.ok(clientTypes.has('requestFileContents'), 'should handle requestFileContents');
+            assert.ok(clientTypes.has('requestLayout'), 'should handle requestLayout');
+
+            // Panel-specific messages should NOT be in the set
+            assert.ok(!clientTypes.has('navigateToBuffer'), 'navigateToBuffer is panel-specific');
+            assert.ok(!clientTypes.has('forkShader'), 'forkShader is panel-specific');
+            assert.ok(!clientTypes.has('extensionCommand'), 'extensionCommand is panel-specific');
+        });
+
+        test('requestLayout responds with restoreLayout and null payload', async () => {
+            const wsClients = (transport as any).wsClients as Set<WebSocket>;
+            wsClients.add(mockWsClient as any);
+
+            await (transport as any).handleClientRequest(
+                { type: 'requestLayout' },
+                mockWsClient,
+            );
+
+            assert.ok(mockWsClient.send.calledOnce);
+            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
+            assert.strictEqual(response.type, 'restoreLayout');
+            assert.strictEqual(response.payload, null);
+        });
+
+        test('requestLayout does not send if client disconnected', async () => {
+            const disconnectedClient = {
+                ...mockWsClient,
+                readyState: WebSocket.CLOSED,
+                send: sandbox.stub(),
+            } as any;
+
+            await (transport as any).handleClientRequest(
+                { type: 'requestLayout' },
+                disconnectedClient,
+            );
+
+            assert.ok(disconnectedClient.send.notCalled);
         });
     });
 

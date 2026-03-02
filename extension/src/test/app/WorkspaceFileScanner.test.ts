@@ -6,21 +6,14 @@ import { WorkspaceFileScanner } from '../../app/WorkspaceFileScanner';
 
 suite('WorkspaceFileScanner Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
-    let mockWebview: sinon.SinonStubbedInstance<vscode.Webview>;
+    let mockUriConverter: sinon.SinonStub;
 
     setup(() => {
         sandbox = sinon.createSandbox();
 
-        mockWebview = {
-            html: '',
-            onDidReceiveMessage: sandbox.stub().returns({ dispose: sandbox.stub() }),
-            postMessage: sandbox.stub(),
-            asWebviewUri: sandbox.stub().callsFake((uri: vscode.Uri) => {
-                return vscode.Uri.parse(`vscode-webview://mock/${path.basename(uri.fsPath)}`);
-            }),
-            options: {},
-            cspSource: '',
-        } as any;
+        mockUriConverter = sandbox.stub().callsFake((filePath: string) => {
+            return `converted://${path.basename(filePath)}`;
+        });
     });
 
     teardown(() => {
@@ -33,7 +26,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png', 'jpg'],
             '/some/shader.glsl',
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.deepStrictEqual(result, []);
@@ -45,7 +38,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png', 'jpg'],
             '/some/shader.glsl',
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.deepStrictEqual(result, []);
@@ -65,7 +58,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png', 'jpg'],
             path.join(workspaceRoot, 'shaders', 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.strictEqual(result.length, 2);
@@ -86,7 +79,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         await WorkspaceFileScanner.scanFiles(
             ['png'],
             path.join(workspaceRoot, 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         // Verify the exclude pattern contains node_modules
@@ -111,7 +104,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png'],
             path.join(shaderDir, 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.strictEqual(result.length, 4);
@@ -127,7 +120,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         assert.ok(!result[3].isSameDirectory);
     });
 
-    test('converts paths to webview URIs via ConfigPathConverter', async () => {
+    test('uses provided URI converter for thumbnailUri', async () => {
         const workspaceRoot = path.join(path.sep, 'workspace');
         sandbox.stub(vscode.workspace, 'workspaceFolders').value([
             { uri: vscode.Uri.file(workspaceRoot), name: 'workspace', index: 0 },
@@ -140,12 +133,12 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png'],
             path.join(workspaceRoot, 'shaders', 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.strictEqual(result.length, 1);
-        // thumbnailUri should be a webview URI string (from asWebviewUri)
-        assert.ok(result[0].thumbnailUri.includes('noise.png'));
+        assert.strictEqual(result[0].thumbnailUri, 'converted://noise.png');
+        assert.ok(mockUriConverter.calledOnce);
     });
 
     test('builds correct workspacePath with @/ prefix', async () => {
@@ -161,7 +154,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png'],
             path.join(workspaceRoot, 'shaders', 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.strictEqual(result.length, 1);
@@ -187,7 +180,7 @@ suite('WorkspaceFileScanner Test Suite', () => {
         const result = await WorkspaceFileScanner.scanFiles(
             ['png'],
             path.join(workspace1, 'main.glsl'),
-            mockWebview,
+            mockUriConverter,
         );
 
         assert.strictEqual(findFilesStub.callCount, 2);

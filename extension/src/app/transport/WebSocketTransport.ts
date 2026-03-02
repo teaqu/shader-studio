@@ -1,21 +1,38 @@
 import { WebSocket, WebSocketServer } from "ws";
 import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 import type { ShaderConfig } from "@shader-studio/types";
 import { ConfigPathConverter } from "./ConfigPathConverter";
 import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
+import { WorkspaceFileScanner } from "../WorkspaceFileScanner";
+import { OverlayPanelHandler } from "../OverlayPanelHandler";
 
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
   private messageHandler?: (message: any) => void;
+  private overlayHandler: OverlayPanelHandler;
+
+  /** Message types handled directly by WebSocketTransport (not forwarded to MessageHandler) */
+  private static readonly CLIENT_REQUEST_TYPES = new Set([
+    'requestWorkspaceFiles',
+    'updateConfig',
+    'createBufferFile',
+    'updateShaderSource',
+    'requestFileContents',
+    'requestLayout',
+  ]);
 
   constructor(
     port: number,
     private shaderProvider: ShaderProvider,
     private glslFileTracker: GlslFileTracker
   ) {
+    this.overlayHandler = new OverlayPanelHandler();
+
     try {
       this.wsServer = new WebSocketServer({
         port,
@@ -49,6 +66,12 @@ export class WebSocketTransport implements MessageTransport {
           // Handle client identification (legacy, kept for compatibility)
           if (data.type === 'clientInfo') {
             console.log(`WebSocket: Client connected from browser`);
+            return;
+          }
+
+          // Handle messages that need a direct response to the requesting client
+          if (WebSocketTransport.CLIENT_REQUEST_TYPES.has(data.type)) {
+            this.handleClientRequest(data, ws);
             return;
           }
 
@@ -159,11 +182,160 @@ export class WebSocketTransport implements MessageTransport {
         const input = pass.inputs[key];
         if (input?.path && input.type === "video") {
           // Browser clients need HTTP URLs via webserver
-          const config = vscode.workspace.getConfiguration('Shader Studio');
+          const config = vscode.workspace.getConfiguration('shader-studio');
           const port = config.get<number>('webServerPort') || 3000;
           input.path = `http://localhost:${port}/textures/${encodeURIComponent(input.path)}`;
         }
       }
+    }
+  }
+
+  private async handleClientRequest(data: any, ws: WebSocket): Promise<void> {
+    try {
+      switch (data.type) {
+        case 'requestWorkspaceFiles':
+          await this.handleRequestWorkspaceFiles(data.payload, ws);
+          break;
+        case 'updateConfig':
+          await this.handleConfigUpdate(data.payload);
+          break;
+        case 'createBufferFile':
+          await this.handleCreateBufferFile(data.payload);
+          break;
+        case 'updateShaderSource':
+          await this.overlayHandler.handleUpdateShaderSource(data.payload);
+          break;
+        case 'requestFileContents':
+          await this.handleRequestFileContents(data.payload, ws);
+          break;
+        case 'requestLayout':
+          // Browser clients don't have a saved layout — respond with null so DockviewLayout uses defaults
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'restoreLayout', payload: null }));
+          }
+          break;
+      }
+    } catch (error) {
+      console.error(`WebSocket: Error handling ${data.type}:`, error);
+    }
+  }
+
+  private async handleRequestWorkspaceFiles(
+    payload: { extensions: string[]; shaderPath: string },
+    ws: WebSocket,
+  ): Promise<void> {
+    try {
+      const files = await WorkspaceFileScanner.scanFiles(
+        payload.extensions,
+        payload.shaderPath,
+        (filePath) => this.convertUriForClient(filePath),
+      );
+      const response = JSON.stringify({
+        type: "workspaceFiles",
+        payload: { files },
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(response);
+      }
+    } catch (error) {
+      console.error('WebSocket: Failed to scan workspace files:', error);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: "workspaceFiles",
+          payload: { files: [] },
+        }));
+      }
+    }
+  }
+
+  private async handleConfigUpdate(
+    payload: { config: ShaderConfig; text: string; shaderPath?: string },
+  ): Promise<void> {
+    try {
+      let shaderPath = payload.shaderPath;
+      if (!shaderPath) {
+        const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+        if (!editor) {
+          console.warn("WebSocket: No active shader to update config for");
+          return;
+        }
+        shaderPath = editor.document.uri.fsPath;
+      }
+
+      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      fs.writeFileSync(configPath, payload.text, 'utf-8');
+      console.log(`WebSocket: Config updated: ${configPath}`);
+
+      setTimeout(() => {
+        if (typeof (this.shaderProvider as any).sendShaderFromPath === "function") {
+          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+        }
+      }, 150);
+    } catch (error) {
+      console.error(`WebSocket: Failed to update config: ${error}`);
+    }
+  }
+
+  private async handleCreateBufferFile(
+    payload: { bufferName: string; filePath: string },
+  ): Promise<void> {
+    try {
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        console.warn("WebSocket: No active shader to create buffer file for");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const shaderDir = path.dirname(shaderPath);
+      const bufferFilePath = path.join(shaderDir, payload.filePath);
+
+      if (!fs.existsSync(bufferFilePath)) {
+        let template: string;
+        if (payload.bufferName === 'common') {
+          template = `// Common functions shared across all passes\n`;
+        } else {
+          template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
+        }
+        fs.writeFileSync(bufferFilePath, template, 'utf-8');
+        console.log(`WebSocket: Created buffer file: ${bufferFilePath}`);
+      }
+    } catch (error) {
+      console.error(`WebSocket: Failed to create buffer file: ${error}`);
+    }
+  }
+
+  private async handleRequestFileContents(
+    payload: { bufferName: string; shaderPath: string },
+    ws: WebSocket,
+  ): Promise<void> {
+    try {
+      const { bufferName, shaderPath: mainShaderPath } = payload;
+      if (!mainShaderPath || !bufferName) return;
+
+      const configPath = mainShaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      if (!fs.existsSync(configPath)) return;
+
+      const configText = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configText);
+      const pass = config?.passes?.[bufferName];
+      if (!pass?.path) return;
+
+      const shaderDir = path.dirname(mainShaderPath);
+      const bufferFilePath = path.resolve(shaderDir, pass.path);
+
+      const code = fs.existsSync(bufferFilePath)
+        ? fs.readFileSync(bufferFilePath, 'utf-8')
+        : '';
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'fileContents',
+          payload: { code, path: bufferFilePath, bufferName },
+        }));
+      }
+    } catch (error) {
+      console.error(`WebSocket: Failed to read file contents: ${error}`);
     }
   }
 
@@ -173,7 +345,7 @@ export class WebSocketTransport implements MessageTransport {
     if (filePath.match(/^[a-zA-Z]:|^\//)) {
       // Looks like a local file path (Windows drive or Unix absolute path)
       // Browser clients need HTTP URLs due to CORS restrictions
-      const config = vscode.workspace.getConfiguration('Shader Studio');
+      const config = vscode.workspace.getConfiguration('shader-studio');
       const port = config.get<number>('webServerPort') || 3000;
       return `http://localhost:${port}/textures/${encodeURIComponent(filePath)}`;
     }

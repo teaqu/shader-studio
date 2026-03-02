@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
+import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
@@ -179,7 +180,11 @@ export class PanelManager {
 
       // Trigger shader refresh
       setTimeout(() => {
-        this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+        if (typeof (this.shaderProvider as any).sendShaderFromPath === "function") {
+          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+          return;
+        }
+        this.logger.warn("ShaderProvider missing sendShaderFromPath during config refresh");
       }, 150);
     } catch (error) {
       this.logger.error(`Failed to update config: ${error}`);
@@ -275,7 +280,7 @@ export class PanelManager {
       const files = await WorkspaceFileScanner.scanFiles(
         payload.extensions,
         payload.shaderPath,
-        panel.webview,
+        (filePath) => ConfigPathConverter.convertUriForClient(filePath, panel.webview),
       );
       console.log(`PanelManager: Found ${files.length} workspace files`);
       const response = {
