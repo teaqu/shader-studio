@@ -119,6 +119,47 @@ describe("FrameRenderer", () => {
 
       expect(mockFPSCalculator.getRawFPS).toHaveBeenCalled();
     });
+
+    it("should skip frames when FPS limit interval has not elapsed", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1010);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(1);
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it("should allow every frame when FPS limit is unlimited", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);
+
+      frameRenderer.setFPSLimit(0);
+      frameRenderer.render(1010);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not drop near-threshold frames at 60 FPS limit", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(60);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.4);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("render loop", () => {

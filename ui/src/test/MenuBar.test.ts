@@ -47,6 +47,7 @@ describe('MenuBar Component', () => {
       onAspectRatioChange: vi.fn(),
       onQualityChange: vi.fn(),
       onZoomChange: vi.fn(),
+      onFpsLimitChange: vi.fn(),
       isDebugEnabled: false,
       onToggleDebugEnabled: vi.fn(),
       debugState: {
@@ -440,6 +441,51 @@ describe('MenuBar Component', () => {
       await fireEvent.input(zoomSlider, { target: { value: '2.0' } });
       
       expect(onZoomChange).toHaveBeenCalledWith(2.0);
+    });
+  });
+
+  describe('FPS Menu', () => {
+    it('should show FPS menu when FPS button is clicked', async () => {
+      render(MenuBar, { props: defaultProps });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+
+      expect(screen.getByText('Frame Rate Limit')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '30 FPS' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '60 FPS' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Unlimited' })).toBeInTheDocument();
+    });
+
+    it('should call onFpsLimitChange when limit is selected', async () => {
+      const onFpsLimitChange = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onFpsLimitChange,
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+      await fireEvent.click(screen.getByRole('button', { name: '30 FPS' }));
+      await fireEvent.click(screen.getByRole('button', { name: '60 FPS' }));
+      await fireEvent.click(screen.getByRole('button', { name: 'Unlimited' }));
+
+      expect(onFpsLimitChange).toHaveBeenNthCalledWith(1, 30);
+      expect(onFpsLimitChange).toHaveBeenNthCalledWith(2, 60);
+      expect(onFpsLimitChange).toHaveBeenNthCalledWith(3, 0);
+    });
+
+    it('should close FPS menu when clicking outside', async () => {
+      render(MenuBar, { props: defaultProps });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+      expect(screen.getByText('Frame Rate Limit')).toBeInTheDocument();
+
+      await fireEvent.click(document.body);
+      expect(screen.queryByText('Frame Rate Limit')).not.toBeInTheDocument();
     });
   });
 

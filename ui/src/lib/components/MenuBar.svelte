@@ -53,6 +53,7 @@
   export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
   export let onQualityChange: (mode: QualityMode) => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
+  export let onFpsLimitChange: (limit: number) => void = () => {};
   export let onConfig: () => void = () => {};
   export let isDebugEnabled: boolean = false;
   export let onToggleDebugEnabled: () => void = () => {};
@@ -122,8 +123,10 @@
   let currentAspectRatio: AspectRatioMode = "16:9";
   let currentQuality: QualityMode = "HD";
   let showResolutionMenu = false;
+  let showFPSMenu = false;
   let showOptionsMenu = false;
   let zoomLevel = 1.0;
+  let currentFPSLimit = 0;
 
   onMount(() => {
     if (timeManager) {
@@ -209,12 +212,25 @@
 
   function handleResolutionClick() {
     showResolutionMenu = !showResolutionMenu;
+    showFPSMenu = false;
     showOptionsMenu = false;
+  }
+
+  function handleFPSClick() {
+    showFPSMenu = !showFPSMenu;
+    showResolutionMenu = false;
+    showOptionsMenu = false;
+  }
+
+  function handleFPSLimitSelect(limit: number) {
+    currentFPSLimit = limit;
+    onFpsLimitChange(limit);
   }
 
   function handleOptionsClick() {
     showOptionsMenu = !showOptionsMenu;
     showResolutionMenu = false;
+    showFPSMenu = false;
   }
 
   function handleAspectRatioSelect(mode: AspectRatioMode) {
@@ -250,6 +266,10 @@
       showResolutionMenu = false;
     }
 
+    if (showFPSMenu && !target.closest(".fps-menu-container")) {
+      showFPSMenu = false;
+    }
+
     if (showOptionsMenu && !target.closest(".options-menu-container")) {
       showOptionsMenu = false;
     }
@@ -280,7 +300,43 @@
       {/if}
     </div>
     <TimeControls {timeManager} {currentTime} />
-    <div class="menu-title fps-display">{currentFPS.toFixed(1)} FPS</div>
+    <div class="fps-menu-container">
+      <button
+        class="menu-title fps-button"
+        on:click={handleFPSClick}
+        aria-label="Change FPS limit"
+      >
+        {currentFPS.toFixed(1)} FPS
+      </button>
+      {#if showFPSMenu}
+        <div class="fps-menu">
+          <div class="resolution-section">
+            <h4>Frame Rate Limit</h4>
+            <button
+              class="resolution-option menu-title"
+              class:active={currentFPSLimit === 30}
+              on:click={() => handleFPSLimitSelect(30)}
+            >
+              30 FPS
+            </button>
+            <button
+              class="resolution-option menu-title"
+              class:active={currentFPSLimit === 60}
+              on:click={() => handleFPSLimitSelect(60)}
+            >
+              60 FPS
+            </button>
+            <button
+              class="resolution-option menu-title"
+              class:active={currentFPSLimit === 0}
+              on:click={() => handleFPSLimitSelect(0)}
+            >
+              Unlimited
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
     <div class="resolution-menu-container">
       <button
         class="menu-title resolution-button"

@@ -264,6 +264,11 @@
     zoomLevel = zoom;
   }
 
+  function handleFpsLimitChange(limit: number) {
+    if (!initialized) return;
+    renderingEngine.setFPSLimit(limit);
+  }
+
   function handleToggleInspectorEnabled() {
     if (!pixelInspectorManager) return;
     // Don't allow enabling inspector when debug is off
@@ -814,6 +819,7 @@
         onAspectRatioChange={handleAspectRatioChange}
         onQualityChange={handleQualityChange}
         onZoomChange={handleZoomChange}
+        onFpsLimitChange={handleFpsLimitChange}
         onConfig={handleConfig}
         isDebugEnabled={debugState.isEnabled}
         onToggleDebugEnabled={handleToggleDebugEnabled}
@@ -908,6 +914,7 @@
       onAspectRatioChange={handleAspectRatioChange}
       onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
+      onFpsLimitChange={handleFpsLimitChange}
       onConfig={handleConfig}
       isDebugEnabled={debugState.isEnabled}
       onToggleDebugEnabled={handleToggleDebugEnabled}
