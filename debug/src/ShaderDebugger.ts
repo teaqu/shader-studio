@@ -232,7 +232,7 @@ export class ShaderDebugger {
    * loopIndex values are sequential across ALL loops in the function
    * (matching capLoopIterations scan order).
    */
-  private static extractLoops(
+  public static extractLoops(
     lines: string[],
     functionStart: number,
     debugLine: number,
@@ -242,7 +242,8 @@ export class ShaderDebugger {
     let funcEnd = lines.length - 1;
     let funcBodyStarted = false;
     for (let i = functionStart; i < lines.length; i++) {
-      for (const char of lines[i]) {
+      const strippedFuncLine = lines[i].replace(/\/\/.*$/, '');
+      for (const char of strippedFuncLine) {
         if (char === '{') { funcBraceDepth++; funcBodyStarted = true; }
         if (char === '}') { funcBraceDepth--; }
       }
@@ -276,8 +277,8 @@ export class ShaderDebugger {
 
       if (loopHeader) {
         const currentLoopIndex = loopIndex++;
-        // Check if brace is on the same line
-        if (line.includes('{')) {
+        // Check if brace is on the same line (strip comments first)
+        if (line.replace(/\/\/.*$/, '').includes('{')) {
           braceDepth++;
           allLoops.push({
             loopIndex: currentLoopIndex,
@@ -294,8 +295,9 @@ export class ShaderDebugger {
         continue;
       }
 
-      // Process each character for brace tracking
-      for (const char of line) {
+      // Process each character for brace tracking (strip // comments first)
+      const strippedLine = line.replace(/\/\/.*$/, '');
+      for (const char of strippedLine) {
         if (char === '{') {
           braceDepth++;
           if (pendingLoop) {
@@ -336,7 +338,7 @@ export class ShaderDebugger {
     return containingLoops;
   }
 
-  private static truncateMainImage(
+  public static truncateMainImage(
     lines: string[],
     debugLine: number,
     functionStart: number,
@@ -344,6 +346,7 @@ export class ShaderDebugger {
     loopMaxIterations: Map<number, number> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
+    captureMode: boolean = false,
   ): string {
     const stripComments = (line: string): string => {
       const commentIndex = line.indexOf('//');
@@ -371,6 +374,32 @@ export class ShaderDebugger {
           }
         }
       }
+
+      // If the debug line is inside a nested block (if/else/etc.), extend
+      // truncationEnd to include all closing braces of those blocks so the
+      // output line is inserted AFTER them, not inside.
+      let depth = 0;
+      for (let i = functionStart; i <= truncationEnd; i++) {
+        const stripped = lines[i].replace(/\/\/.*$/, '');
+        for (const char of stripped) {
+          if (char === '{') depth++;
+          if (char === '}') depth--;
+        }
+      }
+      if (depth > 1) {
+        // Scan forward until we return to depth 1 (function body level)
+        for (let i = truncationEnd + 1; i < lines.length; i++) {
+          const stripped = lines[i].replace(/\/\/.*$/, '');
+          for (const char of stripped) {
+            if (char === '{') depth++;
+            if (char === '}') depth--;
+          }
+          if (depth <= 1) {
+            truncationEnd = i;
+            break;
+          }
+        }
+      }
     }
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
@@ -388,7 +417,10 @@ export class ShaderDebugger {
     const originalLength = withCappedLoops.length;
     const result = closedLines.slice(0, originalLength);
     const outputVar = shadowVarName || varInfo.name;
-    result.push(CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar, normalizeMode, stepEdge));
+    const outputLine = captureMode
+      ? CodeGenerator.generateCaptureOutputForVar(varInfo.type, outputVar)
+      : CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar, normalizeMode, stepEdge);
+    result.push(outputLine);
     result.push(...closedLines.slice(originalLength));
     return result.join('\n');
   }

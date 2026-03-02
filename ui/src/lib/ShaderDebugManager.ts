@@ -1,5 +1,6 @@
 import type { ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/glsl-debug";
+import type { CapturedVariable } from "./VariableCaptureManager";
 
 export class ShaderDebugManager {
   private state: ShaderDebugState = {
@@ -15,6 +16,8 @@ export class ShaderDebugManager {
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    isVariableInspectorEnabled: false,
+    capturedVariables: [],
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -125,6 +128,19 @@ export class ShaderDebugManager {
 
   public setDebugError(error: string | null): void {
     this.state.debugError = error;
+    this.notifyStateChange();
+  }
+
+  public toggleVariableInspector(): void {
+    this.state.isVariableInspectorEnabled = !this.state.isVariableInspectorEnabled;
+    if (!this.state.isVariableInspectorEnabled) {
+      this.state.capturedVariables = [];
+    }
+    this.notifyStateChange();
+  }
+
+  public setCapturedVariables(vars: CapturedVariable[]): void {
+    this.state.capturedVariables = vars;
     this.notifyStateChange();
   }
 

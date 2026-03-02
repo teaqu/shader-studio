@@ -56,6 +56,34 @@ describe("GlslParser", () => {
       expect(result.name).toBe("mainImage");
       expect(result.start).toBe(0);
     });
+
+    it("should find helper function when cursor is on its closing brace line", () => {
+      const lines = [
+        "float sphere(vec3 p, float r) {",
+        "  return length(p) - r;",
+        "}",                              // cursor on this line
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 2);
+      expect(result.name).toBe("sphere");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(2);
+    });
+
+    it("should find mainImage when cursor is on its closing brace line", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(1.0);",
+        "}",                              // cursor on this line
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 2);
+      expect(result.name).toBe("mainImage");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(2);
+    });
   });
 
   describe("buildVariableTypeMap", () => {

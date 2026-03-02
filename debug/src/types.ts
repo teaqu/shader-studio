@@ -1,5 +1,10 @@
 export type ParameterMode = 'uv' | 'centered-uv' | 'custom' | 'preset';
 
+export interface CaptureVarInfo {
+  varName: string;
+  varType: string;
+}
+
 export interface DebugParameterInfo {
   name: string;              // parameter name from function signature (e.g. "p")
   type: string;              // GLSL type: "vec2", "float", etc.

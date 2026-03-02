@@ -11,44 +11,37 @@ export interface VarInfo {
 
 export class GlslParser {
   static findEnclosingFunction(lines: string[], lineNum: number): FunctionInfo {
-    // Look backwards to find function declaration
-    // We count braces backwards - starting inside a function means we'll go negative
-    // Continue until we find a function declaration at depth 0 OR we've exited all scopes
+    // Walk backwards counting braces (// comments stripped).
+    // { decrements depth, } increments depth.
+    // When depth goes negative, we've just crossed a function's opening brace —
+    // the first function declaration we find at braceDepth < 0 is the enclosing one.
     let braceDepth = 0;
     let functionStart = -1;
     let functionName: string | null = null;
 
-    for (let i = lineNum; i >= 0; i--) {
+    // If the cursor is on a closing-brace-only line (e.g. the last line of a function),
+    // step back one line so the `}` isn't counted against finding the enclosing function.
+    const strippedCursor = lines[lineNum]?.replace(/\/\/.*$/, '').trim() ?? '';
+    const startLine = (strippedCursor === '}' && lineNum > 0) ? lineNum - 1 : lineNum;
+
+    for (let i = startLine; i >= 0; i--) {
       const line = lines[i];
 
-      // Count braces FIRST (walking backwards, so before = outside)
-      for (const char of line) {
+      // Strip // comments so commented braces don't affect depth
+      const strippedForBraces = line.replace(/\/\/.*$/, '');
+      for (const char of strippedForBraces) {
         if (char === '{') braceDepth--;
         if (char === '}') braceDepth++;
       }
 
-      // Look for function declaration at this depth
-      const funcMatch = line.match(/(?:void|float|vec2|vec3|vec4|mat2|mat3|mat4)\s+(\w+)\s*\(/);
-      if (funcMatch) {
-        if (braceDepth < 0) {
+      // Record when we've crossed the enclosing function's opening brace
+      if (braceDepth < 0) {
+        const funcMatch = line.match(/(?:void|float|int|bool|vec2|vec3|vec4|mat2|mat3|mat4)\s+(\w+)\s*\(/);
+        if (funcMatch) {
           functionName = funcMatch[1];
           functionStart = i;
           break;
         }
-        if (braceDepth === 0 && line.includes('{')) {
-          functionName = funcMatch[1];
-          functionStart = i;
-          break;
-        }
-        if (braceDepth === 0 && i + 1 < lines.length && lines[i + 1].trim() === '{') {
-          functionName = funcMatch[1];
-          functionStart = i;
-          break;
-        }
-      }
-
-      if (braceDepth > 0) {
-        break;
       }
     }
 
@@ -116,6 +109,8 @@ export class GlslParser {
         { pattern: /\s*(vec3)\s+(\w+)\s*[=;]/, type: 'vec3' },
         { pattern: /\s*(vec2)\s+(\w+)\s*[=;]/, type: 'vec2' },
         { pattern: /\s*(float)\s+(\w+)\s*[=;]/, type: 'float' },
+        { pattern: /\s*(int)\s+(\w+)\s*[=;]/, type: 'int' },
+        { pattern: /\s*(bool)\s+(\w+)\s*[=;]/, type: 'bool' },
         { pattern: /\s*(mat2)\s+(\w+)\s*[=;]/, type: 'mat2' },
         { pattern: /\s*(mat3)\s+(\w+)\s*[=;]/, type: 'mat3' },
         { pattern: /\s*(mat4)\s+(\w+)\s*[=;]/, type: 'mat4' },
@@ -210,16 +205,24 @@ export class GlslParser {
       { pattern: /\s*(vec3)\s+(\w+)\s*=/, type: 'vec3' },
       { pattern: /\s*(vec2)\s+(\w+)\s*=/, type: 'vec2' },
       { pattern: /\s*(float)\s+(\w+)\s*=/, type: 'float' },
+      { pattern: /\s*(int)\s+(\w+)\s*=/, type: 'int' },
+      { pattern: /\s*(bool)\s+(\w+)\s*=/, type: 'bool' },
       { pattern: /\s*(mat2)\s+(\w+)\s*=/, type: 'mat2' },
       { pattern: /\s*(mat3)\s+(\w+)\s*=/, type: 'mat3' },
       { pattern: /\s*(mat4)\s+(\w+)\s*=/, type: 'mat4' },
     ];
 
-    for (const { pattern, type } of declPatterns) {
-      const match = fullStatement.match(pattern);
-      if (match && match[2]) {
-        console.log(`[ShaderDebug] ✓ Matched declaration: ${match[2]} (${type})`);
-        return { name: match[2], type };
+    // Skip declaration matching inside control flow headers (for/if/while/switch)
+    const trimmedStatement = fullStatement.trim();
+    const isControlFlow = /^(for|if|while|switch)\s*\(/.test(trimmedStatement);
+
+    if (!isControlFlow) {
+      for (const { pattern, type } of declPatterns) {
+        const match = fullStatement.match(pattern);
+        if (match && match[2]) {
+          console.log(`[ShaderDebug] ✓ Matched declaration: ${match[2]} (${type})`);
+          return { name: match[2], type };
+        }
       }
     }
     console.log('[ShaderDebug] ✗ No declaration pattern matched');
