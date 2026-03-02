@@ -65,8 +65,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
                     const configDir = path.dirname(document.uri.fsPath);
 
                     // Collect all texture/video paths and convert them
-                    for (const passName of Object.keys(config.passes || {})) {
-                        const pass = config.passes[passName];
+                    for (const [passName, pass] of Object.entries(config.passes || {})) {
                         if (pass && typeof pass === 'object' && 'inputs' in pass) {
                             const inputs = pass.inputs;
                             if (inputs) {
