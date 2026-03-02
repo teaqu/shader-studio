@@ -4,7 +4,6 @@ import type { Snippet } from '../../lib/types/Snippet';
 
 // Mock MonacoEditor child component to avoid monaco-editor package resolution
 vi.mock('../../lib/components/MonacoEditor.svelte', () => {
-    const { mount, unmount } = require('svelte');
     return {
         default: function MonacoEditor($$anchor: any, $$props: any) {
             const div = document.createElement('div');
