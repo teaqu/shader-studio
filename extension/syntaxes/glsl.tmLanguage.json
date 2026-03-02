@@ -1,0 +1,599 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "GLSL",
+  "scopeName": "source.glsl",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#preprocessor" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#storage" },
+    { "include": "#types" },
+    { "include": "#precision-qualifiers" },
+    { "include": "#memory-qualifiers" },
+    { "include": "#layout-qualifier" },
+    { "include": "#builtins" },
+    { "include": "#builtin-functions" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#operators" },
+    { "include": "#swizzle" },
+    { "include": "#constants" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.glsl",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "captures": {
+            "0": { "name": "punctuation.definition.comment.glsl" }
+          }
+        },
+        {
+          "name": "comment.line.double-slash.glsl",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.glsl" }
+          }
+        }
+      ]
+    },
+
+    "preprocessor": {
+      "patterns": [
+        {
+          "comment": "#define with macro parameters",
+          "name": "meta.preprocessor.define.glsl",
+          "begin": "^\\s*(#)\\s*(define)\\b\\s+([a-zA-Z_]\\w*)(\\()",
+          "end": "(?<!\\\\)$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.define.glsl" },
+            "3": { "name": "entity.name.function.preprocessor.glsl" },
+            "4": { "name": "punctuation.definition.parameters.begin.glsl" }
+          },
+          "patterns": [
+            { "include": "#preprocessor-line-continuation" },
+            { "include": "#comments" },
+            { "include": "#numbers" },
+            { "include": "#types" },
+            { "include": "#builtin-functions" },
+            { "include": "#operators" }
+          ]
+        },
+        {
+          "comment": "#define constant",
+          "name": "meta.preprocessor.define.glsl",
+          "begin": "^\\s*(#)\\s*(define)\\b\\s+([a-zA-Z_]\\w*)",
+          "end": "(?<!\\\\)$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.define.glsl" },
+            "3": { "name": "entity.name.constant.preprocessor.glsl" }
+          },
+          "patterns": [
+            { "include": "#preprocessor-line-continuation" },
+            { "include": "#comments" },
+            { "include": "#numbers" },
+            { "include": "#types" },
+            { "include": "#builtin-functions" },
+            { "include": "#operators" }
+          ]
+        },
+        {
+          "comment": "#if, #ifdef, #ifndef, #elif with expression",
+          "name": "meta.preprocessor.conditional.glsl",
+          "begin": "^\\s*(#)\\s*(if|ifdef|ifndef|elif)\\b",
+          "end": "(?<!\\\\)$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.conditional.glsl" }
+          },
+          "patterns": [
+            {
+              "name": "keyword.operator.logical.glsl",
+              "match": "defined"
+            },
+            { "include": "#preprocessor-line-continuation" },
+            { "include": "#comments" },
+            { "include": "#numbers" },
+            { "include": "#operators" }
+          ]
+        },
+        {
+          "comment": "#else, #endif",
+          "match": "^\\s*(#)\\s*(else|endif)\\b",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.conditional.glsl" }
+          }
+        },
+        {
+          "comment": "#undef",
+          "match": "^\\s*(#)\\s*(undef)\\b\\s+([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.undef.glsl" },
+            "3": { "name": "entity.name.constant.preprocessor.glsl" }
+          }
+        },
+        {
+          "comment": "#version",
+          "match": "^\\s*(#)\\s*(version)\\b\\s+(\\d+)(?:\\s+(es|core|compatibility))?",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.version.glsl" },
+            "3": { "name": "constant.numeric.integer.glsl" },
+            "4": { "name": "keyword.control.directive.version.profile.glsl" }
+          }
+        },
+        {
+          "comment": "#extension",
+          "match": "^\\s*(#)\\s*(extension)\\b\\s+([a-zA-Z_]\\w*)\\s*:\\s*(require|enable|warn|disable)",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.extension.glsl" },
+            "3": { "name": "entity.name.other.extension.glsl" },
+            "4": { "name": "keyword.control.directive.extension.behavior.glsl" }
+          }
+        },
+        {
+          "comment": "#pragma",
+          "name": "meta.preprocessor.pragma.glsl",
+          "begin": "^\\s*(#)\\s*(pragma)\\b",
+          "end": "(?<!\\\\)$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.pragma.glsl" }
+          }
+        },
+        {
+          "comment": "#error",
+          "name": "meta.preprocessor.error.glsl",
+          "begin": "^\\s*(#)\\s*(error)\\b",
+          "end": "(?<!\\\\)$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.error.glsl" }
+          },
+          "patterns": [
+            {
+              "name": "string.unquoted.error-message.glsl",
+              "match": ".+"
+            }
+          ]
+        },
+        {
+          "comment": "#line",
+          "match": "^\\s*(#)\\s*(line)\\b\\s+(\\d+)(?:\\s+(\\d+))?",
+          "captures": {
+            "1": { "name": "punctuation.definition.directive.glsl" },
+            "2": { "name": "keyword.control.directive.line.glsl" },
+            "3": { "name": "constant.numeric.integer.glsl" },
+            "4": { "name": "constant.numeric.integer.glsl" }
+          }
+        }
+      ]
+    },
+
+    "preprocessor-line-continuation": {
+      "match": "\\\\$",
+      "name": "constant.character.escape.line-continuation.glsl"
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.glsl",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.glsl" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.glsl" } },
+          "patterns": [
+            {
+              "name": "constant.character.escape.glsl",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+
+    "numbers": {
+      "patterns": [
+        {
+          "comment": "Hexadecimal integer",
+          "name": "constant.numeric.hex.glsl",
+          "match": "\\b0[xX][0-9a-fA-F]+[uU]?\\b"
+        },
+        {
+          "comment": "Octal integer",
+          "name": "constant.numeric.octal.glsl",
+          "match": "\\b0[0-7]+[uU]?\\b"
+        },
+        {
+          "comment": "Float with decimal point and optional exponent",
+          "name": "constant.numeric.float.glsl",
+          "match": "\\b[0-9]+\\.[0-9]*(?:[eE][+-]?[0-9]+)?[fFlL]?\\b|\\b[0-9]*\\.[0-9]+(?:[eE][+-]?[0-9]+)?[fFlL]?\\b"
+        },
+        {
+          "comment": "Float with exponent only (no decimal point)",
+          "name": "constant.numeric.float.glsl",
+          "match": "\\b[0-9]+[eE][+-]?[0-9]+[fFlL]?\\b"
+        },
+        {
+          "comment": "Decimal point at start with no leading digits",
+          "name": "constant.numeric.float.glsl",
+          "match": "(?<![\\w.])\\.(?=[0-9])[0-9]+(?:[eE][+-]?[0-9]+)?[fFlL]?"
+        },
+        {
+          "comment": "Decimal integer",
+          "name": "constant.numeric.integer.glsl",
+          "match": "\\b[0-9]+[uU]?\\b"
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.glsl",
+          "match": "\\b(if|else|for|while|do|switch|case|default|break|continue|return|discard)\\b"
+        },
+        {
+          "name": "keyword.other.glsl",
+          "match": "\\b(struct|subroutine)\\b"
+        }
+      ]
+    },
+
+    "storage": {
+      "patterns": [
+        {
+          "comment": "Storage qualifiers",
+          "name": "storage.modifier.glsl",
+          "match": "\\b(const|in|out|inout|uniform|buffer|shared|attribute|varying|centroid|sample|patch|flat|smooth|noperspective|invariant|precise|coherent|volatile|restrict|readonly|writeonly)\\b"
+        }
+      ]
+    },
+
+    "types": {
+      "patterns": [
+        {
+          "comment": "Scalar types",
+          "name": "storage.type.glsl",
+          "match": "\\b(void|bool|int|uint|float|double)\\b"
+        },
+        {
+          "comment": "Float vector types",
+          "name": "storage.type.vector.glsl",
+          "match": "\\b(vec[234]|dvec[234])\\b"
+        },
+        {
+          "comment": "Integer vector types",
+          "name": "storage.type.vector.glsl",
+          "match": "\\b([iub]vec[234])\\b"
+        },
+        {
+          "comment": "Matrix types",
+          "name": "storage.type.matrix.glsl",
+          "match": "\\b(mat[234]|mat[234]x[234]|dmat[234]|dmat[234]x[234])\\b"
+        },
+        {
+          "comment": "Float sampler types",
+          "name": "storage.type.sampler.glsl",
+          "match": "\\b(sampler[123]D|samplerCube|sampler2DRect|sampler[12]DArray|samplerCubeArray|samplerBuffer|sampler2DMS|sampler2DMSArray)\\b"
+        },
+        {
+          "comment": "Shadow sampler types",
+          "name": "storage.type.sampler.glsl",
+          "match": "\\b(sampler[12]DShadow|samplerCubeShadow|sampler2DRectShadow|sampler[12]DArrayShadow|samplerCubeArrayShadow)\\b"
+        },
+        {
+          "comment": "Integer sampler types",
+          "name": "storage.type.sampler.glsl",
+          "match": "\\b([iu]sampler[123]D|[iu]samplerCube|[iu]sampler2DRect|[iu]sampler[12]DArray|[iu]samplerCubeArray|[iu]samplerBuffer|[iu]sampler2DMS|[iu]sampler2DMSArray)\\b"
+        },
+        {
+          "comment": "Image types",
+          "name": "storage.type.image.glsl",
+          "match": "\\b(image[123]D|imageCube|image2DRect|image[12]DArray|imageCubeArray|imageBuffer|image2DMS|image2DMSArray|[iu]image[123]D|[iu]imageCube|[iu]image2DRect|[iu]image[12]DArray|[iu]imageCubeArray|[iu]imageBuffer|[iu]image2DMS|[iu]image2DMSArray)\\b"
+        },
+        {
+          "comment": "Atomic counter type",
+          "name": "storage.type.atomic.glsl",
+          "match": "\\b(atomic_uint)\\b"
+        }
+      ]
+    },
+
+    "precision-qualifiers": {
+      "patterns": [
+        {
+          "name": "storage.modifier.precision.glsl",
+          "match": "\\b(precision|highp|mediump|lowp)\\b"
+        }
+      ]
+    },
+
+    "memory-qualifiers": {
+      "patterns": [
+        {
+          "name": "storage.modifier.memory.glsl",
+          "match": "\\b(coherent|volatile|restrict|readonly|writeonly)\\b"
+        }
+      ]
+    },
+
+    "layout-qualifier": {
+      "patterns": [
+        {
+          "name": "storage.modifier.layout.glsl",
+          "match": "\\blayout\\b"
+        }
+      ]
+    },
+
+    "builtins": {
+      "patterns": [
+        {
+          "comment": "Shadertoy built-in uniforms",
+          "name": "variable.other.builtin.shadertoy.glsl",
+          "match": "\\b(iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
+        },
+        {
+          "comment": "GLSL built-in outputs",
+          "name": "variable.language.output.glsl",
+          "match": "\\b(gl_Position|gl_PointSize|gl_ClipDistance|gl_CullDistance|gl_FragCoord|gl_FrontFacing|gl_PointCoord|gl_SampleID|gl_SamplePosition|gl_SampleMaskIn|gl_SampleMask|gl_FragDepth|gl_HelperInvocation|gl_Layer|gl_ViewportIndex|gl_PrimitiveID|gl_InvocationID|gl_TessLevelOuter|gl_TessLevelInner|gl_TessCoord|gl_PatchVerticesIn|gl_PrimitiveIDIn)\\b"
+        },
+        {
+          "comment": "GLSL built-in outputs (deprecated)",
+          "name": "variable.language.output.deprecated.glsl",
+          "match": "\\b(gl_FragColor|gl_FragData)\\b"
+        },
+        {
+          "comment": "GLSL built-in vertex inputs (deprecated/compatibility)",
+          "name": "variable.language.input.deprecated.glsl",
+          "match": "\\b(gl_Vertex|gl_Normal|gl_Color|gl_SecondaryColor|gl_MultiTexCoord[0-7]|gl_FogCoord|gl_VertexID|gl_InstanceID)\\b"
+        },
+        {
+          "comment": "GLSL built-in constants",
+          "name": "constant.language.builtin.glsl",
+          "match": "\\b(gl_MaxVertexAttribs|gl_MaxVertexUniformVectors|gl_MaxVaryingVectors|gl_MaxVertexOutputVectors|gl_MaxFragmentInputVectors|gl_MaxVertexTextureImageUnits|gl_MaxCombinedTextureImageUnits|gl_MaxTextureImageUnits|gl_MaxFragmentUniformVectors|gl_MaxDrawBuffers|gl_MaxClipDistances|gl_MaxGeometryInputComponents|gl_MaxGeometryOutputComponents|gl_MaxGeometryOutputVertices|gl_MaxGeometryTotalOutputComponents|gl_MaxGeometryTextureImageUnits|gl_MaxGeometryUniformComponents|gl_MaxTessControlInputComponents|gl_MaxTessControlOutputComponents|gl_MaxTessControlTextureImageUnits|gl_MaxTessControlUniformComponents|gl_MaxTessControlTotalOutputComponents|gl_MaxTessEvaluationInputComponents|gl_MaxTessEvaluationOutputComponents|gl_MaxTessEvaluationTextureImageUnits|gl_MaxTessEvaluationUniformComponents|gl_MaxTessPatchComponents|gl_MaxPatchVertices|gl_MaxTessGenLevel|gl_MaxComputeWorkGroupCount|gl_MaxComputeWorkGroupSize|gl_MaxComputeUniformComponents|gl_MaxComputeTextureImageUnits|gl_MaxComputeImageUniforms|gl_MaxComputeAtomicCounters|gl_MaxComputeAtomicCounterBuffers|gl_MinProgramTexelOffset|gl_MaxProgramTexelOffset)\\b"
+        },
+        {
+          "comment": "Compute shader built-ins",
+          "name": "variable.language.compute.glsl",
+          "match": "\\b(gl_NumWorkGroups|gl_WorkGroupSize|gl_WorkGroupID|gl_LocalInvocationID|gl_GlobalInvocationID|gl_LocalInvocationIndex)\\b"
+        }
+      ]
+    },
+
+    "builtin-functions": {
+      "patterns": [
+        {
+          "comment": "Trigonometric functions",
+          "name": "support.function.trigonometric.glsl",
+          "match": "\\b(radians|degrees|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh)(?=\\s*\\()"
+        },
+        {
+          "comment": "Exponential functions",
+          "name": "support.function.exponential.glsl",
+          "match": "\\b(pow|exp|log|exp2|log2|sqrt|inversesqrt)(?=\\s*\\()"
+        },
+        {
+          "comment": "Common functions",
+          "name": "support.function.common.glsl",
+          "match": "\\b(abs|sign|floor|trunc|round|roundEven|ceil|fract|mod|modf|min|max|clamp|mix|step|smoothstep|isnan|isinf|floatBitsToInt|floatBitsToUint|intBitsToFloat|uintBitsToFloat|fma|frexp|ldexp)(?=\\s*\\()"
+        },
+        {
+          "comment": "Packing/unpacking functions",
+          "name": "support.function.packing.glsl",
+          "match": "\\b(packUnorm2x16|packSnorm2x16|packUnorm4x8|packSnorm4x8|unpackUnorm2x16|unpackSnorm2x16|unpackUnorm4x8|unpackSnorm4x8|packHalf2x16|unpackHalf2x16|packDouble2x32|unpackDouble2x32)(?=\\s*\\()"
+        },
+        {
+          "comment": "Geometric functions",
+          "name": "support.function.geometric.glsl",
+          "match": "\\b(length|distance|dot|cross|normalize|faceforward|reflect|refract)(?=\\s*\\()"
+        },
+        {
+          "comment": "Matrix functions",
+          "name": "support.function.matrix.glsl",
+          "match": "\\b(matrixCompMult|outerProduct|transpose|determinant|inverse)(?=\\s*\\()"
+        },
+        {
+          "comment": "Vector relational functions",
+          "name": "support.function.relational.glsl",
+          "match": "\\b(lessThan|lessThanEqual|greaterThan|greaterThanEqual|equal|notEqual|any|all|not)(?=\\s*\\()"
+        },
+        {
+          "comment": "Integer functions",
+          "name": "support.function.integer.glsl",
+          "match": "\\b(uaddCarry|usubBorrow|umulExtended|imulExtended|bitfieldExtract|bitfieldInsert|bitfieldReverse|bitCount|findLSB|findMSB)(?=\\s*\\()"
+        },
+        {
+          "comment": "Texture lookup functions",
+          "name": "support.function.texture.glsl",
+          "match": "\\b(textureSize|textureQueryLod|textureQueryLevels|textureSamples|texture|textureProj|textureLod|textureOffset|texelFetch|texelFetchOffset|textureProjOffset|textureLodOffset|textureProjLod|textureProjLodOffset|textureGrad|textureGradOffset|textureProjGrad|textureProjGradOffset|textureGather|textureGatherOffset|textureGatherOffsets)(?=\\s*\\()"
+        },
+        {
+          "comment": "Legacy texture functions",
+          "name": "support.function.texture.legacy.glsl",
+          "match": "\\b(texture[123]D|texture[123]DProj|texture[123]DLod|texture[123]DProjLod|textureCube|textureCubeLod|shadow[12]D|shadow[12]DProj|shadow[12]DLod|shadow[12]DProjLod|texture2DRect|texture2DRectProj)(?=\\s*\\()"
+        },
+        {
+          "comment": "Atomic counter functions",
+          "name": "support.function.atomic.glsl",
+          "match": "\\b(atomicCounterIncrement|atomicCounterDecrement|atomicCounter|atomicCounterAdd|atomicCounterSubtract|atomicCounterMin|atomicCounterMax|atomicCounterAnd|atomicCounterOr|atomicCounterXor|atomicCounterExchange|atomicCounterCompSwap|atomicAdd|atomicMin|atomicMax|atomicAnd|atomicOr|atomicXor|atomicExchange|atomicCompSwap)(?=\\s*\\()"
+        },
+        {
+          "comment": "Image functions",
+          "name": "support.function.image.glsl",
+          "match": "\\b(imageSize|imageSamples|imageLoad|imageStore|imageAtomicAdd|imageAtomicMin|imageAtomicMax|imageAtomicAnd|imageAtomicOr|imageAtomicXor|imageAtomicExchange|imageAtomicCompSwap)(?=\\s*\\()"
+        },
+        {
+          "comment": "Fragment processing functions",
+          "name": "support.function.fragment.glsl",
+          "match": "\\b(dFdx|dFdy|dFdxFine|dFdyFine|dFdxCoarse|dFdyCoarse|fwidth|fwidthFine|fwidthCoarse)(?=\\s*\\()"
+        },
+        {
+          "comment": "Noise functions (deprecated)",
+          "name": "support.function.noise.glsl",
+          "match": "\\b(noise[1234])(?=\\s*\\()"
+        },
+        {
+          "comment": "Geometry shader functions",
+          "name": "support.function.geometry.glsl",
+          "match": "\\b(EmitStreamVertex|EndStreamPrimitive|EmitVertex|EndPrimitive)(?=\\s*\\()"
+        },
+        {
+          "comment": "Shader invocation control functions",
+          "name": "support.function.invocation.glsl",
+          "match": "\\b(barrier|memoryBarrier|memoryBarrierAtomicCounter|memoryBarrierBuffer|memoryBarrierShared|memoryBarrierImage|groupMemoryBarrier)(?=\\s*\\()"
+        },
+        {
+          "comment": "Interpolation functions",
+          "name": "support.function.interpolation.glsl",
+          "match": "\\b(interpolateAtCentroid|interpolateAtSample|interpolateAtOffset)(?=\\s*\\()"
+        },
+        {
+          "comment": "Shader subgroup functions (GL_KHR_shader_subgroup)",
+          "name": "support.function.subgroup.glsl",
+          "match": "\\b(subgroupBarrier|subgroupMemoryBarrier|subgroupMemoryBarrierBuffer|subgroupMemoryBarrierShared|subgroupMemoryBarrierImage|subgroupElect|subgroupAll|subgroupAny|subgroupAllEqual|subgroupBroadcast|subgroupBroadcastFirst|subgroupBallot|subgroupInverseBallot|subgroupBallotBitExtract|subgroupBallotBitCount|subgroupBallotInclusiveBitCount|subgroupBallotExclusiveBitCount|subgroupBallotFindLSB|subgroupBallotFindMSB|subgroupShuffle|subgroupShuffleXor|subgroupShuffleUp|subgroupShuffleDown|subgroupAdd|subgroupMul|subgroupMin|subgroupMax|subgroupAnd|subgroupOr|subgroupXor|subgroupInclusiveAdd|subgroupInclusiveMul|subgroupInclusiveMin|subgroupInclusiveMax|subgroupInclusiveAnd|subgroupInclusiveOr|subgroupInclusiveXor|subgroupExclusiveAdd|subgroupExclusiveMul|subgroupExclusiveMin|subgroupExclusiveMax|subgroupExclusiveAnd|subgroupExclusiveOr|subgroupExclusiveXor|subgroupClusteredAdd|subgroupClusteredMul|subgroupClusteredMin|subgroupClusteredMax|subgroupClusteredAnd|subgroupClusteredOr|subgroupClusteredXor|subgroupQuadBroadcast|subgroupQuadSwapHorizontal|subgroupQuadSwapVertical|subgroupQuadSwapDiagonal)(?=\\s*\\()"
+        },
+        {
+          "comment": "Type constructors (vector, matrix, scalar casts)",
+          "name": "support.function.constructor.glsl",
+          "match": "\\b(vec[234]|ivec[234]|uvec[234]|bvec[234]|dvec[234]|mat[234]|mat[234]x[234]|dmat[234]|dmat[234]x[234]|float|int|uint|bool|double)(?=\\s*\\()"
+        }
+      ]
+    },
+
+    "function-definition": {
+      "patterns": [
+        {
+          "comment": "Function definition",
+          "match": "\\b([a-zA-Z_]\\w*)\\s+([a-zA-Z_]\\w*)\\s*(?=\\([^)]*\\)\\s*\\{)",
+          "captures": {
+            "1": { "name": "storage.type.glsl" },
+            "2": { "name": "entity.name.function.glsl" }
+          }
+        }
+      ]
+    },
+
+    "function-call": {
+      "patterns": [
+        {
+          "comment": "User function call",
+          "match": "\\b([a-zA-Z_]\\w*)(?=\\s*\\()",
+          "name": "entity.name.function.call.glsl"
+        }
+      ]
+    },
+
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.glsl",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+
+    "operators": {
+      "patterns": [
+        {
+          "comment": "Assignment operators",
+          "name": "keyword.operator.assignment.glsl",
+          "match": "[+\\-*/%&|^]?=(?!=)|<<=|>>="
+        },
+        {
+          "comment": "Comparison operators",
+          "name": "keyword.operator.comparison.glsl",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "comment": "Arithmetic operators",
+          "name": "keyword.operator.arithmetic.glsl",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "comment": "Logical operators",
+          "name": "keyword.operator.logical.glsl",
+          "match": "&&|\\|\\||\\^\\^|!"
+        },
+        {
+          "comment": "Bitwise operators",
+          "name": "keyword.operator.bitwise.glsl",
+          "match": "&|\\||\\^|~|<<|>>"
+        },
+        {
+          "comment": "Increment/decrement",
+          "name": "keyword.operator.increment-decrement.glsl",
+          "match": "\\+\\+|--"
+        },
+        {
+          "comment": "Ternary operator",
+          "name": "keyword.operator.ternary.glsl",
+          "match": "\\?|:"
+        }
+      ]
+    },
+
+    "swizzle": {
+      "patterns": [
+        {
+          "comment": "Vector swizzle (xyzw, rgba, stpq)",
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b",
+          "captures": {
+            "1": { "name": "punctuation.accessor.glsl" },
+            "2": { "name": "variable.other.property.swizzle.glsl" }
+          }
+        }
+      ]
+    },
+
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.terminator.statement.glsl",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.comma.glsl",
+          "match": ","
+        },
+        {
+          "name": "punctuation.section.block.begin.glsl",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.glsl",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.section.parens.begin.glsl",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.glsl",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.glsl",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.glsl",
+          "match": "\\]"
+        }
+      ]
+    }
+  }
+}
