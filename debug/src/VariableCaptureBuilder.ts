@@ -3,8 +3,8 @@ import { CodeGenerator } from './CodeGenerator';
 import { ShaderDebugger } from './ShaderDebugger';
 import type { CaptureVarInfo } from './types';
 
-// Types capturable by the variable inspector (excludes matrix types)
-const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4']);
+// Types capturable by the variable inspector (mat2 fits in RGBA, mat3/mat4 excluded)
+const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
 
 const DEFAULT_GRID_SIZE = 64;
 

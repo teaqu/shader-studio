@@ -37,6 +37,11 @@ describe("CodeGenerator.generateCaptureOutputForVar", () => {
     expect(result).toContain("fragColor = vec4(0.0);");
   });
 
+  it("should pack mat2 columns into RGBA", () => {
+    const result = CodeGenerator.generateCaptureOutputForVar("mat2", "m");
+    expect(result).toContain("fragColor = vec4(m[0], m[1]);");
+  });
+
   it("should return safe zero fallback for mat4", () => {
     const result = CodeGenerator.generateCaptureOutputForVar("mat4", "m");
     expect(result).toContain("fragColor = vec4(0.0);");

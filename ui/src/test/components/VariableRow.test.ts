@@ -234,6 +234,41 @@ describe('VariableRow', () => {
     expect(segments.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('renders mat2 in pixel mode as 4-component value', () => {
+    const mat2Var: CapturedVariable = {
+      varName: 'myMat', varType: 'mat2', value: [1.0, 0.0, 0.0, 1.0],
+      channelMeans: null, channelStats: null, stats: null,
+      histogram: null, channelHistograms: null, ...NULL_FIELDS,
+    };
+    render(VariableRow, { props: { variable: mat2Var, isPixelMode: true } });
+    const content = document.body.textContent ?? '';
+    expect(content).toContain('myMat');
+    expect(content).toContain('mat2');
+    expect(content).toContain('1.000');
+    expect(content).toContain('0.000');
+  });
+
+  it('renders mat2 in grid mode with channel means', () => {
+    const mat2Grid: CapturedVariable = {
+      varName: 'myMat', varType: 'mat2', value: null,
+      channelMeans: [0.9, 0.1, 0.1, 0.9],
+      channelStats: [
+        { min: 0.8, max: 1.0, mean: 0.9 },
+        { min: 0.0, max: 0.2, mean: 0.1 },
+        { min: 0.0, max: 0.2, mean: 0.1 },
+        { min: 0.8, max: 1.0, mean: 0.9 },
+      ],
+      stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS,
+    };
+    render(VariableRow, { props: { variable: mat2Grid, isPixelMode: false } });
+    const content = document.body.textContent ?? '';
+    expect(content).toContain('≈');
+    expect(content).toContain('0.900');
+    expect(content).toContain('0.100');
+    const btn = document.querySelector('.expand-btn');
+    expect(btn).toBeInTheDocument();
+  });
+
   it('shows dash placeholder when no value and no stats', () => {
     const loadingVar: CapturedVariable = {
       varName: 'x', varType: 'float', value: null,
