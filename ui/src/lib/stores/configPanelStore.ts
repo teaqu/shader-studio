@@ -8,12 +8,13 @@ export interface ConfigPanelState {
 const STORAGE_KEY = "shader-studio-config-panel-state";
 
 function createConfigPanelStore() {
-  // Load initial state from localStorage or use defaults
+  // Load initial state from localStorage — only restore splitRatio, always start closed
   const getInitialState = (): ConfigPanelState => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        return { isVisible: false, splitRatio: parsed.splitRatio ?? 0.6 };
       }
     } catch (error) {
       console.warn("Failed to load config panel state from localStorage:", error);

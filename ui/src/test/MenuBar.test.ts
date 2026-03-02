@@ -627,27 +627,39 @@ describe('MenuBar Component', () => {
   });
 
   describe('Config Panel Button', () => {
-    it('should call onToggleConfigPanel when config panel button is clicked', async () => {
+    it('should call onToggleConfigPanel when config panel button is clicked and hasShader', async () => {
       const onToggleConfigPanel = vi.fn();
       render(MenuBar, {
         props: {
           ...defaultProps,
+          hasShader: true,
           onToggleConfigPanel
         }
       });
 
-      // Click config panel toggle button (now in main toolbar)
       const configButton = screen.getByLabelText('Toggle config panel');
       await fireEvent.click(configButton);
 
-      // Verify onToggleConfigPanel was called
       expect(onToggleConfigPanel).toHaveBeenCalledTimes(1);
+    });
+
+    it('should be disabled when hasShader is false', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          hasShader: false,
+        }
+      });
+
+      const configButton = screen.getByLabelText('Toggle config panel');
+      expect(configButton).toBeDisabled();
     });
 
     it('should show active state when config panel is visible', async () => {
       render(MenuBar, {
         props: {
           ...defaultProps,
+          hasShader: true,
           isConfigPanelVisible: true
         }
       });
@@ -666,6 +678,50 @@ describe('MenuBar Component', () => {
 
       const configButton = screen.getByLabelText('Toggle config panel');
       expect(configButton.classList.contains('active')).toBe(false);
+    });
+  });
+
+  describe('Debug Button Disabled State', () => {
+    it('should be disabled when hasShader is false', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          hasShader: false,
+        }
+      });
+
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      expect(debugButton).toBeDisabled();
+    });
+
+    it('should be enabled when hasShader is true', () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          hasShader: true,
+        }
+      });
+
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      expect(debugButton).not.toBeDisabled();
+    });
+
+    it('should disable debug and config in options menu when hasShader is false', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          hasShader: false,
+        }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const debugButtons = screen.getAllByLabelText('Toggle debug mode');
+      const configButtons = screen.getAllByLabelText('Toggle config panel');
+      // The menu versions (last ones) should be disabled
+      expect(debugButtons[debugButtons.length - 1]).toBeDisabled();
+      expect(configButtons[configButtons.length - 1]).toBeDisabled();
     });
   });
 
@@ -1109,6 +1165,185 @@ describe('MenuBar Component', () => {
       await fireEvent.click(pauseButton);
 
       expect(onTogglePause).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Extension Command Menu Items', () => {
+    it('should show Open in Window when not in window', async () => {
+      render(MenuBar, {
+        props: { ...defaultProps, isInWindow: false }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByLabelText('Open in new window')).toBeInTheDocument();
+    });
+
+    it('should hide Open in Window when already in window', async () => {
+      render(MenuBar, {
+        props: { ...defaultProps, isInWindow: true }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.queryByLabelText('Open in new window')).not.toBeInTheDocument();
+    });
+
+    it('should call onExtensionCommand with moveToNewWindow', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, isInWindow: false, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const openInWindowButton = screen.getByLabelText('Open in new window');
+      await fireEvent.click(openInWindowButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('moveToNewWindow');
+    });
+
+    it('should call onExtensionCommand with newShader', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const newShaderButton = screen.getByLabelText('New shader');
+      await fireEvent.click(newShaderButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('newShader');
+    });
+
+    it('should call onExtensionCommand with openShaderExplorer', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const explorerButton = screen.getByLabelText('Shader explorer');
+      await fireEvent.click(explorerButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('openShaderExplorer');
+    });
+
+    it('should call onExtensionCommand with openSnippetLibrary', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const snippetButton = screen.getByLabelText('Snippet library');
+      await fireEvent.click(snippetButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('openSnippetLibrary');
+    });
+
+    it('should call onExtensionCommand with openSettings', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const settingsButton = screen.getByLabelText('Settings');
+      await fireEvent.click(settingsButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('openSettings');
+    });
+
+    it('should call onExtensionCommand with startWebServer when server not running', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, isWebServerRunning: false, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const webServerButton = screen.getByLabelText('Web server');
+      await fireEvent.click(webServerButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('startWebServer');
+    });
+
+    it('should call onExtensionCommand with showWebServerMenu when server running', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, isWebServerRunning: true, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const webServerButton = screen.getByLabelText('Web server');
+      await fireEvent.click(webServerButton);
+
+      expect(onExtensionCommand).toHaveBeenCalledWith('showWebServerMenu');
+    });
+
+    it('should show status dot when web server is running', async () => {
+      const { container } = render(MenuBar, {
+        props: { ...defaultProps, isWebServerRunning: true }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(container.querySelector('.status-dot')).toBeInTheDocument();
+    });
+
+    it('should not show status dot when web server is not running', async () => {
+      const { container } = render(MenuBar, {
+        props: { ...defaultProps, isWebServerRunning: false }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(container.querySelector('.status-dot')).not.toBeInTheDocument();
+    });
+
+    it('should show active class on web server button when running', async () => {
+      render(MenuBar, {
+        props: { ...defaultProps, isWebServerRunning: true }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const webServerButton = screen.getByLabelText('Web server');
+      expect(webServerButton).toHaveClass('active');
+    });
+
+    it('should close options menu after clicking extension command', async () => {
+      const onExtensionCommand = vi.fn();
+      render(MenuBar, {
+        props: { ...defaultProps, onExtensionCommand }
+      });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const newShaderButton = screen.getByLabelText('New shader');
+      await fireEvent.click(newShaderButton);
+
+      // Menu should be closed - New shader button should no longer be visible
+      expect(screen.queryByLabelText('New shader')).not.toBeInTheDocument();
     });
   });
 });

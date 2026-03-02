@@ -400,8 +400,9 @@ suite('Shader Studio Test Suite', () => {
     // Execute the command directly on the shaderStudio instance
     await shaderStudio['openSettings']();
 
-    sinon.assert.calledOnce(executeCommandStub);
-    sinon.assert.calledWith(executeCommandStub, 'workbench.action.openSettings', '^shader-studio.');
+    sinon.assert.calledTwice(executeCommandStub);
+    sinon.assert.calledWith(executeCommandStub.firstCall, 'workbench.action.focusFirstEditorGroup');
+    sinon.assert.calledWith(executeCommandStub.secondCall, 'workbench.action.openSettings', '^shader-studio.');
   });
 
   test('should call generateConfig on ConfigGenerator when generateConfig command is executed', async () => {

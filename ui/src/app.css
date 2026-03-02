@@ -229,6 +229,12 @@ canvas {
   color: var(--vscode-button-foreground);
 }
 
+.menu-bar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 .menu-bar button.error {
   color: var(--vscode-errorForeground);
   background-color: var(--vscode-inputValidation-errorBackground);
@@ -551,8 +557,13 @@ canvas {
   transition: background-color 0.2s ease;
 }
 
-.menu-bar .options-menu-item:hover {
+.menu-bar .options-menu-item:hover:not(:disabled) {
   background-color: var(--vscode-list-hoverBackground);
+}
+
+.menu-bar .options-menu-item:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .menu-bar .options-menu-item.active {
@@ -568,6 +579,21 @@ canvas {
   padding-left: 2rem;
   font-size: var(--vscode-font-size, 12px);
   opacity: 0.85;
+}
+
+.menu-bar .options-menu-separator {
+  height: 1px;
+  background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  margin: 4px 8px;
+}
+
+.menu-bar .options-menu-item .status-dot {
+  width: 6px;
+  height: 6px;
+  min-height: 6px;
+  border-radius: 50%;
+  background-color: var(--vscode-testing-iconPassed, #4caf50);
+  flex: 0 0 6px;
 }
 
 @keyframes options-menu-appear {

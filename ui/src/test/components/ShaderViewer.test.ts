@@ -144,6 +144,22 @@ describe('ShaderViewer', () => {
     editorOverlayStore.setVisible(false);
   });
 
+  // Helper: send a shaderSource message to set hasShader = true
+  async function loadShader() {
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/shader.glsl' },
+      },
+    });
+    await tick();
+  }
+
   it('should render without crashing', async () => {
     const { container } = render(ShaderViewer, {
       onInitialized: vi.fn()
@@ -233,6 +249,9 @@ describe('ShaderViewer', () => {
     await tick();
     await tick();
 
+    // Load a shader so config button is enabled
+    await loadShader();
+
     // Config panel should not be visible initially
     expect(container.querySelector('.config-section')).toBeFalsy();
 
@@ -278,6 +297,9 @@ describe('ShaderViewer', () => {
     await tick();
     await tick();
 
+    // Load a shader so debug button is enabled
+    await loadShader();
+
     // Clear any initialization messages
     vi.clearAllMocks();
 
@@ -302,6 +324,9 @@ describe('ShaderViewer', () => {
     // Wait for initialization
     await tick();
     await tick();
+
+    // Load a shader so debug button is enabled
+    await loadShader();
 
     // Clear any initialization messages
     vi.clearAllMocks();
@@ -352,6 +377,9 @@ describe('ShaderViewer', () => {
     // Wait for initialization
     await tick();
     await tick();
+
+    // Load a shader so debug button is enabled
+    await loadShader();
 
     // Clear any initialization messages
     vi.clearAllMocks();
@@ -450,6 +478,9 @@ describe('ShaderViewer', () => {
     await tick();
     await tick();
 
+    // Load a shader so debug button is enabled
+    await loadShader();
+
     // Enable debug mode
     const debugButton = screen.getByLabelText('Toggle debug mode');
     await fireEvent.click(debugButton);
@@ -465,6 +496,9 @@ describe('ShaderViewer', () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     await tick();
+
+    // Load a shader so debug button is enabled
+    await loadShader();
 
     const debugButton = screen.getByLabelText('Toggle debug mode');
 
@@ -489,6 +523,9 @@ describe('ShaderViewer', () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     await tick();
+
+    // Load a shader so debug button is enabled
+    await loadShader();
 
     const debugButton = screen.getByLabelText('Toggle debug mode');
 
@@ -523,6 +560,9 @@ describe('ShaderViewer', () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     await tick();
+
+    // Load a shader so debug button is enabled
+    await loadShader();
 
     const debugButton = screen.getByLabelText('Toggle debug mode');
 
@@ -1030,5 +1070,189 @@ describe('ShaderViewer', () => {
     // Config panel should be visible - the update was allowed because paths match
     const configSection = container.querySelector('.config-section');
     expect(configSection).toBeTruthy();
+  });
+
+  it('should handle panelState message and set isInWindow', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    // Send panelState message indicating we're in a new window
+    await messageHandler({
+      data: { type: 'panelState', payload: { isInWindow: true } }
+    });
+    await tick();
+
+    // Open options menu to check "Open in Window" is hidden
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+    await tick();
+
+    // "Open in new window" should not be visible when isInWindow is true
+    expect(screen.queryByLabelText('Open in new window')).toBeFalsy();
+  });
+
+  it('should handle webServerState message and set isWebServerRunning', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    // Send webServerState message indicating server is running
+    await messageHandler({
+      data: { type: 'webServerState', payload: { isRunning: true } }
+    });
+    await tick();
+
+    // Open options menu to check status dot is visible
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+    await tick();
+
+    expect(container.querySelector('.status-dot')).toBeTruthy();
+  });
+
+  it('should send extensionCommand message via handleExtensionCommand', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    vi.clearAllMocks();
+
+    // Open options menu and click "New Shader"
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+    await tick();
+
+    const newShaderButton = screen.getByLabelText('New shader');
+    await fireEvent.click(newShaderButton);
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'extensionCommand',
+      payload: { command: 'newShader' }
+    });
+  });
+
+  it('should not toggle config panel when no shader is loaded', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Config button should be disabled
+    const configButton = screen.getByLabelText('Toggle config panel');
+    expect(configButton.hasAttribute('disabled')).toBe(true);
+
+    // Click should not open config panel
+    await fireEvent.click(configButton);
+    await tick();
+
+    expect(container.querySelector('.config-section')).toBeFalsy();
+  });
+
+  it('should not toggle debug when no shader is loaded', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    vi.clearAllMocks();
+
+    // Debug button should be disabled
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    expect(debugButton.hasAttribute('disabled')).toBe(true);
+
+    // Click should not send debugModeState message
+    await fireEvent.click(debugButton);
+
+    expect(mockTransport.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'debugModeState' })
+    );
+  });
+
+  it('should set isInWindow optimistically when moveToNewWindow command is sent', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Open options menu and click "Open in Window"
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+    await tick();
+
+    const openInWindowButton = screen.getByLabelText('Open in new window');
+    await fireEvent.click(openInWindowButton);
+    await tick();
+
+    // Re-open options menu - "Open in Window" should now be hidden
+    const optionsButton2 = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton2);
+    await tick();
+
+    expect(screen.queryByLabelText('Open in new window')).toBeFalsy();
+  });
+
+  it('should start paused and unpause on first shader load', async () => {
+    // Make isPaused track state so the unpause condition works
+    let paused = false;
+    mockTimeManager.isPaused = vi.fn(() => paused);
+
+    // Track togglePause calls via the mock
+    const togglePauseCalls: string[] = [];
+    const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+    const origTogglePause = RenderingEngine.prototype.togglePause;
+    RenderingEngine.prototype.togglePause = function() {
+      paused = !paused;
+      togglePauseCalls.push(paused ? 'paused' : 'unpaused');
+    };
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // togglePause should have been called once during init (to start paused)
+    expect(togglePauseCalls).toEqual(['paused']);
+    expect(paused).toBe(true);
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    // Send first shader - should trigger unpause since isPaused() returns true
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/shader.glsl' },
+      },
+    });
+    await tick();
+
+    // togglePause should have been called a second time (to unpause)
+    expect(togglePauseCalls).toEqual(['paused', 'unpaused']);
+    expect(paused).toBe(false);
+
+    // Send another shader - should NOT toggle pause again
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader2.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.5); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/shader2.glsl' },
+      },
+    });
+    await tick();
+
+    // No additional togglePause call
+    expect(togglePauseCalls).toEqual(['paused', 'unpaused']);
+
+    // Restore original
+    RenderingEngine.prototype.togglePause = origTogglePause;
+    mockTimeManager.isPaused = vi.fn(() => false);
   });
 });
