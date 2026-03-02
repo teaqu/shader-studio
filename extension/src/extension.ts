@@ -41,15 +41,6 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.commands.executeCommand('workbench.action.reloadWindow');
 					}
 				});
-			} else if (event.affectsConfiguration('shader-studio.webSocketPort')) {
-				vscode.window.showInformationMessage(
-					'Extension restart required to apply the new WebSocket port configuration.',
-					'Restart Now'
-				).then(selection => {
-					if (selection === 'Restart Now') {
-						vscode.commands.executeCommand('workbench.action.reloadWindow');
-					}
-				});
 			}
 		})
 	);

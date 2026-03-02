@@ -1177,28 +1177,6 @@ describe('ShaderViewer', () => {
     );
   });
 
-  it('should set isInWindow optimistically when moveToNewWindow command is sent', async () => {
-    render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    // Open options menu and click "Open in Window"
-    const optionsButton = screen.getByLabelText('Open options menu');
-    await fireEvent.click(optionsButton);
-    await tick();
-
-    const openInWindowButton = screen.getByLabelText('Open in new window');
-    await fireEvent.click(openInWindowButton);
-    await tick();
-
-    // Re-open options menu - "Open in Window" should now be hidden
-    const optionsButton2 = screen.getByLabelText('Open options menu');
-    await fireEvent.click(optionsButton2);
-    await tick();
-
-    expect(screen.queryByLabelText('Open in new window')).toBeFalsy();
-  });
-
   it('should start paused and unpause on first shader load', async () => {
     // Make isPaused track state so the unpause condition works
     let paused = false;

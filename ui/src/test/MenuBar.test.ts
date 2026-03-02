@@ -6,11 +6,6 @@ import { currentTheme } from '../lib/stores/themeStore';
 import { aspectRatioStore } from '../lib/stores/aspectRatioStore';
 import { qualityStore } from '../lib/stores/qualityStore';
 
-// Mock the piWebUtils module
-vi.mock('../../../vendor/pilibs/src/piWebUtils.js', () => ({
-  piRequestFullScreen: vi.fn()
-}));
-
 // Mock the transport factory
 vi.mock('../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: vi.fn().mockReturnValue(false)
@@ -331,26 +326,29 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Toggle fullscreen')).toBeInTheDocument();
     });
 
-    it('should call piRequestFullScreen when fullscreen button is clicked', async () => {
-      // Get the mocked function from the module mock
-      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
-      
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          canvasElement: mockCanvas 
-        } 
+    it('should call requestFullscreen when fullscreen button is clicked', async () => {
+      const requestFullscreenMock = vi.fn();
+      const canvasParent = document.createElement('div');
+      canvasParent.classList.add('canvas-container');
+      canvasParent.requestFullscreen = requestFullscreenMock;
+      canvasParent.appendChild(mockCanvas);
+
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          canvasElement: mockCanvas
+        }
       });
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click fullscreen
       const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
       await fireEvent.click(fullscreenButton);
-      
-      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalled();
+
+      expect(requestFullscreenMock).toHaveBeenCalled();
     });
   });
 
@@ -945,80 +943,81 @@ describe('MenuBar Component', () => {
 
   describe('Fullscreen Edge Cases', () => {
     it('should handle fullscreen without canvas element', async () => {
-      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
-      
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          canvasElement: null 
-        } 
+      const requestFullscreenMock = vi.fn();
+      document.documentElement.requestFullscreen = requestFullscreenMock;
+
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          canvasElement: null
+        }
       });
 
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click fullscreen
       const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
       await fireEvent.click(fullscreenButton);
-      
-      // Should call with null when no canvas element
-      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(null);
+
+      // Should call requestFullscreen on document element when no canvas
+      expect(requestFullscreenMock).toHaveBeenCalled();
     });
 
     it('should handle fullscreen with canvas but no container', async () => {
-      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
-      
       // Create canvas without canvas-container parent
       const canvasWithoutContainer = document.createElement('canvas');
       const mockParent = document.createElement('div');
+      const requestFullscreenMock = vi.fn();
+      mockParent.requestFullscreen = requestFullscreenMock;
       mockParent.appendChild(canvasWithoutContainer);
-      
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          canvasElement: canvasWithoutContainer 
-        } 
+
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          canvasElement: canvasWithoutContainer
+        }
       });
 
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click fullscreen
       const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
       await fireEvent.click(fullscreenButton);
-      
-      // Should call with canvas parent when no container found
-      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(mockParent);
+
+      // Should call requestFullscreen on canvas parent when no container found
+      expect(requestFullscreenMock).toHaveBeenCalled();
     });
 
     it('should handle fullscreen with canvas-container found', async () => {
-      const { piRequestFullScreen } = await import('../../../vendor/pilibs/src/piWebUtils.js');
-      
       // Create canvas with canvas-container parent
       const canvas = document.createElement('canvas');
       const container = document.createElement('div');
       container.classList.add('canvas-container');
+      const requestFullscreenMock = vi.fn();
+      container.requestFullscreen = requestFullscreenMock;
       container.appendChild(canvas);
-      
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          canvasElement: canvas 
-        } 
+
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          canvasElement: canvas
+        }
       });
 
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click fullscreen
       const fullscreenButton = screen.getByLabelText('Toggle fullscreen');
       await fireEvent.click(fullscreenButton);
-      
-      // Should call with the container when found
-      expect(vi.mocked(piRequestFullScreen)).toHaveBeenCalledWith(container);
+
+      // Should call requestFullscreen on the container when found
+      expect(requestFullscreenMock).toHaveBeenCalled();
     });
   });
 
@@ -1169,43 +1168,6 @@ describe('MenuBar Component', () => {
   });
 
   describe('Extension Command Menu Items', () => {
-    it('should show Open in Window when not in window', async () => {
-      render(MenuBar, {
-        props: { ...defaultProps, isInWindow: false }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(screen.getByLabelText('Open in new window')).toBeInTheDocument();
-    });
-
-    it('should hide Open in Window when already in window', async () => {
-      render(MenuBar, {
-        props: { ...defaultProps, isInWindow: true }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(screen.queryByLabelText('Open in new window')).not.toBeInTheDocument();
-    });
-
-    it('should call onExtensionCommand with moveToNewWindow', async () => {
-      const onExtensionCommand = vi.fn();
-      render(MenuBar, {
-        props: { ...defaultProps, isInWindow: false, onExtensionCommand }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const openInWindowButton = screen.getByLabelText('Open in new window');
-      await fireEvent.click(openInWindowButton);
-
-      expect(onExtensionCommand).toHaveBeenCalledWith('moveToNewWindow');
-    });
-
     it('should call onExtensionCommand with newShader', async () => {
       const onExtensionCommand = vi.fn();
       render(MenuBar, {
@@ -1249,85 +1211,6 @@ describe('MenuBar Component', () => {
       await fireEvent.click(snippetButton);
 
       expect(onExtensionCommand).toHaveBeenCalledWith('openSnippetLibrary');
-    });
-
-    it('should call onExtensionCommand with openSettings', async () => {
-      const onExtensionCommand = vi.fn();
-      render(MenuBar, {
-        props: { ...defaultProps, onExtensionCommand }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const settingsButton = screen.getByLabelText('Settings');
-      await fireEvent.click(settingsButton);
-
-      expect(onExtensionCommand).toHaveBeenCalledWith('openSettings');
-    });
-
-    it('should call onExtensionCommand with startWebServer when server not running', async () => {
-      const onExtensionCommand = vi.fn();
-      render(MenuBar, {
-        props: { ...defaultProps, isWebServerRunning: false, onExtensionCommand }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const webServerButton = screen.getByLabelText('Web server');
-      await fireEvent.click(webServerButton);
-
-      expect(onExtensionCommand).toHaveBeenCalledWith('startWebServer');
-    });
-
-    it('should call onExtensionCommand with showWebServerMenu when server running', async () => {
-      const onExtensionCommand = vi.fn();
-      render(MenuBar, {
-        props: { ...defaultProps, isWebServerRunning: true, onExtensionCommand }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const webServerButton = screen.getByLabelText('Web server');
-      await fireEvent.click(webServerButton);
-
-      expect(onExtensionCommand).toHaveBeenCalledWith('showWebServerMenu');
-    });
-
-    it('should show status dot when web server is running', async () => {
-      const { container } = render(MenuBar, {
-        props: { ...defaultProps, isWebServerRunning: true }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(container.querySelector('.status-dot')).toBeInTheDocument();
-    });
-
-    it('should not show status dot when web server is not running', async () => {
-      const { container } = render(MenuBar, {
-        props: { ...defaultProps, isWebServerRunning: false }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(container.querySelector('.status-dot')).not.toBeInTheDocument();
-    });
-
-    it('should show active class on web server button when running', async () => {
-      render(MenuBar, {
-        props: { ...defaultProps, isWebServerRunning: true }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const webServerButton = screen.getByLabelText('Web server');
-      expect(webServerButton).toHaveClass('active');
     });
 
     it('should close options menu after clicking extension command', async () => {

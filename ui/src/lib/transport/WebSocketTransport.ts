@@ -2,12 +2,13 @@ import type { Transport } from './MessageTransport';
 
 export class WebSocketTransport implements Transport {
   private ws: WebSocket | null = null;
-  private messageHandler?: (event: MessageEvent) => void;
+  private messageHandlers: Array<(event: MessageEvent) => void> = [];
   private connected = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingMessages: any[] = [];
 
   constructor() {
     const port = this.getPort();
@@ -24,7 +25,7 @@ export class WebSocketTransport implements Transport {
       return port;
     }
 
-    console.log('WebSocket: Using default port: 51472');
+    console.warn('WebSocket: No port configured via shaderViewConfig. Connection may fail.');
     return 51472;
   }
 
@@ -40,19 +41,18 @@ export class WebSocketTransport implements Transport {
         this.reconnectDelay = 1000;
 
         this.sendClientInfo();
+        this.flushPendingMessages();
       };
 
       this.ws.onmessage = (event) => {
-
         const data = JSON.parse(event.data);
+        const messageEvent = new MessageEvent('message', {
+          data: data
+        });
 
-        if (this.messageHandler) {
-          const messageEvent = new MessageEvent('message', {
-            data: data
-          });
-
+        for (const handler of this.messageHandlers) {
           try {
-            this.messageHandler(messageEvent);
+            handler(messageEvent);
           } catch (handlerError) {
             console.error('WebSocket: Error in message handler:', handlerError);
             console.error('WebSocket: Handler error stack:', handlerError instanceof Error ? handlerError.stack : 'No stack');
@@ -117,12 +117,19 @@ export class WebSocketTransport implements Transport {
         console.error('Message that failed:', message);
       }
     } else {
-      console.warn('WebSocket not connected. Message not sent:', message);
+      this.pendingMessages.push(message);
+    }
+  }
+
+  private flushPendingMessages(): void {
+    const messages = this.pendingMessages.splice(0);
+    for (const message of messages) {
+      this.postMessage(message);
     }
   }
 
   onMessage(handler: (event: MessageEvent) => void): void {
-    this.messageHandler = handler;
+    this.messageHandlers.push(handler);
   }
 
   dispose(): void {
@@ -135,7 +142,8 @@ export class WebSocketTransport implements Transport {
       this.ws.close();
       this.ws = null;
     }
-    this.messageHandler = undefined;
+    this.messageHandlers = [];
+    this.pendingMessages = [];
     this.connected = false;
   }
 

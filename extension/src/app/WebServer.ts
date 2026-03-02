@@ -5,7 +5,7 @@ import * as path from "path";
 import { Logger } from "./services/Logger";
 import { ShaderStudioStatusBar } from "./ShaderStudioStatusBar";
 import { Messenger } from "./transport/Messenger";
-import { getWebSocketPortFromConfig, injectPortIntoHtml } from "@shader-studio/utils";
+import { injectPortIntoHtml } from "@shader-studio/utils";
 
 export class WebServer {
   private logger!: Logger;
@@ -13,6 +13,7 @@ export class WebServer {
   private httpServer: http.Server | null = null;
   private statusBar: ShaderStudioStatusBar;
   private messenger: Messenger | null = null;
+  private webSocketPort: number = 0;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -24,6 +25,10 @@ export class WebServer {
 
   public setMessenger(messenger: Messenger): void {
     this.messenger = messenger;
+  }
+
+  public setWebSocketPort(port: number): void {
+    this.webSocketPort = port;
   }
 
   private broadcastServerState(): void {
@@ -112,10 +117,8 @@ export class WebServer {
 
         // Inject WebSocket port for index.html
         if (path.basename(filePath) === "index.html") {
-          const currentConfig = vscode.workspace.getConfiguration("shader-studio");
-          const webSocketPort = getWebSocketPortFromConfig(currentConfig);
           let htmlContent = data.toString();
-          htmlContent = injectPortIntoHtml(htmlContent, webSocketPort);
+          htmlContent = injectPortIntoHtml(htmlContent, this.webSocketPort);
           data = Buffer.from(htmlContent);
         }
 
@@ -137,6 +140,21 @@ export class WebServer {
           case ".jpg":
           case ".jpeg":
             contentType = "image/jpeg";
+            break;
+          case ".ttf":
+            contentType = "font/ttf";
+            break;
+          case ".woff":
+            contentType = "font/woff";
+            break;
+          case ".woff2":
+            contentType = "font/woff2";
+            break;
+          case ".svg":
+            contentType = "image/svg+xml";
+            break;
+          case ".wasm":
+            contentType = "application/wasm";
             break;
         }
 

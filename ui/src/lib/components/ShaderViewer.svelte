@@ -616,7 +616,7 @@
         return;
       }
 
-      // Handle panel state (e.g. moved to new window)
+      // Handle panel state (e.g., moved to new window)
       if (event.data.type === 'panelState') {
         if (event.data.payload?.isInWindow !== undefined) {
           isInWindow = event.data.payload.isInWindow;

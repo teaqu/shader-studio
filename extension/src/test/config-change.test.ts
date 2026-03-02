@@ -89,7 +89,7 @@ suite('Configuration Change Test Suite', () => {
 
     // Configure the stub to return true for defaultConfigView changes
     mockEvent.affectsConfiguration.withArgs('shader-studio.defaultConfigView').returns(true);
-    mockEvent.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(false);
+
 
     // Mock the user clicking "Restart Now"
     mockShowInformationMessage.resolves('Restart Now');
@@ -120,44 +120,6 @@ suite('Configuration Change Test Suite', () => {
     sinon.assert.calledWith(mockExecuteCommand, 'workbench.action.reloadWindow');
   });
 
-  test('should show restart prompt when webSocketPort configuration changes', async () => {
-    // Mock the configuration change event
-    const mockEvent = {
-      affectsConfiguration: sandbox.stub()
-    };
-
-    // Configure the stub to return true for webSocketPort changes
-    mockEvent.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(true);
-    mockEvent.affectsConfiguration.withArgs('shader-studio.defaultConfigView').returns(false);
-
-    // Mock the user clicking "Restart Now"
-    mockShowInformationMessage.resolves('Restart Now');
-
-    // Simulate the configuration change handler logic for webSocketPort
-    if (mockEvent.affectsConfiguration('shader-studio.webSocketPort')) {
-      const selection = await vscode.window.showInformationMessage(
-        'Extension restart required to apply the new WebSocket port configuration.',
-        'Restart Now'
-      );
-      
-      if (selection === 'Restart Now') {
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
-      }
-    }
-
-    // Verify the restart prompt was shown
-    sinon.assert.calledOnce(mockShowInformationMessage);
-    sinon.assert.calledWith(
-      mockShowInformationMessage,
-      'Extension restart required to apply the new WebSocket port configuration.',
-      'Restart Now'
-    );
-
-    // Verify the restart command was executed
-    sinon.assert.calledOnce(mockExecuteCommand);
-    sinon.assert.calledWith(mockExecuteCommand, 'workbench.action.reloadWindow');
-  });
-
   test('should not show restart prompt when non-restart configuration changes', async () => {
     // Mock the configuration change event
     const mockEvent = {
@@ -166,7 +128,6 @@ suite('Configuration Change Test Suite', () => {
 
     // Configure the stub to return false for restart-required settings but true for other settings
     mockEvent.affectsConfiguration.withArgs('shader-studio.defaultConfigView').returns(false);
-    mockEvent.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(false);
     mockEvent.affectsConfiguration.withArgs('shader-studio.webServerPort').returns(true);
 
     // Simulate the configuration change handler logic
@@ -174,14 +135,6 @@ suite('Configuration Change Test Suite', () => {
       // This should not be reached
       await vscode.window.showInformationMessage(
         'Extension restart required to apply the new default view preference.',
-        'Restart Now'
-      );
-    }
-
-    if (mockEvent.affectsConfiguration('shader-studio.webSocketPort')) {
-      // This should not be reached
-      await vscode.window.showInformationMessage(
-        'Extension restart required to apply the new WebSocket port configuration.',
         'Restart Now'
       );
     }
@@ -240,9 +193,6 @@ suite('Configuration Change Test Suite', () => {
     // Test case 2: Configuration change does not affect defaultConfigView
     assert.strictEqual(mockEvent2.affectsConfiguration('shader-studio.defaultConfigView'), false);
     
-    // Test case 3: Configuration change affects other setting
-    mockEvent1.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(true);
-    assert.strictEqual(mockEvent1.affectsConfiguration('shader-studio.webSocketPort'), true);
   });
 
   test('should verify restart command is correct', async () => {
@@ -272,14 +222,13 @@ suite('Configuration Change Test Suite', () => {
   });
 
   test('should handle multiple restart-required configuration changes', async () => {
-    // Test that both defaultConfigView and webSocketPort trigger restarts
-    
+    // Test that defaultConfigView and enableSnippets both trigger restarts
+
     // Test 1: defaultConfigView
     const mockEvent1 = {
       affectsConfiguration: sandbox.stub()
     };
     mockEvent1.affectsConfiguration.withArgs('shader-studio.defaultConfigView').returns(true);
-    mockEvent1.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(false);
 
     mockShowInformationMessage.resetHistory();
     mockExecuteCommand.resetHistory();
@@ -290,7 +239,7 @@ suite('Configuration Change Test Suite', () => {
         'Extension restart required to apply the new default view preference.',
         'Restart Now'
       );
-      
+
       if (selection === 'Restart Now') {
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
@@ -300,35 +249,6 @@ suite('Configuration Change Test Suite', () => {
     sinon.assert.calledWith(
       mockShowInformationMessage,
       'Extension restart required to apply the new default view preference.',
-      'Restart Now'
-    );
-
-    // Test 2: webSocketPort
-    const mockEvent2 = {
-      affectsConfiguration: sandbox.stub()
-    };
-    mockEvent2.affectsConfiguration.withArgs('shader-studio.webSocketPort').returns(true);
-    mockEvent2.affectsConfiguration.withArgs('shader-studio.defaultConfigView').returns(false);
-
-    mockShowInformationMessage.resetHistory();
-    mockExecuteCommand.resetHistory();
-    mockShowInformationMessage.resolves('Restart Now');
-
-    if (mockEvent2.affectsConfiguration('shader-studio.webSocketPort')) {
-      const selection = await vscode.window.showInformationMessage(
-        'Extension restart required to apply the new WebSocket port configuration.',
-        'Restart Now'
-      );
-      
-      if (selection === 'Restart Now') {
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
-      }
-    }
-
-    sinon.assert.calledOnce(mockShowInformationMessage);
-    sinon.assert.calledWith(
-      mockShowInformationMessage,
-      'Extension restart required to apply the new WebSocket port configuration.',
       'Restart Now'
     );
   });
