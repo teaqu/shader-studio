@@ -669,6 +669,46 @@ canvas {
   flex: 0 0 auto;
 }
 
+.fps-menu-container {
+  position: relative;
+}
+
+.menu-bar .fps-button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-font-size, 13px) !important;
+  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-weight: var(--vscode-font-weight, normal);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.2s ease;
+}
+
+.menu-bar .fps-button:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.fps-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background-color: var(--vscode-notifications-background);
+  border: 1px solid var(--vscode-notifications-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  min-width: 170px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  animation: aspect-menu-appear 0.2s ease-out;
+}
+
 .time-menu {
   position: absolute;
   bottom: 100%;
@@ -1132,4 +1172,3 @@ canvas {
   padding: 8px 16px;
   background: var(--vscode-editor-background);
 }
-

@@ -21,6 +21,7 @@ describe("RenderingEngine", () => {
     mockFrameRenderer = {
       startRenderLoop: vi.fn(),
       stopRenderLoop: vi.fn(),
+      setFPSLimit: vi.fn(),
     };
 
     Object.defineProperty(renderingEngine, 'frameRenderer', {
@@ -259,6 +260,13 @@ describe("RenderingEngine", () => {
         success: false,
         errors: ["Buffer 'BufferA' not found in current shader"]
       });
+    });
+  });
+
+  describe("FPS limiting", () => {
+    it("should delegate setFPSLimit to FrameRenderer", () => {
+      renderingEngine.setFPSLimit(30);
+      expect(mockFrameRenderer.setFPSLimit).toHaveBeenCalledWith(30);
     });
   });
 

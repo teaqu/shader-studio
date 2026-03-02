@@ -11,6 +11,8 @@ export class FrameRenderer {
   private running = false;
   private currentFrameTime = 0;
   private frameCount = 0;
+  private fpsLimit = 0;
+  private lastRenderedAt: number | null = null;
   private fpsCalculator: FPSCalculator;
 
   private timeManager: TimeManager;
@@ -51,6 +53,11 @@ export class FrameRenderer {
 
   public getCurrentFPS(): number {
     return this.fpsCalculator.getFPS();
+  }
+
+  public setFPSLimit(limit: number): void {
+    this.fpsLimit = limit;
+    this.lastRenderedAt = null;
   }
 
   public getUniforms(): any {
@@ -100,6 +107,15 @@ export class FrameRenderer {
       return;
     }
 
+    if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
+      const minFrameInterval = 1000 / this.fpsLimit;
+      // Allow a small tolerance so near-threshold RAF jitter doesn't under-shoot target FPS.
+      const minFrameIntervalWithTolerance = minFrameInterval * 0.9;
+      if (time - this.lastRenderedAt < minFrameIntervalWithTolerance) {
+        return;
+      }
+    }
+
     this.timeManager.updateFrame(time);
 
     const currentFrame = this.timeManager.getFrame();
@@ -111,6 +127,7 @@ export class FrameRenderer {
       return;
     }
 
+    this.lastRenderedAt = time;
     this.currentFrameTime = time;
     this.updateFPSTracking(time);
 

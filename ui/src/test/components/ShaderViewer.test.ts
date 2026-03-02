@@ -45,6 +45,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     stopRenderLoop() {}
     startRenderLoop() {}
     getCurrentFPS() { return 60.0; }
+    setFPSLimit() {}
     getUniforms() { return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }; }
     getTimeManager() { return mockTimeManager; }
     dispose() {}
@@ -867,6 +868,23 @@ describe('ShaderViewer', () => {
 
     // Component should still be functional after toggling pause
     expect(pauseButton).toBeTruthy();
+  });
+
+  it('should call renderingEngine.setFPSLimit when FPS limit is selected', async () => {
+    const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+    const setFPSLimitSpy = vi.spyOn(RenderingEngine.prototype, 'setFPSLimit');
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const fpsButton = screen.getByLabelText('Change FPS limit');
+    await fireEvent.click(fpsButton);
+    await fireEvent.click(screen.getByRole('button', { name: '30 FPS' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Unlimited' }));
+
+    expect(setFPSLimitSpy).toHaveBeenNthCalledWith(1, 30);
+    expect(setFPSLimitSpy).toHaveBeenNthCalledWith(2, 0);
   });
 
   it('should call renderingEngine.getCurrentFPS periodically', async () => {

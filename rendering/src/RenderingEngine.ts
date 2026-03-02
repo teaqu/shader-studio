@@ -221,6 +221,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.frameRenderer.getCurrentFPS();
   }
 
+  public setFPSLimit(limit: number): void {
+    this.frameRenderer.setFPSLimit(limit);
+  }
+
   public getUniforms(): import("./models").PassUniforms {
     return this.frameRenderer.getUniforms();
   }
