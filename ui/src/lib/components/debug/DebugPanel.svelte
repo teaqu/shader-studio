@@ -4,14 +4,18 @@
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
 
+  import type { RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
   import inspectorIcon from "../../../assets/inspector.svg?raw";
   import lockIcon from "../../../assets/lock.svg?raw";
   import unlockIcon from "../../../assets/unlock.svg?raw";
+  import VariablesSection from "./VariablesSection.svelte";
 
   export let debugState: ShaderDebugState;
   export let getUniforms: () => PassUniforms | null = () => null;
   export let isInspectorEnabled: boolean = false;
+  export let isInspectorActive: boolean = false;
+  export let isInspectorLocked: boolean = false;
   export let onParameterChange: (index: number, value: string) => void = () => {};
   export let onLoopMaxIterChange: (loopIndex: number, maxIter: number | null) => void = () => {};
   export let onToggleLineLock: () => void = () => {};
@@ -20,6 +24,15 @@
   export let onCycleNormalize: () => void = () => {};
   export let onToggleStep: () => void = () => {};
   export let onSetStepEdge: (edge: number) => void = () => {};
+  export let onToggleVariableInspector: () => void = () => {};
+  export let onExpandVarHistogram: (varName: string) => void = () => {};
+  export let sampleSize: number = 32;
+  export let onChangeSampleSize: (size: number) => void = () => {};
+  export let refreshMode: RefreshMode = 'polling';
+  export let pollingMs: number = 500;
+  export let onChangeRefreshMode: (mode: RefreshMode) => void = () => {};
+  export let onChangePollingMs: (ms: number) => void = () => {};
+  export let hasPixelSelected: boolean = false;
 
   let uniforms: PassUniforms | null = null;
   let uniformsHandle: number | null = null;
@@ -38,6 +51,16 @@
   $: showParams = isInlineOn && isInFunction && ctx !== null;
   $: showLoops = isInlineOn && ctx !== null && ctx.loops.length > 0;
   $: hasContentAboveUniforms = (showParams && ctx && ctx.parameters.length > 0) || showLoops;
+  $: isVarInspectorOn = debugState.isVariableInspectorEnabled;
+  $: capturedVariables = debugState.capturedVariables;
+
+  // Explicit reactive derivations for VariablesSection passthrough props.
+  // In Svelte 5 legacy mode, creating derived signals from props ensures
+  // the child component sees updates even during rapid parent re-renders.
+  $: vsRefreshMode = refreshMode;
+  $: vsPollingMs = pollingMs;
+  $: vsHasPixelSelected = hasPixelSelected;
+  $: vsSampleSize = sampleSize;
 
   $: normalizeTooltip = normalizeMode === 'off'
     ? "Normalize: OFF\nRaw shader output values"
@@ -165,6 +188,22 @@
         aria-label="Step edge threshold"
       />
     {/if}
+    <button
+      class="header-btn has-tooltip"
+      class:active={isVarInspectorOn}
+      on:click={onToggleVariableInspector}
+      aria-label="Toggle variable inspector"
+      data-tooltip="Variable Inspector"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"/>
+        <line x1="8" y1="12" x2="21" y2="12"/>
+        <line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/>
+        <line x1="3" y1="12" x2="3.01" y2="12"/>
+        <line x1="3" y1="18" x2="3.01" y2="18"/>
+      </svg>
+    </button>
     {#if lineNum !== null}
       <span class="header-info has-tooltip" class:error={debugError} class:has-line-content={!debugError && debugState.lineContent} data-tooltip={debugError || (debugState.lineContent ? debugState.lineContent.trim() : `Line ${lineNum}`)}>L{lineNum}</span>
     {/if}
@@ -219,7 +258,27 @@
 
     {/if}
 
-    <div class="section uniforms-section" class:has-border={hasContentAboveUniforms}>
+    {#if isVarInspectorOn}
+      <VariablesSection
+        {capturedVariables}
+        isPixelMode={isInspectorActive || isInspectorLocked}
+        isLoading={capturedVariables.length === 0}
+        onExpandToggle={onExpandVarHistogram}
+        sampleSize={vsSampleSize}
+        {onChangeSampleSize}
+        refreshMode={vsRefreshMode}
+        pollingMs={vsPollingMs}
+        {onChangeRefreshMode}
+        {onChangePollingMs}
+        hasPixelSelected={vsHasPixelSelected}
+      />
+    {:else}
+      <div class="section var-hint-section">
+        <span class="hint-text">Enable Variable Inspector to view variables</span>
+      </div>
+    {/if}
+
+    <div class="section uniforms-section" class:has-border={hasContentAboveUniforms || isVarInspectorOn}>
       <div class="section-label">Uniforms</div>
       {#if uniforms}
         <div class="uniform-row"><span class="uniform-name">iTime</span><span class="uniform-value">{formatTime(uniforms.time)}</span></div>
@@ -451,6 +510,11 @@
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     font-size: 12px;
+  }
+
+  .var-hint-section {
+    border-top: 1px solid var(--vscode-panel-border);
+    padding-top: 6px;
   }
 
   .uniform-name {

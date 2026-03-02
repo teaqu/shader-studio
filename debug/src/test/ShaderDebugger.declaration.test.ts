@@ -179,4 +179,51 @@ describe('ShaderDebugger - Variable Declarations', () => {
       expect(result).toContain('fragColor = vec4(col, 1.0)');
     }
   });
+
+  it('should find enclosing mainImage when debug line follows a for loop (real braces)', () => {
+    const shader = `float ring(float inner, float outer, float dist) {
+    return step(dist, outer) - step(dist, inner);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+    float dist = length(uv);
+    int k = 0;
+
+    for (int i = 0; i < 100; ++i) {
+      k += i;
+    }
+
+    vec3 col = vec3(0.0);
+}`;
+    // Debug line 13 = "    vec3 col = vec3(0.0);" — after the for loop's closing }
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 13, '    vec3 col = vec3(0.0);');
+
+    expect(result).not.toBeNull();
+    if (result) {
+      // Must include prior context lines — not fall through to one-liner wrapper
+      expect(result).toContain('vec2 uv =');
+      expect(result).toContain('float dist =');
+      expect(result).toContain('vec3 col = vec3(0.0)');
+      expect(result).toContain('fragColor = vec4(col, 1.0)');
+    }
+  });
+
+  it('should find enclosing mainImage when debug line follows a commented-out for loop', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    // for (int i = 0; i < 10; ++i) {
+    //   uv += 0.01;
+    // }
+    vec3 col = vec3(uv, 0.0);
+}`;
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 5, '    vec3 col = vec3(uv, 0.0);');
+
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result).toContain('vec2 uv =');
+      expect(result).toContain('vec3 col = vec3(uv, 0.0)');
+      expect(result).toContain('fragColor = vec4(col, 1.0)');
+    }
+  });
 });

@@ -1,8 +1,10 @@
 import { render, fireEvent, screen } from '@testing-library/svelte';
 import { describe, it, expect, vi } from 'vitest';
+import '@testing-library/jest-dom';
 import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
 import type { ShaderDebugState, DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
 import type { PassUniforms } from '../../../../../rendering/src/models/PassUniforms';
+import type { RefreshMode } from '../../../lib/VariableCaptureManager';
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -18,6 +20,8 @@ function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugS
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    isVariableInspectorEnabled: false,
+    capturedVariables: [],
     ...overrides,
   };
 }
@@ -503,5 +507,353 @@ describe('DebugPanel', () => {
 
     const uniformsSection = container.querySelector('.uniforms-section');
     expect(uniformsSection?.classList.contains('has-border')).toBe(true);
+  });
+
+  // ----------------------------------------------------------------
+  // Variable Inspector section
+  // ----------------------------------------------------------------
+  describe('Variable Inspector', () => {
+    it('shows variable inspector button in header', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState(),
+        getUniforms: mockGetUniforms,
+      });
+
+      const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]');
+      expect(varBtn).toBeTruthy();
+    });
+
+    it('variable inspector button calls onToggleVariableInspector', async () => {
+      const onToggleVariableInspector = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState(),
+        getUniforms: mockGetUniforms,
+        onToggleVariableInspector,
+      });
+
+      const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
+      await fireEvent.click(varBtn);
+      expect(onToggleVariableInspector).toHaveBeenCalledOnce();
+    });
+
+    it('variable inspector button shows active state when enabled', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
+      expect(varBtn.classList.contains('active')).toBe(true);
+    });
+
+    it('variable inspector button shows inactive state when disabled', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: false }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
+      expect(varBtn.classList.contains('active')).toBe(false);
+    });
+
+    it('shows hint text when variable inspector is off', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: false }),
+        getUniforms: mockGetUniforms,
+      });
+
+      expect(container.querySelector('.var-hint-section')).toBeTruthy();
+      expect(container.querySelector('.hint-text')?.textContent).toContain('Enable Variable Inspector');
+    });
+
+    it('shows VariablesSection when variable inspector is on', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+      });
+
+      expect(container.querySelector('.variables-section')).toBeTruthy();
+      expect(container.querySelector('.var-hint-section')).toBeFalsy();
+    });
+
+    it('hides VariablesSection when variable inspector is off', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: false }),
+        getUniforms: mockGetUniforms,
+      });
+
+      expect(container.querySelector('.variables-section')).toBeFalsy();
+    });
+
+    it('uniforms has-border when variable inspector is on', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true, functionContext: null }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const uniformsSection = container.querySelector('.uniforms-section');
+      expect(uniformsSection?.classList.contains('has-border')).toBe(true);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Prop passthrough to VariablesSection
+  // ----------------------------------------------------------------
+  describe('VariablesSection prop passthrough', () => {
+    function getCtrlButton(container: HTMLElement, text: string): HTMLElement | undefined {
+      return Array.from(container.querySelectorAll('.ctrl-btn')).find(
+        b => b.textContent?.trim() === text,
+      ) as HTMLElement | undefined;
+    }
+
+    it('passes refreshMode through to VariablesSection', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'manual' as RefreshMode,
+      });
+
+      expect(getCtrlButton(container, 'manual')).toHaveClass('active');
+    });
+
+    it('passes refreshMode=polling through to VariablesSection', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'polling' as RefreshMode,
+      });
+
+      const pollingBtn = container.querySelector('.ctrl-btn.has-input');
+      expect(pollingBtn).toHaveClass('active');
+      expect(getCtrlButton(container, 'manual')).not.toHaveClass('active');
+    });
+
+    it('passes refreshMode=realtime through to VariablesSection', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'realtime' as RefreshMode,
+      });
+
+      expect(getCtrlButton(container, 'realtime')).toHaveClass('active');
+      expect(getCtrlButton(container, 'manual')).not.toHaveClass('active');
+    });
+
+    it('passes refreshMode=pause through to VariablesSection', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'pause' as RefreshMode,
+      });
+
+      expect(getCtrlButton(container, 'pause')).toHaveClass('active');
+    });
+
+    it('refreshMode active border updates on rerender', async () => {
+      const { container, rerender } = render(DebugPanel, {
+        props: {
+          debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+          getUniforms: mockGetUniforms,
+          refreshMode: 'polling' as RefreshMode,
+        },
+      });
+
+      const pollingBtn = container.querySelector('.ctrl-btn.has-input');
+      expect(pollingBtn).toHaveClass('active');
+      expect(getCtrlButton(container, 'manual')).not.toHaveClass('active');
+
+      await rerender({
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'manual' as RefreshMode,
+      });
+
+      expect(getCtrlButton(container, 'manual')).toHaveClass('active');
+      expect(container.querySelector('.ctrl-btn.has-input')).not.toHaveClass('active');
+    });
+
+    it('refreshMode border updates while debugState also changes', async () => {
+      const { container, rerender } = render(DebugPanel, {
+        props: {
+          debugState: makeDebugState({ isVariableInspectorEnabled: true, capturedVariables: [] }),
+          getUniforms: mockGetUniforms,
+          refreshMode: 'polling' as RefreshMode,
+        },
+      });
+
+      expect(container.querySelector('.ctrl-btn.has-input')).toHaveClass('active');
+
+      // Simulate: refreshMode changes AND capturedVariables change simultaneously
+      await rerender({
+        debugState: makeDebugState({
+          isVariableInspectorEnabled: true,
+          capturedVariables: [{
+            varName: 'x', varType: 'float', value: null,
+            channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+            stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+            channelHistograms: null, colorFrequencies: null, thumbnail: null,
+          }],
+        }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'realtime' as RefreshMode,
+      });
+
+      expect(getCtrlButton(container, 'realtime')).toHaveClass('active');
+      expect(container.querySelector('.ctrl-btn.has-input')).not.toHaveClass('active');
+    });
+
+    it('passes sampleSize through to VariablesSection', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        sampleSize: 64,
+      });
+
+      expect(getCtrlButton(container, '64')).toHaveClass('active');
+      expect(getCtrlButton(container, '32')).not.toHaveClass('active');
+    });
+
+    it('sampleSize active border updates on rerender', async () => {
+      const { container, rerender } = render(DebugPanel, {
+        props: {
+          debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+          getUniforms: mockGetUniforms,
+          sampleSize: 32,
+          hasPixelSelected: false,
+        },
+      });
+
+      expect(getCtrlButton(container, '32')).toHaveClass('active');
+
+      await rerender({
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        sampleSize: 128,
+        hasPixelSelected: false,
+      });
+
+      expect(getCtrlButton(container, '128')).toHaveClass('active');
+      expect(getCtrlButton(container, '32')).not.toHaveClass('active');
+    });
+
+    it('hides sample size buttons when hasPixelSelected is true', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        hasPixelSelected: true,
+      });
+
+      expect(getCtrlButton(container, '16')).toBeUndefined();
+      expect(getCtrlButton(container, '32')).toBeUndefined();
+    });
+
+    it('shows sample size buttons when hasPixelSelected is false', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        hasPixelSelected: false,
+      });
+
+      expect(getCtrlButton(container, '32')).toBeInTheDocument();
+    });
+
+    it('onChangeRefreshMode callback propagates from VariablesSection', async () => {
+      const onChangeRefreshMode = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'polling' as RefreshMode,
+        onChangeRefreshMode,
+      });
+
+      await fireEvent.click(getCtrlButton(container, 'manual')!);
+      expect(onChangeRefreshMode).toHaveBeenCalledWith('manual');
+    });
+
+    it('onChangeSampleSize callback propagates from VariablesSection', async () => {
+      const onChangeSampleSize = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        onChangeSampleSize,
+        hasPixelSelected: false,
+      });
+
+      await fireEvent.click(getCtrlButton(container, '128')!);
+      expect(onChangeSampleSize).toHaveBeenCalledWith(128);
+    });
+
+    it('onChangePollingMs callback propagates from VariablesSection', async () => {
+      const onChangePollingMs = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        refreshMode: 'polling' as RefreshMode,
+        pollingMs: 500,
+        onChangePollingMs,
+      });
+
+      const msInput = container.querySelector('.ms-input') as HTMLInputElement;
+      await fireEvent.input(msInput, { target: { value: '1000' } });
+      expect(onChangePollingMs).toHaveBeenCalledWith(1000);
+    });
+
+    it('onExpandVarHistogram callback propagates from VariablesSection', async () => {
+      const onExpandVarHistogram = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isVariableInspectorEnabled: true,
+          capturedVariables: [{
+            varName: 'x', varType: 'float', value: null,
+            channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+            stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+            channelHistograms: null, colorFrequencies: null, thumbnail: null,
+          }],
+        }),
+        getUniforms: mockGetUniforms,
+        onExpandVarHistogram,
+      });
+
+      // VariableRow renders an expand button for grid mode scalars
+      const expandBtn = container.querySelector('.expand-btn') as HTMLElement;
+      if (expandBtn) {
+        await fireEvent.click(expandBtn);
+        expect(onExpandVarHistogram).toHaveBeenCalledWith('x');
+      }
+    });
+
+    it('refreshMode border survives rapid debugState changes', async () => {
+      const { container, rerender } = render(DebugPanel, {
+        props: {
+          debugState: makeDebugState({ isVariableInspectorEnabled: true, capturedVariables: [] }),
+          getUniforms: mockGetUniforms,
+          refreshMode: 'manual' as RefreshMode,
+        },
+      });
+
+      expect(getCtrlButton(container, 'manual')).toHaveClass('active');
+
+      // Simulate multiple rapid debugState updates (capturedVariables changing)
+      // while refreshMode stays the same
+      for (let i = 0; i < 5; i++) {
+        await rerender({
+          debugState: makeDebugState({
+            isVariableInspectorEnabled: true,
+            capturedVariables: [{
+              varName: 'x', varType: 'float', value: null,
+              channelMeans: [0.1 * i], channelStats: [{ min: 0, max: 1, mean: 0.1 * i }],
+              stats: { min: 0, max: 1, mean: 0.1 * i }, histogram: null,
+              channelHistograms: null, colorFrequencies: null, thumbnail: null,
+            }],
+          }),
+          getUniforms: mockGetUniforms,
+          refreshMode: 'manual' as RefreshMode,
+        });
+      }
+
+      // Active border should persist through all the debugState churn
+      expect(getCtrlButton(container, 'manual')).toHaveClass('active');
+      expect(container.querySelector('.ctrl-btn.has-input')).not.toHaveClass('active');
+    });
   });
 });

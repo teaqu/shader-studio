@@ -14,6 +14,8 @@ import { ConfigValidator } from "./util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "./models";
+import { VariableCapturer } from "./capture/VariableCapturer";
+import type { CaptureUniforms } from "./capture/VariableCapturer";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -229,6 +231,24 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getTimeManager(): TimeManager {
     return this.timeManager;
+  }
+
+  public createVariableCapturer(): VariableCapturer {
+    const gl = this.glCanvas!.getContext('webgl2')!;
+    return new VariableCapturer(gl, this.shaderCompiler);
+  }
+
+  public getCaptureUniforms(): CaptureUniforms {
+    const u = this.frameRenderer.getUniforms();
+    return {
+      time: u.time,
+      timeDelta: u.timeDelta,
+      frameRate: u.frameRate,
+      frame: u.frame,
+      res: u.res,
+      mouse: u.mouse,
+      date: u.date,
+    };
   }
 
   public readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {

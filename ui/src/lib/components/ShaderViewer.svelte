@@ -20,6 +20,8 @@
   import type { PixelInspectorState } from "../types/PixelInspectorState";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
+  import { VariableCaptureManager } from "../VariableCaptureManager";
+  import type { RefreshMode } from "../VariableCaptureManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
@@ -58,6 +60,12 @@
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let debugInspectorEnabled = true; // remember inspector preference across debug sessions
   let shaderDebugManager: ShaderDebugManager | undefined;
+  let variableCaptureManager: VariableCaptureManager | undefined;
+  let sampleSize = 32;
+  let gridRefreshMode: RefreshMode = 'polling';
+  let gridPollingMs = 500;
+  let pixelRefreshMode: RefreshMode = 'polling';
+  let pixelPollingMs = 500;
   let debugState: ShaderDebugState = {
     isEnabled: false,
     currentLine: null,
@@ -71,6 +79,8 @@
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    isVariableInspectorEnabled: false,
+    capturedVariables: [],
   };
 
   // Config panel state
@@ -88,6 +98,48 @@
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
   $: hasSidePanel = configPanelVisible || showDebugPanel;
   $: canvasFlex = hasSidePanel ? (showDebugPanel ? debugSplitRatio : splitRatio) : 1;
+
+  // Extract specific debug state fields so that capturedVariables changes
+  // don't re-trigger the capture loop (Svelte tracks the whole object reference).
+  $: varInspectorEnabled = debugState.isVariableInspectorEnabled;
+  $: debugCurrentLine = debugState.currentLine;
+
+  // Extract inspectorState fields as stable primitives.
+  // inspectorState is reassigned every frame by the pixel inspector (pixel RGB re-reads),
+  // which would cascade into every component that reads it. Primitives use !== so
+  // unchanged booleans/numbers won't trigger downstream re-renders.
+  $: inspectorEnabled = inspectorState.isEnabled;
+  $: inspectorActive = inspectorState.isActive;
+  $: inspectorLocked = inspectorState.isLocked;
+  $: inspectorCanvasX = inspectorState.canvasPosition?.x ?? null;
+  $: inspectorCanvasY = inspectorState.canvasPosition?.y ?? null;
+
+  // Derive whether we're currently in pixel capture mode (need actual position)
+  $: hasPixelCapture = (inspectorActive || inspectorLocked) && (inspectorCanvasX !== null);
+  $: activeRefreshMode = hasPixelCapture ? pixelRefreshMode : gridRefreshMode;
+  $: activePollingMs = hasPixelCapture ? pixelPollingMs : gridPollingMs;
+
+  // Stable pixel coordinates for the capture reactive block
+  $: capturePixelX = hasPixelCapture ? inspectorCanvasX : null;
+  $: capturePixelY = hasPixelCapture ? inspectorCanvasY : null;
+
+  // Reactive: notify variable capture manager when relevant state changes.
+  // Only depends on stable primitives — NOT on inspectorState directly.
+  $: if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
+    variableCaptureManager.notifyStateChange({
+      code: currentShaderCode,
+      debugLine: debugCurrentLine,
+      pixelX: capturePixelX,
+      pixelY: capturePixelY,
+      canvasWidth,
+      canvasHeight,
+      loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
+      customParams: shaderDebugManager.getCustomParameters(),
+      sampleSize,
+      refreshMode: activeRefreshMode,
+      pollingMs: activePollingMs,
+    });
+  }
 
   // Editor overlay state
   let editorOverlayVisible = false;
@@ -349,12 +401,14 @@
     if (!shaderDebugManager) return;
     shaderDebugManager.setCustomParameter(index, value);
     shaderStudio.triggerDebugRecompile();
+    notifyVariableCaptureManager();
   }
 
   function handleLoopMaxIterChange(loopIndex: number, maxIter: number | null) {
     if (!shaderDebugManager) return;
     shaderDebugManager.setLoopMaxIterations(loopIndex, maxIter);
     shaderStudio.triggerDebugRecompile();
+    notifyVariableCaptureManager();
   }
 
   function handleToggleLineLock() {
@@ -384,6 +438,63 @@
     if (!shaderDebugManager) return;
     shaderDebugManager.setStepEdge(edge);
     shaderStudio.triggerDebugRecompile();
+  }
+
+  function handleToggleVariableInspector() {
+    if (!shaderDebugManager) return;
+    shaderDebugManager.toggleVariableInspector();
+    notifyVariableCaptureManager();
+  }
+
+  function handleExpandVarHistogram(varName: string) {
+    if (!variableCaptureManager) return;
+    const vars = debugState.capturedVariables;
+    const v = vars.find(c => c.varName === varName);
+    const isExpanded = v?.histogram !== null || v?.channelHistograms !== null || v?.colorFrequencies !== null;
+    variableCaptureManager.setHistogramExpanded(varName, !isExpanded);
+    notifyVariableCaptureManager();
+  }
+
+  function handleChangeSampleSize(size: number) {
+    sampleSize = size;
+    notifyVariableCaptureManager();
+  }
+
+  function handleChangeRefreshMode(mode: RefreshMode) {
+    if (hasPixelCapture) {
+      pixelRefreshMode = mode;
+    } else {
+      gridRefreshMode = mode;
+    }
+    notifyVariableCaptureManager();
+  }
+
+  function handleChangePollingMs(ms: number) {
+    if (hasPixelCapture) {
+      pixelPollingMs = ms;
+    } else {
+      gridPollingMs = ms;
+    }
+    notifyVariableCaptureManager();
+  }
+
+  function notifyVariableCaptureManager() {
+    if (!variableCaptureManager || !shaderDebugManager) return;
+    const state = shaderDebugManager.getState();
+    if (!state.isVariableInspectorEnabled) return;
+    variableCaptureManager.notifyStateChange({
+      code: currentShaderCode,
+      debugLine: state.currentLine,
+      pixelX: capturePixelX,
+      pixelY: capturePixelY,
+      canvasWidth,
+      canvasHeight,
+      loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
+      customParams: shaderDebugManager.getCustomParameters(),
+      sampleSize,
+      refreshMode: hasPixelCapture ? pixelRefreshMode : gridRefreshMode,
+      pollingMs: hasPixelCapture ? pixelPollingMs : gridPollingMs,
+    });
   }
 
   function getUniforms() {
@@ -452,6 +563,11 @@
         timeManager,
         glCanvas
       );
+
+      // Initialize variable capture manager
+      variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
+        shaderDebugManager?.setCapturedVariables(vars);
+      });
 
       // Start paused until a shader is loaded
       renderingEngine.togglePause();
@@ -574,6 +690,9 @@
   });
 
   onDestroy(() => {
+    if (variableCaptureManager) {
+      variableCaptureManager.dispose();
+    }
     if (pixelInspectorManager) {
       pixelInspectorManager.dispose();
     }
@@ -590,7 +709,7 @@
   <div class="canvas-section" style="flex: {canvasFlex}">
     <ShaderCanvas
       {zoomLevel}
-      isInspectorActive={inspectorState.isActive}
+      isInspectorActive={inspectorActive}
       onCanvasReady={handleCanvasReady}
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
@@ -649,7 +768,9 @@
       <DebugPanel
         {debugState}
         {getUniforms}
-        isInspectorEnabled={inspectorState.isEnabled}
+        isInspectorEnabled={inspectorEnabled}
+        isInspectorActive={inspectorActive}
+        isInspectorLocked={inspectorLocked}
         onParameterChange={handleParameterChange}
         onLoopMaxIterChange={handleLoopMaxIterChange}
         onToggleLineLock={handleToggleLineLock}
@@ -658,6 +779,15 @@
         onCycleNormalize={handleCycleNormalize}
         onToggleStep={handleToggleStep}
         onSetStepEdge={handleSetStepEdge}
+        onToggleVariableInspector={handleToggleVariableInspector}
+        onExpandVarHistogram={handleExpandVarHistogram}
+        {sampleSize}
+        onChangeSampleSize={handleChangeSampleSize}
+        refreshMode={activeRefreshMode}
+        pollingMs={activePollingMs}
+        onChangeRefreshMode={handleChangeRefreshMode}
+        onChangePollingMs={handleChangePollingMs}
+        hasPixelSelected={hasPixelCapture}
       />
     </div>
   {/if}

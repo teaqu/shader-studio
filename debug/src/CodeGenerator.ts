@@ -108,6 +108,29 @@ export class CodeGenerator {
   }
 
   /**
+   * Generates a fragColor assignment for capture mode (raw float output, no normalization).
+   * Used by VariableCaptureBuilder for off-canvas float FBO capture.
+   */
+  static generateCaptureOutputForVar(varType: string, varName: string): string {
+    switch (varType) {
+      case 'float':
+        return `  fragColor = vec4(${varName}, 0.0, 0.0, 0.0);`;
+      case 'vec2':
+        return `  fragColor = vec4(${varName}, 0.0, 0.0);`;
+      case 'vec3':
+        return `  fragColor = vec4(${varName}, 0.0);`;
+      case 'vec4':
+        return `  fragColor = ${varName};`;
+      case 'int':
+        return `  fragColor = vec4(float(${varName}), 0.0, 0.0, 0.0);`;
+      case 'bool':
+        return `  fragColor = vec4(${varName} ? 1.0 : 0.0, 0.0, 0.0, 0.0);`;
+      default:
+        return `  fragColor = vec4(0.0);`;
+    }
+  }
+
+  /**
    * Counts unmatched opening braces after functionStart and appends
    * the right number of closing braces. Keeps all lines intact.
    */
@@ -116,7 +139,8 @@ export class CodeGenerator {
     let braceDepth = 0;
 
     for (let i = functionStart; i < lines.length; i++) {
-      for (const char of lines[i]) {
+      const stripped = lines[i].replace(/\/\/.*$/, '');
+      for (const char of stripped) {
         if (char === '{') braceDepth++;
         if (char === '}') braceDepth--;
       }
