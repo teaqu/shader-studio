@@ -968,37 +968,6 @@ canvas {
    Config Panel Styles
    =============================================== */
 
-.canvas-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 200px;
-  flex-shrink: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.debug-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 100px;
-  max-height: 50vh;
-  overflow: hidden;
-  border-top: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-editor-background);
-  flex-shrink: 0;
-}
-
-.config-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 150px;
-  max-height: 60vh;
-  overflow: hidden;
-  border-top: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-editor-background);
-  flex-shrink: 0;
-}
-
 /* Config Panel Component */
 .config-panel {
   display: flex;
@@ -1172,24 +1141,3 @@ canvas {
   background: var(--vscode-editor-background);
 }
 
-/* Resize Handle */
-.resize-handle {
-  height: 1px;
-  background: var(--vscode-panel-border);
-  cursor: ns-resize;
-  flex-shrink: 0;
-  transition: background 0.2s;
-  position: relative;
-  z-index: 10;
-}
-
-.resize-handle:hover,
-.resize-handle.dragging {
-  height: 3px;
-  background: var(--vscode-button-background);
-}
-
-.resize-handle:focus {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: -2px;
-}

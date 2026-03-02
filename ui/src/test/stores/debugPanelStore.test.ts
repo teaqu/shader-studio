@@ -17,18 +17,15 @@ describe('debugPanelStore', () => {
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(true);
-    expect(state.splitRatio).toBe(0.7);
   });
 
   it('should load state from localStorage', async () => {
     localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
       isVisible: false,
-      splitRatio: 0.5,
     }));
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(false);
-    expect(state.splitRatio).toBe(0.5);
   });
 
   it('should fall back to defaults on invalid localStorage', async () => {
@@ -36,7 +33,6 @@ describe('debugPanelStore', () => {
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(true);
-    expect(state.splitRatio).toBe(0.7);
   });
 
   it('toggle should flip isVisible', async () => {
@@ -53,31 +49,6 @@ describe('debugPanelStore', () => {
     store.toggle();
     const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
     expect(stored.isVisible).toBe(false);
-  });
-
-  it('setSplitRatio should update ratio', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.5);
-    expect(get(store).splitRatio).toBe(0.5);
-  });
-
-  it('setSplitRatio should clamp to min 0.3', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.1);
-    expect(get(store).splitRatio).toBe(0.3);
-  });
-
-  it('setSplitRatio should clamp to max 0.9', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.99);
-    expect(get(store).splitRatio).toBe(0.9);
-  });
-
-  it('setSplitRatio should persist to localStorage', async () => {
-    const store = await importStore();
-    store.setSplitRatio(0.6);
-    const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
-    expect(stored.splitRatio).toBe(0.6);
   });
 
   it('setVisible should set visibility directly', async () => {

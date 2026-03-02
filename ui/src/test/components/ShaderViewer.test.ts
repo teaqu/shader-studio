@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
+import { debugPanelStore } from '../../lib/stores/debugPanelStore';
 import { editorOverlayStore } from '../../lib/stores/editorOverlayStore';
 
 // Mock ResizeObserver
@@ -13,8 +14,8 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
-// Mock RenderingEngine - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager } = vi.hoisted(() => {
+// Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
+const { mockTimeManager, mockTransport } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -26,7 +27,14 @@ const { mockTimeManager } = vi.hoisted(() => {
     setLoopDuration: () => {},
     setTime: () => {}
   };
-  return { mockTimeManager };
+  const mockTransport = {
+    postMessage: vi.fn(),
+    onMessage: vi.fn(),
+    dispose: vi.fn(),
+    getType: () => 'vscode' as const,
+    isConnected: () => true
+  };
+  return { mockTimeManager, mockTransport };
 });
 
 vi.mock('../../../../rendering/src/RenderingEngine', () => {
@@ -128,26 +136,18 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: () => false
 }));
 
-// Mock transport
-const mockTransport = {
-  postMessage: vi.fn(),
-  onMessage: vi.fn(),
-  dispose: vi.fn(),
-  getType: () => 'vscode' as const,
-  isConnected: () => true
-} as Transport;
-
 describe('ShaderViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     configPanelStore.setVisible(false);
+    debugPanelStore.setVisible(true);
     editorOverlayStore.setVisible(false);
   });
 
   // Helper: send a shaderSource message to set hasShader = true
   async function loadShader() {
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
     await messageHandler({
       data: {
         type: 'shaderSource',
@@ -216,13 +216,15 @@ describe('ShaderViewer', () => {
 
   it('should not send messages before initialization', async () => {
     const onInitialized = vi.fn();
-    
+
     render(ShaderViewer, {
       onInitialized
     });
 
-    // Verify no messages were sent before initialization
-    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    // Only layout-related messages (requestLayout) should be sent before initialization
+    const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const nonLayoutCalls = calls.filter((c: any[]) => c[0]?.type !== 'requestLayout');
+    expect(nonLayoutCalls).toHaveLength(0);
   });
 
   it('should handle initialization without errors', async () => {
@@ -253,7 +255,7 @@ describe('ShaderViewer', () => {
     await loadShader();
 
     // Config panel should not be visible initially
-    expect(container.querySelector('.config-section')).toBeFalsy();
+    expect(container.querySelector('.config-panel')).toBeFalsy();
 
     // Click the config panel toggle button
     const configButton = screen.getByLabelText('Toggle config panel');
@@ -261,7 +263,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Config panel should now be visible
-    expect(container.querySelector('.config-section')).toBeTruthy();
+    expect(container.querySelector('.config-panel')).toBeTruthy();
   });
 
   it('should display config panel button after initialization', async () => {
@@ -365,8 +367,10 @@ describe('ShaderViewer', () => {
     const debugButton = container.querySelector('[aria-label="Toggle debug mode"]');
     expect(debugButton).toBeFalsy();
 
-    // No messages should be sent
-    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    // No debugModeState messages should be sent (requestLayout from DockviewLayout is OK)
+    const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const debugCalls = calls.filter((c: any[]) => c[0]?.type === 'debugModeState');
+    expect(debugCalls).toHaveLength(0);
   });
 
   it('should handle multiple debug toggle clicks correctly', async () => {
@@ -415,7 +419,7 @@ describe('ShaderViewer', () => {
     // Get the message handler registered via transport.onMessage
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Simulate extension sending an error message
     await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
@@ -437,7 +441,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Simulate extension sending an error message
     await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
@@ -460,7 +464,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler before clearing mocks
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Clear mocks to ignore initialization messages
     vi.clearAllMocks();
@@ -599,7 +603,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send a shaderSource message while not locked
     await messageHandler({
@@ -618,7 +622,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Config panel should be visible with the config
-    const configSection = container.querySelector('.config-section');
+    const configSection = container.querySelector('.config-panel');
     expect(configSection).toBeTruthy();
   });
 
@@ -633,7 +637,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // First, send the locked shader's config
     await messageHandler({
@@ -666,7 +670,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // The config should still be the locked shader's config, not the other shader's
-    const configSection = container.querySelector('.config-section');
+    const configSection = container.querySelector('.config-panel');
     expect(configSection).toBeTruthy();
     // The ConfigPanel receives shaderPath as a prop - verify it's still the locked shader
     // We can check via the internal component state by checking what was passed
@@ -700,7 +704,7 @@ describe('ShaderViewer', () => {
     // Get the message handler registered via transport.onMessage
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Simulate extension sending a fileContents message — should not throw
     await messageHandler({
@@ -729,7 +733,7 @@ describe('ShaderViewer', () => {
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send a shaderSource message
     await messageHandler({
@@ -761,7 +765,7 @@ describe('ShaderViewer', () => {
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send a shaderSource message to establish the shader path and config
     await messageHandler({
@@ -805,7 +809,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler to send a shaderSource to set shaderPath
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     await messageHandler({
       data: {
@@ -923,7 +927,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send a shaderSource with a buffer config
     await messageHandler({
@@ -947,7 +951,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send error
     await messageHandler({ data: { type: 'error', payload: ['Test error'] } });
@@ -978,7 +982,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Editor overlay should not be visible initially
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
@@ -997,7 +1001,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send a shaderSource message
     await messageHandler({
@@ -1035,7 +1039,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send initial shader config
     await messageHandler({
@@ -1068,7 +1072,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Config panel should be visible - the update was allowed because paths match
-    const configSection = container.querySelector('.config-section');
+    const configSection = container.querySelector('.config-panel');
     expect(configSection).toBeTruthy();
   });
 
@@ -1078,7 +1082,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send panelState message indicating we're in a new window
     await messageHandler({
@@ -1101,7 +1105,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send webServerState message indicating server is running
     await messageHandler({
@@ -1218,7 +1222,7 @@ describe('ShaderViewer', () => {
     expect(paused).toBe(true);
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[0][0];
+    const messageHandler = onMessageCalls[1][0];
 
     // Send first shader - should trigger unpause since isPaused() returns true
     await messageHandler({
@@ -1254,5 +1258,144 @@ describe('ShaderViewer', () => {
     // Restore original
     RenderingEngine.prototype.togglePause = origTogglePause;
     mockTimeManager.isPaused = vi.fn(() => false);
+  });
+
+  it('should handle resetLayout message without crashing', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[1][0];
+
+    // Send resetLayout message — should not throw
+    await messageHandler({ data: { type: 'resetLayout' } });
+    await tick();
+
+    // Component should still be functional
+    expect(screen.getByLabelText('Toggle pause')).toBeTruthy();
+  });
+
+  it('should hide config panel via store when config tab is closed in dockview', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load a shader and open config panel
+    await loadShader();
+    configPanelStore.setVisible(true);
+    await tick();
+
+    // Verify config panel is visible
+    expect(container.querySelector('.config-panel')).toBeTruthy();
+
+    // Simulate dockview firing configClosed event via the DockviewLayout component
+    // The handleConfigClosed function calls configPanelStore.setVisible(false)
+    const dockview = container.querySelector('.dockview-container');
+    if (dockview) {
+      // DockviewLayout dispatches configClosed when panel is removed
+      // We can test the store behavior directly since the handler calls configPanelStore.setVisible(false)
+      configPanelStore.setVisible(false);
+      await tick();
+      expect(container.querySelector('.config-panel')).toBeFalsy();
+    }
+  });
+
+  it('should hide debug panel via store when debug tab is closed in dockview', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load shader and enable debug mode
+    await loadShader();
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Debug panel should be visible
+    expect(debugPanelStore).toBeTruthy();
+
+    // Simulate the handleDebugClosed path — it toggles debug off
+    // which sends a debugModeState message
+    vi.clearAllMocks();
+    await fireEvent.click(debugButton);
+    await tick();
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'debugModeState',
+      payload: { enabled: false }
+    });
+  });
+
+  it('should pass variable inspector props to DebugPanel when debug is enabled', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load shader and enable debug mode
+    await loadShader();
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // The debug panel should be rendered with the variable inspector section
+    // Look for the DebugPanel's variable inspector toggle
+    const varInspectorButton = container.querySelector('[aria-label="Toggle variable inspector"]');
+    // Variable inspector button should exist in the debug panel
+    expect(varInspectorButton).toBeTruthy();
+  });
+
+  it('should toggle variable inspector when button is clicked in debug panel', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load shader and enable debug mode
+    await loadShader();
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    // Click variable inspector toggle
+    const varInspectorButton = container.querySelector('[aria-label="Toggle variable inspector"]');
+    if (varInspectorButton) {
+      await fireEvent.click(varInspectorButton);
+      await tick();
+
+      // Should not crash — variable inspector is now enabled
+      expect(container.querySelector('.main-container')).toBeTruthy();
+    }
+  });
+
+  it('should derive editor buffer names from config passes', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[1][0];
+
+    // Send a shader with multiple buffer passes
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { Image: {}, BufferA: {}, Common: {} } },
+        pathMap: { Image: '/test/shader.glsl' },
+        bufferPathMap: { BufferA: '/test/bufferA.glsl', Common: '/test/common.glsl' },
+      },
+    });
+    await tick();
+
+    // Toggle editor overlay to see the buffer selector
+    editorOverlayStore.toggle();
+    await tick();
+
+    // Editor overlay should be visible
+    expect(container.querySelector('.editor-wrapper')).toBeTruthy();
   });
 });

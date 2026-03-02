@@ -68,6 +68,9 @@
   export let isInWindow: boolean = false;
   export let isWebServerRunning: boolean = false;
   export let hasShader: boolean = false;
+  export let onResetLayout: () => void = () => {};
+  export let previewVisible: boolean = true;
+  export let onShowPreview: () => void = () => {};
 
   // Fork icon SVG (copy/branch)
   const forkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -439,6 +442,16 @@
       </button>
       {#if showOptionsMenu}
         <div class="options-menu">
+          {#if !previewVisible}
+            <button
+              class="options-menu-item"
+              on:click={() => { onShowPreview(); showOptionsMenu = false; }}
+              aria-label="Show preview"
+            >
+              {@html playIcon}
+              <span>Show Preview</span>
+            </button>
+          {/if}
           <button
             class="options-menu-item show-debug"
             on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
@@ -498,6 +511,14 @@
               {@html unlockIcon}
             {/if}
             <span>{isLocked ? 'Unlock' : 'Lock'}</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onResetLayout(); showOptionsMenu = false; }}
+            aria-label="Reset layout"
+          >
+            {@html resetIcon}
+            <span>Reset Layout</span>
           </button>
           <button
             class="options-menu-item"
