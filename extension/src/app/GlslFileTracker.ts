@@ -40,49 +40,6 @@ export class GlslFileTracker {
     }
 
     /**
-     * Should we recommend a GLSL syntax highlighting extension?
-     * Returns true if the file looks like a GLSL file by extension but the languageId is not set
-     * and we haven't already detected an installed GLSL syntax extension.
-     */
-    public shouldRecommendGlslHighlighter(editor: vscode.TextEditor): boolean {
-        const doc = editor?.document;
-        if (!doc) return false;
-
-        const looksLikeGlslByFile = doc.fileName.endsWith('.glsl') || doc.fileName.endsWith('.frag');
-        const alreadyTagged = doc.languageId === 'glsl' || doc.languageId === 'frag';
-
-        if (!looksLikeGlslByFile || alreadyTagged) {
-            return false;
-        }
-
-        // Respect opt-out stored in global state
-        if (this.context.globalState.get<boolean>('suppressGlslHighlightRecommendation')) {
-            return false;
-        }
-
-        return true;
-    }
-
-    public async recommendGlslHighlighter(editor: vscode.TextEditor): Promise<void> {
-        if (!this.shouldRecommendGlslHighlighter(editor)) return;
-
-        const installLabel = 'Install "slevesque.shader"';
-        const dontShowLabel = "Don't show again";
-
-        const choice = await vscode.window.showInformationMessage(
-            'No GLSL syntax highlighting detected. "Shader languages support for VS Code" is recommended extension for GLSL highlighting.',
-            installLabel,
-            dontShowLabel,
-        );
-
-        if (choice === installLabel) {
-            await vscode.commands.executeCommand('workbench.extensions.installExtension', 'slevesque.shader');
-        } else if (choice === dontShowLabel) {
-            await this.context.globalState.update('suppressGlslHighlightRecommendation', true);
-        }
-    }
-
-    /**
      * Find an open editor for the given shader path across visible editors and all tab groups.
      * If the file is open in another tab group, this will reveal it (via showTextDocument)
      * and return the resulting TextEditor. Returns undefined if no open editor is found.

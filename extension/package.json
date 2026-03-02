@@ -163,6 +163,22 @@
         "path": "./snippets/coordinates.code-snippets"
       }
     ],
+    "languages": [
+      {
+        "id": "glsl",
+        "aliases": ["GLSL", "OpenGL Shading Language"],
+        "extensions": [".glsl", ".frag", ".vert", ".geom", ".tesc", ".tese", ".comp"],
+        "configuration": "./glsl-language-configuration.json",
+        "priority": "default"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "glsl",
+        "scopeName": "source.glsl",
+        "path": "./syntaxes/glsl.tmLanguage.json"
+      }
+    ],
     "jsonValidation": [
       {
         "fileMatch": "*.sha.json",
