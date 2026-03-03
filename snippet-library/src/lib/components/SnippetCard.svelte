@@ -140,6 +140,7 @@
 
   .card-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     margin-top: 4px;
   }

@@ -9,8 +9,6 @@ import { SnippetLibraryProvider } from '../../app/SnippetLibraryProvider';
 suite('SnippetLibraryProvider Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
     let mockContext: any;
-    let mockShaderCreator: any;
-
     setup(() => {
         sandbox = sinon.createSandbox();
 
@@ -22,14 +20,53 @@ suite('SnippetLibraryProvider Test Suite', () => {
                 update: sandbox.stub().resolves(),
             },
         };
-
-        mockShaderCreator = {
-            createFromTemplate: sandbox.stub().resolves(),
-        };
     });
 
     teardown(() => {
         sandbox.restore();
+    });
+
+    suite('Panel View Column', () => {
+        test('should open panel in the active view column', () => {
+            const mockWebview = {
+                html: '',
+                onDidReceiveMessage: sandbox.stub(),
+                asWebviewUri: sandbox.stub().callsFake((uri: vscode.Uri) => uri),
+                cspSource: 'fake-csp',
+            };
+            const mockPanel = {
+                webview: mockWebview,
+                onDidDispose: sandbox.stub(),
+                viewColumn: vscode.ViewColumn.Two,
+            };
+
+            const createPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel as any);
+
+            const provider = new SnippetLibraryProvider(mockContext);
+            provider.show();
+
+            assert.ok(createPanelStub.calledOnce, 'createWebviewPanel should be called');
+            assert.strictEqual(
+                createPanelStub.firstCall.args[2],
+                vscode.ViewColumn.Active,
+                'should open in ViewColumn.Active'
+            );
+        });
+
+        test('should reveal existing panel in the active view column', () => {
+            const revealStub = sandbox.stub();
+            const provider = new SnippetLibraryProvider(mockContext);
+            (provider as any).panel = { reveal: revealStub };
+
+            provider.show();
+
+            assert.ok(revealStub.calledOnce, 'reveal should be called');
+            assert.strictEqual(
+                revealStub.firstCall.args[0],
+                vscode.ViewColumn.Active,
+                'should reveal in ViewColumn.Active'
+            );
+        });
     });
 
     suite('Insert Snippet - Editor Fallback', () => {
@@ -42,7 +79,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
 
             sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
 
             // Access private method via message handler simulation
             // We test the logic directly by calling the private method
@@ -73,7 +110,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             };
             const showDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves(mockRevealedEditor as any);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             // Simulate that an editor was previously active
             (provider as any).lastActiveEditor = mockLastEditor;
 
@@ -91,7 +128,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
             const warnStub = sandbox.stub(vscode.window, 'showWarningMessage').resolves();
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             (provider as any).lastActiveEditor = undefined;
 
             const insertSnippet = (provider as any).insertSnippet.bind(provider);
@@ -111,7 +148,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             const mockEditor1 = { document: { uri: vscode.Uri.file('/a.glsl') } };
             sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor1);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             assert.strictEqual((provider as any).lastActiveEditor, mockEditor1);
 
             // Simulate switching to another editor
@@ -132,7 +169,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             };
             sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const insertSnippet = (provider as any).insertSnippet.bind(provider);
             await insertSnippet(['float x = 0.5;', 'float y = 1.0;']);
 
@@ -149,7 +186,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
             const errorStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const insertSnippet = (provider as any).insertSnippet.bind(provider);
             await insertSnippet(['float x = 0.5;']);
 
@@ -182,7 +219,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             const ctx = { ...mockContext, extensionPath: tmpDir };
             sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
 
-            const provider = new SnippetLibraryProvider(ctx, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(ctx);
             (provider as any).panel = { webview: { postMessage: postMessageStub } };
 
             await (provider as any).sendSnippets();
@@ -203,7 +240,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
         });
 
         test('should not post when panel is undefined', async () => {
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             (provider as any).panel = undefined;
 
             // Should just return without error
@@ -222,7 +259,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             };
             sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
 
-            const provider = new SnippetLibraryProvider(ctx, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(ctx);
             (provider as any).panel = { webview: { postMessage: postMessageStub } };
 
             await (provider as any).sendSnippets();
@@ -255,7 +292,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             }]);
 
             const postMessageStub = sandbox.stub().resolves();
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             (provider as any).panel = { webview: { postMessage: postMessageStub } };
             return { provider, postMessageStub };
         }
@@ -369,7 +406,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
             }]);
 
             const postMessageStub = sandbox.stub().resolves();
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             (provider as any).panel = { webview: { postMessage: postMessageStub } };
 
             await (provider as any).saveCustomSnippet(
@@ -412,21 +449,9 @@ suite('SnippetLibraryProvider Test Suite', () => {
     });
 
     suite('Message Handling', () => {
-        test('createScene message should call shaderCreator.createFromTemplate with the code', async () => {
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
-
-            // Simulate calling the message handler logic for createScene
-            // The message handler calls this.shaderCreator.createFromTemplate(message.shaderCode)
-            const shaderCode = 'void mainImage(out vec4 f, in vec2 fc) { f = vec4(1.0); }';
-            await (mockShaderCreator.createFromTemplate as sinon.SinonStub)(shaderCode);
-
-            assert.ok(mockShaderCreator.createFromTemplate.calledOnce);
-            assert.strictEqual(mockShaderCreator.createFromTemplate.firstCall.args[0], shaderCode);
-        });
-
         test('saveState message should persist state to workspace state', async () => {
             const state = { searchTerm: 'sdf', cardSize: 200, selectedCategory: 'all' };
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
 
             // Simulate the saveState message handling logic
             await mockContext.workspaceState.update('snippetLibrary.state', state);
@@ -461,7 +486,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
                 index: 0,
             }]);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const snippets = await (provider as any).loadCustomSnippets();
 
             assert.strictEqual(snippets.length, 1);
@@ -477,7 +502,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
         test('should return empty array when no workspace folders', async () => {
             sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const snippets = await (provider as any).loadCustomSnippets();
 
             assert.strictEqual(snippets.length, 0);
@@ -498,7 +523,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
                 index: 0,
             }]);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const snippets = await (provider as any).loadCustomSnippets();
 
             assert.strictEqual(snippets.length, 0);
@@ -514,7 +539,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
                 index: 0,
             }]);
 
-            const provider = new SnippetLibraryProvider(mockContext, mockShaderCreator);
+            const provider = new SnippetLibraryProvider(mockContext);
             const snippets = await (provider as any).loadCustomSnippets();
 
             assert.strictEqual(snippets.length, 0);

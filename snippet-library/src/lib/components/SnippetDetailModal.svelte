@@ -5,11 +5,10 @@
   import MonacoEditor from './MonacoEditor.svelte';
   import { stripSnippetPlaceholders } from '../preview/previewTemplates';
 
-  let { snippet, onClose, onInsert, onCreateScene }: {
+  let { snippet, onClose, onInsert }: {
     snippet: Snippet | null;
     onClose: () => void;
     onInsert: (snippet: Snippet) => void;
-    onCreateScene?: (snippet: Snippet) => void;
   } = $props();
 
   let codeCopied = $state(false);
@@ -188,9 +187,6 @@
       </div>
 
       <div class="detail-actions">
-        {#if onCreateScene}
-          <button class="btn-create-scene" onclick={() => onCreateScene(snippet)}>Create Scene</button>
-        {/if}
         <button class="btn-insert" onclick={() => onInsert(snippet)}>Insert into Editor</button>
         <button class="btn-close" onclick={onClose}>Close</button>
       </div>
@@ -383,21 +379,6 @@
     gap: 8px;
     padding: 12px 20px;
     border-top: 1px solid var(--vscode-panel-border, #333);
-  }
-
-  .btn-create-scene {
-    padding: 6px 16px;
-    font-size: 13px;
-    background: var(--vscode-button-secondaryBackground, #3a3d41);
-    color: var(--vscode-button-secondaryForeground, #ccc);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-right: auto;
-  }
-
-  .btn-create-scene:hover {
-    background: var(--vscode-button-secondaryHoverBackground, #45494e);
   }
 
   .btn-insert {

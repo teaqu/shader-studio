@@ -74,7 +74,7 @@ export class ShaderStudio {
     this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
 
     // Register snippet browser
-    this.snippetLibraryProvider = SnippetLibraryProvider.register(context, this.shaderCreator);
+    this.snippetLibraryProvider = SnippetLibraryProvider.register(context);
 
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
