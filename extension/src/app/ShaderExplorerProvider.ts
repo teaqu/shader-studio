@@ -5,17 +5,21 @@ import { Logger } from "./services/Logger";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { ThumbnailCache } from "./ThumbnailCache";
+import { TabGroupResolver } from "./TabGroupResolver";
 
 export class ShaderExplorerProvider {
     private logger: Logger;
     private panel: vscode.WebviewPanel | undefined;
     private thumbnailCache: ThumbnailCache;
     private configProcessor: ShaderConfigProcessor;
+    private tabGroupResolver: TabGroupResolver;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.thumbnailCache = new ThumbnailCache(context);
         this.configProcessor = new ShaderConfigProcessor();
+        this.tabGroupResolver = new TabGroupResolver();
+        context.subscriptions.push(this.tabGroupResolver);
     }
 
     public static register(
@@ -242,8 +246,7 @@ export class ShaderExplorerProvider {
     private async openShader(shaderPath: string): Promise<void> {
         try {
             const doc = await vscode.workspace.openTextDocument(shaderPath);
-            const column = this.panel?.viewColumn ? this.panel.viewColumn + 1 : vscode.ViewColumn.Beside;
-            await vscode.window.showTextDocument(doc, column);
+            await vscode.window.showTextDocument(doc, this.tabGroupResolver.findTargetColumn());
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to open shader: ${error}`,
@@ -254,7 +257,7 @@ export class ShaderExplorerProvider {
     private async openConfig(configPath: string): Promise<void> {
         try {
             const doc = await vscode.workspace.openTextDocument(configPath);
-            await vscode.window.showTextDocument(doc);
+            await vscode.window.showTextDocument(doc, this.tabGroupResolver.findTargetColumn());
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to open config: ${error}`,
