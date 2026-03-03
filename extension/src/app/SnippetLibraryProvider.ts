@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
-import { ShaderCreator } from "./ShaderCreator";
 
 interface SnippetEntry {
     prefix: string;
@@ -33,13 +32,11 @@ const SNIPPET_FILE_CATEGORIES: Record<string, SnippetCategory> = {
 export class SnippetLibraryProvider {
     private logger: Logger;
     private panel: vscode.WebviewPanel | undefined;
-    private shaderCreator: ShaderCreator;
     private lastActiveEditor: vscode.TextEditor | undefined;
     private editorChangeDisposable: vscode.Disposable | undefined;
 
-    constructor(private context: vscode.ExtensionContext, shaderCreator: ShaderCreator) {
+    constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
-        this.shaderCreator = shaderCreator;
 
         // Track the last active text editor so we can insert into it
         // even when the snippet library panel has focus
@@ -54,9 +51,8 @@ export class SnippetLibraryProvider {
 
     public static register(
         context: vscode.ExtensionContext,
-        shaderCreator: ShaderCreator,
     ): vscode.Disposable {
-        const provider = new SnippetLibraryProvider(context, shaderCreator);
+        const provider = new SnippetLibraryProvider(context);
 
         const command = vscode.commands.registerCommand(
             "shader-studio.openSnippetLibrary",
@@ -70,14 +66,14 @@ export class SnippetLibraryProvider {
 
     public show(): void {
         if (this.panel) {
-            this.panel.reveal(vscode.ViewColumn.One);
+            this.panel.reveal(vscode.ViewColumn.Active);
             return;
         }
 
         this.panel = vscode.window.createWebviewPanel(
             "shader-studio.snippetLibrary",
             "Snippet Library",
-            vscode.ViewColumn.One,
+            vscode.ViewColumn.Active,
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
@@ -134,12 +130,6 @@ export class SnippetLibraryProvider {
 
                 case "deleteCustomSnippet":
                     await this.deleteCustomSnippet(message.name);
-                    break;
-
-                case "createScene":
-                    await this.shaderCreator.createFromTemplate(
-                        message.shaderCode,
-                    );
                     break;
 
                 case "saveState":
