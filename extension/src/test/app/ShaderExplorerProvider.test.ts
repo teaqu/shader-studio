@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
+import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter';
 import { Logger } from '../../app/services/Logger';
 
 suite('ShaderExplorerProvider Test Suite', () => {
@@ -289,6 +290,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
             };
             sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
             sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+            // ConfigPathConverter.processConfigPaths is now async - stub to pass through
+            sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
 
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);
@@ -314,6 +317,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
                     Object.assign(buffers, mockBuffers);
                     return mockConfig as any;
                 });
+            // ConfigPathConverter.processConfigPaths is now async - stub to pass through
+            sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
 
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
             const messageHandler = setupMessageHandler(mockPanel);

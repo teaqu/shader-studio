@@ -142,20 +142,22 @@ The aim is to support all Shadertoy features. Currently, the extension supports 
 - `iFrame` - shader playback frame number
 - `iMouse` - mouse pixel coordinates
 - `iResolution` - viewport resolution (in pixels)
-- `iChannel0-3` - input channels (textures, buffers, keyboard)
+- `iChannel0-3` - input channels (textures, buffers, keyboard, audio, microphone, cubemap, volume)
 - `iChannelResolution[4]` - channel resolution for each input (vec3: width, height, depth)
+- `iChannelTime[4]` - channel playback time (for video/audio inputs)
+- `iSampleRate` - sound sample rate (typically 44100)
 - `iDate` - current date (year, month, day, time in seconds)
-- Video Inputs
+- `iCh0-3` struct uniforms (Shadertoy "new API": `.sampler`, `.size`, `.time`, `.loaded`)
+- Video inputs with play/pause, mute/unmute, and reset controls
+- Audio/sound inputs (512x2 FFT + waveform texture)
+- Microphone input via `getUserMedia`
+- Cubemap render pass (CubeA) with `mainCubemap` entry point
+- Dynamic sampler types (`sampler2D`, `samplerCube`, `sampler3D`)
+- Volume (3D texture) inputs
 - Common Buffer
 
 ### Not Yet Supported
 
-- `iChannelTime[4]` - channel playback time (for video inputs)
-- `samplerCube iChannelX` - cubemap texture support
-- `iSampleRate` - sound sample rate (typically 44100)
-- Audio/sound inputs (including video audio)
-- Webcam inputs
-- Volume/microphone inputs
 - VR/AR inputs
 
 ## Contributing

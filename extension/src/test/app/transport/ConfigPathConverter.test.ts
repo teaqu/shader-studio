@@ -59,7 +59,7 @@ suite('ConfigPathConverter Test Suite', () => {
         sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(filePath));
     });
 
-    test('processConfigPaths processes shader config texture paths correctly', () => {
+    test('processConfigPaths processes shader config texture paths correctly', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-texture.png');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -81,8 +81,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const processedMessage = ConfigPathConverter.processConfigPaths(
-            originalMessage as any, 
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
             mockWebview
         );
         
@@ -95,7 +95,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
-    test('processConfigPaths handles config without inputs', () => {
+    test('processConfigPaths handles config without inputs', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code',
@@ -108,20 +108,18 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             }
         };
-        
-        assert.doesNotThrow(() => {
-            ConfigPathConverter.processConfigPaths(message as any, mockWebview);
-        });
+
+        await ConfigPathConverter.processConfigPaths(message as any, mockWebview);
     });
 
-    test('processConfigPaths handles message without config', () => {
+    test('processConfigPaths handles message without config', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code'
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -129,7 +127,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(result.code, 'shader code');
     });
 
-    test('processConfigPaths processes multiple texture inputs', () => {
+    test('processConfigPaths processes multiple texture inputs', async () => {
         const mockUri1 = vscode.Uri.parse('vscode-webview://webview-panel/texture1.png');
         const mockUri2 = vscode.Uri.parse('vscode-webview://webview-panel/texture2.png');
         
@@ -161,8 +159,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -172,7 +170,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockUri2.toString());
     });
 
-    test('processConfigPaths processes multiple passes', () => {
+    test('processConfigPaths processes multiple passes', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -202,8 +200,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -213,7 +211,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
     });
 
-    test('processConfigPaths handles non-texture inputs', () => {
+    test('processConfigPaths handles non-texture inputs', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code',
@@ -232,8 +230,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -241,7 +239,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.name, 'BufferA');
     });
 
-    test('processConfigPaths processes video input paths correctly', () => {
+    test('processConfigPaths processes video input paths correctly', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-video.mp4');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -263,8 +261,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const processedMessage = ConfigPathConverter.processConfigPaths(
-            originalMessage as any, 
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
             mockWebview
         );
         
@@ -277,7 +275,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/video.mp4');
     });
 
-    test('processConfigPaths processes mixed texture and video inputs', () => {
+    test('processConfigPaths processes mixed texture and video inputs', async () => {
         const mockTextureUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
         const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
         
@@ -309,8 +307,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -320,7 +318,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockVideoUri.toString());
     });
 
-    test('processConfigPaths handles video input with additional properties', () => {
+    test('processConfigPaths handles video input with additional properties', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
         mockWebview.asWebviewUri.returns(mockUri);
 
@@ -345,7 +343,7 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
 
-        const result = ConfigPathConverter.processConfigPaths(
+        const result = await ConfigPathConverter.processConfigPaths(
             message as any,
             mockWebview
         );
@@ -360,7 +358,7 @@ suite('ConfigPathConverter Test Suite', () => {
     });
 
     suite('Workspace-relative @ path resolution', () => {
-        test('processConfigPaths resolves @ texture path from workspace root', () => {
+        test('processConfigPaths resolves @ texture path from workspace root', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'textures', 'noise.png');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/noise.png');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -384,7 +382,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -398,7 +396,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths resolves @ video path from workspace root', () => {
+        test('processConfigPaths resolves @ video path from workspace root', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'videos', 'clip.mp4');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/clip.mp4');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -422,7 +420,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -433,7 +431,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths resolves @/ path in buffer pass', () => {
+        test('processConfigPaths resolves @/ path in buffer pass', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'assets', 'stone.png');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/stone.png');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -460,7 +458,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -471,7 +469,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths handles mixed @ and relative paths', () => {
+        test('processConfigPaths handles mixed @ and relative paths', async () => {
             const shaderPath = path.join(WORKSPACE_ROOT, 'shaders', 'main.glsl');
             const expectedWorkspacePath = path.join(WORKSPACE_ROOT, 'textures', 'noise.png');
             const expectedRelativePath = path.join(WORKSPACE_ROOT, 'shaders', 'local.png');
@@ -507,7 +505,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );

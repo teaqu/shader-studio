@@ -25,6 +25,7 @@
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
+  import { audioStore, linearToPerceptualVolume, type AudioState } from "../stores/audioStore";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
@@ -82,6 +83,10 @@
     isVariableInspectorEnabled: false,
     capturedVariables: [],
   };
+
+  // Audio state
+  let audioVolume = 1.0;
+  let audioMuted = true;
 
   // Config panel state
   let configPanelVisible = false;
@@ -160,6 +165,97 @@
     return names;
   })();
 
+  function handleVideoControl(path: string, action: string) {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (!engine) return;
+
+    // Block per-video unmute when globally muted
+    if (action === 'unmute' && audioMuted) return;
+
+    engine.controlVideo(path, action as any);
+
+    // After per-video unmute, apply the current global volume
+    if (action === 'unmute') {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
+    }
+  }
+
+  function handleGetVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getVideoState(path);
+    }
+    return null;
+  }
+
+  function handleAudioControl(path: string, action: string) {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (!engine) return;
+
+    // Handle seek action (format: "seek:timeInSeconds")
+    if (action.startsWith('seek:')) {
+      const time = parseFloat(action.substring(5));
+      if (!isNaN(time)) {
+        engine.seekAudio(path, time);
+      }
+      return;
+    }
+
+    // Handle loop region update (format: "loopRegion:start,end")
+    if (action.startsWith('loopRegion:')) {
+      const parts = action.substring(11).split(',');
+      const start = parts[0] ? parseFloat(parts[0]) : undefined;
+      const end = parts[1] ? parseFloat(parts[1]) : undefined;
+      engine.updateAudioLoopRegion(path, isNaN(start as number) ? undefined : start, isNaN(end as number) ? undefined : end);
+      return;
+    }
+
+    // Block per-audio unmute when globally muted
+    if (action === 'unmute' && audioMuted) return;
+
+    engine.controlAudio(path, action as any);
+
+    // After per-audio unmute, apply the current global volume
+    if (action === 'unmute') {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
+    }
+  }
+
+  function handleGetAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getAudioState(path);
+    }
+    return null;
+  }
+
+  function applyGlobalAudioState() {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), audioMuted);
+    }
+    // Keep audio options in sync so newly loaded audio sources respect global state
+    if (shaderStudio) {
+      shaderStudio.setAudioOptions({ muted: audioMuted, volume: linearToPerceptualVolume(audioVolume) });
+    }
+  }
+
+  function handleVolumeChange(volume: number) {
+    audioStore.setVolume(volume);
+  }
+
+  function handleToggleMute() {
+    audioStore.toggleMute();
+  }
+
+  function handleGetAudioFFT(type: string, path?: string): Uint8Array | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getAudioFFTData(type, path);
+    }
+    return null;
+  }
+
   // Subscribe to stores
   onMount(() => {
     const unsubConfig = configPanelStore.subscribe((state) => {
@@ -168,9 +264,17 @@
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
     });
+
+    const unsubAudio = audioStore.subscribe((state: AudioState) => {
+      audioVolume = state.volume;
+      audioMuted = state.muted;
+      applyGlobalAudioState();
+    });
+
     return () => {
       unsubConfig();
       unsubDebug();
+      unsubAudio();
     };
   });
 
@@ -198,6 +302,8 @@
 
   function handleReset() {
     if (!initialized) return;
+    // Unmute so audio plays on reset (user gesture satisfies autoplay policy)
+    audioStore.setMuted(false);
     shaderStudio.handleReset(() => {
       const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
@@ -502,8 +608,27 @@
     errors = [];
   }
 
+  // Buffer messages that arrive before initialization completes
+  let pendingMessages: MessageEvent[] = [];
+
   async function initializeApp() {
     try {
+      // Register message listener EARLY to capture messages during initialization
+      transport.onMessage((event: MessageEvent) => {
+        if (initialized) {
+          handleShaderMessage(event);
+          // Also handle cursor position messages
+          if (event.data.type === 'cursorPosition' && shaderStudio) {
+            const messageHandler = (shaderStudio as any).messageHandler;
+            if (messageHandler) {
+              messageHandler.handleCursorPositionMessage(event.data);
+            }
+          }
+        } else {
+          pendingMessages.push(event);
+        }
+      });
+
       const shadderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
@@ -526,17 +651,6 @@
         return;
       }
 
-      transport.onMessage(handleShaderMessage);
-      // Also handle cursor position messages
-      transport.onMessage((event: MessageEvent) => {
-        if (event.data.type === 'cursorPosition' && shaderStudio) {
-          const messageHandler = (shaderStudio as any).messageHandler;
-          if (messageHandler) {
-            messageHandler.handleCursorPositionMessage(event.data);
-          }
-        }
-      });
-
       timeManager = renderingEngine.getTimeManager();
 
       // Initialize pixel inspector manager
@@ -558,6 +672,12 @@
       renderingEngine.togglePause();
 
       initialized = true;
+
+      // Replay any messages that arrived during initialization
+      for (const msg of pendingMessages) {
+        handleShaderMessage(msg);
+      }
+      pendingMessages = [];
 
       onInitialized({ shaderStudio });
     } catch (err) {
@@ -608,6 +728,7 @@
             editorFileCode = currentShaderCode;
           }
         }
+
       }
 
       // Handle toggle editor overlay message from extension
@@ -875,6 +996,12 @@
         onFileSelect={handleConfigFileSelect}
         selectedBuffer={editorBufferName}
         isLocked={isLocked}
+        onVideoControl={handleVideoControl}
+        getVideoState={handleGetVideoState}
+        onAudioControl={handleAudioControl}
+        getAudioState={handleGetAudioState}
+        getAudioFFT={handleGetAudioFFT}
+        globalMuted={audioMuted}
       />
     {/if}
   </div>
@@ -925,6 +1052,10 @@
       onResetLayout={handleResetLayout}
       {previewVisible}
       onShowPreview={handleShowPreview}
+      {audioVolume}
+      {audioMuted}
+      onVolumeChange={handleVolumeChange}
+      onToggleMute={handleToggleMute}
     />
   {/if}
   <PixelInspector

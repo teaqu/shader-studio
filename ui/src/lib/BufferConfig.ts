@@ -122,6 +122,26 @@ export class BufferConfig {
       updatedInput = {
         type: 'keyboard'
       };
+    } else if (updates.type === 'audio') {
+      updatedInput = {
+        type: 'audio',
+        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path) || '',
+        startTime: this.newElseExistingInput((updates as any).startTime, (existingInput as any)?.startTime),
+        endTime: this.newElseExistingInput((updates as any).endTime, (existingInput as any)?.endTime),
+      };
+    } else if (updates.type === 'cubemap') {
+      updatedInput = {
+        type: 'cubemap',
+        source: (updates as any).source || (existingInput as any)?.source || 'CubeA',
+        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
+      };
+    } else if (updates.type === 'volume') {
+      updatedInput = {
+        type: 'volume',
+        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path) || '',
+        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
+        wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
+      };
     } else {
       // Keep existing type if no type update
       const existing = existingInput as any;
@@ -146,6 +166,26 @@ export class BufferConfig {
           filter: (updates as any).filter || existing.filter,
           wrap: (updates as any).wrap || existing.wrap,
           vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip
+        };
+      } else if (existing?.type === 'audio') {
+        updatedInput = {
+          type: 'audio',
+          path: (updates as any).path || existing.path || '',
+          startTime: (updates as any).startTime !== undefined ? (updates as any).startTime : existing.startTime,
+          endTime: (updates as any).endTime !== undefined ? (updates as any).endTime : existing.endTime,
+        };
+      } else if (existing?.type === 'cubemap') {
+        updatedInput = {
+          type: 'cubemap',
+          source: (updates as any).source || existing.source || 'CubeA',
+          filter: (updates as any).filter || existing.filter,
+        };
+      } else if (existing?.type === 'volume') {
+        updatedInput = {
+          type: 'volume',
+          path: (updates as any).path || existing.path || '',
+          filter: (updates as any).filter || existing.filter,
+          wrap: (updates as any).wrap || existing.wrap,
         };
       } else {
         updatedInput = {
@@ -270,6 +310,12 @@ export class BufferConfig {
         return this.validateVideoInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
+      case 'audio':
+        return this.validateAudioInput(input);
+      case 'cubemap':
+        return this.validateCubemapInput(input);
+      case 'volume':
+        return this.validateVolumeInput(input);
       default:
         return false;
     }
@@ -327,6 +373,27 @@ export class BufferConfig {
 
   private validateKeyboardInput(input: any): boolean {
     return input.type === 'keyboard';
+  }
+
+  private validateAudioInput(input: any): boolean {
+    return !!input.path && typeof input.path === 'string';
+  }
+
+  private validateCubemapInput(input: any): boolean {
+    return (input.source && input.source === 'CubeA') || (!!input.path && typeof input.path === 'string');
+  }
+
+  private validateVolumeInput(input: any): boolean {
+    if (!input.path || typeof input.path !== 'string') {
+      return false;
+    }
+    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+      return false;
+    }
+    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
+      return false;
+    }
+    return true;
   }
 
   /**

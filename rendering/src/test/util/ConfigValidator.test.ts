@@ -171,6 +171,43 @@ describe("ConfigValidator", () => {
         expect(result.errors).toHaveLength(0);
       });
 
+      it("should accept CubeA pass", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            CubeA: { path: "cubemap.glsl" }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it("should accept CubeA pass with inputs", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { type: 'cubemap', source: 'CubeA' }
+              }
+            },
+            CubeA: {
+              path: "cubemap.glsl",
+              inputs: {
+                iChannel0: { type: 'texture', path: 'env.jpg' }
+              }
+            }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
       it("should reject invalid pass names", () => {
         const config = {
           version: "1.0",
@@ -837,6 +874,114 @@ describe("ConfigValidator", () => {
           const result = ConfigValidator.validateConfig(config);
           expect(result.isValid).toBe(false);
           expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+      });
+
+      describe("audio input validation", () => {
+        it("should accept valid audio input with path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'audio', path: 'music.mp3' }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it("should accept audio input with startTime and endTime", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it("should accept audio input with only startTime", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'audio', path: 'music.mp3', startTime: 10.0 }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+      });
+
+      describe("cubemap input validation", () => {
+        it("should accept cubemap input with source", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'cubemap', source: 'CubeA' }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it("should accept cubemap input with path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'cubemap', path: 'envmap.jpg' }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+      });
+
+      describe("volume input validation", () => {
+        it("should accept valid volume input with path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'volume', path: 'volume.bin' }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
         });
       });
 

@@ -21,18 +21,26 @@ export class VideoTextureManager {
 
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
-      video.crossOrigin = ""; // Same as images
       video.loop = true;
       video.muted = true;
       video.playsInline = true;
       video.preload = "auto";
       video.autoplay = true;
-      
-      // Additional attributes for better autoplay support
+      video.volume = 0;
+
+      // webkit-playsinline for iOS/Safari compatibility
       video.setAttribute('webkit-playsinline', 'true');
-      video.setAttribute('muted', 'true');
-      video.volume = 0; // Ensure volume is 0 for autoplay
-      
+
+      // Append to DOM (hidden) — required for audio output
+      video.style.position = 'fixed';
+      video.style.top = '-9999px';
+      video.style.left = '-9999px';
+      video.style.width = '1px';
+      video.style.height = '1px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      document.body.appendChild(video);
+
       const handleVideoError = () => {
         console.error(`Video loading error for ${path}:`, video.error);
         reject(new Error(`Failed to load video from URL: ${path}`));
@@ -44,16 +52,16 @@ export class VideoTextureManager {
           console.warn(`Video ${path} has zero dimensions, waiting...`);
           return; // Wait for dimensions to be available
         }
-        
+
         try {
           console.log(`Video ${path} can play: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration}s`);
           const texture = this.createTextureFromVideo(video, options);
           this.videoElements[path] = video;
           this.videoTextures[path] = texture;
-          
+
           // Start playing the video and update texture
           this.playVideoAndUpdateTexture(path, video, texture);
-          
+
           resolve(texture);
         } catch (error) {
           console.error(`Failed to create texture from video ${path}:`, error);
@@ -94,6 +102,9 @@ export class VideoTextureManager {
     if (video) {
       video.pause();
       video.src = '';
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
       delete this.videoElements[path];
     }
 
@@ -114,7 +125,6 @@ export class VideoTextureManager {
   }
 
   public pauseAll(): void {
-    // Pause all currently playing videos
     for (const [path, video] of Object.entries(this.videoElements)) {
       if (!video.paused) {
         video.pause();
@@ -124,9 +134,8 @@ export class VideoTextureManager {
   }
 
   public resumeAll(): void {
-    // Resume all paused videos
     for (const [path, video] of Object.entries(this.videoElements)) {
-      if (video.paused) {
+      if (video.paused && !this.userPaused.has(path)) {
         video.play().then(() => {
           console.log(`Resumed video: ${path}`);
         }).catch(error => {
@@ -134,6 +143,107 @@ export class VideoTextureManager {
         });
       }
     }
+  }
+
+  // Per-video user-initiated pause tracking
+  private readonly userPaused: Set<string> = new Set();
+
+  public pauseVideo(path: string): void {
+    const video = this.videoElements[path];
+    if (video && !video.paused) {
+      video.pause();
+      this.userPaused.add(path);
+    }
+  }
+
+  public resumeVideo(path: string): void {
+    const video = this.videoElements[path];
+    if (video && video.paused) {
+      this.userPaused.delete(path);
+      video.play().catch(error => {
+        console.warn(`Could not resume video ${path}:`, error);
+      });
+    }
+  }
+
+  public muteVideo(path: string): void {
+    const video = this.videoElements[path];
+    if (video) {
+      video.muted = true;
+      video.volume = 0;
+      console.log(`[VideoTexture] muteVideo ${path}`);
+    }
+  }
+
+  public unmuteVideo(path: string, volume: number = 1): void {
+    const video = this.videoElements[path];
+    if (!video) {
+      console.warn(`[VideoTexture] unmuteVideo: no video element found for path ${path}`);
+      return;
+    }
+
+    video.muted = false;
+    video.volume = Math.max(0, Math.min(1, volume));
+    console.log(`[VideoTexture] unmuteVideo ${path}`);
+  }
+
+  public setVideoVolume(path: string, volume: number): void {
+    const video = this.videoElements[path];
+    if (video) {
+      video.volume = Math.max(0, Math.min(1, volume));
+    }
+  }
+
+  public setAllVideoVolumes(volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    for (const video of Object.values(this.videoElements)) {
+      video.volume = clamped;
+    }
+  }
+
+  public muteAllVideos(): void {
+    for (const video of Object.values(this.videoElements)) {
+      video.muted = true;
+      video.volume = 0;
+    }
+  }
+
+  public unmuteAllVideos(volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    for (const video of Object.values(this.videoElements)) {
+      video.muted = false;
+      video.volume = clamped;
+    }
+  }
+
+  public resetVideo(path: string): void {
+    const video = this.videoElements[path];
+    if (video) {
+      video.currentTime = 0;
+    }
+  }
+
+  public syncAllToTime(shaderTime: number): void {
+    for (const video of Object.values(this.videoElements)) {
+      if (video.duration && isFinite(video.duration)) {
+        const targetTime = shaderTime % video.duration;
+        // Only seek if drift exceeds a small threshold to avoid constant seeking
+        if (Math.abs(video.currentTime - targetTime) > 0.05) {
+          video.currentTime = targetTime;
+        }
+      }
+    }
+  }
+
+  public isVideoPaused(path: string): boolean {
+    const video = this.videoElements[path];
+    return video ? video.paused : true;
+  }
+
+  public isVideoMuted(path: string): boolean {
+    const video = this.videoElements[path];
+    if (video) return video.muted;
+    return true;
   }
 
   private createTextureFromVideo(
@@ -168,7 +278,7 @@ export class VideoTextureManager {
         try {
           this.renderer.UpdateTextureFromImage(texture, video);
           frameCount++;
-          
+
           // Log first few frames for debugging
           if (frameCount <= 3) {
             console.log(`Video ${path} frame ${frameCount}: ${video.videoWidth}x${video.videoHeight}, readyState: ${video.readyState}, paused: ${video.paused}, currentTime: ${video.currentTime}`);
@@ -182,7 +292,7 @@ export class VideoTextureManager {
           console.log(`Video ${path} not ready yet, readyState: ${video.readyState}, paused: ${video.paused}`);
         }
       }
-      
+
       // Continue updating if video is still active
       if (this.videoTextures[path]) {
         this.animationFrameIds[path] = requestAnimationFrame(updateTexture);

@@ -46,8 +46,8 @@ export class ShaderProvider {
       return;
     }
 
-    // For regular shaders, check for mainImage function
-    if (!code.includes("mainImage")) {
+    // For regular shaders, ensure previewable entrypoint
+    if (!this.hasPreviewableEntrypoint(code)) {
       const errorMsg: ErrorMessage = {
         type: "error",
         payload: ["Missing mainImage function"],
@@ -119,8 +119,8 @@ export class ShaderProvider {
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
-      // Ignore GLSL files that do not contain mainImage
-      if (!code.includes("mainImage")) {
+      // Ensure previewable entrypoint
+      if (!this.hasPreviewableEntrypoint(code)) {
         const errorMsg: ErrorMessage = {
           type: "error",
           payload: ["Missing mainImage function"],
@@ -168,6 +168,10 @@ export class ShaderProvider {
    */
   public removeActiveShader(shaderPath: string): void {
     this.activeShaders.delete(shaderPath);
+  }
+
+  private hasPreviewableEntrypoint(code: string): boolean {
+    return /\bmainImage\s*\(/.test(code) || /\bmainCubemap\s*\(/.test(code);
   }
 
   /**

@@ -31,6 +31,9 @@
       "patternProperties": {
         "^(?!Image$|common$)[a-zA-Z_][a-zA-Z0-9_]*$": {
           "$ref": "#/definitions/BufferPass"
+        },
+        "CubeA": {
+          "$ref": "#/definitions/BufferPass"
         }
       },
       "additionalProperties": false
@@ -156,6 +159,74 @@
           "properties": {
             "type": {
               "const": "keyboard"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "audio"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to audio file"
+            },
+            "startTime": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Loop region start time in seconds"
+            },
+            "endTime": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Loop region end time in seconds"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "source"],
+          "properties": {
+            "type": {
+              "const": "cubemap"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["CubeA"],
+              "description": "Source cubemap pass"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest", "mipmap"],
+              "description": "Cubemap filtering mode"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "volume"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to 3D volume texture file"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest", "mipmap"],
+              "description": "Volume texture filtering mode"
+            },
+            "wrap": {
+              "type": "string",
+              "enum": ["repeat", "clamp"],
+              "description": "Volume texture wrap mode"
             }
           },
           "additionalProperties": false

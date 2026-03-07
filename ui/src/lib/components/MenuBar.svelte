@@ -69,6 +69,10 @@
   export let onResetLayout: () => void = () => {};
   export let previewVisible: boolean = true;
   export let onShowPreview: () => void = () => {};
+  export let audioVolume: number = 1.0;
+  export let audioMuted: boolean = true;
+  export let onVolumeChange: (volume: number) => void = () => {};
+  export let onToggleMute: () => void = () => {};
 
   // Fork icon SVG (copy/branch)
   const forkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -242,6 +246,15 @@
       onRefresh();
     }
   }
+
+  function handleVolumeSlider(event: Event) {
+    const target = event.target as HTMLInputElement;
+    onVolumeChange(parseFloat(target.value));
+  }
+
+  // Inline SVG icons for audio
+  const speakerIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+  const speakerMutedIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
 
   function handleClickOutside(event: MouseEvent) {
     const target = event.target as HTMLElement;
@@ -511,6 +524,34 @@
             {@html refreshIcon}
             <span>Refresh</span>
           </button>
+          <div class="options-menu-divider"></div>
+          <div class="volume-slider-container">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={audioVolume}
+              on:input={handleVolumeSlider}
+              class="volume-slider"
+              aria-label="Volume"
+              class:muted-slider={audioMuted}
+            />
+            <span class="volume-label">{Math.round(audioVolume * 100)}%</span>
+            <button
+              class="mute-icon-btn"
+              on:click|stopPropagation={() => { onToggleMute(); }}
+              aria-label="Toggle mute"
+              class:muted={audioMuted}
+            >
+              {#if audioMuted}
+                {@html speakerMutedIcon}
+              {:else}
+                {@html speakerIcon}
+              {/if}
+            </button>
+          </div>
+          <div class="options-menu-divider"></div>
           {#if showThemeButton}
             <button
               class="options-menu-item"
@@ -568,4 +609,49 @@
 </div>
 
 <style>
+  .options-menu-divider {
+    height: 1px;
+    background: var(--border-color, rgba(128, 128, 128, 0.3));
+    margin: 4px 0;
+  }
+
+  .volume-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+  }
+
+  .volume-slider {
+    flex: 1;
+    height: 4px;
+    cursor: pointer;
+    accent-color: var(--accent-color, #007acc);
+  }
+
+  .volume-slider.muted-slider {
+    opacity: 0.4;
+  }
+
+  .volume-label {
+    font-size: 11px;
+    min-width: 32px;
+    text-align: right;
+    opacity: 0.7;
+  }
+
+  .mute-icon-btn {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .mute-icon-btn.muted {
+    color: #e55;
+  }
 </style>

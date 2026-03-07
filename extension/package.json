@@ -142,6 +142,11 @@
           "type": "boolean",
           "default": true,
           "description": "Sync the active buffer between the config panel and VS Code editor (requires shader lock)"
+        },
+        "shader-studio.lockEditorGroup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
         }
       }
     },

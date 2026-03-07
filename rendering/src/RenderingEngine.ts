@@ -3,6 +3,7 @@ import { piCreateGlContext } from "../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "./ResourceManager";
 import { BufferManager } from "./BufferManager";
+import { CubemapBufferManager } from "./CubemapBufferManager";
 import { TimeManager } from "./util/TimeManager";
 import { KeyboardManager } from "./input/KeyboardManager";
 import { MouseManager } from "./input/MouseManager";
@@ -24,6 +25,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private shaderCompiler!: ShaderCompiler;
   private resourceManager!: ResourceManager;
   private bufferManager!: BufferManager;
+  private cubemapBufferManager!: CubemapBufferManager;
   private timeManager!: TimeManager;
   private keyboardManager!: KeyboardManager;
   private mouseManager!: MouseManager;
@@ -45,6 +47,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.shaderCompiler = new ShaderCompiler(this.renderer);
     this.resourceManager = new ResourceManager(this.renderer);
     this.bufferManager = new BufferManager(this.renderer);
+    this.cubemapBufferManager = new CubemapBufferManager(this.renderer);
     this.timeManager = new TimeManager();
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
@@ -58,7 +61,8 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.resourceManager,
       this.renderer,
       this.bufferManager,
-      this.timeManager
+      this.timeManager,
+      this.cubemapBufferManager,
     );
 
     this.passRenderer = new PassRenderer(
@@ -68,6 +72,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.renderer,
       this.keyboardManager,
     );
+    this.passRenderer.setCubemapBufferManager(this.cubemapBufferManager);
 
     this.frameRenderer = new FrameRenderer(
       this.timeManager,
@@ -76,9 +81,12 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.shaderPipeline,
       this.bufferManager,
       this.passRenderer,
+      this.resourceManager,
       glCanvas,
       new FPSCalculator(30, 5),
     );
+    this.frameRenderer.setCubemapBufferManager(this.cubemapBufferManager);
+    this.frameRenderer.setPiRenderer(this.renderer);
   }
 
   public handleCanvasResize(width: number, height: number): void {
@@ -111,6 +119,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult | undefined> {
     // Save the config for later use
     this.currentConfig = config;
@@ -126,12 +135,30 @@ export class RenderingEngine implements RenderingEngineInterface {
       }
     }
 
-    const result: Promise<CompilationResult> = this.shaderPipeline.compileShaderPipeline(
+    const result = await this.shaderPipeline.compileShaderPipeline(
       code,
       config,
       path,
       buffers,
+      audioOptions,
     );
+
+    if (result.success) {
+      const shaderTime = this.timeManager.getCurrentTime(performance.now());
+      this.resourceManager.syncAllVideosToTime(shaderTime);
+      this.resourceManager.syncAllAudioToTime(shaderTime);
+      if (this.timeManager.isPaused()) {
+        // Newly loaded media autoplay — force pause if shader is paused
+        this.resourceManager.pauseAllVideos();
+        this.resourceManager.pauseAllAudio();
+      } else {
+        this.resourceManager.resumeAllVideos();
+        this.resourceManager.resumeAllAudio();
+      }
+    } else {
+      this.resourceManager.pauseAllVideos();
+      this.resourceManager.pauseAllAudio();
+    }
 
     return result;
   }
@@ -187,18 +214,61 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public togglePause(): void {
     const wasPaused = this.timeManager.isPaused();
-    
+
     // Toggle time manager
     this.timeManager.togglePause();
-    
-    // Handle videos based on new pause state
+
+    // Sync media time to shader time
+    const shaderTime = this.timeManager.getCurrentTime(performance.now());
+    this.resourceManager.syncAllVideosToTime(shaderTime);
+    this.resourceManager.syncAllAudioToTime(shaderTime);
+
+    // Handle media based on new pause state
     if (wasPaused) {
-      // Was paused, now resuming - resume videos
       this.resourceManager.resumeAllVideos();
+      this.resourceManager.resumeAllAudio();
     } else {
-      // Was playing, now pausing - pause videos
       this.resourceManager.pauseAllVideos();
+      this.resourceManager.pauseAllAudio();
     }
+  }
+
+  public async resumeAudioContext(): Promise<void> {
+    return this.resourceManager.resumeAudioContext();
+  }
+
+  public setGlobalVolume(volume: number, muted: boolean): void {
+    if (muted) {
+      this.resourceManager.muteAllVideos();
+      this.resourceManager.muteAllAudio();
+    } else {
+      this.resourceManager.unmuteAllVideos(volume);
+      this.resourceManager.unmuteAllAudio(volume);
+    }
+  }
+
+  public controlVideo(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void {
+    this.resourceManager.controlVideo(path, action);
+  }
+
+  public getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager.getVideoState(path);
+  }
+
+  public controlAudio(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void {
+    this.resourceManager.controlAudio(path, action);
+  }
+
+  public getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager.getAudioState(path);
+  }
+
+  public seekAudio(path: string, time: number): void {
+    this.resourceManager.seekAudio(path, time);
+  }
+
+  public updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void {
+    this.resourceManager.updateAudioLoopRegion(path, startTime, endTime);
   }
 
   public startRenderLoop(): void {
@@ -227,6 +297,13 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public cleanup(): void {
     this.shaderPipeline.cleanup();
+  }
+
+  public getAudioFFTData(type: string, path?: string): Uint8Array | null {
+    if (type === 'audio' && path) {
+      return this.resourceManager.getAudioFFTData(path);
+    }
+    return null;
   }
 
   public getTimeManager(): TimeManager {
@@ -280,6 +357,9 @@ export class RenderingEngine implements RenderingEngineInterface {
     // Clean up resources
     if (this.bufferManager) {
       this.bufferManager.dispose();
+    }
+    if (this.cubemapBufferManager) {
+      this.cubemapBufferManager.dispose();
     }
     if (this.frameRenderer) {
       this.frameRenderer.stopRenderLoop();

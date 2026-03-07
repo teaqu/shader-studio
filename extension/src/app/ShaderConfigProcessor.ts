@@ -39,13 +39,16 @@ export class ShaderConfigProcessor {
     }
 
     try {
-      // Check if config file is open in an editor (to capture unsaved changes)
+      // Check if config file is open in an editor with unsaved changes
       const configDocument = vscode.workspace.textDocuments.find(
         doc => doc.uri.fsPath === configPath
       );
-      
-      const configContent = configDocument 
-        ? configDocument.getText() 
+
+      // Only use TextDocument content if it has unsaved changes (isDirty).
+      // Otherwise read from disk — after handleConfigUpdate writes via fs.writeFileSync,
+      // the TextDocument may be stale until VS Code refreshes it.
+      const configContent = (configDocument && configDocument.isDirty)
+        ? configDocument.getText()
         : fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configContent);
 
