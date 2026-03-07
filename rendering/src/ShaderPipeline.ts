@@ -1,9 +1,11 @@
 import type { ShaderCompiler } from "./ShaderCompiler";
+import type { ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
 import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
+import type { CubemapBufferManager } from "./CubemapBufferManager";
 import type { TimeManager } from "./util/TimeManager";
 import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
 
@@ -13,6 +15,7 @@ export class ShaderPipeline {
   private resourceManager: ResourceManager;
   private renderer: PiRenderer;
   private bufferManager: BufferManager;
+  private cubemapBufferManager: CubemapBufferManager;
   private timeManager: TimeManager;
   private currentShaderRenderID = 0;
   private shaderPath = "";
@@ -26,13 +29,15 @@ export class ShaderPipeline {
     resourceManager: ResourceManager,
     renderer: PiRenderer,
     bufferManager: BufferManager,
-    timeManager: TimeManager
+    timeManager: TimeManager,
+    cubemapBufferManager: CubemapBufferManager,
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
     this.resourceManager = resourceManager;
     this.renderer = renderer;
     this.bufferManager = bufferManager;
+    this.cubemapBufferManager = cubemapBufferManager;
     this.timeManager = timeManager;
   }
 
@@ -83,17 +88,20 @@ export class ShaderPipeline {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
     this.prepareNewCompilation(path);
-
     this.buildPasses(code, config, buffers);
+
     const compilation = await this.compileShaders();
 
     if (!compilation.success) {
       return compilation;
     }
 
-    const warnings = await this.updateResources();
+    const compileWarnings = compilation.warnings || [];
+    const resourceWarnings = await this.updateResources(audioOptions);
+    const warnings = [...compileWarnings, ...resourceWarnings];
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
@@ -158,12 +166,26 @@ export class ShaderPipeline {
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
   }
 
+  private getChannelTypes(pass: Pass): ChannelSamplerType[] {
+    const types: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
+    for (let i = 0; i < 4; i++) {
+      const input = pass.inputs[`iChannel${i}`];
+      if (input?.type === 'cubemap') {
+        types[i] = 'Cube';
+      } else if (input?.type === 'volume') {
+        types[i] = '3D';
+      }
+    }
+    return types;
+  }
+
   private async compileShaders(): Promise<CompilationResult> {
     const oldPassShaders = { ...this.passShaders };
     const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
 
     const newPassShaders: Record<string, PiShader> = {};
     const newPassBuffers: Record<string, any> = {};
+    const warnings: string[] = [];
 
     // Extract common code if it exists
     const commonBufferPass = this.passes.find(pass => pass.name === "common");
@@ -188,9 +210,24 @@ export class ShaderPipeline {
       const slotAssignments = assignInputSlots(pass.inputs);
       this.passSlotAssignments[pass.name] = slotAssignments;
 
-      const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments);
+      const channelTypes = this.getChannelTypes(pass);
+      const isCubemapPass = pass.name === "CubeA";
+
+      let svelteHeaderLines: number;
+      let commonCodeLineCount: number = 0;
+      let shader: PiShader | null;
+
+      if (isCubemapPass) {
+        svelteHeaderLines = this.shaderCompiler
+          .wrapCubemapCode(pass.shaderSrc, commonCode, channelTypes).headerLineCount;
+        shader = this.shaderCompiler.compileCubemapShader(pass.shaderSrc, commonCode, channelTypes);
+      } else {
+        const wrapped = this.shaderCompiler
+          .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
+        svelteHeaderLines = wrapped.headerLineCount;
+        commonCodeLineCount = wrapped.commonCodeLineCount;
+        shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
+      }
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
@@ -223,7 +260,15 @@ export class ShaderPipeline {
       newPassShaders[pass.name] = shader;
       this.passShaders[pass.name] = shader;
 
-      if (pass.name !== "Image" && pass.name !== "common") {
+      if (isCubemapPass) {
+        // Create cubemap buffer instead of ping-pong 2D buffers
+        try {
+          this.cubemapBufferManager.createCubemapBuffer();
+        } catch {
+          // Continue rendering without CubeA RT when unsupported; cubemap inputs will use fallback texture.
+          warnings.push("CubeA: Failed to create cubemap render targets. Continuing without dynamic cubemap rendering.");
+        }
+      } else if (pass.name !== "Image" && pass.name !== "common") {
         if (oldPassBuffers[pass.name]) {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];
@@ -248,10 +293,10 @@ export class ShaderPipeline {
     }
     this.bufferManager.cleanupBuffers(oldPassBuffers);
 
-    return { success: true };
+    return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
-  private async updateResources(): Promise<string[]> {
+  private async updateResources(audioOptions?: { muted?: boolean; volume?: number }): Promise<string[]> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
@@ -273,6 +318,30 @@ export class ShaderPipeline {
           const result = await this.resourceManager.loadVideoTexture(input.resolved_path || input.path, videoOptions);
           if (result.warning) {
             warnings.push(result.warning);
+          }
+        } else if (input?.type === "audio" && input.path) {
+          try {
+            const audioLoadOptions = {
+              ...audioOptions,
+              startTime: input.startTime,
+              endTime: input.endTime,
+            };
+            const audioPath = input.resolved_path || input.path;
+            await this.resourceManager.loadAudioSource(audioPath, audioLoadOptions);
+            // Always update loop region (audio may already be loaded from previous compile)
+            this.resourceManager.updateAudioLoopRegion(audioPath, input.startTime, input.endTime);
+          } catch (error) {
+            warnings.push(`Audio loading failed: ${input.path}`);
+          }
+        } else if (input?.type === "volume" && input.path) {
+          const volumeOptions = {
+            filter: input.filter,
+            wrap: input.wrap,
+          };
+          try {
+            await this.resourceManager.loadVolumeTexture(input.resolved_path || input.path, volumeOptions);
+          } catch (error) {
+            warnings.push(`Volume texture loading failed: ${input.path}`);
           }
         }
       }

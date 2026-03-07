@@ -108,6 +108,12 @@ export class ConfigValidator {
         return this.validateVideoInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
+      case 'audio':
+        return this.validateAudioInput(input);
+      case 'cubemap':
+        return this.validateCubemapInput(input);
+      case 'volume':
+        return this.validateVolumeInput(input);
       default:
         return false;
     }
@@ -152,7 +158,6 @@ export class ConfigValidator {
       return false;
     }
 
-    // Validate optional properties (same as texture)
     if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
       return false;
     }
@@ -162,6 +167,30 @@ export class ConfigValidator {
     }
 
     if (input.vflip !== undefined && typeof input.vflip !== 'boolean') {
+      return false;
+    }
+
+    return true;
+  }
+
+  private static validateAudioInput(input: any): boolean {
+    return input.path && typeof input.path === 'string';
+  }
+
+  private static validateCubemapInput(input: any): boolean {
+    return input.source === 'CubeA' || (input.path && typeof input.path === 'string');
+  }
+
+  private static validateVolumeInput(input: any): boolean {
+    if (!input.path || typeof input.path !== 'string') {
+      return false;
+    }
+
+    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
+      return false;
+    }
+
+    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
       return false;
     }
 

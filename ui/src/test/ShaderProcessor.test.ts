@@ -123,7 +123,8 @@ describe('ShaderProcessor', () => {
         message.code,
         message.config,
         message.path,
-        message.buffers
+        message.buffers,
+        undefined,
       );
       expect(mockRenderEngine.startRenderLoop).toHaveBeenCalled();
       expect(result.success).toBe(true);
@@ -228,7 +229,8 @@ describe('ShaderProcessor', () => {
         modifiedCode,
         message.config,
         message.path,
-        message.buffers
+        message.buffers,
+        undefined,
       );
     });
 
@@ -261,7 +263,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, originalCode, message.config, message.path, message.buffers);
       expect(result.success).toBe(true);
     });
@@ -376,7 +378,7 @@ describe('ShaderProcessor', () => {
         originalCode,
         message.config,
         message.path,
-        message.buffers
+        message.buffers,
       );
       expect(result.success).toBe(true);
     });
@@ -416,7 +418,7 @@ describe('ShaderProcessor', () => {
         modifiedCode,
         message.config,
         message.path,
-        message.buffers
+        message.buffers,
       );
       expect(result.success).toBe(true);
     });
@@ -454,7 +456,7 @@ describe('ShaderProcessor', () => {
         originalCode,
         message.config,
         message.path,
-        message.buffers
+        message.buffers,
       );
       expect(result.success).toBe(true);
     });

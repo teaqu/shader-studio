@@ -21,6 +21,7 @@ export class MessageHandler {
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
   private shaderDebugManager: ShaderDebugManager;
+  private audioOptions: { muted?: boolean; volume?: number } | undefined;
 
   constructor(
     transport: Transport,
@@ -39,6 +40,10 @@ export class MessageHandler {
 
   public getLastEvent(): MessageEvent | null {
     return this.lastEvent;
+  }
+
+  public setAudioOptions(options: { muted?: boolean; volume?: number }): void {
+    this.audioOptions = options;
   }
 
   public async handleShaderMessage(
@@ -142,7 +147,7 @@ export class MessageHandler {
     this.lastEvent = event;
 
     // Delegate to shader processor
-    const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false);
+    const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false, this.audioOptions);
     this.handleCompilationResult(result);
     return result;
   }

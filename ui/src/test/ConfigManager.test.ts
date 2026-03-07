@@ -350,6 +350,47 @@ describe('ConfigManager', () => {
       const buffers = configManager.getBufferList();
       expect(buffers).toEqual(['common', 'BufferA']);
     });
+
+    it('should include CubeA when present in config', () => {
+      const config = createTestConfig();
+      config.passes.CubeA = { path: 'cubemap.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const buffers = configManager.getBufferList();
+      expect(buffers).toContain('CubeA');
+    });
+
+    it('should return correct order with CubeA (common first, then buffers, then CubeA)', () => {
+      const config = createTestConfig();
+      config.passes.common = { path: 'common.glsl' };
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
+      config.passes.CubeA = { path: 'cubemap.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const buffers = configManager.getBufferList();
+      expect(buffers).toEqual(['common', 'BufferA', 'BufferB', 'CubeA']);
+    });
+  });
+
+  describe('addSpecificBuffer - CubeA', () => {
+    it('should add CubeA buffer to config', () => {
+      configManager.setConfig(createTestConfig());
+      const result = configManager.addSpecificBuffer('CubeA');
+
+      expect(result).toBe(true);
+      const config = configManager.getConfig();
+      expect(config!.passes.CubeA).toBeDefined();
+    });
+
+    it('should not add duplicate CubeA', () => {
+      const config = createTestConfig();
+      config.passes.CubeA = { path: 'cubemap.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const result = configManager.addSpecificBuffer('CubeA');
+      expect(result).toBe(false);
+    });
   });
 
   describe('getNextBufferName', () => {

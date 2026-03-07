@@ -34,6 +34,7 @@ suite('PanelManager Test Suite', () => {
             workspaceState: {} as any,
             subscriptions: [],
             asAbsolutePath: (relativePath: string) => path.join(__dirname, 'mock-extension', relativePath),
+            globalStorageUri: vscode.Uri.file(path.join(__dirname, 'mock-global-storage')),
         } as any;
 
         mockMessenger = {
@@ -57,6 +58,8 @@ suite('PanelManager Test Suite', () => {
             getLastViewedGlslFile: sandbox.stub().returns(null)
         } as any;
 
+        sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
         panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProvider, mockGlslFileTracker);
     });
 
@@ -71,6 +74,7 @@ suite('PanelManager Test Suite', () => {
         return {
             reveal: sandbox.stub(),
             dispose: sandbox.stub(),
+            viewColumn: vscode.ViewColumn.One as vscode.ViewColumn | undefined,
             webview: {
                 html: '',
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
@@ -143,8 +147,11 @@ suite('PanelManager Test Suite', () => {
         assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
     });
 
-    test('createPanel uses empty tab group when available', () => {
+    test('createPanel uses empty tab group when available and locking is disabled', () => {
         // Given
+        sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+            get: sandbox.stub().returns(false),
+        } as any);
         const mockWebviewPanel = createMockWebviewPanel();
         const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
         sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
@@ -168,6 +175,60 @@ suite('PanelManager Test Suite', () => {
         assert.ok(createWebviewPanelStub.calledOnce);
         const createPanelArgs = createWebviewPanelStub.getCall(0).args;
         assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    });
+
+    test('createPanel reuses empty group when locking is enabled', () => {
+        // Given - locking enabled (default), empty group exists
+        const mockWebviewPanel = createMockWebviewPanel();
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+        sandbox.stub(vscode.window, 'tabGroups').value({
+            all: [
+                { tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One },
+                { tabs: [], viewColumn: vscode.ViewColumn.Two }
+            ]
+        });
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+            { uri: vscode.Uri.file('/mock/workspace') }
+        ]);
+        const fs = require('fs');
+        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+        // When
+        panelManager.createPanel();
+
+        // Then - should reuse the empty group instead of creating beside
+        assert.ok(createWebviewPanelStub.calledOnce);
+        const createPanelArgs = createWebviewPanelStub.getCall(0).args;
+        assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    });
+
+    test('createPanel opens beside when locking is enabled and no empty group exists', () => {
+        // Given - locking enabled (default), no empty groups
+        const mockWebviewPanel = createMockWebviewPanel();
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+        sandbox.stub(vscode.window, 'tabGroups').value({
+            all: [
+                { tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One },
+                { tabs: [{ label: 'tab2' }], viewColumn: vscode.ViewColumn.Two }
+            ]
+        });
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+            { uri: vscode.Uri.file('/mock/workspace') }
+        ]);
+        const fs = require('fs');
+        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+        // When
+        panelManager.createPanel();
+
+        // Then - should use Beside since no empty groups available
+        assert.ok(createWebviewPanelStub.calledOnce);
+        const createPanelArgs = createWebviewPanelStub.getCall(0).args;
+        assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
     });
 
     test('getPanel returns current panel after creation', () => {
@@ -286,23 +347,25 @@ suite('PanelManager Test Suite', () => {
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
             
-            // Should contain media-src with webview.cspSource and blob:
+            // Should contain media-src and connect-src with webview.cspSource and blob:
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should add media-src to existing CSP');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src to existing CSP');
             assert.ok(html.includes('Content-Security-Policy'), 'Should preserve CSP meta tag');
         });
 
         test('should replace existing media-src in CSP', () => {
             const htmlWithMediaSrc = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; media-src vscode-resource:;"></head><body></body></html>';
             readFileSyncStub.returns(htmlWithMediaSrc);
-            
+
             panelManager.createPanel();
 
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
-            
+
             // Should replace existing media-src with new one including blob:
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should replace existing media-src');
             assert.ok(!html.includes('media-src vscode-resource:;'), 'Should not contain old media-src without blob:');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src');
         });
 
         test('should add new CSP when none exists', () => {
@@ -314,9 +377,10 @@ suite('PanelManager Test Suite', () => {
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
             
-            // Should add new nonce-based CSP with media-src
+            // Should add new nonce-based CSP with media-src and connect-src
             assert.ok(html.includes('Content-Security-Policy'), 'Should add new CSP meta tag');
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should include media-src in new CSP');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should include connect-src in new CSP');
             assert.ok(html.includes('nonce-abc123'), 'Should use nonce-based CSP');
             assert.ok(html.includes('script-src vscode-resource: \'nonce-abc123\''), 'Should include script-src with nonce');
         });
@@ -608,8 +672,8 @@ suite('PanelManager Test Suite', () => {
                 shaderPath: '/locked/shader.glsl'
             });
 
-            // Advance past the 150ms setTimeout
-            clock.tick(200);
+            // Advance past the 300ms debounce setTimeout
+            clock.tick(350);
 
             sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
             const refreshedPath = (mockShaderProvider as any).sendShaderFromPath.firstCall.args[0];
@@ -883,7 +947,8 @@ suite('PanelManager Test Suite', () => {
         });
 
         test('routes extensionCommand message to vscode.commands.executeCommand', async () => {
-            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
 
             await (panelManager as any).handleWebviewMessage(
                 { type: 'extensionCommand', payload: { command: 'newShader' } },
@@ -894,8 +959,23 @@ suite('PanelManager Test Suite', () => {
             sinon.assert.calledWith(execStub, 'shader-studio.newShader');
         });
 
+        test('extensionCommand moveToNewWindow reveals panel and moves to new window', async () => {
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
+            mockWebviewPanel.reveal = sandbox.stub();
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'extensionCommand', payload: { command: 'moveToNewWindow' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.calledOnce(mockWebviewPanel.reveal);
+            sinon.assert.calledOnce(execStub);
+            sinon.assert.calledWith(execStub, 'workbench.action.moveEditorToNewWindow');
+        });
         test('extensionCommand does nothing when command is missing', async () => {
-            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
 
             await (panelManager as any).handleWebviewMessage(
                 { type: 'extensionCommand', payload: {} },
@@ -916,6 +996,71 @@ suite('PanelManager Test Suite', () => {
 
             sinon.assert.notCalled(writeStub);
             sinon.assert.notCalled(mockWebviewPanel.webview.postMessage);
+        });
+    });
+
+    suite('Editor group locking', () => {
+        let executeCommandStub: sinon.SinonStub;
+        let clock: sinon.SinonFakeTimers;
+
+        setup(() => {
+            clock = sandbox.useFakeTimers();
+            const mockWebviewPanel = createMockWebviewPanel();
+            mockWebviewPanel.viewColumn = vscode.ViewColumn.Two;
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+            const fs = require('fs');
+            sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+            executeCommandStub = vscode.commands.executeCommand as sinon.SinonStub;
+            executeCommandStub.resolves();
+        });
+
+        teardown(() => {
+            clock.restore();
+        });
+
+        async function flushMicrotasks() {
+            for (let i = 0; i < 10; i++) {
+                await Promise.resolve();
+            }
+        }
+
+        async function advanceTimersAndFlush(clock: sinon.SinonFakeTimers) {
+            // Advance first setTimeout (500ms), flush microtasks for await
+            clock.tick(500);
+            await flushMicrotasks();
+            // Advance second setTimeout (200ms), flush microtasks for await
+            clock.tick(200);
+            await flushMicrotasks();
+        }
+
+        test('locks editor group by default', async () => {
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+        });
+
+        test('does not lock when setting is false', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().returns(false),
+            } as any);
+
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.neverCalledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+        });
+
+        test('locks when setting is explicitly true', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().returns(true),
+            } as any);
+
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
         });
     });
 });

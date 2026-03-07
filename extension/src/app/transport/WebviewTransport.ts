@@ -3,10 +3,13 @@ import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import { ConfigPathConverter } from "./ConfigPathConverter";
 import { PathResolver } from "../PathResolver";
+import { VideoAudioConverter } from "../services/VideoAudioConverter";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
   private panels: Set<vscode.WebviewPanel> = new Set();
+  private videoAudioConverter?: VideoAudioConverter;
+  private onVideoConverted?: (originalConfigPath: string, convertedAbsolutePath: string) => void;
 
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
@@ -27,25 +30,48 @@ export class WebviewTransport implements MessageTransport {
     this.panels.delete(panel);
   }
 
+  public setVideoAudioConverter(converter: VideoAudioConverter): void {
+    this.videoAudioConverter = converter;
+  }
+
+  public setOnVideoConverted(callback: (originalConfigPath: string, convertedAbsolutePath: string) => void): void {
+    this.onVideoConverted = callback;
+  }
+
   public send(message: any): void {
     console.log(`WebviewTransport: send() called with message type: ${message.type}`);
-    
+
     if (message.type === "shaderSource" && message.config) {
-      console.log(`WebviewTransport: Processing shaderSource message with config`);
-      const firstPanel = this.panels.values().next().value;
-      if (firstPanel?.webview) {
-        console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
-        message = ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
-        
-        // Handle video-specific localResourceRoots for webview
-        this.handleVideoResourceRoots(message);
-        
-        console.log(`WebviewTransport: ConfigPathConverter returned processed message`);
-      } else {
-        console.log(`WebviewTransport: No webview panel available for path conversion`);
-      }
+      // Process config paths async (video audio conversion may be needed)
+      this.sendShaderSourceAsync(message);
+      return;
     }
 
+    this.postToAllPanels(message);
+  }
+
+  private async sendShaderSourceAsync(message: any): Promise<void> {
+    console.log(`WebviewTransport: Processing shaderSource message with config`);
+    const firstPanel = this.panels.values().next().value;
+    if (firstPanel?.webview) {
+      console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
+      message = await ConfigPathConverter.processConfigPaths(message, firstPanel.webview, {
+        videoAudioConverter: this.videoAudioConverter,
+        onVideoConverted: this.onVideoConverted,
+      });
+
+      // Handle video-specific localResourceRoots for webview
+      this.handleVideoResourceRoots(message);
+
+      console.log(`WebviewTransport: ConfigPathConverter returned processed message`);
+    } else {
+      console.log(`WebviewTransport: No webview panel available for path conversion`);
+    }
+
+    this.postToAllPanels(message);
+  }
+
+  private postToAllPanels(message: any): void {
     let sentCount = 0;
     const totalPanels = this.panels.size;
 
@@ -80,7 +106,7 @@ export class WebviewTransport implements MessageTransport {
 
     // Store original paths before ConfigPathConverter processes them
     const videoPaths: string[] = [];
-    
+
     for (const passName of Object.keys(message.config.passes)) {
       const pass = message.config.passes[passName];
       if (!pass?.inputs) {
@@ -106,16 +132,16 @@ export class WebviewTransport implements MessageTransport {
       const resolvedVideoPath = shaderPath ? PathResolver.resolvePath(shaderPath, videoPath) : videoPath;
       const videoDir = path.dirname(resolvedVideoPath);
       const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
-      const videoDirUri = vscode.Uri.file(videoDir);
-      
-      const hasVideoDir = currentRoots.some((root: vscode.Uri) => 
-        root.fsPath === videoDirUri.fsPath
+      const dirUri = vscode.Uri.file(videoDir);
+
+      const hasDir = currentRoots.some((root: vscode.Uri) =>
+        root.fsPath === dirUri.fsPath
       );
-      
-      if (!hasVideoDir) {
+
+      if (!hasDir) {
         firstPanel.webview.options = {
           ...firstPanel.webview.options,
-          localResourceRoots: [...currentRoots, videoDirUri]
+          localResourceRoots: [...currentRoots, dirUri]
         };
       }
     }

@@ -6,9 +6,9 @@ export interface CaptureUniforms {
   timeDelta: number;
   frameRate: number;
   frame: number;
-  res: number[];
-  mouse: number[];
-  date: number[];
+  res: number[] | Float32Array;
+  mouse: number[] | Float32Array;
+  date: number[] | Float32Array;
 }
 
 interface PendingCapture {

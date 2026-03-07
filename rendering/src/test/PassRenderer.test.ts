@@ -8,6 +8,8 @@ const createMockRenderer = () => ({
   SetShader: vi.fn(),
   SetShaderConstant1F: vi.fn(),
   SetShaderConstant1I: vi.fn(),
+  SetShaderConstant1FV: vi.fn(),
+  SetShaderConstant3F: vi.fn(),
   SetShaderConstant3FV: vi.fn(),
   SetShaderConstant4FV: vi.fn(),
   SetShaderTextureUnit: vi.fn(),
@@ -35,6 +37,9 @@ const createMockResourceManager = () => ({
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
   getVideoTexture: vi.fn(),
+  getAudioTexture: vi.fn(),
+  getDesktopAudioTexture: vi.fn(),
+  getVolumeTexture: vi.fn(),
 });
 
 const createMockBufferManager = () => ({
@@ -90,7 +95,10 @@ describe("PassRenderer", () => {
     frameRate: 60,
     mouse: [0, 0, 0, 0],
     frame: 1,
-    date: [2023, 1, 1, 0]
+    date: [2023, 1, 1, 0],
+    channelTime: [0, 0, 0, 0],
+    sampleRate: 44100,
+    channelLoaded: [0, 0, 0, 0]
   };
 
   describe("renderPass", () => {
@@ -359,6 +367,7 @@ describe("PassRenderer", () => {
       expect(mockGl.activeTexture).toHaveBeenCalledWith(mockGl.TEXTURE0);
       expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_2D, mockImageTexture.mObjectID);
     });
+
 
     it("should not call getVideoTexture when video input has no path", () => {
       const passConfig: Pass = {
@@ -659,6 +668,7 @@ describe("PassRenderer", () => {
         [800, 600, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
       );
     });
+
 
     it("should set iChannelResolution with multiple channel dimensions", () => {
       const passConfig: Pass = {

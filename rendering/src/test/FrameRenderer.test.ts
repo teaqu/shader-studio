@@ -18,6 +18,7 @@ describe("FrameRenderer", () => {
   let mockShaderPipeline: any;
   let mockBufferManager: any;
   let mockPassRenderer: any;
+  let mockResourceManager: any;
   let mockCanvas: HTMLCanvasElement;
   let mockFPSCalculator: any;
 
@@ -55,6 +56,17 @@ describe("FrameRenderer", () => {
       renderPass: vi.fn(),
     };
 
+    mockResourceManager = {
+      getVideoElement: vi.fn(() => undefined),
+      getImageTextureCache: vi.fn(() => ({})),
+      getKeyboardTexture: vi.fn(() => null),
+      getAudioState: vi.fn(() => null),
+      getDesktopAudioTexture: vi.fn(() => null),
+      getVolumeTexture: vi.fn(() => null),
+      updateAudioTextures: vi.fn(),
+      getAudioSampleRate: vi.fn(() => 44100),
+    };
+
     mockFPSCalculator = {
       reset: vi.fn(),
       updateFrame: vi.fn(),
@@ -75,6 +87,7 @@ describe("FrameRenderer", () => {
       mockShaderPipeline,
       mockBufferManager,
       mockPassRenderer,
+      mockResourceManager,
       mockCanvas,
       mockFPSCalculator,
     );
@@ -669,6 +682,30 @@ describe("FrameRenderer", () => {
       mockBufferManager.getPassBuffers.mockReturnValue({});
 
       expect(() => frameRenderer.render(1000)).not.toThrow();
+    });
+
+    it("should set channelLoaded for volume when texture loaded", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockVolumeTexture = { mXres: 32, mYres: 32 };
+      mockResourceManager.getVolumeTexture.mockReturnValue(mockVolumeTexture);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'image shader', inputs: { iChannel0: { type: 'volume', path: 'noise.bin' } } }
+      ];
+      const mockPassShaders = {
+        'Image': { mProgram: {}, mResult: true }
+      };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const renderCall = mockPassRenderer.renderPass.mock.calls[0];
+      expect(renderCall[3].channelLoaded[0]).toBe(1);
     });
 
     it("should render first frame even when paused (new shader loaded)", () => {

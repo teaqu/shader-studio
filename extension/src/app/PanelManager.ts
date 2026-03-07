@@ -9,6 +9,7 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
 import { WorkspaceFileScanner } from "./WorkspaceFileScanner";
+import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
@@ -16,6 +17,8 @@ export class PanelManager {
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private overlayHandler: OverlayPanelHandler;
+  private videoAudioConverter: VideoAudioConverter;
+  private configUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -24,8 +27,13 @@ export class PanelManager {
     private glslFileTracker: GlslFileTracker,
   ) {
     this.logger = Logger.getInstance();
+    this.videoAudioConverter = new VideoAudioConverter();
     this.webviewTransport = new WebviewTransport();
     this.overlayHandler = new OverlayPanelHandler();
+    this.webviewTransport.setVideoAudioConverter(this.videoAudioConverter);
+    this.webviewTransport.setOnVideoConverted((originalConfigPath, convertedAbsolutePath) => {
+      this.handleVideoAudioConverted(originalConfigPath, convertedAbsolutePath);
+    });
     this.messenger.addTransport(this.webviewTransport);
   }
 
@@ -39,12 +47,15 @@ export class PanelManager {
 
   public createPanel(): void {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+    const lockGroup = vscode.workspace.getConfiguration('shader-studio').get<boolean>('lockEditorGroup', true);
 
+    // Reuse an empty group if one exists (e.g. a previously locked group whose panel was closed)
     const layout = vscode.window.tabGroups.all;
     const emptyGroup = layout.find((group) => group.tabs.length === 0);
-
     if (emptyGroup) {
       this.createWebviewPanelInColumn(editor, emptyGroup.viewColumn);
+    } else if (lockGroup) {
+      this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
     } else {
       this.createWebviewPanel(editor);
     }
@@ -94,10 +105,13 @@ export class PanelManager {
     this.setupWebviewHtml(panel);
 
     if (editor) {
+      this.logger.info(`Panel created with editor: ${editor.document.uri.fsPath}, sending shader in 200ms`);
       setTimeout(
         () => this.shaderProvider.sendShaderToWebview(editor),
         200,
       );
+    } else {
+      this.logger.info(`Panel created with NO editor - shader will not be sent`);
     }
 
     // Handle messages from webview
@@ -115,6 +129,24 @@ export class PanelManager {
     });
 
     this.logger.info("Webview panel created");
+
+    const lockGroup = vscode.workspace.getConfiguration('shader-studio').get<boolean>('lockEditorGroup', true);
+    if (lockGroup) {
+      this.lockPanelEditorGroup(panel);
+    }
+  }
+
+  private async lockPanelEditorGroup(panel: vscode.WebviewPanel): Promise<void> {
+    // Wait for the panel to settle in its editor group, then reveal to ensure focus
+    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      panel.reveal(panel.viewColumn, false);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
+      this.logger.info("Editor group locked for shader panel");
+    } catch (e) {
+      this.logger.error(`Failed to lock editor group: ${e}`);
+    }
   }
 
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
@@ -163,6 +195,7 @@ export class PanelManager {
       // Use the shader path from the payload (ensures locked shader writes to correct file)
       // Fall back to active/last viewed editor
       let shaderPath = payload.shaderPath;
+      this.logger.info(`handleConfigUpdate: shaderPath from payload="${shaderPath || '(empty)'}"`);
       if (!shaderPath) {
         const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
         if (!editor) {
@@ -170,6 +203,7 @@ export class PanelManager {
           return;
         }
         shaderPath = editor.document.uri.fsPath;
+        this.logger.info(`handleConfigUpdate: using editor path="${shaderPath}"`);
       }
 
       const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
@@ -178,18 +212,80 @@ export class PanelManager {
       fs.writeFileSync(configPath, payload.text, 'utf-8');
       this.logger.info(`Config updated: ${configPath}`);
 
-      // Trigger shader refresh
-      setTimeout(() => {
+      // Debounced shader refresh - cancel previous pending refresh
+      if (this.configUpdateTimer) {
+        clearTimeout(this.configUpdateTimer);
+      }
+      this.configUpdateTimer = setTimeout(() => {
+        this.configUpdateTimer = null;
         if (typeof (this.shaderProvider as any).sendShaderFromPath === "function") {
           this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
           return;
         }
         this.logger.warn("ShaderProvider missing sendShaderFromPath during config refresh");
-      }, 150);
+      }, 300);
     } catch (error) {
       this.logger.error(`Failed to update config: ${error}`);
       const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to update shader config: ${error}`] };
       this.messenger.send(errorMsg);
+    }
+  }
+
+  /**
+   * After video audio conversion, update the .sha.json config to point to the new file and refresh.
+   */
+  private handleVideoAudioConverted(originalConfigPath: string, convertedAbsolutePath: string): void {
+    try {
+      // Find the active shader's .sha.json
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        this.logger.warn("No active shader for auto-swap after video conversion");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+
+      if (!fs.existsSync(configPath)) {
+        this.logger.warn(`Config file not found for auto-swap: ${configPath}`);
+        return;
+      }
+
+      const configText = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configText) as ShaderConfig;
+      const configDir = path.dirname(configPath);
+
+      // Compute the relative path for the converted file, matching the style of the original
+      const convertedRelative = path.relative(configDir, convertedAbsolutePath);
+
+      let modified = false;
+
+      // Walk all passes and inputs, replacing matching paths
+      for (const passName of Object.keys(config.passes || {})) {
+        const pass = config.passes[passName as keyof typeof config.passes];
+        if (pass && typeof pass === 'object' && 'inputs' in pass && pass.inputs) {
+          for (const key of Object.keys(pass.inputs)) {
+            const input = pass.inputs[key as keyof typeof pass.inputs] as any;
+            if (input?.path === originalConfigPath) {
+              input.path = convertedRelative;
+              modified = true;
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        const updatedText = JSON.stringify(config, null, 2) + '\n';
+        fs.writeFileSync(configPath, updatedText, 'utf-8');
+        this.logger.info(`Auto-swapped video path in config: ${configPath}`);
+
+        // Trigger shader refresh
+        setTimeout(() => {
+          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+        }, 150);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to auto-swap video path in config: ${error}`);
     }
   }
 
@@ -392,12 +488,16 @@ export class PanelManager {
       // Use the actual webview.cspSource which should include the CDN domain
       const mediaSrc = `media-src ${panel.webview.cspSource} blob:`;
       const workerSrc = `worker-src ${panel.webview.cspSource} blob:`;
+      const connectSrc = `connect-src ${panel.webview.cspSource} blob:`;
       let updatedCsp = existingCsp.includes('media-src')
         ? existingCsp.replace(/media-src[^;]*/, mediaSrc)
         : `${existingCsp}; ${mediaSrc}`;
       updatedCsp = updatedCsp.includes('worker-src')
         ? updatedCsp.replace(/worker-src[^;]*/, workerSrc)
         : `${updatedCsp}; ${workerSrc}`;
+      updatedCsp = updatedCsp.includes('connect-src')
+        ? updatedCsp.replace(/connect-src[^;]*/, connectSrc)
+        : `${updatedCsp}; ${connectSrc}`;
       
       processedHtml = processedHtml.replace(
         cspPattern,
@@ -408,7 +508,7 @@ export class PanelManager {
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
       
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);

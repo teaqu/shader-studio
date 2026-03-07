@@ -426,20 +426,17 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     suite('processConfigPaths for browser clients', () => {
-        let vscodeConfigStub: sinon.SinonStub;
         let mockConfig: any;
 
         setup(() => {
             transport = new WebSocketTransport(51482, mockShaderProvider, mockGlslFileTracker);
-
             mockConfig = {
                 get: sandbox.stub().withArgs('webServerPort').returns(3000)
             };
             if (!(require('vscode').workspace.getConfiguration as any).isSinonProxy) {
-                vscodeConfigStub = sandbox.stub(require('vscode').workspace, 'getConfiguration').returns(mockConfig);
+                sandbox.stub(require('vscode').workspace, 'getConfiguration').returns(mockConfig);
             } else {
-                vscodeConfigStub = require('vscode').workspace.getConfiguration as sinon.SinonStub;
-                vscodeConfigStub.returns(mockConfig);
+                (require('vscode').workspace.getConfiguration as sinon.SinonStub).returns(mockConfig);
             }
         });
 
@@ -447,7 +444,7 @@ suite('WebSocketTransport Test Suite', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
             wsClients.add(mockWsClient as any);
 
-            const message = {
+            transport.send({
                 type: 'shaderSource',
                 path: '/test/shader.glsl',
                 config: {
@@ -459,19 +456,21 @@ suite('WebSocketTransport Test Suite', () => {
                         }
                     }
                 }
-            };
-
-            transport.send(message);
+            });
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.includes('/textures/'));
+            assert.strictEqual(
+                sentData.config.passes.Image.inputs.iChannel0.path,
+                `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`
+            );
+            assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
         });
 
         test('converts texture path to HTTP URL in resolved_path', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
             wsClients.add(mockWsClient as any);
 
-            const message = {
+            transport.send({
                 type: 'shaderSource',
                 path: '/test/shader.glsl',
                 config: {
@@ -483,14 +482,10 @@ suite('WebSocketTransport Test Suite', () => {
                         }
                     }
                 }
-            };
-
-            transport.send(message);
+            });
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
-            // resolved_path should be an HTTP URL, not a vscode-resource:// URI
             assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
-            // Original path should be preserved
             assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
         });
 
@@ -498,7 +493,7 @@ suite('WebSocketTransport Test Suite', () => {
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
             wsClients.add(mockWsClient as any);
 
-            const message = {
+            transport.send({
                 type: 'shaderSource',
                 path: '/test/shader.glsl',
                 config: {
@@ -515,38 +510,41 @@ suite('WebSocketTransport Test Suite', () => {
                         }
                     }
                 }
-            };
-
-            transport.send(message);
+            });
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
             assert.ok(sentData.config.passes.BufferA.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
             assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
+            assert.strictEqual(
+                sentData.config.passes.Image.inputs.iChannel0.path,
+                `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`
+            );
         });
 
         test('uses custom port for HTTP URLs', () => {
             mockConfig.get.withArgs('webServerPort').returns(8080);
-
             const wsClients = (transport as any).wsClients as Set<WebSocket>;
             wsClients.add(mockWsClient as any);
 
-            const message = {
+            transport.send({
                 type: 'shaderSource',
                 path: '/test/shader.glsl',
                 config: {
                     passes: {
                         Image: {
                             inputs: {
-                                iChannel0: { type: 'texture', path: '/path/to/texture.png' }
+                                iChannel0: { type: 'video', path: '/path/to/video.mp4' }
                             }
                         }
                     }
                 }
-            };
-
-            transport.send(message);
+            });
 
             const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+            assert.strictEqual(
+                sentData.config.passes.Image.inputs.iChannel0.path,
+                `http://localhost:8080/textures/${encodeURIComponent('/path/to/video.mp4')}`
+            );
             assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:8080/textures/'));
         });
     });

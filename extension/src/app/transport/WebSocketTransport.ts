@@ -135,13 +135,13 @@ export class WebSocketTransport implements MessageTransport {
     this.sendMessageToAllClients(message);
   }
 
-  private sendMessageToAllClients(message: any): void {
+  private async sendMessageToAllClients(message: any): Promise<void> {
     for (const client of this.wsClients) {
       if (client.readyState === WebSocket.OPEN) {
         try {
           let clientMessage = message;
           if (message.type === "shaderSource" && message.config) {
-            clientMessage = this.processConfigPaths(message);
+            clientMessage = await this.processConfigPaths(message);
           }
 
           client.send(JSON.stringify(clientMessage));
@@ -189,6 +189,10 @@ export class WebSocketTransport implements MessageTransport {
         }
 
         input.resolved_path = this.convertUriForClient(absolutePath);
+        if (input.type === 'video') {
+          // Browser clients need HTTP URLs for direct media playback.
+          input.path = this.convertUriForClient(absolutePath);
+        }
       }
     }
 

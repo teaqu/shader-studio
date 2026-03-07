@@ -9,5 +9,8 @@ export type {
   ConfigInput,
   BufferConfigInput,
   TextureConfigInput,
-  KeyboardConfigInput
+  KeyboardConfigInput,
+  AudioConfigInput,
+  CubemapConfigInput,
+  VolumeConfigInput,
 } from "@shader-studio/types";

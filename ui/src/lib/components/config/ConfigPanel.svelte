@@ -14,6 +14,12 @@
   export let onFileSelect: (bufferName: string) => void = () => {};
   export let selectedBuffer: string = "Image";
   export let isLocked: boolean = false;
+  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
+  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
+  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
+  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
+  export let getAudioFFT: ((type: string, path?: string) => Uint8Array | null) | undefined = undefined;
+  export let globalMuted: boolean = false;
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
@@ -80,6 +86,14 @@
   function addBuffer() {
     const bufferName = configManager?.addBuffer();
     if (bufferName) {
+      config = configManager.getConfig();
+      switchTab(bufferName);
+    }
+  }
+
+  function addSpecificBuffer(bufferName: string) {
+    const success = configManager?.addSpecificBuffer(bufferName);
+    if (success) {
       config = configManager.getConfig();
       switchTab(bufferName);
     }
@@ -178,6 +192,16 @@
           {#if !config?.passes?.common}
             <button class="dropdown-item" on:click={() => addCommonBuffer()}>Common</button>
           {/if}
+          {#each ["BufferA", "BufferB", "BufferC", "BufferD", "CubeA"] as bufferName}
+            {#if !config?.passes?.[bufferName as keyof typeof config.passes]}
+              <button
+                class="dropdown-item"
+                on:click={() => addSpecificBuffer(bufferName)}
+              >
+                {bufferName}
+              </button>
+            {/if}
+          {/each}
         </div>
       </div>
     </div>
@@ -196,6 +220,13 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
+          {onVideoControl}
+          {getVideoState}
+          {onAudioControl}
+          {getAudioState}
+
+          {getAudioFFT}
+          {globalMuted}
         />
       {:else}
         <BufferConfig
@@ -213,6 +244,13 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
+          {onVideoControl}
+          {getVideoState}
+          {onAudioControl}
+          {getAudioState}
+
+          {getAudioFFT}
+          {globalMuted}
         />
       {/if}
     </div>

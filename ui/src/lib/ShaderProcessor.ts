@@ -32,7 +32,8 @@ export class ShaderProcessor {
 
   public async processMainShaderCompilation(
     message: ShaderSourceMessage,
-    forceCleanup: boolean = false
+    forceCleanup: boolean = false,
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
 
@@ -53,6 +54,7 @@ export class ShaderProcessor {
         config,
         path,
         buffers,
+        audioOptions,
       );
 
       // Handle compilation failure

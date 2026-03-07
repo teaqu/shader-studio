@@ -37,14 +37,18 @@ describe("RenderingEngine", () => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
       };
-      // Mock the private shaderPipeline property
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
-        value: mockPipeline,
-        writable: true,
-        configurable: true
+        value: mockPipeline, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: { getCurrentTime: vi.fn().mockReturnValue(0), isPaused: vi.fn().mockReturnValue(false) },
+        writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: { syncAllVideosToTime: vi.fn(), pauseAllVideos: vi.fn(), resumeAllVideos: vi.fn(), syncAllAudioToTime: vi.fn(), pauseAllAudio: vi.fn(), resumeAllAudio: vi.fn(), muteAllAudio: vi.fn(), unmuteAllAudio: vi.fn() },
+        writable: true, configurable: true,
       });
 
-      // Reset the mock before each test
       vi.clearAllMocks();
     });
 
@@ -124,19 +128,22 @@ describe("RenderingEngine", () => {
         ]),
         getShaderPath: vi.fn(() => 'test.glsl')
       };
-      
-      // Mock the private shaderPipeline property
+
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
-        value: mockPipeline,
-        writable: true,
-        configurable: true
+        value: mockPipeline, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: { getCurrentTime: vi.fn().mockReturnValue(0), isPaused: vi.fn().mockReturnValue(false) },
+        writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: { syncAllVideosToTime: vi.fn(), pauseAllVideos: vi.fn(), resumeAllVideos: vi.fn(), syncAllAudioToTime: vi.fn(), pauseAllAudio: vi.fn(), resumeAllAudio: vi.fn(), muteAllAudio: vi.fn(), unmuteAllAudio: vi.fn() },
+        writable: true, configurable: true,
       });
 
-      // Mock ConfigValidator to prevent validation errors
       const mockValidateConfig = vi.mocked(ConfigValidator.validateConfig);
       mockValidateConfig.mockReturnValue({ isValid: true, errors: [] });
 
-      // Reset the mock before each test
       vi.clearAllMocks();
     });
 
@@ -203,7 +210,8 @@ describe("RenderingEngine", () => {
         'void main() {}', // imagePass.shaderSrc
         testConfig,
         'test.glsl',
-        { BufferA: 'updated buffer content' } // updated buffers
+        { BufferA: 'updated buffer content' }, // updated buffers
+        undefined, // audioOptions
       ]);
     });
 
@@ -259,6 +267,137 @@ describe("RenderingEngine", () => {
         success: false,
         errors: ["Buffer 'BufferA' not found in current shader"]
       });
+    });
+  });
+
+  describe("video sync on compilation", () => {
+    let mockPipeline: any;
+    let mockResourceManager: any;
+    let mockTimeManager: any;
+
+    beforeEach(() => {
+      mockPipeline = {
+        compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+      };
+      mockResourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+        syncAllAudioToTime: vi.fn(),
+        pauseAllAudio: vi.fn(),
+        resumeAllAudio: vi.fn(),
+        muteAllAudio: vi.fn(),
+        unmuteAllAudio: vi.fn(),
+      };
+      mockTimeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(5.0),
+        isPaused: vi.fn().mockReturnValue(false),
+        togglePause: vi.fn(),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: mockTimeManager, writable: true, configurable: true,
+      });
+
+      vi.clearAllMocks();
+    });
+
+    it("should sync and resume videos on successful compilation when not paused", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+      mockTimeManager.isPaused.mockReturnValue(false);
+      mockTimeManager.getCurrentTime.mockReturnValue(7.5);
+
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+
+      expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(7.5);
+      expect(mockResourceManager.resumeAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.pauseAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should sync and pause videos on successful compilation when paused", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+      mockTimeManager.isPaused.mockReturnValue(true);
+      mockTimeManager.getCurrentTime.mockReturnValue(3.0);
+
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+
+      expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(3.0);
+      expect(mockResourceManager.pauseAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should pause all videos on failed compilation", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: false, error: "syntax error" });
+
+      await renderingEngine.compileShaderPipeline("bad code", null, "test.glsl", {});
+
+      expect(mockResourceManager.pauseAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.syncAllVideosToTime).not.toHaveBeenCalled();
+      expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("video sync on togglePause", () => {
+    let mockResourceManager: any;
+    let mockTimeManager: any;
+
+    beforeEach(() => {
+      mockResourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+        syncAllAudioToTime: vi.fn(),
+        pauseAllAudio: vi.fn(),
+        resumeAllAudio: vi.fn(),
+        muteAllAudio: vi.fn(),
+        unmuteAllAudio: vi.fn(),
+      };
+      mockTimeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(5.0),
+        isPaused: vi.fn().mockReturnValue(false),
+        togglePause: vi.fn(),
+      };
+
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: mockTimeManager, writable: true, configurable: true,
+      });
+
+      vi.clearAllMocks();
+    });
+
+    it("should sync videos and pause them when pausing shader", () => {
+      // Was not paused → toggling will pause
+      mockTimeManager.isPaused.mockReturnValue(false);
+      mockTimeManager.getCurrentTime.mockReturnValue(10.0);
+
+      renderingEngine.togglePause();
+
+      expect(mockTimeManager.togglePause).toHaveBeenCalled();
+      expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(10.0);
+      expect(mockResourceManager.pauseAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should sync videos and resume them when unpausing shader", () => {
+      // Was paused → toggling will unpause
+      mockTimeManager.isPaused.mockReturnValue(true);
+      mockTimeManager.getCurrentTime.mockReturnValue(2.0);
+
+      renderingEngine.togglePause();
+
+      expect(mockTimeManager.togglePause).toHaveBeenCalled();
+      expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(2.0);
+      expect(mockResourceManager.resumeAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.pauseAllVideos).not.toHaveBeenCalled();
     });
   });
 

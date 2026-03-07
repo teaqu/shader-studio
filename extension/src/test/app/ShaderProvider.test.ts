@@ -443,6 +443,42 @@ suite('ShaderProvider Test Suite', () => {
             });
         });
 
+        test('should adapt mainCubemap-only GLSL files for preview instead of erroring', () => {
+            const shaderPath = '/path/to/cubemap.glsl';
+            const cubemapCode = 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) { fragColor = vec4(rd, 1.0); }';
+
+            const mockEditor = {
+                document: {
+                    getText: sandbox.stub().returns(cubemapCode),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: cubemapCode })
+                },
+                selection: {
+                    active: {
+                        line: 0,
+                        character: 0
+                    }
+                }
+            };
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            provider.sendShaderToWebview(mockEditor as any);
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.code, cubemapCode);
+        });
+
         test('should not show VS Code warning for GLSL files without mainImage', () => {
             const shaderPath = '/path/to/shader.glsl';
 
@@ -602,6 +638,30 @@ suite('ShaderProvider Test Suite', () => {
                 type: 'error',
                 payload: ['Missing mainImage function']
             });
+        });
+
+        test('should adapt mainCubemap-only files in sendShaderFromPath', async () => {
+            const shaderPath = '/path/to/cubemap.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) {}');
+
+            const mockConfig = {
+                version: "1.0",
+                passes: {
+                    Image: {}
+                }
+            };
+
+            loadAndProcessConfigStub.returns(mockConfig);
+
+            await provider.sendShaderFromPath(shaderPath);
+
+            sinon.assert.calledOnce(sendSpy);
+            const message = sendSpy.firstCall.args[0];
+            assert.strictEqual(message.type, 'shaderSource');
+            assert.strictEqual(message.code, 'void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) {}');
         });
 
         test('should not show VS Code warning for files without mainImage', async () => {

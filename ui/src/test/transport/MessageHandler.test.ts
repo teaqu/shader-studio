@@ -95,7 +95,8 @@ describe("MessageHandler", () => {
       expect(messageHandler.getLastEvent()).toBe(shaderEvent);
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -115,7 +116,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        true
+        true,
+        undefined
       );
     });
 
@@ -135,7 +137,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -154,7 +157,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
   });
@@ -215,7 +219,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -256,7 +261,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -852,7 +858,8 @@ describe("MessageHandler", () => {
       // Verify delegation to ShaderProcessor
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -908,7 +915,8 @@ describe("MessageHandler", () => {
       // Should delegate to ShaderProcessor
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 

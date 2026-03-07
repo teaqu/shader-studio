@@ -114,9 +114,9 @@ export interface PiRenderer {
   SetShaderConstant1I(uname: string, x: number): boolean;
   SetShaderConstant2F(uname: string, x: number[]): boolean;
   SetShaderConstant3F(uname: string, x: number, y: number, z: number): boolean;
-  SetShaderConstant1FV(uname: string, x: number[]): boolean;
-  SetShaderConstant3FV(uname: string, x: number[]): boolean;
-  SetShaderConstant4FV(uname: string, x: number[]): boolean;
+  SetShaderConstant1FV(uname: string, x: number[] | Float32Array): boolean;
+  SetShaderConstant3FV(uname: string, x: number[] | Float32Array): boolean;
+  SetShaderConstant4FV(uname: string, x: number[] | Float32Array): boolean;
   SetShaderTextureUnit(uname: string, unit: number): boolean;
   
   // Buffer/Array methods

@@ -186,6 +186,97 @@ describe('BufferConfig', () => {
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
+
+    it('should accept valid audio input with path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject audio input without path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('should accept cubemap input with source CubeA', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'cubemap', source: 'CubeA' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should accept cubemap input with path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'cubemap', path: 'envmap.jpg' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should accept valid volume input with path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'volume', path: 'volume.bin' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject volume input without path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'volume' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+    });
+
   });
 
   describe('updatePath', () => {
@@ -205,6 +296,96 @@ describe('BufferConfig', () => {
       bufferConfig.updatePath('should-not-update.glsl');
 
       expect('path' in bufferConfig.getConfig()).toBe(false);
+    });
+  });
+
+  describe('updateInputChannelPartial - new types', () => {
+    it('should handle audio type updates', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'old.jpg' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0');
+      expect(channel).toEqual({ type: 'audio', path: 'music.mp3' });
+    });
+
+    it('should handle cubemap type updates', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'old.jpg' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'cubemap', source: 'CubeA' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('cubemap');
+      expect(channel.source).toBe('CubeA');
+    });
+
+    it('should handle volume type updates with filter and wrap', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'old.jpg' }
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', {
+        type: 'volume',
+        path: 'volume.bin',
+        filter: 'nearest',
+        wrap: 'clamp',
+      } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('volume');
+      expect(channel.path).toBe('volume.bin');
+      expect(channel.filter).toBe('nearest');
+      expect(channel.wrap).toBe('clamp');
+    });
+
+    it('should preserve existing audio path when updating without type change', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { path: 'new-music.mp3' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('new-music.mp3');
+    });
+
+    it('should preserve existing volume properties when updating without type change', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'volume', path: 'volume.bin', filter: 'nearest', wrap: 'clamp' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { path: 'new-volume.bin' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('volume');
+      expect(channel.path).toBe('new-volume.bin');
+      expect(channel.filter).toBe('nearest');
+      expect(channel.wrap).toBe('clamp');
     });
   });
 

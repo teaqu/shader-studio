@@ -96,6 +96,46 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(wrappedCode).toContain("#define MY_MACRO(x) (x * 2.0)");
     });
 
+    it("should wrap mainCubemap-only shaders into a T-cross main() adapter", () => {
+      const code = "void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) { fragColor = vec4(rd, 1.0); }";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).toContain("void mainCubemap(");
+      expect(wrappedCode).toContain("vec2 uv = gl_FragCoord.xy / iResolution.xy;");
+      expect(wrappedCode).toContain("float col = uv.x * 4.0;");
+      expect(wrappedCode).toContain("mainCubemap(fragColor, gl_FragCoord.xy, ro, normalize(rd));");
+      expect(wrappedCode).not.toContain("mainImage(fragColor, gl_FragCoord.xy);");
+    });
+
+    it("should not inject reserved double-underscore identifiers in mainCubemap wrapper path", () => {
+      const code = "void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) { fragColor = vec4(1.0); }";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).not.toContain("__");
+      expect(wrappedCode).toContain("mainCubemap(fragColor, gl_FragCoord.xy, ro, normalize(rd));");
+    });
+
+    it("should prefer mainImage wrapper when both mainImage and mainCubemap are present", () => {
+      const code = `
+        void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }
+        void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 ro, in vec3 rd) { fragColor = vec4(rd, 1.0); }
+      `;
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
+      expect(wrappedCode).not.toContain("float col = uv.x * 4.0;");
+      expect(wrappedCode).not.toContain("mainCubemap(fragColor, gl_FragCoord.xy, ro, normalize(rd));");
+    });
+
+    it("should keep default mainImage wrapper when neither mainImage nor mainCubemap is present", () => {
+      const code = "float helperOnly(vec2 uv) { return uv.x + uv.y; }";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).toContain("void main() {");
+      expect(wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
+      expect(wrappedCode).not.toContain("mainCubemap(fragColor, gl_FragCoord.xy, ro, normalize(rd));");
+    });
+
     it("should validate complete wrapped shader output structure", () => {
       const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0, 0.0, 0.0, 1.0); }";
       const { wrappedCode, headerLineCount } = shaderCompiler.wrapShaderToyCode(code);
@@ -219,9 +259,34 @@ it("should always inject all channel samplers regardless of user declarations (L
 
       // Remove extra whitespace for comparison but keep structure
       const normalized = wrappedCode.replace(/\s+/g, ' ').trim();
-      
-      // Verify the exact sequence of key elements with proper spacing
-      expect(normalized).toMatch(/precision highp float;\s*out vec4 fragColor;\s*#define HW_PERFORMANCE 1\s*uniform vec3 iResolution;\s*uniform float iTime;\s*uniform float iTimeDelta;\s*uniform float iFrameRate;\s*uniform sampler2D iChannel0;\s*uniform sampler2D iChannel1;\s*uniform sampler2D iChannel2;\s*uniform sampler2D iChannel3;\s*uniform vec3 iChannelResolution\[4\];\s*uniform vec4 iMouse;\s*uniform int iFrame;\s*uniform vec4 iDate;\s*void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{\}\s*void main\(\) \{\s*mainImage\(fragColor, gl_FragCoord\.xy\);\s*\}/);
+
+      // Verify key standard uniforms are present
+      expect(normalized).toContain('precision highp float;');
+      expect(normalized).toContain('out vec4 fragColor;');
+      expect(normalized).toContain('#define HW_PERFORMANCE 1');
+      expect(normalized).toContain('uniform vec3 iResolution;');
+      expect(normalized).toContain('uniform float iTime;');
+      expect(normalized).toContain('uniform float iTimeDelta;');
+      expect(normalized).toContain('uniform float iFrameRate;');
+      expect(normalized).toContain('uniform sampler2D iChannel0;');
+      expect(normalized).toContain('uniform sampler2D iChannel1;');
+      expect(normalized).toContain('uniform sampler2D iChannel2;');
+      expect(normalized).toContain('uniform sampler2D iChannel3;');
+      expect(normalized).toContain('uniform vec3 iChannelResolution[4];');
+      expect(normalized).toContain('uniform vec4 iMouse;');
+      expect(normalized).toContain('uniform int iFrame;');
+      expect(normalized).toContain('uniform vec4 iDate;');
+      // New Shadertoy uniforms
+      expect(normalized).toContain('uniform float iChannelTime[4];');
+      expect(normalized).toContain('uniform float iSampleRate;');
+      // iCh struct uniforms
+      expect(normalized).toContain('} iCh0;');
+      expect(normalized).toContain('} iCh1;');
+      expect(normalized).toContain('} iCh2;');
+      expect(normalized).toContain('} iCh3;');
+      // User code and main wrapper
+      expect(normalized).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      expect(normalized).toContain('void main() { mainImage(fragColor, gl_FragCoord.xy); }');
     });
 
     it("should prepend common code to shader when provided", () => {
@@ -260,12 +325,11 @@ it("should always inject all channel samplers regardless of user declarations (L
       const commonCode = "vec3 helperFunction() { return vec3(0.5); }\n#define COMMON_CONST 42.0\n";
       const { headerLineCount } = shaderCompiler.wrapShaderToyCode(code, commonCode);
 
-      // Count lines in the header (everything before user code)
-      const lines = commonCode.trim().split('\n');
-      const expectedAdditionalLines = lines.length;
-      const baseHeaderLines = 18; // Standard uniforms + precision + out + define + iChannel0-3 + iChannelResolution + blank lines
-
-      expect(headerLineCount).toBe(baseHeaderLines + expectedAdditionalLines);
+      // Header line count should include all standard uniforms, iCh structs, and common code
+      // Verify it's at least reasonable (includes common code lines)
+      const { headerLineCount: baseHeaderCount } = shaderCompiler.wrapShaderToyCode(code);
+      const commonLines = commonCode.split('\n').length; // includes trailing empty line from \n
+      expect(headerLineCount).toBe(baseHeaderCount + commonLines);
     });
   });
 

@@ -247,6 +247,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
             // Mock an open document with the config
             const mockDocument = {
                 uri: { fsPath: configPath },
+                isDirty: true,
                 getText: sandbox.stub().returns(editorConfigContent)
             };
             textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
@@ -302,6 +303,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
 
             const mockDocument = {
                 uri: { fsPath: configPath },
+                isDirty: true,
                 getText: sandbox.stub().returns(editorConfigContent)
             };
             textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
