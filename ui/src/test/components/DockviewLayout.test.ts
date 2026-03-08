@@ -209,7 +209,8 @@ function renderLayout(props: Record<string, any> = {}) {
   // ─── Sash hover detection ─────────────────────────────────────
 
   describe('sash hover detection', () => {
-    it('should add dv-sash-hover when mousing over a sash element', async () => {
+    it('should add dv-sash-hover when mousing over a sash element after delay', async () => {
+      vi.useFakeTimers();
       const { container } = renderLayout();
       await tick();
 
@@ -221,10 +222,18 @@ function renderLayout(props: Record<string, any> = {}) {
       el.appendChild(sash);
 
       await fireEvent.mouseOver(sash);
+      // Should NOT be visible immediately
+      expect(el.classList.contains('dv-sash-hover')).toBe(false);
+
+      // After reveal delay it should appear
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
+
+      vi.useRealTimers();
     });
 
-    it('should add dv-sash-hover when mousing over a single-tab header', async () => {
+    it('should add dv-sash-hover when mousing over a single-tab header after delay', async () => {
+      vi.useFakeTimers();
       const { container } = renderLayout();
       await tick();
 
@@ -235,7 +244,12 @@ function renderLayout(props: Record<string, any> = {}) {
       el.appendChild(tabBar);
 
       await fireEvent.mouseOver(tabBar);
+      expect(el.classList.contains('dv-sash-hover')).toBe(false);
+
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
+
+      vi.useRealTimers();
     });
 
     it('should NOT add dv-sash-hover when mousing over regular content', async () => {
@@ -267,8 +281,9 @@ function renderLayout(props: Record<string, any> = {}) {
       other.className = 'content';
       el.appendChild(other);
 
-      // Hover sash
+      // Hover sash and wait for reveal
       await fireEvent.mouseOver(sash);
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
       // Leave sash to unrelated element
@@ -300,6 +315,7 @@ function renderLayout(props: Record<string, any> = {}) {
       el.appendChild(tabBar);
 
       await fireEvent.mouseOver(sash);
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
       // Moving from sash to tab bar — should NOT collapse
@@ -326,18 +342,20 @@ function renderLayout(props: Record<string, any> = {}) {
       other.className = 'content';
       el.appendChild(other);
 
-      // Hover sash then leave
+      // Hover sash and wait for reveal, then leave
       await fireEvent.mouseOver(sash);
+      vi.advanceTimersByTime(300);
+      expect(el.classList.contains('dv-sash-hover')).toBe(true);
       await fireEvent.mouseOut(sash, { relatedTarget: other });
 
       // Wait 200ms (less than 400ms timeout)
       vi.advanceTimersByTime(200);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
-      // Re-enter sash — should cancel the timer
+      // Re-enter sash — should cancel the collapse timer and start reveal
       await fireEvent.mouseOver(sash);
 
-      // Wait another 300ms — should still be visible (timer was reset)
+      // Wait another 300ms — should still be visible (reveal timer fires, keeping it visible)
       vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
@@ -348,7 +366,8 @@ function renderLayout(props: Record<string, any> = {}) {
   // ─── Top-edge hover detection ─────────────────────────────────
 
   describe('top-edge hover detection', () => {
-    it('should add dv-sash-hover when mouse is near the top edge of the container', async () => {
+    it('should add dv-sash-hover when mouse is near the top edge after delay', async () => {
+      vi.useFakeTimers();
       const { container } = renderLayout();
       await tick();
 
@@ -361,7 +380,12 @@ function renderLayout(props: Record<string, any> = {}) {
 
       // Mouse at y=103, which is 3px from top (within 8px threshold)
       await fireEvent.mouseMove(el, { clientY: 103 });
+      expect(el.classList.contains('dv-sash-hover')).toBe(false);
+
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
+
+      vi.useRealTimers();
     });
 
     it('should NOT add dv-sash-hover when mouse is far from the top edge', async () => {
@@ -392,8 +416,9 @@ function renderLayout(props: Record<string, any> = {}) {
         width: 800, height: 500, x: 0, y: 100, toJSON: () => {},
       });
 
-      // Activate top edge
+      // Activate top edge and wait for reveal
       await fireEvent.mouseMove(el, { clientY: 103 });
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
       // Move away from top edge — target is plain content
@@ -431,8 +456,9 @@ function renderLayout(props: Record<string, any> = {}) {
       sash.className = 'dv-sash';
       el.appendChild(sash);
 
-      // Activate top edge
+      // Activate top edge and wait for reveal
       await fireEvent.mouseMove(el, { clientY: 103 });
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
       // Move away but onto a sash — should NOT collapse
@@ -541,6 +567,7 @@ function renderLayout(props: Record<string, any> = {}) {
     });
 
     it('should handle sash hover during drag correctly', async () => {
+      vi.useFakeTimers();
       const { container } = renderLayout();
       await tick();
 
@@ -550,8 +577,9 @@ function renderLayout(props: Record<string, any> = {}) {
       sash.className = 'dv-sash';
       el.appendChild(sash);
 
-      // Hover sash
+      // Hover sash and wait for reveal
       await fireEvent.mouseOver(sash);
+      vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
       // Start drag — should clear sash hover and set drag active
@@ -563,6 +591,8 @@ function renderLayout(props: Record<string, any> = {}) {
       fireLayoutChange();
       expect(el.classList.contains('dv-drag-active')).toBe(false);
       expect(el.classList.contains('dv-sash-hover')).toBe(false);
+
+      vi.useRealTimers();
     });
 
     it('should handle multiple consecutive drags correctly', async () => {
