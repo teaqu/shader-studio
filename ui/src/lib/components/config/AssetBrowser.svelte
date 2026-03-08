@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
-  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, VOLUME_EXTENSIONS } from "../../constants/assetExtensions";
+  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "../../constants/assetExtensions";
 
   export let extensions: string[];
   export let shaderPath: string;
@@ -104,11 +104,10 @@
     );
   }
 
-  function getFileType(name: string): 'image' | 'video' | 'audio' | 'volume' {
+  function getFileType(name: string): 'image' | 'video' | 'audio' {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
     if (VIDEO_EXTENSIONS.includes(ext)) return 'video';
     if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
-    if (VOLUME_EXTENSIONS.includes(ext)) return 'volume';
     return 'image';
   }
 
@@ -192,10 +191,6 @@
                     <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
                     <audio src={file.thumbnailUri} preload="none" loop></audio>
                   </div>
-                {:else if getFileType(file.name) === 'volume'}
-                  <div class="media-placeholder" aria-label="volume file">
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
-                  </div>
                 {:else}
                   <img
                     src={file.thumbnailUri}
@@ -243,10 +238,6 @@
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
                     <audio src={file.thumbnailUri} preload="none" loop></audio>
-                  </div>
-                {:else if getFileType(file.name) === 'volume'}
-                  <div class="media-placeholder" aria-label="volume file">
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
                   </div>
                 {:else}
                   <img

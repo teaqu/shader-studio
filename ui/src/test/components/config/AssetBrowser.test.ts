@@ -361,25 +361,6 @@ describe('AssetBrowser', () => {
       expect(video).toBeNull();
     });
 
-    it('should render volume placeholder for volume files', async () => {
-      render(AssetBrowser, {
-        extensions: ['bin', 'raw'],
-        shaderPath: '/test/shader.glsl',
-        postMessage: mockPostMessage,
-        onSelect: mockOnSelect,
-      });
-
-      simulateWorkspaceFiles([
-        { name: 'data.bin', workspacePath: '@/volumes/data.bin', thumbnailUri: 'webview://data.bin', isSameDirectory: false },
-      ]);
-      await new Promise(r => setTimeout(r, 10));
-
-      const card = screen.getByText('data.bin').closest('button')!;
-      const placeholder = card.querySelector('[aria-label="volume file"]');
-      const img = card.querySelector('img');
-      expect(placeholder).not.toBeNull();
-      expect(img).toBeNull();
-    });
   });
 
   describe('Transport onMessage (WebSocket)', () => {
