@@ -32,7 +32,8 @@
 
   let modalContent: HTMLElement;
   let tempInput: ConfigInput | undefined;
-  let initializedWithInput: ConfigInput | undefined = undefined;
+  const UNINITIALIZED = Symbol();
+  let initializedWithInput: ConfigInput | undefined | typeof UNINITIALIZED = UNINITIALIZED;
   let activeTab: TabName | null = null;
 
   // Map input types to tabs
@@ -60,11 +61,11 @@
           activeTab = typeToTab(channelInput.type);
         } else {
           tempInput = undefined;
-          activeTab = null;
+          activeTab = "Misc";
         }
       }
     } else {
-      initializedWithInput = undefined;
+      initializedWithInput = UNINITIALIZED;
       activeTab = null;
       editingName = false;
       nameError = "";
