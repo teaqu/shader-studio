@@ -8,7 +8,6 @@
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     CUBEMAP_EXTENSIONS,
-    VOLUME_EXTENSIONS,
   } from "../../constants/assetExtensions";
 
   export let isOpen: boolean;
@@ -28,8 +27,8 @@
   let nameInput = "";
   let nameError = "";
 
-  type TabName = "Misc" | "Textures" | "Cubemaps" | "Volumes" | "Videos" | "Music";
-  const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Volumes", "Videos", "Music"];
+  type TabName = "Misc" | "Textures" | "Cubemaps" | "Videos" | "Music";
+  const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Videos", "Music"];
 
   let modalContent: HTMLElement;
   let tempInput: ConfigInput | undefined;
@@ -166,9 +165,6 @@
           tempInput = { type: "texture", path: "" };
           break;
         case "Cubemaps":
-          tempInput = { type: "texture", path: "" };
-          break;
-        case "Volumes":
           tempInput = { type: "texture", path: "" };
           break;
         case "Videos":
@@ -472,35 +468,6 @@
                 value={(tempInput?.type === "texture" && tempInput.path) || ""}
                 on:input={(e) => updatePath(e.currentTarget.value)}
                 placeholder="Path to cubemap file"
-                class="input-text"
-              />
-            </div>
-          </div>
-
-        {:else if activeTab === "Volumes"}
-          <div class="tab-placeholder">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
-            <span>Volume support is in progress</span>
-          </div>
-          <div class="hidden-content" aria-hidden="true">
-            {#if postMessage}
-              <AssetBrowser
-                extensions={VOLUME_EXTENSIONS}
-                {shaderPath}
-                {postMessage}
-                onSelect={handleAssetSelect}
-                selectedPath={(tempInput?.type === "texture" && tempInput.path) || ""}
-              />
-            {/if}
-
-            <div class="input-group">
-              <label for="path-{channelName}">Path:</label>
-              <input
-                id="path-{channelName}"
-                type="text"
-                value={(tempInput?.type === "texture" && tempInput.path) || ""}
-                on:input={(e) => updatePath(e.currentTarget.value)}
-                placeholder="Path to volume file"
                 class="input-text"
               />
             </div>

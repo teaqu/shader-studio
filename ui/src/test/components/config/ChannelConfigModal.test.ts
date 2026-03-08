@@ -53,7 +53,6 @@ describe('ChannelConfigModal', () => {
       expect(screen.getByRole('tab', { name: 'Misc' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Textures' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Cubemaps' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Volumes' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Videos' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Music' })).toBeInTheDocument();
     });
@@ -694,14 +693,6 @@ describe('ChannelConfigModal', () => {
       expect(screen.getByText('Music support is in progress')).toBeInTheDocument();
     });
 
-    it('should show in-progress placeholder for Volumes tab', async () => {
-      render(ChannelConfigModal, defaultProps());
-
-      const volumesTab = screen.getByRole('tab', { name: 'Volumes' });
-      await fireEvent.click(volumesTab);
-
-      expect(screen.getByText('Volume support is in progress')).toBeInTheDocument();
-    });
   });
 
   describe('Channel Rename', () => {
