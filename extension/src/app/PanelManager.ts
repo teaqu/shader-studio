@@ -39,12 +39,15 @@ export class PanelManager {
 
   public createPanel(): void {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+    const lockGroup = vscode.workspace.getConfiguration('shader-studio').get<boolean>('lockEditorGroup', true);
 
+    // Reuse an empty group if one exists (e.g. a previously locked group whose panel was closed)
     const layout = vscode.window.tabGroups.all;
     const emptyGroup = layout.find((group) => group.tabs.length === 0);
-
     if (emptyGroup) {
       this.createWebviewPanelInColumn(editor, emptyGroup.viewColumn);
+    } else if (lockGroup) {
+      this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
     } else {
       this.createWebviewPanel(editor);
     }
@@ -115,6 +118,24 @@ export class PanelManager {
     });
 
     this.logger.info("Webview panel created");
+
+    const lockGroup = vscode.workspace.getConfiguration('shader-studio').get<boolean>('lockEditorGroup', true);
+    if (lockGroup) {
+      this.lockPanelEditorGroup(panel);
+    }
+  }
+
+  private async lockPanelEditorGroup(panel: vscode.WebviewPanel): Promise<void> {
+    // Wait for the panel to settle in its editor group, then reveal to ensure focus
+    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      panel.reveal(panel.viewColumn, false);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
+      this.logger.info("Editor group locked for shader panel");
+    } catch (e) {
+      this.logger.error(`Failed to lock editor group: ${e}`);
+    }
   }
 
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
