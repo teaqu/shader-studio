@@ -57,6 +57,8 @@ suite('PanelManager Test Suite', () => {
             getLastViewedGlslFile: sandbox.stub().returns(null)
         } as any;
 
+        sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
         panelManager = new PanelManager(mockContext, mockMessenger, mockShaderProvider, mockGlslFileTracker);
     });
 
@@ -71,6 +73,7 @@ suite('PanelManager Test Suite', () => {
         return {
             reveal: sandbox.stub(),
             dispose: sandbox.stub(),
+            viewColumn: vscode.ViewColumn.One as vscode.ViewColumn | undefined,
             webview: {
                 html: '',
                 asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
@@ -143,8 +146,11 @@ suite('PanelManager Test Suite', () => {
         assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
     });
 
-    test('createPanel uses empty tab group when available', () => {
+    test('createPanel uses empty tab group when available and locking is disabled', () => {
         // Given
+        sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+            get: sandbox.stub().returns(false),
+        } as any);
         const mockWebviewPanel = createMockWebviewPanel();
         const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
         sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
@@ -168,6 +174,60 @@ suite('PanelManager Test Suite', () => {
         assert.ok(createWebviewPanelStub.calledOnce);
         const createPanelArgs = createWebviewPanelStub.getCall(0).args;
         assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    });
+
+    test('createPanel reuses empty group when locking is enabled', () => {
+        // Given - locking enabled (default), empty group exists
+        const mockWebviewPanel = createMockWebviewPanel();
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+        sandbox.stub(vscode.window, 'tabGroups').value({
+            all: [
+                { tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One },
+                { tabs: [], viewColumn: vscode.ViewColumn.Two }
+            ]
+        });
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+            { uri: vscode.Uri.file('/mock/workspace') }
+        ]);
+        const fs = require('fs');
+        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+        // When
+        panelManager.createPanel();
+
+        // Then - should reuse the empty group instead of creating beside
+        assert.ok(createWebviewPanelStub.calledOnce);
+        const createPanelArgs = createWebviewPanelStub.getCall(0).args;
+        assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    });
+
+    test('createPanel opens beside when locking is enabled and no empty group exists', () => {
+        // Given - locking enabled (default), no empty groups
+        const mockWebviewPanel = createMockWebviewPanel();
+        const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+        sandbox.stub(vscode.window, 'tabGroups').value({
+            all: [
+                { tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One },
+                { tabs: [{ label: 'tab2' }], viewColumn: vscode.ViewColumn.Two }
+            ]
+        });
+        sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+            { uri: vscode.Uri.file('/mock/workspace') }
+        ]);
+        const fs = require('fs');
+        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+        // When
+        panelManager.createPanel();
+
+        // Then - should use Beside since no empty groups available
+        assert.ok(createWebviewPanelStub.calledOnce);
+        const createPanelArgs = createWebviewPanelStub.getCall(0).args;
+        assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
     });
 
     test('getPanel returns current panel after creation', () => {
@@ -883,7 +943,8 @@ suite('PanelManager Test Suite', () => {
         });
 
         test('routes extensionCommand message to vscode.commands.executeCommand', async () => {
-            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
 
             await (panelManager as any).handleWebviewMessage(
                 { type: 'extensionCommand', payload: { command: 'newShader' } },
@@ -895,7 +956,8 @@ suite('PanelManager Test Suite', () => {
         });
 
         test('extensionCommand does nothing when command is missing', async () => {
-            const execStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
 
             await (panelManager as any).handleWebviewMessage(
                 { type: 'extensionCommand', payload: {} },
@@ -916,6 +978,69 @@ suite('PanelManager Test Suite', () => {
 
             sinon.assert.notCalled(writeStub);
             sinon.assert.notCalled(mockWebviewPanel.webview.postMessage);
+        });
+    });
+
+    suite('Editor group locking', () => {
+        let executeCommandStub: sinon.SinonStub;
+        let clock: sinon.SinonFakeTimers;
+
+        setup(() => {
+            clock = sandbox.useFakeTimers();
+            const mockWebviewPanel = createMockWebviewPanel();
+            mockWebviewPanel.viewColumn = vscode.ViewColumn.Two;
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+            const fs = require('fs');
+            sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+            executeCommandStub = vscode.commands.executeCommand as sinon.SinonStub;
+            executeCommandStub.resolves();
+        });
+
+        teardown(() => {
+            clock.restore();
+        });
+
+        async function flushMicrotasks() {
+            for (let i = 0; i < 10; i++) {
+                await Promise.resolve();
+            }
+        }
+
+        async function advanceTimersAndFlush(clock: sinon.SinonFakeTimers) {
+            clock.tick(500);
+            await flushMicrotasks();
+            clock.tick(200);
+            await flushMicrotasks();
+        }
+
+        test('locks editor group by default', async () => {
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+        });
+
+        test('does not lock when setting is false', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().returns(false),
+            } as any);
+
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.neverCalledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+        });
+
+        test('locks when setting is explicitly true', async () => {
+            sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+                get: sandbox.stub().returns(true),
+            } as any);
+
+            panelManager.createPanel();
+            await advanceTimersAndFlush(clock);
+
+            sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
         });
     });
 });
