@@ -79,6 +79,7 @@
   function handleDragStart() {
     internalDragActive = true;
     // Clear sash hover state — drag-active takes over
+    cancelReveal();
     clearTimeout(sashHoverTimer);
     containerEl.classList.remove("dv-sash-hover");
     setDragActive(true);
@@ -130,14 +131,30 @@
   // Sash hover detection — reveal single-tab headers when hovering resize separators
   // or the top edge of the layout (where there's no sash above the first group)
   let sashHoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let sashRevealTimer: ReturnType<typeof setTimeout> | undefined;
   let topEdgeActive = false;
   const TOP_EDGE_THRESHOLD = 8;
+  const REVEAL_DELAY = 300;
+
+  function revealSashHover() {
+    clearTimeout(sashHoverTimer);
+    containerEl.classList.add("dv-sash-hover");
+  }
+
+  function scheduleReveal() {
+    clearTimeout(sashHoverTimer);
+    clearTimeout(sashRevealTimer);
+    sashRevealTimer = setTimeout(revealSashHover, REVEAL_DELAY);
+  }
+
+  function cancelReveal() {
+    clearTimeout(sashRevealTimer);
+  }
 
   function handleMouseOver(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-      clearTimeout(sashHoverTimer);
-      containerEl.classList.add("dv-sash-hover");
+      scheduleReveal();
     }
   }
 
@@ -153,6 +170,7 @@
       }
       // Don't collapse if still near the top edge
       if (topEdgeActive) return;
+      cancelReveal();
       clearTimeout(sashHoverTimer);
       sashHoverTimer = setTimeout(() => {
         containerEl.classList.remove("dv-sash-hover");
@@ -166,10 +184,10 @@
 
     if (nearTop && !topEdgeActive) {
       topEdgeActive = true;
-      clearTimeout(sashHoverTimer);
-      containerEl.classList.add("dv-sash-hover");
+      scheduleReveal();
     } else if (!nearTop && topEdgeActive) {
       topEdgeActive = false;
+      cancelReveal();
       // Don't start collapse if mouse moved onto a sash or revealed tab bar
       const target = e.target as HTMLElement;
       if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
@@ -499,6 +517,7 @@
     document.removeEventListener("pointerdown", handlePointerDown, true);
     document.removeEventListener("pointerup", handlePointerUp, true);
     clearTimeout(sashHoverTimer);
+    clearTimeout(sashRevealTimer);
     containerEl?.removeEventListener("dragstart", handleDragStart);
     containerEl?.removeEventListener("dragenter", handleDragEnter);
     containerEl?.removeEventListener("dragleave", handleContainerDragLeave);
