@@ -57,10 +57,11 @@ describe('ChannelConfigModal', () => {
       expect(screen.getByRole('tab', { name: 'Music' })).toBeInTheDocument();
     });
 
-    it('should show prompt when no tab is active', () => {
+    it('should default to Misc tab when no input is set', () => {
       render(ChannelConfigModal, defaultProps());
 
-      expect(screen.getByText(/Select a category/)).toBeInTheDocument();
+      const miscTab = screen.getByRole('tab', { name: 'Misc' });
+      expect(miscTab).toHaveAttribute('aria-selected', 'true');
     });
 
     it('should display modal as overlay', () => {
