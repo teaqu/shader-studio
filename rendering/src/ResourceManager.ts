@@ -1,8 +1,9 @@
 import type { PiRenderer, PiTexture } from "./types/piRenderer";
 import { TextureCache } from "./resources/TextureCache";
 import { VideoTextureManager } from "./resources/VideoTextureManager";
+import { CubemapTextureManager } from "./resources/CubemapTextureManager";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
+import type { TextureConfigInput, VideoConfigInput, CubemapConfigInput } from "./models/ShaderConfig";
 
 export interface VideoLoadResult {
   texture: PiTexture | null;
@@ -12,6 +13,7 @@ export interface VideoLoadResult {
 export class ResourceManager {
   private readonly textureCache: TextureCache;
   private readonly videoTextureManager: VideoTextureManager;
+  private readonly cubemapTextureManager: CubemapTextureManager;
   private readonly keyboardInput: ShaderKeyboardInput;
 
   constructor(
@@ -19,6 +21,7 @@ export class ResourceManager {
   ) {
     this.textureCache = new TextureCache(renderer);
     this.videoTextureManager = new VideoTextureManager(renderer);
+    this.cubemapTextureManager = new CubemapTextureManager(renderer);
     this.keyboardInput = new ShaderKeyboardInput(renderer);
   }
 
@@ -33,6 +36,22 @@ export class ResourceManager {
   public getVideoTexture(path: string): PiTexture | null {
     const texture = this.videoTextureManager.getVideoTexture(path);
     return texture ?? null;
+  }
+
+  public getCubemapTexture(path: string): PiTexture | null {
+    return this.cubemapTextureManager.getCubemapTexture(path);
+  }
+
+  public async loadCubemapTexture(
+    path: string,
+    opts: Partial<Pick<CubemapConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+  ): Promise<PiTexture | null> {
+    try {
+      return await this.cubemapTextureManager.loadCubemapFromCrossImage(path, opts);
+    } catch (error) {
+      console.error(`Failed to load cubemap from ${path}:`, error);
+      return null;
+    }
   }
 
   public getDefaultTexture(): PiTexture | null {
@@ -100,6 +119,7 @@ export class ResourceManager {
 
     this.textureCache.cleanup();
     this.videoTextureManager.cleanup();
+    this.cubemapTextureManager.cleanup();
     this.keyboardInput.cleanup();
   }
 

@@ -152,6 +152,18 @@ describe('ChannelConfigModal', () => {
       });
     });
 
+    it('should auto-save cubemap type when clicking Cubemaps tab', async () => {
+      render(ChannelConfigModal, defaultProps());
+
+      const cubemapsTab = screen.getByRole('tab', { name: 'Cubemaps' });
+      await fireEvent.click(cubemapsTab);
+
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', {
+        type: 'cubemap',
+        path: ''
+      });
+    });
+
     it('should auto-save when selecting keyboard from Misc tab', async () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
@@ -305,6 +317,90 @@ describe('ChannelConfigModal', () => {
     });
   });
 
+  describe('Cubemap Configuration Auto-Save', () => {
+    it('should auto-save when changing cubemap path', async () => {
+      const cubemapInput: ConfigInput = {
+        type: 'cubemap',
+        path: ''
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: cubemapInput,
+      });
+
+      const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
+      await fireEvent.input(pathInput, { target: { value: './cubemap.png' } });
+
+      expect(mockOnSave).toHaveBeenCalled();
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
+        type: 'cubemap',
+        path: './cubemap.png'
+      }));
+    });
+
+    it('should auto-save when changing cubemap filter', async () => {
+      const cubemapInput: ConfigInput = {
+        type: 'cubemap',
+        path: './cubemap.png'
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: cubemapInput,
+      });
+
+      const filterSelect = screen.getByLabelText('Filter:') as HTMLSelectElement;
+      await fireEvent.change(filterSelect, { target: { value: 'nearest' } });
+
+      expect(mockOnSave).toHaveBeenCalled();
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
+        filter: 'nearest'
+      }));
+    });
+
+    it('should auto-save when changing cubemap wrap', async () => {
+      const cubemapInput: ConfigInput = {
+        type: 'cubemap',
+        path: './cubemap.png'
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: cubemapInput,
+      });
+
+      const wrapSelect = screen.getByLabelText('Wrap:') as HTMLSelectElement;
+      await fireEvent.change(wrapSelect, { target: { value: 'repeat' } });
+
+      expect(mockOnSave).toHaveBeenCalled();
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
+        wrap: 'repeat'
+      }));
+    });
+
+    it('should auto-save when toggling cubemap vflip', async () => {
+      const cubemapInput: ConfigInput = {
+        type: 'cubemap',
+        path: './cubemap.png',
+        vflip: true
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: cubemapInput,
+      });
+
+      const vflipCheckbox = screen.getByLabelText('Vertical Flip') as HTMLInputElement;
+      await fireEvent.click(vflipCheckbox);
+
+      expect(mockOnSave).toHaveBeenCalled();
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
+        vflip: false
+      }));
+    });
+  });
+
   describe('Video Configuration Auto-Save', () => {
     it('should auto-save when changing video path', async () => {
       const videoInput: ConfigInput = {
@@ -430,6 +526,27 @@ describe('ChannelConfigModal', () => {
       const bufferCLabel = Array.from(labels).find(el => el.textContent === 'BufferC');
       const bufferCButton = bufferCLabel?.closest('button');
       expect(bufferCButton?.classList.contains('selected')).toBe(true);
+    });
+
+    it('should initialize with existing cubemap input and Cubemaps tab active', () => {
+      const cubemapInput: ConfigInput = {
+        type: 'cubemap',
+        path: './existing-cubemap.png',
+        filter: 'linear',
+        wrap: 'clamp'
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: cubemapInput,
+      });
+
+      // Cubemaps tab should be active
+      const cubemapsTab = screen.getByRole('tab', { name: 'Cubemaps' });
+      expect(cubemapsTab.getAttribute('aria-selected')).toBe('true');
+
+      const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
+      expect(pathInput.value).toBe('./existing-cubemap.png');
     });
 
     it('should initialize with existing video input and Videos tab active', () => {
@@ -676,13 +793,13 @@ describe('ChannelConfigModal', () => {
   });
 
   describe('In-Progress Tabs', () => {
-    it('should show in-progress placeholder for Cubemaps tab', async () => {
+    it('should show cubemap path input when Cubemaps tab is selected', async () => {
       render(ChannelConfigModal, defaultProps());
 
       const cubemapsTab = screen.getByRole('tab', { name: 'Cubemaps' });
       await fireEvent.click(cubemapsTab);
 
-      expect(screen.getByText('Cubemap support is in progress')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Path to cubemap cross-pattern PNG')).toBeInTheDocument();
     });
 
     it('should show in-progress placeholder for Music tab', async () => {

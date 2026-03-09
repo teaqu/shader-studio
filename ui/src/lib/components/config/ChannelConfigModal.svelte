@@ -44,6 +44,8 @@
         return "Misc";
       case "texture":
         return "Textures";
+      case "cubemap":
+        return "Cubemaps";
       case "video":
         return "Videos";
       default:
@@ -166,7 +168,7 @@
           tempInput = { type: "texture", path: "" };
           break;
         case "Cubemaps":
-          tempInput = { type: "texture", path: "" };
+          tempInput = { type: "cubemap", path: "" };
           break;
         case "Videos":
           tempInput = { type: "video", path: "" };
@@ -179,7 +181,7 @@
     }
   }
 
-  function updateInputType(newType: "buffer" | "texture" | "video" | "keyboard") {
+  function updateInputType(newType: "buffer" | "texture" | "video" | "cubemap" | "keyboard") {
     if (newType === "buffer") {
       tempInput = { type: "buffer", source: "BufferA" };
     } else if (newType === "texture") {
@@ -200,7 +202,7 @@
   }
 
   function updatePath(path: string) {
-    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video")) {
+    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       const cleanPath = extractOriginalPath(path);
       const { resolved_path, ...rest } = tempInput as any;
       tempInput = { ...rest, path: cleanPath } as ConfigInput;
@@ -232,21 +234,21 @@
   }
 
   function updateFilter(filter: "linear" | "nearest" | "mipmap") {
-    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video")) {
+    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       tempInput = { ...tempInput, filter };
       autoSave();
     }
   }
 
   function updateWrap(wrap: "repeat" | "clamp") {
-    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video")) {
+    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       tempInput = { ...tempInput, wrap };
       autoSave();
     }
   }
 
   function updateVFlip(vflip: boolean) {
-    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video")) {
+    if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap")) {
       tempInput = { ...tempInput, vflip };
       autoSave();
     }
@@ -446,33 +448,74 @@
           {/if}
 
         {:else if activeTab === "Cubemaps"}
-          <div class="tab-placeholder">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
-            <span>Cubemap support is in progress</span>
-          </div>
-          <div class="hidden-content" aria-hidden="true">
-            {#if postMessage}
-              <AssetBrowser
-                extensions={CUBEMAP_EXTENSIONS}
-                {shaderPath}
-                {postMessage}
-                onSelect={handleAssetSelect}
-                selectedPath={(tempInput?.type === "texture" && tempInput.path) || ""}
-              />
-            {/if}
+          {#if postMessage}
+            <AssetBrowser
+              extensions={CUBEMAP_EXTENSIONS}
+              {shaderPath}
+              {postMessage}
+              {onMessage}
+              onSelect={handleAssetSelect}
+              selectedPath={(tempInput?.type === "cubemap" && tempInput.path) || ""}
+            />
+          {/if}
 
-            <div class="input-group">
-              <label for="path-{channelName}">Path:</label>
-              <input
-                id="path-{channelName}"
-                type="text"
-                value={(tempInput?.type === "texture" && tempInput.path) || ""}
-                on:input={(e) => updatePath(e.currentTarget.value)}
-                placeholder="Path to cubemap file"
-                class="input-text"
-              />
-            </div>
+          <div class="input-group">
+            <label for="path-{channelName}">Path:</label>
+            <input
+              id="path-{channelName}"
+              type="text"
+              value={(tempInput?.type === "cubemap" && tempInput.path) || ""}
+              on:input={(e) => updatePath(e.currentTarget.value)}
+              placeholder="Path to cubemap cross-pattern PNG"
+              class="input-text"
+            />
           </div>
+
+          {#if tempInput?.type === "cubemap"}
+            <div class="input-row">
+              <div class="input-group">
+                <label for="filter-{channelName}">Filter:</label>
+                <select
+                  id="filter-{channelName}"
+                  value={tempInput.filter || "mipmap"}
+                  on:change={(e) => updateFilter(e.currentTarget.value as any)}
+                  class="input-select"
+                >
+                  <option value="mipmap">Mipmap</option>
+                  <option value="linear">Linear</option>
+                  <option value="nearest">Nearest</option>
+                </select>
+              </div>
+
+              <div class="input-group">
+                <label for="wrap-{channelName}">Wrap:</label>
+                <select
+                  id="wrap-{channelName}"
+                  value={tempInput.wrap || "clamp"}
+                  on:change={(e) => updateWrap(e.currentTarget.value as any)}
+                  class="input-select"
+                >
+                  <option value="clamp">Clamp</option>
+                  <option value="repeat">Repeat</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="input-row">
+              <div class="input-group checkbox-group">
+                <label for="vflip-{channelName}">
+                  <input
+                    id="vflip-{channelName}"
+                    type="checkbox"
+                    checked={tempInput.vflip ?? false}
+                    on:change={(e) => updateVFlip(e.currentTarget.checked)}
+                    class="input-checkbox"
+                  />
+                  Vertical Flip
+                </label>
+              </div>
+            </div>
+          {/if}
 
         {:else if activeTab === "Videos"}
           {#if postMessage}

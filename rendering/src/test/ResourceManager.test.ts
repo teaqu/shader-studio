@@ -62,6 +62,16 @@ vi.mock("../resources/VideoTextureManager", () => ({
   }),
 }));
 
+vi.mock("../resources/CubemapTextureManager", () => ({
+  CubemapTextureManager: vi.fn().mockImplementation(function() {
+    return {
+      getCubemapTexture: vi.fn().mockReturnValue(null),
+      loadCubemapFromCrossImage: vi.fn(),
+      cleanup: vi.fn(),
+    };
+  }),
+}));
+
 vi.mock("../resources/ShaderKeyboardInput", () => ({
   ShaderKeyboardInput: vi.fn().mockImplementation(function() {
     return {
@@ -429,12 +439,14 @@ describe("ResourceManager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;
       const textureCache = (resourceManager as any).textureCache;
       const keyboardInput = (resourceManager as any).keyboardInput;
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
 
       resourceManager.cleanup();
 
       expect(videoManager.cleanup).toHaveBeenCalled();
       expect(textureCache.cleanup).toHaveBeenCalled();
       expect(keyboardInput.cleanup).toHaveBeenCalled();
+      expect(cubemapManager.cleanup).toHaveBeenCalled();
     });
   });
 
@@ -509,6 +521,74 @@ describe("ResourceManager", () => {
         keyPressed,
         keyToggled
       );
+    });
+  });
+
+  describe("getCubemapTexture", () => {
+    it("should return cubemap texture when available", () => {
+      const mockTexture = createMockTexture();
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.getCubemapTexture.mockReturnValue(mockTexture);
+
+      const result = resourceManager.getCubemapTexture("cubemap.png");
+
+      expect(result).toBe(mockTexture);
+      expect(cubemapManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
+    });
+
+    it("should return null when cubemap texture not found", () => {
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.getCubemapTexture.mockReturnValue(null);
+
+      const result = resourceManager.getCubemapTexture("nonexistent.png");
+
+      expect(result).toBeNull();
+      expect(cubemapManager.getCubemapTexture).toHaveBeenCalledWith("nonexistent.png");
+    });
+  });
+
+  describe("loadCubemapTexture", () => {
+    it("should load cubemap texture successfully", async () => {
+      const mockTexture = createMockTexture();
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.loadCubemapFromCrossImage.mockResolvedValue(mockTexture);
+
+      const result = await resourceManager.loadCubemapTexture("cubemap.png");
+
+      expect(result).toBe(mockTexture);
+      expect(cubemapManager.loadCubemapFromCrossImage).toHaveBeenCalledWith("cubemap.png", {});
+    });
+
+    it("should pass options to cubemapTextureManager", async () => {
+      const mockTexture = createMockTexture();
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.loadCubemapFromCrossImage.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadCubemapTexture("cubemap.png", {
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      });
+
+      expect(cubemapManager.loadCubemapFromCrossImage).toHaveBeenCalledWith("cubemap.png", {
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      });
+    });
+
+    it("should return null on error", async () => {
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.loadCubemapFromCrossImage.mockRejectedValue(new Error("Load failed"));
+
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await resourceManager.loadCubemapTexture("invalid.png");
+
+      expect(result).toBeNull();
+      expect(consoleSpy).toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
     });
   });
 

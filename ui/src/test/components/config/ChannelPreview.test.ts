@@ -364,6 +364,79 @@ describe('ChannelPreview', () => {
     });
   });
 
+  describe('Cubemap Preview', () => {
+    it('should render cubemap preview with .texture-preview class', () => {
+      const input: ConfigInput = { type: 'cubemap', path: 'skybox.hdr' } as any;
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.texture-preview')).toBeTruthy();
+    });
+
+    it('should show image with resolved_path when available', () => {
+      const input: ConfigInput = {
+        type: 'cubemap',
+        path: 'skybox.hdr',
+        resolved_path: 'https://webview-uri/skybox.hdr'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      const img = container.querySelector('.preview-image') as HTMLImageElement;
+      expect(img).toBeTruthy();
+      expect(img.src).toContain('https://webview-uri/skybox.hdr');
+    });
+
+    it('should fall back to getWebviewUri for cubemap', () => {
+      const input: ConfigInput = { type: 'cubemap', path: 'skybox.hdr' } as any;
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      const img = container.querySelector('.preview-image') as HTMLImageElement;
+      expect(img).toBeTruthy();
+      expect(img.src).toContain('webview://resolved/skybox.hdr');
+      expect(mockGetWebviewUri).toHaveBeenCalledWith('skybox.hdr');
+    });
+
+    it('should show fallback with "Cubemap" text when no path', () => {
+      const input: ConfigInput = { type: 'cubemap', path: '' } as any;
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.preview-fallback')).toBeTruthy();
+      expect(container.querySelector('.preview-image')).toBeFalsy();
+      const fallbackText = container.querySelector('.fallback-text');
+      expect(fallbackText).toBeTruthy();
+      expect(fallbackText?.textContent).toBe('Cubemap');
+    });
+
+    it('should show "Cubemap" overlay label when image src is available', () => {
+      const input: ConfigInput = {
+        type: 'cubemap',
+        path: 'skybox.hdr',
+        resolved_path: 'https://webview-uri/skybox.hdr'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      const overlay = container.querySelector('.preview-overlay');
+      expect(overlay).toBeTruthy();
+      expect(overlay?.textContent?.trim()).toBe('Cubemap');
+    });
+  });
+
   describe('Other Input Types', () => {
     it('should render buffer preview', () => {
       const input: ConfigInput = { type: 'buffer', source: 'BufferA' };

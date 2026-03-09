@@ -1,4 +1,4 @@
-import type { ShaderCompiler } from "./ShaderCompiler";
+import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
 import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
@@ -19,6 +19,7 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private passSlotAssignments: Record<string, SlotAssignment[]> = {};
+  private passChannelTypes: Record<string, ChannelSamplerType[]> = {};
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -188,9 +189,12 @@ export class ShaderPipeline {
       const slotAssignments = assignInputSlots(pass.inputs);
       this.passSlotAssignments[pass.name] = slotAssignments;
 
+      const channelTypes = this.deriveChannelTypes(pass.inputs, slotAssignments);
+      this.passChannelTypes[pass.name] = channelTypes;
+
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments);
+        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
@@ -251,6 +255,21 @@ export class ShaderPipeline {
     return { success: true };
   }
 
+  private deriveChannelTypes(
+    inputs: Record<string, any>,
+    slotAssignments: SlotAssignment[],
+  ): ChannelSamplerType[] {
+    const channelCount = Math.max(4, slotAssignments.length);
+    const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
+    for (const { slot, key } of slotAssignments) {
+      const input = inputs[key];
+      if (input?.type === 'cubemap') {
+        types[slot] = 'Cube';
+      }
+    }
+    return types;
+  }
+
   private async updateResources(): Promise<string[]> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
@@ -274,6 +293,12 @@ export class ShaderPipeline {
           if (result.warning) {
             warnings.push(result.warning);
           }
+        } else if (input?.type === "cubemap" && input.path) {
+          await this.resourceManager.loadCubemapTexture(input.resolved_path || input.path, {
+            filter: input.filter,
+            wrap: input.wrap,
+            vflip: input.vflip,
+          });
         }
       }
     }

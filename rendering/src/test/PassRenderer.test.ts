@@ -35,6 +35,7 @@ const createMockResourceManager = () => ({
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
   getVideoTexture: vi.fn(),
+  getCubemapTexture: vi.fn(),
 });
 
 const createMockBufferManager = () => ({
@@ -751,6 +752,62 @@ describe("PassRenderer", () => {
         "iChannelResolution[0]",
         [512, 512, 1, 256, 128, 1, 1, 1, 1, 1, 1, 1]
       );
+    });
+  });
+
+  describe("cubemap texture binding", () => {
+    it("should resolve cubemap texture from ResourceManager", () => {
+      const mockCubemapTexture = createMockTexture(256, 256);
+      const passConfig: Pass = {
+        name: "Image",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "cubemap", path: "cubemap.png" }
+        },
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getCubemapTexture.mockReturnValue(mockCubemapTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
+    });
+
+    it("should use resolved_path for cubemap when available", () => {
+      const mockCubemapTexture = createMockTexture(256, 256);
+      const passConfig: Pass = {
+        name: "Image",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "cubemap", path: "cubemap.png", resolved_path: "https://webview-uri/cubemap.png" }
+        },
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getCubemapTexture
+        .mockImplementation((path: string) => path === "https://webview-uri/cubemap.png" ? mockCubemapTexture : null);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("https://webview-uri/cubemap.png");
+    });
+
+    it("should fall back to default texture when cubemap is not loaded", () => {
+      const passConfig: Pass = {
+        name: "Image",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "cubemap", path: "missing.png" }
+        },
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getCubemapTexture.mockReturnValue(null);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("missing.png");
     });
   });
 });

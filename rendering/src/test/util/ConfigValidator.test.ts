@@ -840,6 +840,107 @@ describe("ConfigValidator", () => {
         });
       });
 
+      describe("cubemap input validation", () => {
+        it("should accept valid cubemap input", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'cubemap',
+                    path: 'cubemap.png'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+        });
+
+        it("should accept cubemap with all optional fields", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  envMap: {
+                    type: 'cubemap',
+                    path: 'cubemap.png',
+                    filter: 'mipmap',
+                    wrap: 'clamp',
+                    vflip: false
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(true);
+        });
+
+        it("should reject cubemap without path", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'cubemap'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+        });
+
+        it("should reject cubemap with invalid filter", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'cubemap',
+                    path: 'cubemap.png',
+                    filter: 'invalid'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+        });
+
+        it("should reject cubemap with invalid vflip type", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: {
+                    type: 'cubemap',
+                    path: 'cubemap.png',
+                    vflip: 'true'
+                  }
+                }
+              }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+        });
+      });
+
       describe("invalid input type", () => {
         it("should reject input with invalid type", () => {
           const config = {

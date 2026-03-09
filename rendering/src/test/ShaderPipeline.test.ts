@@ -21,6 +21,8 @@ const createMockResourceManager = () => ({
     cleanup: vi.fn(),
     loadImageTexture: vi.fn(),
     loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
+    loadCubemapTexture: vi.fn().mockResolvedValue(null),
+    getCubemapTexture: vi.fn().mockReturnValue(null),
 });
 
 const createMockRenderer = () => ({
@@ -525,6 +527,7 @@ describe("ShaderPipeline", () => {
             expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
                 expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
                 expect.stringContaining("commonFunction"),
+                expect.any(Array),
                 expect.any(Array)
             );
         });
@@ -1361,7 +1364,8 @@ describe("ShaderPipeline", () => {
             expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
                 expect.any(String),
                 "",
-                [{ slot: 0, key: "myTexture", isCustomName: true }]
+                [{ slot: 0, key: "myTexture", isCustomName: true }],
+                expect.any(Array)
             );
         });
     });
@@ -1384,6 +1388,87 @@ describe("ShaderPipeline", () => {
 
             expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("noise.png", expect.any(Object));
             expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("color.png", expect.any(Object));
+        });
+    });
+
+    describe("cubemap channel types and resource loading", () => {
+        it("should derive Cube channel type for cubemap inputs", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            envMap: { type: "cubemap" as const, path: "env.hdr" },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
+
+            expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
+                expect.any(String),
+                "",
+                [{ slot: 0, key: "envMap", isCustomName: true }],
+                expect.arrayContaining([])
+            );
+
+            const channelTypes = mockShaderCompiler.compileShader.mock.calls[0][3];
+            expect(channelTypes[0]).toBe("Cube");
+            expect(channelTypes.length).toBeGreaterThanOrEqual(4);
+        });
+
+        it("should derive 2D channel type for non-cubemap inputs", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            diffuse: { type: "texture" as const, path: "diffuse.png" },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
+
+            const channelTypes = mockShaderCompiler.compileShader.mock.calls[0][3];
+            expect(channelTypes[0]).toBe("2D");
+            expect(channelTypes.length).toBeGreaterThanOrEqual(4);
+            // All slots should be '2D' when no cubemap inputs
+            for (const type of channelTypes) {
+                expect(type).toBe("2D");
+            }
+        });
+
+        it("should load cubemap textures during resource update", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            skybox: {
+                                type: "cubemap" as const,
+                                path: "skybox.hdr",
+                                filter: "linear" as const,
+                                wrap: "clamp" as const,
+                                vflip: false,
+                            },
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
+
+            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith(
+                "skybox.hdr",
+                {
+                    filter: "linear",
+                    wrap: "clamp",
+                    vflip: false,
+                }
+            );
         });
     });
 });

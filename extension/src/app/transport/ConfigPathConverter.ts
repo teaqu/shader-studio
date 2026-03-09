@@ -40,7 +40,7 @@ export class ConfigPathConverter {
         for (const key of Object.keys(pass.inputs)) {
           const input = pass.inputs[key as keyof typeof pass.inputs];
           if (input && input.path) {
-            if (input.type === "texture" || (input.type === "video" && !options.skipVideoProcessing)) {
+            if (input.type === "texture" || input.type === "cubemap" || (input.type === "video" && !options.skipVideoProcessing)) {
               // Resolve path to absolute (handles @ workspace-relative, absolute, and relative paths)
               const shaderPath = processedMessage.path || '';
               const absolutePath = shaderPath
