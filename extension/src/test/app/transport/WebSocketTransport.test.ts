@@ -319,6 +319,85 @@ suite('WebSocketTransport Test Suite', () => {
             assert.strictEqual(fsWriteStub.firstCall.args[1], '{"passes":{}}');
         });
 
+        test('updateConfig skips shader refresh when skipRefresh is true', async () => {
+            const clock = sandbox.useFakeTimers();
+            const fsWriteStub = sandbox.stub(require('fs'), 'writeFileSync');
+            mockShaderProvider.sendShaderFromPath = sandbox.stub();
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'updateConfig',
+                    payload: {
+                        config: { passes: {} },
+                        text: '{"passes":{}}',
+                        shaderPath: '/test/shader.glsl',
+                        skipRefresh: true,
+                    },
+                },
+                mockWsClient,
+            );
+
+            // Config should still be written
+            assert.ok(fsWriteStub.calledOnce);
+
+            // Advance past setTimeout
+            clock.tick(200);
+
+            // Shader refresh should NOT be triggered
+            assert.ok(!mockShaderProvider.sendShaderFromPath.called);
+
+            clock.restore();
+        });
+
+        test('updateConfig triggers shader refresh when skipRefresh is false', async () => {
+            const clock = sandbox.useFakeTimers();
+            sandbox.stub(require('fs'), 'writeFileSync');
+            mockShaderProvider.sendShaderFromPath = sandbox.stub();
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'updateConfig',
+                    payload: {
+                        config: { passes: {} },
+                        text: '{"passes":{}}',
+                        shaderPath: '/test/shader.glsl',
+                        skipRefresh: false,
+                    },
+                },
+                mockWsClient,
+            );
+
+            clock.tick(200);
+
+            assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+
+            clock.restore();
+        });
+
+        test('updateConfig triggers shader refresh when skipRefresh is undefined', async () => {
+            const clock = sandbox.useFakeTimers();
+            sandbox.stub(require('fs'), 'writeFileSync');
+            mockShaderProvider.sendShaderFromPath = sandbox.stub();
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'updateConfig',
+                    payload: {
+                        config: { passes: {} },
+                        text: '{"passes":{}}',
+                        shaderPath: '/test/shader.glsl',
+                    },
+                },
+                mockWsClient,
+            );
+
+            clock.tick(200);
+
+            assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+
+            clock.restore();
+        });
+
         test('createBufferFile creates file when it does not exist', async () => {
             const mockEditor = { document: { uri: { fsPath: '/test/shader.glsl' } } };
             mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);

@@ -15,6 +15,7 @@ vi.mock("../../lib/ShaderProcessor", () => ({
 const createMockRenderingEngine = () => ({
   compileShaderPipeline: vi.fn(),
   cleanup: vi.fn(),
+  resetTime: vi.fn(),
   isLockedShader: vi.fn().mockReturnValue(false),
   togglePause: vi.fn(),
   toggleLock: vi.fn(),
@@ -196,6 +197,37 @@ describe("MessageHandler", () => {
         type: "error",
         payload: ["❌ No shader to reset"],
       });
+    });
+
+    it("should call resetTime on render engine", () => {
+      messageHandler.reset();
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+    });
+
+    it("should call both cleanup and resetTime", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
+        success: true,
+      });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      mockRenderingEngine.cleanup.mockClear();
+      mockRenderingEngine.resetTime.mockClear();
+
+      messageHandler.reset(vi.fn());
+
+      expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
     });
   });
 

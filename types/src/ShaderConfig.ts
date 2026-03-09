@@ -37,13 +37,31 @@ export interface KeyboardConfigInput {
 
 export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput;
 
+export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
+
+// Image pass resolution: scale + aspect ratio + optional custom override
+export interface ResolutionSettings {
+    scale?: number;              // 0.25, 0.5, 1, 2, 4 (default: 1)
+    aspectRatio?: AspectRatioMode; // default: 'fill'
+    customWidth?: number | string;  // px number or "50%" string (overrides scale/aspect)
+    customHeight?: number | string; // must be set with customWidth
+}
+
+// Buffer pass resolution: just fixed WxH
+export interface BufferResolution {
+    width: number;
+    height: number;
+}
+
 export interface ImagePass {
     inputs?: Record<string, ConfigInput>;
+    resolution?: ResolutionSettings;
 }
 
 export interface BufferPass {
     path: string;
     inputs?: Record<string, ConfigInput>;
+    resolution?: BufferResolution;
 }
 
 export interface ShaderPasses {

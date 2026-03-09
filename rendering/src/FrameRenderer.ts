@@ -168,14 +168,28 @@ export class FrameRenderer {
 
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-      
+
       // Skip if buffers are missing (prevents "Cannot read properties of undefined (reading 'back')")
       if (!buffers) {
         console.warn(`Missing buffers for pass: ${pass.name}. Skipping render. This may indicate a configuration issue.`);
         continue;
       }
-      
-      this.passRenderer.renderPass(pass, buffers.back, shader, uniforms);
+
+      // Override iResolution for buffers with custom resolution
+      let passUniforms = uniforms;
+      const backTex = buffers.back?.mTex0;
+      if (backTex && (backTex.mXres !== this.glCanvas.width || backTex.mYres !== this.glCanvas.height)) {
+        passUniforms = {
+          ...uniforms,
+          res: new Float32Array([
+            backTex.mXres,
+            backTex.mYres,
+            backTex.mXres / backTex.mYres,
+          ]),
+        };
+      }
+
+      this.passRenderer.renderPass(pass, buffers.back, shader, passUniforms);
 
       // Swap front and back buffers
       [buffers.front, buffers.back] = [buffers.back, buffers.front];

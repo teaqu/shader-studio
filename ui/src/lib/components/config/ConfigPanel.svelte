@@ -213,6 +213,9 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
+          onResolutionChange={(bufferName, resolution) => {
+            configManager?.updateBufferResolution(bufferName, resolution);
+          }}
         />
       {/if}
     </div>

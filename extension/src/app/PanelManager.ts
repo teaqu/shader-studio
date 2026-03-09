@@ -179,7 +179,7 @@ export class PanelManager {
     }
   }
 
-  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string; shaderPath?: string }): Promise<void> {
+  private async handleConfigUpdate(payload: { config: ShaderConfig; text: string; shaderPath?: string; skipRefresh?: boolean }): Promise<void> {
     try {
       // Use the shader path from the payload (ensures locked shader writes to correct file)
       // Fall back to active/last viewed editor
@@ -198,6 +198,11 @@ export class PanelManager {
       // Write the config to file
       fs.writeFileSync(configPath, payload.text, 'utf-8');
       this.logger.info(`Config updated: ${configPath}`);
+
+      // Skip shader refresh for resolution-only changes
+      if (payload.skipRefresh) {
+        return;
+      }
 
       // Trigger shader refresh
       setTimeout(() => {

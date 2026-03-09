@@ -9,5 +9,8 @@ export type {
   ConfigInput,
   BufferConfigInput,
   TextureConfigInput,
-  KeyboardConfigInput
+  KeyboardConfigInput,
+  BufferResolution,
+  ResolutionSettings,
+  AspectRatioMode,
 } from "@shader-studio/types";
