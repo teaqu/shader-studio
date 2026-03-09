@@ -5,7 +5,7 @@
     aspectRatioStore,
     type AspectRatioMode,
   } from "../stores/aspectRatioStore";
-  import { qualityStore, type QualityMode } from "../stores/qualityStore";
+  import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   import TimeControls from "./TimeControls.svelte";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
@@ -51,7 +51,11 @@
   export let onTogglePause: () => void = () => {};
   export let onToggleLock: () => void = () => {};
   export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
-  export let onQualityChange: (mode: QualityMode) => void = () => {};
+  export let onResolutionScaleChange: (scale: number) => void = () => {};
+  export let onCustomResolutionChange: (w: string, h: string) => void = () => {};
+  export let onClearCustomResolution: () => void = () => {};
+  export let onToggleSaveToConfig: () => void = () => {};
+  export let onResetResolution: () => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
   export let onFpsLimitChange: (limit: number) => void = () => {};
   export let onConfig: () => void = () => {};
@@ -121,8 +125,10 @@
   let showThemeButton = false;
   let showFullscreenButton = false;
   let currentAspectRatio: AspectRatioMode = "16:9";
-  let currentQuality: QualityMode = "HD";
+  let currentResolution: ResolutionState = { scale: 1, savedToConfig: false };
   let showResolutionMenu = false;
+  let customWidthInput = "";
+  let customHeightInput = "";
   let showFPSMenu = false;
   let showOptionsMenu = false;
   let zoomLevel = 1.0;
@@ -155,8 +161,12 @@
       currentAspectRatio = state.mode;
     });
 
-    const unsubscribeQuality = qualityStore.subscribe((state) => {
-      currentQuality = state.mode;
+    const unsubscribeResolution = resolutionStore.subscribe((state) => {
+      currentResolution = state;
+      if (state.customWidth !== undefined && state.customHeight !== undefined) {
+        customWidthInput = String(state.customWidth);
+        customHeightInput = String(state.customHeight);
+      }
     });
 
     return () => {
@@ -165,7 +175,7 @@
       }
       unsubscribeTheme();
       unsubscribeAspectRatio();
-      unsubscribeQuality();
+      unsubscribeResolution();
     };
   });
 
@@ -238,9 +248,37 @@
     onAspectRatioChange(mode);
   }
 
-  function handleQualitySelect(mode: QualityMode) {
-    qualityStore.setMode(mode);
-    onQualityChange(mode);
+  function handleResolutionScaleSelect(scale: number) {
+    resolutionStore.setScale(scale);
+    onResolutionScaleChange(scale);
+  }
+
+  function handleApplyCustomResolution() {
+    const wTrimmed = customWidthInput.trim();
+    const hTrimmed = customHeightInput.trim();
+    if (wTrimmed && hTrimmed) {
+      resolutionStore.setCustomResolution(wTrimmed, hTrimmed);
+      onCustomResolutionChange(wTrimmed, hTrimmed);
+    }
+  }
+
+  function handleClearCustomResolution() {
+    customWidthInput = "";
+    customHeightInput = "";
+    resolutionStore.clearCustomResolution();
+    onClearCustomResolution();
+  }
+
+  function handleToggleSaveToConfig() {
+    onToggleSaveToConfig();
+  }
+
+  function handleResetResolution() {
+    customWidthInput = "";
+    customHeightInput = "";
+    resolutionStore.reset();
+    aspectRatioStore.setMode("auto");
+    onResetResolution();
   }
 
   function handleZoomChange(event: Event) {
@@ -259,24 +297,41 @@
     }
   }
 
-  function handleClickOutside(event: MouseEvent) {
-    const target = event.target as HTMLElement;
+  // Track where mousedown started so we don't close menus when a drag
+  // (e.g. text selection in an input) ends outside the menu.
+  let mouseDownTarget: HTMLElement | null = null;
 
-    if (showResolutionMenu && !target.closest(".resolution-menu-container")) {
+  function handleWindowMouseDown(event: MouseEvent) {
+    mouseDownTarget = event.target as HTMLElement;
+  }
+
+  function handleClickOutside(event: MouseEvent) {
+    const clickTarget = event.target as HTMLElement;
+
+    // Only close if BOTH mousedown and mouseup were outside the container
+    if (showResolutionMenu
+      && !clickTarget.closest(".resolution-menu-container")
+      && !mouseDownTarget?.closest(".resolution-menu-container")) {
       showResolutionMenu = false;
     }
 
-    if (showFPSMenu && !target.closest(".fps-menu-container")) {
+    if (showFPSMenu
+      && !clickTarget.closest(".fps-menu-container")
+      && !mouseDownTarget?.closest(".fps-menu-container")) {
       showFPSMenu = false;
     }
 
-    if (showOptionsMenu && !target.closest(".options-menu-container")) {
+    if (showOptionsMenu
+      && !clickTarget.closest(".options-menu-container")
+      && !mouseDownTarget?.closest(".options-menu-container")) {
       showOptionsMenu = false;
     }
+
+    mouseDownTarget = null;
   }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window on:mousedown={handleWindowMouseDown} on:click={handleClickOutside} />
 
 <div class="menu-bar">
   <div class="left-group">
@@ -349,66 +404,92 @@
         {canvasWidth} × {canvasHeight}
       </button>
       {#if showResolutionMenu}
+        {@const hasCustom = currentResolution.customWidth !== undefined && currentResolution.customHeight !== undefined}
         <div class="resolution-menu">
           <div class="resolution-section">
-            <h4>Quality</h4>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentQuality === "HD"}
-              on:click={() => handleQualitySelect("HD")}
-            >
-              HD
-            </button>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentQuality === "SD"}
-              on:click={() => handleQualitySelect("SD")}
-            >
-              SD
-            </button>
+            <h4>Resolution Scale</h4>
+            <div class="scale-buttons">
+              {#each [0.25, 0.5, 1, 2, 4] as scale}
+                <button
+                  class="resolution-option menu-title"
+                  class:active={!hasCustom && currentResolution.scale === scale}
+                  disabled={hasCustom}
+                  on:click={() => handleResolutionScaleSelect(scale)}
+                >
+                  {scale}x
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div class="resolution-section">
+            <h4>Custom Resolution</h4>
+            <div class="custom-resolution-row">
+              <input
+                type="text"
+                class="custom-res-input"
+                placeholder="px or %"
+                bind:value={customWidthInput}
+              />
+              <span class="custom-res-separator">&times;</span>
+              <input
+                type="text"
+                class="custom-res-input"
+                placeholder="px or %"
+                bind:value={customHeightInput}
+              />
+              <button
+                class="custom-res-btn"
+                on:click={handleApplyCustomResolution}
+                disabled={!customWidthInput || !customHeightInput}
+              >
+                Apply
+              </button>
+              {#if hasCustom}
+                <button
+                  class="custom-res-btn clear-btn"
+                  on:click={handleClearCustomResolution}
+                >
+                  Clear
+                </button>
+              {/if}
+            </div>
           </div>
 
           <div class="resolution-section">
             <h4>Aspect Ratio</h4>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentAspectRatio === "16:9"}
-              on:click={() => handleAspectRatioSelect("16:9")}
-            >
-              16:9
-            </button>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentAspectRatio === "4:3"}
-              on:click={() => handleAspectRatioSelect("4:3")}
-            >
-              4:3
-            </button>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentAspectRatio === "1:1"}
-              on:click={() => handleAspectRatioSelect("1:1")}
-            >
-              1:1
-            </button>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentAspectRatio === "fill"}
-              on:click={() => handleAspectRatioSelect("fill")}
-            >
-              Fill
-            </button>
-            <button
-              class="resolution-option menu-title"
-              class:active={currentAspectRatio === "auto"}
-              on:click={() => handleAspectRatioSelect("auto")}
-            >
-              Auto
+            <div class="scale-buttons">
+              <button class="resolution-option menu-title" class:active={currentAspectRatio === "16:9"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("16:9")}>16:9</button>
+              <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("4:3")}>4:3</button>
+              <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("1:1")}>1:1</button>
+              <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("fill")}>Fill</button>
+              <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("auto")}>Auto</button>
+            </div>
+          </div>
+
+          <div class="resolution-section save-to-config-section">
+            <label class="save-to-config-label">
+              <input
+                type="checkbox"
+                checked={currentResolution.savedToConfig}
+                on:change={handleToggleSaveToConfig}
+              />
+              Save to shader config
+            </label>
+            <button class="reset-resolution-btn" on:click={handleResetResolution}>
+              Reset
             </button>
           </div>
 
+          <div class="resolution-separator"></div>
+
           <div class="resolution-section">
-            <h4>Zoom</h4>
+            <div class="zoom-header">
+              <h4>Zoom</h4>
+              <button class="reset-resolution-btn" on:click={() => { zoomLevel = 1.0; onZoomChange(1.0); }}>
+                Reset
+              </button>
+            </div>
             <div class="zoom-control">
               <label for="zoom-slider">Zoom: {zoomLevel.toFixed(1)}x</label>
               <input

@@ -1,4 +1,4 @@
-import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
+import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution } from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 
 export class ConfigManager {
@@ -423,7 +423,7 @@ export class ConfigManager {
     /**
      * Update the configuration and notify via transport
      */
-    private updateConfig(newConfig: ShaderConfig): void {
+    private updateConfig(newConfig: ShaderConfig, options?: { skipRefresh?: boolean }): void {
         console.log('Updating config:', newConfig);
         this.config = newConfig;
 
@@ -447,12 +447,65 @@ export class ConfigManager {
                 payload: {
                     config: newConfig,
                     text: cleanText,
-                    shaderPath: this.shaderPath
+                    shaderPath: this.shaderPath,
+                    skipRefresh: options?.skipRefresh,
                 }
             });
         } else {
             console.warn('Transport not available');
         }
+    }
+
+    /**
+     * Update Image pass resolution settings
+     */
+    updateResolution(settings: Partial<ResolutionSettings> | undefined): void {
+        this.ensureConfig();
+
+        const imagePass = { ...this.config!.passes.Image };
+        if (settings === undefined) {
+            delete imagePass.resolution;
+        } else {
+            imagePass.resolution = {
+                ...imagePass.resolution,
+                ...settings,
+            };
+        }
+
+        const updatedConfig = {
+            ...this.config!,
+            passes: {
+                ...this.config!.passes,
+                Image: imagePass,
+            },
+        };
+        this.updateConfig(updatedConfig, { skipRefresh: true });
+    }
+
+    /**
+     * Update per-buffer fixed resolution override
+     */
+    updateBufferResolution(bufferName: string, resolution: BufferResolution | undefined): void {
+        if (!this.config) return;
+
+        const pass = this.config.passes[bufferName] as BufferPass;
+        if (!pass) return;
+
+        const updatedPass = { ...pass };
+        if (resolution) {
+            updatedPass.resolution = resolution;
+        } else {
+            delete updatedPass.resolution;
+        }
+
+        const updatedConfig = {
+            ...this.config,
+            passes: {
+                ...this.config.passes,
+                [bufferName]: updatedPass,
+            },
+        };
+        this.updateConfig(updatedConfig, { skipRefresh: true });
     }
 
     /**

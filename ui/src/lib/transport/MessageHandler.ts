@@ -227,6 +227,7 @@ export class MessageHandler {
 
   public reset(onReset?: () => void): void {
     this.cleanup();
+    this.renderEngine.resetTime();
 
     if (this.lastEvent && onReset) {
       onReset();

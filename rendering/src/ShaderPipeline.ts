@@ -1,7 +1,7 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
+import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass, BufferResolution } from "./models";
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
@@ -20,6 +20,7 @@ export class ShaderPipeline {
   private passShaders: Record<string, PiShader> = {};
   private passSlotAssignments: Record<string, SlotAssignment[]> = {};
   private passChannelTypes: Record<string, ChannelSamplerType[]> = {};
+  private currentConfig: ShaderConfig | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -86,6 +87,7 @@ export class ShaderPipeline {
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
     this.prepareNewCompilation(path);
+    this.currentConfig = config;
 
     this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders();
@@ -232,11 +234,11 @@ export class ShaderPipeline {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];
         } else {
+          const bufferRes = (this.currentConfig?.passes?.[pass.name] as BufferPass)?.resolution;
+          const bufW = bufferRes?.width ?? (this.canvas.width || 800);
+          const bufH = bufferRes?.height ?? (this.canvas.height || 600);
           newPassBuffers[pass.name] = this.bufferManager
-            .createPingPongBuffers(
-              this.canvas.width || 800,
-              this.canvas.height || 600,
-            );
+            .createPingPongBuffers(bufW, bufH);
         }
       }
     }
@@ -315,6 +317,9 @@ export class ShaderPipeline {
     this.resourceManager.cleanup();
     this.cleanupShaders();
     this.bufferManager.dispose();
+  }
+
+  public resetTime(): void {
     this.timeManager.cleanup();
   }
 

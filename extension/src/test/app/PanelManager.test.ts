@@ -677,6 +677,73 @@ suite('PanelManager Test Suite', () => {
 
             clock.restore();
         });
+
+        test('should skip shader refresh when skipRefresh is true', async () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}',
+                shaderPath: '/locked/shader.glsl',
+                skipRefresh: true
+            });
+
+            // Config file should still be written
+            sinon.assert.calledOnce(writeStub);
+
+            // Advance past the 150ms setTimeout
+            clock.tick(200);
+
+            // Shader refresh should NOT have been triggered
+            sinon.assert.notCalled((mockShaderProvider as any).sendShaderFromPath);
+
+            clock.restore();
+        });
+
+        test('should still refresh shader when skipRefresh is false', async () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}',
+                shaderPath: '/locked/shader.glsl',
+                skipRefresh: false
+            });
+
+            clock.tick(200);
+
+            sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
+
+            clock.restore();
+        });
+
+        test('should still refresh shader when skipRefresh is undefined', async () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            await (panelManager as any).handleConfigUpdate({
+                config: {},
+                text: '{}',
+                shaderPath: '/locked/shader.glsl'
+            });
+
+            clock.tick(200);
+
+            sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
+
+            clock.restore();
+        });
     });
 
     suite('handleRequestWorkspaceFiles', () => {

@@ -4,7 +4,7 @@
     aspectRatioStore,
     type AspectRatioMode,
   } from "../stores/aspectRatioStore";
-  import { qualityStore, type QualityMode } from "../stores/qualityStore";
+  import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
   import { AspectRatioCalculator } from "../util/AspectRatioCalculator";
 
   export let zoomLevel: number = 1.0;
@@ -19,7 +19,7 @@
 
   let glCanvas: HTMLCanvasElement;
   let currentAspectMode: AspectRatioMode = "16:9";
-  let currentQuality: QualityMode = "HD";
+  let currentResolution: ResolutionState = { scale: 1, savedToConfig: false };
   let aspectRatioCalculator: AspectRatioCalculator;
   let resizeCanvasToFitAspectRatio: () => void;
 
@@ -30,8 +30,10 @@
     resizeCanvasToFitAspectRatio = () => {
       const result = aspectRatioCalculator.calculate(
         currentAspectMode,
-        currentQuality,
+        currentResolution.scale,
         zoomLevel,
+        currentResolution.customWidth,
+        currentResolution.customHeight,
       );
 
       glCanvas.style.width = `${result.visualWidth}px`;
@@ -51,8 +53,8 @@
       resizeCanvasToFitAspectRatio();
     });
 
-    const unsubscribeQuality = qualityStore.subscribe((state) => {
-      currentQuality = state.mode;
+    const unsubscribeResolution = resolutionStore.subscribe((state) => {
+      currentResolution = state;
       resizeCanvasToFitAspectRatio();
     });
 
@@ -62,7 +64,7 @@
 
     return () => {
       unsubscribeAspectRatio();
-      unsubscribeQuality();
+      unsubscribeResolution();
     };
   });
 

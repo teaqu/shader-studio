@@ -483,4 +483,106 @@ describe('ConfigManager', () => {
       });
     });
   });
+
+  describe('Resolution updates should not restart shader', () => {
+    it('updateResolution should send skipRefresh: true', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateResolution({ scale: 2 });
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          skipRefresh: true,
+        })
+      });
+    });
+
+    it('updateResolution with undefined should send skipRefresh: true', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateResolution(undefined);
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          skipRefresh: true,
+        })
+      });
+    });
+
+    it('updateBufferResolution should send skipRefresh: true', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {} };
+      configManager.setConfig(config);
+      configManager.updateBufferResolution('BufferA', { width: 256, height: 256 });
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          skipRefresh: true,
+        })
+      });
+    });
+
+    it('updateBufferResolution clearing should send skipRefresh: true', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {}, resolution: { width: 256, height: 256 } } as BufferPass;
+      configManager.setConfig(config);
+      configManager.updateBufferResolution('BufferA', undefined);
+
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          skipRefresh: true,
+        })
+      });
+    });
+
+    it('updateResolution should still save config to file (config in payload)', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateResolution({ scale: 4, aspectRatio: '16:9' });
+
+      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.type).toBe('updateConfig');
+      expect(call.payload.config.passes.Image.resolution).toEqual({
+        scale: 4,
+        aspectRatio: '16:9',
+      });
+    });
+
+    it('non-resolution updates should NOT send skipRefresh', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.addBuffer();
+
+      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.payload.skipRefresh).toBeUndefined();
+    });
+
+    it('updateImagePass should NOT send skipRefresh', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateImagePass({ inputs: { iChannel0: { type: 'keyboard' } } });
+
+      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.payload.skipRefresh).toBeUndefined();
+    });
+
+    it('updateBuffer should NOT send skipRefresh', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {} };
+      configManager.setConfig(config);
+      configManager.updateBuffer('BufferA', { path: 'new.glsl', inputs: {} });
+
+      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.payload.skipRefresh).toBeUndefined();
+    });
+
+    it('removeBuffer should NOT send skipRefresh', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {} };
+      configManager.setConfig(config);
+      configManager.removeBuffer('BufferA');
+
+      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.payload.skipRefresh).toBeUndefined();
+    });
+  });
 });

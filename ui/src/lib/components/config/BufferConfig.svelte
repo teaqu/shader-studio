@@ -4,6 +4,7 @@
     BufferPass,
     ImagePass,
     ConfigInput,
+    BufferResolution,
   } from "@shader-studio/types";
   import ChannelPreview from "./ChannelPreview.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
@@ -21,6 +22,7 @@
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let shaderPath: string = "";
+  export let onResolutionChange: ((bufferName: string, resolution: BufferResolution | undefined) => void) | undefined = undefined;
 
   let bufferConfig: BufferConfig;
 
@@ -100,6 +102,35 @@
   }
 
 
+  // Per-buffer resolution state
+  $: hasFixedResolution = !isImagePass && bufferName !== "common" && "resolution" in config && !!(config as BufferPass).resolution;
+  let bufferResWidthInput = "";
+  let bufferResHeightInput = "";
+
+  // Sync inputs from config when resolution changes externally
+  $: if (hasFixedResolution) {
+    bufferResWidthInput = String((config as BufferPass).resolution!.width);
+    bufferResHeightInput = String((config as BufferPass).resolution!.height);
+  }
+
+  function handleToggleFixedResolution() {
+    if (hasFixedResolution) {
+      onResolutionChange?.(bufferName, undefined);
+      bufferResWidthInput = "";
+      bufferResHeightInput = "";
+    } else {
+      onResolutionChange?.(bufferName, { width: 256, height: 256 });
+    }
+  }
+
+  function commitBufferResolution() {
+    const w = parseInt(bufferResWidthInput, 10);
+    const h = parseInt(bufferResHeightInput, 10);
+    if (w > 0 && h > 0) {
+      onResolutionChange?.(bufferName, { width: w, height: h });
+    }
+  }
+
   // Show configured channels, pad with empty iChannel slots up to 4 total
   $: channelNames = (() => {
     const configKeys = Object.keys(config.inputs || {});
@@ -153,6 +184,39 @@
             </div>
           {/if}
       </div>
+    {/if}
+
+    {#if !isImagePass && bufferName !== "common"}
+    <div class="config-item">
+      <div class="resolution-row">
+        <input
+          type="checkbox"
+          class="res-checkbox"
+          checked={hasFixedResolution}
+          on:change={handleToggleFixedResolution}
+        />
+        <span class="res-label">Resolution</span>
+        {#if hasFixedResolution}
+          <input
+            type="number"
+            class="buffer-res-input"
+            bind:value={bufferResWidthInput}
+            on:change={commitBufferResolution}
+            min="1"
+            placeholder="W"
+          />
+          <span class="res-times">&times;</span>
+          <input
+            type="number"
+            class="buffer-res-input"
+            bind:value={bufferResHeightInput}
+            on:change={commitBufferResolution}
+            min="1"
+            placeholder="H"
+          />
+        {/if}
+      </div>
+    </div>
     {/if}
 
     {#if bufferName !== "common"}
@@ -390,5 +454,84 @@
   .create-file-btn:hover {
     background: var(--vscode-button-hoverBackground);
   }
+
+  .resolution-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .res-label {
+    font-size: var(--vscode-font-size, 13px);
+    font-family: var(--vscode-font-family, sans-serif);
+    color: var(--vscode-editor-foreground, #ccc);
+    user-select: none;
+    margin-right: 4px;
+  }
+
+  .res-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    border-radius: 3px;
+    background: var(--vscode-input-background);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .res-checkbox:checked {
+    background: var(--vscode-button-background);
+    border-color: var(--vscode-button-background);
+  }
+
+  .res-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 5px;
+    height: 9px;
+    border: solid var(--vscode-button-foreground);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  .res-checkbox:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+  }
+
+  .res-times {
+    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
+    font-size: var(--vscode-font-size, 13px);
+    user-select: none;
+  }
+
+  .buffer-res-input {
+    width: 64px;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-size: var(--vscode-font-size, 13px);
+    font-family: var(--vscode-font-family, sans-serif);
+    outline: none;
+    -moz-appearance: textfield;
+  }
+
+  .buffer-res-input::-webkit-outer-spin-button,
+  .buffer-res-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .buffer-res-input:focus {
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
 
 </style>

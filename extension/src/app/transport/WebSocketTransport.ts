@@ -281,7 +281,7 @@ export class WebSocketTransport implements MessageTransport {
   }
 
   private async handleConfigUpdate(
-    payload: { config: ShaderConfig; text: string; shaderPath?: string },
+    payload: { config: ShaderConfig; text: string; shaderPath?: string; skipRefresh?: boolean },
   ): Promise<void> {
     try {
       let shaderPath = payload.shaderPath;
@@ -297,6 +297,10 @@ export class WebSocketTransport implements MessageTransport {
       const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
       fs.writeFileSync(configPath, payload.text, 'utf-8');
       console.log(`WebSocket: Config updated: ${configPath}`);
+
+      if (payload.skipRefresh) {
+        return;
+      }
 
       setTimeout(() => {
         if (typeof (this.shaderProvider as any).sendShaderFromPath === "function") {

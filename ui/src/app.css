@@ -461,6 +461,16 @@ canvas {
   background-color: var(--vscode-button-hoverBackground);
 }
 
+.zoom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.zoom-header h4 {
+  margin: 0;
+}
+
 .zoom-control {
   display: flex;
   flex-direction: column;
@@ -499,6 +509,168 @@ canvas {
   background: var(--vscode-button-background);
   cursor: pointer;
   border: none;
+}
+
+/* Scale buttons row */
+.scale-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.scale-buttons .resolution-option {
+  flex: 1;
+  text-align: center;
+}
+
+/* Custom resolution row */
+.custom-resolution-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.custom-res-input {
+  width: 60px;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--vscode-font-size, 12px);
+  font-family: var(--vscode-font-family, sans-serif);
+  outline: none;
+  /* Hide number spinners for cleaner look */
+  -moz-appearance: textfield;
+}
+
+.custom-res-input::-webkit-outer-spin-button,
+.custom-res-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.custom-res-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.custom-res-separator {
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
+  font-size: var(--vscode-font-size, 12px);
+  user-select: none;
+}
+
+.custom-res-btn {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-size: var(--vscode-font-size, 12px);
+  font-family: var(--vscode-font-family, sans-serif);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.custom-res-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.custom-res-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.custom-res-btn.clear-btn {
+  background: none;
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+}
+
+.custom-res-btn.clear-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* Save to config checkbox */
+.save-to-config-section {
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reset-resolution-btn {
+  padding: 2px 8px;
+  font-size: var(--vscode-font-size, 12px);
+  font-family: var(--vscode-font-family, sans-serif);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
+  cursor: pointer;
+}
+
+.reset-resolution-btn:hover {
+  color: var(--vscode-editor-foreground, #ccc);
+  border-color: var(--vscode-editor-foreground, #ccc);
+}
+
+.save-to-config-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--vscode-font-size, 12px);
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.save-to-config-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+  background: var(--vscode-input-background);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.save-to-config-label input[type="checkbox"]:checked {
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-background);
+}
+
+.save-to-config-label input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--vscode-button-foreground);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.save-to-config-label input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Resolution separator */
+.resolution-separator {
+  height: 1px;
+  background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  margin: 0.75rem 0;
+}
+
+/* Disabled state for scale/aspect buttons when custom resolution is active */
+.resolution-option:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* Options Menu Styles */

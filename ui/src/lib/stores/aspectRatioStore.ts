@@ -1,10 +1,12 @@
 import { writable } from 'svelte/store';
-
-export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
+import type { AspectRatioMode } from '@shader-studio/types';
+export type { AspectRatioMode } from '@shader-studio/types';
 
 export interface AspectRatioState {
     mode: AspectRatioMode;
 }
+
+const VALID_MODES: AspectRatioMode[] = ['16:9', '4:3', '1:1', 'fill', 'auto'];
 
 const createAspectRatioStore = () => {
     // Default to 16:9 as requested
@@ -18,7 +20,7 @@ const createAspectRatioStore = () => {
         if (stored) {
             try {
                 const parsed = JSON.parse(stored);
-                if (parsed && ['16:9', '4:3', '1:1', 'fill', 'auto'].includes(parsed.mode)) {
+                if (parsed && VALID_MODES.includes(parsed.mode)) {
                     set(parsed);
                 }
             } catch (e) {
@@ -38,6 +40,12 @@ const createAspectRatioStore = () => {
                 }
                 return newState;
             });
+        },
+        setFromConfig: (mode?: AspectRatioMode) => {
+            if (mode && VALID_MODES.includes(mode)) {
+                set({ mode });
+            }
+            // If no config mode, leave at current localStorage default
         },
         reset: () => {
             const defaultState = { mode: '16:9' as AspectRatioMode };

@@ -3,8 +3,9 @@
   import { ShaderStudio } from "../ShaderStudio";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
-  import type { AspectRatioMode } from "../stores/aspectRatioStore";
-  import type { QualityMode } from "../stores/qualityStore";
+  import { aspectRatioStore, type AspectRatioMode } from "../stores/aspectRatioStore";
+  import { resolutionStore } from "../stores/resolutionStore";
+  import type { ResolutionSettings } from "@shader-studio/types";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
@@ -22,6 +23,7 @@
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
   import type { RefreshMode } from "../VariableCaptureManager";
+  import { ConfigManager } from "../ConfigManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
@@ -86,6 +88,7 @@
   // Config panel state
   let configPanelVisible = false;
   let currentConfig: ShaderConfig | null = null;
+  let configManager: ConfigManager | null = null;
   let pathMap: Record<string, string> = {};
   let bufferPathMap: Record<string, string> = {};
   let shaderPath: string = "";
@@ -193,7 +196,8 @@
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    renderingEngine.handleCanvasResize(width, height);
+    const bufferResolutions = renderingEngine.computeBufferResolutions(currentConfig);
+    renderingEngine.handleCanvasResize(width, height, bufferResolutions);
   }
 
   function handleReset() {
@@ -254,10 +258,80 @@
 
   function handleAspectRatioChange(mode: AspectRatioMode) {
     console.log('Aspect ratio changed to:', mode);
+    maybeSaveResolutionToConfig();
   }
 
-  function handleQualityChange(mode: QualityMode) {
-    console.log('Quality changed to:', mode);
+  function handleResolutionScaleChange(scale: number) {
+    console.log('Resolution scale changed to:', scale);
+    maybeSaveResolutionToConfig();
+  }
+
+  function handleCustomResolutionChange(w: string, h: string) {
+    console.log('Custom resolution set to:', w, 'x', h);
+    maybeSaveResolutionToConfig();
+  }
+
+  function handleClearCustomResolution() {
+    console.log('Custom resolution cleared');
+    maybeSaveResolutionToConfig();
+  }
+
+  function handleResetResolution() {
+    console.log('Resolution reset to defaults');
+    // reset() already sets savedToConfig: false and persists defaults
+    // Also remove resolution from config if it was saved
+    configManager?.updateResolution(undefined);
+  }
+
+  function handleToggleSaveToConfig() {
+    let state: import("../stores/resolutionStore").ResolutionState | undefined;
+    const unsub = resolutionStore.subscribe(s => { state = s; });
+    unsub();
+    if (!state) return;
+
+    const newSaved = !state.savedToConfig;
+    resolutionStore.setSavedToConfig(newSaved);
+
+    if (newSaved && shaderStudio) {
+      // Write current resolution + aspect ratio to config
+      let aspectMode: AspectRatioMode = '16:9';
+      const unsubAR = aspectRatioStore.subscribe(s => { aspectMode = s.mode; });
+      unsubAR();
+
+      const settings: Partial<ResolutionSettings> = {
+        scale: state.scale,
+        aspectRatio: aspectMode,
+      };
+      if (state.customWidth !== undefined && state.customHeight !== undefined) {
+        settings.customWidth = state.customWidth;
+        settings.customHeight = state.customHeight;
+      }
+      configManager?.updateResolution(settings);
+    } else if (!newSaved && shaderStudio) {
+      // Remove resolution from config
+      configManager?.updateResolution(undefined);
+    }
+  }
+
+  function maybeSaveResolutionToConfig() {
+    let state: import("../stores/resolutionStore").ResolutionState | undefined;
+    const unsub = resolutionStore.subscribe(s => { state = s; });
+    unsub();
+    if (!state?.savedToConfig || !shaderStudio) return;
+
+    let aspectMode: AspectRatioMode = '16:9';
+    const unsubAR = aspectRatioStore.subscribe(s => { aspectMode = s.mode; });
+    unsubAR();
+
+    const settings: Partial<ResolutionSettings> = {
+      scale: state.scale,
+      aspectRatio: aspectMode,
+    };
+    if (state.customWidth !== undefined && state.customHeight !== undefined) {
+      settings.customWidth = state.customWidth;
+      settings.customHeight = state.customHeight;
+    }
+    configManager?.updateResolution(settings);
   }
 
   function handleZoomChange(zoom: number) {
@@ -531,6 +605,8 @@
         return;
       }
 
+      configManager = new ConfigManager(transport);
+
       transport.onMessage(handleShaderMessage);
       // Also handle cursor position messages
       transport.onMessage((event: MessageEvent) => {
@@ -607,6 +683,17 @@
           currentShaderCode = event.data.code || "";
           if (shaderPath) {
             hasShader = true;
+          }
+          // Sync configManager
+          if (configManager) {
+            configManager.setConfig(currentConfig);
+            configManager.setShaderPath(shaderPath);
+          }
+          // Hydrate resolution stores from config
+          const imageResolution = currentConfig?.passes?.Image?.resolution;
+          resolutionStore.setFromConfig(imageResolution);
+          if (imageResolution?.aspectRatio) {
+            aspectRatioStore.setFromConfig(imageResolution.aspectRatio);
           }
           if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
             renderingEngine.togglePause();
@@ -826,7 +913,11 @@
         onTogglePause={handleTogglePause}
         onToggleLock={handleToggleLock}
         onAspectRatioChange={handleAspectRatioChange}
-        onQualityChange={handleQualityChange}
+        onResolutionScaleChange={handleResolutionScaleChange}
+        onCustomResolutionChange={handleCustomResolutionChange}
+        onClearCustomResolution={handleClearCustomResolution}
+        onToggleSaveToConfig={handleToggleSaveToConfig}
+        onResetResolution={handleResetResolution}
         onZoomChange={handleZoomChange}
         onFpsLimitChange={handleFpsLimitChange}
         onConfig={handleConfig}
@@ -921,7 +1012,11 @@
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}
       onAspectRatioChange={handleAspectRatioChange}
-      onQualityChange={handleQualityChange}
+      onResolutionScaleChange={handleResolutionScaleChange}
+      onCustomResolutionChange={handleCustomResolutionChange}
+      onClearCustomResolution={handleClearCustomResolution}
+      onToggleSaveToConfig={handleToggleSaveToConfig}
+      onResetResolution={handleResetResolution}
       onZoomChange={handleZoomChange}
       onFpsLimitChange={handleFpsLimitChange}
       onConfig={handleConfig}

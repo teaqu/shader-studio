@@ -42,6 +42,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
   const MockRenderingEngine = class {
     initialize() {}
     handleCanvasResize() {}
+    computeBufferResolutions() { return undefined; }
     togglePause() {}
     stopRenderLoop() {}
     startRenderLoop() {}
@@ -54,6 +55,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     render() {}
     updateBufferAndRecompile() { return Promise.resolve({ success: true }); }
     cleanup() {}
+    resetTime() {}
     compileShaderPipeline() { return Promise.resolve({ success: true }); }
     getPasses() { return []; }
   };

@@ -34,20 +34,23 @@ export class BufferManager {
   public resizeBuffers(
     newWidth: number,
     newHeight: number,
+    bufferResolutions?: Record<string, { width: number; height: number }>,
   ): void {
     const oldBuffers = this.buffers;
     const newBuffers: Buffers = {};
 
     for (const name of Object.keys(this.buffers)) {
       if (name !== "Image" && name !== "common") {
-        const newBuffer = this.createPingPongBuffers(newWidth, newHeight);
-        
+        const bufW = bufferResolutions?.[name]?.width ?? newWidth;
+        const bufH = bufferResolutions?.[name]?.height ?? newHeight;
+        const newBuffer = this.createPingPongBuffers(bufW, bufH);
+
         if (this.shouldCopyExistingBuffers(oldBuffers, name, newBuffer)) {
           this.copyExistingBuffers(oldBuffers[name]!, newBuffer);
         } else {
-          this.clearNewBuffers(newBuffer, newWidth, newHeight);
+          this.clearNewBuffers(newBuffer, bufW, bufH);
         }
-        
+
         newBuffers[name] = newBuffer;
       }
     }

@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import MenuBar from '../lib/components/MenuBar.svelte';
 import { currentTheme } from '../lib/stores/themeStore';
 import { aspectRatioStore } from '../lib/stores/aspectRatioStore';
-import { qualityStore } from '../lib/stores/qualityStore';
+import { resolutionStore } from '../lib/stores/resolutionStore';
 
 // Mock the transport factory
 vi.mock('../lib/transport/TransportFactory', () => ({
@@ -45,7 +45,11 @@ describe('MenuBar Component', () => {
       onTogglePause: vi.fn(),
       onToggleLock: vi.fn(),
       onAspectRatioChange: vi.fn(),
-      onQualityChange: vi.fn(),
+      onResolutionScaleChange: vi.fn(),
+      onCustomResolutionChange: vi.fn(),
+      onClearCustomResolution: vi.fn(),
+      onToggleSaveToConfig: vi.fn(),
+      onResetResolution: vi.fn(),
       onZoomChange: vi.fn(),
       onFpsLimitChange: vi.fn(),
       isDebugEnabled: false,
@@ -73,7 +77,7 @@ describe('MenuBar Component', () => {
     // Reset stores to default values
     currentTheme.set('light');
     aspectRatioStore.setMode('16:9');
-    qualityStore.setMode('HD');
+    resolutionStore.reset();
   });
 
   afterEach(() => {
@@ -360,7 +364,7 @@ describe('MenuBar Component', () => {
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
       
-      expect(screen.getByText('Quality')).toBeInTheDocument();
+      expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
       expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
       expect(screen.getByText('Zoom')).toBeInTheDocument();
     });
@@ -380,27 +384,27 @@ describe('MenuBar Component', () => {
       // Options menu should be closed
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
       // Resolution menu should be open
-      expect(screen.getByText('Quality')).toBeInTheDocument();
+      expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
     });
 
-    it('should call onQualityChange when quality option is selected', async () => {
-      const onQualityChange = vi.fn();
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          onQualityChange 
-        } 
+    it('should call onResolutionScaleChange when scale option is selected', async () => {
+      const onResolutionScaleChange = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          onResolutionScaleChange
+        }
       });
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
-      // Click SD quality
-      const sdButton = screen.getByRole('button', { name: 'SD' });
-      await fireEvent.click(sdButton);
-      
-      expect(onQualityChange).toHaveBeenCalledWith('SD');
+
+      // Click 0.5x scale
+      const halfButton = screen.getByRole('button', { name: '0.5x' });
+      await fireEvent.click(halfButton);
+
+      expect(onResolutionScaleChange).toHaveBeenCalledWith(0.5);
     });
 
     it('should call onAspectRatioChange when aspect ratio is selected', async () => {
@@ -441,6 +445,303 @@ describe('MenuBar Component', () => {
       await fireEvent.input(zoomSlider, { target: { value: '2.0' } });
       
       expect(onZoomChange).toHaveBeenCalledWith(2.0);
+    });
+
+    it('should show custom resolution inputs', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      expect(screen.getByText('Custom Resolution')).toBeInTheDocument();
+      const inputs = screen.getAllByPlaceholderText('px or %');
+      expect(inputs).toHaveLength(2);
+    });
+
+    it('should enable Apply button only when both custom inputs are filled', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const applyButton = screen.getByRole('button', { name: 'Apply' });
+      expect(applyButton).toBeDisabled();
+
+      const inputs = screen.getAllByPlaceholderText('px or %');
+      await fireEvent.input(inputs[0], { target: { value: '1920' } });
+      await fireEvent.input(inputs[1], { target: { value: '1080' } });
+
+      expect(applyButton).not.toBeDisabled();
+    });
+
+    it('should call onCustomResolutionChange with string values when Apply is clicked', async () => {
+      const onCustomResolutionChange = vi.fn();
+      render(MenuBar, { props: { ...defaultProps, onCustomResolutionChange } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const inputs = screen.getAllByPlaceholderText('px or %');
+      await fireEvent.input(inputs[0], { target: { value: '50%' } });
+      await fireEvent.input(inputs[1], { target: { value: '50%' } });
+
+      const applyButton = screen.getByRole('button', { name: 'Apply' });
+      await fireEvent.click(applyButton);
+
+      expect(onCustomResolutionChange).toHaveBeenCalledWith('50%', '50%');
+    });
+
+    it('should call onCustomResolutionChange with px values', async () => {
+      const onCustomResolutionChange = vi.fn();
+      render(MenuBar, { props: { ...defaultProps, onCustomResolutionChange } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const inputs = screen.getAllByPlaceholderText('px or %');
+      await fireEvent.input(inputs[0], { target: { value: '1920' } });
+      await fireEvent.input(inputs[1], { target: { value: '1080' } });
+
+      const applyButton = screen.getByRole('button', { name: 'Apply' });
+      await fireEvent.click(applyButton);
+
+      expect(onCustomResolutionChange).toHaveBeenCalledWith('1920', '1080');
+    });
+
+    it('should show Clear button when custom resolution is active', async () => {
+      resolutionStore.setCustomResolution('512', '512');
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+    });
+
+    it('should call onClearCustomResolution when Clear is clicked', async () => {
+      const onClearCustomResolution = vi.fn();
+      resolutionStore.setCustomResolution('512', '512');
+      render(MenuBar, { props: { ...defaultProps, onClearCustomResolution } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const clearButton = screen.getByRole('button', { name: 'Clear' });
+      await fireEvent.click(clearButton);
+
+      expect(onClearCustomResolution).toHaveBeenCalled();
+    });
+
+    it('should disable scale buttons when custom resolution is active', async () => {
+      resolutionStore.setCustomResolution('512', '512');
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const scaleButton = screen.getByRole('button', { name: '1x' });
+      expect(scaleButton).toBeDisabled();
+    });
+
+    it('should disable aspect ratio buttons when custom resolution is active', async () => {
+      resolutionStore.setCustomResolution('512', '512');
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const aspectButton = screen.getByRole('button', { name: '16:9' });
+      expect(aspectButton).toBeDisabled();
+    });
+
+    it('should show Save to shader config checkbox', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      expect(screen.getByText('Save to shader config')).toBeInTheDocument();
+    });
+
+    it('should call onToggleSaveToConfig when checkbox is clicked', async () => {
+      const onToggleSaveToConfig = vi.fn();
+      render(MenuBar, { props: { ...defaultProps, onToggleSaveToConfig } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const checkbox = screen.getByText('Save to shader config').closest('label')!.querySelector('input')!;
+      await fireEvent.change(checkbox);
+
+      expect(onToggleSaveToConfig).toHaveBeenCalled();
+    });
+
+    it('should show checked checkbox when savedToConfig is true', async () => {
+      resolutionStore.setSavedToConfig(true);
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const checkbox = screen.getByText('Save to shader config').closest('label')!.querySelector('input')!;
+      expect(checkbox.checked).toBe(true);
+    });
+
+    it('should show all scale options', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      expect(screen.getByRole('button', { name: '0.25x' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '0.5x' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '1x' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '2x' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '4x' })).toBeInTheDocument();
+    });
+
+    it('should show all aspect ratio options', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      expect(screen.getByRole('button', { name: '16:9' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '4:3' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '1:1' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Fill' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Auto' })).toBeInTheDocument();
+    });
+
+    it('should highlight active scale', async () => {
+      resolutionStore.setScale(2);
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const twoXButton = screen.getByRole('button', { name: '2x' });
+      expect(twoXButton.classList.contains('active')).toBe(true);
+    });
+  });
+
+  describe('Resolution Reset', () => {
+    it('should show reset button in resolution menu', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      expect(resetButtons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should call onResetResolution when resolution reset is clicked', async () => {
+      const onResetResolution = vi.fn();
+      render(MenuBar, { props: { ...defaultProps, onResetResolution } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      // The resolution reset is the first Reset button (in save-to-config section)
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[0]);
+
+      expect(onResetResolution).toHaveBeenCalled();
+    });
+
+    it('should reset resolution store when resolution reset is clicked', async () => {
+      resolutionStore.setScale(4);
+      resolutionStore.setCustomResolution('1920', '1080');
+
+      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[0]);
+
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.scale).toBe(1);
+      expect(state.customWidth).toBeUndefined();
+      expect(state.customHeight).toBeUndefined();
+    });
+
+    it('should NOT uncheck save to shader config when reset is clicked', async () => {
+      resolutionStore.setSavedToConfig(true);
+      resolutionStore.setScale(4);
+
+      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[0]);
+
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.savedToConfig).toBe(true);
+    });
+
+    it('should reset aspect ratio to fill when resolution reset is clicked', async () => {
+      aspectRatioStore.setMode('4:3');
+
+      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[0]);
+
+      const { get } = await import('svelte/store');
+      const state = get(aspectRatioStore);
+      expect(state.mode).toBe('auto');
+    });
+  });
+
+  describe('Zoom Reset', () => {
+    it('should show reset button next to zoom header', async () => {
+      render(MenuBar, { props: defaultProps });
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      // There should be two Reset buttons: one for resolution, one for zoom
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      expect(resetButtons.length).toBe(2);
+    });
+
+    it('should call onZoomChange with 1.0 when zoom reset is clicked', async () => {
+      const onZoomChange = vi.fn();
+      render(MenuBar, { props: { ...defaultProps, onZoomChange } });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      // First change zoom to something else
+      const zoomSlider = screen.getByDisplayValue('1');
+      await fireEvent.input(zoomSlider, { target: { value: '2.5' } });
+      onZoomChange.mockClear();
+
+      // Click zoom reset (second Reset button)
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[1]);
+
+      expect(onZoomChange).toHaveBeenCalledWith(1.0);
+    });
+
+    it('should reset zoom slider value to 1.0', async () => {
+      render(MenuBar, { props: defaultProps });
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+
+      // Change zoom
+      const zoomSlider = screen.getByDisplayValue('1') as HTMLInputElement;
+      await fireEvent.input(zoomSlider, { target: { value: '2.5' } });
+
+      // Click zoom reset
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      await fireEvent.click(resetButtons[1]);
+
+      expect(screen.getByText('Zoom: 1.0x')).toBeInTheDocument();
     });
   });
 
@@ -496,12 +797,12 @@ describe('MenuBar Component', () => {
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      expect(screen.getByText('Quality')).toBeInTheDocument();
-      
+      expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
+
       // Click outside
       await fireEvent.click(document.body);
-      
-      expect(screen.queryByText('Quality')).not.toBeInTheDocument();
+
+      expect(screen.queryByText('Resolution Scale')).not.toBeInTheDocument();
     });
 
     it('should close options menu when resolution menu is opened', async () => {

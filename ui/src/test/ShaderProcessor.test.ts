@@ -157,6 +157,43 @@ describe('ShaderProcessor', () => {
       expect(mockRenderEngine.cleanup).not.toHaveBeenCalled();
     });
 
+    it('should NOT reset time when forceCleanup is true (cleanup does not reset time)', async () => {
+      // cleanup() no longer calls TimeManager.cleanup() — time is preserved
+      // Only explicit reset via MessageHandler.reset() should reset time
+      const mockResetTime = vi.fn();
+      (mockRenderEngine as any).resetTime = mockResetTime;
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, true);
+
+      expect(mockRenderEngine.cleanup).toHaveBeenCalled();
+      expect(mockResetTime).not.toHaveBeenCalled();
+    });
+
+    it('should NOT reset time when forceCleanup is false', async () => {
+      const mockResetTime = vi.fn();
+      (mockRenderEngine as any).resetTime = mockResetTime;
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(mockResetTime).not.toHaveBeenCalled();
+    });
+
     it('should handle compilation errors', async () => {
       const errorMessage = 'Shader compilation failed';
       (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({

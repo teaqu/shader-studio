@@ -81,7 +81,11 @@ export class RenderingEngine implements RenderingEngineInterface {
     );
   }
 
-  public handleCanvasResize(width: number, height: number): void {
+  public handleCanvasResize(
+    width: number,
+    height: number,
+    bufferResolutions?: Record<string, { width: number; height: number }>,
+  ): void {
     if (!this.glCanvas) {
       return;
     }
@@ -97,6 +101,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.bufferManager.resizeBuffers(
       newWidth,
       newHeight,
+      bufferResolutions,
     );
 
     // Redraw the final image pass to prevent a black screen flicker.
@@ -104,6 +109,29 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (imagePass && this.frameRenderer.isRunning()) {
       this.frameRenderer.renderSinglePass(imagePass);
     }
+  }
+
+  public computeBufferResolutions(
+    config: ShaderConfig | null,
+  ): Record<string, { width: number; height: number }> | undefined {
+    if (!config) return undefined;
+
+    const result: Record<string, { width: number; height: number }> = {};
+    let hasOverrides = false;
+
+    for (const [name, pass] of Object.entries(config.passes)) {
+      if (name === 'Image' || name === 'common' || !pass) continue;
+      const bufferPass = pass as import("@shader-studio/types").BufferPass;
+      if (bufferPass.resolution?.width && bufferPass.resolution?.height) {
+        result[name] = {
+          width: bufferPass.resolution.width,
+          height: bufferPass.resolution.height,
+        };
+        hasOverrides = true;
+      }
+    }
+
+    return hasOverrides ? result : undefined;
   }
 
   public async compileShaderPipeline(
@@ -231,6 +259,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public cleanup(): void {
     this.shaderPipeline.cleanup();
+  }
+
+  public resetTime(): void {
+    this.shaderPipeline.resetTime();
   }
 
   public getTimeManager(): TimeManager {
