@@ -65,7 +65,9 @@ export class ConfigManager {
      * e.g., myshader.glsl → myshader.buffera.glsl
      */
     public generateBufferPath(bufferName: string): string {
-        if (!this.shaderPath) return '';
+        if (!this.shaderPath) {
+            return '';
+        }
 
         // Extract just the filename without path
         const parts = this.shaderPath.replace(/\\/g, '/').split('/');
@@ -94,7 +96,9 @@ export class ConfigManager {
      * Get the next available buffer name (BufferA, BufferB, etc.)
      */
     getNextBufferName(): string {
-        if (!this.config) return 'BufferA';
+        if (!this.config) {
+            return 'BufferA';
+        }
 
         const existingNames = new Set(Object.keys(this.config.passes));
         for (let i = 0; i < 26; i++) {
@@ -105,7 +109,9 @@ export class ConfigManager {
         }
         // Fallback beyond Z
         let n = 1;
-        while (existingNames.has(`Buffer${n}`)) n++;
+        while (existingNames.has(`Buffer${n}`)) {
+            n++;
+        }
         return `Buffer${n}`;
     }
 
@@ -113,13 +119,13 @@ export class ConfigManager {
      * Add a new buffer to the configuration
      */
     addBuffer(): string | null {
-        if (!this.config) return null;
+        this.ensureConfig();
 
         const bufferName = this.getNextBufferName();
         const updatedConfig = {
-            ...this.config,
+            ...this.config!,
             passes: {
-                ...this.config.passes,
+                ...this.config!.passes,
                 [bufferName]: {
                     path: '',
                     inputs: {}
@@ -138,7 +144,9 @@ export class ConfigManager {
         this.ensureConfig();
 
         // Check if buffer already exists
-        if (this.config!.passes[bufferName]) return false;
+        if (this.config!.passes[bufferName]) {
+            return false;
+        }
 
         const updatedConfig = {
             ...this.config!,
@@ -158,7 +166,9 @@ export class ConfigManager {
      * Send a message to the extension to create a buffer file
      */
     createBufferFile(bufferName: string, filePath: string): void {
-        if (!this.transport) return;
+        if (!this.transport) {
+            return;
+        }
         this.transport.postMessage({
             type: 'createBufferFile',
             payload: {
@@ -172,7 +182,9 @@ export class ConfigManager {
      * Remove a buffer from the configuration
      */
     removeBuffer(bufferName: string): boolean {
-        if (!this.config) return false;
+        if (!this.config) {
+            return false;
+        }
 
         const updatedPasses = { ...this.config.passes };
         delete updatedPasses[bufferName];
@@ -189,15 +201,29 @@ export class ConfigManager {
      * Rename a buffer pass
      */
     renameBuffer(oldName: string, newName: string): boolean {
-        if (!this.config) return false;
-        if (oldName === newName) return false;
-        if (oldName === 'Image' || oldName === 'common') return false;
-        if (newName === 'Image' || newName === 'common') return false;
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) return false;
-        if (this.config.passes[newName]) return false; // name taken
+        if (!this.config) {
+            return false;
+        }
+        if (oldName === newName) {
+            return false;
+        }
+        if (oldName === 'Image' || oldName === 'common') {
+            return false;
+        }
+        if (newName === 'Image' || newName === 'common') {
+            return false;
+        }
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
+            return false;
+        }
+        if (this.config.passes[newName]) {
+            return false;
+        }
 
         const pass = this.config.passes[oldName];
-        if (!pass) return false;
+        if (!pass) {
+            return false;
+        }
 
         // Build new passes object preserving key order
         const newPasses: Record<string, any> = {};
@@ -221,10 +247,14 @@ export class ConfigManager {
      * Update a buffer's path
      */
     updateBufferPath(bufferName: string, path: string): boolean {
-        if (!this.config) return false;
+        if (!this.config) {
+            return false;
+        }
 
         const currentBuffer = this.config.passes[bufferName] as BufferPass;
-        if (!currentBuffer) return false;
+        if (!currentBuffer) {
+            return false;
+        }
 
         const updatedConfig = {
             ...this.config,
@@ -278,7 +308,9 @@ export class ConfigManager {
      * Update the configuration version
      */
     updateVersion(version: string): boolean {
-        if (!this.config) return false;
+        if (!this.config) {
+            return false;
+        }
 
         const updatedConfig = {
             ...this.config,
@@ -321,11 +353,15 @@ export class ConfigManager {
         );
         console.log('getBufferList: final result:', result);
         return result;
-    }    /**
+    }
+
+    /**
      * Get buffer configuration
      */
     getBuffer(bufferName: string): BufferPass | ImagePass | null {
-        if (!this.config) return null;
+        if (!this.config) {
+            return null;
+        }
         const buffer = this.config.passes[bufferName];
         return (buffer && typeof buffer === 'object') ? buffer as BufferPass | ImagePass : null;
     }
@@ -401,7 +437,9 @@ export class ConfigManager {
             console.log('Sending updateConfig message via transport');
             // Strip resolved_path from config before saving - it's only for rendering
             const cleanText = JSON.stringify(newConfig, (key, value) => {
-                if (key === 'resolved_path') return undefined;
+                if (key === 'resolved_path') {
+                    return undefined;
+                }
                 return value;
             }, 2);
             this.transport.postMessage({

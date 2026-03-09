@@ -177,6 +177,37 @@ describe('ConfigManager', () => {
       expect(config!.passes.BufferA).toEqual({ path: '', inputs: {} });
     });
 
+    it('should create default config and add buffer when config is null', () => {
+      // No setConfig call — config is null
+      const name = configManager.addBuffer();
+
+      expect(name).toBe('BufferA');
+      const config = configManager.getConfig();
+      expect(config).not.toBeNull();
+      expect(config!.version).toBe('1.0');
+      expect(config!.passes.Image).toBeDefined();
+      expect(config!.passes.BufferA).toEqual({ path: '', inputs: {} });
+    });
+
+    it('should send updateConfig message when creating buffer from null config', () => {
+      const name = configManager.addBuffer();
+
+      expect(name).toBe('BufferA');
+      expect(transport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'updateConfig',
+          payload: expect.objectContaining({
+            config: expect.objectContaining({
+              passes: expect.objectContaining({
+                Image: expect.any(Object),
+                BufferA: { path: '', inputs: {} }
+              })
+            })
+          })
+        })
+      );
+    });
+
     it('should auto-name sequentially', () => {
       const config = createTestConfig();
       config.passes.BufferA = { path: 'a.glsl', inputs: {} };
