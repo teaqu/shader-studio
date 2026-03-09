@@ -76,17 +76,65 @@ describe("CaptureDecoder.extractComponentGrid", () => {
   });
 
   it("should extract G channel", () => {
-    const pixelData = new Float32Array([
-      0.0, 10.0, 0.0, 0.0,
-      0.0, 20.0, 0.0, 0.0,
-    ]);
-    const result = CaptureDecoder.extractComponentGrid(pixelData, 1, 1); // single row = 2 pixels but gridSize=1
-    // Actually gridSize=1 means 1 pixel only, let's use gridSize=2 with 4 pixels
-    // Rerun with grid 1x2... hmm, gridSize^2 pixels is expected
-    // Let's make pixelData for gridSize=1 (1 pixel)
     const single = new Float32Array([5.0, 10.0, 15.0, 20.0]);
     const gResult = CaptureDecoder.extractComponentGrid(single, 1, 1); // G channel of 1x1 grid
     expect(gResult[0]).toBeCloseTo(10.0);
+  });
+
+  it("should extract from non-square grid using gridHeight parameter", () => {
+    // 3 wide × 2 tall = 6 pixels
+    const pixelData = new Float32Array([
+      1.0, 0.0, 0.0, 0.0,  // (0,0)
+      2.0, 0.0, 0.0, 0.0,  // (1,0)
+      3.0, 0.0, 0.0, 0.0,  // (2,0)
+      4.0, 0.0, 0.0, 0.0,  // (0,1)
+      5.0, 0.0, 0.0, 0.0,  // (1,1)
+      6.0, 0.0, 0.0, 0.0,  // (2,1)
+    ]);
+    const result = CaptureDecoder.extractComponentGrid(pixelData, 3, 0, 2); // R channel, 3×2
+    expect(result).toHaveLength(6);
+    expect(result[0]).toBeCloseTo(1.0);
+    expect(result[5]).toBeCloseTo(6.0);
+  });
+
+  it("should extract from tall non-square grid", () => {
+    // 2 wide × 3 tall = 6 pixels
+    const pixelData = new Float32Array([
+      0.0, 10.0, 0.0, 0.0,
+      0.0, 20.0, 0.0, 0.0,
+      0.0, 30.0, 0.0, 0.0,
+      0.0, 40.0, 0.0, 0.0,
+      0.0, 50.0, 0.0, 0.0,
+      0.0, 60.0, 0.0, 0.0,
+    ]);
+    const result = CaptureDecoder.extractComponentGrid(pixelData, 2, 1, 3); // G channel, 2×3
+    expect(result).toHaveLength(6);
+    expect(result[0]).toBeCloseTo(10.0);
+    expect(result[5]).toBeCloseTo(60.0);
+  });
+
+  it("should handle single-row grid (width×1)", () => {
+    const pixelData = new Float32Array([
+      7.0, 0.0, 0.0, 0.0,
+      8.0, 0.0, 0.0, 0.0,
+      9.0, 0.0, 0.0, 0.0,
+    ]);
+    const result = CaptureDecoder.extractComponentGrid(pixelData, 3, 0, 1);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBeCloseTo(7.0);
+    expect(result[2]).toBeCloseTo(9.0);
+  });
+
+  it("legacy square call without gridHeight still works", () => {
+    // 2×2 grid = 4 pixels
+    const pixelData = new Float32Array([
+      1.0, 0.0, 0.0, 0.0,
+      2.0, 0.0, 0.0, 0.0,
+      3.0, 0.0, 0.0, 0.0,
+      4.0, 0.0, 0.0, 0.0,
+    ]);
+    const result = CaptureDecoder.extractComponentGrid(pixelData, 2, 0);
+    expect(result).toHaveLength(4);
   });
 });
 

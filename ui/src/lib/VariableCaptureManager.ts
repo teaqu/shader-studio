@@ -20,24 +20,28 @@ export interface CapturedVariable {
   histogram: { bins: number[]; min: number; max: number } | null;  // expanded histogram (scalars only)
   channelHistograms: Array<{ bins: number[]; min: number; max: number; label: string }> | null;
   colorFrequencies: ColorFrequency[] | null;                         // expanded vec: top colors by frequency
-  thumbnail: Uint8ClampedArray | null;                               // gridSize×gridSize×4 RGBA bytes for spatial preview
+  thumbnail: Uint8ClampedArray | null;                               // gridWidth×gridHeight×4 RGBA bytes for spatial preview
+  gridWidth: number;               // thumbnail pixel width
+  gridHeight: number;              // thumbnail pixel height
 }
 
 /**
- * Build a displayable 32×32 RGBA thumbnail from float capture data.
+ * Build a displayable RGBA thumbnail from float capture data.
  * Raw clamp to [0,1] — no normalization — so actual shader colour values
  * are preserved faithfully (e.g. light = uv.y / 9 stays near-black).
  */
 function buildThumbnail(
   rgba: Float32Array,
   varType: string,
-  gridSize: number,
+  gridWidth: number,
+  gridHeight: number,
 ): Uint8ClampedArray {
-  const pixels = new Uint8ClampedArray(gridSize * gridSize * 4);
+  const totalPixels = gridWidth * gridHeight;
+  const pixels = new Uint8ClampedArray(totalPixels * 4);
   const isScalar = varType === 'float' || varType === 'int' || varType === 'bool';
   const clamp = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 255);
 
-  for (let i = 0; i < gridSize * gridSize; i++) {
+  for (let i = 0; i < totalPixels; i++) {
     if (isScalar) {
       const v = clamp(rgba[i * 4]);
       pixels[i * 4 + 0] = v;
@@ -55,15 +59,16 @@ function buildThumbnail(
 
 /**
  * Quantize and count colors from a grid capture, returning the most frequent colors.
- * Uses 8 levels per channel (step ~0.143) for sensible clustering with 32×32 samples.
+ * Uses 8 levels per channel (step ~0.143) for sensible clustering.
  */
 function computeColorFrequencies(
   rgba: Float32Array,
-  gridSize: number,
+  gridWidth: number,
+  gridHeight: number,
   compCount: number,
 ): ColorFrequency[] {
   const LEVELS = 8;
-  const totalPixels = gridSize * gridSize;
+  const totalPixels = gridWidth * gridHeight;
   const counts = new Map<number, { r: number; g: number; b: number; count: number }>();
 
   for (let i = 0; i < totalPixels; i++) {
@@ -103,6 +108,31 @@ interface CaptureParams {
   pollingMs: number;
 }
 
+/**
+ * Compute grid dimensions that match the canvas aspect ratio.
+ * Total pixels ≈ sampleSize², but shaped to match the shader's aspect ratio.
+ */
+export function computeGridDimensions(
+  sampleSize: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): { gridWidth: number; gridHeight: number } {
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    return { gridWidth: sampleSize, gridHeight: sampleSize };
+  }
+
+  const aspect = canvasWidth / canvasHeight;
+  const totalPixels = sampleSize * sampleSize;
+
+  // gridWidth / gridHeight = aspect
+  // gridWidth * gridHeight = totalPixels
+  // => gridHeight = sqrt(totalPixels / aspect)
+  const gridHeight = Math.max(1, Math.round(Math.sqrt(totalPixels / aspect)));
+  const gridWidth = Math.max(1, Math.round(gridHeight * aspect));
+
+  return { gridWidth, gridHeight };
+}
+
 export class VariableCaptureManager {
   private capturer: VariableCapturer | null = null;
   private dirty = false;
@@ -116,7 +146,8 @@ export class VariableCaptureManager {
   private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
   private expectedCount = 0;
   private declaredOrder: string[] = [];
-  private lastGridSize = 32;
+  private lastGridWidth = 32;
+  private lastGridHeight = 32;
   private pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -135,7 +166,7 @@ export class VariableCaptureManager {
       this.pollTimeout = null;
     }
     // Paused: store params but don't issue captures
-    if (params.refreshMode === 'pause') return;
+    if (params.refreshMode === 'pause') { return; }
     this.dirty = true;
     if (!this.loopRunning && !this.disposed) {
       this.loopRunning = true;
@@ -168,7 +199,7 @@ export class VariableCaptureManager {
     }
   }
 
-  private captureLoop(timestamp: number): void {
+  private captureLoop(_timestamp: number): void {
     if (this.disposed) { this.loopRunning = false; return; }
     this.rafHandle = null;
 
@@ -235,6 +266,12 @@ export class VariableCaptureManager {
 
     const isPixelMode = params.pixelX !== null && params.pixelY !== null;
 
+    const { gridWidth, gridHeight } = computeGridDimensions(
+      params.sampleSize,
+      params.canvasWidth,
+      params.canvasHeight,
+    );
+
     const captures: Array<{ varName: string; varType: string; captureShader: string }> = [];
 
     for (const v of vars) {
@@ -246,19 +283,21 @@ export class VariableCaptureManager {
         params.loopMaxIters,
         params.customParams,
         isPixelMode,
-        params.sampleSize,
+        gridWidth,
+        gridHeight,
       );
       if (shader) {
         captures.push({ varName: v.varName, varType: v.varType, captureShader: shader });
       }
     }
 
-    if (captures.length === 0) return;
+    if (captures.length === 0) { return; }
 
     const uniforms = this.renderingEngine.getCaptureUniforms();
     this.pendingResults = [];
     this.declaredOrder = captures.map(c => c.varName);
-    this.lastGridSize = params.sampleSize;
+    this.lastGridWidth = gridWidth;
+    this.lastGridHeight = gridHeight;
 
     let issued: number;
     if (isPixelMode) {
@@ -271,10 +310,10 @@ export class VariableCaptureManager {
         uniforms,
       );
     } else {
-      issued = this.capturer.issueCaptureGrid(captures, uniforms, params.sampleSize);
+      issued = this.capturer.issueCaptureGrid(captures, uniforms, gridWidth, gridHeight);
     }
 
-    if (issued === 0) return;
+    if (issued === 0) { return; }
     this.expectedCount = issued;
     this.collecting = true;
 
@@ -306,16 +345,19 @@ export class VariableCaptureManager {
           channelHistograms: null,
           colorFrequencies: null,
           thumbnail: null,
+          gridWidth: 1,
+          gridHeight: 1,
         });
       } else {
         // Grid capture
-        const gridSize = this.lastGridSize;
+        const gridWidth = this.lastGridWidth;
+        const gridHeight = this.lastGridHeight;
         const compCount = CaptureDecoder.decodePixel(new Float32Array([0, 0, 0, 0]), result.varType).length;
         const componentStats: { min: number; max: number; mean: number }[] = [];
         const grids: Float32Array[] = [];
 
         for (let c = 0; c < compCount; c++) {
-          grids.push(CaptureDecoder.extractComponentGrid(result.rgba, gridSize, c));
+          grids.push(CaptureDecoder.extractComponentGrid(result.rgba, gridWidth, c, gridHeight));
         }
 
         for (let c = 0; c < compCount; c++) {
@@ -338,7 +380,7 @@ export class VariableCaptureManager {
           }
         } else if (this.expandedVars.has(result.varName)) {
           // Vec types: color frequency palette + per-channel histograms
-          colorFrequencies = computeColorFrequencies(result.rgba, gridSize, compCount);
+          colorFrequencies = computeColorFrequencies(result.rgba, gridWidth, gridHeight, compCount);
           const channelLabels = ['x', 'y', 'z', 'w'];
           channelHistograms = grids.map((grid, c) => ({
             ...CaptureDecoder.buildHistogram(grid, 20),
@@ -346,7 +388,7 @@ export class VariableCaptureManager {
           }));
         }
 
-        const thumbnail = buildThumbnail(result.rgba, result.varType, gridSize);
+        const thumbnail = buildThumbnail(result.rgba, result.varType, gridWidth, gridHeight);
 
         capturedVars.push({
           varName: result.varName,
@@ -359,6 +401,8 @@ export class VariableCaptureManager {
           channelHistograms,
           colorFrequencies,
           thumbnail,
+          gridWidth,
+          gridHeight,
         });
       }
     }

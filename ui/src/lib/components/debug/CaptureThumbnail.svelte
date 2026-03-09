@@ -1,27 +1,34 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  export let pixels: Uint8ClampedArray;  // gridSize×gridSize×4 RGBA bytes
-  export let size: number = 32;          // CSS display size in px
+  export let pixels: Uint8ClampedArray;  // gridWidth×gridHeight×4 RGBA bytes
+  export let gridWidth: number;
+  export let gridHeight: number;
+  export let maxSize: number = 32;       // max CSS display size in px (for the larger dimension)
 
   let canvas: HTMLCanvasElement;
   let mounted = false;
   let hovered = false;
 
-  $: gridPixelSize = Math.round(Math.sqrt(pixels.length / 4));
-  $: canExpand = gridPixelSize > size;
+  $: displayWidth = gridWidth >= gridHeight
+    ? maxSize
+    : Math.round(maxSize * (gridWidth / gridHeight));
+  $: displayHeight = gridHeight >= gridWidth
+    ? maxSize
+    : Math.round(maxSize * (gridHeight / gridWidth));
+  $: canExpand = gridWidth > displayWidth || gridHeight > displayHeight;
 
   function draw() {
-    if (!canvas || !mounted || gridPixelSize < 1) return;
+    if (!canvas || !mounted || gridWidth < 1 || gridHeight < 1) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = gridPixelSize;
-    canvas.height = gridPixelSize;
-    ctx.putImageData(new ImageData(pixels, gridPixelSize, gridPixelSize), 0, 0);
+    canvas.width = gridWidth;
+    canvas.height = gridHeight;
+    ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);
   }
 
   onMount(() => { mounted = true; draw(); });
-  $: pixels, draw();
+  $: pixels, gridWidth, gridHeight, draw();
 </script>
 
 <div
@@ -31,38 +38,37 @@
 >
   <canvas
     bind:this={canvas}
-    width={gridPixelSize}
-    height={gridPixelSize}
-    style="width: {size}px; height: {size}px; image-rendering: pixelated;"
+    width={gridWidth}
+    height={gridHeight}
+    style="width: {displayWidth}px; height: {displayHeight}px; image-rendering: pixelated;"
     class="thumb"
   />
   {#if canExpand && hovered}
     <canvas
-      width={gridPixelSize}
-      height={gridPixelSize}
-      style="width: {gridPixelSize}px; height: {gridPixelSize}px; image-rendering: pixelated;"
+      width={gridWidth}
+      height={gridHeight}
+      style="width: {gridWidth}px; height: {gridHeight}px; image-rendering: pixelated;"
       class="thumb-expanded"
-      use:drawExpanded={pixels}
+      use:drawExpanded={{ pixels, gridWidth, gridHeight }}
     />
   {/if}
 </div>
 
 <script lang="ts" context="module">
-  function drawExpanded(node: HTMLCanvasElement, pixels: Uint8ClampedArray) {
-    render(node, pixels);
+  function drawExpanded(node: HTMLCanvasElement, params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
+    render(node, params);
     return {
-      update(pixels: Uint8ClampedArray) { render(node, pixels); }
+      update(params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) { render(node, params); }
     };
   }
 
-  function render(canvas: HTMLCanvasElement, pixels: Uint8ClampedArray) {
-    const size = Math.round(Math.sqrt(pixels.length / 4));
-    if (size < 1) return;
+  function render(canvas: HTMLCanvasElement, { pixels, gridWidth, gridHeight }: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
+    if (gridWidth < 1 || gridHeight < 1) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = size;
-    canvas.height = size;
-    ctx.putImageData(new ImageData(pixels, size, size), 0, 0);
+    canvas.width = gridWidth;
+    canvas.height = gridHeight;
+    ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);
   }
 </script>
 
@@ -74,7 +80,6 @@
 
   .thumb {
     display: block;
-    border-radius: 2px;
   }
 
   .thumb-expanded {
@@ -82,7 +87,6 @@
     top: 0;
     left: 0;
     z-index: 10;
-    border-radius: 3px;
     border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }

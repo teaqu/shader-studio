@@ -71,7 +71,8 @@ export class VariableCaptureBuilder {
     loopMaxIterations: Map<number, number>,
     customParameters: Map<number, string>,
     captureCoordUniform: boolean,
-    gridSize: number = DEFAULT_GRID_SIZE,
+    gridWidth: number = DEFAULT_GRID_SIZE,
+    gridHeight: number = DEFAULT_GRID_SIZE,
   ): string | null {
     const lines = code.split('\n');
 
@@ -128,7 +129,7 @@ export class VariableCaptureBuilder {
     if (captureCoordUniform) {
       result = VariableCaptureBuilder.injectCaptureCoord(result);
     } else {
-      result = VariableCaptureBuilder.injectGridCoord(result, gridSize);
+      result = VariableCaptureBuilder.injectGridCoord(result, gridWidth, gridHeight);
     }
 
     return result;
@@ -258,16 +259,16 @@ export class VariableCaptureBuilder {
   }
 
   /**
-   * Injects `fragCoord = gl_FragCoord.xy / vec2(gridSize) * iResolution.xy;`
-   * at the start of mainImage body so 32×32 grid samples cover the full canvas.
+   * Injects `fragCoord = gl_FragCoord.xy / vec2(gridWidth, gridHeight) * iResolution.xy;`
+   * at the start of mainImage body so the grid samples cover the full canvas with correct aspect ratio.
    */
-  private static injectGridCoord(code: string, gridSize: number): string {
+  private static injectGridCoord(code: string, gridWidth: number, gridHeight: number): string {
     const lines = code.split('\n');
     for (let i = 0; i < lines.length; i++) {
       if (/void\s+mainImage\s*\(/.test(lines[i])) {
         for (let j = i; j < lines.length && j < i + 5; j++) {
           if (lines[j].replace(/\/\/.*$/, '').includes('{')) {
-            lines.splice(j + 1, 0, `  fragCoord = gl_FragCoord.xy / vec2(${gridSize}.0) * iResolution.xy;`);
+            lines.splice(j + 1, 0, `  fragCoord = gl_FragCoord.xy / vec2(${gridWidth}.0, ${gridHeight}.0) * iResolution.xy;`);
             break;
           }
         }

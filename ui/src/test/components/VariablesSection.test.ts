@@ -30,6 +30,8 @@ function makeGridVar(name: string, type: string, mean: number): CapturedVariable
     channelHistograms: null,
     colorFrequencies: null,
     thumbnail: null,
+    gridWidth: 32,
+    gridHeight: 32,
   };
 }
 
@@ -45,6 +47,8 @@ function makePixelVar(name: string, type: string, value: number[]): CapturedVari
     channelHistograms: null,
     colorFrequencies: null,
     thumbnail: null,
+    gridWidth: 1,
+    gridHeight: 1,
   };
 }
 

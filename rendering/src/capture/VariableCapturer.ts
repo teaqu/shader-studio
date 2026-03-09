@@ -112,16 +112,17 @@ export class VariableCapturer {
   }
 
   /**
-   * Issue N async captures on a gridSize×gridSize grid covering the full canvas. Returns immediately.
+   * Issue N async captures on a gridWidth×gridHeight grid covering the full canvas. Returns immediately.
    */
   issueCaptureGrid(
     captures: Array<{ varName: string; varType: string; captureShader: string }>,
     uniforms: CaptureUniforms,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
   ): number {
     if (captures.length === 0) return 0;
 
-    const fbo = this.createFloatFBO(gridSize, gridSize);
+    const fbo = this.createFloatFBO(gridWidth, gridHeight);
     if (!fbo) return 0;
     let issued = 0;
 
@@ -132,20 +133,20 @@ export class VariableCapturer {
       this.renderCaptureShader(
         piShader,
         fbo,
-        gridSize,
-        gridSize,
+        gridWidth,
+        gridHeight,
         uniforms,
         uniforms.res[0],
         uniforms.res[1],
         null,
       );
 
-      const dataSize = gridSize * gridSize * RGBA_CHANNELS * FLOAT_BYTES;
+      const dataSize = gridWidth * gridHeight * RGBA_CHANNELS * FLOAT_BYTES;
       const pbo = this.allocatePBO(dataSize);
 
       this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, pbo);
       this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, fbo);
-      this.gl.readPixels(0, 0, gridSize, gridSize, this.gl.RGBA, this.gl.FLOAT, 0);
+      this.gl.readPixels(0, 0, gridWidth, gridHeight, this.gl.RGBA, this.gl.FLOAT, 0);
       this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, null);
       this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, null);
 

@@ -27,14 +27,19 @@ export class CaptureDecoder {
 
   /**
    * Extract one component across all pixels in a grid readback.
-   * pixelData: flat Float32Array of (gridSize*gridSize*4) floats (RGBA row-major).
+   * pixelData: flat Float32Array of (totalPixels*4) floats (RGBA row-major).
+   * Accepts either (pixelData, totalPixels, componentIndex) or legacy (pixelData, gridSize, componentIndex)
+   * where gridSize is treated as sqrt of total pixels for square grids.
    */
   static extractComponentGrid(
     pixelData: Float32Array,
-    gridSize: number,
+    gridWidthOrSize: number,
     componentIndex: number, // 0=R, 1=G, 2=B, 3=A
+    gridHeight?: number,
   ): Float32Array {
-    const numPixels = gridSize * gridSize;
+    const numPixels = gridHeight !== undefined
+      ? gridWidthOrSize * gridHeight
+      : gridWidthOrSize * gridWidthOrSize;
     const result = new Float32Array(numPixels);
     for (let i = 0; i < numPixels; i++) {
       result[i] = pixelData[i * 4 + componentIndex];
