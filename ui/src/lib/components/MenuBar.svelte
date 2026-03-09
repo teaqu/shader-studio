@@ -280,7 +280,7 @@
 
 <div class="menu-bar">
   <div class="left-group">
-    <button on:click={onReset} aria-label="Reset shader">
+    <button on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
       {@html resetIcon}
     </button>
     <div class="pause-button-container">
@@ -288,6 +288,7 @@
         on:click={onTogglePause}
         aria-label="Toggle pause"
         class:error={hasErrors}
+        disabled={!hasShader}
       >
         {#if isPaused}
           {@html playIcon}
@@ -299,12 +300,13 @@
         <div class="error-tooltip">{errorMessage}</div>
       {/if}
     </div>
-    <TimeControls {timeManager} {currentTime} />
+    <TimeControls {timeManager} {currentTime} disabled={!hasShader} />
     <div class="fps-menu-container">
       <button
         class="menu-title fps-button"
         on:click={handleFPSClick}
         aria-label="Change FPS limit"
+        disabled={!hasShader}
       >
         {currentFPS.toFixed(1)} FPS
       </button>
@@ -342,6 +344,7 @@
         class="menu-title resolution-button"
         on:click={handleResolutionClick}
         aria-label="Change resolution settings"
+        disabled={!hasShader}
       >
         {canvasWidth} × {canvasHeight}
       </button>
@@ -442,6 +445,7 @@
       on:click={onToggleEditorOverlay}
       aria-label="Toggle editor overlay"
       class:active={isEditorOverlayVisible}
+      disabled={!hasShader}
       title="Toggle editor overlay"
     >
       {@html editorIcon}
@@ -450,6 +454,7 @@
       class="collapse-fork"
       on:click={() => { onFork(); }}
       aria-label="Fork shader"
+      disabled={!hasShader}
       title="Fork shader to a new file"
     >
       {@html forkIcon}
@@ -464,7 +469,7 @@
     >
       {@html configIcon}
     </button>
-    <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked}>
+    <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         {@html lockIcon}
       {:else}
@@ -506,6 +511,7 @@
             on:click={() => { onToggleEditorOverlay(); showOptionsMenu = false; }}
             aria-label="Toggle editor overlay"
             class:active={isEditorOverlayVisible}
+            disabled={!hasShader}
           >
             {@html editorIcon}
             <span>Editor</span>
@@ -524,6 +530,7 @@
             class="options-menu-item show-fork"
             on:click={() => { onFork(); showOptionsMenu = false; }}
             aria-label="Fork shader"
+            disabled={!hasShader}
           >
             {@html forkIcon}
             <span>Fork</span>
@@ -543,6 +550,7 @@
             on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
             aria-label="Toggle lock"
             class:active={isLocked}
+            disabled={!hasShader}
           >
             {#if isLocked}
               {@html lockIcon}
@@ -555,6 +563,7 @@
             class="options-menu-item"
             on:click={() => { onResetLayout(); showOptionsMenu = false; }}
             aria-label="Reset layout"
+            disabled={!hasShader}
           >
             {@html resetIcon}
             <span>Reset Layout</span>
@@ -563,6 +572,7 @@
             class="options-menu-item"
             on:click={handleRefresh}
             aria-label="Refresh shader"
+            disabled={!hasShader}
           >
             {@html refreshIcon}
             <span>Refresh</span>

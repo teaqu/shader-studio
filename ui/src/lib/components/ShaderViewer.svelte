@@ -596,6 +596,10 @@
         if (!locked || lockedPath === event.data.path) {
           // Unpause on first shader load
           const isFirstShader = !hasShader && event.data.path;
+          if (isFirstShader) {
+            configPanelStore.restoreFromStorage();
+            debugPanelStore.restoreFromStorage();
+          }
           currentConfig = event.data.config || null;
           pathMap = event.data.pathMap || {};
           bufferPathMap = event.data.bufferPathMap || {};
@@ -789,6 +793,11 @@
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
     />
+    {#if !hasShader}
+      <div class="no-shader-placeholder">
+        <span>No shader active</span>
+      </div>
+    {/if}
     {#if initialized}
       <EditorOverlay
         isVisible={editorOverlayVisible}
@@ -962,5 +971,23 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .no-shader-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .no-shader-placeholder span {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 1.1rem;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    user-select: none;
   }
 </style>

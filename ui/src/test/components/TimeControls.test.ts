@@ -359,6 +359,30 @@ describe('TimeControls Component', () => {
     });
   });
 
+  describe('Disabled State', () => {
+    it('should disable time button when disabled prop is true', () => {
+      render(TimeControls, { props: { ...defaultProps, disabled: true } });
+
+      const timeButton = screen.getByLabelText('Time settings');
+      expect(timeButton).toBeDisabled();
+    });
+
+    it('should enable time button when disabled prop is false', () => {
+      render(TimeControls, { props: { ...defaultProps, disabled: false } });
+
+      const timeButton = screen.getByLabelText('Time settings');
+      expect(timeButton).not.toBeDisabled();
+    });
+
+    it('should enable time button by default when disabled prop is omitted', () => {
+      render(TimeControls, { props: defaultProps });
+
+      const timeButton = screen.getByLabelText('Time settings');
+      expect(timeButton).not.toBeDisabled();
+    });
+
+});
+
   describe('Integration', () => {
     it('should initialize with values from timeManager', async () => {
       mockTimeManager.getSpeed.mockReturnValue(2.0);
