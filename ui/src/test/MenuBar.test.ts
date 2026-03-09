@@ -1213,6 +1213,134 @@ describe('MenuBar Component', () => {
     });
   });
 
+  describe('No Shader Disabled State', () => {
+    it('should disable reset button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Reset shader')).toBeDisabled();
+    });
+
+    it('should enable reset button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Reset shader')).not.toBeDisabled();
+    });
+
+    it('should disable play/pause button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Toggle pause')).toBeDisabled();
+    });
+
+    it('should enable play/pause button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Toggle pause')).not.toBeDisabled();
+    });
+
+    it('should disable time button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Time settings')).toBeDisabled();
+    });
+
+    it('should enable time button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Time settings')).not.toBeDisabled();
+    });
+
+    it('should disable FPS limit button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Change FPS limit')).toBeDisabled();
+    });
+
+    it('should disable resolution button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Change resolution settings')).toBeDisabled();
+    });
+
+    it('should disable editor overlay button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Toggle editor overlay')).toBeDisabled();
+    });
+
+    it('should enable editor overlay button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Toggle editor overlay')).not.toBeDisabled();
+    });
+
+    it('should disable fork button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Fork shader')).toBeDisabled();
+    });
+
+    it('should enable fork button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Fork shader')).not.toBeDisabled();
+    });
+
+    it('should disable lock button when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Toggle lock')).toBeDisabled();
+    });
+
+    it('should enable lock button when hasShader is true', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      expect(screen.getByLabelText('Toggle lock')).not.toBeDisabled();
+    });
+
+    it('should keep options menu button enabled when hasShader is false', () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      expect(screen.getByLabelText('Open options menu')).not.toBeDisabled();
+    });
+
+    it('should disable shader-affecting options menu items when hasShader is false', async () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      // Shader-affecting items should be disabled
+      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
+      expect(editorButtons[editorButtons.length - 1]).toBeDisabled();
+
+      const forkButtons = screen.getAllByLabelText('Fork shader');
+      expect(forkButtons[forkButtons.length - 1]).toBeDisabled();
+
+      const lockButtons = screen.getAllByLabelText('Toggle lock');
+      expect(lockButtons[lockButtons.length - 1]).toBeDisabled();
+
+      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
+      expect(screen.getByLabelText('Refresh shader')).toBeDisabled();
+    });
+
+    it('should keep New Shader, Shader Explorer, and Snippet Library enabled when hasShader is false', async () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByLabelText('New shader')).not.toBeDisabled();
+      expect(screen.getByLabelText('Shader explorer')).not.toBeDisabled();
+      expect(screen.getByLabelText('Snippet library')).not.toBeDisabled();
+    });
+
+    it('should enable shader-affecting options menu items when hasShader is true', async () => {
+      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
+      expect(editorButtons[editorButtons.length - 1]).not.toBeDisabled();
+
+      const forkButtons = screen.getAllByLabelText('Fork shader');
+      expect(forkButtons[forkButtons.length - 1]).not.toBeDisabled();
+
+      const lockButtons = screen.getAllByLabelText('Toggle lock');
+      expect(lockButtons[lockButtons.length - 1]).not.toBeDisabled();
+
+      expect(screen.getByLabelText('Reset layout')).not.toBeDisabled();
+      expect(screen.getByLabelText('Refresh shader')).not.toBeDisabled();
+    });
+
+});
+
   describe('Extension Command Menu Items', () => {
     it('should call onExtensionCommand with newShader', async () => {
       const onExtensionCommand = vi.fn();

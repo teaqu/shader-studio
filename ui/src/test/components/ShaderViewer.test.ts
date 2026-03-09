@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { get } from 'svelte/store';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
@@ -140,9 +141,14 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
 describe('ShaderViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(true);
     editorOverlayStore.setVisible(false);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
   });
 
   // Helper: send a shaderSource message to set hasShader = true
@@ -1154,6 +1160,77 @@ describe('ShaderViewer', () => {
       type: 'extensionCommand',
       payload: { command: 'newShader' }
     });
+  });
+
+  it('should show no-shader placeholder when no shader is loaded', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const placeholder = container.querySelector('.no-shader-placeholder');
+    expect(placeholder).toBeTruthy();
+    expect(placeholder?.textContent?.trim()).toBe('No shader active');
+  });
+
+  it('should hide no-shader placeholder after a shader is loaded', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Placeholder should be visible before shader loads
+    expect(container.querySelector('.no-shader-placeholder')).toBeTruthy();
+
+    // Load a shader
+    await loadShader();
+
+    // Placeholder should be gone
+    expect(container.querySelector('.no-shader-placeholder')).toBeFalsy();
+  });
+
+  it('should not restore config panel from localStorage before shader loads', async () => {
+    // Set store to hidden, then write localStorage (after setVisible to avoid overwrite)
+    configPanelStore.setVisible(false);
+    localStorage.setItem('shader-studio-config-panel-state', JSON.stringify({ isVisible: true }));
+
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Config panel should NOT be visible even though localStorage says it should be
+    expect(container.querySelector('.config-panel')).toBeFalsy();
+  });
+
+  it('should restore config panel from localStorage on first shader load', async () => {
+    // Set store to hidden, then write localStorage (after setVisible to avoid overwrite)
+    configPanelStore.setVisible(false);
+    localStorage.setItem('shader-studio-config-panel-state', JSON.stringify({ isVisible: true }));
+
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load a shader — should trigger restoreFromStorage
+    await loadShader();
+
+    // Config panel should now be visible (restored from localStorage)
+    expect(container.querySelector('.config-panel')).toBeTruthy();
+  });
+
+  it('should restore debug panel visibility from localStorage on first shader load', async () => {
+    // Set store to default, then write localStorage (after setVisible to avoid overwrite)
+    debugPanelStore.setVisible(true);
+    localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({ isVisible: false }));
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    // Load a shader — should trigger restoreFromStorage
+    await loadShader();
+
+    // Debug panel store should now reflect localStorage (hidden)
+    const state = get(debugPanelStore);
+    expect(state.isVisible).toBe(false);
   });
 
   it('should not toggle config panel when no shader is loaded', async () => {

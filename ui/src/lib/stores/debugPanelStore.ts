@@ -7,20 +7,8 @@ export interface DebugPanelState {
 const STORAGE_KEY = "shader-studio-debug-panel-state";
 
 function createDebugPanelStore() {
-  const getInitialState = (): DebugPanelState => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return { isVisible: parsed.isVisible ?? true };
-      }
-    } catch (error) {
-      console.warn("Failed to load debug panel state from localStorage:", error);
-    }
-    return { isVisible: true };
-  };
-
-  const { subscribe, set, update } = writable<DebugPanelState>(getInitialState());
+  // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
+  const { subscribe, set, update } = writable<DebugPanelState>({ isVisible: true });
 
   const persist = (state: DebugPanelState) => {
     try {
@@ -44,6 +32,18 @@ function createDebugPanelStore() {
         persist(newState);
         return newState;
       }),
+    restoreFromStorage: () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const visible = parsed.isVisible ?? true;
+          set({ isVisible: visible });
+        }
+      } catch (error) {
+        console.warn("Failed to restore debug panel state from localStorage:", error);
+      }
+    },
   };
 }
 

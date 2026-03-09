@@ -3,6 +3,7 @@
 
   export let timeManager: any;
   export let currentTime: number = 0.0;
+  export let disabled: boolean = false;
 
   // Initialize state from timeManager
   let timeSpeed = timeManager?.getSpeed() ?? 1.0;
@@ -76,6 +77,7 @@
     class="menu-title time-button"
     on:click={handleTimeClick}
     aria-label="Time settings"
+    {disabled}
   >
     {currentTime.toFixed(2)}s
   </button>

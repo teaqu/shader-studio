@@ -7,20 +7,8 @@ export interface ConfigPanelState {
 const STORAGE_KEY = "shader-studio-config-panel-state";
 
 function createConfigPanelStore() {
-  const getInitialState = (): ConfigPanelState => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return { isVisible: parsed.isVisible ?? false };
-      }
-    } catch (error) {
-      console.warn("Failed to load config panel state from localStorage:", error);
-    }
-    return { isVisible: false };
-  };
-
-  const { subscribe, set, update } = writable<ConfigPanelState>(getInitialState());
+  // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
+  const { subscribe, set, update } = writable<ConfigPanelState>({ isVisible: false });
 
   const persist = (state: ConfigPanelState) => {
     try {
@@ -44,6 +32,19 @@ function createConfigPanelStore() {
         persist(newState);
         return newState;
       }),
+    restoreFromStorage: () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.isVisible) {
+            set({ isVisible: true });
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to restore config panel state from localStorage:", error);
+      }
+    },
   };
 }
 

@@ -19,13 +19,29 @@ describe('debugPanelStore', () => {
     expect(state.isVisible).toBe(true);
   });
 
-  it('should load state from localStorage', async () => {
+  it('should not restore from localStorage on creation (deferred restore)', async () => {
     localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
       isVisible: false,
     }));
     const store = await importStore();
     const state = get(store);
-    expect(state.isVisible).toBe(false);
+    expect(state.isVisible).toBe(true);
+  });
+
+  it('restoreFromStorage should apply saved state', async () => {
+    localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
+      isVisible: false,
+    }));
+    const store = await importStore();
+    store.restoreFromStorage();
+    expect(get(store).isVisible).toBe(false);
+  });
+
+  it('restoreFromStorage should handle invalid localStorage gracefully', async () => {
+    localStorage.setItem('shader-studio-debug-panel-state', 'not-json');
+    const store = await importStore();
+    store.restoreFromStorage();
+    expect(get(store).isVisible).toBe(true);
   });
 
   it('should fall back to defaults on invalid localStorage', async () => {
