@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import VariableRow from '../../lib/components/debug/VariableRow.svelte';
 import type { CapturedVariable } from '../../lib/VariableCaptureManager';
 
-const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null } as const;
+const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null, gridWidth: 32, gridHeight: 32 } as const;
 
 function makeFloatVar(value: number): CapturedVariable {
   return { varName: 'myFloat', varType: 'float', value: [value], channelMeans: null, channelStats: null, stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS };
@@ -84,6 +84,8 @@ function makeExpandedVecVar(): CapturedVariable {
       { r: 0.2, g: 0.5, b: 0.1, freq: 0.1 },
     ],
     thumbnail: null,
+    gridWidth: 32,
+    gridHeight: 32,
   };
 }
 
@@ -145,6 +147,32 @@ describe('VariableRow', () => {
     render(VariableRow, { props: { variable: v, isPixelMode: false } });
     const canvas = document.querySelector('canvas') as HTMLElement;
     expect(canvas).toBeInTheDocument();
+  });
+
+  it('shows non-square thumbnail canvas for wide aspect ratio grid', () => {
+    // 43×24 = ~16:9
+    const thumb = new Uint8ClampedArray(43 * 24 * 4).fill(128);
+    const v = { ...makeGridVecVar(), thumbnail: thumb, gridWidth: 43, gridHeight: 24 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    expect(canvas).toBeInTheDocument();
+    // Width should be maxSize (32), height proportionally shorter
+    expect(canvas.style.width).toBe('32px');
+    const expectedHeight = Math.round(32 * (24 / 43));
+    expect(canvas.style.height).toBe(`${expectedHeight}px`);
+  });
+
+  it('shows non-square thumbnail canvas for tall aspect ratio grid', () => {
+    // 24×43 = ~9:16
+    const thumb = new Uint8ClampedArray(24 * 43 * 4).fill(128);
+    const v = { ...makeGridVecVar(), thumbnail: thumb, gridWidth: 24, gridHeight: 43 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    expect(canvas).toBeInTheDocument();
+    // Height should be maxSize (32), width proportionally shorter
+    expect(canvas.style.height).toBe('32px');
+    const expectedWidth = Math.round(32 * (24 / 43));
+    expect(canvas.style.width).toBe(`${expectedWidth}px`);
   });
 
   it('shows expand button in grid mode for scalar', () => {
@@ -227,7 +255,7 @@ describe('VariableRow', () => {
         { r: 0.5, g: 0.5, b: 0.0, freq: 0.6 },
         { r: 0.0, g: 0.1, b: 0.0, freq: 0.4 },
       ],
-      thumbnail: null, ignoreZeros: false,
+      thumbnail: null, gridWidth: 32, gridHeight: 32,
     };
     render(VariableRow, { props: { variable: vec2Var, isPixelMode: false } });
     const segments = document.querySelectorAll('.segment');

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { VariableCaptureManager } from '../lib/VariableCaptureManager';
+import { VariableCaptureManager, computeGridDimensions } from '../lib/VariableCaptureManager';
 import type { CapturedVariable } from '../lib/VariableCaptureManager';
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 
@@ -15,18 +15,23 @@ vi.mock('../../../debug/src/VariableCaptureBuilder', () => ({
 // Helpers
 // ------------------------------------------------------------------
 
-function makeGridData(gridSize: number, rValue = 0.5): Float32Array {
-  const data = new Float32Array(gridSize * gridSize * 4);
-  for (let i = 0; i < gridSize * gridSize; i++) {
+// Use the exported function directly
+const computeExpectedGrid = computeGridDimensions;
+
+function makeGridData(gridWidth: number, gridHeight: number, rValue = 0.5): Float32Array {
+  const totalPixels = gridWidth * gridHeight;
+  const data = new Float32Array(totalPixels * 4);
+  for (let i = 0; i < totalPixels; i++) {
     data[i * 4 + 0] = rValue;
     data[i * 4 + 3] = 1.0;
   }
   return data;
 }
 
-function makeVec3GridData(gridSize: number, r: number, g: number, b: number): Float32Array {
-  const data = new Float32Array(gridSize * gridSize * 4);
-  for (let i = 0; i < gridSize * gridSize; i++) {
+function makeVec3GridData(gridWidth: number, gridHeight: number, r: number, g: number, b: number): Float32Array {
+  const totalPixels = gridWidth * gridHeight;
+  const data = new Float32Array(totalPixels * 4);
+  for (let i = 0; i < totalPixels; i++) {
     data[i * 4 + 0] = r;
     data[i * 4 + 1] = g;
     data[i * 4 + 2] = b;
@@ -34,6 +39,9 @@ function makeVec3GridData(gridSize: number, r: number, g: number, b: number): Fl
   }
   return data;
 }
+
+// Pre-compute expected grid for BASE_PARAMS (sampleSize=64, 800×600)
+const BASE_GRID = computeExpectedGrid(64, 800, 600);
 
 const UNIFORMS = {
   time: 0, timeDelta: 0.016, frameRate: 60, frame: 1,
@@ -53,6 +61,71 @@ const BASE_PARAMS = {
   refreshMode: 'manual' as const,
   pollingMs: 500,
 };
+
+// ------------------------------------------------------------------
+// computeGridDimensions unit tests
+// ------------------------------------------------------------------
+
+describe('computeGridDimensions', () => {
+  it('produces square grid for square canvas', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 512, 512);
+    expect(gridWidth).toBe(32);
+    expect(gridHeight).toBe(32);
+  });
+
+  it('produces wider grid for 16:9 canvas', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 1920, 1080);
+    expect(gridWidth).toBeGreaterThan(gridHeight);
+    expect(gridWidth / gridHeight).toBeCloseTo(1920 / 1080, 0);
+  });
+
+  it('produces taller grid for 9:16 canvas', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 1080, 1920);
+    expect(gridHeight).toBeGreaterThan(gridWidth);
+  });
+
+  it('total pixels approximately equals sampleSize squared', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(64, 1920, 1080);
+    const totalPixels = gridWidth * gridHeight;
+    expect(totalPixels).toBeGreaterThan(64 * 64 * 0.85);
+    expect(totalPixels).toBeLessThan(64 * 64 * 1.15);
+  });
+
+  it('handles extreme ultrawide (3:1)', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 3000, 1000);
+    expect(gridWidth / gridHeight).toBeCloseTo(3.0, 0);
+  });
+
+  it('handles extreme portrait (1:3)', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 1000, 3000);
+    expect(gridHeight / gridWidth).toBeCloseTo(3.0, 0);
+  });
+
+  it('very small sampleSize produces grid with minimum 1x1', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(1, 1920, 1080);
+    expect(gridWidth).toBeGreaterThanOrEqual(1);
+    expect(gridHeight).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns square grid when canvas dimensions are zero', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, 0, 0);
+    expect(gridWidth).toBe(32);
+    expect(gridHeight).toBe(32);
+  });
+
+  it('returns square grid when canvas dimensions are negative', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(32, -100, -50);
+    expect(gridWidth).toBe(32);
+    expect(gridHeight).toBe(32);
+  });
+
+  it('consistent dimensions for same inputs', () => {
+    const a = computeGridDimensions(64, 800, 600);
+    const b = computeGridDimensions(64, 800, 600);
+    expect(a.gridWidth).toBe(b.gridWidth);
+    expect(a.gridHeight).toBe(b.gridHeight);
+  });
+});
 
 // ------------------------------------------------------------------
 // Test suite
@@ -171,7 +244,7 @@ describe('VariableCaptureManager', () => {
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(1);
 
-      const data = makeGridData(64, 0.5);
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5);
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: data }]);
 
       // Simulate: onUpdate callback re-triggers notifyStateChange (as Svelte reactivity does)
@@ -266,18 +339,21 @@ describe('VariableCaptureManager', () => {
       mockIssueCaptureGrid.mockReturnValue(0);
     });
 
-    it('passes sampleSize to issueCaptureGrid', () => {
+    it('passes computed grid dimensions to issueCaptureGrid', () => {
+      const { gridWidth, gridHeight } = computeExpectedGrid(32, 800, 600);
       manager.notifyStateChange({ ...BASE_PARAMS, sampleSize: 32 });
       flushRAF();
 
       expect(mockIssueCaptureGrid).toHaveBeenCalledWith(
         expect.any(Array),
         UNIFORMS,
-        32,
+        gridWidth,
+        gridHeight,
       );
     });
 
-    it('passes sampleSize to generateCaptureShader in grid mode', () => {
+    it('passes computed grid dimensions to generateCaptureShader in grid mode', () => {
+      const { gridWidth, gridHeight } = computeExpectedGrid(16, 800, 600);
       manager.notifyStateChange({ ...BASE_PARAMS, sampleSize: 16 });
       flushRAF();
 
@@ -289,7 +365,8 @@ describe('VariableCaptureManager', () => {
         expect.any(Map),
         expect.any(Map),
         false, // grid mode → captureCoordUniform=false
-        16,    // gridSize
+        gridWidth,
+        gridHeight,
       );
     });
 
@@ -308,7 +385,90 @@ describe('VariableCaptureManager', () => {
         expect.any(Map),
         true, // pixel mode → captureCoordUniform=true
         expect.any(Number),
+        expect.any(Number),
       );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Grid dimensions and aspect ratio
+  // ----------------------------------------------------------------
+
+  describe('Grid dimensions and aspect ratio', () => {
+    beforeEach(() => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
+      mockIssueCaptureGrid.mockReturnValue(0);
+    });
+
+    it('wide canvas (16:9) produces wider-than-tall grid', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 1920, canvasHeight: 1080, sampleSize: 32 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      expect(gridWidth).toBeGreaterThan(gridHeight);
+      // Aspect ratio should be close to 16:9
+      const gridAspect = gridWidth / gridHeight;
+      expect(gridAspect).toBeCloseTo(1920 / 1080, 0);
+    });
+
+    it('tall canvas (9:16) produces taller-than-wide grid', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 1080, canvasHeight: 1920, sampleSize: 32 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      expect(gridHeight).toBeGreaterThan(gridWidth);
+    });
+
+    it('square canvas produces square grid', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 512, canvasHeight: 512, sampleSize: 32 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      expect(gridWidth).toBe(gridHeight);
+      expect(gridWidth).toBe(32);
+    });
+
+    it('total pixels approximately equals sampleSize squared', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 1920, canvasHeight: 1080, sampleSize: 64 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      const totalPixels = gridWidth * gridHeight;
+      // Should be within 10% of 64*64=4096
+      expect(totalPixels).toBeGreaterThan(4096 * 0.9);
+      expect(totalPixels).toBeLessThan(4096 * 1.1);
+    });
+
+    it('extreme ultrawide canvas (3:1) preserves aspect ratio', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 3000, canvasHeight: 1000, sampleSize: 32 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      const gridAspect = gridWidth / gridHeight;
+      expect(gridAspect).toBeCloseTo(3.0, 0);
+    });
+
+    it('very small sampleSize (4) still produces valid grid', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 1920, canvasHeight: 1080, sampleSize: 4 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      expect(gridWidth).toBeGreaterThanOrEqual(1);
+      expect(gridHeight).toBeGreaterThanOrEqual(1);
+    });
+
+    it('grid dimensions match between issueCaptureGrid and generateCaptureShader', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 1600, canvasHeight: 900, sampleSize: 64 });
+      flushRAF();
+
+      const [, , captureGridW, captureGridH] = mockIssueCaptureGrid.mock.calls[0];
+      const shaderCall = (VariableCaptureBuilder.generateCaptureShader as any).mock.calls[0];
+      const shaderGridW = shaderCall[7]; // 8th arg = gridWidth
+      const shaderGridH = shaderCall[8]; // 9th arg = gridHeight
+
+      expect(captureGridW).toBe(shaderGridW);
+      expect(captureGridH).toBe(shaderGridH);
     });
   });
 
@@ -337,7 +497,7 @@ describe('VariableCaptureManager', () => {
 
       // First collect tick: only one result
       mockCollectResults
-        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(64) }])
+        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight) }])
         .mockReturnValue([]);
 
       manager.notifyStateChange(BASE_PARAMS);
@@ -356,8 +516,8 @@ describe('VariableCaptureManager', () => {
       mockIssueCaptureGrid.mockReturnValue(2);
 
       mockCollectResults
-        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(64) }])
-        .mockReturnValueOnce([{ varName: 'y', varType: 'float', rgba: makeGridData(64) }])
+        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight) }])
+        .mockReturnValueOnce([{ varName: 'y', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight) }])
         .mockReturnValue([]);
 
       manager.notifyStateChange(BASE_PARAMS);
@@ -381,11 +541,11 @@ describe('VariableCaptureManager', () => {
       // GPU delivers in reverse order: gamma, beta, then alpha last
       mockCollectResults
         .mockReturnValueOnce([
-          { varName: 'gamma', varType: 'float', rgba: makeGridData(64, 0.9) },
-          { varName: 'beta', varType: 'float', rgba: makeGridData(64, 0.5) },
+          { varName: 'gamma', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.9) },
+          { varName: 'beta', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) },
         ])
         .mockReturnValueOnce([
-          { varName: 'alpha', varType: 'float', rgba: makeGridData(64, 0.1) },
+          { varName: 'alpha', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.1) },
         ])
         .mockReturnValue([]);
 
@@ -511,7 +671,7 @@ describe('VariableCaptureManager', () => {
     it('histogram is null when var is not expanded', () => {
       setupFloatCapture();
       mockCollectResults.mockReturnValueOnce([
-        { varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) },
+        { varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) },
       ]).mockReturnValue([]);
 
       manager.notifyStateChange(BASE_PARAMS);
@@ -525,9 +685,10 @@ describe('VariableCaptureManager', () => {
     it('histogram is populated when var is expanded', () => {
       setupFloatCapture();
       // Varying values so histogram has interesting bins
-      const data = makeGridData(64, 0.0);
-      for (let i = 0; i < 64 * 64; i++) {
-        data[i * 4] = i / (64 * 64); // 0..1 gradient
+      const totalPixels = BASE_GRID.gridWidth * BASE_GRID.gridHeight;
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight, 0.0);
+      for (let i = 0; i < totalPixels; i++) {
+        data[i * 4] = i / totalPixels; // 0..1 gradient
       }
       mockCollectResults.mockReturnValueOnce([
         { varName: 'x', varType: 'float', rgba: data },
@@ -541,13 +702,13 @@ describe('VariableCaptureManager', () => {
       const vars: CapturedVariable[] = onUpdate.mock.calls[0][0];
       expect(vars[0].histogram).not.toBeNull();
       expect(vars[0].histogram!.bins).toHaveLength(20);
-      expect(vars[0].histogram!.bins.reduce((a, b) => a + b, 0)).toBe(64 * 64);
+      expect(vars[0].histogram!.bins.reduce((a, b) => a + b, 0)).toBe(totalPixels);
     });
 
     it('setHistogramExpanded false removes histogram on next capture', () => {
       setupFloatCapture();
       mockCollectResults.mockReturnValue([
-        { varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) },
+        { varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) },
       ]);
 
       manager.setHistogramExpanded('x', true);
@@ -569,7 +730,7 @@ describe('VariableCaptureManager', () => {
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(1);
 
-      const data = makeVec3GridData(64, 0.2, 0.5, 0.8);
+      const data = makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.2, 0.5, 0.8);
       mockCollectResults.mockReturnValueOnce([
         { varName: 'col', varType: 'vec3', rgba: data },
       ]).mockReturnValue([]);
@@ -591,7 +752,7 @@ describe('VariableCaptureManager', () => {
       mockIssueCaptureGrid.mockReturnValue(1);
 
       mockCollectResults.mockReturnValueOnce([
-        { varName: 'col', varType: 'vec3', rgba: makeVec3GridData(64, 0.2, 0.5, 0.8) },
+        { varName: 'col', varType: 'vec3', rgba: makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.2, 0.5, 0.8) },
       ]).mockReturnValue([]);
 
       manager.notifyStateChange(BASE_PARAMS);
@@ -626,7 +787,7 @@ describe('VariableCaptureManager', () => {
     }
 
     it('float: value is null, stats has min/max/mean', () => {
-      const data = makeGridData(64, 0.5);
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5);
       const v = setupCapture('x', 'float', data);
 
       expect(v.value).toBeNull();
@@ -636,16 +797,18 @@ describe('VariableCaptureManager', () => {
       expect(v.stats!.max).toBeCloseTo(0.5, 5);
     });
 
-    it('float: thumbnail has correct size (gridSize²×4 bytes)', () => {
-      const data = makeGridData(64, 0.5);
+    it('float: thumbnail has correct size (gridWidth×gridHeight×4 bytes)', () => {
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight, 0.5);
       const v = setupCapture('x', 'float', data);
 
       expect(v.thumbnail).not.toBeNull();
-      expect(v.thumbnail!.length).toBe(64 * 64 * 4);
+      expect(v.thumbnail!.length).toBe(BASE_GRID.gridWidth * BASE_GRID.gridHeight * 4);
+      expect(v.gridWidth).toBe(BASE_GRID.gridWidth);
+      expect(v.gridHeight).toBe(BASE_GRID.gridHeight);
     });
 
     it('float thumbnail: raw clamp — 0.5 maps to ~128', () => {
-      const data = makeGridData(64, 0.5);
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5);
       const v = setupCapture('x', 'float', data);
 
       const thumb = v.thumbnail!;
@@ -657,21 +820,21 @@ describe('VariableCaptureManager', () => {
     });
 
     it('float thumbnail: value > 1 clamps to white (255)', () => {
-      const data = makeGridData(64, 2.0); // way above 1.0
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,2.0); // way above 1.0
       const v = setupCapture('x', 'float', data);
 
       expect(v.thumbnail![0]).toBe(255);
     });
 
     it('float thumbnail: value < 0 clamps to black (0)', () => {
-      const data = makeGridData(64, -1.0); // below 0
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,-1.0); // below 0
       const v = setupCapture('x', 'float', data);
 
       expect(v.thumbnail![0]).toBe(0);
     });
 
     it('vec3 thumbnail: preserves RGB channels', () => {
-      const data = makeVec3GridData(64, 1.0, 0.0, 0.5);
+      const data = makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,1.0, 0.0, 0.5);
       const v = setupCapture('col', 'vec3', data);
 
       const thumb = v.thumbnail!;
@@ -682,7 +845,7 @@ describe('VariableCaptureManager', () => {
     });
 
     it('vec3: channelMeans computed correctly', () => {
-      const data = makeVec3GridData(64, 0.2, 0.5, 0.8);
+      const data = makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.2, 0.5, 0.8);
       const v = setupCapture('col', 'vec3', data);
 
       expect(v.channelMeans).not.toBeNull();
@@ -693,19 +856,20 @@ describe('VariableCaptureManager', () => {
     });
 
     it('vec3: channelStats has one entry per channel', () => {
-      const data = makeVec3GridData(64, 0.2, 0.5, 0.8);
+      const data = makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.2, 0.5, 0.8);
       const v = setupCapture('col', 'vec3', data);
 
       expect(v.channelStats).toHaveLength(3);
       expect(v.channelStats![0].mean).toBeCloseTo(0.2, 5);
     });
 
-    it('thumbnail uses sampleSize from params (32×32 = 4096 bytes)', () => {
+    it('thumbnail uses computed grid dimensions from sampleSize', () => {
+      const grid32 = computeExpectedGrid(32, 800, 600);
       (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(1);
       mockCollectResults.mockReturnValueOnce([
-        { varName: 'x', varType: 'float', rgba: makeGridData(32, 0.5) },
+        { varName: 'x', varType: 'float', rgba: makeGridData(grid32.gridWidth, grid32.gridHeight, 0.5) },
       ]).mockReturnValue([]);
 
       manager.notifyStateChange({ ...BASE_PARAMS, sampleSize: 32 });
@@ -713,7 +877,9 @@ describe('VariableCaptureManager', () => {
       flushRAF();
 
       const vars: CapturedVariable[] = onUpdate.mock.calls[0][0];
-      expect(vars[0].thumbnail!.length).toBe(32 * 32 * 4);
+      expect(vars[0].thumbnail!.length).toBe(grid32.gridWidth * grid32.gridHeight * 4);
+      expect(vars[0].gridWidth).toBe(grid32.gridWidth);
+      expect(vars[0].gridHeight).toBe(grid32.gridHeight);
     });
   });
 
@@ -780,7 +946,7 @@ describe('VariableCaptureManager', () => {
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(1);
       mockCollectResults
-        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }])
+        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }])
         .mockReturnValue([]);
     });
 
@@ -812,7 +978,7 @@ describe('VariableCaptureManager', () => {
     it('polling mode: capture re-issues after timeout fires', () => {
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 1000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
       // Advance timer to trigger poll
@@ -829,7 +995,7 @@ describe('VariableCaptureManager', () => {
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
       manager.dispose();
@@ -845,7 +1011,7 @@ describe('VariableCaptureManager', () => {
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll timeout
 
       // New state change arrives before timeout fires — old timeout should be cancelled
@@ -859,7 +1025,7 @@ describe('VariableCaptureManager', () => {
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
       // Switch to manual — should cancel the poll timeout
@@ -874,7 +1040,7 @@ describe('VariableCaptureManager', () => {
     it('switching from polling to pause cancels pending poll timeout', () => {
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
       // Switch to pause — should cancel poll and NOT issue new capture
@@ -888,13 +1054,13 @@ describe('VariableCaptureManager', () => {
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll at 2000ms
 
       // Before old timeout fires, change to 500ms
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
       flushRAF(); // issue
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll at 500ms
 
       // Check the most recent setTimeout uses 500ms
@@ -950,7 +1116,7 @@ describe('VariableCaptureManager', () => {
     });
 
     it('switching from pause to realtime starts continuous captures', () => {
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
 
       // Start in pause — nothing happens
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'pause' as const });
@@ -978,7 +1144,7 @@ describe('VariableCaptureManager', () => {
     });
 
     it('realtime mode: loop continues running after capture completes', () => {
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'realtime' as const });
       flushRAF(); // issue
@@ -988,7 +1154,7 @@ describe('VariableCaptureManager', () => {
     });
 
     it('realtime mode: re-issues captures continuously', () => {
-      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(64, 0.5) }]);
+      mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'realtime' as const });
       flushRAF(); // issue #1

@@ -51,7 +51,7 @@
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
     <div class="thumb-col">
-      <CaptureThumbnail pixels={variable.thumbnail} size={32} />
+      <CaptureThumbnail pixels={variable.thumbnail} gridWidth={variable.gridWidth} gridHeight={variable.gridHeight} maxSize={32} />
     </div>
   {/if}
 

@@ -111,7 +111,8 @@ describe("ShaderPipeline", () => {
             );
 
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+            // cleanup() no longer resets time — only resetTime() does
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
         });
@@ -224,7 +225,8 @@ describe("ShaderPipeline", () => {
 
             // Cleanup should happen even when compilation fails, if path changed
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+            // cleanup() no longer resets time — only resetTime() does
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
 
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
@@ -733,7 +735,8 @@ describe("ShaderPipeline", () => {
             shaderPipeline.cleanup();
 
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+            // cleanup() no longer resets time — only resetTime() does
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
         });
     });

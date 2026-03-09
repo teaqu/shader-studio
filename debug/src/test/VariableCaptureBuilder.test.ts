@@ -131,4 +131,37 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).not.toBeNull();
     expect(result).toContain("fragColor = vec4(uv, 0.0, 0.0);");
   });
+
+  it("should inject non-square grid coord for wide grid (gridWidth > gridHeight)", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 128, 72
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2(128.0, 72.0)");
+  });
+
+  it("should inject non-square grid coord for tall grid (gridHeight > gridWidth)", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 72, 128
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2(72.0, 128.0)");
+  });
+
+  it("should inject square grid coord when gridWidth equals gridHeight", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 64, 64
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2(64.0, 64.0)");
+  });
+
+  it("should not inject grid coord when captureCoordUniform=true (pixel mode)", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      simpleMainImage, 2, "d", "float", new Map(), new Map(), true, 128, 72
+    );
+    expect(result).not.toBeNull();
+    expect(result).not.toContain("vec2(128.0, 72.0)");
+    expect(result).toContain("_dbgCaptureCoord");
+  });
 });
