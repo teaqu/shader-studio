@@ -69,6 +69,8 @@ export class ShaderProcessor {
           return fallbackResult;
         }
 
+        // Render one frame to clear the canvas (no valid shader → black)
+        this.renderEngine.render();
         return {
           success: false,
           errors: result?.errors || ["Unknown compilation error"]

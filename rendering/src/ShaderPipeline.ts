@@ -1,7 +1,7 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
 import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass, BufferResolution } from "./models";
+import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
@@ -105,6 +105,7 @@ export class ShaderPipeline {
 
     if (this.shaderPath !== "" && this.shaderPath !== path) {
       this.cleanup();
+      this.resetTime();
     }
 
     this.shaderPath = path;

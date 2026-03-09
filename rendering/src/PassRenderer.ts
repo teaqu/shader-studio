@@ -29,6 +29,12 @@ export class PassRenderer {
     this.gl = canvas.getContext("webgl2");
   }
 
+  public clearCanvas(): void {
+    this.renderer.SetRenderTarget(null);
+    this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
+    this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+  }
+
   public renderPass(
     passConfig: Pass,
     target: PiRenderTarget | null,

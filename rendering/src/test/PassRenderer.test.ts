@@ -18,6 +18,8 @@ const createMockRenderer = () => ({
   AttachTextures: vi.fn(),
   GetAttribLocation: vi.fn(),
   DrawUnitQuad_XY: vi.fn(),
+  Clear: vi.fn(),
+  CLEAR: { Color: 1, Zbuffer: 2, Stencil: 4 },
 }) as unknown as PiRenderer;
 
 const createMockTexture = (xres = 0, yres = 0) => ({
@@ -73,6 +75,8 @@ describe("PassRenderer", () => {
     mockKeyboardManager = createMockKeyboardManager();
     mockGl = createMockGl();
     mockCanvas = {
+      width: 800,
+      height: 600,
       getContext: vi.fn().mockReturnValue(mockGl),
     } as unknown as HTMLCanvasElement;
     passRenderer = new PassRenderer(
@@ -808,6 +812,16 @@ describe("PassRenderer", () => {
       passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
 
       expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("missing.png");
+    });
+  });
+
+  describe("clearCanvas", () => {
+    it("should clear the canvas to black", () => {
+      passRenderer.clearCanvas();
+
+      expect((mockRenderer as any).SetRenderTarget).toHaveBeenCalledWith(null);
+      expect((mockRenderer as any).SetViewport).toHaveBeenCalledWith([0, 0, 800, 600]);
+      expect((mockRenderer as any).Clear).toHaveBeenCalledWith(1, [0, 0, 0, 1], 1, 0);
     });
   });
 });

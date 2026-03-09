@@ -53,6 +53,7 @@ describe("FrameRenderer", () => {
 
     mockPassRenderer = {
       renderPass: vi.fn(),
+      clearCanvas: vi.fn(),
     };
 
     mockFPSCalculator = {
@@ -690,6 +691,52 @@ describe("FrameRenderer", () => {
       });
 
       expect(() => frameRenderer.render(1000)).not.toThrow();
+    });
+
+    it("should clear canvas when Image pass has no shader", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockShaderPipeline.getPasses.mockReturnValue([
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} }
+      ]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({});
+
+      frameRenderer.render(1000);
+
+      expect(mockPassRenderer.clearCanvas).toHaveBeenCalledTimes(1);
+      expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+    });
+
+    it("should clear canvas when no Image pass exists", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockShaderPipeline.getPasses.mockReturnValue([]);
+
+      frameRenderer.render(1000);
+
+      expect(mockPassRenderer.clearCanvas).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not clear canvas when Image pass has a valid shader", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockShaderPipeline.getPasses.mockReturnValue([
+        { name: 'Image', shaderSrc: 'image shader', inputs: {} }
+      ]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({
+        'Image': { mProgram: {}, mResult: true }
+      });
+
+      frameRenderer.render(1000);
+
+      expect(mockPassRenderer.clearCanvas).not.toHaveBeenCalled();
+      expect(mockPassRenderer.renderPass).toHaveBeenCalled();
     });
 
     it("should handle empty passes array", () => {

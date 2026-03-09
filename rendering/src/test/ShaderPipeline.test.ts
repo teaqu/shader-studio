@@ -111,8 +111,8 @@ describe("ShaderPipeline", () => {
             );
 
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            // cleanup() no longer resets time — only resetTime() does
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+            // Time resets when switching to a different shader
+            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
         });
@@ -225,8 +225,8 @@ describe("ShaderPipeline", () => {
 
             // Cleanup should happen even when compilation fails, if path changed
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            // cleanup() no longer resets time — only resetTime() does
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+            // Time resets when switching to a different shader
+            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
 
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
@@ -1297,6 +1297,7 @@ describe("ShaderPipeline", () => {
         it("should store slot assignments after compilation", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
+                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1323,6 +1324,7 @@ describe("ShaderPipeline", () => {
         it("should store separate slot assignments per pass", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
+                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1353,6 +1355,7 @@ describe("ShaderPipeline", () => {
         it("should pass slot assignments to compileShader", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
+                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1377,6 +1380,7 @@ describe("ShaderPipeline", () => {
         it("should load textures for custom-named inputs", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
+                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {

@@ -40,6 +40,7 @@ describe('ShaderProcessor', () => {
       updateBufferAndRecompile: vi.fn().mockResolvedValue({
         success: true,
       }),
+      render: vi.fn(),
     } as any;
 
     shaderProcessor = new ShaderProcessor(
@@ -214,6 +215,8 @@ describe('ShaderProcessor', () => {
       expect(result.success).toBe(false);
       expect(result.errors).toEqual([errorMessage]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
+      // Should render one frame to clear the canvas
+      expect(mockRenderEngine.render).toHaveBeenCalledOnce();
     });
 
     it('should return warnings when compilation succeeds with warnings', async () => {
