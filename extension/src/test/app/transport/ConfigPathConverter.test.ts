@@ -95,6 +95,42 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
+    test('processConfigPaths processes cubemap input paths correctly', () => {
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-cubemap.png');
+        mockWebview.asWebviewUri.returns(mockUri);
+
+        const originalMessage = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'cubemap',
+                                path: '/absolute/path/to/cubemap.png'
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const processedMessage = ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
+            mockWebview
+        );
+
+        assert.strictEqual(processedMessage.type, 'shaderSource');
+        // Path should be preserved, resolved_path should have webview URI
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/cubemap.png');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
+        // Original should not be mutated
+        assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/cubemap.png');
+    });
+
     test('processConfigPaths handles config without inputs', () => {
         const message = {
             type: 'shaderSource',

@@ -152,6 +152,34 @@
         },
         {
           "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "cubemap"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to cubemap cross-pattern PNG file"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest", "mipmap"],
+              "description": "Cubemap filtering mode"
+            },
+            "wrap": {
+              "type": "string",
+              "enum": ["repeat", "clamp"],
+              "description": "Cubemap wrap mode"
+            },
+            "vflip": {
+              "type": "boolean",
+              "description": "Whether to flip cubemap faces vertically"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
           "required": ["type"],
           "properties": {
             "type": {

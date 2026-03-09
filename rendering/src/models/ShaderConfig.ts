@@ -12,6 +12,14 @@ export interface TextureConfigInput {
   grayscale?: boolean;
 }
 
+export interface CubemapConfigInput {
+  type: 'cubemap';
+  path: string;
+  filter?: "linear" | "nearest" | "mipmap";
+  wrap?: "repeat" | "clamp";
+  vflip?: boolean;
+}
+
 export interface KeyboardConfigInput {
   type: 'keyboard';
 }
@@ -24,5 +32,5 @@ export interface VideoConfigInput {
   vflip?: boolean;
 }
 
-export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput;
+export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput | CubemapConfigInput;
 

@@ -9,7 +9,7 @@
   let imageElement: HTMLImageElement | null = null;
 
   // Use resolved_path (webview URI) for image display, fall back to pathMap lookup or raw path
-  $: imageSrc = channelInput && channelInput.type === "texture" && channelInput.path
+  $: imageSrc = channelInput && (channelInput.type === "texture" || channelInput.type === "cubemap") && channelInput.path
     ? channelInput.resolved_path || getWebviewUri(channelInput.path) || channelInput.path
     : "";
 
@@ -93,6 +93,29 @@
         <div class="buffer-layer layer-3"></div>
       </div>
       <div class="buffer-name">{channelInput.source || "Buffer"}</div>
+    </div>
+  {:else if channelInput.type === "cubemap"}
+    <!-- Cubemap preview -->
+    <div class="texture-preview">
+      {#if imageSrc}
+        <img
+          bind:this={imageElement}
+          src={imageSrc}
+          alt="Cubemap preview"
+          on:error={handleImageError}
+          class="preview-image"
+        />
+      {/if}
+      {#if imageError || !imageSrc}
+        <div class="preview-fallback">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="36" height="36" opacity="0.4"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
+          <div class="fallback-text">Cubemap</div>
+        </div>
+      {:else}
+        <div class="preview-overlay">
+          <span class="preview-label">Cubemap</span>
+        </div>
+      {/if}
     </div>
   {:else if channelInput.type === "keyboard"}
     <!-- Keyboard preview -->

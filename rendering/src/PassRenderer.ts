@@ -128,6 +128,8 @@ export class PassRenderer {
         }
       } else if (input.type === "video" && input.path) {
         textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
+      } else if (input.type === "cubemap" && input.path) {
+        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path) || this.resourceManager.getCubemapTexture(input.path) || defaultTexture;
       }
     }
     return textureBindings;

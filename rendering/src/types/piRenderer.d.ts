@@ -74,7 +74,7 @@ export interface PiRenderer {
   
   // Texture methods
   CreateTexture(type: number, xres: number, yres: number, format: number, filter: number, wrap: number, buffer?: ArrayBuffer | Uint8Array | null): PiTexture | null;
-  CreateTextureFromImage(type: number, image: HTMLImageElement | HTMLVideoElement, format: number, filter: number, wrap: number, flipY: boolean): PiTexture | null;
+  CreateTextureFromImage(type: number, image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[], format: number, filter: number, wrap: number, flipY: boolean): PiTexture | null;
   SetSamplerFilter(te: PiTexture, filter: number): void;
   SetSamplerWrap(te: PiTexture, wrap: number): void;
   SetSamplerVFlip(te: PiTexture, vflip: boolean, image?: HTMLImageElement): void;

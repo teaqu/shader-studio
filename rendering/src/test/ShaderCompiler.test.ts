@@ -584,4 +584,50 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(wrappedCode).toContain("uniform vec3 iChannelResolution[16];");
     });
   });
+
+  describe("channelTypes (cubemap support)", () => {
+    it("should default to sampler2D when no channelTypes provided", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
+      expect(wrappedCode).not.toContain("samplerCube");
+    });
+
+    it("should emit samplerCube for Cube channelType", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const channelTypes: ('2D' | 'Cube')[] = ['2D', 'Cube', '2D', '2D'];
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, undefined, channelTypes);
+
+      expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
+      expect(wrappedCode).toContain("uniform samplerCube iChannel1;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel2;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel3;");
+    });
+
+    it("should emit samplerCube for custom name aliases on Cube slots", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const slots = [
+        { slot: 0, key: "envMap", isCustomName: true },
+        { slot: 1, key: "iChannel1", isCustomName: false },
+      ];
+      const channelTypes: ('2D' | 'Cube')[] = ['Cube', '2D', '2D', '2D'];
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, slots, channelTypes);
+
+      expect(wrappedCode).toContain("uniform samplerCube iChannel0;");
+      expect(wrappedCode).toContain("uniform samplerCube envMap;");
+      expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
+    });
+
+    it("should pass channelTypes through compileShader", () => {
+      const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const channelTypes: ('2D' | 'Cube')[] = ['Cube', '2D', '2D', '2D'];
+      const shader = shaderCompiler.compileShader(code, undefined, undefined, channelTypes);
+
+      expect(mockRenderer.CreateShader).toHaveBeenCalled();
+      const fsArg = (mockRenderer.CreateShader as any).mock.calls[0][1];
+      expect(fsArg).toContain("uniform samplerCube iChannel0;");
+    });
+  });
  });
