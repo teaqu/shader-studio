@@ -199,11 +199,17 @@ export class FrameRenderer {
   private renderImagePass(uniforms: any): void {
     const passes = this.shaderPipeline.getPasses();
     const imagePass = passes.find((p: Pass) => p.name === "Image");
-    
+
     if (imagePass) {
       const passShaders = this.shaderPipeline.getPassShaders();
       const shader = passShaders[imagePass.name];
-      this.passRenderer.renderPass(imagePass, null, shader, uniforms);
+      if (shader) {
+        this.passRenderer.renderPass(imagePass, null, shader, uniforms);
+      } else {
+        this.passRenderer.clearCanvas();
+      }
+    } else {
+      this.passRenderer.clearCanvas();
     }
   }
 
