@@ -93,6 +93,10 @@ function persistGlobal(state: ResolutionState): void {
 const createResolutionStore = () => {
     const initial = loadInitialState();
     const { subscribe, set, update } = writable<ResolutionState>(initial);
+    let current = initial;
+
+    // Keep current in sync with all store changes
+    subscribe(s => { current = s; });
 
     return {
         subscribe,
@@ -104,7 +108,7 @@ const createResolutionStore = () => {
                     customWidth: undefined,
                     customHeight: undefined,
                 };
-                if (!newState.savedToConfig) persistGlobal(newState);
+                if (!newState.savedToConfig) { persistGlobal(newState); }
                 return newState;
             });
         },
@@ -115,7 +119,7 @@ const createResolutionStore = () => {
                     customWidth: width,
                     customHeight: height,
                 };
-                if (!newState.savedToConfig) persistGlobal(newState);
+                if (!newState.savedToConfig) { persistGlobal(newState); }
                 return newState;
             });
         },
@@ -126,24 +130,29 @@ const createResolutionStore = () => {
                     customWidth: undefined,
                     customHeight: undefined,
                 };
-                if (!newState.savedToConfig) persistGlobal(newState);
+                if (!newState.savedToConfig) { persistGlobal(newState); }
                 return newState;
             });
         },
         setFromConfig: (settings?: ResolutionSettings) => {
-            update(state => {
-                if (settings) {
-                    return {
-                        scale: settings.scale ?? 1,
-                        customWidth: settings.customWidth !== undefined ? String(settings.customWidth) : undefined,
-                        customHeight: settings.customHeight !== undefined ? String(settings.customHeight) : undefined,
-                        savedToConfig: true,
-                    };
+            if (settings) {
+                const next: ResolutionState = {
+                    scale: settings.scale ?? 1,
+                    customWidth: settings.customWidth !== undefined ? String(settings.customWidth) : undefined,
+                    customHeight: settings.customHeight !== undefined ? String(settings.customHeight) : undefined,
+                    savedToConfig: true,
+                };
+                // Skip if store already matches
+                if (current.scale === next.scale && current.customWidth === next.customWidth &&
+                    current.customHeight === next.customHeight && current.savedToConfig) {
+                    return;
                 }
-                // No config settings — use global defaults, mark as not saved
-                const globalDefaults = loadInitialState();
-                return { ...globalDefaults, savedToConfig: false };
-            });
+                set(next);
+            } else {
+                // No config — fall back to global defaults (skip if already there)
+                if (!current.savedToConfig) { return; }
+                set({ ...loadInitialState(), savedToConfig: false });
+            }
         },
         setSavedToConfig: (saved: boolean) => {
             update(state => ({ ...state, savedToConfig: saved }));
