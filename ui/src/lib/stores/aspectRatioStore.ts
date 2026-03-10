@@ -9,9 +9,10 @@ export interface AspectRatioState {
 const VALID_MODES: AspectRatioMode[] = ['16:9', '4:3', '1:1', 'fill', 'auto'];
 
 const createAspectRatioStore = () => {
-    // Default to 16:9 as requested
+    let currentMode: AspectRatioMode = '16:9';
+
     const { subscribe, set, update } = writable<AspectRatioState>({
-        mode: '16:9'
+        mode: currentMode
     });
 
     // Load from localStorage if available
@@ -21,6 +22,7 @@ const createAspectRatioStore = () => {
             try {
                 const parsed = JSON.parse(stored);
                 if (parsed && VALID_MODES.includes(parsed.mode)) {
+                    currentMode = parsed.mode;
                     set(parsed);
                 }
             } catch (e) {
@@ -32,9 +34,9 @@ const createAspectRatioStore = () => {
     return {
         subscribe,
         setMode: (mode: AspectRatioMode) => {
+            currentMode = mode;
             update(state => {
                 const newState = { ...state, mode };
-                // Persist to localStorage
                 if (typeof window !== 'undefined') {
                     localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify(newState));
                 }
@@ -43,9 +45,10 @@ const createAspectRatioStore = () => {
         },
         setFromConfig: (mode?: AspectRatioMode) => {
             if (mode && VALID_MODES.includes(mode)) {
+                if (currentMode === mode) { return; }
+                currentMode = mode;
                 set({ mode });
             }
-            // If no config mode, leave at current localStorage default
         },
         reset: () => {
             const defaultState = { mode: '16:9' as AspectRatioMode };

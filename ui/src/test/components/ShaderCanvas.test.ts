@@ -19,6 +19,23 @@ describe('ShaderCanvas Component', () => {
     isInspectorActive: false,
   };
 
+  describe('Focus behavior', () => {
+    it('should not programmatically call focus() on the canvas', () => {
+      const { container } = render(ShaderCanvas, {
+        props: defaultProps,
+      });
+
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const focusSpy = vi.spyOn(canvas, 'focus');
+
+      // The canvas should be focusable but not auto-focused
+      expect(canvas.tabIndex).toBe(0);
+      expect(focusSpy).not.toHaveBeenCalled();
+
+      focusSpy.mockRestore();
+    });
+  });
+
   describe('Click vs Drag Detection', () => {
     it('should trigger onCanvasClick when clicking without dragging', async () => {
       const onCanvasClick = vi.fn();

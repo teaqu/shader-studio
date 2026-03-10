@@ -199,6 +199,95 @@ describe('resolutionStore', () => {
     expect(state.savedToConfig).toBe(true);
   });
 
+  // --- setFromConfig no-op guard ---
+
+  it('setFromConfig should not notify subscribers when called with same config settings', async () => {
+    const store = await importStore();
+    store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    // subscribe fires once immediately
+    callCount = 0;
+
+    // Call again with identical values — should be a no-op
+    store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
+    expect(callCount).toBe(0);
+    unsub();
+  });
+
+  it('setFromConfig should not notify subscribers when called repeatedly with undefined and no config saved', async () => {
+    const store = await importStore();
+    // Initial state: savedToConfig = false (global defaults)
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig(undefined);
+    store.setFromConfig(undefined);
+    store.setFromConfig(undefined);
+    expect(callCount).toBe(0);
+    unsub();
+  });
+
+  it('setFromConfig should notify subscribers when config values actually change', async () => {
+    const store = await importStore();
+    store.setFromConfig({ scale: 1 });
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig({ scale: 2 });
+    expect(callCount).toBe(1);
+    expect(get(store).scale).toBe(2);
+    unsub();
+  });
+
+  it('setFromConfig should notify when switching from config to global defaults', async () => {
+    const store = await importStore();
+    store.setFromConfig({ scale: 2 });
+    expect(get(store).savedToConfig).toBe(true);
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig(undefined);
+    expect(callCount).toBe(1);
+    expect(get(store).savedToConfig).toBe(false);
+    unsub();
+  });
+
+  it('setFromConfig should notify when switching from global defaults to config', async () => {
+    const store = await importStore();
+    // Start with global defaults (savedToConfig = false)
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig({ scale: 1 });
+    expect(callCount).toBe(1);
+    expect(get(store).savedToConfig).toBe(true);
+    unsub();
+  });
+
+  it('setFromConfig should detect customWidth change', async () => {
+    const store = await importStore();
+    store.setFromConfig({ scale: 1, customWidth: '512', customHeight: '512' });
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig({ scale: 1, customWidth: '1024', customHeight: '512' });
+    expect(callCount).toBe(1);
+    expect(get(store).customWidth).toBe('1024');
+    unsub();
+  });
+
   // --- Reset ---
 
   describe('reset', () => {

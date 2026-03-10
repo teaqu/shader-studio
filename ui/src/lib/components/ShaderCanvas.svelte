@@ -75,7 +75,6 @@
     if (glCanvas) {
       // Make canvas focusable for keyboard events
       glCanvas.tabIndex = 0;
-      glCanvas.focus();
     }
   }
 
