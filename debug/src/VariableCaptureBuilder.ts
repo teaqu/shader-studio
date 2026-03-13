@@ -32,11 +32,17 @@ export class VariableCaptureBuilder {
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
     if (!functionInfo.name) return [];
 
+    // If on closing brace of function, treat as last line of body
+    if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
+      resolvedLine = functionInfo.end - 1;
+    }
+
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
 
-    // In line mode (not whole-shader), exclude `out`/`inout` parameters (e.g. fragColor)
+    // In line mode (not whole-shader), exclude `out`/`inout` parameters for helper functions.
+    // For mainImage, keep fragColor visible since it's the shader output.
     const outParams = new Set<string>();
-    if (debugLine !== -1 && functionInfo.start >= 0) {
+    if (debugLine !== -1 && functionInfo.start >= 0 && functionInfo.name !== 'mainImage') {
       const funcLine = lines[functionInfo.start];
       const paramsMatch = funcLine.match(/\(([^)]*)\)/);
       if (paramsMatch && paramsMatch[1].trim()) {
@@ -47,12 +53,44 @@ export class VariableCaptureBuilder {
       }
     }
 
+    // In mainImage, defer fragColor to append at the end of the list
+    const isMainImage = functionInfo.name === 'mainImage';
+    let fragColorType: string | null = null;
+
     const result: CaptureVarInfo[] = [];
     for (const [varName, varType] of varTypes) {
       if (CAPTURABLE_TYPES.has(varType) && !outParams.has(varName)) {
+        if (isMainImage && varName === 'fragColor') {
+          fragColorType = varType;
+          continue;
+        }
         result.push({ varName, varType });
         if (result.length >= 15) break;
       }
+    }
+
+    // If the debug line is a return statement, add a synthetic _dbgReturn variable
+    // so the return value appears in the variable preview panel.
+    // Uses detectVariableAndType to handle multi-line returns correctly.
+    if (debugLine !== -1 && functionInfo.start >= 0 && result.length < 15) {
+      const funcLine = lines[functionInfo.start];
+      const returnTypeMatch = funcLine.match(
+        /^\s*(float|vec2|vec3|vec4|int|bool|mat2)\s+\w+\s*\(/
+      );
+      if (returnTypeMatch && CAPTURABLE_TYPES.has(returnTypeMatch[1])) {
+        const lineContent = lines[resolvedLine] || '';
+        const varInfo = GlslParser.detectVariableAndType(
+          lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine
+        );
+        if (varInfo && varInfo.name === '_dbgReturn') {
+          result.push({ varName: '_dbgReturn', varType: returnTypeMatch[1] });
+        }
+      }
+    }
+
+    // Append fragColor last so it always appears at the bottom in mainImage
+    if (fragColorType && result.length < 15) {
+      result.push({ varName: 'fragColor', varType: fragColorType });
     }
 
     return result;
@@ -88,9 +126,14 @@ export class VariableCaptureBuilder {
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
     if (!functionInfo.name) return null;
 
-    // Validate var is actually in scope
+    // If on closing brace of function, treat as last line of body
+    if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
+      resolvedLine = functionInfo.end - 1;
+    }
+
+    // Validate var is actually in scope (_dbgReturn is synthetic, always allowed)
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
-    if (!varTypes.has(varName)) return null;
+    if (varName !== '_dbgReturn' && !varTypes.has(varName)) return null;
 
     const varInfo = { name: varName, type: varType };
 
@@ -158,7 +201,12 @@ export class VariableCaptureBuilder {
       truncationEnd = containingLoops[0].endLine;
     } else {
       truncationEnd = debugLine;
+      // Extend for multi-line statements
+      truncationEnd = CodeGenerator.extendForMultiLine(lines, truncationEnd);
     }
+
+    // Detect return statement range on the debug line
+    const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
@@ -171,13 +219,18 @@ export class VariableCaptureBuilder {
         );
       }
 
-      if (i === debugLine && varInfo.name === '_dbgReturn') {
-        const returnMatch = line.match(/^\s*return\s+(.+);/);
-        if (returnMatch) {
-          const expression = returnMatch[1];
-          const indent = line.match(/^\s*/)?.[0] || '  ';
-          line = `${indent}${varInfo.type} ${varInfo.name} = ${expression};`;
+      // Handle return statement lines
+      if (returnRange && i >= returnRange.start && i <= returnRange.end) {
+        if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
+          const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
+          const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
+          if (returnMatch) {
+            const indent = line.match(/^\s*/)?.[0] || '  ';
+            functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+          }
         }
+        // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+        continue;
       }
 
       functionLines.push(line);

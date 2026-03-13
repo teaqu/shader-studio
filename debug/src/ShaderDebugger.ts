@@ -33,6 +33,13 @@ export class ShaderDebugger {
     const functionInfo = GlslParser.findEnclosingFunction(lines, debugLine);
     console.log('[ShaderDebug] Function:', functionInfo.name || 'none');
 
+    // If on closing brace of function, treat as last line of body
+    if (functionInfo.end >= 0 && debugLine === functionInfo.end) {
+      debugLine = functionInfo.end - 1;
+      lineContent = lines[debugLine] || '';
+      console.log('[ShaderDebug] Resolved closing brace to line:', debugLine);
+    }
+
     const varTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
 
     // Extract function return type if we're in a function
