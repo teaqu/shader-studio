@@ -230,12 +230,12 @@ export class MessageHandler {
     this.sendSuccessMessages();
   }
 
-  public reset(onReset?: () => void): void {
+  public async reset(onReset?: () => void | Promise<void>): Promise<void> {
     this.cleanup();
     this.renderEngine.resetTime();
 
     if (this.lastEvent && onReset) {
-      onReset();
+      await onReset();
     } else {
       const errorMessage: ErrorMessage = {
         type: "error",

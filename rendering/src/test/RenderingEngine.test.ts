@@ -554,28 +554,30 @@ describe("RenderingEngine", () => {
       vi.clearAllMocks();
     });
 
-    it("should sync and resume audio on successful compilation when not paused", async () => {
+    it("should not resume audio on successful compilation (audio only plays on reset)", async () => {
       mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
       mockTimeManager.isPaused.mockReturnValue(false);
       mockTimeManager.getCurrentTime.mockReturnValue(7.5);
 
       await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
 
-      expect(mockResourceManager.syncAllAudioToTime).toHaveBeenCalledWith(7.5);
-      expect(mockResourceManager.resumeAllAudio).toHaveBeenCalled();
+      // Audio should NOT be resumed or synced on compilation
+      expect(mockResourceManager.resumeAllAudio).not.toHaveBeenCalled();
+      expect(mockResourceManager.syncAllAudioToTime).not.toHaveBeenCalled();
       expect(mockResourceManager.pauseAllAudio).not.toHaveBeenCalled();
     });
 
-    it("should sync and pause audio on successful compilation when paused", async () => {
+    it("should not touch audio on successful compilation when paused", async () => {
       mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
       mockTimeManager.isPaused.mockReturnValue(true);
       mockTimeManager.getCurrentTime.mockReturnValue(3.0);
 
       await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
 
-      expect(mockResourceManager.syncAllAudioToTime).toHaveBeenCalledWith(3.0);
-      expect(mockResourceManager.pauseAllAudio).toHaveBeenCalled();
+      // Audio should NOT be touched on compilation regardless of pause state
       expect(mockResourceManager.resumeAllAudio).not.toHaveBeenCalled();
+      expect(mockResourceManager.syncAllAudioToTime).not.toHaveBeenCalled();
+      expect(mockResourceManager.pauseAllAudio).not.toHaveBeenCalled();
     });
 
     it("should pause all audio on failed compilation", async () => {
@@ -659,6 +661,77 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("audio pause/resume distinction on togglePause", () => {
+    let mockResourceManager: any;
+    let mockTimeManager: any;
+
+    beforeEach(() => {
+      mockResourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+        syncAllAudioToTime: vi.fn(),
+        pauseAllAudio: vi.fn(),
+        resumeAllAudio: vi.fn(),
+        muteAllAudio: vi.fn(),
+        unmuteAllAudio: vi.fn(),
+      };
+      mockTimeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(5.0),
+        isPaused: vi.fn().mockReturnValue(false),
+        togglePause: vi.fn(),
+      };
+
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: mockTimeManager, writable: true, configurable: true,
+      });
+
+      vi.clearAllMocks();
+    });
+
+    it("should use pauseAll (not pauseAudio) so userPaused is not set", () => {
+      // togglePause pausing uses pauseAll which does NOT set userPaused
+      // This is important so that unpausing via togglePause can resume audio
+      mockTimeManager.isPaused.mockReturnValue(false);
+      renderingEngine.togglePause();
+
+      expect(mockResourceManager.pauseAllAudio).toHaveBeenCalled();
+      // Should NOT be calling individual pauseAudio which sets userPaused
+    });
+
+    it("should use resumeAll (not forceResumeAll) so user-paused audio stays paused", () => {
+      // togglePause unpausing uses resumeAll which respects userPaused
+      // This means if user explicitly paused one track, toggling shader pause
+      // should not resume that track
+      mockTimeManager.isPaused.mockReturnValue(true);
+      renderingEngine.togglePause();
+
+      expect(mockResourceManager.resumeAllAudio).toHaveBeenCalled();
+    });
+
+    it("pause → unpause cycle syncs audio time both ways", () => {
+      // Pause
+      mockTimeManager.isPaused.mockReturnValue(false);
+      mockTimeManager.getCurrentTime.mockReturnValue(10.0);
+      renderingEngine.togglePause();
+
+      expect(mockResourceManager.syncAllAudioToTime).toHaveBeenCalledWith(10.0);
+
+      vi.clearAllMocks();
+
+      // Unpause
+      mockTimeManager.isPaused.mockReturnValue(true);
+      mockTimeManager.getCurrentTime.mockReturnValue(10.0);
+      renderingEngine.togglePause();
+
+      expect(mockResourceManager.syncAllAudioToTime).toHaveBeenCalledWith(10.0);
+      expect(mockResourceManager.resumeAllAudio).toHaveBeenCalled();
+    });
+  });
+
   describe("resumeAudioContext", () => {
     it("should delegate to resourceManager.resumeAudioContext", async () => {
       const mockResourceManager = {
@@ -671,6 +744,21 @@ describe("RenderingEngine", () => {
       await renderingEngine.resumeAudioContext();
 
       expect(mockResourceManager.resumeAudioContext).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("resumeAllAudio", () => {
+    it("should force-resume all audio via resourceManager", () => {
+      const mockResourceManager = {
+        forceResumeAllAudio: vi.fn(),
+      };
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+
+      renderingEngine.resumeAllAudio();
+
+      expect(mockResourceManager.forceResumeAllAudio).toHaveBeenCalledTimes(1);
     });
   });
 

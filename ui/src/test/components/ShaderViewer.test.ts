@@ -58,6 +58,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     getPasses() { return []; }
     setGlobalVolume() {}
     resumeAudioContext() { return Promise.resolve(); }
+    resumeAllAudio() {}
   };
 
   return {
@@ -124,6 +125,7 @@ vi.mock('../../lib/ShaderStudio', () => {
         render: vi.fn(),
         setGlobalVolume: vi.fn(),
         resumeAudioContext: vi.fn().mockResolvedValue(undefined),
+        resumeAllAudio: vi.fn(),
       };
     }
 

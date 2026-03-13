@@ -305,10 +305,18 @@
     // Unmute audio on reset (user gesture satisfies autoplay policy)
     // Video mute state is not touched - videos are controlled via config UI only
     audioStore.setMuted(false);
-    shaderStudio.handleReset(() => {
+    shaderStudio.handleReset(async () => {
       const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
-        handleShaderMessage(lastEvent);
+        await handleShaderMessage(lastEvent);
+      }
+      // Explicitly resume audio after reset — audio never auto-plays on
+      // compilation, only on reset. Resume playback + apply global volume.
+      const engine = shaderStudio?.getRenderingEngine();
+      if (engine) {
+        await engine.resumeAudioContext();
+        engine.resumeAllAudio();
+        engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
       }
     });
   }

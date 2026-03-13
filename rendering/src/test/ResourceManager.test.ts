@@ -107,6 +107,7 @@ vi.mock("../resources/AudioTextureManager", () => ({
       getAudioCurrentTime: vi.fn(),
       pauseAll: vi.fn(),
       resumeAll: vi.fn(),
+      forceResumeAll: vi.fn(),
       syncAllToTime: vi.fn(),
       setAudioVolume: vi.fn(),
       setAllAudioVolumes: vi.fn(),
@@ -975,6 +976,14 @@ describe("ResourceManager", () => {
       const audioManager = (resourceManager as any).audioTextureManager;
       resourceManager.resumeAllAudio();
       expect(audioManager.resumeAll).toHaveBeenCalled();
+    });
+  });
+
+  describe("forceResumeAllAudio", () => {
+    it("should delegate to AudioTextureManager.forceResumeAll", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.forceResumeAllAudio();
+      expect(audioManager.forceResumeAll).toHaveBeenCalled();
     });
   });
 

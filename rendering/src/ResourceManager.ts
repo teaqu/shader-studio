@@ -185,6 +185,10 @@ export class ResourceManager {
     this.audioTextureManager.resumeAll();
   }
 
+  public forceResumeAllAudio(): void {
+    this.audioTextureManager.forceResumeAll();
+  }
+
   public syncAllAudioToTime(shaderTime: number): void {
     this.audioTextureManager.syncAllToTime(shaderTime);
   }
