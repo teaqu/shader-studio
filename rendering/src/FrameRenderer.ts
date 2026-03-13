@@ -109,10 +109,16 @@ export class FrameRenderer {
 
     if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
       const minFrameInterval = 1000 / this.fpsLimit;
-      // Allow a small tolerance so near-threshold RAF jitter doesn't under-shoot target FPS.
-      const minFrameIntervalWithTolerance = minFrameInterval * 0.9;
-      if (time - this.lastRenderedAt < minFrameIntervalWithTolerance) {
+      const elapsed = time - this.lastRenderedAt;
+      // Small tolerance so RAF jitter doesn't skip near-threshold frames
+      if (elapsed < minFrameInterval * 0.9) {
         return;
+      }
+      // Advance lastRenderedAt by the ideal interval to prevent drift.
+      // If we overshot significantly (e.g. tab was backgrounded), snap to current time.
+      this.lastRenderedAt += minFrameInterval;
+      if (time - this.lastRenderedAt > minFrameInterval) {
+        this.lastRenderedAt = time;
       }
     }
 
@@ -127,7 +133,9 @@ export class FrameRenderer {
       return;
     }
 
-    this.lastRenderedAt = time;
+    if (this.fpsLimit <= 0 || this.lastRenderedAt === null) {
+      this.lastRenderedAt = time;
+    }
     this.currentFrameTime = time;
     this.updateFPSTracking(time);
 

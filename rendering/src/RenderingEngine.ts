@@ -77,7 +77,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.bufferManager,
       this.passRenderer,
       glCanvas,
-      new FPSCalculator(30, 5),
+      new FPSCalculator(60, 10),
     );
   }
 
