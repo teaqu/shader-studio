@@ -161,6 +161,267 @@ describe("FrameRenderer", () => {
       expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
       expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(2);
     });
+
+    it("should use ideal interval advancement to prevent FPS drift", () => {
+      // On a 144Hz display targeting 30fps, RAF fires every ~6.94ms.
+      // Without ideal advancement, frames snap to RAF ticks and drift below target.
+      // With ideal advancement, lastRenderedAt advances by 33.33ms each time,
+      // so the next frame is measured from the ideal time, not the actual RAF time.
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.03472);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const interval = 1000 / 144; // ~6.944ms
+
+      // Simulate 144Hz RAF ticks
+      frameRenderer.render(1000);                    // Frame 1: first frame renders
+      frameRenderer.render(1000 + interval * 1);     // ~1006.94 - skip
+      frameRenderer.render(1000 + interval * 2);     // ~1013.89 - skip
+      frameRenderer.render(1000 + interval * 3);     // ~1020.83 - skip
+      frameRenderer.render(1000 + interval * 4);     // ~1027.78 - skip
+      frameRenderer.render(1000 + interval * 5);     // ~1034.72 - render (elapsed > 33.33)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+
+      // The 3rd render should happen around t=1066.67, not t=1069.44.
+      // Because lastRenderedAt advanced to ~1033.33 (ideal), the next frame
+      // at t=1062.5 (9th tick) should also pass since elapsed = 62.5-33.33 = 29.17 < 30.
+      // But t=1069.44 (10th tick) would have elapsed = 69.44-33.33 = 36.11 >= 30 → render.
+      // Key point: with ideal advancement, we don't lose frames to accumulated drift.
+      frameRenderer.render(1000 + interval * 6);     // ~1041.67 - skip
+      frameRenderer.render(1000 + interval * 7);     // ~1048.61 - skip
+      frameRenderer.render(1000 + interval * 8);     // ~1055.56 - skip
+      frameRenderer.render(1000 + interval * 9);     // ~1062.50 - skip
+      frameRenderer.render(1000 + interval * 10);    // ~1069.44 - render
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+
+      // Continue — 3 rendered frames in ~69.44ms = ~43.2 FPS effective rate
+      // which is correct since 144Hz RAF ticks don't align perfectly with 33.33ms.
+      // But over many frames, ideal advancement keeps the average at 30fps.
+      frameRenderer.render(1000 + interval * 14);    // ~1097.22 - render (97.22-66.67=30.56 >= 30)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(4);
+    });
+
+    it("should snap lastRenderedAt to current time after large gap", () => {
+      // Simulates tab being backgrounded then returning
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.033333);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);   // First frame
+      frameRenderer.render(5000);   // 4 seconds later (tab was backgrounded)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+
+      // After the large gap, lastRenderedAt should snap to current time (5000),
+      // not advance by 33.33ms from 1000. So the next frame at 5010 should be skipped.
+      frameRenderer.render(5010);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+
+      // But a frame at 5034 (34ms later) should render
+      frameRenderer.render(5034);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+    });
+
+    it("should render at correct rate over many frames with 30fps limit on 60Hz", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Simulate 60Hz display (16.67ms intervals) for 10 frames
+      let renderCount = 0;
+      for (let i = 0; i < 10; i++) {
+        const prevCount = mockTimeManager.updateFrame.mock.calls.length;
+        frameRenderer.render(1000 + i * 16.667);
+        if (mockTimeManager.updateFrame.mock.calls.length > prevCount) {
+          renderCount++;
+        }
+      }
+
+      // 10 ticks at 60Hz = ~166.7ms. At 30fps we expect ~5 renders (every other tick)
+      expect(renderCount).toBe(5);
+    });
+
+    it("should render at correct rate over many frames with 60fps limit on 60Hz", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(60);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Simulate 60Hz display for 10 frames — every frame should render
+      for (let i = 0; i < 10; i++) {
+        frameRenderer.render(1000 + i * 16.667);
+      }
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(10);
+    });
+
+    it("should handle FPS limit change mid-stream", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);    // renders
+      frameRenderer.render(1016.67); // skip (30fps)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(1);
+
+      // Switch to 60fps — setFPSLimit resets lastRenderedAt to null
+      frameRenderer.setFPSLimit(60);
+      frameRenderer.render(1033.33); // renders (first frame after limit change)
+      frameRenderer.render(1050);    // renders (16.67ms >= 15ms tolerance)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+    });
+
+    it("should render first frame with FPS limit enabled (lastRenderedAt starts null)", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // First frame should always render even with FPS limit,
+      // because lastRenderedAt is null so the limit check is skipped
+      frameRenderer.render(1000);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledWith(1000);
+    });
+
+    it("should not call FPS tracking for skipped frames", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);  // renders
+      frameRenderer.render(1010);  // skipped (10ms < 30ms threshold)
+      frameRenderer.render(1020);  // skipped (20ms < 30ms threshold)
+
+      // Only 1 frame should have updated FPS tracking
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(1);
+      expect(mockKeyboardManager.clearPressed).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.incrementFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle duplicate frame (deltaTime=0) during FPS-limited rendering", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // First render normally
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      frameRenderer.render(1000);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(1);
+
+      // Second render passes FPS limit check but has deltaTime=0 (VS Code duplicate)
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0);
+      frameRenderer.render(1040);
+
+      // updateFrame is called (it passes the FPS limit) but the frame is dropped
+      // due to deltaTime=0 check. FPS tracking should NOT run.
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(1); // still 1
+      expect(mockKeyboardManager.clearPressed).toHaveBeenCalledTimes(1); // still 1
+
+      // Next normal frame should still work correctly
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      frameRenderer.render(1074);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+      expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("should achieve target FPS over extended run on 144Hz display", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.006944);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const interval = 1000 / 144; // ~6.944ms
+      let renderCount = 0;
+
+      // Simulate 2 seconds of 144Hz frames (288 ticks)
+      for (let i = 0; i < 288; i++) {
+        const prevCount = mockTimeManager.updateFrame.mock.calls.length;
+        frameRenderer.render(1000 + i * interval);
+        if (mockTimeManager.updateFrame.mock.calls.length > prevCount) {
+          renderCount++;
+        }
+      }
+
+      // 2 seconds at 30fps target = 60 renders.
+      // Allow ±1 for boundary effects on first/last frame.
+      expect(renderCount).toBeGreaterThanOrEqual(59);
+      expect(renderCount).toBeLessThanOrEqual(61);
+    });
+
+    it("should achieve target FPS over extended run on 60Hz display at 30fps limit", () => {
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      let renderCount = 0;
+
+      // Simulate 2 seconds of 60Hz frames (120 ticks)
+      for (let i = 0; i < 120; i++) {
+        const prevCount = mockTimeManager.updateFrame.mock.calls.length;
+        frameRenderer.render(1000 + i * 16.667);
+        if (mockTimeManager.updateFrame.mock.calls.length > prevCount) {
+          renderCount++;
+        }
+      }
+
+      // 2 seconds at 30fps = 60 renders (every other 60Hz tick)
+      expect(renderCount).toBe(60);
+    });
+
+    it("should render every frame when unlimited (fpsLimit=0)", () => {
+      frameRenderer.setRunning(true);
+      // No FPS limit set (default is 0)
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Rapid frames at 1ms apart should all render
+      frameRenderer.render(1000);
+      frameRenderer.render(1001);
+      frameRenderer.render(1002);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+    });
+
+    it("should handle switching from unlimited to limited FPS", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      // Unlimited mode — all frames render
+      frameRenderer.render(1000);
+      frameRenderer.render(1001);
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
+
+      // Switch to 30fps limit — resets lastRenderedAt
+      frameRenderer.setFPSLimit(30);
+      frameRenderer.render(1010);  // renders (first frame after limit, lastRenderedAt was null)
+      frameRenderer.render(1020);  // skip (10ms < 30ms)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
+
+      frameRenderer.render(1044);  // renders (34ms >= 30ms)
+
+      expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(4);
+    });
   });
 
   describe("render loop", () => {
