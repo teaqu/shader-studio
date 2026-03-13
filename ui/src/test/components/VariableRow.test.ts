@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import VariableRow from '../../lib/components/debug/VariableRow.svelte';
 import type { CapturedVariable } from '../../lib/VariableCaptureManager';
 
-const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null, gridWidth: 32, gridHeight: 32 } as const;
+const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null, gridWidth: 32, gridHeight: 32, declarationLine: 0 } as const;
 
 function makeFloatVar(value: number): CapturedVariable {
   return { varName: 'myFloat', varType: 'float', value: [value], channelMeans: null, channelStats: null, stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS };
@@ -86,6 +86,7 @@ function makeExpandedVecVar(): CapturedVariable {
     thumbnail: null,
     gridWidth: 32,
     gridHeight: 32,
+    declarationLine: 0,
   };
 }
 
@@ -255,7 +256,7 @@ describe('VariableRow', () => {
         { r: 0.5, g: 0.5, b: 0.0, freq: 0.6 },
         { r: 0.0, g: 0.1, b: 0.0, freq: 0.4 },
       ],
-      thumbnail: null, gridWidth: 32, gridHeight: 32,
+      thumbnail: null, gridWidth: 32, gridHeight: 32, declarationLine: 0,
     };
     render(VariableRow, { props: { variable: vec2Var, isPixelMode: false } });
     const segments = document.querySelectorAll('.segment');
@@ -295,6 +296,50 @@ describe('VariableRow', () => {
     expect(content).toContain('0.100');
     const btn = document.querySelector('.expand-btn');
     expect(btn).toBeInTheDocument();
+  });
+
+  it('calls onClick when variable name is clicked', async () => {
+    const onClick = vi.fn();
+    render(VariableRow, {
+      props: { variable: makeFloatVar(0.5), isPixelMode: true, onClick },
+    });
+    const nameEl = document.querySelector('.var-name.clickable') as HTMLElement;
+    expect(nameEl).toBeInTheDocument();
+    await fireEvent.click(nameEl);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('calls onClick when thumbnail is clicked', async () => {
+    const onClick = vi.fn();
+    const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
+    const v = { ...makeGridVecVar(), thumbnail: thumb };
+    render(VariableRow, { props: { variable: v, isPixelMode: false, onClick } });
+    const thumbCol = document.querySelector('.thumb-col.clickable') as HTMLElement;
+    expect(thumbCol).toBeInTheDocument();
+    await fireEvent.click(thumbCol);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onClick when expand button is clicked', async () => {
+    const onClick = vi.fn();
+    const onExpandToggle = vi.fn();
+    render(VariableRow, {
+      props: { variable: makeGridScalarVar(), isPixelMode: false, onClick, onExpandToggle },
+    });
+    const btn = document.querySelector('.expand-btn') as HTMLElement;
+    await fireEvent.click(btn);
+    expect(onExpandToggle).toHaveBeenCalledOnce();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('calls onClick via keyboard Enter on variable name', async () => {
+    const onClick = vi.fn();
+    render(VariableRow, {
+      props: { variable: makeFloatVar(0.5), isPixelMode: true, onClick },
+    });
+    const nameEl = document.querySelector('.var-name.clickable') as HTMLElement;
+    await fireEvent.keyDown(nameEl, { key: 'Enter' });
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it('shows dash placeholder when no value and no stats', () => {

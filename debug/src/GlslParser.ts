@@ -129,6 +129,65 @@ export class GlslParser {
     return varTypes;
   }
 
+  /**
+   * Returns a map of variable name → closest line number at or above upToLine.
+   * Tracks declarations, reassignments, and compound assignments.
+   * Later occurrences overwrite earlier ones so the result is always the
+   * nearest occurrence scanning upward from the debug line.
+   */
+  static buildVariableLineMap(
+    lines: string[],
+    upToLine: number,
+    functionInfo: FunctionInfo,
+    knownVars?: Map<string, string>,
+  ): Map<string, number> {
+    const varLines = new Map<string, number>();
+
+    if (functionInfo.name && functionInfo.start >= 0) {
+      const funcLine = lines[functionInfo.start];
+      const paramsMatch = funcLine.match(/\(([^)]*)\)/);
+      if (paramsMatch && paramsMatch[1].trim()) {
+        for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
+          const match = pair.match(/(?:in|out|inout)?\s*(?:vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)/);
+          if (match) {
+            varLines.set(match[1], functionInfo.start);
+          }
+        }
+      }
+    }
+
+    // Build set of known variable names for reassignment detection
+    const varNames = knownVars ? new Set(knownVars.keys()) : new Set(varLines.keys());
+
+    const scanStart = functionInfo.start >= 0 ? functionInfo.start : 0;
+    for (let i = scanStart; i <= upToLine && i < lines.length; i++) {
+      const line = lines[i];
+
+      // Declarations: type varName = ... or type varName;
+      const declMatch = line.match(/\s*(?:vec4|vec3|vec2|float|int|bool|mat2|mat3|mat4)\s+(\w+)\s*[=;]/);
+      if (declMatch && declMatch[1]) {
+        varLines.set(declMatch[1], i);
+        varNames.add(declMatch[1]);
+        continue;
+      }
+
+      // Reassignments and compound assignments: varName =, varName +=, etc.
+      const assignMatch = line.match(/^\s*(\w+)\s*(?:[+\-*/]?=)(?!=)/);
+      if (assignMatch && assignMatch[1] && varNames.has(assignMatch[1])) {
+        varLines.set(assignMatch[1], i);
+        continue;
+      }
+
+      // Member access assignments: varName.xyz =, varName.r +=, etc.
+      const memberMatch = line.match(/^\s*(\w+)\.[xyzwrgba]+\s*(?:[+\-*/]?=)(?!=)/);
+      if (memberMatch && memberMatch[1] && varNames.has(memberMatch[1])) {
+        varLines.set(memberMatch[1], i);
+      }
+    }
+
+    return varLines;
+  }
+
   static detectVariableAndType(
     lineContent: string,
     varTypes: Map<string, string>,

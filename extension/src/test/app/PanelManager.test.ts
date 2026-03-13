@@ -1022,6 +1022,39 @@ suite('PanelManager Test Suite', () => {
             sinon.assert.calledWith(execStub, 'shader-studio.newShader');
         });
 
+        test('routes goToLine message to handleGoToLine', async () => {
+            const openDocStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+            const mockEditor = {
+                selection: null as any,
+                revealRange: sandbox.stub(),
+            };
+            const showDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves(mockEditor as any);
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'goToLine', payload: { line: 10, filePath: '/test/shader.glsl' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.calledOnce(openDocStub);
+            const calledUri = openDocStub.firstCall.args[0] as vscode.Uri;
+            assert.strictEqual(calledUri.fsPath, vscode.Uri.file('/test/shader.glsl').fsPath);
+            sinon.assert.calledOnce(showDocStub);
+            assert.ok(mockEditor.selection);
+            assert.strictEqual(mockEditor.selection.start.line, 10);
+            sinon.assert.calledOnce(mockEditor.revealRange);
+        });
+
+        test('goToLine does nothing when filePath is missing', async () => {
+            const openDocStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'goToLine', payload: { line: 5, filePath: '' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.notCalled(openDocStub);
+        });
+
         test('extensionCommand does nothing when command is missing', async () => {
             const execStub = vscode.commands.executeCommand as sinon.SinonStub;
             execStub.resetHistory();

@@ -13,6 +13,7 @@ export type RefreshMode = 'polling' | 'manual' | 'realtime' | 'pause';
 export interface CapturedVariable {
   varName: string;
   varType: string;
+  declarationLine: number;         // 0-indexed line where the variable is declared
   value: number[] | null;          // pixel mode: exact component values
   channelMeans: number[] | null;   // grid mode: per-component means
   channelStats: Array<{ min: number; max: number; mean: number }> | null;  // grid mode: per-component stats
@@ -146,6 +147,7 @@ export class VariableCaptureManager {
   private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
   private expectedCount = 0;
   private declaredOrder: string[] = [];
+  private varDeclarationLines: Map<string, number> = new Map();
   private lastGridWidth = 32;
   private lastGridHeight = 32;
   private pollTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -274,7 +276,10 @@ export class VariableCaptureManager {
 
     const captures: Array<{ varName: string; varType: string; captureShader: string }> = [];
 
+    // Store declaration lines for each variable
+    this.varDeclarationLines.clear();
     for (const v of vars) {
+      this.varDeclarationLines.set(v.varName, v.declarationLine);
       const shader = VariableCaptureBuilder.generateCaptureShader(
         params.code,
         resolvedLine,
@@ -337,6 +342,7 @@ export class VariableCaptureManager {
         capturedVars.push({
           varName: result.varName,
           varType: result.varType,
+          declarationLine: this.varDeclarationLines.get(result.varName) ?? 0,
           value,
           channelMeans: null,
           channelStats: null,
@@ -393,6 +399,7 @@ export class VariableCaptureManager {
         capturedVars.push({
           varName: result.varName,
           varType: result.varType,
+          declarationLine: this.varDeclarationLines.get(result.varName) ?? 0,
           value: null,
           channelMeans,
           channelStats: componentStats,

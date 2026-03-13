@@ -6,6 +6,7 @@
   export let isPixelMode: boolean = false;
   export let isLoading: boolean = false;
   export let onExpandToggle: (varName: string) => void = () => {};
+  export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
   export let sampleSize: number = 32;
   export let onChangeSampleSize: (size: number) => void = () => {};
   export let refreshMode: RefreshMode = 'polling';
@@ -108,6 +109,7 @@
         {variable}
         {isPixelMode}
         onExpandToggle={() => onExpandToggle(variable.varName)}
+        onClick={() => onVarClick(variable.varName, variable.declarationLine)}
       />
     {/each}
   {/if}

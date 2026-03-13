@@ -38,6 +38,7 @@ export class VariableCaptureBuilder {
     }
 
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
+    const varLineMap = GlslParser.buildVariableLineMap(lines, resolvedLine, functionInfo, varTypes);
 
     // In line mode (not whole-shader), exclude `out`/`inout` parameters for helper functions.
     // For mainImage, keep fragColor visible since it's the shader output.
@@ -56,15 +57,17 @@ export class VariableCaptureBuilder {
     // In mainImage, defer fragColor to append at the end of the list
     const isMainImage = functionInfo.name === 'mainImage';
     let fragColorType: string | null = null;
+    let fragColorLine = -1;
 
     const result: CaptureVarInfo[] = [];
     for (const [varName, varType] of varTypes) {
       if (CAPTURABLE_TYPES.has(varType) && !outParams.has(varName)) {
         if (isMainImage && varName === 'fragColor') {
           fragColorType = varType;
+          fragColorLine = varLineMap.get(varName) ?? functionInfo.start;
           continue;
         }
-        result.push({ varName, varType });
+        result.push({ varName, varType, declarationLine: varLineMap.get(varName) ?? functionInfo.start });
         if (result.length >= 15) break;
       }
     }
@@ -83,14 +86,14 @@ export class VariableCaptureBuilder {
           lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine
         );
         if (varInfo && varInfo.name === '_dbgReturn') {
-          result.push({ varName: '_dbgReturn', varType: returnTypeMatch[1] });
+          result.push({ varName: '_dbgReturn', varType: returnTypeMatch[1], declarationLine: resolvedLine });
         }
       }
     }
 
     // Append fragColor last so it always appears at the bottom in mainImage
     if (fragColorType && result.length < 15) {
-      result.push({ varName: 'fragColor', varType: fragColorType });
+      result.push({ varName: 'fragColor', varType: fragColorType, declarationLine: fragColorLine });
     }
 
     return result;
