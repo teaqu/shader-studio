@@ -375,6 +375,71 @@ export class CodeGenerator {
     return `${setupCode}  ${varInfo.type} result = ${functionName}(${args.join(', ')});\n${visualization}`;
   }
 
+  /**
+   * Extends a truncation end line to include the full multi-line statement.
+   * If the line doesn't end with ; { or }, scans forward to find the statement end.
+   */
+  static extendForMultiLine(lines: string[], truncationEnd: number): number {
+    const stripComments = (line: string): string => {
+      const commentIndex = line.indexOf('//');
+      return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+    };
+    const content = stripComments(lines[truncationEnd] || '').trim();
+    if (content.length > 0 && !content.endsWith(';') && !content.endsWith('{') && !content.endsWith('}')) {
+      for (let i = truncationEnd + 1; i < lines.length && i < truncationEnd + 20; i++) {
+        if (stripComments(lines[i]).trim().endsWith(';')) {
+          return i;
+        }
+      }
+    }
+    return truncationEnd;
+  }
+
+  /**
+   * Finds the range of a return statement that contains the debug line.
+   * Scans backward from debugLine to find `return`, forward to find `;`.
+   * Returns null if the debug line is not part of a return statement.
+   */
+  static findReturnRange(
+    lines: string[],
+    debugLine: number,
+    truncationEnd: number,
+  ): { start: number; end: number } | null {
+    const stripComments = (line: string): string => {
+      const commentIndex = line.indexOf('//');
+      return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+    };
+
+    // Check if the debug line itself starts with return
+    const debugContent = stripComments(lines[debugLine] || '').trim();
+    if (/^return\s/.test(debugContent)) {
+      // Find the end of the return statement
+      let end = debugLine;
+      if (!debugContent.endsWith(';')) {
+        for (let i = debugLine + 1; i < lines.length && i < debugLine + 20; i++) {
+          if (stripComments(lines[i]).trim().endsWith(';')) {
+            end = i;
+            break;
+          }
+        }
+      }
+      return { start: debugLine, end };
+    }
+
+    // Check if the debug line is a continuation of a return statement
+    for (let i = debugLine - 1; i >= 0 && i >= debugLine - 10; i--) {
+      const prevContent = stripComments(lines[i]).trim();
+      if (/^return\s/.test(prevContent)) {
+        return { start: i, end: truncationEnd };
+      }
+      if (prevContent.endsWith(';') || prevContent.endsWith('{') || prevContent.endsWith('}') || prevContent.length === 0) {
+        break;
+      }
+    }
+
+    return null;
+  }
+
   static wrapFunctionForDebugging(
     lines: string[],
     functionInfo: FunctionInfo,
@@ -397,7 +462,12 @@ export class CodeGenerator {
       truncationEnd = containingLoops[0].endLine;
     } else {
       truncationEnd = debugLine;
+      // Extend for multi-line statements
+      truncationEnd = CodeGenerator.extendForMultiLine(lines, truncationEnd);
     }
+
+    // Detect return statement range on the debug line
+    const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
@@ -410,13 +480,19 @@ export class CodeGenerator {
         );
       }
 
-      if (i === debugLine && varInfo.name === '_dbgReturn') {
-        const returnMatch = line.match(/^\s*return\s+(.+);/);
-        if (returnMatch) {
-          const expression = returnMatch[1];
-          const indent = line.match(/^\s*/)?.[0] || '  ';
-          line = `${indent}${varInfo.type} ${varInfo.name} = ${expression};`;
+      // Handle return statement lines
+      if (returnRange && i >= returnRange.start && i <= returnRange.end) {
+        if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
+          // Convert the full (possibly multi-line) return to a variable assignment
+          const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
+          const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
+          if (returnMatch) {
+            const indent = line.match(/^\s*/)?.[0] || '  ';
+            functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+          }
         }
+        // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+        continue;
       }
 
       functionLines.push(line);

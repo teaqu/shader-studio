@@ -100,8 +100,10 @@ export class GlslParser {
       }
     }
 
-    // Scan all lines up to and including the debug line
-    for (let i = 0; i <= upToLine && i < lines.length; i++) {
+    // Scan lines within the current function scope (not from line 0,
+    // which would leak variables from other functions into the type map).
+    const scanStart = functionInfo.start >= 0 ? functionInfo.start : 0;
+    for (let i = scanStart; i <= upToLine && i < lines.length; i++) {
       const line = lines[i];
 
       const declPatterns = [
