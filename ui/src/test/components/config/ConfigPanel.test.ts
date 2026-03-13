@@ -5,6 +5,21 @@ import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
 import type { Transport } from '../../../lib/transport/MessageTransport';
 import type { ShaderConfig } from '@shader-studio/types';
 import { ConfigManager } from '../../../lib/ConfigManager';
+import { BufferConfig } from '../../../lib/BufferConfig';
+
+// Track BufferConfig constructor calls to verify config passed to child components
+const bufferConfigConstructorCalls: { name: string; config: any }[] = [];
+vi.mock('../../../lib/BufferConfig', async () => {
+  const actual = await vi.importActual<typeof import('../../../lib/BufferConfig')>('../../../lib/BufferConfig');
+  return {
+    BufferConfig: class extends actual.BufferConfig {
+      constructor(name: string, config: any, onUpdate?: any) {
+        super(name, config, onUpdate);
+        bufferConfigConstructorCalls.push({ name, config });
+      }
+    },
+  };
+});
 
 // Mock ConfigManager to avoid real transport interactions
 vi.mock('../../../lib/ConfigManager', () => ({
@@ -68,6 +83,7 @@ describe('ConfigPanel', () => {
     } as Transport;
 
     mockOnFileSelect = vi.fn();
+    bufferConfigConstructorCalls.length = 0;
   });
 
   function getLatestConfigManagerInstance(): ReturnType<typeof vi.fn> {
@@ -781,6 +797,57 @@ describe('ConfigPanel', () => {
       // Image should remain active since we removed a non-active tab
       const stillActiveTab = container.querySelector('.tab-button.active');
       expect(stillActiveTab?.textContent).toContain('Image');
+    });
+  });
+
+  describe('Image pass fallback config', () => {
+    it('should not include path property in Image pass fallback when config is null', async () => {
+      render(ConfigPanel, {
+        config: null,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      // BufferConfig.svelte creates a BufferConfig instance with the activeTabConfig.
+      // When config is null, the fallback for Image should be { inputs: {} } with no path.
+      const imageCall = bufferConfigConstructorCalls.find((c) => c.name === 'Image');
+      expect(imageCall).toBeTruthy();
+      expect(imageCall!.config).toEqual({ inputs: {} });
+      expect('path' in imageCall!.config).toBe(false);
+    });
+
+    it('should not include path property in Image pass fallback when config has no Image pass', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+        },
+      };
+      // Remove Image pass after creation to bypass type check
+      delete (config.passes as any).Image;
+
+      render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const imageCall = bufferConfigConstructorCalls.find((c) => c.name === 'Image');
+      expect(imageCall).toBeTruthy();
+      expect(imageCall!.config).toEqual({ inputs: {} });
+      expect('path' in imageCall!.config).toBe(false);
     });
   });
 

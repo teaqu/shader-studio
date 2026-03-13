@@ -138,7 +138,7 @@
 
     if (activeTab === "Image") {
       // Return actual config or default empty ImagePass
-      return config?.passes?.Image || { path: "", inputs: {} };
+      return config?.passes?.Image || { inputs: {} };
     } else {
       // Return actual buffer config or default empty BufferPass
       return config?.passes?.[actualBufferName] || { path: "", inputs: {} };
