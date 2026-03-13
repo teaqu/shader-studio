@@ -193,8 +193,7 @@ export class AudioTextureManager {
       this.audioSources[path] = source;
       this.initializing.delete(path);
 
-      // Start playback
-      this.startSourceNode(path, source, startTime ?? 0);
+      // Don't auto-play — let the caller decide via resumeAll/resumeAudio
     } catch (error) {
       console.warn(`Failed to load audio: ${path}`, error);
       this.initializing.delete(path);
@@ -380,6 +379,17 @@ export class AudioTextureManager {
       if (!source.playing && !this.userPaused.has(path)) {
         this.startSourceNode(path, source, source.offsetTime);
         console.log(`Resumed audio: ${path}`);
+      }
+    }
+  }
+
+  /** Force-resume all audio, clearing user-paused state. Used on reset. */
+  public forceResumeAll(): void {
+    this.userPaused.clear();
+    for (const [path, source] of Object.entries(this.audioSources)) {
+      if (this.initializing.has(path)) continue;
+      if (!source.playing) {
+        this.startSourceNode(path, source, source.offsetTime);
       }
     }
   }

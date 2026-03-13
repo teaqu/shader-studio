@@ -139,15 +139,14 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (result.success) {
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       this.resourceManager.syncAllVideosToTime(shaderTime);
-      this.resourceManager.syncAllAudioToTime(shaderTime);
       if (this.timeManager.isPaused()) {
         // Newly loaded media autoplay — force pause if shader is paused
         this.resourceManager.pauseAllVideos();
-        this.resourceManager.pauseAllAudio();
       } else {
         this.resourceManager.resumeAllVideos();
-        this.resourceManager.resumeAllAudio();
       }
+      // Audio never auto-plays on compilation — it only starts on explicit user
+      // action (reset button). Keep it paused regardless of shader pause state.
     } else {
       this.resourceManager.pauseAllVideos();
       this.resourceManager.pauseAllAudio();
@@ -232,6 +231,11 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public resetTime(): void {
     this.shaderPipeline.resetTime();
+  }
+
+  /** Force-resume all audio, clearing user-paused state. Used on reset. */
+  public resumeAllAudio(): void {
+    this.resourceManager.forceResumeAllAudio();
   }
 
   public setGlobalVolume(volume: number, muted: boolean): void {

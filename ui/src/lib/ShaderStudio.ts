@@ -59,10 +59,10 @@ export class ShaderStudio {
     return await this.messageHandler.handleShaderMessage(event);
   }
 
-  handleReset(onComplete?: () => void): void {
-    this.messageHandler.reset(() => {
+  async handleReset(onComplete?: () => void | Promise<void>): Promise<void> {
+    await this.messageHandler.reset(async () => {
       if (onComplete) {
-        onComplete();
+        await onComplete();
       }
     });
   }

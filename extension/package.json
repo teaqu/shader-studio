@@ -112,8 +112,7 @@
         "title": "Shader Studio: Reset Panel Layout"
       }
     ],
-    "menus": {
-    },
+    "menus": {},
     "configuration": {
       "title": "Shader Studio",
       "properties": {
@@ -150,29 +149,22 @@
         }
       }
     },
-    "snippets": [
-      {
-        "language": "glsl",
-        "path": "./snippets/sdf-2d.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/sdf-3d.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/math.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/coordinates.code-snippets"
-      }
-    ],
     "languages": [
       {
         "id": "glsl",
-        "aliases": ["GLSL", "OpenGL Shading Language"],
-        "extensions": [".glsl", ".frag", ".vert", ".geom", ".tesc", ".tese", ".comp"],
+        "aliases": [
+          "GLSL",
+          "OpenGL Shading Language"
+        ],
+        "extensions": [
+          ".glsl",
+          ".frag",
+          ".vert",
+          ".geom",
+          ".tesc",
+          ".tese",
+          ".comp"
+        ],
         "configuration": "./glsl-language-configuration.json",
         "priority": "default"
       }
@@ -188,6 +180,48 @@
       {
         "fileMatch": "*.sha.json",
         "url": "./schemas/shader-config.schema.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "glsl",
+        "path": "./snippets/sdf-2d.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/sdf-3d.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/sdf-operations.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/transformations.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/ray-marching.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/noise.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/math.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/color.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/coordinates.code-snippets"
+      },
+      {
+        "language": "glsl",
+        "path": "./snippets/templates.code-snippets"
       }
     ]
   },

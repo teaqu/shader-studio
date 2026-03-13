@@ -29,6 +29,7 @@ export interface RenderingEngine {
   createVariableCapturer(): VariableCapturer;
   getCaptureUniforms(): CaptureUniforms;
   resumeAudioContext(): Promise<void>;
+  resumeAllAudio(): void;
   updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void;
   dispose(): void;
 }

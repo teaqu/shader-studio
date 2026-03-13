@@ -137,9 +137,19 @@ describe("AudioTextureManager", () => {
   }
 
   describe("audio playback controls", () => {
+    it("should not auto-play on load", async () => {
+      await loadTestAudio("track.mp3");
+
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+    });
+
     it("should pause and resume audio", async () => {
       await loadTestAudio("track.mp3");
 
+      // Audio starts paused after load
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      manager.resumeAudio("track.mp3");
       expect(manager.isAudioPaused("track.mp3")).toBe(false);
 
       manager.pauseAudio("track.mp3");
@@ -203,6 +213,12 @@ describe("AudioTextureManager", () => {
       await loadTestAudio("a.mp3");
       await loadTestAudio("b.mp3");
 
+      // Start playing first
+      manager.resumeAudio("a.mp3");
+      manager.resumeAudio("b.mp3");
+      expect(manager.isAudioPaused("a.mp3")).toBe(false);
+      expect(manager.isAudioPaused("b.mp3")).toBe(false);
+
       manager.pauseAll();
       expect(manager.isAudioPaused("a.mp3")).toBe(true);
       expect(manager.isAudioPaused("b.mp3")).toBe(true);
@@ -214,6 +230,7 @@ describe("AudioTextureManager", () => {
 
     it("should not resume user-paused audio on resumeAll", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       // User pauses individually
       manager.pauseAudio("track.mp3");
@@ -221,6 +238,41 @@ describe("AudioTextureManager", () => {
       // resumeAll should skip user-paused
       manager.resumeAll();
       expect(manager.isAudioPaused("track.mp3")).toBe(true);
+    });
+
+    it("resumeAll should resume never-started audio (for togglePause unpause)", async () => {
+      await loadTestAudio("track.mp3");
+
+      // Audio was loaded but never started — resumeAll DOES resume it
+      // because it's not userPaused. This is correct for togglePause unpause.
+      manager.resumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+    });
+
+    it("forceResumeAll should resume all audio including user-paused", async () => {
+      await loadTestAudio("a.mp3");
+      await loadTestAudio("b.mp3");
+      manager.resumeAudio("a.mp3");
+      manager.resumeAudio("b.mp3");
+
+      // User pauses one
+      manager.pauseAudio("a.mp3");
+      expect(manager.isAudioPaused("a.mp3")).toBe(true);
+
+      // forceResumeAll should resume everything, clearing user pause state
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("a.mp3")).toBe(false);
+      expect(manager.isAudioPaused("b.mp3")).toBe(false);
+    });
+
+    it("forceResumeAll should start audio that was never played", async () => {
+      await loadTestAudio("track.mp3");
+
+      // Audio was loaded but never started
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
     });
 
     it("should mute and unmute all audio", async () => {
@@ -247,11 +299,13 @@ describe("AudioTextureManager", () => {
 
     it("should sync all audio to shader time", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
+      const initialCalls = mockAudioContext.createBufferSource.mock.calls.length;
       // duration = 60 (from mock), shaderTime=35 -> 35 % 60 = 35
       manager.syncAllToTime(35);
       // seekAudio should have been called (restarts source node)
-      expect(mockAudioContext.createBufferSource).toHaveBeenCalled();
+      expect(mockAudioContext.createBufferSource.mock.calls.length).toBeGreaterThan(initialCalls);
     });
   });
 
@@ -275,6 +329,7 @@ describe("AudioTextureManager", () => {
   describe("updateLoopRegion", () => {
     it("should set a new loop region on a loaded audio source", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       manager.updateLoopRegion("track.mp3", 5.0, 20.0);
 
@@ -285,6 +340,7 @@ describe("AudioTextureManager", () => {
 
     it("should update an existing loop region", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       manager.updateLoopRegion("track.mp3", 2.0, 10.0);
       manager.updateLoopRegion("track.mp3", 8.0, 25.0);
@@ -328,11 +384,12 @@ describe("AudioTextureManager", () => {
       expect(mockAudioContext.decodeAudioData).toHaveBeenCalled();
     });
 
-    it("should start playback after loading", async () => {
+    it("should not start playback after loading", async () => {
       await loadTestAudio("track.mp3");
 
-      expect(manager.isAudioPaused("track.mp3")).toBe(false);
-      expect(mockAudioContext.createBufferSource).toHaveBeenCalled();
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+      // No source node created yet — playback hasn't started
+      expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
     });
 
     it("should return existing texture if already loaded", async () => {
@@ -354,16 +411,18 @@ describe("AudioTextureManager", () => {
       expect(console.warn).toHaveBeenCalled();
     });
 
-    it("should set startTime when provided", async () => {
+    it("should set startTime as initial offset when provided", async () => {
       await manager.loadAudioSource("track.mp3", { startTime: 15.0 });
 
-      // The source node should have been started at the offset
-      const sourceNode = mockAudioContext.createBufferSource.mock.results[0].value;
-      expect(sourceNode.start).toHaveBeenCalledWith(0, 15.0);
+      // Audio doesn't auto-play, but offset should be set
+      expect(manager.getAudioCurrentTime("track.mp3")).toBe(15.0);
     });
 
     it("should set loop region when startTime/endTime provided", async () => {
       await manager.loadAudioSource("track.mp3", { startTime: 5.0, endTime: 20.0 });
+
+      // Resume to trigger source node creation with loop settings
+      manager.resumeAudio("track.mp3");
 
       const sourceNode = mockAudioContext.createBufferSource.mock.results[0].value;
       expect(sourceNode.loopStart).toBe(5.0);
@@ -395,6 +454,7 @@ describe("AudioTextureManager", () => {
   describe("seekAudio", () => {
     it("should restart playback from new position when playing", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       const initialSourceCallCount = mockAudioContext.createBufferSource.mock.calls.length;
       manager.seekAudio("track.mp3", 30.0);
@@ -453,19 +513,24 @@ describe("AudioTextureManager", () => {
       expect(mockAudioContext.decodeAudioData).toHaveBeenCalled();
     });
 
-    it("should create AudioBufferSourceNode for playback", async () => {
+    it("should create AudioBufferSourceNode on resume, not on load", async () => {
       await loadTestAudio("track.mp3");
 
-      // AudioBufferSourceNode should have been created
+      // Not created on load
+      expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+
+      // Created on resume
+      manager.resumeAudio("track.mp3");
       expect(mockAudioContext.createBufferSource).toHaveBeenCalled();
 
-      // The source node should have been started
       const sourceNode = mockAudioContext.createBufferSource.mock.results[0].value;
       expect(sourceNode.start).toHaveBeenCalled();
     });
 
-    it("should set native loop properties on AudioBufferSourceNode", async () => {
+    it("should set native loop properties on AudioBufferSourceNode when resumed", async () => {
       await manager.loadAudioSource("track.mp3", { startTime: 5.0, endTime: 20.0 });
+
+      manager.resumeAudio("track.mp3");
 
       const sourceNode = mockAudioContext.createBufferSource.mock.results[0].value;
       expect(sourceNode.loop).toBe(true);
@@ -477,6 +542,7 @@ describe("AudioTextureManager", () => {
   describe("seeking during drag (performance fix)", () => {
     it("should allow rapid seeking without errors", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       // Simulate rapid seeking as would happen during drag
       expect(() => {
@@ -488,6 +554,7 @@ describe("AudioTextureManager", () => {
 
     it("should allow rapid loop region updates without errors", async () => {
       await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
 
       // Simulate rapid loop region updates as would happen during drag
       expect(() => {
@@ -524,6 +591,155 @@ describe("AudioTextureManager", () => {
     it("should return buffer duration after loading", async () => {
       await loadTestAudio("track.mp3");
       expect(manager.getAudioDuration("track.mp3")).toBe(60);
+    });
+  });
+
+  describe("pause/unpause/reset flow (regression prevention)", () => {
+    it("pauseAll does NOT set userPaused — resumeAll resumes after pauseAll", async () => {
+      await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+
+      // System pause (e.g., togglePause pausing the shader)
+      manager.pauseAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      // System unpause — should resume because pauseAll didn't set userPaused
+      manager.resumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+    });
+
+    it("pauseAudio sets userPaused — resumeAll does NOT resume after pauseAudio", async () => {
+      await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
+
+      // User pause (e.g., clicking individual pause button)
+      manager.pauseAudio("track.mp3");
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      // System unpause — should NOT resume because user explicitly paused
+      manager.resumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+    });
+
+    it("forceResumeAll clears userPaused — resumes even after pauseAudio", async () => {
+      await loadTestAudio("track.mp3");
+      manager.resumeAudio("track.mp3");
+
+      // User pause
+      manager.pauseAudio("track.mp3");
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      // Force resume (reset button) — should clear userPaused and resume
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+    });
+
+    it("full reset flow: load → no auto-play → forceResumeAll → playing", async () => {
+      // Simulate: shader loads audio, audio stays silent, user hits reset
+      await loadTestAudio("a.mp3");
+      await loadTestAudio("b.mp3");
+
+      // Audio should not auto-play on load
+      expect(manager.isAudioPaused("a.mp3")).toBe(true);
+      expect(manager.isAudioPaused("b.mp3")).toBe(true);
+      expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+
+      // User hits reset → forceResumeAll is called
+      manager.forceResumeAll();
+
+      // Both should now be playing
+      expect(manager.isAudioPaused("a.mp3")).toBe(false);
+      expect(manager.isAudioPaused("b.mp3")).toBe(false);
+      expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(2);
+    });
+
+    it("shader switch: cleanup removes all state, new load does not auto-play", async () => {
+      // Load audio for shader A
+      await loadTestAudio("shaderA-music.mp3");
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("shaderA-music.mp3")).toBe(false);
+
+      // Switch to shader B — cleanup is called
+      manager.cleanup();
+      expect(manager.getAudioTexture("shaderA-music.mp3")).toBeNull();
+
+      // Re-create manager for new shader (simulates new compilation)
+      manager = new AudioTextureManager(mockRenderer);
+
+      // Load audio for shader B
+      await manager.loadAudioSource("shaderB-drums.mp3");
+      // Should NOT auto-play
+      expect(manager.isAudioPaused("shaderB-drums.mp3")).toBe(true);
+    });
+
+    it("togglePause cycle: play → pauseAll → resumeAll preserves state correctly", async () => {
+      await loadTestAudio("a.mp3");
+      await loadTestAudio("b.mp3");
+
+      // Start both playing
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("a.mp3")).toBe(false);
+      expect(manager.isAudioPaused("b.mp3")).toBe(false);
+
+      // User pauses one individually
+      manager.pauseAudio("a.mp3");
+
+      // System pause (togglePause)
+      manager.pauseAll();
+      expect(manager.isAudioPaused("a.mp3")).toBe(true);
+      expect(manager.isAudioPaused("b.mp3")).toBe(true);
+
+      // System unpause (togglePause)
+      manager.resumeAll();
+
+      // b should resume (was system-paused), a should stay paused (was user-paused)
+      expect(manager.isAudioPaused("a.mp3")).toBe(true);
+      expect(manager.isAudioPaused("b.mp3")).toBe(false);
+    });
+
+    it("multiple pause/resume cycles maintain correct userPaused tracking", async () => {
+      await loadTestAudio("track.mp3");
+      manager.forceResumeAll();
+
+      // Cycle 1: user pause → forceResume clears it
+      manager.pauseAudio("track.mp3");
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+
+      // Cycle 2: user pause → resumeAll does NOT clear it
+      manager.pauseAudio("track.mp3");
+      manager.resumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(true);
+
+      // Cycle 3: forceResumeAll clears it again
+      manager.forceResumeAll();
+      expect(manager.isAudioPaused("track.mp3")).toBe(false);
+    });
+
+    it("forceResumeAll skips audio still initializing", async () => {
+      // Start loading but don't await (simulates in-progress load)
+      const loadPromise = manager.loadAudioSource("loading.mp3");
+
+      // The path should be in initializing set at this point
+      // forceResumeAll should skip it
+      manager.forceResumeAll();
+
+      // Finish loading
+      await loadPromise;
+
+      // Should still be paused since forceResumeAll ran while initializing
+      expect(manager.isAudioPaused("loading.mp3")).toBe(true);
+    });
+
+    it("resumeAll skips audio still initializing", async () => {
+      const loadPromise = manager.loadAudioSource("loading.mp3");
+
+      manager.resumeAll();
+
+      await loadPromise;
+
+      expect(manager.isAudioPaused("loading.mp3")).toBe(true);
     });
   });
 
