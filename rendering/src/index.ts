@@ -1,5 +1,6 @@
 export { RenderingEngine } from './RenderingEngine';
-export { ShaderCompiler, type ChannelSamplerType } from './ShaderCompiler';
+export { ShaderCompiler } from './ShaderCompiler';
+export type { ChannelSamplerType } from './ShaderCompiler';
 export { ResourceManager } from './ResourceManager';
 export { BufferManager } from './BufferManager';
 export { ShaderPipeline } from './ShaderPipeline';

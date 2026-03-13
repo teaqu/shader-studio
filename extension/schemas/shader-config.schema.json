@@ -187,6 +187,30 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "audio"
+            },
+            "path": {
+              "type": "string",
+              "description": "Path to audio file"
+            },
+            "startTime": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Loop region start time in seconds"
+            },
+            "endTime": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Loop region end time in seconds"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     }

@@ -851,6 +851,127 @@ describe('ConfigPanel', () => {
     });
   });
 
+  describe('audio/video handler props', () => {
+    it('should accept and pass through onVideoControl prop', async () => {
+      const mockVideoControl = vi.fn();
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'video', path: '/test/video.mp4' }
+            }
+          },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onVideoControl: mockVideoControl,
+      });
+
+      await tick();
+
+      // Component should render without errors when video handler props are provided
+      expect(container.querySelector('.config-panel')).toBeTruthy();
+    });
+
+    it('should accept and pass through onAudioControl prop', async () => {
+      const mockAudioControl = vi.fn();
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'audio', path: '/test/audio.mp3' }
+            }
+          },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onAudioControl: mockAudioControl,
+      });
+
+      await tick();
+
+      // Component should render without errors when audio handler props are provided
+      expect(container.querySelector('.config-panel')).toBeTruthy();
+    });
+
+    it('should accept globalMuted prop', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        globalMuted: true,
+      });
+
+      await tick();
+
+      expect(container.querySelector('.config-panel')).toBeTruthy();
+    });
+
+    it('should render with all audio/video handler props provided', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'video', path: '/test/video.mp4' },
+              iChannel1: { type: 'audio', path: '/test/audio.mp3' },
+            }
+          },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onVideoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue(null),
+        onAudioControl: vi.fn(),
+        getAudioState: vi.fn().mockReturnValue(null),
+        getAudioFFT: vi.fn().mockReturnValue(null),
+        globalMuted: false,
+      });
+
+      await tick();
+
+      expect(container.querySelector('.config-panel')).toBeTruthy();
+      expect(container.querySelector('.tab-navigation')).toBeTruthy();
+    });
+  });
+
   describe('visibility', () => {
     it('should apply visible class when isVisible is true', async () => {
       const { container } = render(ConfigPanel, {

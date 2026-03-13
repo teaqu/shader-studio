@@ -484,6 +484,86 @@ describe('ChannelConfigModal', () => {
     });
   });
 
+  describe('Video Control Buttons', () => {
+    it('should render video control buttons with accessible titles', () => {
+      const videoInput: ConfigInput = {
+        type: 'video',
+        path: './video.mp4'
+      };
+
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 5, duration: 30 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+        onVideoControl: mockVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      // Check buttons have accessible titles
+      const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
+      expect(pauseBtn).toBeTruthy();
+
+      const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      expect(unmuteBtn).toBeTruthy();
+
+      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      expect(resetBtn).toBeTruthy();
+    });
+
+    it('should render mute/unmute buttons with SVG icons not emoji', () => {
+      const videoInput: ConfigInput = {
+        type: 'video',
+        path: './video.mp4'
+      };
+
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 5, duration: 30 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+        onVideoControl: mockVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      // Mute/unmute button should contain an SVG, not emoji text
+      const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      expect(muteBtn).toBeTruthy();
+      const svg = muteBtn!.querySelector('svg');
+      expect(svg).toBeTruthy();
+
+      // Should not contain emoji characters
+      const textContent = muteBtn!.textContent || '';
+      expect(textContent).not.toContain('\uD83D\uDD07');
+      expect(textContent).not.toContain('\uD83D\uDD0A');
+    });
+
+    it('should render reset button with circular arrow not \u23EE', () => {
+      const videoInput: ConfigInput = {
+        type: 'video',
+        path: './video.mp4'
+      };
+
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 60 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+        onVideoControl: mockVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      expect(resetBtn).toBeTruthy();
+      // Should contain \u21BA (U+21BA), not \u23EE (U+23EE)
+      expect(resetBtn!.textContent).toContain('\u21BA');
+      expect(resetBtn!.textContent).not.toContain('\u23EE');
+    });
+  });
+
   describe('Initial State', () => {
     it('should initialize with existing texture input and Textures tab active', () => {
       const textureInput: ConfigInput = {
@@ -802,15 +882,243 @@ describe('ChannelConfigModal', () => {
       expect(screen.getByPlaceholderText('Path to cubemap cross-pattern PNG')).toBeInTheDocument();
     });
 
-    it('should show in-progress placeholder for Music tab', async () => {
-      render(ChannelConfigModal, defaultProps());
+  });
 
-      const musicTab = screen.getByRole('tab', { name: 'Music' });
-      await fireEvent.click(musicTab);
+  describe('Audio Control Buttons', () => {
+    it('should render audio control buttons when onAudioControl is provided', () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3'
+      };
 
-      expect(screen.getByText('Music support is in progress')).toBeInTheDocument();
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 5, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      // Check buttons have accessible titles
+      const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
+      expect(pauseBtn).toBeTruthy();
+
+      const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      expect(unmuteBtn).toBeTruthy();
+
+      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      expect(resetBtn).toBeTruthy();
     });
 
+    it('should not show audio controls when onAudioControl is not provided', () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3'
+      };
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+      });
+
+      const controlsRow = container.querySelector('.video-controls .controls-row');
+      expect(controlsRow).toBeFalsy();
+    });
+
+    it('should show timer when audio has duration', () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3'
+      };
+
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const timer = container.querySelector('.video-timer');
+      expect(timer).toBeTruthy();
+      expect(timer!.textContent).toContain('1:05');
+      expect(timer!.textContent).toContain('3:00');
+    });
+
+    it('should render mute/unmute buttons with SVG icons', () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3'
+      };
+
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      expect(muteBtn).toBeTruthy();
+      const svg = muteBtn!.querySelector('svg');
+      expect(svg).toBeTruthy();
+    });
+  });
+
+  describe('Audio Waveform Drag Debouncing', () => {
+    const audioInput: ConfigInput = {
+      type: 'audio',
+      path: './music.mp3',
+      startTime: 5,
+      endTime: 30,
+    };
+
+    it('should not call onSave during drag (handleDragMove)', async () => {
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState,
+      });
+
+      // Find the start handle
+      const startHandle = container.querySelector('.waveform-handle-start');
+      expect(startHandle).toBeTruthy();
+
+      // Simulate mousedown on the start handle
+      await fireEvent.mouseDown(startHandle!);
+      mockOnSave.mockClear();
+
+      // Simulate mousemove on window (drag in progress)
+      await fireEvent.mouseMove(window, { clientX: 100 });
+
+      // onSave should NOT have been called during drag
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('should call onSave on mouseup after drag (handleDragEnd)', async () => {
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState,
+      });
+
+      const startHandle = container.querySelector('.waveform-handle-start');
+      expect(startHandle).toBeTruthy();
+
+      // Simulate drag: mousedown, mousemove, mouseup
+      await fireEvent.mouseDown(startHandle!);
+      mockOnSave.mockClear();
+      await fireEvent.mouseMove(window, { clientX: 100 });
+      await fireEvent.mouseUp(window);
+
+      // onSave should have been called exactly once on mouseup
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('should send loopRegion message during drag', async () => {
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: { ...audioInput, resolved_path: 'webview://music.mp3' } as any,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState,
+      });
+
+      const startHandle = container.querySelector('.waveform-handle-start');
+      expect(startHandle).toBeTruthy();
+
+      // Start drag
+      await fireEvent.mouseDown(startHandle!);
+      mockAudioControl.mockClear();
+
+      // Move (triggers loopRegion update)
+      await fireEvent.mouseMove(window, { clientX: 150 });
+
+      // onAudioControl should have been called with a loopRegion action
+      expect(mockAudioControl).toHaveBeenCalled();
+      const call = mockAudioControl.mock.calls[0];
+      expect(call[1]).toMatch(/^loopRegion:/);
+    });
+
+    it('should not trigger multiple saves during rapid drag movements', async () => {
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState,
+      });
+
+      const endHandle = container.querySelector('.waveform-handle-end');
+      expect(endHandle).toBeTruthy();
+
+      // Start drag
+      await fireEvent.mouseDown(endHandle!);
+      mockOnSave.mockClear();
+
+      // Simulate many rapid mouse moves (like real dragging)
+      for (let i = 0; i < 20; i++) {
+        await fireEvent.mouseMove(window, { clientX: 100 + i * 5 });
+      }
+
+      // No saves during drag
+      expect(mockOnSave).not.toHaveBeenCalled();
+
+      // Release
+      await fireEvent.mouseUp(window);
+
+      // Exactly one save on mouseup
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Audio Seek via Waveform Click', () => {
+    it('should send seek action when waveform is clicked', async () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3',
+      };
+
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
+
+      const { container } = render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        onAudioControl: mockAudioControl,
+        getAudioState: mockGetAudioState,
+      });
+
+      const waveformEditor = container.querySelector('.waveform-editor');
+      if (waveformEditor) {
+        await fireEvent.click(waveformEditor, { clientX: 200 });
+
+        // Should send a seek action
+        const seekCalls = mockAudioControl.mock.calls.filter(
+          (call: any[]) => typeof call[1] === 'string' && call[1].startsWith('seek:')
+        );
+        expect(seekCalls.length).toBeGreaterThan(0);
+      }
+    });
   });
 
   describe('Channel Rename', () => {

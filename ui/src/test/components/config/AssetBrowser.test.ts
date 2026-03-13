@@ -136,7 +136,7 @@ describe('AssetBrowser', () => {
       const noiseCard = screen.getByText('noise.png').closest('button');
       await fireEvent.click(noiseCard!);
 
-      expect(mockOnSelect).toHaveBeenCalledWith('noise.png');
+      expect(mockOnSelect).toHaveBeenCalledWith('noise.png', 'webview://noise.png');
     });
 
     it('should call onSelect with workspace path for other files', async () => {
@@ -153,7 +153,7 @@ describe('AssetBrowser', () => {
       const skyCard = screen.getByText('sky.hdr').closest('button');
       await fireEvent.click(skyCard!);
 
-      expect(mockOnSelect).toHaveBeenCalledWith('@/assets/sky.hdr');
+      expect(mockOnSelect).toHaveBeenCalledWith('@/assets/sky.hdr', 'webview://sky.hdr');
     });
   });
 
@@ -266,7 +266,7 @@ describe('AssetBrowser', () => {
       expect(video!.muted).toBe(true);
     });
 
-    it('should render audio placeholder for audio files', async () => {
+    it('should render audio waveform thumbnail for audio files', async () => {
       render(AssetBrowser, {
         extensions: ['mp3', 'wav'],
         shaderPath: '/test/shader.glsl',
@@ -280,13 +280,13 @@ describe('AssetBrowser', () => {
       await new Promise(r => setTimeout(r, 10));
 
       const card = screen.getByText('song.mp3').closest('button')!;
-      const placeholder = card.querySelector('[aria-label="audio file"]');
+      const waveformThumbnail = card.querySelector('.audio-waveform-thumbnail');
       const img = card.querySelector('img');
-      expect(placeholder).not.toBeNull();
+      expect(waveformThumbnail).not.toBeNull();
       expect(img).toBeNull();
     });
 
-    it('should play audio on mouseenter and pause+reset on mouseleave', async () => {
+    it('should render waveform canvas inside audio thumbnail', async () => {
       render(AssetBrowser, {
         extensions: ['mp3'],
         shaderPath: '/test/shader.glsl',
@@ -300,18 +300,9 @@ describe('AssetBrowser', () => {
       await new Promise(r => setTimeout(r, 10));
 
       const card = screen.getByText('song.mp3').closest('button')!;
-      const placeholder = card.querySelector('[aria-label="audio file"]')!;
-      const audio = placeholder.querySelector('audio')!;
-
-      const playSpy = vi.spyOn(audio, 'play').mockResolvedValue(undefined);
-      const pauseSpy = vi.spyOn(audio, 'pause').mockImplementation(() => {});
-
-      await fireEvent.mouseEnter(placeholder);
-      expect(playSpy).toHaveBeenCalled();
-
-      await fireEvent.mouseLeave(placeholder);
-      expect(pauseSpy).toHaveBeenCalled();
-      expect(audio.currentTime).toBe(0);
+      const waveformThumbnail = card.querySelector('.audio-waveform-thumbnail')!;
+      const canvas = waveformThumbnail.querySelector('canvas.waveform-canvas');
+      expect(canvas).not.toBeNull();
     });
 
     it('should play video on mouseenter and pause+reset on mouseleave', async () => {
@@ -432,7 +423,7 @@ describe('AssetBrowser', () => {
       const stoneCard = screen.getByText('stone.png').closest('button');
       await fireEvent.click(stoneCard!);
 
-      expect(mockOnSelect).toHaveBeenCalledWith('@/materials/stone.png');
+      expect(mockOnSelect).toHaveBeenCalledWith('@/materials/stone.png', 'webview://stone.png');
     });
 
     it('should return just filename when selecting same-directory file', async () => {
@@ -450,7 +441,7 @@ describe('AssetBrowser', () => {
       const gradientCard = screen.getByText('gradient.jpg').closest('button');
       await fireEvent.click(gradientCard!);
 
-      expect(mockOnSelect).toHaveBeenCalledWith('gradient.jpg');
+      expect(mockOnSelect).toHaveBeenCalledWith('gradient.jpg', 'webview://gradient.jpg');
     });
   });
 });

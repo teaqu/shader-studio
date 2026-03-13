@@ -35,7 +35,15 @@ export interface KeyboardConfigInput {
     type: 'keyboard';
 }
 
-export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput;
+export interface AudioConfigInput {
+    type: 'audio';
+    path: string;
+    resolved_path?: string;
+    startTime?: number;
+    endTime?: number;
+}
+
+export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 
@@ -66,6 +74,10 @@ export interface BufferPass {
 
 export interface ShaderPasses {
     Image: ImagePass;
+    BufferA?: BufferPass;
+    BufferB?: BufferPass;
+    BufferC?: BufferPass;
+    BufferD?: BufferPass;
     common?: BufferPass;
     [name: string]: BufferPass | ImagePass | undefined;
 }

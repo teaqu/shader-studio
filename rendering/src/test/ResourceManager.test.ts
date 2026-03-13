@@ -55,8 +55,21 @@ vi.mock("../resources/VideoTextureManager", () => ({
     return {
       loadVideoTexture: vi.fn(),
       getVideoTexture: vi.fn(),
+      getVideoElement: vi.fn(),
       pauseAll: vi.fn(),
       resumeAll: vi.fn(),
+      syncAllToTime: vi.fn(),
+      resumeVideo: vi.fn(),
+      pauseVideo: vi.fn(),
+      muteVideo: vi.fn(),
+      unmuteVideo: vi.fn(),
+      resetVideo: vi.fn(),
+      setVideoVolume: vi.fn(),
+      setAllVideoVolumes: vi.fn(),
+      muteAllVideos: vi.fn(),
+      unmuteAllVideos: vi.fn(),
+      isVideoPaused: vi.fn(),
+      isVideoMuted: vi.fn(),
       cleanup: vi.fn(),
     };
   }),
@@ -67,6 +80,38 @@ vi.mock("../resources/CubemapTextureManager", () => ({
     return {
       getCubemapTexture: vi.fn().mockReturnValue(null),
       loadCubemapFromCrossImage: vi.fn(),
+      cleanup: vi.fn(),
+    };
+  }),
+}));
+
+vi.mock("../resources/AudioTextureManager", () => ({
+  AudioTextureManager: vi.fn().mockImplementation(function() {
+    return {
+      loadAudioSource: vi.fn(),
+      resumeAudioContext: vi.fn(),
+      updateLoopRegion: vi.fn(),
+      getAudioTexture: vi.fn(),
+      getAudioFFTData: vi.fn(),
+      updateTextures: vi.fn(),
+      getSampleRate: vi.fn(),
+      resumeAudio: vi.fn(),
+      pauseAudio: vi.fn(),
+      muteAudio: vi.fn(),
+      unmuteAudio: vi.fn(),
+      resetAudio: vi.fn(),
+      seekAudio: vi.fn(),
+      getAudioDuration: vi.fn(),
+      isAudioPaused: vi.fn(),
+      isAudioMuted: vi.fn(),
+      getAudioCurrentTime: vi.fn(),
+      pauseAll: vi.fn(),
+      resumeAll: vi.fn(),
+      syncAllToTime: vi.fn(),
+      setAudioVolume: vi.fn(),
+      setAllAudioVolumes: vi.fn(),
+      muteAllAudio: vi.fn(),
+      unmuteAllAudio: vi.fn(),
       cleanup: vi.fn(),
     };
   }),
@@ -594,29 +639,390 @@ describe("ResourceManager", () => {
 
   describe("video pause and resume", () => {
     it("should pause all videos through resource manager", () => {
-      const mockRenderer = createMockRenderer();
-      const resourceManager = new ResourceManager(mockRenderer);
-      
-      // Access private videoTextureManager through type assertion and initialize videoElements
       const videoManager = (resourceManager as any).videoTextureManager;
-      videoManager.videoElements = {};
-      
       resourceManager.pauseAllVideos();
-      
       expect(videoManager.pauseAll).toHaveBeenCalled();
     });
 
     it("should resume all videos through resource manager", () => {
-      const mockRenderer = createMockRenderer();
-      const resourceManager = new ResourceManager(mockRenderer);
-      
-      // Access private videoTextureManager through type assertion and initialize videoElements
       const videoManager = (resourceManager as any).videoTextureManager;
-      videoManager.videoElements = {};
-      
       resourceManager.resumeAllVideos();
-      
       expect(videoManager.resumeAll).toHaveBeenCalled();
+    });
+  });
+
+  describe("getVideoElement", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const mockVideo = { currentTime: 0 } as HTMLVideoElement;
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.getVideoElement.mockReturnValue(mockVideo);
+
+      expect(resourceManager.getVideoElement("vid.mp4")).toBe(mockVideo);
+      expect(videoManager.getVideoElement).toHaveBeenCalledWith("vid.mp4");
+    });
+
+    it("should return undefined when no video element", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.getVideoElement.mockReturnValue(undefined);
+
+      expect(resourceManager.getVideoElement("vid.mp4")).toBeUndefined();
+    });
+  });
+
+  describe("syncAllVideosToTime", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.syncAllVideosToTime(5.0);
+      expect(videoManager.syncAllToTime).toHaveBeenCalledWith(5.0);
+    });
+  });
+
+  describe("controlVideo", () => {
+    it("should call resumeVideo for play action", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.controlVideo("vid.mp4", "play");
+      expect(videoManager.resumeVideo).toHaveBeenCalledWith("vid.mp4");
+    });
+
+    it("should call pauseVideo for pause action", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.controlVideo("vid.mp4", "pause");
+      expect(videoManager.pauseVideo).toHaveBeenCalledWith("vid.mp4");
+    });
+
+    it("should call muteVideo for mute action", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.controlVideo("vid.mp4", "mute");
+      expect(videoManager.muteVideo).toHaveBeenCalledWith("vid.mp4");
+    });
+
+    it("should call unmuteVideo for unmute action", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.controlVideo("vid.mp4", "unmute");
+      expect(videoManager.unmuteVideo).toHaveBeenCalledWith("vid.mp4");
+    });
+
+    it("should call resetVideo for reset action", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.controlVideo("vid.mp4", "reset");
+      expect(videoManager.resetVideo).toHaveBeenCalledWith("vid.mp4");
+    });
+  });
+
+  describe("setVideoVolume", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.setVideoVolume("vid.mp4", 0.5);
+      expect(videoManager.setVideoVolume).toHaveBeenCalledWith("vid.mp4", 0.5);
+    });
+  });
+
+  describe("setAllVideoVolumes", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.setAllVideoVolumes(0.8);
+      expect(videoManager.setAllVideoVolumes).toHaveBeenCalledWith(0.8);
+    });
+  });
+
+  describe("muteAllVideos", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.muteAllVideos();
+      expect(videoManager.muteAllVideos).toHaveBeenCalled();
+    });
+  });
+
+  describe("unmuteAllVideos", () => {
+    it("should delegate to VideoTextureManager", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      resourceManager.unmuteAllVideos(0.7);
+      expect(videoManager.unmuteAllVideos).toHaveBeenCalledWith(0.7);
+    });
+  });
+
+  describe("getVideoState", () => {
+    it("should return null when no video element exists", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.getVideoElement.mockReturnValue(undefined);
+
+      expect(resourceManager.getVideoState("vid.mp4")).toBeNull();
+    });
+
+    it("should return video state when video element exists", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.getVideoElement.mockReturnValue({
+        currentTime: 2.5,
+        duration: 10,
+      } as HTMLVideoElement);
+      videoManager.isVideoPaused.mockReturnValue(false);
+      videoManager.isVideoMuted.mockReturnValue(true);
+
+      const state = resourceManager.getVideoState("vid.mp4");
+
+      expect(state).toEqual({
+        paused: false,
+        muted: true,
+        currentTime: 2.5,
+        duration: 10,
+      });
+    });
+
+    it("should default duration to 0 when falsy", () => {
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.getVideoElement.mockReturnValue({
+        currentTime: 0,
+        duration: NaN,
+      } as HTMLVideoElement);
+      videoManager.isVideoPaused.mockReturnValue(true);
+      videoManager.isVideoMuted.mockReturnValue(false);
+
+      expect(resourceManager.getVideoState("vid.mp4")!.duration).toBe(0);
+    });
+  });
+
+  // --- Audio methods ---
+
+  describe("loadAudioSource", () => {
+    it("should delegate to AudioTextureManager", async () => {
+      const mockTexture = createMockTexture();
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.loadAudioSource.mockResolvedValue(mockTexture);
+
+      const opts = { muted: true, volume: 0.5, startTime: 1, endTime: 5 };
+      const result = await resourceManager.loadAudioSource("audio.mp3", opts);
+
+      expect(result).toBe(mockTexture);
+      expect(audioManager.loadAudioSource).toHaveBeenCalledWith("audio.mp3", opts);
+    });
+  });
+
+  describe("resumeAudioContext", () => {
+    it("should delegate to AudioTextureManager", async () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.resumeAudioContext.mockResolvedValue(undefined);
+
+      await resourceManager.resumeAudioContext();
+
+      expect(audioManager.resumeAudioContext).toHaveBeenCalled();
+    });
+  });
+
+  describe("updateAudioLoopRegion", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.updateAudioLoopRegion("audio.mp3", 1.0, 5.0);
+      expect(audioManager.updateLoopRegion).toHaveBeenCalledWith("audio.mp3", 1.0, 5.0);
+    });
+
+    it("should pass undefined for optional params", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.updateAudioLoopRegion("audio.mp3");
+      expect(audioManager.updateLoopRegion).toHaveBeenCalledWith("audio.mp3", undefined, undefined);
+    });
+  });
+
+  describe("getAudioTexture", () => {
+    it("should return audio texture when available", () => {
+      const mockTexture = createMockTexture();
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioTexture.mockReturnValue(mockTexture);
+
+      expect(resourceManager.getAudioTexture("audio.mp3")).toBe(mockTexture);
+      expect(audioManager.getAudioTexture).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should return null when no audio texture", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioTexture.mockReturnValue(null);
+
+      expect(resourceManager.getAudioTexture("audio.mp3")).toBeNull();
+    });
+  });
+
+  describe("getAudioFFTData", () => {
+    it("should return FFT data when available", () => {
+      const fftData = new Uint8Array(512);
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioFFTData.mockReturnValue(fftData);
+
+      expect(resourceManager.getAudioFFTData("audio.mp3")).toBe(fftData);
+      expect(audioManager.getAudioFFTData).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should return null when no FFT data", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioFFTData.mockReturnValue(null);
+
+      expect(resourceManager.getAudioFFTData("audio.mp3")).toBeNull();
+    });
+  });
+
+  describe("updateAudioTextures", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.updateAudioTextures();
+      expect(audioManager.updateTextures).toHaveBeenCalled();
+    });
+  });
+
+  describe("getAudioSampleRate", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getSampleRate.mockReturnValue(44100);
+
+      expect(resourceManager.getAudioSampleRate()).toBe(44100);
+      expect(audioManager.getSampleRate).toHaveBeenCalled();
+    });
+  });
+
+  describe("controlAudio", () => {
+    it("should call resumeAudio for play action", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.controlAudio("audio.mp3", "play");
+      expect(audioManager.resumeAudio).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should call pauseAudio for pause action", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.controlAudio("audio.mp3", "pause");
+      expect(audioManager.pauseAudio).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should call muteAudio for mute action", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.controlAudio("audio.mp3", "mute");
+      expect(audioManager.muteAudio).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should call unmuteAudio for unmute action", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.controlAudio("audio.mp3", "unmute");
+      expect(audioManager.unmuteAudio).toHaveBeenCalledWith("audio.mp3");
+    });
+
+    it("should call resetAudio for reset action", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.controlAudio("audio.mp3", "reset");
+      expect(audioManager.resetAudio).toHaveBeenCalledWith("audio.mp3");
+    });
+  });
+
+  describe("seekAudio", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.seekAudio("audio.mp3", 3.5);
+      expect(audioManager.seekAudio).toHaveBeenCalledWith("audio.mp3", 3.5);
+    });
+  });
+
+  describe("getAudioState", () => {
+    it("should return null when no audio is loaded (duration 0 and no texture)", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioDuration.mockReturnValue(0);
+      audioManager.getAudioTexture.mockReturnValue(null);
+
+      expect(resourceManager.getAudioState("audio.mp3")).toBeNull();
+    });
+
+    it("should return audio state when audio has duration", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioDuration.mockReturnValue(120);
+      audioManager.isAudioPaused.mockReturnValue(false);
+      audioManager.isAudioMuted.mockReturnValue(true);
+      audioManager.getAudioCurrentTime.mockReturnValue(5.0);
+
+      const state = resourceManager.getAudioState("audio.mp3");
+
+      expect(state).toEqual({
+        paused: false,
+        muted: true,
+        currentTime: 5.0,
+        duration: 120,
+      });
+    });
+
+    it("should return audio state when duration is 0 but texture exists", () => {
+      const mockTexture = createMockTexture();
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.getAudioDuration.mockReturnValue(0);
+      audioManager.getAudioTexture.mockReturnValue(mockTexture);
+      audioManager.isAudioPaused.mockReturnValue(true);
+      audioManager.isAudioMuted.mockReturnValue(false);
+      audioManager.getAudioCurrentTime.mockReturnValue(0);
+
+      const state = resourceManager.getAudioState("audio.mp3");
+
+      expect(state).toEqual({
+        paused: true,
+        muted: false,
+        currentTime: 0,
+        duration: 0,
+      });
+    });
+  });
+
+  describe("pauseAllAudio", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.pauseAllAudio();
+      expect(audioManager.pauseAll).toHaveBeenCalled();
+    });
+  });
+
+  describe("resumeAllAudio", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.resumeAllAudio();
+      expect(audioManager.resumeAll).toHaveBeenCalled();
+    });
+  });
+
+  describe("syncAllAudioToTime", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.syncAllAudioToTime(10.0);
+      expect(audioManager.syncAllToTime).toHaveBeenCalledWith(10.0);
+    });
+  });
+
+  describe("setAudioVolume", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.setAudioVolume("audio.mp3", 0.6);
+      expect(audioManager.setAudioVolume).toHaveBeenCalledWith("audio.mp3", 0.6);
+    });
+  });
+
+  describe("setAllAudioVolumes", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.setAllAudioVolumes(0.9);
+      expect(audioManager.setAllAudioVolumes).toHaveBeenCalledWith(0.9);
+    });
+  });
+
+  describe("muteAllAudio", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.muteAllAudio();
+      expect(audioManager.muteAllAudio).toHaveBeenCalled();
+    });
+  });
+
+  describe("unmuteAllAudio", () => {
+    it("should delegate to AudioTextureManager", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.unmuteAllAudio(0.5);
+      expect(audioManager.unmuteAllAudio).toHaveBeenCalledWith(0.5);
+    });
+  });
+
+  describe("cleanup includes audio manager", () => {
+    it("should cleanup AudioTextureManager along with other managers", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      resourceManager.cleanup();
+      expect(audioManager.cleanup).toHaveBeenCalled();
     });
   });
 });

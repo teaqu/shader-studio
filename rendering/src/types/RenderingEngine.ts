@@ -11,6 +11,7 @@ export interface RenderingEngine {
     config: ShaderConfig | null,
     path: string,
     buffers?: Record<string, string>,
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
@@ -27,5 +28,7 @@ export interface RenderingEngine {
   readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null;
   createVariableCapturer(): VariableCapturer;
   getCaptureUniforms(): CaptureUniforms;
+  resumeAudioContext(): Promise<void>;
+  updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void;
   dispose(): void;
 }

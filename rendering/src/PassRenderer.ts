@@ -62,9 +62,23 @@ export class PassRenderer {
     this.renderer.SetShaderConstant4FV("iMouse", uniforms.mouse);
     this.renderer.SetShaderConstant1I("iFrame", uniforms.frame);
     this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
+    this.renderer.SetShaderConstant1FV("iChannelTime", uniforms.channelTime);
+    this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
 
-    const channelResolutions = this.getChannelResolutions(textureBindings);
+    const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
+
+    // Set iCh struct uniforms (Shadertoy "new API")
+    for (let i = 0; i < 4; i++) {
+      this.renderer.SetShaderConstant1F(`iCh${i}.time`, uniforms.channelTime[i]);
+      this.renderer.SetShaderConstant3F(
+        `iCh${i}.size`,
+        channelResolutions[3 * i],
+        channelResolutions[3 * i + 1],
+        channelResolutions[3 * i + 2],
+      );
+      this.renderer.SetShaderConstant1I(`iCh${i}.loaded`, uniforms.channelLoaded[i]);
+    }
 
     if (this.gl) {
       bindTextures(this.gl, textureBindings);
@@ -85,11 +99,24 @@ export class PassRenderer {
   }
 
   private getChannelResolutions(
+    passConfig: Pass,
     textureBindings: (PiTexture | null)[],
   ): number[] {
     const resolutions: number[] = [];
-    for (const texture of textureBindings) {
-      if (texture) {
+
+    for (let i = 0; i < textureBindings.length; i++) {
+      const texture = textureBindings[i];
+      const input = passConfig.inputs[`iChannel${i}`];
+
+      if (texture && input) {
+        if (input.type === 'keyboard') {
+          resolutions.push(256, 3, 1);
+        } else if (input.type === 'audio') {
+          resolutions.push(512, 2, 1);
+        } else {
+          resolutions.push(texture.mXres, texture.mYres, 1);
+        }
+      } else if (texture) {
         resolutions.push(texture.mXres, texture.mYres, 1);
       } else {
         resolutions.push(0, 0, 0);
@@ -134,8 +161,8 @@ export class PassRenderer {
         }
       } else if (input.type === "video" && input.path) {
         textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
-      } else if (input.type === "cubemap" && input.path) {
-        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path) || this.resourceManager.getCubemapTexture(input.path) || defaultTexture;
+      } else if (input.type === "audio" && input.path) {
+        textureBindings[slot] = this.resourceManager.getAudioTexture(input.resolved_path || input.path) || this.resourceManager.getAudioTexture(input.path) || defaultTexture;
       }
     }
     return textureBindings;

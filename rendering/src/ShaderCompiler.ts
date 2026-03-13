@@ -1,10 +1,19 @@
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { SlotAssignment } from "./util/InputSlotAssigner";
 
-export type ChannelSamplerType = '2D' | 'Cube';
+export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
 export class ShaderCompiler {
   constructor(private renderer: PiRenderer) { }
+
+  private getSamplerType(type: ChannelSamplerType): string {
+    switch (type) {
+      case 'Cube': return 'samplerCube';
+      case '3D': return 'sampler3D';
+      case '2D':
+      default: return 'sampler2D';
+    }
+  }
 
   public wrapShaderToyCode(
     code: string,
@@ -12,7 +21,8 @@ export class ShaderCompiler {
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
   ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
-    const channelDeclarations = this.buildChannelDeclarations(slotAssignments, channelTypes);
+    const types = channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelDeclarations = this.buildChannelDeclarations(slotAssignments, types);
 
     let header = `
 precision highp float;
@@ -26,6 +36,32 @@ ${channelDeclarations}
 uniform vec4 iMouse;
 uniform int iFrame;
 uniform vec4 iDate;
+uniform float iChannelTime[4];
+uniform float iSampleRate;
+uniform struct {
+  ${this.getSamplerType(types[0])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh0;
+uniform struct {
+  ${this.getSamplerType(types[1])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh1;
+uniform struct {
+  ${this.getSamplerType(types[2])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh2;
+uniform struct {
+  ${this.getSamplerType(types[3])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh3;
 `;
 
     let commonCodeLineCount = 0;
@@ -51,11 +87,8 @@ uniform vec4 iDate;
     return this.renderer.CreateShader(vs, fs);
   }
 
-  private static getSamplerType(type?: ChannelSamplerType): string {
-    return type === 'Cube' ? 'samplerCube' : 'sampler2D';
-  }
-
   private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
+    const types = channelTypes || ['2D', '2D', '2D', '2D'];
     // At least 4 slots for backwards compatibility
     const channelCount = !slotAssignments || slotAssignments.length === 0
       ? 4
@@ -64,14 +97,14 @@ uniform vec4 iDate;
     let decl = "";
     // Always declare iChannel0 through iChannel{N-1} — these are the slot uniforms
     for (let i = 0; i < channelCount; i++) {
-      const samplerType = ShaderCompiler.getSamplerType(channelTypes?.[i]);
+      const samplerType = this.getSamplerType(types[i] || '2D');
       decl += `uniform ${samplerType} iChannel${i};\n`;
     }
     // Declare custom name aliases for slots where the key differs from iChannel{N}
     if (slotAssignments) {
       for (const { slot, key, isCustomName } of slotAssignments) {
         if (isCustomName) {
-          const samplerType = ShaderCompiler.getSamplerType(channelTypes?.[slot]);
+          const samplerType = this.getSamplerType(types[slot] || '2D');
           decl += `uniform ${samplerType} ${key};\n`;
         }
       }

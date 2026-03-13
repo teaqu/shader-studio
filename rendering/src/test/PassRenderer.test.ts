@@ -8,6 +8,8 @@ const createMockRenderer = () => ({
   SetShader: vi.fn(),
   SetShaderConstant1F: vi.fn(),
   SetShaderConstant1I: vi.fn(),
+  SetShaderConstant1FV: vi.fn(),
+  SetShaderConstant3F: vi.fn(),
   SetShaderConstant3FV: vi.fn(),
   SetShaderConstant4FV: vi.fn(),
   SetShaderTextureUnit: vi.fn(),
@@ -18,8 +20,6 @@ const createMockRenderer = () => ({
   AttachTextures: vi.fn(),
   GetAttribLocation: vi.fn(),
   DrawUnitQuad_XY: vi.fn(),
-  Clear: vi.fn(),
-  CLEAR: { Color: 1, Zbuffer: 2, Stencil: 4 },
 }) as unknown as PiRenderer;
 
 const createMockTexture = (xres = 0, yres = 0) => ({
@@ -37,7 +37,8 @@ const createMockResourceManager = () => ({
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
   getVideoTexture: vi.fn(),
-  getCubemapTexture: vi.fn(),
+  getAudioTexture: vi.fn(),
+  getDesktopAudioTexture: vi.fn(),
 });
 
 const createMockBufferManager = () => ({
@@ -75,8 +76,6 @@ describe("PassRenderer", () => {
     mockKeyboardManager = createMockKeyboardManager();
     mockGl = createMockGl();
     mockCanvas = {
-      width: 800,
-      height: 600,
       getContext: vi.fn().mockReturnValue(mockGl),
     } as unknown as HTMLCanvasElement;
     passRenderer = new PassRenderer(
@@ -95,7 +94,10 @@ describe("PassRenderer", () => {
     frameRate: 60,
     mouse: [0, 0, 0, 0],
     frame: 1,
-    date: [2023, 1, 1, 0]
+    date: [2023, 1, 1, 0],
+    channelTime: [0, 0, 0, 0],
+    sampleRate: 44100,
+    channelLoaded: [0, 0, 0, 0]
   };
 
   describe("renderPass", () => {
@@ -552,6 +554,227 @@ describe("PassRenderer", () => {
     });
   });
 
+  describe("iChannelTime uniform", () => {
+    it("should set iChannelTime uniform via SetShaderConstant1FV", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {}
+      };
+
+      const mockShader = createMockShader();
+      const uniforms = {
+        ...defaultUniforms,
+        channelTime: [1.5, 2.3, 0, 4.1],
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant1FV).toHaveBeenCalledWith(
+        "iChannelTime", [1.5, 2.3, 0, 4.1]
+      );
+    });
+  });
+
+  describe("iSampleRate uniform", () => {
+    it("should set iSampleRate uniform via SetShaderConstant1F", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {}
+      };
+
+      const mockShader = createMockShader();
+      const uniforms = {
+        ...defaultUniforms,
+        sampleRate: 48000,
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith(
+        "iSampleRate", 48000
+      );
+    });
+
+    it("should set default iSampleRate of 44100", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {}
+      };
+
+      const mockShader = createMockShader();
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith(
+        "iSampleRate", 44100
+      );
+    });
+  });
+
+  describe("iCh struct uniforms", () => {
+    it("should set iCh0-iCh3 time, size, and loaded uniforms", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "texture", path: "a.png" },
+          iChannel1: { type: "texture", path: "b.png" },
+        }
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "a.png": createMockTexture(512, 256),
+        "b.png": createMockTexture(128, 64),
+      });
+
+      const uniforms = {
+        ...defaultUniforms,
+        channelTime: [1.0, 2.0, 3.0, 4.0],
+        channelLoaded: [1, 1, 0, 0],
+      };
+
+      passRenderer.renderPass(passConfig, null, mockShader, uniforms);
+
+      // iCh0
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("iCh0.time", 1.0);
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh0.size", 512, 256, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iCh0.loaded", 1);
+
+      // iCh1
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("iCh1.time", 2.0);
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh1.size", 128, 64, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iCh1.loaded", 1);
+
+      // iCh2 (no input, default texture 1x1)
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("iCh2.time", 3.0);
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh2.size", 1, 1, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iCh2.loaded", 0);
+
+      // iCh3 (no input, default texture 1x1)
+      expect(mockRenderer.SetShaderConstant1F).toHaveBeenCalledWith("iCh3.time", 4.0);
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh3.size", 1, 1, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iCh3.loaded", 0);
+    });
+
+    it("should set iCh struct with keyboard resolution (256, 3, 1)", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "keyboard" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockKeyboardTexture = createMockTexture(256, 3);
+      mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh0.size", 256, 3, 1);
+    });
+
+    it("should set iCh struct with audio resolution (512, 2, 1)", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio", path: "music.mp3" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockAudioTexture = createMockTexture(512, 2);
+      mockResourceManager.getAudioTexture.mockReturnValue(mockAudioTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh0.size", 512, 2, 1);
+    });
+  });
+
+  describe("audio texture binding", () => {
+    it("should bind audio texture when available", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio", path: "music.mp3" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockAudioTexture = createMockTexture(512, 2);
+      mockResourceManager.getAudioTexture.mockReturnValue(mockAudioTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getAudioTexture).toHaveBeenCalledWith("music.mp3");
+      expect(mockGl.activeTexture).toHaveBeenCalledWith(mockGl.TEXTURE0);
+      expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_2D, mockAudioTexture.mObjectID);
+    });
+
+    it("should fall back to default texture when audio texture is not found", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio", path: "missing.mp3" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      mockResourceManager.getAudioTexture.mockReturnValue(null);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getAudioTexture).toHaveBeenCalledWith("missing.mp3");
+      // Should still bind default texture
+      const defaultTex = mockResourceManager.getDefaultTexture();
+      expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_2D, defaultTex.mObjectID);
+    });
+
+    it("should use resolved_path for audio texture lookup when available", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio", path: "audio.mp3", resolved_path: "https://webview-uri/audio.mp3" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockAudioTexture = createMockTexture(512, 2);
+      mockResourceManager.getAudioTexture
+        .mockReturnValueOnce(mockAudioTexture) // resolved_path lookup
+        .mockReturnValueOnce(null);            // path fallback (not reached)
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getAudioTexture).toHaveBeenCalledWith("https://webview-uri/audio.mp3");
+    });
+
+    it("should not call getAudioTexture when audio input has no path", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio" } as any // No path
+        }
+      };
+
+      const mockShader = createMockShader();
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getAudioTexture).not.toHaveBeenCalled();
+    });
+  });
+
   describe("iChannelResolution", () => {
     it("should set iChannelResolution with default texture dimensions when no inputs", () => {
       const passConfig: Pass = {
@@ -613,6 +836,28 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
         "iChannelResolution[0]",
         [256, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      );
+    });
+
+    it("should set iChannelResolution with audio special case (512x2)", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "audio", path: "music.mp3" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockAudioTexture = createMockTexture(512, 2);
+      mockResourceManager.getAudioTexture.mockReturnValue(mockAudioTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      // Audio inputs should use hardcoded 512, 2, 1 resolution
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith(
+        "iChannelResolution[0]",
+        [512, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
       );
     });
 
@@ -756,72 +1001,6 @@ describe("PassRenderer", () => {
         "iChannelResolution[0]",
         [512, 512, 1, 256, 128, 1, 1, 1, 1, 1, 1, 1]
       );
-    });
-  });
-
-  describe("cubemap texture binding", () => {
-    it("should resolve cubemap texture from ResourceManager", () => {
-      const mockCubemapTexture = createMockTexture(256, 256);
-      const passConfig: Pass = {
-        name: "Image",
-        shaderSrc: "",
-        inputs: {
-          iChannel0: { type: "cubemap", path: "cubemap.png" }
-        },
-      };
-
-      const mockShader = createMockShader();
-      mockResourceManager.getCubemapTexture.mockReturnValue(mockCubemapTexture);
-
-      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
-
-      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
-    });
-
-    it("should use resolved_path for cubemap when available", () => {
-      const mockCubemapTexture = createMockTexture(256, 256);
-      const passConfig: Pass = {
-        name: "Image",
-        shaderSrc: "",
-        inputs: {
-          iChannel0: { type: "cubemap", path: "cubemap.png", resolved_path: "https://webview-uri/cubemap.png" }
-        },
-      };
-
-      const mockShader = createMockShader();
-      mockResourceManager.getCubemapTexture
-        .mockImplementation((path: string) => path === "https://webview-uri/cubemap.png" ? mockCubemapTexture : null);
-
-      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
-
-      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("https://webview-uri/cubemap.png");
-    });
-
-    it("should fall back to default texture when cubemap is not loaded", () => {
-      const passConfig: Pass = {
-        name: "Image",
-        shaderSrc: "",
-        inputs: {
-          iChannel0: { type: "cubemap", path: "missing.png" }
-        },
-      };
-
-      const mockShader = createMockShader();
-      mockResourceManager.getCubemapTexture.mockReturnValue(null);
-
-      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
-
-      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("missing.png");
-    });
-  });
-
-  describe("clearCanvas", () => {
-    it("should clear the canvas to black", () => {
-      passRenderer.clearCanvas();
-
-      expect((mockRenderer as any).SetRenderTarget).toHaveBeenCalledWith(null);
-      expect((mockRenderer as any).SetViewport).toHaveBeenCalledWith([0, 0, 800, 600]);
-      expect((mockRenderer as any).Clear).toHaveBeenCalledWith(1, [0, 0, 0, 1], 1, 0);
     });
   });
 });

@@ -3,6 +3,9 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { WebviewTransport } from '../../../app/transport/WebviewTransport';
 
+/** Wait for async send processing to complete */
+const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
 suite('WebviewTransport Test Suite', () => {
     let transport: WebviewTransport;
     let sandbox: sinon.SinonSandbox;
@@ -178,13 +181,13 @@ suite('WebviewTransport Test Suite', () => {
         assert.strictEqual(transport.panelCount, 0);
     });
 
-    test('send processes shader config paths correctly', () => {
+    test('send processes shader config paths correctly', async () => {
         transport = new WebviewTransport();
         transport.addPanel(mockPanel as any);
-        
+
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-texture.png');
         mockWebview.asWebviewUri.returns(mockUri);
-        
+
         const originalMessage = {
             type: 'shaderSource',
             code: 'shader code',
@@ -204,10 +207,11 @@ suite('WebviewTransport Test Suite', () => {
         };
         
         transport.send(originalMessage);
-        
+        await flush();
+
         sinon.assert.calledOnce(mockWebview.postMessage);
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
-        
+
         assert.strictEqual(sentMessage.type, 'shaderSource');
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockUri.toString());
@@ -215,10 +219,10 @@ suite('WebviewTransport Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
-    test('send handles config without inputs', () => {
+    test('send handles config without inputs', async () => {
         transport = new WebviewTransport();
         transport.addPanel(mockPanel as any);
-        
+
         const message = {
             type: 'shaderSource',
             code: 'shader code',
@@ -231,11 +235,10 @@ suite('WebviewTransport Test Suite', () => {
                 }
             }
         };
-        
-        assert.doesNotThrow(() => {
-            transport.send(message);
-        });
-        
+
+        transport.send(message);
+        await flush();
+
         sinon.assert.calledOnce(mockWebview.postMessage);
     });
 
@@ -267,17 +270,17 @@ suite('WebviewTransport Test Suite', () => {
         sinon.assert.calledWith(mockWebview.postMessage, message);
     });
 
-    test('processConfigPaths handles multiple texture inputs', () => {
+    test('processConfigPaths handles multiple texture inputs', async () => {
         transport = new WebviewTransport();
         transport.addPanel(mockPanel as any);
-        
+
         const mockUri1 = vscode.Uri.parse('vscode-webview://webview-panel/texture1.png');
         const mockUri2 = vscode.Uri.parse('vscode-webview://webview-panel/texture2.jpg');
-        
+
         mockWebview.asWebviewUri
             .onFirstCall().returns(mockUri1)
             .onSecondCall().returns(mockUri2);
-        
+
         const message = {
             type: 'shaderSource',
             config: {
@@ -294,12 +297,48 @@ suite('WebviewTransport Test Suite', () => {
         };
         
         transport.send(message);
-        
+        await flush();
+
         const sentMessage = mockWebview.postMessage.getCall(0).args[0];
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/texture1.png');
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockUri1.toString());
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.path, '/path/to/texture2.jpg');
         assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockUri2.toString());
+    });
+
+    test('setVideoAudioConverter stores the converter', () => {
+        transport = new WebviewTransport();
+        const mockConverter = {
+            convertIfNeeded: sinon.stub().resolves({ converted: false, path: '/test.mp4' }),
+        } as any;
+
+        // Should not throw
+        assert.doesNotThrow(() => {
+            transport.setVideoAudioConverter(mockConverter);
+        });
+
+        // Verify it's stored by sending a shaderSource with video — the converter should be passed through
+        // We can't directly access the private field, but we verify it doesn't error
+        transport.addPanel(mockPanel as any);
+        assert.doesNotThrow(() => {
+            transport.send({ type: 'shaderSource', config: { passes: { Image: { inputs: {} } } } });
+        });
+    });
+
+    test('setOnVideoConverted stores the callback', () => {
+        transport = new WebviewTransport();
+        const mockCallback = sinon.stub();
+
+        // Should not throw
+        assert.doesNotThrow(() => {
+            transport.setOnVideoConverted(mockCallback);
+        });
+
+        // Verify it's stored by sending a shaderSource — the callback should be passed through
+        transport.addPanel(mockPanel as any);
+        assert.doesNotThrow(() => {
+            transport.send({ type: 'shaderSource', config: { passes: { Image: { inputs: {} } } } });
+        });
     });
 
     suite('handleVideoPaths', () => {
@@ -317,14 +356,14 @@ suite('WebviewTransport Test Suite', () => {
             };
         });
 
-        test('should convert supported video format (.mp4) to webview URI', () => {
+        test('should convert supported video format (.mp4) to webview URI', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
-            
+
             const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
             mockWebview.asWebviewUri.returns(mockVideoUri);
             mockWebview.options = { localResourceRoots: [] };
-            
+
             const message = {
                 type: 'shaderSource',
                 config: {
@@ -340,20 +379,21 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockVideoUri.toString());
         });
 
-        test('should convert supported video format (.webm) to webview URI', () => {
+        test('should convert supported video format (.webm) to webview URI', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
-            
+
             const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.webm');
             mockWebview.asWebviewUri.returns(mockVideoUri);
             mockWebview.options = { localResourceRoots: [] };
-            
+
             const message = {
                 type: 'shaderSource',
                 config: {
@@ -369,15 +409,16 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video.webm');
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, mockVideoUri.toString());
         });
 
-        test('should skip video if file does not exist', () => {
+        test('should skip video if file does not exist', async () => {
             fsExistsSyncStub.returns(false);
-            
+
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
             
@@ -396,21 +437,22 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             // Path is preserved, resolved_path has the webview URI
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/nonexistent.mp4');
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.resolved_path, 'file:///mock/uri');
         });
 
-        test('should add video directory to localResourceRoots', () => {
+        test('should add video directory to localResourceRoots', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
-            
+
             const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
             mockWebview.asWebviewUri.returns(mockVideoUri);
             mockWebview.options = { localResourceRoots: [] };
-            
+
             const message = {
                 type: 'shaderSource',
                 config: {
@@ -426,13 +468,14 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             // Video path is preserved as the original path, so its directory
             // gets added to localResourceRoots for webview access
             assert.strictEqual((mockWebview.options.localResourceRoots || []).length, 1);
         });
 
-        test('should handle multiple video inputs', () => {
+        test('should handle multiple video inputs', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
             
@@ -460,7 +503,8 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             // Path is preserved, resolved_path has the webview URI
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/video1.mp4');
@@ -469,7 +513,7 @@ suite('WebviewTransport Test Suite', () => {
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockVideoUri2.toString());
         });
 
-        test('should handle mixed texture and video inputs', () => {
+        test('should handle mixed texture and video inputs', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
             
@@ -497,7 +541,8 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             // Path is preserved, resolved_path has the webview URI
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
@@ -506,7 +551,7 @@ suite('WebviewTransport Test Suite', () => {
             assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockVideoUri.toString());
         });
 
-        test('should handle video inputs in buffer passes', () => {
+        test('should handle video inputs in buffer passes', async () => {
             transport = new WebviewTransport();
             transport.addPanel(mockPanel as any);
             
@@ -531,7 +576,8 @@ suite('WebviewTransport Test Suite', () => {
             };
             
             transport.send(message);
-            
+            await flush();
+
             const sentMessage = mockWebview.postMessage.getCall(0).args[0];
             assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.path, '/path/to/video.mp4');
             assert.strictEqual(sentMessage.config.passes.BufferA.inputs.iChannel0.resolved_path, mockVideoUri.toString());

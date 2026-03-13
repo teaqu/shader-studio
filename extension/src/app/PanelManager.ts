@@ -9,6 +9,7 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
 import { WorkspaceFileScanner } from "./WorkspaceFileScanner";
+import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
@@ -16,6 +17,7 @@ export class PanelManager {
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private overlayHandler: OverlayPanelHandler;
+  private videoAudioConverter: VideoAudioConverter;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -24,8 +26,13 @@ export class PanelManager {
     private glslFileTracker: GlslFileTracker,
   ) {
     this.logger = Logger.getInstance();
+    this.videoAudioConverter = new VideoAudioConverter();
     this.webviewTransport = new WebviewTransport();
     this.overlayHandler = new OverlayPanelHandler();
+    this.webviewTransport.setVideoAudioConverter(this.videoAudioConverter);
+    this.webviewTransport.setOnVideoConverted((originalConfigPath, convertedAbsolutePath) => {
+      this.handleVideoAudioConverted(originalConfigPath, convertedAbsolutePath);
+    });
     this.messenger.addTransport(this.webviewTransport);
   }
 
@@ -218,6 +225,64 @@ export class PanelManager {
       this.logger.error(`Failed to update config: ${error}`);
       const errorMsg: ErrorMessage = { type: "error", payload: [`Failed to update shader config: ${error}`] };
       this.messenger.send(errorMsg);
+    }
+  }
+
+  /**
+   * After video audio conversion, update the .sha.json config to point to the new file and refresh.
+   */
+  private handleVideoAudioConverted(originalConfigPath: string, convertedAbsolutePath: string): void {
+    try {
+      // Find the active shader's .sha.json
+      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+      if (!editor) {
+        this.logger.warn("No active shader for auto-swap after video conversion");
+        return;
+      }
+
+      const shaderPath = editor.document.uri.fsPath;
+      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+
+      if (!fs.existsSync(configPath)) {
+        this.logger.warn(`Config file not found for auto-swap: ${configPath}`);
+        return;
+      }
+
+      const configText = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configText) as ShaderConfig;
+      const configDir = path.dirname(configPath);
+
+      // Compute the relative path for the converted file, matching the style of the original
+      const convertedRelative = path.relative(configDir, convertedAbsolutePath);
+
+      let modified = false;
+
+      // Walk all passes and inputs, replacing matching paths
+      for (const passName of Object.keys(config.passes || {})) {
+        const pass = config.passes[passName as keyof typeof config.passes];
+        if (pass && typeof pass === 'object' && 'inputs' in pass && pass.inputs) {
+          for (const key of Object.keys(pass.inputs)) {
+            const input = pass.inputs[key as keyof typeof pass.inputs] as any;
+            if (input?.path === originalConfigPath) {
+              input.path = convertedRelative;
+              modified = true;
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        const updatedText = JSON.stringify(config, null, 2) + '\n';
+        fs.writeFileSync(configPath, updatedText, 'utf-8');
+        this.logger.info(`Auto-swapped video path in config: ${configPath}`);
+
+        // Trigger shader refresh
+        setTimeout(() => {
+          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+        }, 150);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to auto-swap video path in config: ${error}`);
     }
   }
 
@@ -436,12 +501,16 @@ export class PanelManager {
       // Use the actual webview.cspSource which should include the CDN domain
       const mediaSrc = `media-src ${panel.webview.cspSource} blob:`;
       const workerSrc = `worker-src ${panel.webview.cspSource} blob:`;
+      const connectSrc = `connect-src ${panel.webview.cspSource} blob:`;
       let updatedCsp = existingCsp.includes('media-src')
         ? existingCsp.replace(/media-src[^;]*/, mediaSrc)
         : `${existingCsp}; ${mediaSrc}`;
       updatedCsp = updatedCsp.includes('worker-src')
         ? updatedCsp.replace(/worker-src[^;]*/, workerSrc)
         : `${updatedCsp}; ${workerSrc}`;
+      updatedCsp = updatedCsp.includes('connect-src')
+        ? updatedCsp.replace(/connect-src[^;]*/, connectSrc)
+        : `${updatedCsp}; ${connectSrc}`;
       
       processedHtml = processedHtml.replace(
         cspPattern,
@@ -452,7 +521,7 @@ export class PanelManager {
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
       
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);

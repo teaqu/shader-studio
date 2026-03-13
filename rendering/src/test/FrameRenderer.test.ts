@@ -18,6 +18,7 @@ describe("FrameRenderer", () => {
   let mockShaderPipeline: any;
   let mockBufferManager: any;
   let mockPassRenderer: any;
+  let mockResourceManager: any;
   let mockCanvas: HTMLCanvasElement;
   let mockFPSCalculator: any;
 
@@ -56,6 +57,15 @@ describe("FrameRenderer", () => {
       clearCanvas: vi.fn(),
     };
 
+    mockResourceManager = {
+      updateAudioTextures: vi.fn(),
+      getAudioSampleRate: vi.fn(() => 44100),
+      getAudioState: vi.fn(() => null),
+      getVideoElement: vi.fn(() => undefined),
+      getImageTextureCache: vi.fn(() => ({})),
+      getKeyboardTexture: vi.fn(() => null),
+    };
+
     mockFPSCalculator = {
       reset: vi.fn(),
       updateFrame: vi.fn(),
@@ -76,6 +86,7 @@ describe("FrameRenderer", () => {
       mockShaderPipeline,
       mockBufferManager,
       mockPassRenderer,
+      mockResourceManager,
       mockCanvas,
       mockFPSCalculator,
     );
@@ -926,6 +937,366 @@ describe("FrameRenderer", () => {
 
       expect(bufferA.front).toBe(originalBack);
       expect(bufferA.back).toBe(originalFront);
+    });
+  });
+
+  describe("setSampleRate", () => {
+    it("should update the sample rate used in uniforms", () => {
+      frameRenderer.setSampleRate(48000);
+      mockResourceManager.getAudioSampleRate.mockReturnValue(0);
+
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.sampleRate).toBe(48000);
+    });
+
+    it("should prefer resourceManager audio sample rate over setSampleRate value", () => {
+      frameRenderer.setSampleRate(48000);
+      mockResourceManager.getAudioSampleRate.mockReturnValue(96000);
+
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.sampleRate).toBe(96000);
+    });
+
+    it("should use default sampleRate (44100) when resourceManager returns 0 and setSampleRate is not called", () => {
+      mockResourceManager.getAudioSampleRate.mockReturnValue(0);
+
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.sampleRate).toBe(44100);
+    });
+  });
+
+  describe("getUniforms - new fields", () => {
+    it("should include channelTime initialized to [0, 0, 0, 0]", () => {
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.channelTime).toEqual([0, 0, 0, 0]);
+    });
+
+    it("should include sampleRate from resourceManager", () => {
+      mockResourceManager.getAudioSampleRate.mockReturnValue(22050);
+
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.sampleRate).toBe(22050);
+    });
+
+    it("should include channelLoaded initialized to [0, 0, 0, 0]", () => {
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(uniforms.channelLoaded).toEqual([0, 0, 0, 0]);
+    });
+  });
+
+  describe("getPassUniforms", () => {
+    it("should set channelTime and channelLoaded for video inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockVideoElement = { currentTime: 5.25 };
+      mockResourceManager.getVideoElement.mockReturnValue(mockVideoElement);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'image shader', inputs: {
+          iChannel0: { type: 'video', path: 'video.mp4' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.getVideoElement).toHaveBeenCalledWith('video.mp4');
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[0]).toBe(5.25);
+      expect(passUniforms.channelLoaded[0]).toBe(1);
+    });
+
+    it("should use resolved_path for video element lookup when available", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockVideoElement = { currentTime: 2.0 };
+      mockResourceManager.getVideoElement.mockReturnValue(mockVideoElement);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'video', path: 'video.mp4', resolved_path: '/resolved/video.mp4' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.getVideoElement).toHaveBeenCalledWith('/resolved/video.mp4');
+    });
+
+    it("should set channelTime and channelLoaded for audio inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockAudioState = { currentTime: 12.5 };
+      mockResourceManager.getAudioState.mockReturnValue(mockAudioState);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'image shader', inputs: {
+          iChannel1: { type: 'audio', path: 'music.mp3' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.getAudioState).toHaveBeenCalledWith('music.mp3');
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[1]).toBe(12.5);
+      expect(passUniforms.channelLoaded[1]).toBe(1);
+    });
+
+    it("should use resolved_path for audio state lookup when available", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockAudioState = { currentTime: 3.0 };
+      mockResourceManager.getAudioState.mockReturnValue(mockAudioState);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'audio', path: 'audio.mp3', resolved_path: '/resolved/audio.mp3' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.getAudioState).toHaveBeenCalledWith('/resolved/audio.mp3');
+    });
+
+    it("should set channelLoaded for texture inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        'image.png': { mXres: 256, mYres: 256 },
+      });
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'texture', path: 'image.png' },
+          iChannel1: { type: 'texture', path: 'missing.png' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelLoaded[0]).toBe(1);
+      expect(passUniforms.channelLoaded[1]).toBe(0);
+      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelTime[1]).toBe(0);
+    });
+
+    it("should set channelLoaded for buffer inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockBufferManager.getPassBuffers.mockReturnValue({
+        'Buffer A': { front: { mTex0: {} }, back: { mTex0: {} } },
+      });
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'buffer', source: 'Buffer A' },
+          iChannel1: { type: 'buffer', source: 'Buffer B' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelLoaded[0]).toBe(1);
+      expect(passUniforms.channelLoaded[1]).toBe(0);
+    });
+
+    it("should set channelLoaded for keyboard inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getKeyboardTexture.mockReturnValue({ mXres: 256, mYres: 3 });
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel2: { type: 'keyboard' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelLoaded[2]).toBe(1);
+    });
+
+    it("should not set channelLoaded for keyboard input when texture is null", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getKeyboardTexture.mockReturnValue(null);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'keyboard' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelLoaded[0]).toBe(0);
+    });
+
+    it("should leave channelTime at 0 when video element is not found", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getVideoElement.mockReturnValue(undefined);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'video', path: 'missing.mp4' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelLoaded[0]).toBe(0);
+    });
+
+    it("should leave channelTime at 0 when audio state is not found", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getAudioState.mockReturnValue(null);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel0: { type: 'audio', path: 'missing.mp3' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelLoaded[0]).toBe(0);
+    });
+
+    it("should skip channels with no input configured", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          iChannel2: { type: 'video', path: 'video.mp4' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      const mockVideoElement = { currentTime: 7.0 };
+      mockResourceManager.getVideoElement.mockReturnValue(mockVideoElement);
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelTime[1]).toBe(0);
+      expect(passUniforms.channelTime[2]).toBe(7.0);
+      expect(passUniforms.channelTime[3]).toBe(0);
+      expect(passUniforms.channelLoaded[2]).toBe(1);
+    });
+  });
+
+  describe("updateAudioTextures", () => {
+    it("should call resourceManager.updateAudioTextures during render", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.updateAudioTextures).toHaveBeenCalledTimes(1);
+    });
+
+    it("should call updateAudioTextures before getUniforms each frame", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const callOrder: string[] = [];
+      mockResourceManager.updateAudioTextures.mockImplementation(() => {
+        callOrder.push('updateAudioTextures');
+      });
+      mockResourceManager.getAudioSampleRate.mockImplementation(() => {
+        callOrder.push('getAudioSampleRate');
+        return 44100;
+      });
+
+      frameRenderer.render(1000);
+
+      const audioUpdateIndex = callOrder.indexOf('updateAudioTextures');
+      const sampleRateIndex = callOrder.indexOf('getAudioSampleRate');
+      expect(audioUpdateIndex).toBeLessThan(sampleRateIndex);
     });
   });
 

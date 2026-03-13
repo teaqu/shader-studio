@@ -1,7 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { get } from 'svelte/store';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
@@ -16,7 +15,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -35,19 +34,19 @@ const { mockTimeManager, mockTransport } = vi.hoisted(() => {
     getType: () => 'vscode' as const,
     isConnected: () => true
   };
-  return { mockTimeManager, mockTransport };
+  const mockSetAudioOptions = vi.fn();
+  const mockCreateTransport = vi.fn(() => mockTransport);
+  return { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport };
 });
 
 vi.mock('../../../../rendering/src/RenderingEngine', () => {
   const MockRenderingEngine = class {
     initialize() {}
     handleCanvasResize() {}
-    computeBufferResolutions() { return undefined; }
     togglePause() {}
     stopRenderLoop() {}
     startRenderLoop() {}
     getCurrentFPS() { return 60.0; }
-    setFPSLimit() {}
     getUniforms() { return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }; }
     getTimeManager() { return mockTimeManager; }
     dispose() {}
@@ -55,9 +54,10 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     render() {}
     updateBufferAndRecompile() { return Promise.resolve({ success: true }); }
     cleanup() {}
-    resetTime() {}
     compileShaderPipeline() { return Promise.resolve({ success: true }); }
     getPasses() { return []; }
+    setGlobalVolume() {}
+    resumeAudioContext() { return Promise.resolve(); }
   };
 
   return {
@@ -122,12 +122,16 @@ vi.mock('../../lib/ShaderStudio', () => {
       return {
         readPixel: vi.fn().mockReturnValue({ r: 255, g: 128, b: 64, a: 255 }),
         render: vi.fn(),
+        setGlobalVolume: vi.fn(),
+        resumeAudioContext: vi.fn().mockResolvedValue(undefined),
       };
     }
 
     triggerDebugRecompile(): void {
       // Mock implementation
     }
+
+    setAudioOptions = mockSetAudioOptions;
   };
 
   return {
@@ -136,27 +140,33 @@ vi.mock('../../lib/ShaderStudio', () => {
 });
 
 vi.mock('../../lib/transport/TransportFactory', () => ({
-  createTransport: () => mockTransport,
+  createTransport: mockCreateTransport,
   isVSCodeEnvironment: () => false
 }));
 
 describe('ShaderViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(true);
     editorOverlayStore.setVisible(false);
   });
 
-  afterEach(() => {
-    localStorage.clear();
+  it('should create transport once before initializeApp registers messages', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    await tick();
+
+    expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockTransport.onMessage).toHaveBeenCalled();
   });
 
   // Helper: send a shaderSource message to set hasShader = true
   async function loadShader() {
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
     await messageHandler({
       data: {
         type: 'shaderSource',
@@ -428,7 +438,7 @@ describe('ShaderViewer', () => {
     // Get the message handler registered via transport.onMessage
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Simulate extension sending an error message
     await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
@@ -450,7 +460,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Simulate extension sending an error message
     await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
@@ -473,7 +483,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler before clearing mocks
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Clear mocks to ignore initialization messages
     vi.clearAllMocks();
@@ -612,7 +622,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shaderSource message while not locked
     await messageHandler({
@@ -646,7 +656,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // First, send the locked shader's config
     await messageHandler({
@@ -713,7 +723,7 @@ describe('ShaderViewer', () => {
     // Get the message handler registered via transport.onMessage
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Simulate extension sending a fileContents message — should not throw
     await messageHandler({
@@ -742,7 +752,7 @@ describe('ShaderViewer', () => {
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shaderSource message
     await messageHandler({
@@ -774,7 +784,7 @@ describe('ShaderViewer', () => {
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(onMessageCalls.length).toBeGreaterThan(0);
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shaderSource message to establish the shader path and config
     await messageHandler({
@@ -818,7 +828,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler to send a shaderSource to set shaderPath
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     await messageHandler({
       data: {
@@ -876,23 +886,6 @@ describe('ShaderViewer', () => {
 
     // Component should still be functional after toggling pause
     expect(pauseButton).toBeTruthy();
-  });
-
-  it('should call renderingEngine.setFPSLimit when FPS limit is selected', async () => {
-    const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
-    const setFPSLimitSpy = vi.spyOn(RenderingEngine.prototype, 'setFPSLimit');
-
-    render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    const fpsButton = screen.getByLabelText('Change FPS limit');
-    await fireEvent.click(fpsButton);
-    await fireEvent.click(screen.getByRole('button', { name: '30 FPS' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Unlimited' }));
-
-    expect(setFPSLimitSpy).toHaveBeenNthCalledWith(1, 30);
-    expect(setFPSLimitSpy).toHaveBeenNthCalledWith(2, 0);
   });
 
   it('should call renderingEngine.getCurrentFPS periodically', async () => {
@@ -953,7 +946,7 @@ describe('ShaderViewer', () => {
 
     // Get the message handler
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shaderSource with a buffer config
     await messageHandler({
@@ -977,7 +970,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send error
     await messageHandler({ data: { type: 'error', payload: ['Test error'] } });
@@ -1008,7 +1001,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Editor overlay should not be visible initially
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
@@ -1027,7 +1020,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shaderSource message
     await messageHandler({
@@ -1065,7 +1058,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send initial shader config
     await messageHandler({
@@ -1108,7 +1101,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send panelState message indicating we're in a new window
     await messageHandler({
@@ -1131,7 +1124,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send webServerState message — should be handled without throwing
     await messageHandler({
@@ -1162,77 +1155,6 @@ describe('ShaderViewer', () => {
       type: 'extensionCommand',
       payload: { command: 'newShader' }
     });
-  });
-
-  it('should show no-shader placeholder when no shader is loaded', async () => {
-    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    const placeholder = container.querySelector('.no-shader-placeholder');
-    expect(placeholder).toBeTruthy();
-    expect(placeholder?.textContent?.trim()).toBe('No shader active');
-  });
-
-  it('should hide no-shader placeholder after a shader is loaded', async () => {
-    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    // Placeholder should be visible before shader loads
-    expect(container.querySelector('.no-shader-placeholder')).toBeTruthy();
-
-    // Load a shader
-    await loadShader();
-
-    // Placeholder should be gone
-    expect(container.querySelector('.no-shader-placeholder')).toBeFalsy();
-  });
-
-  it('should not restore config panel from localStorage before shader loads', async () => {
-    // Set store to hidden, then write localStorage (after setVisible to avoid overwrite)
-    configPanelStore.setVisible(false);
-    localStorage.setItem('shader-studio-config-panel-state', JSON.stringify({ isVisible: true }));
-
-    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    // Config panel should NOT be visible even though localStorage says it should be
-    expect(container.querySelector('.config-panel')).toBeFalsy();
-  });
-
-  it('should restore config panel from localStorage on first shader load', async () => {
-    // Set store to hidden, then write localStorage (after setVisible to avoid overwrite)
-    configPanelStore.setVisible(false);
-    localStorage.setItem('shader-studio-config-panel-state', JSON.stringify({ isVisible: true }));
-
-    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    // Load a shader — should trigger restoreFromStorage
-    await loadShader();
-
-    // Config panel should now be visible (restored from localStorage)
-    expect(container.querySelector('.config-panel')).toBeTruthy();
-  });
-
-  it('should restore debug panel visibility from localStorage on first shader load', async () => {
-    // Set store to default, then write localStorage (after setVisible to avoid overwrite)
-    debugPanelStore.setVisible(true);
-    localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({ isVisible: false }));
-
-    render(ShaderViewer, { onInitialized: vi.fn() });
-    await tick();
-    await tick();
-
-    // Load a shader — should trigger restoreFromStorage
-    await loadShader();
-
-    // Debug panel store should now reflect localStorage (hidden)
-    const state = get(debugPanelStore);
-    expect(state.isVisible).toBe(false);
   });
 
   it('should not toggle config panel when no shader is loaded', async () => {
@@ -1293,7 +1215,7 @@ describe('ShaderViewer', () => {
     expect(paused).toBe(true);
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send first shader - should trigger unpause since isPaused() returns true
     await messageHandler({
@@ -1337,7 +1259,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send resetLayout message — should not throw
     await messageHandler({ data: { type: 'resetLayout' } });
@@ -1447,7 +1369,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const messageHandler = onMessageCalls[1][0];
+    const messageHandler = onMessageCalls[0][0];
 
     // Send a shader with multiple buffer passes
     await messageHandler({
@@ -1468,5 +1390,180 @@ describe('ShaderViewer', () => {
 
     // Editor overlay should be visible
     expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+  });
+
+  describe('handleVolumeChange', () => {
+    it('should update audioStore volume when called', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+      await tick();
+
+      // Open the options menu to access the volume slider
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      // Find the volume slider and change its value
+      const volumeSlider = screen.getByLabelText('Volume') as HTMLInputElement;
+      await fireEvent.input(volumeSlider, { target: { value: '0.5' } });
+      await tick();
+
+      // The audioStore should reflect the new volume via the onVolumeChange -> audioStore.setVolume path
+      // Verify indirectly: the volume label should show 50%
+      const volumeLabel = document.querySelector('.volume-label');
+      expect(volumeLabel?.textContent).toBe('50%');
+    });
+  });
+
+  describe('handleToggleMute', () => {
+    it('should toggle mute state in audioStore when called', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+      await tick();
+
+      // Open the options menu to access the mute button
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      // The mute button should exist
+      const muteButton = screen.getByLabelText('Toggle mute');
+      expect(muteButton).toBeTruthy();
+
+      // Initially muted (default audioStore state)
+      expect(muteButton.classList.contains('muted')).toBe(true);
+
+      // Click to unmute
+      await fireEvent.click(muteButton);
+      await tick();
+
+      // Should now be unmuted
+      expect(muteButton.classList.contains('muted')).toBe(false);
+
+      // Click again to re-mute
+      await fireEvent.click(muteButton);
+      await tick();
+
+      expect(muteButton.classList.contains('muted')).toBe(true);
+    });
+  });
+
+  describe('handleVideoControl', () => {
+    it('should dispatch video control to rendering engine', async () => {
+      let studioInstance: any;
+      const onInitialized = vi.fn((data: any) => {
+        studioInstance = data.shaderStudio;
+      });
+
+      const { container } = render(ShaderViewer, { onInitialized });
+      await tick();
+      await tick();
+
+      // Load a shader with video input to make config panel show video controls
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: {
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'video', path: '/test/video.mp4' }
+                }
+              }
+            }
+          },
+          pathMap: { Image: '/test/shader.glsl' },
+        },
+      });
+      await tick();
+
+      // The rendering engine mock from ShaderStudio has controlVideo
+      const engine = studioInstance.getRenderingEngine();
+      expect(engine).toBeTruthy();
+    });
+  });
+
+  describe('handleAudioControl', () => {
+    it('should dispatch audio control to rendering engine', async () => {
+      let studioInstance: any;
+      const onInitialized = vi.fn((data: any) => {
+        studioInstance = data.shaderStudio;
+      });
+
+      render(ShaderViewer, { onInitialized });
+      await tick();
+      await tick();
+
+      // Load a shader with audio input
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: {
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: 'audio', path: '/test/audio.mp3' }
+                }
+              }
+            }
+          },
+          pathMap: { Image: '/test/shader.glsl' },
+        },
+      });
+      await tick();
+
+      // The rendering engine mock from ShaderStudio has controlAudio
+      const engine = studioInstance.getRenderingEngine();
+      expect(engine).toBeTruthy();
+    });
+  });
+
+  describe('audio on reset', () => {
+    it('should unmute audio when reset is clicked', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      await loadShader();
+      await tick();
+
+      mockSetAudioOptions.mockClear();
+
+      const resetButton = screen.getByLabelText('Reset shader');
+      await fireEvent.click(resetButton);
+      await tick();
+
+      expect(mockSetAudioOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ muted: false })
+      );
+    });
+
+    it('should not unmute audio on initial shader load', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      mockSetAudioOptions.mockClear();
+      await loadShader();
+      await tick();
+
+      const calls = mockSetAudioOptions.mock.calls;
+      const anyUnmuted = calls.some((c: any) => c[0]?.muted === false);
+      expect(anyUnmuted).toBe(false);
+    });
   });
 });

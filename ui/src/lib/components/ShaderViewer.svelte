@@ -3,9 +3,8 @@
   import { ShaderStudio } from "../ShaderStudio";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
-  import { aspectRatioStore, type AspectRatioMode } from "../stores/aspectRatioStore";
-  import { resolutionStore } from "../stores/resolutionStore";
-  import type { ResolutionSettings } from "@shader-studio/types";
+  import type { AspectRatioMode } from "../stores/aspectRatioStore";
+  import type { QualityMode } from "../stores/qualityStore";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import ErrorDisplay from "./ErrorDisplay.svelte";
@@ -23,10 +22,10 @@
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
   import type { RefreshMode } from "../VariableCaptureManager";
-  import { ConfigManager } from "../ConfigManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
+  import { audioStore, linearToPerceptualVolume, type AudioState } from "../stores/audioStore";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
@@ -85,10 +84,13 @@
     capturedVariables: [],
   };
 
+  // Audio state
+  let audioVolume = 1.0;
+  let audioMuted = true;
+
   // Config panel state
   let configPanelVisible = false;
   let currentConfig: ShaderConfig | null = null;
-  let configManager: ConfigManager | null = null;
   let pathMap: Record<string, string> = {};
   let bufferPathMap: Record<string, string> = {};
   let shaderPath: string = "";
@@ -163,6 +165,97 @@
     return names;
   })();
 
+  function handleVideoControl(path: string, action: string) {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (!engine) return;
+
+    // Block per-video unmute when globally muted
+    if (action === 'unmute' && audioMuted) return;
+
+    engine.controlVideo(path, action as any);
+
+    // After per-video unmute, apply the current global volume
+    if (action === 'unmute') {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
+    }
+  }
+
+  function handleGetVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getVideoState(path);
+    }
+    return null;
+  }
+
+  function handleAudioControl(path: string, action: string) {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (!engine) return;
+
+    // Handle seek action (format: "seek:timeInSeconds")
+    if (action.startsWith('seek:')) {
+      const time = parseFloat(action.substring(5));
+      if (!isNaN(time)) {
+        engine.seekAudio(path, time);
+      }
+      return;
+    }
+
+    // Handle loop region update (format: "loopRegion:start,end")
+    if (action.startsWith('loopRegion:')) {
+      const parts = action.substring(11).split(',');
+      const start = parts[0] ? parseFloat(parts[0]) : undefined;
+      const end = parts[1] ? parseFloat(parts[1]) : undefined;
+      engine.updateAudioLoopRegion(path, isNaN(start as number) ? undefined : start, isNaN(end as number) ? undefined : end);
+      return;
+    }
+
+    // Block per-audio unmute when globally muted
+    if (action === 'unmute' && audioMuted) return;
+
+    engine.controlAudio(path, action as any);
+
+    // After per-audio unmute, apply the current global volume
+    if (action === 'unmute') {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
+    }
+  }
+
+  function handleGetAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getAudioState(path);
+    }
+    return null;
+  }
+
+  function applyGlobalAudioState() {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), audioMuted);
+    }
+    // Keep audio options in sync so newly loaded audio sources respect global state
+    if (shaderStudio) {
+      shaderStudio.setAudioOptions({ muted: audioMuted, volume: linearToPerceptualVolume(audioVolume) });
+    }
+  }
+
+  function handleVolumeChange(volume: number) {
+    audioStore.setVolume(volume);
+  }
+
+  function handleToggleMute() {
+    audioStore.toggleMute();
+  }
+
+  function handleGetAudioFFT(type: string, path?: string): Uint8Array | null {
+    const engine = shaderStudio?.getRenderingEngine();
+    if (engine) {
+      return engine.getAudioFFTData(type, path);
+    }
+    return null;
+  }
+
   // Subscribe to stores
   onMount(() => {
     const unsubConfig = configPanelStore.subscribe((state) => {
@@ -171,9 +264,17 @@
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
     });
+
+    const unsubAudio = audioStore.subscribe((state: AudioState) => {
+      audioVolume = state.volume;
+      audioMuted = state.muted;
+      applyGlobalAudioState();
+    });
+
     return () => {
       unsubConfig();
       unsubDebug();
+      unsubAudio();
     };
   });
 
@@ -196,12 +297,14 @@
     const { width, height } = data;
     canvasWidth = Math.round(width);
     canvasHeight = Math.round(height);
-    const bufferResolutions = renderingEngine.computeBufferResolutions(currentConfig);
-    renderingEngine.handleCanvasResize(width, height, bufferResolutions);
+    renderingEngine.handleCanvasResize(width, height);
   }
 
   function handleReset() {
     if (!initialized) return;
+    // Unmute audio on reset (user gesture satisfies autoplay policy)
+    // Video mute state is not touched - videos are controlled via config UI only
+    audioStore.setMuted(false);
     shaderStudio.handleReset(() => {
       const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
@@ -258,80 +361,10 @@
 
   function handleAspectRatioChange(mode: AspectRatioMode) {
     console.log('Aspect ratio changed to:', mode);
-    maybeSaveResolutionToConfig();
   }
 
-  function handleResolutionScaleChange(scale: number) {
-    console.log('Resolution scale changed to:', scale);
-    maybeSaveResolutionToConfig();
-  }
-
-  function handleCustomResolutionChange(w: string, h: string) {
-    console.log('Custom resolution set to:', w, 'x', h);
-    maybeSaveResolutionToConfig();
-  }
-
-  function handleClearCustomResolution() {
-    console.log('Custom resolution cleared');
-    maybeSaveResolutionToConfig();
-  }
-
-  function handleResetResolution() {
-    console.log('Resolution reset to defaults');
-    // reset() already sets savedToConfig: false and persists defaults
-    // Also remove resolution from config if it was saved
-    configManager?.updateResolution(undefined);
-  }
-
-  function handleToggleSaveToConfig() {
-    let state: import("../stores/resolutionStore").ResolutionState | undefined;
-    const unsub = resolutionStore.subscribe(s => { state = s; });
-    unsub();
-    if (!state) return;
-
-    const newSaved = !state.savedToConfig;
-    resolutionStore.setSavedToConfig(newSaved);
-
-    if (newSaved && shaderStudio) {
-      // Write current resolution + aspect ratio to config
-      let aspectMode: AspectRatioMode = '16:9';
-      const unsubAR = aspectRatioStore.subscribe(s => { aspectMode = s.mode; });
-      unsubAR();
-
-      const settings: Partial<ResolutionSettings> = {
-        scale: state.scale,
-        aspectRatio: aspectMode,
-      };
-      if (state.customWidth !== undefined && state.customHeight !== undefined) {
-        settings.customWidth = state.customWidth;
-        settings.customHeight = state.customHeight;
-      }
-      configManager?.updateResolution(settings);
-    } else if (!newSaved && shaderStudio) {
-      // Remove resolution from config
-      configManager?.updateResolution(undefined);
-    }
-  }
-
-  function maybeSaveResolutionToConfig() {
-    let state: import("../stores/resolutionStore").ResolutionState | undefined;
-    const unsub = resolutionStore.subscribe(s => { state = s; });
-    unsub();
-    if (!state?.savedToConfig || !shaderStudio) return;
-
-    let aspectMode: AspectRatioMode = '16:9';
-    const unsubAR = aspectRatioStore.subscribe(s => { aspectMode = s.mode; });
-    unsubAR();
-
-    const settings: Partial<ResolutionSettings> = {
-      scale: state.scale,
-      aspectRatio: aspectMode,
-    };
-    if (state.customWidth !== undefined && state.customHeight !== undefined) {
-      settings.customWidth = state.customWidth;
-      settings.customHeight = state.customHeight;
-    }
-    configManager?.updateResolution(settings);
+  function handleQualityChange(mode: QualityMode) {
+    console.log('Quality changed to:', mode);
   }
 
   function handleZoomChange(zoom: number) {
@@ -592,8 +625,27 @@
     errors = [];
   }
 
+  // Buffer messages that arrive before initialization completes
+  let pendingMessages: MessageEvent[] = [];
+
   async function initializeApp() {
     try {
+      // Register message listener EARLY to capture messages during initialization
+      transport.onMessage(async (event: MessageEvent) => {
+        if (initialized) {
+          await handleShaderMessage(event);
+          // Also handle cursor position messages
+          if (event.data.type === 'cursorPosition' && shaderStudio) {
+            const messageHandler = (shaderStudio as any).messageHandler;
+            if (messageHandler) {
+              messageHandler.handleCursorPositionMessage(event.data);
+            }
+          }
+        } else {
+          pendingMessages.push(event);
+        }
+      });
+
       const shadderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
@@ -616,19 +668,6 @@
         return;
       }
 
-      configManager = new ConfigManager(transport);
-
-      transport.onMessage(handleShaderMessage);
-      // Also handle cursor position messages
-      transport.onMessage((event: MessageEvent) => {
-        if (event.data.type === 'cursorPosition' && shaderStudio) {
-          const messageHandler = (shaderStudio as any).messageHandler;
-          if (messageHandler) {
-            messageHandler.handleCursorPositionMessage(event.data);
-          }
-        }
-      });
-
       timeManager = renderingEngine.getTimeManager();
 
       // Initialize pixel inspector manager
@@ -650,6 +689,12 @@
       renderingEngine.togglePause();
 
       initialized = true;
+
+      // Replay any messages that arrived during initialization
+      for (const msg of pendingMessages) {
+        handleShaderMessage(msg);
+      }
+      pendingMessages = [];
 
       onInitialized({ shaderStudio });
     } catch (err) {
@@ -683,10 +728,6 @@
         if (!locked || lockedPath === event.data.path) {
           // Unpause on first shader load
           const isFirstShader = !hasShader && event.data.path;
-          if (isFirstShader) {
-            configPanelStore.restoreFromStorage();
-            debugPanelStore.restoreFromStorage();
-          }
           currentConfig = event.data.config || null;
           pathMap = event.data.pathMap || {};
           bufferPathMap = event.data.bufferPathMap || {};
@@ -694,17 +735,6 @@
           currentShaderCode = event.data.code || "";
           if (shaderPath) {
             hasShader = true;
-          }
-          // Sync configManager
-          if (configManager) {
-            configManager.setConfig(currentConfig);
-            configManager.setShaderPath(shaderPath);
-          }
-          // Hydrate resolution stores from config
-          const imageResolution = currentConfig?.passes?.Image?.resolution;
-          resolutionStore.setFromConfig(imageResolution);
-          if (imageResolution?.aspectRatio) {
-            aspectRatioStore.setFromConfig(imageResolution.aspectRatio);
           }
           if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
             renderingEngine.togglePause();
@@ -891,11 +921,6 @@
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
     />
-    {#if !hasShader}
-      <div class="no-shader-placeholder">
-        <span>No shader active</span>
-      </div>
-    {/if}
     {#if initialized}
       <EditorOverlay
         isVisible={editorOverlayVisible}
@@ -924,11 +949,7 @@
         onTogglePause={handleTogglePause}
         onToggleLock={handleToggleLock}
         onAspectRatioChange={handleAspectRatioChange}
-        onResolutionScaleChange={handleResolutionScaleChange}
-        onCustomResolutionChange={handleCustomResolutionChange}
-        onClearCustomResolution={handleClearCustomResolution}
-        onToggleSaveToConfig={handleToggleSaveToConfig}
-        onResetResolution={handleResetResolution}
+        onQualityChange={handleQualityChange}
         onZoomChange={handleZoomChange}
         onFpsLimitChange={handleFpsLimitChange}
         onConfig={handleConfig}
@@ -949,6 +970,10 @@
         onResetLayout={handleResetLayout}
         {previewVisible}
         onShowPreview={handleShowPreview}
+        {audioVolume}
+        {audioMuted}
+        onVolumeChange={handleVolumeChange}
+        onToggleMute={handleToggleMute}
       />
     {/if}
   </div>
@@ -993,6 +1018,12 @@
         onFileSelect={handleConfigFileSelect}
         selectedBuffer={editorBufferName}
         isLocked={isLocked}
+        onVideoControl={handleVideoControl}
+        getVideoState={handleGetVideoState}
+        onAudioControl={handleAudioControl}
+        getAudioState={handleGetAudioState}
+        getAudioFFT={handleGetAudioFFT}
+        globalMuted={audioMuted}
       />
     {/if}
   </div>
@@ -1024,11 +1055,7 @@
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}
       onAspectRatioChange={handleAspectRatioChange}
-      onResolutionScaleChange={handleResolutionScaleChange}
-      onCustomResolutionChange={handleCustomResolutionChange}
-      onClearCustomResolution={handleClearCustomResolution}
-      onToggleSaveToConfig={handleToggleSaveToConfig}
-      onResetResolution={handleResetResolution}
+      onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
       onFpsLimitChange={handleFpsLimitChange}
       onConfig={handleConfig}
@@ -1048,6 +1075,10 @@
       onResetLayout={handleResetLayout}
       {previewVisible}
       onShowPreview={handleShowPreview}
+      {audioVolume}
+      {audioMuted}
+      onVolumeChange={handleVolumeChange}
+      onToggleMute={handleToggleMute}
     />
   {/if}
   <PixelInspector
@@ -1078,23 +1109,5 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-  }
-
-  .no-shader-placeholder {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .no-shader-placeholder span {
-    color: rgba(255, 255, 255, 0.35);
-    font-size: 1.1rem;
-    font-weight: 400;
-    letter-spacing: 0.02em;
-    user-select: none;
   }
 </style>
