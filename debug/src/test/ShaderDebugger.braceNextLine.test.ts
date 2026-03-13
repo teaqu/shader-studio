@@ -359,3 +359,71 @@ describe('Closing brace of function - generateCaptureShader', () => {
     }
   });
 });
+
+describe('declarationLine - closest occurrence above debug line', () => {
+  it('p after reassignment should point to reassignment line, not param', () => {
+    // p = abs(p)-b is a reassignment; when on q line, p should point there
+    const line = findLine('vec3 q = abs(p+e)-e');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, line);
+    const p = vars.find(v => v.varName === 'p');
+    const reassignLine = findLine('p = abs(p  )-b');
+    expect(p?.declarationLine).toBe(reassignLine);
+  });
+
+  it('b and e with no reassignment should point to function signature', () => {
+    const line = findLine('vec3 q = abs(p+e)-e');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, line);
+    const sigLine = findLine('float sdBoxFrame');
+    const b = vars.find(v => v.varName === 'b');
+    const e = vars.find(v => v.varName === 'e');
+    expect(b?.declarationLine).toBe(sigLine);
+    expect(e?.declarationLine).toBe(sigLine);
+  });
+
+  it('p before reassignment should point to param line', () => {
+    // On the p = abs(p)-b line itself, p should point to that line (same line counts)
+    const line = findLine('p = abs(p  )-b');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, line);
+    const p = vars.find(v => v.varName === 'p');
+    expect(p?.declarationLine).toBe(line);
+  });
+
+  it('sdBoxFrame local q should point to its declaration line', () => {
+    const returnLine = findLine('return min(min(');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, returnLine);
+    const q = vars.find(v => v.varName === 'q');
+    const qLine = findLine('vec3 q = abs(p+e)-e');
+    expect(q?.declarationLine).toBe(qLine);
+  });
+
+  it('sdBox local q should point to sdBox declaration, not sdBoxFrame', () => {
+    const line = findLine('return length(max(q,0.0))');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, line);
+    const q = vars.find(v => v.varName === 'q');
+    const qLine = findLine('vec3 q = abs(p) - b');
+    expect(q?.declarationLine).toBe(qLine);
+  });
+
+  it('_dbgReturn should point to the return line', () => {
+    const returnLine = findLine('return length(max(q,0.0))');
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, returnLine);
+    const dbgReturn = vars.find(v => v.varName === '_dbgReturn');
+    expect(dbgReturn?.declarationLine).toBe(returnLine);
+  });
+
+  it('mainImage fragColor should point to assignment line and be last', () => {
+    const lastLine = lines.length - 1;
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, lastLine);
+    const fc = vars.find(v => v.varName === 'fragColor');
+    expect(fc).toBeDefined();
+    expect(fc!.declarationLine).toBe(findLine('fragColor = vec4'));
+    expect(vars[vars.length - 1].varName).toBe('fragColor');
+  });
+
+  it('mainImage uv should point to its declaration line', () => {
+    const lastLine = lines.length - 1;
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, lastLine);
+    const uv = vars.find(v => v.varName === 'uv');
+    expect(uv?.declarationLine).toBe(findLine('vec2 uv'));
+  });
+});

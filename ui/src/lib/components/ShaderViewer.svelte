@@ -520,6 +520,17 @@
     notifyVariableCaptureManager();
   }
 
+  function handleVarClick(_varName: string, declarationLine: number) {
+    if (!debugState.filePath) return;
+    transport.postMessage({
+      type: 'goToLine',
+      payload: {
+        line: declarationLine,
+        filePath: debugState.filePath,
+      },
+    });
+  }
+
   function handleChangeSampleSize(size: number) {
     sampleSize = size;
     notifyVariableCaptureManager();
@@ -959,6 +970,7 @@
         onSetStepEdge={handleSetStepEdge}
         onToggleVariableInspector={handleToggleVariableInspector}
         onExpandVarHistogram={handleExpandVarHistogram}
+        onVarClick={handleVarClick}
         {sampleSize}
         onChangeSampleSize={handleChangeSampleSize}
         refreshMode={activeRefreshMode}

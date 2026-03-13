@@ -26,6 +26,7 @@
   export let onSetStepEdge: (edge: number) => void = () => {};
   export let onToggleVariableInspector: () => void = () => {};
   export let onExpandVarHistogram: (varName: string) => void = () => {};
+  export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
   export let sampleSize: number = 32;
   export let onChangeSampleSize: (size: number) => void = () => {};
   export let refreshMode: RefreshMode = 'polling';
@@ -264,6 +265,7 @@
         isPixelMode={isInspectorActive || isInspectorLocked}
         isLoading={capturedVariables.length === 0}
         onExpandToggle={onExpandVarHistogram}
+        {onVarClick}
         sampleSize={vsSampleSize}
         {onChangeSampleSize}
         refreshMode={vsRefreshMode}

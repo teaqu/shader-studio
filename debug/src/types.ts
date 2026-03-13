@@ -3,6 +3,7 @@ export type ParameterMode = 'uv' | 'centered-uv' | 'custom' | 'preset';
 export interface CaptureVarInfo {
   varName: string;
   varType: string;
+  declarationLine: number;  // 0-indexed line where the variable is declared/assigned
 }
 
 export interface DebugParameterInfo {

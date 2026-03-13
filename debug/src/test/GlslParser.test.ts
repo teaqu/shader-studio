@@ -309,4 +309,104 @@ describe("GlslParser", () => {
     });
   });
 
+  describe("buildVariableLineMap", () => {
+    it("should map params to the function signature line", () => {
+      const lines = [
+        "float foo(vec3 p, float r) {",
+        "  return length(p) - r;",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 1);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 1, funcInfo);
+      expect(lineMap.get('p')).toBe(0);
+      expect(lineMap.get('r')).toBe(0);
+    });
+
+    it("should map locals to their declaration line", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  float t = iTime;",
+        "  vec3 col = vec3(uv, t);",
+        "  fragColor = vec4(col, 1.0);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 4);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 4, funcInfo);
+      // fragColor has a reassignment on line 4, so it should point there
+      expect(lineMap.get('fragColor')).toBe(4);
+      expect(lineMap.get('fragCoord')).toBe(0); // param, no reassignment
+      expect(lineMap.get('uv')).toBe(1);
+      expect(lineMap.get('t')).toBe(2);
+      expect(lineMap.get('col')).toBe(3);
+    });
+
+    it("should track reassignments as closest occurrence", () => {
+      const lines = [
+        "float foo(vec3 p, float r) {",
+        "  p = abs(p);",
+        "  vec3 q = p + vec3(r);",
+        "  return length(q);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 3);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 3, funcInfo);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 3, funcInfo, varTypes);
+      // p was reassigned on line 1, so it points there not the param
+      expect(lineMap.get('p')).toBe(1);
+      // r was never reassigned, stays at param line
+      expect(lineMap.get('r')).toBe(0);
+      expect(lineMap.get('q')).toBe(2);
+    });
+
+    it("same line assignment should point to that line", () => {
+      const lines = [
+        "float foo(vec3 p, float r) {",
+        "  p = abs(p);",
+        "  return length(p);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 1);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 1, funcInfo);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 1, funcInfo, varTypes);
+      // On the p = abs(p) line itself, p should point to line 1
+      expect(lineMap.get('p')).toBe(1);
+    });
+
+    it("should track member access assignments", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  uv.y += 0.5;",
+        "  fragColor = vec4(uv, 0.0, 1.0);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 3);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 3, funcInfo);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 3, funcInfo, varTypes);
+      // uv was modified on line 2 via member access
+      expect(lineMap.get('uv')).toBe(2);
+      expect(lineMap.get('fragColor')).toBe(3);
+    });
+
+    it("should not include variables from other functions", () => {
+      const lines = [
+        "float helper(vec3 p) {",
+        "  float d = length(p);",
+        "  return d;",
+        "}",
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  fragColor = vec4(uv, 0.0, 1.0);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 7);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 7, funcInfo);
+      expect(lineMap.has('p')).toBe(false);
+      expect(lineMap.has('d')).toBe(false);
+      expect(lineMap.get('uv')).toBe(6);
+    });
+  });
+
 });

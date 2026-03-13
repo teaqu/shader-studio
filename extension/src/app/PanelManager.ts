@@ -155,6 +155,8 @@ export class PanelManager {
       await this.handleRequestWorkspaceFiles(message.payload, panel);
     } else if (message.type === 'forkShader') {
       await this.handleForkShader(message.payload, panel);
+    } else if (message.type === 'goToLine') {
+      await this.handleGoToLine(message.payload);
     } else if (message.type === 'extensionCommand') {
       const cmd = message.payload?.command;
       if (cmd === 'moveToNewWindow') {
@@ -322,6 +324,22 @@ export class PanelManager {
         payload: { files: [] },
       };
       panel.webview.postMessage(response);
+    }
+  }
+
+  private async handleGoToLine(payload: { line: number; filePath: string }): Promise<void> {
+    try {
+      const { line, filePath } = payload;
+      if (!filePath) return;
+
+      const uri = vscode.Uri.file(filePath);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
+      const position = new vscode.Position(line, 0);
+      editor.selection = new vscode.Selection(position, position);
+      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+    } catch (e) {
+      this.logger.error(`Failed to go to line: ${e}`);
     }
   }
 
