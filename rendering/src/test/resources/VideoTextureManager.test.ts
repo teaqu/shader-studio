@@ -77,6 +77,8 @@ const createMockVideoElement = (options: {
     src: "",
     HAVE_CURRENT_DATA: 2,
     error: null,
+    style: {} as any,
+    parentNode: null as any,
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
     addEventListener: vi.fn(),
@@ -105,6 +107,9 @@ describe("VideoTextureManager", () => {
       }
       return originalCreateElement(tagName);
     });
+
+    // Mock document.body.appendChild
+    vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
 
     // Mock requestAnimationFrame
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
@@ -476,6 +481,207 @@ describe("VideoTextureManager", () => {
         expect.anything(),
         expect.anything()
       );
+    });
+  });
+
+  describe("syncAllToTime", () => {
+    it("should sync video currentTime to shader time modulo duration", () => {
+      const video1 = createMockVideoElement({ duration: 10 });
+      video1.currentTime = 0;
+      const video2 = createMockVideoElement({ duration: 20 });
+      video2.currentTime = 0;
+
+      (videoManager as any).videoElements['v1.mp4'] = video1;
+      (videoManager as any).videoElements['v2.mp4'] = video2;
+
+      videoManager.syncAllToTime(15);
+
+      // 15 % 10 = 5
+      expect(video1.currentTime).toBe(5);
+      // 15 % 20 = 15
+      expect(video2.currentTime).toBe(15);
+    });
+
+    it("should not seek when drift is within threshold", () => {
+      const video = createMockVideoElement({ duration: 10 });
+      video.currentTime = 5.02;
+
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      // shaderTime=5 -> target=5, drift=|5.02-5|=0.02 < 0.05
+      videoManager.syncAllToTime(5);
+
+      expect(video.currentTime).toBe(5.02); // unchanged
+    });
+
+    it("should seek when drift exceeds threshold", () => {
+      const video = createMockVideoElement({ duration: 10 });
+      video.currentTime = 5.1;
+
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      // shaderTime=5 -> target=5, drift=|5.1-5|=0.1 > 0.05
+      videoManager.syncAllToTime(5);
+
+      expect(video.currentTime).toBe(5);
+    });
+
+    it("should skip videos with no duration", () => {
+      const video = createMockVideoElement({ duration: 0 });
+      video.currentTime = 0;
+
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      videoManager.syncAllToTime(5);
+
+      expect(video.currentTime).toBe(0); // unchanged
+    });
+
+    it("should skip videos with non-finite duration", () => {
+      const video = createMockVideoElement({ duration: Infinity });
+      video.currentTime = 0;
+
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      videoManager.syncAllToTime(5);
+
+      expect(video.currentTime).toBe(0); // unchanged
+    });
+
+    it("should wrap shader time around video duration", () => {
+      const video = createMockVideoElement({ duration: 8 });
+      video.currentTime = 0;
+
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      // 25 % 8 = 1
+      videoManager.syncAllToTime(25);
+
+      expect(video.currentTime).toBe(1);
+    });
+  });
+
+  describe("mute and volume", () => {
+    it("should mute all videos", () => {
+      const v1 = createMockVideoElement();
+      const v2 = createMockVideoElement();
+      (videoManager as any).videoElements['v1.mp4'] = v1;
+      (videoManager as any).videoElements['v2.mp4'] = v2;
+
+      videoManager.muteAllVideos();
+
+      expect(v1.muted).toBe(true);
+      expect(v1.volume).toBe(0);
+      expect(v2.muted).toBe(true);
+      expect(v2.volume).toBe(0);
+    });
+
+    it("should unmute all videos with given volume", () => {
+      const v1 = createMockVideoElement();
+      v1.muted = true;
+      v1.volume = 0;
+      const v2 = createMockVideoElement();
+      v2.muted = true;
+      v2.volume = 0;
+      (videoManager as any).videoElements['v1.mp4'] = v1;
+      (videoManager as any).videoElements['v2.mp4'] = v2;
+
+      videoManager.unmuteAllVideos(0.7);
+
+      expect(v1.muted).toBe(false);
+      expect(v1.volume).toBe(0.7);
+      expect(v2.muted).toBe(false);
+      expect(v2.volume).toBe(0.7);
+    });
+  });
+
+  describe("per-video controls", () => {
+    it("should pause a specific video and track user pause", () => {
+      const video = createMockVideoElement({ paused: false });
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      videoManager.pauseVideo('v.mp4');
+
+      expect(video.pause).toHaveBeenCalled();
+      expect((videoManager as any).userPaused.has('v.mp4')).toBe(true);
+    });
+
+    it("should resume a specific video and clear user pause", () => {
+      const video = createMockVideoElement({ paused: true });
+      (videoManager as any).videoElements['v.mp4'] = video;
+      (videoManager as any).userPaused.add('v.mp4');
+
+      videoManager.resumeVideo('v.mp4');
+
+      expect(video.play).toHaveBeenCalled();
+      expect((videoManager as any).userPaused.has('v.mp4')).toBe(false);
+    });
+
+    it("should not resume user-paused videos on resumeAll", () => {
+      const userPausedVideo = createMockVideoElement({ paused: true });
+      const normalPausedVideo = createMockVideoElement({ paused: true });
+      (videoManager as any).videoElements['user.mp4'] = userPausedVideo;
+      (videoManager as any).videoElements['normal.mp4'] = normalPausedVideo;
+      (videoManager as any).userPaused.add('user.mp4');
+
+      videoManager.resumeAll();
+
+      expect(userPausedVideo.play).not.toHaveBeenCalled();
+      expect(normalPausedVideo.play).toHaveBeenCalled();
+    });
+
+    it("should reset video currentTime to 0", () => {
+      const video = createMockVideoElement();
+      video.currentTime = 5;
+      (videoManager as any).videoElements['v.mp4'] = video;
+
+      videoManager.resetVideo('v.mp4');
+
+      expect(video.currentTime).toBe(0);
+    });
+  });
+
+  describe("duplicate event handler guard", () => {
+    it("should only create one texture even if both canplay and loadeddata fire", async () => {
+      const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+
+      // Get both handlers
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      const loadeddataHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'loadeddata'
+      )?.[1];
+
+      // Fire canplay first
+      canplayHandler();
+
+      // Fire loadeddata second — should be a no-op
+      loadeddataHandler();
+
+      await loadPromise;
+
+      // Texture should only be created once, not twice
+      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledTimes(1);
+      // Only one rAF loop should start
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it("should remove event listeners after first successful canplay", async () => {
+      const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+
+      canplayHandler();
+      await loadPromise;
+
+      // Should have called removeEventListener for both canplay and loadeddata
+      const removeCalls = (mockVideo.removeEventListener as any).mock.calls;
+      const removedEvents = removeCalls.map((call: any[]) => call[0]);
+      expect(removedEvents).toContain('canplay');
+      expect(removedEvents).toContain('loadeddata');
     });
   });
 

@@ -2,15 +2,16 @@
   import { onMount, onDestroy } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
   import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "../../constants/assetExtensions";
+  import { getWaveformPeaks } from "../../util/waveformCache";
 
   export let extensions: string[];
   export let shaderPath: string;
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
-  export let onSelect: (path: string) => void;
+  export let onSelect: (path: string, resolvedUri?: string) => void;
   export let selectedPath: string = "";
 
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 8;
 
   let files: WorkspaceFileInfo[] = [];
   let loading = true;
@@ -89,9 +90,9 @@
 
   function handleSelect(file: WorkspaceFileInfo) {
     if (file.isSameDirectory) {
-      onSelect(file.name);
+      onSelect(file.name, file.thumbnailUri);
     } else {
-      onSelect(file.workspacePath);
+      onSelect(file.workspacePath, file.thumbnailUri);
     }
   }
 
@@ -109,6 +110,73 @@
     if (VIDEO_EXTENSIONS.includes(ext)) return 'video';
     if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
     return 'image';
+  }
+
+  function drawWaveform(canvas: HTMLCanvasElement, peaks: Float32Array) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const n = peaks.length;
+    if (n === 0) return;
+    const centerY = h / 2;
+    const amplitude = centerY * 0.85;
+
+    // Draw mirrored smooth waveform (top half + bottom half)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.beginPath();
+
+    // Top edge (left to right)
+    ctx.moveTo(0, centerY - peaks[0] * amplitude);
+    for (let i = 1; i < n; i++) {
+      const prevX = ((i - 1) / (n - 1)) * w;
+      const x = (i / (n - 1)) * w;
+      const cpX = (prevX + x) / 2;
+      ctx.bezierCurveTo(
+        cpX, centerY - peaks[i - 1] * amplitude,
+        cpX, centerY - peaks[i] * amplitude,
+        x, centerY - peaks[i] * amplitude
+      );
+    }
+
+    // Bottom edge (right to left, mirrored)
+    for (let i = n - 1; i >= 1; i--) {
+      const nextX = (i / (n - 1)) * w;
+      const x = ((i - 1) / (n - 1)) * w;
+      const cpX = (nextX + x) / 2;
+      ctx.bezierCurveTo(
+        cpX, centerY + peaks[i] * amplitude,
+        cpX, centerY + peaks[i - 1] * amplitude,
+        x, centerY + peaks[i - 1] * amplitude
+      );
+    }
+
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function waveformAction(canvas: HTMLCanvasElement, uri: string) {
+    let cancelled = false;
+    getWaveformPeaks(uri).then(peaks => {
+      if (!cancelled && peaks) {
+        drawWaveform(canvas, peaks);
+      }
+    });
+    return {
+      update(newUri: string) {
+        cancelled = false;
+        getWaveformPeaks(newUri).then(peaks => {
+          if (!cancelled && peaks) {
+            drawWaveform(canvas, peaks);
+          }
+        });
+      },
+      destroy() {
+        cancelled = true;
+      }
+    };
   }
 
   function nextPage() {
@@ -165,11 +233,12 @@
           {#each sameDirFiles as file}
             <button
               class="file-card"
+              class:audio-card={getFileType(file.name) === 'audio'}
               class:selected={isSelected(file)}
               on:click={() => handleSelect(file)}
               title={file.name}
             >
-              <div class="file-thumbnail">
+              <div class="file-thumbnail" class:audio-thumbnail={getFileType(file.name) === 'audio'}>
                 {#if getFileType(file.name) === 'video'}
                   <!-- svelte-ignore a11y-mouse-events-have-key-events -->
                   <video
@@ -181,15 +250,13 @@
                     on:mouseleave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                   ></video>
                 {:else if getFileType(file.name) === 'audio'}
-                  <!-- svelte-ignore a11y-mouse-events-have-key-events a11y-no-static-element-interactions -->
-                  <div
-                    class="media-placeholder"
-                    aria-label="audio file"
-                    on:mouseenter={(e) => { const a = e.currentTarget.querySelector('audio'); if (a) a.play(); }}
-                    on:mouseleave={(e) => { const a = e.currentTarget.querySelector('audio'); if (a) { a.pause(); a.currentTime = 0; } }}
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
-                    <audio src={file.thumbnailUri} preload="none" loop></audio>
+                  <div class="audio-waveform-thumbnail">
+                    <canvas
+                      class="waveform-canvas"
+                      width="240"
+                      height="80"
+                      use:waveformAction={file.thumbnailUri}
+                    ></canvas>
                   </div>
                 {:else}
                   <img
@@ -213,11 +280,12 @@
           {#each otherFiles as file}
             <button
               class="file-card"
+              class:audio-card={getFileType(file.name) === 'audio'}
               class:selected={isSelected(file)}
               on:click={() => handleSelect(file)}
               title={file.workspacePath}
             >
-              <div class="file-thumbnail">
+              <div class="file-thumbnail" class:audio-thumbnail={getFileType(file.name) === 'audio'}>
                 {#if getFileType(file.name) === 'video'}
                   <!-- svelte-ignore a11y-mouse-events-have-key-events -->
                   <video
@@ -229,15 +297,13 @@
                     on:mouseleave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                   ></video>
                 {:else if getFileType(file.name) === 'audio'}
-                  <!-- svelte-ignore a11y-mouse-events-have-key-events a11y-no-static-element-interactions -->
-                  <div
-                    class="media-placeholder"
-                    aria-label="audio file"
-                    on:mouseenter={(e) => { const a = e.currentTarget.querySelector('audio'); if (a) a.play(); }}
-                    on:mouseleave={(e) => { const a = e.currentTarget.querySelector('audio'); if (a) { a.pause(); a.currentTime = 0; } }}
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
-                    <audio src={file.thumbnailUri} preload="none" loop></audio>
+                  <div class="audio-waveform-thumbnail">
+                    <canvas
+                      class="waveform-canvas"
+                      width="240"
+                      height="80"
+                      use:waveformAction={file.thumbnailUri}
+                    ></canvas>
                   </div>
                 {:else}
                   <img
@@ -451,6 +517,29 @@
     width: 100%;
     height: 100%;
     color: var(--vscode-descriptionForeground, #888);
+  }
+
+  .audio-card {
+    grid-column: span 2;
+  }
+
+  .audio-thumbnail {
+    aspect-ratio: auto;
+    height: 48px;
+  }
+
+  .audio-waveform-thumbnail {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .waveform-canvas {
+    width: 100%;
+    height: 100%;
   }
 
   .file-name {

@@ -1,7 +1,8 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
-import type { Pass } from "./models";
+import type { ResourceManager } from "./ResourceManager";
+import type { Pass, PassUniforms } from "./models";
 import type { TimeManager } from "./util/TimeManager";
 import type { KeyboardManager } from "./input/KeyboardManager";
 import type { MouseManager } from "./input/MouseManager";
@@ -21,7 +22,9 @@ export class FrameRenderer {
   private shaderPipeline: ShaderPipeline;
   private bufferManager: BufferManager;
   private passRenderer: PassRenderer;
+  private resourceManager: ResourceManager;
   private glCanvas: HTMLCanvasElement;
+  private sampleRate: number = 44100;
 
   constructor(
     timeManager: TimeManager,
@@ -30,6 +33,7 @@ export class FrameRenderer {
     pipeline: ShaderPipeline,
     bufferManager: BufferManager,
     passRenderer: PassRenderer,
+    resourceManager: ResourceManager,
     glCanvas: HTMLCanvasElement,
     fpsCalculator: FPSCalculator,
   ) {
@@ -39,8 +43,13 @@ export class FrameRenderer {
     this.shaderPipeline = pipeline;
     this.bufferManager = bufferManager;
     this.passRenderer = passRenderer;
+    this.resourceManager = resourceManager;
     this.glCanvas = glCanvas;
     this.fpsCalculator = fpsCalculator;
+  }
+
+  public setSampleRate(rate: number): void {
+    this.sampleRate = rate;
   }
 
   public isRunning(): boolean {
@@ -60,7 +69,7 @@ export class FrameRenderer {
     this.lastRenderedAt = null;
   }
 
-  public getUniforms(): any {
+  public getUniforms(): PassUniforms {
     return {
       res: new Float32Array([
         this.glCanvas.width,
@@ -73,6 +82,50 @@ export class FrameRenderer {
       mouse: this.mouseManager.getMouse(),
       frame: this.timeManager.getFrame(),
       date: this.timeManager.getCurrentDate(),
+      channelTime: [0, 0, 0, 0],
+      sampleRate: this.resourceManager.getAudioSampleRate() || this.sampleRate,
+      channelLoaded: [0, 0, 0, 0],
+    };
+  }
+
+  private getPassUniforms(pass: Pass, baseUniforms: PassUniforms): PassUniforms {
+    const channelTime = [0, 0, 0, 0];
+    const channelLoaded = [0, 0, 0, 0];
+
+    for (let i = 0; i < 4; i++) {
+      const input = pass.inputs[`iChannel${i}`];
+      if (!input) continue;
+
+      if (input.type === 'video' && input.path) {
+        const path = input.resolved_path || input.path;
+        const video = this.resourceManager.getVideoElement(path);
+        if (video) {
+          channelTime[i] = video.currentTime;
+          channelLoaded[i] = 1;
+        }
+      } else if (input.type === 'audio' && input.path) {
+        const path = input.resolved_path || input.path;
+        const audioState = this.resourceManager.getAudioState(path);
+        if (audioState) {
+          channelTime[i] = audioState.currentTime;
+          channelLoaded[i] = 1;
+        }
+      } else if (input.type === 'texture' && input.path) {
+        const path = input.resolved_path || input.path;
+        const tex = this.resourceManager.getImageTextureCache()[path];
+        channelLoaded[i] = tex ? 1 : 0;
+      } else if (input.type === 'buffer') {
+        const passBuffers = this.bufferManager.getPassBuffers();
+        channelLoaded[i] = passBuffers[input.source]?.front?.mTex0 ? 1 : 0;
+      } else if (input.type === 'keyboard') {
+        channelLoaded[i] = this.resourceManager.getKeyboardTexture() ? 1 : 0;
+      }
+    }
+
+    return {
+      ...baseUniforms,
+      channelTime,
+      channelLoaded,
     };
   }
 
@@ -139,6 +192,9 @@ export class FrameRenderer {
     this.currentFrameTime = time;
     this.updateFPSTracking(time);
 
+    // Update audio textures (FFT/waveform data) each frame
+    this.resourceManager.updateAudioTextures();
+
     const uniforms = this.getUniforms();
     const isPaused = this.timeManager.isPaused();
 
@@ -164,7 +220,7 @@ export class FrameRenderer {
     }
   }
 
-  private renderBufferPasses(uniforms: any): void {
+  private renderBufferPasses(uniforms: PassUniforms): void {
     const passes = this.shaderPipeline.getPasses();
     const passShaders = this.shaderPipeline.getPassShaders();
     const passBuffers = this.bufferManager.getPassBuffers();
@@ -176,27 +232,14 @@ export class FrameRenderer {
 
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-
+      
       // Skip if buffers are missing (prevents "Cannot read properties of undefined (reading 'back')")
       if (!buffers) {
         console.warn(`Missing buffers for pass: ${pass.name}. Skipping render. This may indicate a configuration issue.`);
         continue;
       }
-
-      // Override iResolution for buffers with custom resolution
-      let passUniforms = uniforms;
-      const backTex = buffers.back?.mTex0;
-      if (backTex && (backTex.mXres !== this.glCanvas.width || backTex.mYres !== this.glCanvas.height)) {
-        passUniforms = {
-          ...uniforms,
-          res: new Float32Array([
-            backTex.mXres,
-            backTex.mYres,
-            backTex.mXres / backTex.mYres,
-          ]),
-        };
-      }
-
+      
+      const passUniforms = this.getPassUniforms(pass, uniforms);
       this.passRenderer.renderPass(pass, buffers.back, shader, passUniforms);
 
       // Swap front and back buffers
@@ -204,7 +247,7 @@ export class FrameRenderer {
     }
   }
 
-  private renderImagePass(uniforms: any): void {
+  private renderImagePass(uniforms: PassUniforms): void {
     const passes = this.shaderPipeline.getPasses();
     const imagePass = passes.find((p: Pass) => p.name === "Image");
 
@@ -212,7 +255,8 @@ export class FrameRenderer {
       const passShaders = this.shaderPipeline.getPassShaders();
       const shader = passShaders[imagePass.name];
       if (shader) {
-        this.passRenderer.renderPass(imagePass, null, shader, uniforms);
+        const passUniforms = this.getPassUniforms(imagePass, uniforms);
+        this.passRenderer.renderPass(imagePass, null, shader, passUniforms);
       } else {
         this.passRenderer.clearCanvas();
       }
@@ -222,14 +266,15 @@ export class FrameRenderer {
   }
 
   public renderSinglePass(pass: Pass): void {
-    const uniforms = this.getUniforms();
+    const baseUniforms = this.getUniforms();
+    const passUniforms = this.getPassUniforms(pass, baseUniforms);
     const shader = this.shaderPipeline.getPassShader(pass.name) || null;
 
     this.passRenderer.renderPass(
       pass,
       null,
       shader,
-      uniforms,
+      passUniforms,
     );
   }
 }

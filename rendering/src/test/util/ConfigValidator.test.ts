@@ -840,17 +840,14 @@ describe("ConfigValidator", () => {
         });
       });
 
-      describe("cubemap input validation", () => {
-        it("should accept valid cubemap input", () => {
+      describe("audio input validation", () => {
+        it("should accept valid audio input with path", () => {
           const config = {
             version: "1.0",
             passes: {
               Image: {
                 inputs: {
-                  iChannel0: {
-                    type: 'cubemap',
-                    path: 'cubemap.png'
-                  }
+                  iChannel0: { type: 'audio', path: 'music.mp3' }
                 }
               }
             }
@@ -858,21 +855,16 @@ describe("ConfigValidator", () => {
 
           const result = ConfigValidator.validateConfig(config);
           expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
         });
 
-        it("should accept cubemap with all optional fields", () => {
+        it("should accept audio input with startTime and endTime", () => {
           const config = {
             version: "1.0",
             passes: {
               Image: {
                 inputs: {
-                  envMap: {
-                    type: 'cubemap',
-                    path: 'cubemap.png',
-                    filter: 'mipmap',
-                    wrap: 'clamp',
-                    vflip: false
-                  }
+                  iChannel0: { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 }
                 }
               }
             }
@@ -880,64 +872,24 @@ describe("ConfigValidator", () => {
 
           const result = ConfigValidator.validateConfig(config);
           expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
         });
 
-        it("should reject cubemap without path", () => {
+        it("should accept audio input with only startTime", () => {
           const config = {
             version: "1.0",
             passes: {
               Image: {
                 inputs: {
-                  iChannel0: {
-                    type: 'cubemap'
-                  }
+                  iChannel0: { type: 'audio', path: 'music.mp3', startTime: 10.0 }
                 }
               }
             }
           } as any;
 
           const result = ConfigValidator.validateConfig(config);
-          expect(result.isValid).toBe(false);
-        });
-
-        it("should reject cubemap with invalid filter", () => {
-          const config = {
-            version: "1.0",
-            passes: {
-              Image: {
-                inputs: {
-                  iChannel0: {
-                    type: 'cubemap',
-                    path: 'cubemap.png',
-                    filter: 'invalid'
-                  }
-                }
-              }
-            }
-          } as any;
-
-          const result = ConfigValidator.validateConfig(config);
-          expect(result.isValid).toBe(false);
-        });
-
-        it("should reject cubemap with invalid vflip type", () => {
-          const config = {
-            version: "1.0",
-            passes: {
-              Image: {
-                inputs: {
-                  iChannel0: {
-                    type: 'cubemap',
-                    path: 'cubemap.png',
-                    vflip: 'true'
-                  }
-                }
-              }
-            }
-          } as any;
-
-          const result = ConfigValidator.validateConfig(config);
-          expect(result.isValid).toBe(false);
+          expect(result.isValid).toBe(true);
+          expect(result.errors).toHaveLength(0);
         });
       });
 

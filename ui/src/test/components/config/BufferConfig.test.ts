@@ -299,4 +299,87 @@ describe('BufferConfig', () => {
       expect(queryByText('Add Channel')).toBeNull();
     });
   });
+
+  describe('audio/video handler props', () => {
+    it('should render with onVideoControl and getVideoState props', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'video', path: '/test/video.mp4' }
+        }
+      };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue(null),
+      });
+
+      expect(container.querySelector('.channels-grid')).toBeTruthy();
+    });
+
+    it('should render with onAudioControl and getAudioState props', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: '/test/audio.mp3' }
+        }
+      };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: vi.fn(),
+        getAudioState: vi.fn().mockReturnValue(null),
+        getAudioFFT: vi.fn().mockReturnValue(null),
+      });
+
+      expect(container.querySelector('.channels-grid')).toBeTruthy();
+    });
+
+    it('should render with globalMuted prop', () => {
+      const config: ImagePass = { inputs: {} };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        isImagePass: true,
+        globalMuted: true,
+      });
+
+      expect(container).toBeTruthy();
+    });
+
+    it('should render with all audio/video props together', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'video', path: '/test/video.mp4' },
+          iChannel1: { type: 'audio', path: '/test/audio.mp3' },
+        }
+      };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue(null),
+        onAudioControl: vi.fn(),
+        getAudioState: vi.fn().mockReturnValue(null),
+        getAudioFFT: vi.fn().mockReturnValue(null),
+        globalMuted: false,
+      });
+
+      expect(container.querySelector('.channels-grid')).toBeTruthy();
+    });
+  });
 });

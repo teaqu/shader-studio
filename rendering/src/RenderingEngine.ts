@@ -76,16 +76,13 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.shaderPipeline,
       this.bufferManager,
       this.passRenderer,
+      this.resourceManager,
       glCanvas,
       new FPSCalculator(60, 10),
     );
   }
 
-  public handleCanvasResize(
-    width: number,
-    height: number,
-    bufferResolutions?: Record<string, { width: number; height: number }>,
-  ): void {
+  public handleCanvasResize(width: number, height: number): void {
     if (!this.glCanvas) {
       return;
     }
@@ -101,7 +98,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.bufferManager.resizeBuffers(
       newWidth,
       newHeight,
-      bufferResolutions,
     );
 
     // Redraw the final image pass to prevent a black screen flicker.
@@ -111,34 +107,12 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
   }
 
-  public computeBufferResolutions(
-    config: ShaderConfig | null,
-  ): Record<string, { width: number; height: number }> | undefined {
-    if (!config) return undefined;
-
-    const result: Record<string, { width: number; height: number }> = {};
-    let hasOverrides = false;
-
-    for (const [name, pass] of Object.entries(config.passes)) {
-      if (name === 'Image' || name === 'common' || !pass) continue;
-      const bufferPass = pass as import("@shader-studio/types").BufferPass;
-      if (bufferPass.resolution?.width && bufferPass.resolution?.height) {
-        result[name] = {
-          width: bufferPass.resolution.width,
-          height: bufferPass.resolution.height,
-        };
-        hasOverrides = true;
-      }
-    }
-
-    return hasOverrides ? result : undefined;
-  }
-
   public async compileShaderPipeline(
     code: string,
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult | undefined> {
     // Save the config for later use
     this.currentConfig = config;
@@ -154,12 +128,30 @@ export class RenderingEngine implements RenderingEngineInterface {
       }
     }
 
-    const result: Promise<CompilationResult> = this.shaderPipeline.compileShaderPipeline(
+    const result = await this.shaderPipeline.compileShaderPipeline(
       code,
       config,
       path,
       buffers,
+      audioOptions,
     );
+
+    if (result.success) {
+      const shaderTime = this.timeManager.getCurrentTime(performance.now());
+      this.resourceManager.syncAllVideosToTime(shaderTime);
+      this.resourceManager.syncAllAudioToTime(shaderTime);
+      if (this.timeManager.isPaused()) {
+        // Newly loaded media autoplay — force pause if shader is paused
+        this.resourceManager.pauseAllVideos();
+        this.resourceManager.pauseAllAudio();
+      } else {
+        this.resourceManager.resumeAllVideos();
+        this.resourceManager.resumeAllAudio();
+      }
+    } else {
+      this.resourceManager.pauseAllVideos();
+      this.resourceManager.pauseAllAudio();
+    }
 
     return result;
   }
@@ -215,18 +207,63 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public togglePause(): void {
     const wasPaused = this.timeManager.isPaused();
-    
+
     // Toggle time manager
     this.timeManager.togglePause();
-    
-    // Handle videos based on new pause state
+
+    // Sync media time to shader time
+    const shaderTime = this.timeManager.getCurrentTime(performance.now());
+    this.resourceManager.syncAllVideosToTime(shaderTime);
+    this.resourceManager.syncAllAudioToTime(shaderTime);
+
+    // Handle media based on new pause state
     if (wasPaused) {
-      // Was paused, now resuming - resume videos
       this.resourceManager.resumeAllVideos();
+      this.resourceManager.resumeAllAudio();
     } else {
-      // Was playing, now pausing - pause videos
       this.resourceManager.pauseAllVideos();
+      this.resourceManager.pauseAllAudio();
     }
+  }
+
+  public async resumeAudioContext(): Promise<void> {
+    return this.resourceManager.resumeAudioContext();
+  }
+
+  public resetTime(): void {
+    this.shaderPipeline.resetTime();
+  }
+
+  public setGlobalVolume(volume: number, muted: boolean): void {
+    if (muted) {
+      this.resourceManager.muteAllAudio();
+    } else {
+      this.resourceManager.unmuteAllAudio(volume);
+    }
+  }
+
+  public controlVideo(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void {
+    this.resourceManager.controlVideo(path, action);
+  }
+
+  public getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager.getVideoState(path);
+  }
+
+  public controlAudio(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void {
+    this.resourceManager.controlAudio(path, action);
+  }
+
+  public getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager.getAudioState(path);
+  }
+
+  public seekAudio(path: string, time: number): void {
+    this.resourceManager.seekAudio(path, time);
+  }
+
+  public updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void {
+    this.resourceManager.updateAudioLoopRegion(path, startTime, endTime);
   }
 
   public startRenderLoop(): void {
@@ -261,8 +298,11 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.shaderPipeline.cleanup();
   }
 
-  public resetTime(): void {
-    this.shaderPipeline.resetTime();
+  public getAudioFFTData(type: string, path?: string): Uint8Array | null {
+    if (type === 'audio' && path) {
+      return this.resourceManager.getAudioFFTData(path);
+    }
+    return null;
   }
 
   public getTimeManager(): TimeManager {
@@ -281,9 +321,9 @@ export class RenderingEngine implements RenderingEngineInterface {
       timeDelta: u.timeDelta,
       frameRate: u.frameRate,
       frame: u.frame,
-      res: u.res,
-      mouse: u.mouse,
-      date: u.date,
+      res: u.res as number[],
+      mouse: u.mouse as number[],
+      date: u.date as number[],
     };
   }
 

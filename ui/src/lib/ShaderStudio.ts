@@ -106,4 +106,10 @@ export class ShaderStudio {
       this.messageHandler.triggerDebugRecompile();
     }
   }
+
+  setAudioOptions(options: { muted?: boolean; volume?: number }): void {
+    if (this.messageHandler) {
+      this.messageHandler.setAudioOptions(options);
+    }
+  }
 }

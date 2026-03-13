@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ConfigPathConverter } from '../../../app/transport/ConfigPathConverter';
+import { VideoAudioConverter } from '../../../app/services/VideoAudioConverter';
 
 suite('ConfigPathConverter Test Suite', () => {
     let sandbox: sinon.SinonSandbox;
@@ -59,7 +60,7 @@ suite('ConfigPathConverter Test Suite', () => {
         sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(filePath));
     });
 
-    test('processConfigPaths processes shader config texture paths correctly', () => {
+    test('processConfigPaths processes shader config texture paths correctly', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-texture.png');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -81,11 +82,11 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const processedMessage = ConfigPathConverter.processConfigPaths(
-            originalMessage as any, 
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
             mockWebview
         );
-        
+
         assert.strictEqual(processedMessage.type, 'shaderSource');
         // Path should be preserved, resolved_path should have webview URI
         assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/texture.png');
@@ -95,43 +96,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
     });
 
-    test('processConfigPaths processes cubemap input paths correctly', () => {
-        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-cubemap.png');
-        mockWebview.asWebviewUri.returns(mockUri);
-
-        const originalMessage = {
-            type: 'shaderSource',
-            code: 'shader code',
-            config: {
-                version: '1.0',
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: {
-                                type: 'cubemap',
-                                path: '/absolute/path/to/cubemap.png'
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        const processedMessage = ConfigPathConverter.processConfigPaths(
-            originalMessage as any,
-            mockWebview
-        );
-
-        assert.strictEqual(processedMessage.type, 'shaderSource');
-        // Path should be preserved, resolved_path should have webview URI
-        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/cubemap.png');
-        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
-
-        // Original should not be mutated
-        assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/cubemap.png');
-    });
-
-    test('processConfigPaths handles config without inputs', () => {
+    test('processConfigPaths handles config without inputs', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code',
@@ -145,27 +110,27 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        assert.doesNotThrow(() => {
-            ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+        await assert.doesNotReject(async () => {
+            await ConfigPathConverter.processConfigPaths(message as any, mockWebview);
         });
     });
 
-    test('processConfigPaths handles message without config', () => {
+    test('processConfigPaths handles message without config', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code'
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
-        
+
         assert.strictEqual(result.type, 'shaderSource');
         assert.strictEqual(result.code, 'shader code');
     });
 
-    test('processConfigPaths processes multiple texture inputs', () => {
+    test('processConfigPaths processes multiple texture inputs', async () => {
         const mockUri1 = vscode.Uri.parse('vscode-webview://webview-panel/texture1.png');
         const mockUri2 = vscode.Uri.parse('vscode-webview://webview-panel/texture2.png');
         
@@ -197,8 +162,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -208,7 +173,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockUri2.toString());
     });
 
-    test('processConfigPaths processes multiple passes', () => {
+    test('processConfigPaths processes multiple passes', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -238,8 +203,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -249,7 +214,43 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
     });
 
-    test('processConfigPaths handles non-texture inputs', () => {
+    test('processConfigPaths processes audio input paths correctly', async () => {
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-audio.mp3');
+        mockWebview.asWebviewUri.returns(mockUri);
+
+        const originalMessage = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'audio',
+                                path: '/absolute/path/to/audio.mp3'
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
+            mockWebview
+        );
+
+        assert.strictEqual(processedMessage.type, 'shaderSource');
+        // Path should be preserved, resolved_path should have webview URI
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/audio.mp3');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
+        // Original should not be mutated
+        assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/audio.mp3');
+    });
+
+    test('processConfigPaths handles non-texture inputs', async () => {
         const message = {
             type: 'shaderSource',
             code: 'shader code',
@@ -268,8 +269,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -277,7 +278,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel0.name, 'BufferA');
     });
 
-    test('processConfigPaths processes video input paths correctly', () => {
+    test('processConfigPaths processes video input paths correctly', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/test-video.mp4');
         mockWebview.asWebviewUri.returns(mockUri);
         
@@ -299,11 +300,11 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const processedMessage = ConfigPathConverter.processConfigPaths(
-            originalMessage as any, 
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
             mockWebview
         );
-        
+
         assert.strictEqual(processedMessage.type, 'shaderSource');
         // Path should be preserved, resolved_path should have webview URI
         assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/video.mp4');
@@ -313,7 +314,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/video.mp4');
     });
 
-    test('processConfigPaths processes mixed texture and video inputs', () => {
+    test('processConfigPaths processes mixed texture and video inputs', async () => {
         const mockTextureUri = vscode.Uri.parse('vscode-webview://webview-panel/texture.png');
         const mockVideoUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
         
@@ -345,8 +346,8 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
         
-        const result = ConfigPathConverter.processConfigPaths(
-            message as any, 
+        const result = await ConfigPathConverter.processConfigPaths(
+            message as any,
             mockWebview
         );
         
@@ -356,7 +357,7 @@ suite('ConfigPathConverter Test Suite', () => {
         assert.strictEqual((result.config.passes.Image.inputs as any).iChannel1.resolved_path, mockVideoUri.toString());
     });
 
-    test('processConfigPaths handles video input with additional properties', () => {
+    test('processConfigPaths handles video input with additional properties', async () => {
         const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
         mockWebview.asWebviewUri.returns(mockUri);
 
@@ -381,7 +382,7 @@ suite('ConfigPathConverter Test Suite', () => {
             }
         };
 
-        const result = ConfigPathConverter.processConfigPaths(
+        const result = await ConfigPathConverter.processConfigPaths(
             message as any,
             mockWebview
         );
@@ -396,7 +397,7 @@ suite('ConfigPathConverter Test Suite', () => {
     });
 
     suite('Workspace-relative @ path resolution', () => {
-        test('processConfigPaths resolves @ texture path from workspace root', () => {
+        test('processConfigPaths resolves @ texture path from workspace root', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'textures', 'noise.png');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/noise.png');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -420,7 +421,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -434,7 +435,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths resolves @ video path from workspace root', () => {
+        test('processConfigPaths resolves @ video path from workspace root', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'videos', 'clip.mp4');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/clip.mp4');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -458,7 +459,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -469,7 +470,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths resolves @/ path in buffer pass', () => {
+        test('processConfigPaths resolves @/ path in buffer pass', async () => {
             const expectedAbsPath = path.join(WORKSPACE_ROOT, 'assets', 'stone.png');
             const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/stone.png');
             mockWebview.asWebviewUri.returns(mockUri);
@@ -496,7 +497,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -507,7 +508,7 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.calledWith(mockWebview.asWebviewUri, vscode.Uri.file(expectedAbsPath));
         });
 
-        test('processConfigPaths handles mixed @ and relative paths', () => {
+        test('processConfigPaths handles mixed @ and relative paths', async () => {
             const shaderPath = path.join(WORKSPACE_ROOT, 'shaders', 'main.glsl');
             const expectedWorkspacePath = path.join(WORKSPACE_ROOT, 'textures', 'noise.png');
             const expectedRelativePath = path.join(WORKSPACE_ROOT, 'shaders', 'local.png');
@@ -543,7 +544,7 @@ suite('ConfigPathConverter Test Suite', () => {
                 }
             };
 
-            const result = ConfigPathConverter.processConfigPaths(
+            const result = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview
             );
@@ -555,6 +556,366 @@ suite('ConfigPathConverter Test Suite', () => {
             assert.strictEqual(input0.resolved_path, mockUri1.toString());
             assert.strictEqual(input1.path, 'local.png');
             assert.strictEqual(input1.resolved_path, mockUri2.toString());
+        });
+    });
+
+    suite('AAC conversion ignore functionality', () => {
+        let showWarningStub: sinon.SinonStub;
+        let showInfoStub: sinon.SinonStub;
+        let showErrorStub: sinon.SinonStub;
+        let mockConverter: sinon.SinonStubbedInstance<VideoAudioConverter>;
+
+        setup(() => {
+            ConfigPathConverter.clearIgnoredVideoFiles();
+            showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
+            showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage');
+            showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
+            mockConverter = sandbox.createStubInstance(VideoAudioConverter);
+        });
+
+        test('warning message includes Ignore button', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            showWarningStub.resolves(undefined); // user dismisses
+
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+
+            // Wait for the fire-and-forget async to settle
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+            const args = showWarningStub.firstCall.args;
+            // Should have both 'Convert' and 'Ignore' buttons
+            assert.ok(args.includes('Convert'), 'Should include Convert button');
+            assert.ok(args.includes('Ignore'), 'Should include Ignore button');
+        });
+
+        test('clicking Ignore suppresses future notifications for that file', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            showWarningStub.resolves('Ignore');
+
+            const videoAbsPath = '/absolute/path/to/video.mp4';
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: videoAbsPath
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // First call — user clicks Ignore
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+            assert.ok(ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
+
+            // Reset the stub call count
+            showWarningStub.resetHistory();
+
+            // Second call — should NOT show warning again
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.notCalled(showWarningStub);
+        });
+
+        test('ignoring one file does not suppress notifications for other files', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            showWarningStub.resolves('Ignore');
+
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            // Ignore video1
+            const message1 = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video1.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            await ConfigPathConverter.processConfigPaths(
+                message1 as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+            showWarningStub.resetHistory();
+
+            // Process video2 — should still show warning
+            const message2 = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video2.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            await ConfigPathConverter.processConfigPaths(
+                message2 as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+        });
+
+        test('clicking Convert still triggers conversion (not affected by Ignore feature)', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            mockConverter.convertAudio.resolves('/absolute/path/to/video_vscode.mp4');
+            showWarningStub.resolves('Convert');
+            showInfoStub.resolves(undefined);
+
+            const onVideoConverted = sandbox.stub();
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                {
+                    videoAudioConverter: mockConverter as unknown as VideoAudioConverter,
+                    onVideoConverted,
+                }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(mockConverter.convertAudio);
+            sinon.assert.calledOnce(onVideoConverted);
+            // File should NOT be added to ignored list after Convert
+            assert.ok(!ConfigPathConverter.isVideoFileIgnored('/absolute/path/to/video.mp4'));
+        });
+
+        test('dismissing without clicking Ignore does not suppress future notifications', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            showWarningStub.resolves(undefined); // dismissed without clicking
+
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // First call — user dismisses
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+            assert.ok(!ConfigPathConverter.isVideoFileIgnored('/absolute/path/to/video.mp4'));
+
+            showWarningStub.resetHistory();
+
+            // Second call — should still show warning
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+        });
+
+        test('clearIgnoredVideoFiles resets ignored state', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves('aac');
+            showWarningStub.resolves('Ignore');
+
+            const videoAbsPath = '/absolute/path/to/video.mp4';
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: videoAbsPath
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Ignore the file
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            assert.ok(ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
+
+            // Clear ignored files
+            ConfigPathConverter.clearIgnoredVideoFiles();
+            assert.ok(!ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
+
+            showWarningStub.resetHistory();
+
+            // Should show warning again after clearing
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.calledOnce(showWarningStub);
+        });
+
+        test('no notification shown when audio codec is supported', async () => {
+            mockConverter.getUnsupportedAudioCodec.resolves(null);
+
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            mockWebview.asWebviewUri.returns(mockUri);
+
+            const message = {
+                type: 'shaderSource',
+                code: 'shader code',
+                path: '/workspace/shaders/main.glsl',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: {
+                                    type: 'video',
+                                    path: '/absolute/path/to/video.mp4'
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+            );
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            sinon.assert.notCalled(showWarningStub);
         });
     });
 });

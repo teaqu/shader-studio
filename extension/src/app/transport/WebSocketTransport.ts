@@ -171,7 +171,7 @@ export class WebSocketTransport implements MessageTransport {
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
         if (!input?.path) continue;
-        if (input.type !== 'texture' && input.type !== 'video') continue;
+        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio') continue;
 
         // Resolve to absolute path
         let absolutePath: string;
@@ -189,6 +189,10 @@ export class WebSocketTransport implements MessageTransport {
         }
 
         input.resolved_path = this.convertUriForClient(absolutePath);
+        if (input.type === 'video') {
+          // Browser clients need HTTP URLs for direct media playback.
+          input.path = this.convertUriForClient(absolutePath);
+        }
       }
     }
 

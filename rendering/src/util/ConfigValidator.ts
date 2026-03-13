@@ -106,10 +106,10 @@ export class ConfigValidator {
         return this.validateTextureInput(input);
       case 'video':
         return this.validateVideoInput(input);
-      case 'cubemap':
-        return this.validateCubemapInput(input);
       case 'keyboard':
         return this.validateKeyboardInput(input);
+      case 'audio':
+        return this.validateAudioInput(input);
       default:
         return false;
     }
@@ -149,24 +149,8 @@ export class ConfigValidator {
     return input.type === 'keyboard';
   }
 
-  private static validateCubemapInput(input: any): boolean {
-    if (!input.path || typeof input.path !== 'string') {
-      return false;
-    }
-
-    if (input.filter && !['linear', 'nearest', 'mipmap'].includes(input.filter)) {
-      return false;
-    }
-
-    if (input.wrap && !['repeat', 'clamp'].includes(input.wrap)) {
-      return false;
-    }
-
-    if (input.vflip !== undefined && typeof input.vflip !== 'boolean') {
-      return false;
-    }
-
-    return true;
+  private static validateAudioInput(input: any): boolean {
+    return input.path && typeof input.path === 'string';
   }
 
   private static validateVideoInput(input: any): boolean {

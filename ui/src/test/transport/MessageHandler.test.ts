@@ -96,7 +96,8 @@ describe("MessageHandler", () => {
       expect(messageHandler.getLastEvent()).toBe(shaderEvent);
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -116,7 +117,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        true
+        true,
+        undefined
       );
     });
 
@@ -136,7 +138,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -155,11 +158,80 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
-        false
+        false,
+        undefined
       );
     });
   });
 
+
+  describe("setAudioOptions", () => {
+    it("should pass audioOptions to ShaderProcessor when processing shader", async () => {
+      const audioOptions = { muted: false, volume: 0.75 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        audioOptions,
+      );
+    });
+
+    it("should pass updated audioOptions after calling setAudioOptions again", async () => {
+      messageHandler.setAudioOptions({ muted: false, volume: 1.0 });
+      messageHandler.setAudioOptions({ muted: true, volume: 0 });
+
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: true, volume: 0 },
+      );
+    });
+
+    it("should pass undefined audioOptions when setAudioOptions has not been called", async () => {
+      const shaderEvent = {
+        data: {
+          type: "shaderSource",
+          path: "shader.glsl",
+          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        undefined,
+      );
+    });
+  });
 
   describe("when reset is called", () => {
     it("should call cleanup", () => {
@@ -247,7 +319,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -288,7 +361,8 @@ describe("MessageHandler", () => {
 
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -884,7 +958,8 @@ describe("MessageHandler", () => {
       // Verify delegation to ShaderProcessor
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 
@@ -940,7 +1015,8 @@ describe("MessageHandler", () => {
       // Should delegate to ShaderProcessor
       expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
-        false
+        false,
+        undefined
       );
     });
 

@@ -34,6 +34,7 @@ suite('PanelManager Test Suite', () => {
             workspaceState: {} as any,
             subscriptions: [],
             asAbsolutePath: (relativePath: string) => path.join(__dirname, 'mock-extension', relativePath),
+            globalStorageUri: vscode.Uri.file(path.join(__dirname, 'mock-global-storage')),
         } as any;
 
         mockMessenger = {
@@ -346,23 +347,25 @@ suite('PanelManager Test Suite', () => {
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
             
-            // Should contain media-src with webview.cspSource and blob:
+            // Should contain media-src and connect-src with webview.cspSource and blob:
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should add media-src to existing CSP');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src to existing CSP');
             assert.ok(html.includes('Content-Security-Policy'), 'Should preserve CSP meta tag');
         });
 
         test('should replace existing media-src in CSP', () => {
             const htmlWithMediaSrc = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; media-src vscode-resource:;"></head><body></body></html>';
             readFileSyncStub.returns(htmlWithMediaSrc);
-            
+
             panelManager.createPanel();
 
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
-            
+
             // Should replace existing media-src with new one including blob:
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should replace existing media-src');
             assert.ok(!html.includes('media-src vscode-resource:;'), 'Should not contain old media-src without blob:');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src');
         });
 
         test('should add new CSP when none exists', () => {
@@ -374,9 +377,10 @@ suite('PanelManager Test Suite', () => {
             const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
             const html = createdPanel.webview.html;
             
-            // Should add new nonce-based CSP with media-src
+            // Should add new nonce-based CSP with media-src and connect-src
             assert.ok(html.includes('Content-Security-Policy'), 'Should add new CSP meta tag');
             assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should include media-src in new CSP');
+            assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should include connect-src in new CSP');
             assert.ok(html.includes('nonce-abc123'), 'Should use nonce-based CSP');
             assert.ok(html.includes('script-src vscode-resource: \'nonce-abc123\''), 'Should include script-src with nonce');
         });
@@ -668,8 +672,8 @@ suite('PanelManager Test Suite', () => {
                 shaderPath: '/locked/shader.glsl'
             });
 
-            // Advance past the 150ms setTimeout
-            clock.tick(200);
+            // Advance past the 300ms debounce setTimeout
+            clock.tick(350);
 
             sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
             const refreshedPath = (mockShaderProvider as any).sendShaderFromPath.firstCall.args[0];
@@ -1055,6 +1059,20 @@ suite('PanelManager Test Suite', () => {
             sinon.assert.notCalled(openDocStub);
         });
 
+        test('extensionCommand moveToNewWindow reveals panel and moves to new window', async () => {
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+            execStub.resetHistory();
+            mockWebviewPanel.reveal = sandbox.stub();
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'extensionCommand', payload: { command: 'moveToNewWindow' } },
+                mockWebviewPanel,
+            );
+
+            sinon.assert.calledOnce(mockWebviewPanel.reveal);
+            sinon.assert.calledOnce(execStub);
+            sinon.assert.calledWith(execStub, 'workbench.action.moveEditorToNewWindow');
+        });
         test('extensionCommand does nothing when command is missing', async () => {
             const execStub = vscode.commands.executeCommand as sinon.SinonStub;
             execStub.resetHistory();
@@ -1108,8 +1126,10 @@ suite('PanelManager Test Suite', () => {
         }
 
         async function advanceTimersAndFlush(clock: sinon.SinonFakeTimers) {
+            // Advance first setTimeout (500ms), flush microtasks for await
             clock.tick(500);
             await flushMicrotasks();
+            // Advance second setTimeout (200ms), flush microtasks for await
             clock.tick(200);
             await flushMicrotasks();
         }
@@ -1141,6 +1161,237 @@ suite('PanelManager Test Suite', () => {
             await advanceTimersAndFlush(clock);
 
             sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+        });
+    });
+
+    suite('handleVideoAudioConverted', () => {
+        test('should return early when no active shader editor', () => {
+            const fs = require('fs');
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(null);
+
+            const existsSyncStub = sandbox.stub(fs, 'existsSync');
+
+            (panelManager as any).handleVideoAudioConverted('original.mp4', '/converted/audio.wav');
+
+            // Should not attempt to read any file
+            sinon.assert.notCalled(existsSyncStub);
+        });
+
+        test('should return early when config file does not exist', () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/path/to/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const existsSyncStub = sandbox.stub(fs, 'existsSync').returns(false);
+            const readFileSyncStub = sandbox.stub(fs, 'readFileSync');
+
+            (panelManager as any).handleVideoAudioConverted('original.mp4', '/converted/audio.wav');
+
+            sinon.assert.calledWith(existsSyncStub, '/path/to/shader.sha.json');
+            sinon.assert.notCalled(readFileSyncStub);
+        });
+
+        test('should replace matching video path in config and write updated file', () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const config = {
+                passes: {
+                    image: {
+                        inputs: {
+                            iChannel0: { path: 'video.mp4', type: 'video' }
+                        }
+                    }
+                }
+            };
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns(JSON.stringify(config));
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            (panelManager as any).handleVideoAudioConverted('video.mp4', '/project/shaders/converted/audio.wav');
+
+            // Should have written the updated config
+            sinon.assert.calledOnce(writeStub);
+            const writtenPath = writeStub.firstCall.args[0];
+            assert.strictEqual(writtenPath, '/project/shaders/shader.sha.json');
+
+            const writtenContent = JSON.parse(writeStub.firstCall.args[1]);
+            assert.strictEqual(writtenContent.passes.image.inputs.iChannel0.path, 'converted/audio.wav');
+
+            // Should trigger shader refresh after timeout
+            clock.tick(200);
+            sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
+            sinon.assert.calledWith(
+                (mockShaderProvider as any).sendShaderFromPath,
+                '/project/shaders/shader.glsl',
+                { forceCleanup: true }
+            );
+
+            clock.restore();
+        });
+
+        test('should not write file when no matching path is found in config', () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const config = {
+                passes: {
+                    image: {
+                        inputs: {
+                            iChannel0: { path: 'other-video.mp4', type: 'video' }
+                        }
+                    }
+                }
+            };
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns(JSON.stringify(config));
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            (panelManager as any).handleVideoAudioConverted('video.mp4', '/project/shaders/converted/audio.wav');
+
+            sinon.assert.notCalled(writeStub);
+        });
+
+        test('should replace paths across multiple passes and inputs', () => {
+            const clock = sandbox.useFakeTimers();
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const config = {
+                passes: {
+                    bufferA: {
+                        inputs: {
+                            iChannel0: { path: 'video.mp4', type: 'video' },
+                            iChannel1: { path: 'texture.png', type: 'texture' }
+                        }
+                    },
+                    image: {
+                        inputs: {
+                            iChannel0: { path: 'video.mp4', type: 'video' }
+                        }
+                    }
+                }
+            };
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns(JSON.stringify(config));
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+            (panelManager as any).handleVideoAudioConverted('video.mp4', '/project/shaders/converted/audio.wav');
+
+            sinon.assert.calledOnce(writeStub);
+            const writtenContent = JSON.parse(writeStub.firstCall.args[1]);
+
+            // Both matching paths should be replaced
+            assert.strictEqual(writtenContent.passes.bufferA.inputs.iChannel0.path, 'converted/audio.wav');
+            assert.strictEqual(writtenContent.passes.image.inputs.iChannel0.path, 'converted/audio.wav');
+
+            // Non-matching path should be unchanged
+            assert.strictEqual(writtenContent.passes.bufferA.inputs.iChannel1.path, 'texture.png');
+
+            clock.tick(200);
+            sinon.assert.calledOnce((mockShaderProvider as any).sendShaderFromPath);
+
+            clock.restore();
+        });
+
+        test('should handle errors gracefully without throwing', () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').throws(new Error('Read failed'));
+
+            // Should not throw
+            assert.doesNotThrow(() => {
+                (panelManager as any).handleVideoAudioConverted('video.mp4', '/converted/audio.wav');
+            });
+        });
+
+        test('should handle .frag extension for config path', () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.frag' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const existsSyncStub = sandbox.stub(fs, 'existsSync').returns(false);
+            sandbox.stub(fs, 'readFileSync');
+
+            (panelManager as any).handleVideoAudioConverted('video.mp4', '/converted/audio.wav');
+
+            sinon.assert.calledWith(existsSyncStub, '/project/shaders/shader.sha.json');
+        });
+
+        test('should handle config with no passes gracefully', () => {
+            const fs = require('fs');
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/project/shaders/shader.glsl' },
+                    languageId: 'glsl'
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const config = { passes: {} };
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns(JSON.stringify(config));
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+            assert.doesNotThrow(() => {
+                (panelManager as any).handleVideoAudioConverted('video.mp4', '/converted/audio.wav');
+            });
+
+            // No paths matched, so no write
+            sinon.assert.notCalled(writeStub);
         });
     });
 });

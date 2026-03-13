@@ -14,15 +14,15 @@ const createMockCanvas = () => ({
 
 const createMockShaderCompiler = () => ({
     compileShader: vi.fn(),
-    wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0 }),
+    wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0, commonCodeLineCount: 0 }),
 });
 
 const createMockResourceManager = () => ({
     cleanup: vi.fn(),
     loadImageTexture: vi.fn(),
     loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
-    loadCubemapTexture: vi.fn().mockResolvedValue(null),
-    getCubemapTexture: vi.fn().mockReturnValue(null),
+    loadAudioSource: vi.fn().mockResolvedValue({}),
+    updateAudioLoopRegion: vi.fn(),
 });
 
 const createMockRenderer = () => ({
@@ -111,7 +111,6 @@ describe("ShaderPipeline", () => {
             );
 
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            // Time resets when switching to a different shader
             expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
@@ -225,7 +224,6 @@ describe("ShaderPipeline", () => {
 
             // Cleanup should happen even when compilation fails, if path changed
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            // Time resets when switching to a different shader
             expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
 
@@ -735,8 +733,7 @@ describe("ShaderPipeline", () => {
             shaderPipeline.cleanup();
 
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            // cleanup() no longer resets time — only resetTime() does
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
         });
     });
@@ -1038,6 +1035,31 @@ describe("ShaderPipeline", () => {
         });
     });
 
+    describe("video mute behavior", () => {
+        it("should only call loadVideoTexture without any mute control during resource loading", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" }
+                        }
+                    }
+                }
+            };
+
+            mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            // Videos start muted by default (via VideoTextureManager)
+            // Pipeline should only call loadVideoTexture, no mute/unmute methods
+            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+                "video.mp4",
+                expect.any(Object)
+            );
+        });
+    });
+
     describe("texture input handling", () => {
         it("should load texture with default options when none specified", async () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
@@ -1297,7 +1319,6 @@ describe("ShaderPipeline", () => {
         it("should store slot assignments after compilation", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
-                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1324,7 +1345,6 @@ describe("ShaderPipeline", () => {
         it("should store separate slot assignments per pass", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
-                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1355,7 +1375,6 @@ describe("ShaderPipeline", () => {
         it("should pass slot assignments to compileShader", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
-                version: "1.0" as const,
                 passes: {
                     Image: {
                         inputs: {
@@ -1376,11 +1395,330 @@ describe("ShaderPipeline", () => {
         });
     });
 
+    describe("audio input handling", () => {
+        it("should load audio source when pass has audio input", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
+                startTime: undefined,
+                endTime: undefined,
+            }));
+        });
+
+        it("should not load audio when path is missing", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadAudioSource).not.toHaveBeenCalled();
+        });
+
+        it("should return warning when audio loading fails", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "bad.mp3" }
+                        }
+                    }
+                }
+            };
+
+            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toHaveLength(1);
+            expect(result.warnings![0]).toContain("Audio loading failed");
+        });
+
+        it("should use resolved_path when available", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("/full/path/music.mp3", expect.objectContaining({
+                startTime: undefined,
+                endTime: undefined,
+            }));
+        });
+
+        it("should pass startTime and endTime to loadAudioSource when specified", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3", startTime: 5.0, endTime: 30.0 }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
+                startTime: 5.0,
+                endTime: 30.0,
+            }));
+        });
+
+        it("should call updateAudioLoopRegion after loading audio", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3" }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", undefined, undefined);
+        });
+
+        it("should call updateAudioLoopRegion with startTime and endTime", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3", startTime: 2.5, endTime: 15.0 }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", 2.5, 15.0);
+        });
+
+        it("should use resolved_path for updateAudioLoopRegion", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3", startTime: 1.0 }
+                        }
+                    }
+                }
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("/full/path/music.mp3", 1.0, undefined);
+        });
+
+        it("should pass audioOptions (muted/volume) to loadAudioSource", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3" }
+                        }
+                    }
+                }
+            };
+
+            const audioOptions = { muted: true, volume: 0.5 };
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {}, audioOptions);
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
+                muted: true,
+                volume: 0.5,
+                startTime: undefined,
+                endTime: undefined,
+            });
+        });
+
+        it("should merge audioOptions with startTime/endTime from input config", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "music.mp3", startTime: 2.0, endTime: 10.0 }
+                        }
+                    }
+                }
+            };
+
+            const audioOptions = { muted: false, volume: 0.8 };
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {}, audioOptions);
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
+                muted: false,
+                volume: 0.8,
+                startTime: 2.0,
+                endTime: 10.0,
+            });
+        });
+
+        it("should load audio from buffer passes", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: { inputs: {} },
+                    BufferA: {
+                        path: "buffer-a.glsl",
+                        inputs: {
+                            iChannel0: { type: "audio", path: "buffer-audio.mp3" }
+                        }
+                    }
+                }
+            };
+            const buffers = {
+                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+            };
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith(
+                "buffer-audio.mp3",
+                expect.objectContaining({ startTime: undefined, endTime: undefined })
+            );
+        });
+
+        it("should not call updateAudioLoopRegion when audio loading fails", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "audio", path: "bad.mp3", startTime: 5.0 }
+                        }
+                    }
+                }
+            };
+
+            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(mockResourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("warning aggregation from mixed resource loading", () => {
+        it("should aggregate warnings from both video and audio loading failures", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" },
+                            iChannel1: { type: "audio", path: "bad-audio.mp3" }
+                        }
+                    }
+                }
+            };
+
+            mockResourceManager.loadVideoTexture.mockResolvedValue({
+                texture: null,
+                warning: "Video is not loading: video.mp4."
+            });
+            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toHaveLength(2);
+            expect(result.warnings![0]).toContain("video.mp4");
+            expect(result.warnings![1]).toContain("Audio loading failed");
+        });
+
+        it("should combine compile warnings with resource warnings", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" }
+                        }
+                    }
+                }
+            };
+
+            // Simulate compile warnings by making compileShaders return warnings
+            // The mock shader compiler returns success, so we test resource warnings only
+            mockResourceManager.loadVideoTexture.mockResolvedValue({
+                texture: null,
+                warning: "Video is not loading: video.mp4."
+            });
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toBeDefined();
+            expect(result.warnings!.some(w => w.includes("video.mp4"))).toBe(true);
+        });
+
+        it("should return no warnings when all resources load successfully", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const config = {
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: { type: "video", path: "video.mp4" },
+                            iChannel1: { type: "audio", path: "music.mp3" },
+                            iChannel2: { type: "texture", path: "image.jpg" }
+                        }
+                    }
+                }
+            };
+
+            mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
+            mockResourceManager.loadAudioSource.mockResolvedValue({});
+
+            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+            expect(result.success).toBe(true);
+            expect(result.warnings).toBeUndefined();
+        });
+    });
+
     describe("updateResources with custom-named inputs", () => {
         it("should load textures for custom-named inputs", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
-                version: "1.0" as const,
+                version: "1",
                 passes: {
                     Image: {
                         inputs: {
@@ -1398,84 +1736,10 @@ describe("ShaderPipeline", () => {
         });
     });
 
-    describe("cubemap channel types and resource loading", () => {
-        it("should derive Cube channel type for cubemap inputs", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            envMap: { type: "cubemap" as const, path: "env.hdr" },
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
-
-            expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
-                expect.any(String),
-                "",
-                [{ slot: 0, key: "envMap", isCustomName: true }],
-                expect.arrayContaining([])
-            );
-
-            const channelTypes = mockShaderCompiler.compileShader.mock.calls[0][3];
-            expect(channelTypes[0]).toBe("Cube");
-            expect(channelTypes.length).toBeGreaterThanOrEqual(4);
-        });
-
-        it("should derive 2D channel type for non-cubemap inputs", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            diffuse: { type: "texture" as const, path: "diffuse.png" },
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
-
-            const channelTypes = mockShaderCompiler.compileShader.mock.calls[0][3];
-            expect(channelTypes[0]).toBe("2D");
-            expect(channelTypes.length).toBeGreaterThanOrEqual(4);
-            // All slots should be '2D' when no cubemap inputs
-            for (const type of channelTypes) {
-                expect(type).toBe("2D");
-            }
-        });
-
-        it("should load cubemap textures during resource update", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            skybox: {
-                                type: "cubemap" as const,
-                                path: "skybox.hdr",
-                                filter: "linear" as const,
-                                wrap: "clamp" as const,
-                                vflip: false,
-                            },
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "test.glsl", {});
-
-            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith(
-                "skybox.hdr",
-                {
-                    filter: "linear",
-                    wrap: "clamp",
-                    vflip: false,
-                }
-            );
+    describe("resetTime", () => {
+        it("should call timeManager.cleanup when resetTime is called", () => {
+            shaderPipeline.resetTime();
+            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
         });
     });
 });

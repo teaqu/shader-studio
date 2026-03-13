@@ -19,8 +19,6 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private passSlotAssignments: Record<string, SlotAssignment[]> = {};
-  private passChannelTypes: Record<string, ChannelSamplerType[]> = {};
-  private currentConfig: ShaderConfig | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -85,18 +83,20 @@ export class ShaderPipeline {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
+    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
     this.prepareNewCompilation(path);
-    this.currentConfig = config;
-
     this.buildPasses(code, config, buffers);
+
     const compilation = await this.compileShaders();
 
     if (!compilation.success) {
       return compilation;
     }
 
-    const warnings = await this.updateResources();
+    const compileWarnings = compilation.warnings || [];
+    const resourceWarnings = await this.updateResources(audioOptions);
+    const warnings = [...compileWarnings, ...resourceWarnings];
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
@@ -105,7 +105,6 @@ export class ShaderPipeline {
 
     if (this.shaderPath !== "" && this.shaderPath !== path) {
       this.cleanup();
-      this.resetTime();
     }
 
     this.shaderPath = path;
@@ -162,6 +161,11 @@ export class ShaderPipeline {
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
   }
 
+  private getChannelTypes(pass: Pass): ChannelSamplerType[] {
+    const types: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
+    return types;
+  }
+
   private async compileShaders(): Promise<CompilationResult> {
     const oldPassShaders = { ...this.passShaders };
     const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
@@ -191,9 +195,7 @@ export class ShaderPipeline {
 
       const slotAssignments = assignInputSlots(pass.inputs);
       this.passSlotAssignments[pass.name] = slotAssignments;
-
-      const channelTypes = this.deriveChannelTypes(pass.inputs, slotAssignments);
-      this.passChannelTypes[pass.name] = channelTypes;
+      const channelTypes = this.getChannelTypes(pass);
 
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
@@ -235,11 +237,11 @@ export class ShaderPipeline {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];
         } else {
-          const bufferRes = (this.currentConfig?.passes?.[pass.name] as BufferPass)?.resolution;
-          const bufW = bufferRes?.width ?? (this.canvas.width || 800);
-          const bufH = bufferRes?.height ?? (this.canvas.height || 600);
           newPassBuffers[pass.name] = this.bufferManager
-            .createPingPongBuffers(bufW, bufH);
+            .createPingPongBuffers(
+              this.canvas.width || 800,
+              this.canvas.height || 600,
+            );
         }
       }
     }
@@ -258,22 +260,7 @@ export class ShaderPipeline {
     return { success: true };
   }
 
-  private deriveChannelTypes(
-    inputs: Record<string, any>,
-    slotAssignments: SlotAssignment[],
-  ): ChannelSamplerType[] {
-    const channelCount = Math.max(4, slotAssignments.length);
-    const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
-    for (const { slot, key } of slotAssignments) {
-      const input = inputs[key];
-      if (input?.type === 'cubemap') {
-        types[slot] = 'Cube';
-      }
-    }
-    return types;
-  }
-
-  private async updateResources(): Promise<string[]> {
+  private async updateResources(audioOptions?: { muted?: boolean; volume?: number }): Promise<string[]> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
@@ -296,12 +283,20 @@ export class ShaderPipeline {
           if (result.warning) {
             warnings.push(result.warning);
           }
-        } else if (input?.type === "cubemap" && input.path) {
-          await this.resourceManager.loadCubemapTexture(input.resolved_path || input.path, {
-            filter: input.filter,
-            wrap: input.wrap,
-            vflip: input.vflip,
-          });
+        } else if (input?.type === "audio" && input.path) {
+          try {
+            const audioLoadOptions = {
+              ...audioOptions,
+              startTime: input.startTime,
+              endTime: input.endTime,
+            };
+            const audioPath = input.resolved_path || input.path;
+            await this.resourceManager.loadAudioSource(audioPath, audioLoadOptions);
+            // Always update loop region (audio may already be loaded from previous compile)
+            this.resourceManager.updateAudioLoopRegion(audioPath, input.startTime, input.endTime);
+          } catch (error) {
+            warnings.push(`Audio loading failed: ${input.path}`);
+          }
         }
       }
     }
@@ -318,6 +313,7 @@ export class ShaderPipeline {
     this.resourceManager.cleanup();
     this.cleanupShaders();
     this.bufferManager.dispose();
+    this.timeManager.cleanup();
   }
 
   public resetTime(): void {

@@ -3,11 +3,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChannelPreview from '../../../lib/components/config/ChannelPreview.svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
+// Mock waveformCache
+vi.mock('../../../lib/util/waveformCache', () => ({
+  getWaveformPeaks: vi.fn().mockResolvedValue(null),
+  clearWaveformCache: vi.fn(),
+}));
+
+import { getWaveformPeaks } from '../../../lib/util/waveformCache';
+const mockGetWaveformPeaks = getWaveformPeaks as ReturnType<typeof vi.fn>;
+
 describe('ChannelPreview', () => {
   let mockGetWebviewUri: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockGetWebviewUri = vi.fn((path: string) => `webview://resolved/${path}`);
+    mockGetWaveformPeaks.mockResolvedValue(null);
   });
 
   describe('Empty State', () => {
@@ -229,7 +239,7 @@ describe('ChannelPreview', () => {
   });
 
   describe('Fallback on Load Failure', () => {
-    it('should show overlay when image src is available', () => {
+    it('should show overlay when image src is available', async () => {
       const input: ConfigInput = {
         type: 'texture',
         path: 'test.png',
@@ -241,9 +251,10 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      // Image element exists with valid src - overlay shows (not fallback)
+      // Image element exists with valid src - fire load event to trigger overlay
       const img = container.querySelector('.preview-image') as HTMLImageElement;
       expect(img).toBeTruthy();
+      await fireEvent.load(img);
       expect(container.querySelector('.preview-overlay')).toBeTruthy();
       expect(container.querySelector('.preview-fallback')).toBeFalsy();
     });
@@ -267,7 +278,7 @@ describe('ChannelPreview', () => {
       expect(container.querySelector('.preview-overlay')).toBeFalsy();
     });
 
-    it('should show overlay when path falls back to raw path', () => {
+    it('should show overlay when path falls back to raw path', async () => {
       // getWebviewUri returns undefined, but raw path is used as fallback
       mockGetWebviewUri = vi.fn(() => undefined);
 
@@ -281,9 +292,10 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      // imageSrc falls back to raw path, so overlay shows
+      // imageSrc falls back to raw path - fire load event to trigger overlay
       const img = container.querySelector('.preview-image') as HTMLImageElement;
       expect(img).toBeTruthy();
+      await fireEvent.load(img);
       expect(container.querySelector('.preview-overlay')).toBeTruthy();
       expect(container.querySelector('.preview-fallback')).toBeFalsy();
     });
@@ -364,76 +376,133 @@ describe('ChannelPreview', () => {
     });
   });
 
-  describe('Cubemap Preview', () => {
-    it('should render cubemap preview with .texture-preview class', () => {
-      const input: ConfigInput = { type: 'cubemap', path: 'skybox.hdr' } as any;
+  describe('Audio Controls on Preview', () => {
+    let mockOnAudioControl: ReturnType<typeof vi.fn>;
+    let mockGetAudioState: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockOnAudioControl = vi.fn();
+      mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 10, duration: 120 });
+    });
+
+    it('should show audio controls when onAudioControl is provided', () => {
+      const input: ConfigInput = { type: 'audio', path: 'music.mp3' };
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      expect(container.querySelector('.preview-controls')).toBeTruthy();
+    });
+
+    it('should not show audio controls when onAudioControl is not provided', () => {
+      const input: ConfigInput = { type: 'audio', path: 'music.mp3' };
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri
       });
 
-      expect(container.querySelector('.texture-preview')).toBeTruthy();
+      expect(container.querySelector('.preview-controls')).toBeFalsy();
     });
 
-    it('should show image with resolved_path when available', () => {
+    it('should call onAudioControl with pause when pause button clicked', async () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 });
       const input: ConfigInput = {
-        type: 'cubemap',
-        path: 'skybox.hdr',
-        resolved_path: 'https://webview-uri/skybox.hdr'
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
       } as any;
 
       const { container } = render(ChannelPreview, {
         channelInput: input,
-        getWebviewUri: mockGetWebviewUri
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
       });
 
-      const img = container.querySelector('.preview-image') as HTMLImageElement;
-      expect(img).toBeTruthy();
-      expect(img.src).toContain('https://webview-uri/skybox.hdr');
+      const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
+      expect(pauseBtn).toBeTruthy();
+      await fireEvent.click(pauseBtn);
+
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'pause');
     });
 
-    it('should fall back to getWebviewUri for cubemap', () => {
-      const input: ConfigInput = { type: 'cubemap', path: 'skybox.hdr' } as any;
-      const { container } = render(ChannelPreview, {
-        channelInput: input,
-        getWebviewUri: mockGetWebviewUri
-      });
-
-      const img = container.querySelector('.preview-image') as HTMLImageElement;
-      expect(img).toBeTruthy();
-      expect(img.src).toContain('webview://resolved/skybox.hdr');
-      expect(mockGetWebviewUri).toHaveBeenCalledWith('skybox.hdr');
-    });
-
-    it('should show fallback with "Cubemap" text when no path', () => {
-      const input: ConfigInput = { type: 'cubemap', path: '' } as any;
-      const { container } = render(ChannelPreview, {
-        channelInput: input,
-        getWebviewUri: mockGetWebviewUri
-      });
-
-      expect(container.querySelector('.preview-fallback')).toBeTruthy();
-      expect(container.querySelector('.preview-image')).toBeFalsy();
-      const fallbackText = container.querySelector('.fallback-text');
-      expect(fallbackText).toBeTruthy();
-      expect(fallbackText?.textContent).toBe('Cubemap');
-    });
-
-    it('should show "Cubemap" overlay label when image src is available', () => {
+    it('should call onAudioControl with play when play button clicked and paused', async () => {
+      mockGetAudioState.mockReturnValue({ paused: true, muted: false, currentTime: 10, duration: 120 });
       const input: ConfigInput = {
-        type: 'cubemap',
-        path: 'skybox.hdr',
-        resolved_path: 'https://webview-uri/skybox.hdr'
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
       } as any;
 
       const { container } = render(ChannelPreview, {
         channelInput: input,
-        getWebviewUri: mockGetWebviewUri
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
       });
 
-      const overlay = container.querySelector('.preview-overlay');
-      expect(overlay).toBeTruthy();
-      expect(overlay?.textContent?.trim()).toBe('Cubemap');
+      const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
+      expect(playBtn).toBeTruthy();
+      await fireEvent.click(playBtn);
+
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'play');
+    });
+
+    it('should call onAudioControl with reset when reset button clicked', async () => {
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const resetBtn = container.querySelector('.preview-ctrl-btn[title="Reset to beginning"]') as HTMLButtonElement;
+      expect(resetBtn).toBeTruthy();
+      await fireEvent.click(resetBtn);
+
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'reset');
+    });
+
+    it('should not show audio controls when audio has no path', () => {
+      const input: ConfigInput = { type: 'audio', path: '' };
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      expect(container.querySelector('.preview-controls')).toBeFalsy();
+    });
+
+    it('should show timer when audio has duration', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const timer = container.querySelector('.preview-timer');
+      expect(timer).toBeTruthy();
+      expect(timer!.textContent).toContain('1:05');
+      expect(timer!.textContent).toContain('3:00');
     });
   });
 
@@ -471,7 +540,7 @@ describe('ChannelPreview', () => {
   });
 
   describe('Preview Overlay Labels', () => {
-    it('should show overlay label for texture when image src is available', () => {
+    it('should show overlay label for texture when image src is available', async () => {
       const input: ConfigInput = {
         type: 'texture',
         path: 'test.png',
@@ -482,6 +551,8 @@ describe('ChannelPreview', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
+      const img = container.querySelector('.preview-image') as HTMLImageElement;
+      await fireEvent.load(img);
       const overlay = container.querySelector('.preview-overlay');
       expect(overlay).toBeTruthy();
       expect(overlay?.textContent?.trim()).toBe('Texture');
@@ -537,6 +608,140 @@ describe('ChannelPreview', () => {
       });
 
       expect(container.querySelector('.preview-overlay')).toBeFalsy();
+    });
+  });
+
+  describe('Audio Waveform Preview', () => {
+    it('should not render canvas when getAudioFFT is not provided', () => {
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(container.querySelector('.fft-canvas')).toBeFalsy();
+      expect(container.querySelector('.audio-wave-icon')).toBeTruthy();
+    });
+
+    it('should show static wave icon fallback when no getAudioFFT', () => {
+      const input: ConfigInput = { type: 'audio', path: '' };
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(container.querySelector('.fft-canvas')).toBeFalsy();
+      expect(container.querySelector('.audio-wave-icon')).toBeTruthy();
+    });
+
+    it('should show canvas when getAudioFFT is provided (even without waveform)', () => {
+      const mockFFT = vi.fn().mockReturnValue(new Uint8Array(32));
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        getAudioFFT: mockFFT,
+      });
+
+      expect(container.querySelector('.fft-canvas')).toBeTruthy();
+    });
+
+    it('should have mouseenter and mouseleave handlers on audio-preview', async () => {
+      const peaks = new Float32Array([0.5, 0.8, 1.0]);
+      mockGetWaveformPeaks.mockResolvedValue(peaks);
+      const mockFFT = vi.fn().mockReturnValue(new Uint8Array(32));
+
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        getAudioFFT: mockFFT,
+      });
+
+      await vi.waitFor(() => {
+        expect(container.querySelector('.fft-canvas')).toBeTruthy();
+      });
+
+      const audioPreview = container.querySelector('.audio-preview')!;
+      // Should not throw on hover events
+      await fireEvent.mouseEnter(audioPreview);
+      await fireEvent.mouseLeave(audioPreview);
+    });
+
+  });
+
+  describe('Video mute via config UI only', () => {
+    it('should call onVideoControl with mute when mute button clicked', async () => {
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({
+        paused: false,
+        muted: false,
+        currentTime: 5,
+        duration: 60,
+      });
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockVideoControl,
+        getVideoState: mockGetVideoState,
+      });
+
+      await vi.waitFor(() => {
+        const buttons = container.querySelectorAll('.preview-ctrl-btn');
+        expect(buttons.length).toBeGreaterThanOrEqual(2);
+      });
+
+      const buttons = container.querySelectorAll('.preview-ctrl-btn');
+      const muteBtn = buttons[1];
+      await fireEvent.click(muteBtn);
+
+      expect(mockVideoControl).toHaveBeenCalledWith('video.mp4', 'mute');
+    });
+
+    it('should call onVideoControl with unmute when unmute button clicked', async () => {
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({
+        paused: false,
+        muted: true,
+        currentTime: 5,
+        duration: 60,
+      });
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockVideoControl,
+        getVideoState: mockGetVideoState,
+      });
+
+      await vi.waitFor(() => {
+        const buttons = container.querySelectorAll('.preview-ctrl-btn');
+        expect(buttons.length).toBeGreaterThanOrEqual(2);
+      });
+
+      const buttons = container.querySelectorAll('.preview-ctrl-btn');
+      const muteBtn = buttons[1];
+      await fireEvent.click(muteBtn);
+
+      expect(mockVideoControl).toHaveBeenCalledWith('video.mp4', 'unmute');
     });
   });
 });

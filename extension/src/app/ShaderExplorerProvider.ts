@@ -176,7 +176,7 @@ export class ShaderExplorerProvider {
                 buffers: buffers,
             };
 
-            const processedMessage = ConfigPathConverter.processConfigPaths(
+            const processedMessage = await ConfigPathConverter.processConfigPaths(
                 message as any,
                 this.panel.webview
             );
