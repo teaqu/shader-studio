@@ -75,6 +75,11 @@
         }
       }
     } else {
+      // Save pending loop region changes when modal closes
+      if (pendingLoopRegionSave) {
+        pendingLoopRegionSave = false;
+        autoSave();
+      }
       initializedWithInput = UNINITIALIZED;
       activeTab = null;
       editingName = false;
@@ -227,6 +232,10 @@
       }
       tempInput = updated as ConfigInput;
       autoSave();
+      // If changing audio path while playing, auto-play the new song
+      if (tempInput.type === "audio" && isPathChange && tempInput.path) {
+        resumeAudioAfterSave();
+      }
     }
   }
 
@@ -286,6 +295,10 @@
     }
   }
 
+  // Track whether loop region has been changed so we can persist on modal close
+  // without triggering a forceCleanup recompile while audio is playing.
+  let pendingLoopRegionSave = false;
+
   function updateStartTime(value: string, save: boolean = true) {
     if (tempInput && tempInput.type === "audio") {
       const num = parseFloat(value);
@@ -293,9 +306,17 @@
         const { startTime, ...rest } = tempInput as any;
         tempInput = { ...rest } as ConfigInput;
       } else {
-        tempInput = { ...tempInput, startTime: Math.max(0, num) };
+        // Clamp: start cannot exceed end time
+        const endTime = (tempInput as any).endTime;
+        const clamped = endTime != null ? Math.min(Math.max(0, num), endTime) : Math.max(0, num);
+        tempInput = { ...tempInput, startTime: clamped };
       }
-      if (save) autoSave();
+      if (save) {
+        // Update loop region live (no recompile, audio keeps playing)
+        sendLoopRegionUpdate();
+        // Mark for save on modal close — avoids forceCleanup recompile
+        pendingLoopRegionSave = true;
+      }
     }
   }
 
@@ -306,9 +327,35 @@
         const { endTime, ...rest } = tempInput as any;
         tempInput = { ...rest } as ConfigInput;
       } else {
-        tempInput = { ...tempInput, endTime: Math.max(0, num) };
+        // Clamp: end cannot be before start time
+        const startTime = (tempInput as any).startTime ?? 0;
+        const clamped = Math.max(startTime, Math.max(0, num));
+        tempInput = { ...tempInput, endTime: clamped };
       }
-      if (save) autoSave();
+      if (save) {
+        // Update loop region live (no recompile, audio keeps playing)
+        sendLoopRegionUpdate();
+        // Mark for save on modal close — avoids forceCleanup recompile
+        pendingLoopRegionSave = true;
+      }
+    }
+  }
+
+  /** Send a loopRegion command to the engine — updates live without recompile */
+  function sendLoopRegionUpdate() {
+    if (tempInput?.type === 'audio' && tempInput.path && onAudioControl) {
+      const path = getEffectiveAudioPath();
+      const start = (tempInput as any).startTime;
+      const end = (tempInput as any).endTime;
+      onAudioControl(path, `loopRegion:${start ?? ''},${end ?? ''}`);
+    }
+  }
+
+  /** Resume audio after a config save that triggers a forceCleanup recompile */
+  function resumeAudioAfterSave() {
+    if (tempInput?.type === 'audio' && tempInput.path && onAudioControl) {
+      const path = getEffectiveAudioPath();
+      setTimeout(() => onAudioControl!(path, 'play'), 500);
     }
   }
 
@@ -355,16 +402,40 @@
   // Audio control state (runtime only, not persisted)
   let audioState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
 
+  // Track current audio path so we can detect changes
+  let lastAudioPath: string | undefined;
+
+  /** Resolve the effective audio path for engine commands (prefers resolved webview URI) */
+  function getEffectiveAudioPath(): string {
+    if (!tempInput || tempInput.type !== 'audio' || !tempInput.path) return '';
+    return (tempInput as any).resolved_path
+      || (getWebviewUri ? getWebviewUri(tempInput.path) : null)
+      || lastSelectedResolvedUri
+      || tempInput.path;
+  }
+
   // Poll audio state when modal is open and type is audio
   let audioStateInterval: ReturnType<typeof setInterval> | undefined;
   $: if (isOpen && tempInput?.type === "audio" && tempInput.path && getAudioState) {
-    const path = (tempInput as any).resolved_path || tempInput.path;
-    audioState = getAudioState(path);
+    // Reset state when path changes (e.g., selecting a different song)
+    const currentPath = tempInput.path;
+    if (currentPath !== lastAudioPath) {
+      lastAudioPath = currentPath;
+      audioState = null;
+      waveformPeaks = null;
+      // Restart polling for the new path
+      if (audioStateInterval) {
+        clearInterval(audioStateInterval);
+        audioStateInterval = undefined;
+      }
+    }
+    if (!audioState) {
+      audioState = getAudioState(getEffectiveAudioPath());
+    }
     if (!audioStateInterval) {
       audioStateInterval = setInterval(() => {
         if (tempInput?.type === "audio" && tempInput.path && getAudioState) {
-          const p = (tempInput as any).resolved_path || tempInput.path;
-          audioState = getAudioState(p);
+          audioState = getAudioState(getEffectiveAudioPath());
         }
       }, 500);
     }
@@ -374,17 +445,17 @@
       audioStateInterval = undefined;
     }
     audioState = null;
+    lastAudioPath = undefined;
   }
 
   function handleAudioControl(action: string) {
     if (tempInput?.type === "audio" && tempInput.path && onAudioControl) {
-      const path = (tempInput as any).resolved_path || tempInput.path;
+      const path = getEffectiveAudioPath();
       onAudioControl(path, action);
       if (getAudioState) {
         setTimeout(() => {
           if (tempInput?.type === "audio" && tempInput.path && getAudioState) {
-            const p = (tempInput as any).resolved_path || tempInput.path;
-            audioState = getAudioState(p);
+            audioState = getAudioState(getEffectiveAudioPath());
           }
         }, 100);
       }
@@ -403,6 +474,7 @@
   let waveformContainer: HTMLElement | null = null;
   let waveformPeaks: Float32Array | null = null;
   let dragging: 'start' | 'end' | null = null;
+  let seekDragging = false;
 
   $: audioUri = isOpen && tempInput?.type === 'audio' && tempInput.path
     ? (tempInput as any).resolved_path || (getWebviewUri ? getWebviewUri(tempInput.path) : null) || lastSelectedResolvedUri || ''
@@ -497,31 +569,42 @@
       updateEndTime(time.toString(), false);
     }
     // Update the audio loop region live via the rendering engine
-    if (tempInput?.type === 'audio' && tempInput.path && onAudioControl) {
-      const path = (tempInput as any).resolved_path || tempInput.path;
-      const start = (tempInput as any).startTime;
-      const end = (tempInput as any).endTime;
-      onAudioControl(path, `loopRegion:${start ?? ''},${end ?? ''}`);
-    }
+    sendLoopRegionUpdate();
   }
 
   function handleDragEnd() {
     if (dragging) {
-      // Now persist the config (single save on mouse-up)
-      autoSave();
+      // Mark for save on modal close — loop region is already updated live
+      pendingLoopRegionSave = true;
     }
     dragging = null;
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
   }
 
-  function handleWaveformClick(event: MouseEvent) {
-    // Don't seek if we were dragging a handle
+  function handleWaveformMouseDown(event: MouseEvent) {
+    // Don't start seek-drag if we're dragging a handle
     if (dragging) return;
     if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) return;
+    event.preventDefault();
+    seekDragging = true;
     const time = getTimeFromMouseEvent(event);
-    const path = (tempInput as any).resolved_path || tempInput.path;
-    onAudioControl(path, `seek:${time}`);
+    onAudioControl(getEffectiveAudioPath(), `seek:${time}`);
+    window.addEventListener('mousemove', handleSeekDragMove);
+    window.addEventListener('mouseup', handleSeekDragEnd);
+  }
+
+  function handleSeekDragMove(event: MouseEvent) {
+    if (!seekDragging) return;
+    if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) return;
+    const time = getTimeFromMouseEvent(event);
+    onAudioControl(getEffectiveAudioPath(), `seek:${time}`);
+  }
+
+  function handleSeekDragEnd() {
+    seekDragging = false;
+    window.removeEventListener('mousemove', handleSeekDragMove);
+    window.removeEventListener('mouseup', handleSeekDragEnd);
   }
 
   onMount(() => {
@@ -537,6 +620,19 @@
     // Clean up drag listeners if component destroyed during drag
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
+    window.removeEventListener('mousemove', handleSeekDragMove);
+    window.removeEventListener('mouseup', handleSeekDragEnd);
+    if (audioStateInterval) {
+      clearInterval(audioStateInterval);
+    }
+    if (videoStateInterval) {
+      clearInterval(videoStateInterval);
+    }
+    // Save any pending loop region changes
+    if (pendingLoopRegionSave) {
+      pendingLoopRegionSave = false;
+      autoSave();
+    }
   });
 </script>
 
@@ -928,7 +1024,7 @@
 
           {#if tempInput?.type === "audio" && tempInput.path}
             <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-            <div class="waveform-editor" bind:this={waveformContainer} on:click={handleWaveformClick}>
+            <div class="waveform-editor" bind:this={waveformContainer} on:mousedown={handleWaveformMouseDown}>
               <canvas bind:this={waveformCanvas} class="waveform-editor-canvas" width="700" height="80"></canvas>
               <!-- Dim outside region -->
               <div class="waveform-dim waveform-dim-left" style="width: {startPercent}%"></div>
@@ -1461,23 +1557,23 @@
   }
 
   .handle-bar {
-    width: 5px;
+    width: 3px;
     height: 100%;
-    border-radius: 3px;
+    border-radius: 2px;
   }
 
   .waveform-handle-start .handle-bar {
     background: var(--vscode-charts-green, #89d185);
-    box-shadow: 0 0 6px rgba(137, 209, 133, 0.7), 0 0 2px rgba(137, 209, 133, 0.9);
+    box-shadow: 0 0 4px rgba(137, 209, 133, 0.6);
   }
 
   .waveform-handle-end .handle-bar {
     background: var(--vscode-charts-red, #f48771);
-    box-shadow: 0 0 6px rgba(244, 135, 113, 0.7), 0 0 2px rgba(244, 135, 113, 0.9);
+    box-shadow: 0 0 4px rgba(244, 135, 113, 0.6);
   }
 
   .waveform-handle:hover .handle-bar {
-    width: 7px;
+    width: 5px;
   }
 
   .waveform-times {
