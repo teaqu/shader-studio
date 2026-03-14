@@ -528,4 +528,233 @@ describe('BufferConfig', () => {
       expect(bufferConfig.getNextChannelName()).toBe('iChannel1');
     });
   });
+
+  describe('audio startTime and endTime properties', () => {
+    it('updateInputChannelPartial with audio type should store startTime', () => {
+      const config: BufferPass = { path: 'shader.glsl', inputs: {} };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3', startTime: 5.0 } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBe(5.0);
+    });
+
+    it('updateInputChannelPartial with audio type should store endTime', () => {
+      const config: BufferPass = { path: 'shader.glsl', inputs: {} };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3', endTime: 30.0 } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.endTime).toBe(30.0);
+    });
+
+    it('updateInputChannelPartial with audio type should store both startTime and endTime', () => {
+      const config: BufferPass = { path: 'shader.glsl', inputs: {} };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3', startTime: 2.5, endTime: 45.0 } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBe(2.5);
+      expect(channel.endTime).toBe(45.0);
+    });
+
+    it('updateInputChannelPartial with audio type should handle undefined startTime/endTime', () => {
+      const config: BufferPass = { path: 'shader.glsl', inputs: {} };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBeUndefined();
+      expect(channel.endTime).toBeUndefined();
+    });
+  });
+
+  describe('audio time preservation', () => {
+    it('updating path on existing audio should preserve existing startTime/endTime', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 10.0, endTime: 60.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { path: 'new-music.mp3' } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('new-music.mp3');
+      expect(channel.startTime).toBe(10.0);
+      expect(channel.endTime).toBe(60.0);
+    });
+
+    it('updating startTime independently without changing type should work', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { startTime: 15.0 } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBe(15.0);
+      expect(channel.endTime).toBe(30.0);
+    });
+
+    it('updating endTime independently without changing type should work', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { endTime: 90.0 } as any);
+
+      const channel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBe(5.0);
+      expect(channel.endTime).toBe(90.0);
+    });
+
+    it('switching from audio to another type and back should clear times', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      // Switch to texture
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'texture', path: 'texture.jpg' } as any);
+      const textureChannel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(textureChannel.type).toBe('texture');
+      expect(textureChannel.startTime).toBeUndefined();
+      expect(textureChannel.endTime).toBeUndefined();
+
+      // Switch back to audio
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'new-music.mp3' } as any);
+      const audioChannel = bufferConfig.getInputChannel('iChannel0') as any;
+      expect(audioChannel.type).toBe('audio');
+      expect(audioChannel.path).toBe('new-music.mp3');
+      expect(audioChannel.startTime).toBeUndefined();
+      expect(audioChannel.endTime).toBeUndefined();
+    });
+  });
+
+  describe('audio validation edge cases', () => {
+    it('should accept audio input with startTime only', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 10.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should accept audio input with endTime only', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', endTime: 60.0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject audio input with empty string path', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: '' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('should accept audio with startTime=0', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'audio', path: 'music.mp3', startTime: 0 } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  describe('audio config output', () => {
+    it('toJSON should include startTime/endTime when set', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {}
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3', startTime: 5.0, endTime: 30.0 } as any);
+
+      const json = bufferConfig.toJSON();
+      const channel = json.inputs?.['iChannel0'] as any;
+      expect(channel.startTime).toBe(5.0);
+      expect(channel.endTime).toBe(30.0);
+    });
+
+    it('toJSON should not include startTime/endTime when not set', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {}
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      bufferConfig.updateInputChannelPartial('iChannel0', { type: 'audio', path: 'music.mp3' } as any);
+
+      const json = bufferConfig.toJSON();
+      const channel = json.inputs?.['iChannel0'] as any;
+      expect(channel.type).toBe('audio');
+      expect(channel.path).toBe('music.mp3');
+      expect(channel.startTime).toBeUndefined();
+      expect(channel.endTime).toBeUndefined();
+    });
+  });
 });

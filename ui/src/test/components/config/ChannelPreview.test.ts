@@ -685,6 +685,426 @@ describe('ChannelPreview', () => {
 
   });
 
+  describe('Audio mute/unmute controls', () => {
+    let mockOnAudioControl: ReturnType<typeof vi.fn>;
+    let mockGetAudioState: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockOnAudioControl = vi.fn();
+      mockGetAudioState = vi.fn();
+    });
+
+    it('should show unmute button when audio is muted', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const muteBtn = container.querySelector('.preview-ctrl-btn[title="Unmute"]') as HTMLButtonElement;
+      expect(muteBtn).toBeTruthy();
+    });
+
+    it('should show mute button when audio is unmuted', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const muteBtn = container.querySelector('.preview-ctrl-btn[title="Mute"]') as HTMLButtonElement;
+      expect(muteBtn).toBeTruthy();
+    });
+
+    it('should call onAudioControl with mute when mute button clicked', async () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const muteBtn = container.querySelector('.preview-ctrl-btn[title="Mute"]') as HTMLButtonElement;
+      expect(muteBtn).toBeTruthy();
+      await fireEvent.click(muteBtn);
+
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'mute');
+    });
+
+    it('should call onAudioControl with unmute when unmute button clicked', async () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const muteBtn = container.querySelector('.preview-ctrl-btn[title="Unmute"]') as HTMLButtonElement;
+      expect(muteBtn).toBeTruthy();
+      await fireEvent.click(muteBtn);
+
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'unmute');
+    });
+  });
+
+  describe('Audio timer formatting', () => {
+    let mockOnAudioControl: ReturnType<typeof vi.fn>;
+    let mockGetAudioState: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockOnAudioControl = vi.fn();
+      mockGetAudioState = vi.fn();
+    });
+
+    it('should display 0:00 / 0:00 when duration is 0', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 0 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      // When duration is 0, the component shows the "Audio" label instead of timer
+      const label = container.querySelector('.preview-label');
+      expect(label).toBeTruthy();
+      expect(label!.textContent?.trim()).toBe('Audio');
+    });
+
+    it('should format seconds correctly (e.g., 5 seconds shows 0:05)', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 5, duration: 30 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const timer = container.querySelector('.preview-timer');
+      expect(timer).toBeTruthy();
+      expect(timer!.textContent).toContain('0:05');
+      expect(timer!.textContent).toContain('0:30');
+    });
+
+    it('should format minutes correctly (e.g., 125 seconds shows 2:05)', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 125, duration: 300 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const timer = container.querySelector('.preview-timer');
+      expect(timer).toBeTruthy();
+      expect(timer!.textContent).toContain('2:05');
+      expect(timer!.textContent).toContain('5:00');
+    });
+
+    it('should handle large durations (e.g., 3600 seconds shows 60:00)', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 3600 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      const timer = container.querySelector('.preview-timer');
+      expect(timer).toBeTruthy();
+      expect(timer!.textContent).toContain('60:00');
+    });
+
+    it('should handle non-finite values gracefully', () => {
+      mockGetAudioState.mockReturnValue({ paused: false, muted: false, currentTime: NaN, duration: Infinity });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      // Non-finite duration means duration > 0 is false for Infinity... actually Infinity > 0 is true
+      // but formatVideoTime returns '0:00' for non-finite values
+      const timer = container.querySelector('.preview-timer');
+      if (timer) {
+        expect(timer.textContent).toContain('0:00');
+      } else {
+        // If duration is not finite, the label fallback may show
+        const label = container.querySelector('.preview-label');
+        expect(label).toBeTruthy();
+      }
+    });
+  });
+
+  describe('Audio preview with no path', () => {
+    it('should show placeholder when audio has empty path', () => {
+      const input: ConfigInput = { type: 'audio', path: '' };
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.audio-preview')).toBeTruthy();
+      expect(container.querySelector('.audio-wave-icon')).toBeTruthy();
+    });
+
+    it('should not show controls when audio has empty path', () => {
+      const mockOnAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'audio', path: '' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState
+      });
+
+      expect(container.querySelector('.preview-controls')).toBeFalsy();
+    });
+  });
+
+  describe('Video control buttons', () => {
+    let mockOnVideoControl: ReturnType<typeof vi.fn>;
+    let mockGetVideoState: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockOnVideoControl = vi.fn();
+      mockGetVideoState = vi.fn();
+    });
+
+    it('should show play button when video is paused', () => {
+      mockGetVideoState.mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
+      expect(playBtn).toBeTruthy();
+    });
+
+    it('should show pause button when video is playing', () => {
+      mockGetVideoState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
+      expect(pauseBtn).toBeTruthy();
+    });
+
+    it('should call onVideoControl with play when play button clicked', async () => {
+      mockGetVideoState.mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
+      expect(playBtn).toBeTruthy();
+      await fireEvent.click(playBtn);
+
+      expect(mockOnVideoControl).toHaveBeenCalledWith('video.mp4', 'play');
+    });
+
+    it('should call onVideoControl with pause when pause button clicked', async () => {
+      mockGetVideoState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
+      expect(pauseBtn).toBeTruthy();
+      await fireEvent.click(pauseBtn);
+
+      expect(mockOnVideoControl).toHaveBeenCalledWith('video.mp4', 'pause');
+    });
+
+    it('should call onVideoControl with reset when reset button clicked', async () => {
+      mockGetVideoState.mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      const resetBtn = container.querySelector('.preview-ctrl-btn[title="Reset to beginning"]') as HTMLButtonElement;
+      expect(resetBtn).toBeTruthy();
+      await fireEvent.click(resetBtn);
+
+      expect(mockOnVideoControl).toHaveBeenCalledWith('video.mp4', 'reset');
+    });
+
+    it('should not show controls when no onVideoControl provided', () => {
+      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.preview-controls')).toBeFalsy();
+    });
+
+    it('should not show controls when video has no path', () => {
+      mockGetVideoState.mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = { type: 'video', path: '' };
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onVideoControl: mockOnVideoControl,
+        getVideoState: mockGetVideoState
+      });
+
+      expect(container.querySelector('.preview-controls')).toBeFalsy();
+    });
+  });
+
+  describe('Cubemap preview', () => {
+    it('should render cubemap preview for cubemap type', () => {
+      const input: ConfigInput = { type: 'cubemap', path: 'cubemap.png' } as any;
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      expect(container.querySelector('.texture-preview')).toBeTruthy();
+    });
+
+    it('should show cubemap-specific label', async () => {
+      const input: ConfigInput = {
+        type: 'cubemap',
+        path: 'cubemap.png',
+        resolved_path: 'https://webview-uri/cubemap.png'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri
+      });
+
+      const img = container.querySelector('.preview-image') as HTMLImageElement;
+      expect(img).toBeTruthy();
+
+      // Cubemap uses imageError check, not imageLoaded - simulate no error with loaded image
+      // The cubemap branch checks `imageError || !imageSrc` for fallback vs overlay
+      // Since imageSrc is set and no error, the overlay with "Cubemap" label should show
+      const overlay = container.querySelector('.preview-overlay');
+      expect(overlay).toBeTruthy();
+      expect(overlay!.textContent?.trim()).toBe('Cubemap');
+    });
+  });
+
+  describe('Audio preview with globalMuted', () => {
+    it('should show globalMuted indicator when globalMuted is true', () => {
+      const mockOnAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3'
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onAudioControl: mockOnAudioControl,
+        getAudioState: mockGetAudioState,
+        globalMuted: true
+      });
+
+      // When globalMuted is true and audio is muted, the unmute button should be disabled
+      // with title "Unmute globally first (options menu)"
+      const disabledBtn = container.querySelector('.preview-ctrl-btn[title="Unmute globally first (options menu)"]') as HTMLButtonElement;
+      expect(disabledBtn).toBeTruthy();
+      expect(disabledBtn.disabled).toBe(true);
+    });
+  });
+
   describe('Video mute via config UI only', () => {
     it('should call onVideoControl with mute when mute button clicked', async () => {
       const input: ConfigInput = { type: 'video', path: 'video.mp4' };

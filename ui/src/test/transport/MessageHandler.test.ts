@@ -1049,4 +1049,270 @@ describe("MessageHandler", () => {
       expect(debugState.filePath).toBe('locked-shader.glsl');
     });
   });
+
+  describe('audioOptions with different volume levels', () => {
+    it('should pass volume=0 (fully muted by volume)', async () => {
+      const audioOptions = { muted: false, volume: 0 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: false, volume: 0 },
+      );
+    });
+
+    it('should pass volume=0.5 (half volume)', async () => {
+      const audioOptions = { muted: false, volume: 0.5 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: false, volume: 0.5 },
+      );
+    });
+
+    it('should pass volume=1.0 (full volume)', async () => {
+      const audioOptions = { muted: false, volume: 1.0 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: false, volume: 1.0 },
+      );
+    });
+  });
+
+  describe('audioOptions partial updates', () => {
+    it('should pass only muted without volume', async () => {
+      const audioOptions = { muted: true };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: true },
+      );
+    });
+
+    it('should pass only volume without muted', async () => {
+      const audioOptions = { volume: 0.8 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { volume: 0.8 },
+      );
+    });
+
+    it('should handle overwriting previous audioOptions entirely', async () => {
+      messageHandler.setAudioOptions({ muted: true, volume: 0.3 });
+      messageHandler.setAudioOptions({ volume: 0.9 });
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      // The second call should entirely replace the first, not merge
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { volume: 0.9 },
+      );
+    });
+  });
+
+  describe('audioOptions with reset', () => {
+    it('should preserve audioOptions after reset', async () => {
+      const audioOptions = { muted: false, volume: 0.6 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      // Process a shader first so lastEvent is set
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      // Reset
+      messageHandler.reset(vi.fn());
+
+      // Clear mocks to check the next call
+      mockShaderProcessor.processMainShaderCompilation.mockClear();
+
+      // Process another shader after reset
+      const secondEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader2.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(0.5); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(secondEvent);
+
+      // audioOptions should still be passed after reset
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        secondEvent.data,
+        false,
+        { muted: false, volume: 0.6 },
+      );
+    });
+
+    it('should call renderEngine.resetTime on reset', () => {
+      messageHandler.reset();
+
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('audioOptions interaction with shader compilation', () => {
+    it('should pass audioOptions on subsequent shader compilations', async () => {
+      const audioOptions = { muted: false, volume: 0.75 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      // First compilation
+      const firstEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader1.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(firstEvent);
+
+      // Second compilation
+      const secondEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader2.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(0.5); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(secondEvent);
+
+      // Both compilations should receive audioOptions
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenNthCalledWith(
+        1,
+        firstEvent.data,
+        false,
+        audioOptions,
+      );
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenNthCalledWith(
+        2,
+        secondEvent.data,
+        false,
+        audioOptions,
+      );
+    });
+
+    it('should handle audioOptions being set before first shader message', async () => {
+      const audioOptions = { muted: true, volume: 0 };
+      messageHandler.setAudioOptions(audioOptions);
+
+      // No shader has been processed yet, now send first shader
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        shaderEvent.data,
+        false,
+        { muted: true, volume: 0 },
+      );
+    });
+  });
 });
