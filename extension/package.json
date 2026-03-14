@@ -193,35 +193,11 @@
       },
       {
         "language": "glsl",
-        "path": "./snippets/sdf-operations.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/transformations.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/ray-marching.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/noise.code-snippets"
-      },
-      {
-        "language": "glsl",
         "path": "./snippets/math.code-snippets"
       },
       {
         "language": "glsl",
-        "path": "./snippets/color.code-snippets"
-      },
-      {
-        "language": "glsl",
         "path": "./snippets/coordinates.code-snippets"
-      },
-      {
-        "language": "glsl",
-        "path": "./snippets/templates.code-snippets"
       }
     ]
   },
