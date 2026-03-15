@@ -217,7 +217,7 @@
       bind:value={searchQuery}
     />
     <button class="refresh-btn" on:click={requestFiles} title="Refresh">
-      &#x21bb;
+      <i class="codicon codicon-refresh"></i>
     </button>
   </div>
 
@@ -326,7 +326,7 @@
             on:click={prevPage}
             disabled={currentPage === 1}
           >
-            &#x2039;
+            <i class="codicon codicon-chevron-left"></i>
           </button>
 
           {#if totalPages <= 7}
@@ -383,7 +383,7 @@
             on:click={nextPage}
             disabled={currentPage === totalPages}
           >
-            &#x203a;
+            <i class="codicon codicon-chevron-right"></i>
           </button>
         </div>
       {/if}

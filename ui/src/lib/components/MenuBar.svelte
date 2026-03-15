@@ -10,31 +10,8 @@
   import TimeControls from "./TimeControls.svelte";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
 
-  import resetIcon from "../../assets/reset.svg?raw";
-  import refreshIcon from "../../assets/refresh.svg?raw";
-  import playIcon from "../../assets/play.svg?raw";
-  import pauseIcon from "../../assets/pause.svg?raw";
-  import moonIcon from "../../assets/moon.svg?raw";
-  import sunIcon from "../../assets/sun.svg?raw";
-  import lockIcon from "../../assets/lock.svg?raw";
-  import unlockIcon from "../../assets/unlock.svg?raw";
-  import fullscreenIcon from "../../assets/fullscreen.svg?raw";
-  import menuIcon from "../../assets/menu.svg?raw";
-  import configIcon from "../../assets/config.svg?raw";
-  // Bug icon SVG for debug toggle
-  const debugIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="m8 2 1.88 1.88"/>
-    <path d="M14.12 3.88 16 2"/>
-    <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/>
-    <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/>
-    <path d="M12 20v-9"/>
-    <path d="M6.53 9C4.6 8.8 3 7.1 3 5"/>
-    <path d="M6 13H2"/>
-    <path d="M3 21c0-2.1 1.7-3.9 3.8-4"/>
-    <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/>
-    <path d="M22 13h-4"/>
-    <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>
-  </svg>`;
+
+
 
 
 
@@ -82,38 +59,8 @@
   export let previewVisible: boolean = true;
   export let onShowPreview: () => void = () => {};
 
-  // Fork icon SVG (copy/branch)
-  const forkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="18" r="3"/>
-    <circle cx="6" cy="6" r="3"/>
-    <circle cx="18" cy="6" r="3"/>
-    <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/>
-    <path d="M12 12v3"/>
-  </svg>`;
 
-  // Editor icon SVG (code brackets)
-  const editorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="16 18 22 12 16 6"/>
-    <polyline points="8 6 2 12 8 18"/>
-  </svg>`;
 
-  // Icons for extension command menu items
-  const newFileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="12" y1="18" x2="12" y2="12"/>
-    <line x1="9" y1="15" x2="15" y2="15"/>
-  </svg>`;
-
-  const explorerIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-  </svg>`;
-
-  const snippetIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="16 18 22 12 16 6"/>
-    <polyline points="8 6 2 12 8 18"/>
-  </svg>`;
 
 
 
@@ -305,9 +252,8 @@
     onVolumeChange(parseFloat(target.value));
   }
 
-  // Inline SVG icons for audio
-  const speakerIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
-  const speakerMutedIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+
+
 
   // Track where mousedown started so we don't close menus when a drag
   // (e.g. text selection in an input) ends outside the menu.
@@ -348,7 +294,7 @@
 <div class="menu-bar">
   <div class="left-group">
     <button on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
-      {@html resetIcon}
+      <i class="codicon codicon-debug-restart"></i>
     </button>
     <div class="pause-button-container">
       <button
@@ -358,9 +304,9 @@
         disabled={!hasShader}
       >
         {#if isPaused}
-          {@html playIcon}
+          <i class="codicon codicon-play"></i>
         {:else}
-          {@html pauseIcon}
+          <i class="codicon codicon-debug-pause"></i>
         {/if}
       </button>
       {#if hasErrors}
@@ -531,7 +477,7 @@
         ? `Debugging line ${(debugState.currentLine ?? 0) + 1}`
         : "Enable debug mode"}
     >
-      {@html debugIcon}
+      <i class="codicon codicon-bug"></i>
     </button>
     <button
       class="collapse-editor"
@@ -541,7 +487,7 @@
       disabled={!hasShader}
       title="Toggle editor overlay"
     >
-      {@html editorIcon}
+      <i class="codicon codicon-code"></i>
     </button>
     <button
       class="collapse-fork"
@@ -550,7 +496,7 @@
       disabled={!hasShader}
       title="Fork shader to a new file"
     >
-      {@html forkIcon}
+      <i class="codicon codicon-repo-forked"></i>
     </button>
     <button
       class="collapse-config"
@@ -560,13 +506,13 @@
       disabled={!hasShader}
       title="Toggle shader configuration panel"
     >
-      {@html configIcon}
+      <i class="codicon codicon-gear"></i>
     </button>
     <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
-        {@html lockIcon}
+        <i class="codicon codicon-lock"></i>
       {:else}
-        {@html unlockIcon}
+        <i class="codicon codicon-unlock"></i>
       {/if}
     </button>
     <div class="options-menu-container">
@@ -575,7 +521,7 @@
         aria-label="Open options menu"
         class="options-menu-button"
       >
-        {@html menuIcon}
+        <i class="codicon codicon-menu"></i>
       </button>
       {#if showOptionsMenu}
         <div class="options-menu">
@@ -585,7 +531,7 @@
               on:click={() => { onShowPreview(); showOptionsMenu = false; }}
               aria-label="Show preview"
             >
-              {@html playIcon}
+              <i class="codicon codicon-play"></i>
               <span>Show Preview</span>
             </button>
           {/if}
@@ -596,7 +542,7 @@
             class:active={isDebugEnabled}
             disabled={!hasShader}
           >
-            {@html debugIcon}
+            <i class="codicon codicon-bug"></i>
             <span>Debug</span>
           </button>
           <button
@@ -606,7 +552,7 @@
             class:active={isEditorOverlayVisible}
             disabled={!hasShader}
           >
-            {@html editorIcon}
+            <i class="codicon codicon-code"></i>
             <span>Editor</span>
           </button>
           {#if isEditorOverlayVisible}
@@ -625,7 +571,7 @@
             aria-label="Fork shader"
             disabled={!hasShader}
           >
-            {@html forkIcon}
+            <i class="codicon codicon-repo-forked"></i>
             <span>Fork</span>
           </button>
           <button
@@ -635,7 +581,7 @@
             class:active={isConfigPanelVisible}
             disabled={!hasShader}
           >
-            {@html configIcon}
+            <i class="codicon codicon-gear"></i>
             <span>Config</span>
           </button>
           <button
@@ -646,9 +592,9 @@
             disabled={!hasShader}
           >
             {#if isLocked}
-              {@html lockIcon}
+              <i class="codicon codicon-lock"></i>
             {:else}
-              {@html unlockIcon}
+              <i class="codicon codicon-unlock"></i>
             {/if}
             <span>{isLocked ? 'Unlock' : 'Lock'}</span>
           </button>
@@ -658,7 +604,7 @@
             aria-label="Reset layout"
             disabled={!hasShader}
           >
-            {@html resetIcon}
+            <i class="codicon codicon-debug-restart"></i>
             <span>Reset Layout</span>
           </button>
           <button
@@ -667,7 +613,7 @@
             aria-label="Refresh shader"
             disabled={!hasShader}
           >
-            {@html refreshIcon}
+            <i class="codicon codicon-refresh"></i>
             <span>Refresh</span>
           </button>
           <div class="options-menu-divider"></div>
@@ -691,9 +637,9 @@
               class:muted={audioMuted}
             >
               {#if audioMuted}
-                {@html speakerMutedIcon}
+                <i class="codicon codicon-mute"></i>
               {:else}
-                {@html speakerIcon}
+                <i class="codicon codicon-unmute"></i>
               {/if}
             </button>
           </div>
@@ -705,10 +651,10 @@
               aria-label="Toggle theme"
             >
               {#if theme === "light"}
-                {@html moonIcon}
+                <i class="codicon codicon-color-mode"></i>
                 <span>Dark Mode</span>
               {:else}
-                {@html sunIcon}
+                <i class="codicon codicon-color-mode"></i>
                 <span>Light Mode</span>
               {/if}
             </button>
@@ -719,7 +665,7 @@
               on:click={handleFullscreenToggle}
               aria-label="Toggle fullscreen"
             >
-              {@html fullscreenIcon}
+              <i class="codicon codicon-screen-full"></i>
               <span>Fullscreen</span>
             </button>
           {/if}
@@ -729,7 +675,7 @@
             on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
             aria-label="New shader"
           >
-            {@html newFileIcon}
+            <i class="codicon codicon-new-file"></i>
             <span>New Shader</span>
           </button>
           <button
@@ -737,7 +683,7 @@
             on:click={() => { onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; }}
             aria-label="Shader explorer"
           >
-            {@html explorerIcon}
+            <i class="codicon codicon-book"></i>
             <span>Shader Explorer</span>
           </button>
           <button
@@ -745,7 +691,7 @@
             on:click={() => { onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; }}
             aria-label="Snippet library"
           >
-            {@html snippetIcon}
+            <i class="codicon codicon-library"></i>
             <span>Snippet Library</span>
           </button>
         </div>

@@ -206,8 +206,8 @@ describe('VideoTab', () => {
 
       const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
       expect(unmuteBtn).toBeTruthy();
-      // Should use SVG icon
-      expect(unmuteBtn!.querySelector('svg')).toBeTruthy();
+      // Should use codicon icon
+      expect(unmuteBtn!.querySelector('.codicon-mute')).toBeTruthy();
     });
 
     it('should call videoControl when play/pause clicked', async () => {
@@ -261,7 +261,7 @@ describe('VideoTab', () => {
       expect(timer!.textContent).toContain('3:00');
     });
 
-    it('should render reset button with circular arrow character', () => {
+    it('should render reset button with codicon-debug-restart icon', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
@@ -271,8 +271,7 @@ describe('VideoTab', () => {
       const { container } = render(VideoTab, props);
 
       const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
-      expect(resetBtn!.textContent).toContain('\u21BA');
-      expect(resetBtn!.textContent).not.toContain('\u23EE');
+      expect(resetBtn!.querySelector('.codicon-debug-restart')).toBeTruthy();
     });
   });
 });

@@ -546,6 +546,27 @@ export class PanelManager {
       }
     }
 
+    // Inject @font-face overrides for fonts referenced by absolute paths in CSS.
+    // CSS bundles use url(/assets/...) which doesn't resolve in webviews.
+    const uiDistAssets = path.join(this.context.extensionPath, "ui-dist", "assets");
+    if (fs.existsSync(uiDistAssets)) {
+      const fontFiles = fs.readdirSync(uiDistAssets).filter(f => /\.(ttf|woff2?)$/.test(f));
+      if (fontFiles.length > 0) {
+        const fontFaces = fontFiles.map(f => {
+          const fontUri = panel.webview.asWebviewUri(
+            vscode.Uri.file(path.join(uiDistAssets, f))
+          );
+          const format = f.endsWith('.woff2') ? 'woff2' : f.endsWith('.woff') ? 'woff' : 'truetype';
+          // Derive font family from filename (e.g. "codicon-DjkITdqj.ttf" → "codicon")
+          const family = f.replace(/-[^.]+\.[^.]+$/, '');
+          return `@font-face{font-family:"${family}";src:url("${fontUri}") format("${format}")}`;
+        }).join('\n');
+        const styleTag = `<style>${fontFaces}</style>`;
+        // Insert before </head>
+        processedHtml = processedHtml.replace('</head>', `${styleTag}\n</head>`);
+      }
+    }
+
     panel.webview.html = processedHtml;
     this.logger.debug("Webview HTML set with resource URIs and video CSP");
   }

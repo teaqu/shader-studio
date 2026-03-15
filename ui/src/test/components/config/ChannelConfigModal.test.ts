@@ -511,7 +511,7 @@ describe('ChannelConfigModal', () => {
       expect(resetBtn).toBeTruthy();
     });
 
-    it('should render mute/unmute buttons with SVG icons not emoji', () => {
+    it('should render mute/unmute buttons with codicon icons not emoji', () => {
       const videoInput: ConfigInput = {
         type: 'video',
         path: './video.mp4'
@@ -526,11 +526,10 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
-      // Mute/unmute button should contain an SVG, not emoji text
+      // Mute/unmute button should contain a codicon, not emoji text
       const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
       expect(muteBtn).toBeTruthy();
-      const svg = muteBtn!.querySelector('svg');
-      expect(svg).toBeTruthy();
+      expect(muteBtn!.querySelector('.codicon-mute')).toBeTruthy();
 
       // Should not contain emoji characters
       const textContent = muteBtn!.textContent || '';
@@ -555,9 +554,7 @@ describe('ChannelConfigModal', () => {
 
       const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
-      // Should contain \u21BA (U+21BA), not \u23EE (U+23EE)
-      expect(resetBtn!.textContent).toContain('\u21BA');
-      expect(resetBtn!.textContent).not.toContain('\u23EE');
+      expect(resetBtn!.querySelector('.codicon-debug-restart')).toBeTruthy();
     });
   });
 
@@ -944,7 +941,7 @@ describe('ChannelConfigModal', () => {
       expect(timer!.textContent).toContain('3:00');
     });
 
-    it('should render mute/unmute buttons with SVG icons', () => {
+    it('should render mute/unmute buttons with codicon icons', () => {
       const audioInput: ConfigInput = {
         type: 'audio',
         path: './music.mp3'
@@ -961,8 +958,7 @@ describe('ChannelConfigModal', () => {
 
       const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
       expect(muteBtn).toBeTruthy();
-      const svg = muteBtn!.querySelector('svg');
-      expect(svg).toBeTruthy();
+      expect(muteBtn!.querySelector('.codicon-mute')).toBeTruthy();
     });
   });
 

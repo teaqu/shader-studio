@@ -7,9 +7,8 @@
   import type { ShaderDebugManager } from "../../ShaderDebugManager";
   import type { VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
-  import inspectorIcon from "../../../assets/inspector.svg?raw";
-  import lockIcon from "../../../assets/lock.svg?raw";
-  import unlockIcon from "../../../assets/unlock.svg?raw";
+
+
   import VariablesSection from "./VariablesSection.svelte";
 
   export let debugState: ShaderDebugState;
@@ -115,7 +114,7 @@
       aria-label="Toggle inspector"
       data-tooltip="Pixel Inspector{!debugState.isEnabled ? ' (enable debug first)' : ''}"
     >
-      {@html inspectorIcon}
+      <i class="codicon codicon-inspect"></i>
     </button>
     <button
       class="header-btn has-tooltip"
@@ -124,10 +123,7 @@
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-        <circle cx="12" cy="12" r="3"/>
-      </svg>
+      <i class="codicon codicon-eye"></i>
     </button>
     <button
       class="header-btn has-tooltip"
@@ -137,9 +133,9 @@
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
     >
       {#if isLineLocked}
-        {@html lockIcon}
+        <i class="codicon codicon-lock"></i>
       {:else}
-        {@html unlockIcon}
+        <i class="codicon codicon-unlock"></i>
       {/if}
     </button>
     <button
@@ -149,10 +145,7 @@
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 17l6-6 4 4 8-8"/>
-        <path d="M17 7h4v4"/>
-      </svg>
+      <i class="codicon codicon-graph-line"></i>
       {#if normalizeMode !== 'off'}
         <span class="normalize-badge">{normalizeMode === 'soft' ? 'S' : 'A'}</span>
       {/if}
@@ -164,9 +157,7 @@
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 18h6v-12h6v12h6"/>
-      </svg>
+      <i class="codicon codicon-pulse"></i>
     </button>
     {#if isStepEnabled}
       <input
@@ -188,14 +179,7 @@
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="8" y1="6" x2="21" y2="6"/>
-        <line x1="8" y1="12" x2="21" y2="12"/>
-        <line x1="8" y1="18" x2="21" y2="18"/>
-        <line x1="3" y1="6" x2="3.01" y2="6"/>
-        <line x1="3" y1="12" x2="3.01" y2="12"/>
-        <line x1="3" y1="18" x2="3.01" y2="18"/>
-      </svg>
+      <i class="codicon codicon-symbol-variable"></i>
     </button>
     {#if lineNum !== null}
       <span class="header-info has-tooltip" class:error={debugError} class:has-line-content={!debugError && debugState.lineContent} data-tooltip={debugError || (debugState.lineContent ? debugState.lineContent.trim() : `Line ${lineNum}`)}>L{lineNum}</span>
