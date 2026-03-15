@@ -717,7 +717,6 @@
               <span>Fullscreen</span>
             </button>
           {/if}
-          <div class="options-menu-separator"></div>
           <button
             class="options-menu-item"
             on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
