@@ -13,17 +13,12 @@
 
   export let showMenu = false;
 
-  const cameraIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-    <circle cx="12" cy="13" r="3"/>
-  </svg>`;
-
   export function toggle() {
     showMenu = !showMenu;
   }
 
   export function getIcon(): string {
-    return cameraIcon;
+    return '<i class="codicon codicon-device-camera"></i>';
   }
 
   export function isOpen(): boolean {
@@ -41,7 +36,7 @@
     disabled={!hasShader}
     title="Export screenshot, video, or GIF"
   >
-    {@html cameraIcon}
+    <i class="codicon codicon-device-camera"></i>
     {#if isRecording}
       <span class="recording-indicator"></span>
     {/if}

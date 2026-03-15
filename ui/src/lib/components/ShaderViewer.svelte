@@ -11,6 +11,7 @@
   import DebugPanel from "./debug/DebugPanel.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
+  import { RecordingManager } from "../RecordingManager";
   import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
@@ -85,6 +86,10 @@
   // Audio state (mirrored from AudioVideoController for Svelte reactivity)
   let audioVolume = 1.0;
   let audioMuted = true;
+
+  // Recording
+  let isRecording = false;
+  let recordingManager: RecordingManager;
 
   // Config panel state
   let configPanelVisible = false;
@@ -185,6 +190,10 @@
     audioVolume,
     audioMuted,
     audioVideoController,
+    onScreenshot: handleScreenshot,
+    onRecord: handleRecord,
+    onCancel: handleCancelRecording,
+    isRecording,
   };
 
   // Subscribe to config/debug panel stores
@@ -326,6 +335,20 @@
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
   }
 
+  function handleScreenshot(config: { format: "png" | "jpeg"; time?: number; width: number; height: number }) {
+    if (!initialized) return;
+    recordingManager.screenshot(config);
+  }
+
+  function handleRecord(config: any) {
+    if (!initialized) return;
+    recordingManager.record(config);
+  }
+
+  function handleCancelRecording() {
+    recordingManager.cancel();
+  }
+
   function handleExtensionCommand(command: string) {
     if (!initialized) return;
     transport.postMessage({ type: 'extensionCommand', payload: { command } });
@@ -435,6 +458,25 @@
       audioVideoController = new AudioVideoController(
         () => shaderStudio,
         (vol, mut) => { audioVolume = vol; audioMuted = mut; },
+      );
+
+      recordingManager = new RecordingManager(
+        () => {
+          const lastEvent = shaderStudio.getLastShaderEvent();
+          return {
+            code: currentShaderCode,
+            config: currentConfig,
+            path: shaderPath,
+            buffers: lastEvent?.data?.buffers ?? {},
+          };
+        },
+        (blob, defaultName, filters) => {
+          blob.arrayBuffer().then((buf) => {
+            const base64 = btoa(new Uint8Array(buf).reduce((d, b) => d + String.fromCharCode(b), ""));
+            transport.postMessage({ type: "saveFile", payload: { data: base64, defaultName, filters } });
+          });
+        },
+        (rec) => { isRecording = rec; },
       );
 
       pixelInspectorManager = new PixelInspectorManager((s) => { inspectorState = s; });
@@ -564,6 +606,7 @@
   }
 
   onDestroy(() => {
+    if (recordingManager) recordingManager.dispose();
     if (audioVideoController) audioVideoController.dispose();
     if (editorOverlayManager) editorOverlayManager.dispose();
     if (variableCaptureManager) variableCaptureManager.dispose();
@@ -670,6 +713,7 @@
     canvasY={inspectorState.canvasPosition?.y ?? 0}
     canvasElement={glCanvas}
   />
+
 </div>
 
 <style>

@@ -155,4 +155,53 @@ export class TimeManager {
             this.lastRealTime = currentTime;
         }
     }
+
+    public setFrame(frame: number): void {
+        this.frame = frame;
+    }
+
+    public setDeltaTime(dt: number): void {
+        this.deltaTime = dt;
+    }
+
+    public getState(): TimeManagerState {
+        return {
+            paused: this.paused,
+            pausedTime: this.pausedTime,
+            lastRealTime: this.lastRealTime,
+            resetTime: this.resetTime,
+            frame: this.frame,
+            lastFrameTime: this.lastFrameTime,
+            deltaTime: this.deltaTime,
+            speedMultiplier: this.speedMultiplier,
+            loopEnabled: this.loopEnabled,
+            loopDuration: this.loopDuration,
+        };
+    }
+
+    public setState(state: TimeManagerState): void {
+        this.paused = state.paused;
+        this.pausedTime = state.pausedTime;
+        this.lastRealTime = state.lastRealTime;
+        this.resetTime = state.resetTime;
+        this.frame = state.frame;
+        this.lastFrameTime = state.lastFrameTime;
+        this.deltaTime = state.deltaTime;
+        this.speedMultiplier = state.speedMultiplier;
+        this.loopEnabled = state.loopEnabled;
+        this.loopDuration = state.loopDuration;
+    }
+}
+
+export interface TimeManagerState {
+    paused: boolean;
+    pausedTime: number;
+    lastRealTime: number;
+    resetTime: number;
+    frame: number;
+    lastFrameTime: number;
+    deltaTime: number;
+    speedMultiplier: number;
+    loopEnabled: boolean;
+    loopDuration: number;
 }

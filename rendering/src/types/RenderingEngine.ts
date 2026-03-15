@@ -38,5 +38,7 @@ export interface RenderingEngine {
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
   seekAudio(path: string, time: number): void;
   getAudioFFTData(type: string, path?: string): Uint8Array | null;
+  renderForCapture(): void;
+  getCanvas(): HTMLCanvasElement | null;
   dispose(): void;
 }

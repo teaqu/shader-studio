@@ -369,6 +369,54 @@ suite('PanelManager Test Suite', () => {
             assert.ok(html.includes('Content-Security-Policy'), 'Should add CSP to new head tag');
         });
 
+        test('should add wasm-unsafe-eval to existing CSP script-src', () => {
+            const htmlWithCsp = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src none; script-src vscode-resource:;"></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithCsp);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+
+            assert.ok(html.includes("wasm-unsafe-eval"), 'Should add wasm-unsafe-eval to script-src');
+        });
+
+        test('should add connect-src to existing CSP', () => {
+            const htmlWithCsp = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src vscode-resource:;"></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithCsp);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+
+            assert.ok(html.includes('connect-src vscode-resource:'), 'Should add connect-src');
+        });
+
+        test('should include wasm-unsafe-eval in new CSP', () => {
+            const htmlWithoutCsp = '<!doctype html><html><head></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithoutCsp);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+
+            assert.ok(html.includes("wasm-unsafe-eval"), 'Should include wasm-unsafe-eval in new CSP');
+        });
+
+        test('should include connect-src in new CSP', () => {
+            const htmlWithoutCsp = '<!doctype html><html><head></head><body></body></html>';
+            readFileSyncStub.returns(htmlWithoutCsp);
+
+            panelManager.createPanel();
+
+            const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
+            const html = createdPanel.webview.html;
+
+            assert.ok(html.includes('connect-src vscode-resource:'), 'Should include connect-src in new CSP');
+        });
+
         test('should handle malformed HTML gracefully', () => {
             const malformedHtml = '<body>Just some content</body>';
             readFileSyncStub.returns(malformedHtml);
@@ -981,6 +1029,127 @@ suite('PanelManager Test Suite', () => {
             sinon.assert.calledOnce(handleStub);
             assert.deepStrictEqual(handleStub.firstCall.args[0], { shaderPath: '/test/shader.glsl' });
             assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
+        });
+
+        test('routes saveFile message to handler', async () => {
+            const handleStub = sandbox.stub(panelManager as any, 'handleSaveFile').resolves();
+            const mockPanel = { webview: {} } as any;
+
+            await (panelManager as any).handleWebviewMessage(
+                { type: 'saveFile', payload: { data: 'dGVzdA==', defaultName: 'test.gif', filters: { GIF: ['gif'] } } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(handleStub);
+            assert.deepStrictEqual(handleStub.firstCall.args[0], { data: 'dGVzdA==', defaultName: 'test.gif', filters: { GIF: ['gif'] } });
+            assert.strictEqual(handleStub.firstCall.args[1], mockPanel);
+        });
+
+    });
+
+    suite('handleSaveFile', () => {
+        test('should show save dialog with filters and write file on confirm', async () => {
+            const fs = require('fs');
+            const writeStub = sandbox.stub(fs, 'writeFileSync');
+            const destUri = vscode.Uri.file('/saved/shader.gif');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(destUri);
+
+            const mockPanel = {
+                webview: { postMessage: sandbox.stub() },
+            } as any;
+
+            await (panelManager as any).handleSaveFile(
+                { data: 'dGVzdA==', defaultName: 'shader.gif', filters: { GIF: ['gif'] } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            assert.strictEqual(writeStub.firstCall.args[0], '/saved/shader.gif');
+            // Buffer should be decoded from base64 'dGVzdA==' = 'test'
+            const writtenBuffer = writeStub.firstCall.args[1];
+            assert.strictEqual(writtenBuffer.toString(), 'test');
+
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+            const msg = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(msg.type, 'saveFileResult');
+            assert.strictEqual(msg.payload.success, true);
+            assert.strictEqual(msg.payload.path, '/saved/shader.gif');
+        });
+
+        test('should send cancelled result when save dialog is dismissed', async () => {
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+            const mockPanel = {
+                webview: { postMessage: sandbox.stub() },
+            } as any;
+
+            await (panelManager as any).handleSaveFile(
+                { data: 'dGVzdA==', defaultName: 'shader.png', filters: { PNG: ['png'] } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+            const msg = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(msg.type, 'saveFileResult');
+            assert.strictEqual(msg.payload.success, false);
+            assert.strictEqual(msg.payload.error, 'Cancelled');
+        });
+
+        test('should send error result when write fails', async () => {
+            const fs = require('fs');
+            sandbox.stub(fs, 'writeFileSync').throws(new Error('Disk full'));
+            const destUri = vscode.Uri.file('/saved/shader.webm');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(destUri);
+
+            const mockPanel = {
+                webview: { postMessage: sandbox.stub() },
+            } as any;
+
+            await (panelManager as any).handleSaveFile(
+                { data: 'dGVzdA==', defaultName: 'shader.webm', filters: { WebM: ['webm'] } },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+            const msg = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(msg.type, 'saveFileResult');
+            assert.strictEqual(msg.payload.success, false);
+            assert.ok(msg.payload.error.includes('Disk full'));
+        });
+
+        test('should pass filters to save dialog', async () => {
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+            const mockPanel = {
+                webview: { postMessage: sandbox.stub() },
+            } as any;
+
+            const showSaveStub = vscode.window.showSaveDialog as sinon.SinonStub;
+
+            await (panelManager as any).handleSaveFile(
+                { data: 'dGVzdA==', defaultName: 'test.mp4', filters: { 'MP4 Video': ['mp4'] } },
+                mockPanel,
+            );
+
+            const dialogOpts = showSaveStub.firstCall.args[0];
+            assert.deepStrictEqual(dialogOpts.filters, { 'MP4 Video': ['mp4'] });
+        });
+    });
+
+    suite('handleWebviewMessage routing continued', () => {
+        let mockWebviewPanel: any;
+
+        setup(() => {
+            mockWebviewPanel = {
+                webview: {
+                    html: '',
+                    asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+                    onDidReceiveMessage: sandbox.stub().returns({ dispose: () => {} }),
+                    postMessage: sandbox.stub(),
+                    cspSource: 'vscode-resource:',
+                },
+                onDidDispose: sandbox.stub().returns({ dispose: () => {} }),
+            };
         });
 
         test('routes extensionCommand message to vscode.commands.executeCommand', async () => {

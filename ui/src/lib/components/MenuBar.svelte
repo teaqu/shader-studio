@@ -9,6 +9,8 @@
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
   import TimeControls from "./TimeControls.svelte";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
+  import RecordingButton from "./recording/RecordingButton.svelte";
+  import type { OnScreenshot, OnRecord } from "../recording/types";
 
 
 
@@ -58,6 +60,10 @@
   export let onResetLayout: () => void = () => {};
   export let previewVisible: boolean = true;
   export let onShowPreview: () => void = () => {};
+  export let onScreenshot: OnScreenshot = () => {};
+  export let onRecord: OnRecord = () => {};
+  export let onCancel: () => void = () => {};
+  export let isRecording: boolean = false;
 
 
 
@@ -85,6 +91,8 @@
   let customHeightInput = "";
   let showFPSMenu = false;
   let showOptionsMenu = false;
+  let recordingButton: RecordingButton;
+  let recordingMenuOpen = false;
   let zoomLevel = 1.0;
   let currentFPSLimit = 0;
 
@@ -197,6 +205,13 @@
     showFPSMenu = false;
   }
 
+  function handleRecordingClick() {
+    showResolutionMenu = false;
+    showFPSMenu = false;
+    showOptionsMenu = false;
+    recordingButton?.toggle();
+  }
+
   function handleAspectRatioSelect(mode: AspectRatioMode) {
     aspectRatioStore.setMode(mode);
     onAspectRatioChange(mode);
@@ -287,6 +302,7 @@
 
     mouseDownTarget = null;
   }
+
 </script>
 
 <svelte:window on:mousedown={handleWindowMouseDown} on:click={handleClickOutside} />
@@ -508,6 +524,18 @@
     >
       <i class="codicon codicon-gear"></i>
     </button>
+    <RecordingButton
+      bind:this={recordingButton}
+      bind:showMenu={recordingMenuOpen}
+      {canvasWidth}
+      {canvasHeight}
+      {currentTime}
+      {hasShader}
+      {isRecording}
+      {onScreenshot}
+      {onRecord}
+      {onCancel}
+    />
     <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         <i class="codicon codicon-lock"></i>
@@ -573,6 +601,16 @@
           >
             <i class="codicon codicon-repo-forked"></i>
             <span>Fork</span>
+          </button>
+          <button
+            class="options-menu-item show-record"
+            on:click={() => { showOptionsMenu = false; handleRecordingClick(); }}
+            aria-label="Export recording"
+            class:active={recordingMenuOpen}
+            disabled={!hasShader}
+          >
+            {@html recordingButton?.getIcon() ?? ''}
+            <span>Export</span>
           </button>
           <button
             class="options-menu-item show-config"

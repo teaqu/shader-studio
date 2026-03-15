@@ -70,9 +70,8 @@ describe('RecordingButton', () => {
     const { container } = render(RecordingButton, { props: defaultProps });
     const button = container.querySelector('.collapse-record');
     expect(button).toBeInTheDocument();
-    // Should contain the SVG camera icon
-    const svg = button!.querySelector('svg');
-    expect(svg).toBeInTheDocument();
+    const icon = button!.querySelector('.codicon-device-camera');
+    expect(icon).toBeInTheDocument();
   });
 
   it('camera button should be disabled when hasShader is false', () => {
@@ -127,12 +126,10 @@ describe('RecordingButton', () => {
     });
   });
 
-  it('getIcon() should return camera SVG string', () => {
+  it('getIcon() should return codicon HTML string', () => {
     const { component } = render(RecordingButton, { props: defaultProps });
     const icon = component.getIcon();
-    expect(icon).toContain('<svg');
-    expect(icon).toContain('</svg>');
-    expect(icon).toContain('viewBox');
+    expect(icon).toContain('codicon-device-camera');
   });
 
   it('should pass props through to RecordingPanel', async () => {

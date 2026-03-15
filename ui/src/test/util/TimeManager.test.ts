@@ -181,4 +181,100 @@ describe('TimeManager', () => {
       expect(timeManager.getFrame()).toBe(2);
     });
   });
+
+  describe('setFrame', () => {
+    it('should set the frame directly', () => {
+      timeManager.setFrame(42);
+      expect(timeManager.getFrame()).toBe(42);
+    });
+
+    it('should override previously set frame', () => {
+      timeManager.setFrame(5);
+      timeManager.setFrame(100);
+      expect(timeManager.getFrame()).toBe(100);
+    });
+  });
+
+  describe('setDeltaTime', () => {
+    it('should set delta time directly', () => {
+      timeManager.setDeltaTime(0.016);
+      expect(timeManager.getDeltaTime()).toBeCloseTo(0.016);
+    });
+
+    it('should allow setting to zero', () => {
+      timeManager.setDeltaTime(0);
+      expect(timeManager.getDeltaTime()).toBe(0);
+    });
+  });
+
+  describe('getState / setState', () => {
+    it('should return current state', () => {
+      const state = timeManager.getState();
+      expect(state).toHaveProperty('paused');
+      expect(state).toHaveProperty('frame');
+      expect(state).toHaveProperty('deltaTime');
+      expect(state).toHaveProperty('speedMultiplier');
+      expect(state).toHaveProperty('loopEnabled');
+      expect(state).toHaveProperty('loopDuration');
+    });
+
+    it('should capture paused state', () => {
+      timeManager.togglePause();
+      const state = timeManager.getState();
+      expect(state.paused).toBe(true);
+    });
+
+    it('should capture speed', () => {
+      timeManager.setSpeed(2.0);
+      const state = timeManager.getState();
+      expect(state.speedMultiplier).toBe(2.0);
+    });
+
+    it('should capture frame', () => {
+      timeManager.setFrame(77);
+      const state = timeManager.getState();
+      expect(state.frame).toBe(77);
+    });
+
+    it('should capture loop settings', () => {
+      timeManager.setLoopEnabled(true);
+      timeManager.setLoopDuration(30);
+      const state = timeManager.getState();
+      expect(state.loopEnabled).toBe(true);
+      expect(state.loopDuration).toBe(30);
+    });
+
+    it('should restore state from setState', () => {
+      timeManager.setSpeed(3.0);
+      timeManager.setFrame(50);
+      timeManager.togglePause();
+      timeManager.setLoopEnabled(true);
+      timeManager.setLoopDuration(10);
+      const saved = timeManager.getState();
+
+      // Create a fresh manager and restore
+      const fresh = new TimeManager();
+      fresh.setState(saved);
+
+      expect(fresh.isPaused()).toBe(true);
+      expect(fresh.getFrame()).toBe(50);
+      expect(fresh.getSpeed()).toBe(3.0);
+      expect(fresh.isLoopEnabled()).toBe(true);
+      expect(fresh.getLoopDuration()).toBe(10);
+    });
+
+    it('should round-trip state correctly', () => {
+      timeManager.setDeltaTime(0.033);
+      timeManager.setFrame(99);
+      const state1 = timeManager.getState();
+
+      const other = new TimeManager();
+      other.setState(state1);
+      const state2 = other.getState();
+
+      expect(state2.frame).toBe(state1.frame);
+      expect(state2.deltaTime).toBe(state1.deltaTime);
+      expect(state2.speedMultiplier).toBe(state1.speedMultiplier);
+    });
+  });
 });
