@@ -314,7 +314,7 @@
           referencePanel: "preview",
           direction: "below",
         },
-        initialHeight: 200,
+        initialHeight: 250,
       });
     }
   }

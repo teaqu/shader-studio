@@ -53,7 +53,7 @@
 
   .misc-options {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(120px, 180px));
     gap: 8px;
     margin-bottom: 8px;
   }

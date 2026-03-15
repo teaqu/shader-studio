@@ -292,7 +292,7 @@
 
   .channels-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(140px, 200px));
     gap: 16px;
   }
 

@@ -548,6 +548,98 @@ function renderLayout(props: Record<string, any> = {}) {
     });
   });
 
+  // ─── Panel management ─────────────────────────────────────────
+
+  describe('config panel management', () => {
+    it('should add config panel below preview with initialHeight 250 when no debug panel', async () => {
+      renderLayout({ showConfigPanel: true });
+      await tick();
+
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'config',
+          component: 'config',
+          title: 'Config',
+          position: {
+            referencePanel: 'preview',
+            direction: 'below',
+          },
+          initialHeight: 250,
+        })
+      );
+    });
+
+    it('should add config panel within debug panel when debug exists', async () => {
+      renderLayout({ showDebugPanel: true, showConfigPanel: true });
+      await tick();
+
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'config',
+          component: 'config',
+          position: {
+            referencePanel: 'debug',
+            direction: 'within',
+          },
+        })
+      );
+    });
+
+    it('should not add config panel if already exists', async () => {
+      renderLayout({ showConfigPanel: true });
+      await tick();
+
+      const addCallCount = mockApi.addPanel.mock.calls.filter(
+        (call: any[]) => call[0].id === 'config'
+      ).length;
+      expect(addCallCount).toBe(1);
+    });
+
+    it('should remove config panel when showConfigPanel becomes false', async () => {
+      const { rerender } = renderLayout({ showConfigPanel: true });
+      await tick();
+
+      expect(panels.has('config')).toBe(true);
+
+      await rerender({ showConfigPanel: false, mountPreview: () => {}, mountDebug: () => {}, mountConfig: () => {}, showDebugPanel: false, transport: null });
+      await tick();
+
+      expect(mockApi.removePanel).toHaveBeenCalled();
+    });
+  });
+
+  describe('debug panel management', () => {
+    it('should add debug panel below preview with initialHeight 200', async () => {
+      renderLayout({ showDebugPanel: true });
+      await tick();
+
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'debug',
+          component: 'debug',
+          title: 'Debug',
+          position: {
+            referencePanel: 'preview',
+            direction: 'below',
+          },
+          initialHeight: 200,
+        })
+      );
+    });
+
+    it('should remove debug panel when showDebugPanel becomes false', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      expect(panels.has('debug')).toBe(true);
+
+      await rerender({ showDebugPanel: false, mountPreview: () => {}, mountDebug: () => {}, mountConfig: () => {}, showConfigPanel: false, transport: null });
+      await tick();
+
+      expect(mockApi.removePanel).toHaveBeenCalled();
+    });
+  });
+
   // ─── Combined scenarios ────────────────────────────────────────
 
   describe('combined drag + layout change scenarios', () => {
