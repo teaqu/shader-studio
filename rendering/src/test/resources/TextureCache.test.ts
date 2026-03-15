@@ -83,27 +83,21 @@ describe("TextureCache", () => {
     it("should cache texture by path", () => {
       const mockTexture = createMockTexture();
       textureCache.cacheTexture("image.jpg", mockTexture);
-      
-      const cachedTexture = textureCache.getCachedTexture("image.jpg");
-      expect(cachedTexture).toBe(mockTexture);
+
+      const cache = textureCache.getImageTextureCache();
+      expect(cache["image.jpg"]).toBe(mockTexture);
     });
 
     it("should allow caching multiple textures", () => {
       const texture1 = createMockTexture();
       const texture2 = createMockTexture();
-      
+
       textureCache.cacheTexture("image1.jpg", texture1);
       textureCache.cacheTexture("image2.jpg", texture2);
-      
-      expect(textureCache.getCachedTexture("image1.jpg")).toBe(texture1);
-      expect(textureCache.getCachedTexture("image2.jpg")).toBe(texture2);
-    });
-  });
 
-  describe("getCachedTexture", () => {
-    it("should return undefined for non-existent texture", () => {
-      const result = textureCache.getCachedTexture("nonexistent.jpg");
-      expect(result).toBeUndefined();
+      const cache = textureCache.getImageTextureCache();
+      expect(cache["image1.jpg"]).toBe(texture1);
+      expect(cache["image2.jpg"]).toBe(texture2);
     });
   });
 
@@ -111,11 +105,12 @@ describe("TextureCache", () => {
     it("should remove and return cached texture", () => {
       const mockTexture = createMockTexture();
       textureCache.cacheTexture("image.jpg", mockTexture);
-      
+
       const removedTexture = textureCache.removeCachedTexture("image.jpg");
-      
+
       expect(removedTexture).toBe(mockTexture);
-      expect(textureCache.getCachedTexture("image.jpg")).toBeUndefined();
+      const cache = textureCache.getImageTextureCache();
+      expect(cache["image.jpg"]).toBeUndefined();
     });
 
     it("should return undefined for non-existent texture", () => {
@@ -169,35 +164,6 @@ describe("TextureCache", () => {
 
       const cache = textureCache.getImageTextureCache();
       expect(cache).toEqual({});
-    });
-  });
-
-  describe("dispose", () => {
-    it("should destroy all cached textures", () => {
-      const texture1 = createMockTexture();
-      const texture2 = createMockTexture();
-
-      textureCache.cacheTexture("image1.jpg", texture1);
-      textureCache.cacheTexture("image2.jpg", texture2);
-
-      textureCache.dispose();
-
-      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(texture1);
-      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(texture2);
-    });
-
-    it("should destroy default texture", () => {
-      const defaultTexture = textureCache.getDefaultTexture();
-
-      textureCache.dispose();
-
-      expect(mockRenderer.DestroyTexture).toHaveBeenCalledWith(defaultTexture);
-    });
-
-    it("should set default texture to null after dispose", () => {
-      textureCache.dispose();
-
-      expect(textureCache.getDefaultTexture()).toBeNull();
     });
   });
 

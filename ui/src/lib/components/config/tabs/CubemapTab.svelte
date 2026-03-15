@@ -45,7 +45,7 @@
       <select
         id="filter-{channelName}"
         value={tempInput.filter || "mipmap"}
-        on:change={(e) => onUpdateFilter(e.currentTarget.value)}
+        on:change={(e) => onUpdateFilter(e.currentTarget.value as "linear" | "nearest" | "mipmap")}
         class="input-select"
       >
         <option value="mipmap">Mipmap</option>
@@ -59,7 +59,7 @@
       <select
         id="wrap-{channelName}"
         value={tempInput.wrap || "clamp"}
-        on:change={(e) => onUpdateWrap(e.currentTarget.value)}
+        on:change={(e) => onUpdateWrap(e.currentTarget.value as "repeat" | "clamp")}
         class="input-select"
       >
         <option value="clamp">Clamp</option>

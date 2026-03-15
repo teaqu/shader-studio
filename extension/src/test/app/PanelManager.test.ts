@@ -102,11 +102,6 @@ suite('PanelManager Test Suite', () => {
         // This is verified by the fact that we only use WebviewTransport in the constructor
     });
 
-    test('getPanel returns undefined when no panel exists', () => {
-        const panel = panelManager.getPanel();
-        assert.strictEqual(panel, undefined);
-    });
-
     test('createPanel handles no GLSL editor gracefully', () => {
         // Given
         const mockWebviewPanel = createMockWebviewPanel();
@@ -231,27 +226,6 @@ suite('PanelManager Test Suite', () => {
         assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
     });
 
-    test('getPanel returns current panel after creation', () => {
-        // Given
-        const mockWebviewPanel = createMockWebviewPanel();
-        sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
-        sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
-        sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
-        sandbox.stub(vscode.window, 'tabGroups').value({
-            all: [{ tabs: [], viewColumn: vscode.ViewColumn.One }]
-        });
-        sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
-        const fs = require('fs');
-        sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
-
-        // When
-        assert.strictEqual(panelManager.getPanel(), undefined);
-        panelManager.createPanel();
-
-        // Then
-        assert.strictEqual(panelManager.getPanel(), mockWebviewPanel);
-    });
-
     test('createPanel creates new panel each time', () => {
         // Given
         const mockWebviewPanel1 = createMockWebviewPanel();
@@ -274,10 +248,6 @@ suite('PanelManager Test Suite', () => {
 
         // Then
         assert.strictEqual(createWebviewPanelStub.callCount, 2);
-        const allPanels = panelManager.getPanels();
-        assert.strictEqual(allPanels.length, 2);
-        assert.ok(allPanels.includes(mockWebviewPanel1 as any));
-        assert.ok(allPanels.includes(mockWebviewPanel2 as any));
     });
 
     test('localResourceRoots includes correct paths', () => {

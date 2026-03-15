@@ -15,13 +15,6 @@ export class BufferConfig {
   }
 
   /**
-   * Get the buffer name
-   */
-  getBufferName(): string {
-    return this.bufferName;
-  }
-
-  /**
    * Get the current configuration
    */
   getConfig(): BufferPass | ImagePass {
@@ -40,20 +33,6 @@ export class BufferConfig {
       };
       this.notifyUpdate();
     }
-  }
-
-  /**
-   * Add an input channel
-   */
-  addInputChannel(channel: string, input: ConfigInput): void {
-    this.config = {
-      ...this.config,
-      inputs: {
-        ...this.config.inputs,
-        [channel]: input
-      }
-    };
-    this.notifyUpdate();
   }
 
   /**
@@ -86,119 +65,8 @@ export class BufferConfig {
     this.notifyUpdate();
   }
 
-  /**
-   * Update an input channel with partial data
-   */
-  updateInputChannelPartial(channel: string, updates: Partial<ConfigInput>): void {
-    console.log(`Updating input channel ${channel} with updates:`, updates);
-    const existingInput = this.config.inputs?.[channel];
-
-    // Create a properly typed input based on the type
-    let updatedInput: ConfigInput;
-
-    if (updates.type === 'buffer') {
-      updatedInput = {
-        type: 'buffer',
-        source: (updates as any).source || (existingInput as any)?.source || ''
-      };
-    } else if (updates.type === 'texture') {
-      updatedInput = {
-        type: 'texture',
-        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path),
-        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
-        wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
-        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip),
-        grayscale: this.newElseExistingInput((updates as any).grayscale, (existingInput as any)?.grayscale)
-      };
-    } else if (updates.type === 'video') {
-      updatedInput = {
-        type: 'video',
-        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path),
-        filter: this.newElseExistingInput((updates as any).filter, (existingInput as any)?.filter),
-        wrap: this.newElseExistingInput((updates as any).wrap, (existingInput as any)?.wrap),
-        vflip: this.newElseExistingInput((updates as any).vflip, (existingInput as any)?.vflip)
-      };
-    } else if (updates.type === 'keyboard') {
-      updatedInput = {
-        type: 'keyboard'
-      };
-    } else if (updates.type === 'audio') {
-      updatedInput = {
-        type: 'audio',
-        path: this.newElseExistingInput((updates as any).path, (existingInput as any)?.path) || '',
-        startTime: this.newElseExistingInput((updates as any).startTime, (existingInput as any)?.startTime),
-        endTime: this.newElseExistingInput((updates as any).endTime, (existingInput as any)?.endTime),
-      };
-    } else {
-      // Keep existing type if no type update
-      const existing = existingInput as any;
-      if (existing?.type === 'buffer') {
-        updatedInput = {
-          type: 'buffer',
-          source: (updates as any).source || existing.source || ''
-        };
-      } else if (existing?.type === 'texture') {
-        updatedInput = {
-          type: 'texture',
-          path: (updates as any).path || existing.path || '',
-          filter: (updates as any).filter || existing.filter,
-          wrap: (updates as any).wrap || existing.wrap,
-          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip,
-          grayscale: (updates as any).grayscale !== undefined ? (updates as any).grayscale : existing.grayscale
-        };
-      } else if (existing?.type === 'video') {
-        updatedInput = {
-          type: 'video',
-          path: (updates as any).path || existing.path || '',
-          filter: (updates as any).filter || existing.filter,
-          wrap: (updates as any).wrap || existing.wrap,
-          vflip: (updates as any).vflip !== undefined ? (updates as any).vflip : existing.vflip
-        };
-      } else if (existing?.type === 'audio') {
-        updatedInput = {
-          type: 'audio',
-          path: (updates as any).path || existing.path || '',
-          startTime: (updates as any).startTime !== undefined ? (updates as any).startTime : existing.startTime,
-          endTime: (updates as any).endTime !== undefined ? (updates as any).endTime : existing.endTime,
-        };
-      } else {
-        updatedInput = {
-          type: 'keyboard'
-        };
-      }
-    }
-
-    this.updateInputChannel(channel, updatedInput);
-  }
-
-  /**
-   * Get all input channels
-   */
-  getInputChannels(): Array<[string, ConfigInput]> {
-    return Object.entries(this.config.inputs || {});
-  }
-
   getInputChannel(channel: string): ConfigInput | undefined {
     return this.config.inputs ? this.config.inputs[channel] : undefined;
-  }
-
-  /**
-   * Get the next suggested channel name (iChannel0, iChannel1, etc.)
-   */
-  getNextChannelName(): string {
-    const used = new Set(Object.keys(this.config.inputs || {}));
-    for (let i = 0; i < 16; i++) {
-      const name = `iChannel${i}`;
-      if (!used.has(name)) return name;
-    }
-    return `iChannel${used.size}`;
-  }
-
-  /**
-   * Check if more channels can be added (max 16)
-   */
-  canAddChannel(): boolean {
-    return Object.keys(this.config.inputs || {}).length < 16;
   }
 
   /**
@@ -226,27 +94,6 @@ export class BufferConfig {
       inputs: newInputs
     };
     this.notifyUpdate();
-  }
-
-  /**
-   * Get input channel count
-   */
-  getInputChannelCount(): number {
-    return Object.keys(this.config.inputs || {}).length;
-  }
-
-  /**
-   * Check if a channel is available
-   */
-  isChannelAvailable(channel: string): boolean {
-    return !this.config.inputs || !this.config.inputs[channel];
-  }
-
-  /**
-   * Get suggested file path based on buffer name
-   */
-  getSuggestedPath(): string {
-    return '';
   }
 
   /**
@@ -358,22 +205,4 @@ export class BufferConfig {
     }
   }
 
-  private newElseExistingInput(newInput: any, existing: any): any {
-    return newInput == undefined ? existing : newInput;
-  }
-
-  /**
-   * Set the configuration
-   */
-  setConfig(config: BufferPass): void {
-    this.config = config;
-    this.notifyUpdate();
-  }
-
-  /**
-   * Convert to JSON representation
-   */
-  toJSON(): BufferPass | ImagePass {
-    return this.config;
-  }
 }

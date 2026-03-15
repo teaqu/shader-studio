@@ -232,32 +232,6 @@ describe("ShaderPipeline", () => {
         });
     });
 
-    describe("getCurrentShaderRenderID", () => {
-        it("should increment render ID on each compilation", async () => {
-            const initialRenderID = shaderPipeline.getCurrentShaderRenderID();
-
-            await shaderPipeline.compileShaderPipeline(
-                "void mainImage() { gl_FragColor = vec4(1.0); }",
-                null,
-                "shader1.glsl",
-                {}
-            );
-
-            const firstRenderID = shaderPipeline.getCurrentShaderRenderID();
-            expect(firstRenderID).toBe(initialRenderID + 1);
-
-            await shaderPipeline.compileShaderPipeline(
-                "void mainImage() { gl_FragColor = vec4(0.5); }",
-                null,
-                "shader2.glsl",
-                {}
-            );
-
-            const secondRenderID = shaderPipeline.getCurrentShaderRenderID();
-            expect(secondRenderID).toBe(firstRenderID + 1);
-        });
-    });
-
     describe("buildPasses", () => {
         it("should create Image pass when no config is provided", () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
@@ -1316,65 +1290,10 @@ describe("ShaderPipeline", () => {
     });
 
     describe("slot assignments", () => {
-        it("should store slot assignments after compilation", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            noiseMap: { type: "texture" as const, path: "noise.png" },
-                            iChannel1: { type: "keyboard" as const },
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
-
-            const assignments = shaderPipeline.getPassSlotAssignments("Image");
-            expect(assignments).toHaveLength(2);
-            expect(assignments[0]).toEqual({ slot: 0, key: "noiseMap", isCustomName: true });
-            expect(assignments[1]).toEqual({ slot: 1, key: "iChannel1", isCustomName: false });
-        });
-
-        it("should return empty array for non-existent pass", () => {
-            const assignments = shaderPipeline.getPassSlotAssignments("NonExistent");
-            expect(assignments).toEqual([]);
-        });
-
-        it("should store separate slot assignments per pass", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture" as const, path: "tex.png" },
-                        }
-                    },
-                    BufferA: {
-                        path: "buffer.glsl",
-                        inputs: {
-                            customInput: { type: "keyboard" as const },
-                        }
-                    }
-                }
-            };
-            const buffers = { BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}" };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", buffers);
-
-            const imageAssignments = shaderPipeline.getPassSlotAssignments("Image");
-            const bufferAssignments = shaderPipeline.getPassSlotAssignments("BufferA");
-
-            expect(imageAssignments[0].key).toBe("iChannel0");
-            expect(imageAssignments[0].isCustomName).toBe(false);
-            expect(bufferAssignments[0].key).toBe("customInput");
-            expect(bufferAssignments[0].isCustomName).toBe(true);
-        });
-
         it("should pass slot assignments to compileShader", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
             const config = {
+                version: "1",
                 passes: {
                     Image: {
                         inputs: {

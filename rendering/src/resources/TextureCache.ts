@@ -48,10 +48,6 @@ export class TextureCache {
     this.imageTextureCache[path] = texture;
   }
 
-  public getCachedTexture(path: string): PiTexture | undefined {
-    return this.imageTextureCache[path];
-  }
-
   public removeCachedTexture(path: string): PiTexture | undefined {
     const texture = this.imageTextureCache[path];
     if (texture) {
@@ -64,11 +60,6 @@ export class TextureCache {
     this.cleanupImageTextures();
     // Don't destroy the default texture during cleanup - it's a 1x1 black pixel
     // that should persist across recompilations. Only destroy on full dispose.
-  }
-
-  public dispose(): void {
-    this.cleanupImageTextures();
-    this.cleanupDefaultTexture();
   }
 
   private initializeDefaultTexture(): void {

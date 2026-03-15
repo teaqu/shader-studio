@@ -86,7 +86,7 @@ describe('ConfigPanel', () => {
     bufferConfigConstructorCalls.length = 0;
   });
 
-  function getLatestConfigManagerInstance(): ReturnType<typeof vi.fn> {
+  function getLatestConfigManagerInstance(): ReturnType<typeof createMockConfigManager> {
     const calls = (ConfigManager as unknown as Mock).mock.results;
     return calls[calls.length - 1].value;
   }

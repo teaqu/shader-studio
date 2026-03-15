@@ -133,7 +133,7 @@ describe('computeGridDimensions', () => {
 
 describe('VariableCaptureManager', () => {
   let manager: VariableCaptureManager;
-  let onUpdate: ReturnType<typeof vi.fn<[CapturedVariable[]], void>>;
+  let onUpdate: ReturnType<typeof vi.fn>;
 
   let mockCollectResults: ReturnType<typeof vi.fn>;
   let mockIssueCaptureAtPixel: ReturnType<typeof vi.fn>;

@@ -91,6 +91,21 @@ describe('aspectRatioStore', () => {
     unsub();
   });
 
+  it('should ignore invalid JSON in localStorage', async () => {
+    localStorage.setItem('shader-studio-aspect-ratio', 'not-json!!!');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = await importStore();
+    expect(get(store).mode).toBe('16:9');
+    expect(warnSpy).toHaveBeenCalledWith('Failed to parse stored aspect ratio setting');
+    warnSpy.mockRestore();
+  });
+
+  it('should ignore stored value with invalid mode', async () => {
+    localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify({ mode: 'invalid' }));
+    const store = await importStore();
+    expect(get(store).mode).toBe('16:9');
+  });
+
   // --- reset ---
 
   it('reset should restore default 16:9', async () => {
@@ -99,4 +114,50 @@ describe('aspectRatioStore', () => {
     store.reset();
     expect(get(store).mode).toBe('16:9');
   });
+
+  it('reset should persist default to localStorage', async () => {
+    const store = await importStore();
+    store.setMode('4:3');
+    store.reset();
+    const stored = JSON.parse(localStorage.getItem('shader-studio-aspect-ratio')!);
+    expect(stored.mode).toBe('16:9');
+  });
 });
+
+describe('getAspectRatio', () => {
+  async function importHelper() {
+    const mod = await import('../../lib/stores/aspectRatioStore');
+    return mod.getAspectRatio;
+  }
+
+  it('should return 16/9 for 16:9', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('16:9')).toBeCloseTo(16 / 9);
+  });
+
+  it('should return 4/3 for 4:3', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('4:3')).toBeCloseTo(4 / 3);
+  });
+
+  it('should return 1 for 1:1', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('1:1')).toBe(1);
+  });
+
+  it('should return null for fill', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('fill')).toBeNull();
+  });
+
+  it('should return null for auto', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('auto')).toBeNull();
+  });
+
+  it('should return 16/9 as default for unknown mode', async () => {
+    const getAspectRatio = await importHelper();
+    expect(getAspectRatio('unknown' as any)).toBeCloseTo(16 / 9);
+  });
+});
+

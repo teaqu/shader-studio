@@ -208,10 +208,6 @@ export class AudioTextureManager {
     return this.audioSources[path]?.texture ?? null;
   }
 
-  public hasAudioSource(path: string): boolean {
-    return path in this.audioSources;
-  }
-
   public pauseAudio(path: string): void {
     const source = this.audioSources[path];
     if (source && source.playing) {

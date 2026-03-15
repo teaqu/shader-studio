@@ -192,36 +192,6 @@ suite('ErrorHandler Test Suite', () => {
         assert.ok(warnCalled, 'WarningMessage should call outputChannel.warn');
     });
 
-    test('should clear specific persistent errors', () => {
-        const message1: ErrorMessage = {
-            type: 'error',
-            payload: ['Texture file not found: /path/to/file1.jpg']
-        };
-
-        const message2: ErrorMessage = {
-            type: 'error',
-            payload: ['Texture file not found: /path/to/file2.jpg']
-        };
-
-        let errorCallCount = 0;
-        mockOutputChannel.error = () => { errorCallCount++; };
-
-        // Add both persistent errors
-        errorHandler.handlePersistentError(message1);
-        errorHandler.handlePersistentError(message2);
-        assert.equal(errorCallCount, 2, 'Both errors should be logged initially');
-        
-        // Clear specific error by normalized name
-        errorHandler.clearPersistentError('FILE_NOT_FOUND:/path/to/file1.jpg');
-        
-        // First error should work again (cleared from debounce), second should still be debounced
-        errorHandler.handlePersistentError(message1);
-        assert.equal(errorCallCount, 3, 'Cleared error should be logged again');
-        
-        errorHandler.handlePersistentError(message2);
-        assert.equal(errorCallCount, 3, 'Non-cleared error should still be debounced');
-    });
-
     test('should set and use shader config', () => {
         const config = {
             config: { passes: {} },

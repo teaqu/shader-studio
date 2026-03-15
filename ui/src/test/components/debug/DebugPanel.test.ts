@@ -48,6 +48,9 @@ const mockUniforms: PassUniforms = {
   timeDelta: 0.0167,
   frameRate: 60.0,
   date: [2024, 1, 15, 12345.0],
+  channelTime: [0, 0, 0, 0],
+  sampleRate: 44100,
+  channelLoaded: [0, 0, 0, 0],
 };
 
 function mockGetUniforms(): PassUniforms | null {
@@ -692,6 +695,7 @@ describe('DebugPanel', () => {
             channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
             stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
             channelHistograms: null, colorFrequencies: null, thumbnail: null,
+            declarationLine: 0, gridWidth: 32, gridHeight: 32,
           }],
         }),
         getUniforms: mockGetUniforms,
@@ -808,6 +812,7 @@ describe('DebugPanel', () => {
             channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
             stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
             channelHistograms: null, colorFrequencies: null, thumbnail: null,
+            declarationLine: 0, gridWidth: 32, gridHeight: 32,
           }],
         }),
         getUniforms: mockGetUniforms,
@@ -844,6 +849,7 @@ describe('DebugPanel', () => {
               channelMeans: [0.1 * i], channelStats: [{ min: 0, max: 1, mean: 0.1 * i }],
               stats: { min: 0, max: 1, mean: 0.1 * i }, histogram: null,
               channelHistograms: null, colorFrequencies: null, thumbnail: null,
+              declarationLine: 0, gridWidth: 32, gridHeight: 32,
             }],
           }),
           getUniforms: mockGetUniforms,

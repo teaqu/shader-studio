@@ -4,7 +4,7 @@ import { VideoTextureManager } from "./resources/VideoTextureManager";
 import { CubemapTextureManager } from "./resources/CubemapTextureManager";
 import { AudioTextureManager } from "./resources/AudioTextureManager";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { TextureConfigInput, VideoConfigInput, CubemapConfigInput } from "./models/ShaderConfig";
+import type { TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
 
 export interface VideoLoadResult {
   texture: PiTexture | null;
@@ -43,22 +43,6 @@ export class ResourceManager {
 
   public getVideoElement(path: string): HTMLVideoElement | undefined {
     return this.videoTextureManager.getVideoElement(path);
-  }
-
-  public getCubemapTexture(path: string): PiTexture | null {
-    return this.cubemapTextureManager.getCubemapTexture(path);
-  }
-
-  public async loadCubemapTexture(
-    path: string,
-    opts: Partial<Pick<CubemapConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
-  ): Promise<PiTexture | null> {
-    try {
-      return await this.cubemapTextureManager.loadCubemapFromCrossImage(path, opts);
-    } catch (error) {
-      console.error(`Failed to load cubemap from ${path}:`, error);
-      return null;
-    }
   }
 
   public getDefaultTexture(): PiTexture | null {
@@ -193,14 +177,6 @@ export class ResourceManager {
     this.audioTextureManager.syncAllToTime(shaderTime);
   }
 
-  public setAudioVolume(path: string, volume: number): void {
-    this.audioTextureManager.setAudioVolume(path, volume);
-  }
-
-  public setAllAudioVolumes(volume: number): void {
-    this.audioTextureManager.setAllAudioVolumes(volume);
-  }
-
   public muteAllAudio(): void {
     this.audioTextureManager.muteAllAudio();
   }
@@ -239,14 +215,6 @@ export class ResourceManager {
       case 'unmute': this.videoTextureManager.unmuteVideo(path); break;
       case 'reset': this.videoTextureManager.resetVideo(path); break;
     }
-  }
-
-  public setVideoVolume(path: string, volume: number): void {
-    this.videoTextureManager.setVideoVolume(path, volume);
-  }
-
-  public setAllVideoVolumes(volume: number): void {
-    this.videoTextureManager.setAllVideoVolumes(volume);
   }
 
   public muteAllVideos(): void {

@@ -408,9 +408,6 @@ describe('WebSocketTransport', () => {
 
             expect(mockWs.readyState).toBe(3); // CLOSED
             expect(transport.isConnected()).toBe(false);
-
-            // Verify handlers are cleared by checking getWebSocket returns null
-            expect(transport.getWebSocket()).toBeNull();
         });
 
         it('should clear pending reconnect timeout', () => {
@@ -446,7 +443,7 @@ describe('WebSocketTransport', () => {
 
             // Should not throw
             transport.dispose();
-            expect(transport.getWebSocket()).toBeNull();
+            expect(transport.isConnected()).toBe(false);
         });
     });
 
@@ -492,59 +489,4 @@ describe('WebSocketTransport', () => {
         });
     });
 
-    describe('getWebSocket', () => {
-        it('should return the WebSocket instance', () => {
-            const { transport, mockWs } = createTransport();
-            expect(transport.getWebSocket()).toBe(mockWs);
-        });
-
-        it('should return null after dispose', () => {
-            const { transport } = createTransport();
-            transport.dispose();
-            expect(transport.getWebSocket()).toBeNull();
-        });
-    });
-
-    describe('reconnect', () => {
-        it('should dispose and create a fresh connection', () => {
-            const { transport, mockWs } = createTransport();
-
-            transport.reconnect();
-
-            // Old WebSocket should be closed
-            expect(mockWs.readyState).toBe(3);
-            // New WebSocket should be created
-            expect(webSocketSpy).toHaveBeenCalledTimes(2);
-            // New WebSocket should be the current one
-            const newMockWs = webSocketSpy.mock.results[1].value as MockWebSocket;
-            expect(transport.getWebSocket()).toBe(newMockWs);
-        });
-
-        it('should reset reconnect attempts and delay', () => {
-            vi.useFakeTimers();
-            const { transport, mockWs } = createTransport();
-
-            // Burn some reconnect attempts
-            mockWs.onclose?.(new CloseEvent('close'));
-            vi.advanceTimersByTime(1000);
-
-            const ws2 = webSocketSpy.mock.results[1].value as MockWebSocket;
-            ws2.onclose?.(new CloseEvent('close'));
-            vi.advanceTimersByTime(2000);
-
-            // Now manually reconnect - should reset
-            transport.reconnect();
-
-            // Disconnect the new connection
-            const ws4 = webSocketSpy.mock.results[webSocketSpy.mock.results.length - 1].value as MockWebSocket;
-            ws4.onclose?.(new CloseEvent('close'));
-
-            // Should be attempt 1/5 again with 1000ms delay
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                expect.stringContaining('Attempting to reconnect (1/5) in 1000ms')
-            );
-
-            vi.useRealTimers();
-        });
-    });
 });

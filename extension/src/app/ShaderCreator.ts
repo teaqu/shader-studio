@@ -41,52 +41,6 @@ export class ShaderCreator {
     return vscode.Uri.file("shadertoy.glsl");
   }
 
-  private findUniqueFileName(rootPath: string): string {
-    const baseName = "shadertoy";
-    const ext = ".glsl";
-    let filePath = path.join(rootPath, `${baseName}${ext}`);
-    let counter = 1;
-    while (fs.existsSync(filePath)) {
-      filePath = path.join(rootPath, `${baseName}${counter}${ext}`);
-      counter++;
-    }
-    return filePath;
-  }
-
-  async createFromTemplate(code: string): Promise<void> {
-    try {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        vscode.window.showErrorMessage("No workspace folder is open");
-        return;
-      }
-
-      const rootPath = workspaceFolders[0].uri.fsPath;
-      const filePath = this.findUniqueFileName(rootPath);
-
-      fs.writeFileSync(filePath, code);
-
-      const fileUri = vscode.Uri.file(filePath);
-      const document = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(document, {
-        preview: false,
-      });
-
-      // Launch the shader viewer
-      await vscode.commands.executeCommand("shader-studio.view");
-
-      this.logger.info(`Created scene from template: ${filePath}`);
-      vscode.window.showInformationMessage(
-        `Created scene: ${path.basename(filePath)}`,
-      );
-    } catch (error) {
-      this.logger.error(`Failed to create scene from template: ${error}`);
-      vscode.window.showErrorMessage(
-        `Failed to create scene from template: ${error}`,
-      );
-    }
-  }
-
   async create(): Promise<void> {
     try {
       const uri = await vscode.window.showSaveDialog({

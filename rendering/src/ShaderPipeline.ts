@@ -56,24 +56,6 @@ export class ShaderPipeline {
     return this.passShaders[passName];
   }
 
-  public getPassSlotAssignments(passName: string): SlotAssignment[] {
-    return this.passSlotAssignments[passName] ?? [];
-  }
-
-  public getPassBuffers(): Buffers {
-    return this.bufferManager.getPassBuffers();
-  }
-
-  public setPassBuffers(
-    buffers: Buffers,
-  ): void {
-    this.bufferManager.setPassBuffers(buffers);
-  }
-
-  public getCurrentShaderRenderID(): number {
-    return this.currentShaderRenderID;
-  }
-
   public getShaderPath(): string {
     return this.shaderPath;
   }

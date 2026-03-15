@@ -45,11 +45,6 @@ describe('MenuBar Component', () => {
       onTogglePause: vi.fn(),
       onToggleLock: vi.fn(),
       onAspectRatioChange: vi.fn(),
-      onResolutionScaleChange: vi.fn(),
-      onCustomResolutionChange: vi.fn(),
-      onClearCustomResolution: vi.fn(),
-      onToggleSaveToConfig: vi.fn(),
-      onResetResolution: vi.fn(),
       onZoomChange: vi.fn(),
       onFpsLimitChange: vi.fn(),
       isDebugEnabled: false,
@@ -387,12 +382,10 @@ describe('MenuBar Component', () => {
       expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
     });
 
-    it('should call onResolutionScaleChange when scale option is selected', async () => {
-      const onResolutionScaleChange = vi.fn();
+    it('should update resolution store when scale option is selected', async () => {
       render(MenuBar, {
         props: {
           ...defaultProps,
-          onResolutionScaleChange
         }
       });
 
@@ -404,7 +397,9 @@ describe('MenuBar Component', () => {
       const halfButton = screen.getByRole('button', { name: '0.5x' });
       await fireEvent.click(halfButton);
 
-      expect(onResolutionScaleChange).toHaveBeenCalledWith(0.5);
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.scale).toBe(0.5);
     });
 
     it('should call onAspectRatioChange when aspect ratio is selected', async () => {
@@ -472,9 +467,8 @@ describe('MenuBar Component', () => {
       expect(applyButton).not.toBeDisabled();
     });
 
-    it('should call onCustomResolutionChange with string values when Apply is clicked', async () => {
-      const onCustomResolutionChange = vi.fn();
-      render(MenuBar, { props: { ...defaultProps, onCustomResolutionChange } });
+    it('should update resolution store with percentage values when Apply is clicked', async () => {
+      render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -486,12 +480,14 @@ describe('MenuBar Component', () => {
       const applyButton = screen.getByRole('button', { name: 'Apply' });
       await fireEvent.click(applyButton);
 
-      expect(onCustomResolutionChange).toHaveBeenCalledWith('50%', '50%');
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.customWidth).toBe('50%');
+      expect(state.customHeight).toBe('50%');
     });
 
-    it('should call onCustomResolutionChange with px values', async () => {
-      const onCustomResolutionChange = vi.fn();
-      render(MenuBar, { props: { ...defaultProps, onCustomResolutionChange } });
+    it('should update resolution store with px values when Apply is clicked', async () => {
+      render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -503,7 +499,10 @@ describe('MenuBar Component', () => {
       const applyButton = screen.getByRole('button', { name: 'Apply' });
       await fireEvent.click(applyButton);
 
-      expect(onCustomResolutionChange).toHaveBeenCalledWith('1920', '1080');
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.customWidth).toBe('1920');
+      expect(state.customHeight).toBe('1080');
     });
 
     it('should show Clear button when custom resolution is active', async () => {
@@ -516,10 +515,9 @@ describe('MenuBar Component', () => {
       expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
     });
 
-    it('should call onClearCustomResolution when Clear is clicked', async () => {
-      const onClearCustomResolution = vi.fn();
+    it('should clear custom resolution in store when Clear is clicked', async () => {
       resolutionStore.setCustomResolution('512', '512');
-      render(MenuBar, { props: { ...defaultProps, onClearCustomResolution } });
+      render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -527,7 +525,10 @@ describe('MenuBar Component', () => {
       const clearButton = screen.getByRole('button', { name: 'Clear' });
       await fireEvent.click(clearButton);
 
-      expect(onClearCustomResolution).toHaveBeenCalled();
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.customWidth).toBeUndefined();
+      expect(state.customHeight).toBeUndefined();
     });
 
     it('should disable scale buttons when custom resolution is active', async () => {
@@ -560,17 +561,14 @@ describe('MenuBar Component', () => {
       expect(screen.getByText('Save to shader config')).toBeInTheDocument();
     });
 
-    it('should call onToggleSaveToConfig when checkbox is clicked', async () => {
-      const onToggleSaveToConfig = vi.fn();
-      render(MenuBar, { props: { ...defaultProps, onToggleSaveToConfig } });
+    it('should have a Save to shader config checkbox', async () => {
+      render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
       const checkbox = screen.getByText('Save to shader config').closest('label')!.querySelector('input')!;
-      await fireEvent.change(checkbox);
-
-      expect(onToggleSaveToConfig).toHaveBeenCalled();
+      expect(checkbox).toBeInTheDocument();
     });
 
     it('should show checked checkbox when savedToConfig is true', async () => {
@@ -630,9 +628,9 @@ describe('MenuBar Component', () => {
       expect(resetButtons.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('should call onResetResolution when resolution reset is clicked', async () => {
-      const onResetResolution = vi.fn();
-      render(MenuBar, { props: { ...defaultProps, onResetResolution } });
+    it('should reset resolution store when resolution reset is clicked', async () => {
+      resolutionStore.setScale(4);
+      render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -641,14 +639,16 @@ describe('MenuBar Component', () => {
       const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
       await fireEvent.click(resetButtons[0]);
 
-      expect(onResetResolution).toHaveBeenCalled();
+      const { get } = await import('svelte/store');
+      const state = get(resolutionStore);
+      expect(state.scale).toBe(1);
     });
 
     it('should reset resolution store when resolution reset is clicked', async () => {
       resolutionStore.setScale(4);
       resolutionStore.setCustomResolution('1920', '1080');
 
-      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+      render(MenuBar, { props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -667,7 +667,7 @@ describe('MenuBar Component', () => {
       resolutionStore.setSavedToConfig(true);
       resolutionStore.setScale(4);
 
-      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+      render(MenuBar, { props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -683,7 +683,7 @@ describe('MenuBar Component', () => {
     it('should reset aspect ratio to fill when resolution reset is clicked', async () => {
       aspectRatioStore.setMode('4:3');
 
-      render(MenuBar, { props: { ...defaultProps, onResetResolution: vi.fn() } });
+      render(MenuBar, { props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);

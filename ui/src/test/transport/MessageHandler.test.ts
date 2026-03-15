@@ -12,10 +12,14 @@ vi.mock("../../lib/ShaderProcessor", () => ({
   ShaderProcessor: vi.fn()
 }));
 
+const createMockTimeManager = () => ({
+  cleanup: vi.fn(),
+});
+
 const createMockRenderingEngine = () => ({
   compileShaderPipeline: vi.fn(),
   cleanup: vi.fn(),
-  resetTime: vi.fn(),
+  getTimeManager: vi.fn().mockReturnValue(createMockTimeManager()),
   isLockedShader: vi.fn().mockReturnValue(false),
   togglePause: vi.fn(),
   toggleLock: vi.fn(),
@@ -273,7 +277,7 @@ describe("MessageHandler", () => {
 
     it("should call resetTime on render engine", () => {
       messageHandler.reset();
-      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
     });
 
     it("should call both cleanup and resetTime", async () => {
@@ -294,12 +298,12 @@ describe("MessageHandler", () => {
       await messageHandler.handleShaderMessage(shaderEvent);
 
       mockRenderingEngine.cleanup.mockClear();
-      mockRenderingEngine.resetTime.mockClear();
+      mockRenderingEngine.getTimeManager().cleanup.mockClear();
 
       messageHandler.reset(vi.fn());
 
       expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
-      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1241,7 +1245,7 @@ describe("MessageHandler", () => {
     it('should call renderEngine.resetTime on reset', () => {
       messageHandler.reset();
 
-      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1313,6 +1317,248 @@ describe("MessageHandler", () => {
         false,
         { muted: true, volume: 0 },
       );
+    });
+  });
+
+  describe('locked shader with no buffer content', () => {
+    it('should skip processing when locked to different path with empty buffers and no code', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue('/locked.glsl');
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/other.glsl',
+          code: '',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      const result = await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(result).toBeUndefined();
+      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+    });
+
+    it('should skip processing when locked path is undefined and no buffer content', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue(undefined);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/shader.glsl',
+          code: '',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      const result = await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('common buffer updates', () => {
+    it('should refresh locked shader when common buffer file is updated and shader is locked with path', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue('/path/to/locked.glsl');
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/common.glsl',
+          code: 'float helper() { return 1.0; }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      const result = await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(result).toEqual({ success: true });
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'refresh', payload: { path: '/path/to/locked.glsl' } })
+      );
+    });
+
+    it('should delegate to shader processor when common buffer is updated with no locked path', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue(undefined);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/common.glsl',
+          code: 'float helper() { return 1.0; }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockShaderProcessor.processCommonBufferUpdate.mockResolvedValue({ success: true, warnings: ['test warning'] });
+
+      const result = await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockShaderProcessor.processCommonBufferUpdate).toHaveBeenCalledWith('float helper() { return 1.0; }');
+      expect(result).toEqual({ success: true, warnings: ['test warning'] });
+    });
+
+    it('should send error messages when common buffer update fails', async () => {
+      mockShaderLocker.isLocked.mockReturnValue(true);
+      mockShaderLocker.getLockedShaderPath.mockReturnValue(undefined);
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/common.glsl',
+          code: 'invalid code',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      mockShaderProcessor.processCommonBufferUpdate.mockResolvedValue({ success: false, errors: ['Syntax error'] });
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', payload: ['Syntax error'] })
+      );
+    });
+  });
+
+  describe('refresh', () => {
+    it('should send refresh message with path', () => {
+      messageHandler.refresh('/path/to/shader.glsl');
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'refresh',
+        payload: { path: '/path/to/shader.glsl' },
+      });
+    });
+
+    it('should send refresh message without path', () => {
+      messageHandler.refresh();
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'refresh',
+        payload: { path: undefined },
+      });
+    });
+  });
+
+  describe('fatal error handling', () => {
+    it('should catch transport errors when sending fatal error message', async () => {
+      // Make ShaderProcessor throw
+      mockShaderProcessor.processMainShaderCompilation.mockRejectedValue(new Error('catastrophic'));
+      // Also make transport.postMessage throw on the error message
+      mockTransport.postMessage.mockImplementation(() => {
+        throw new Error('transport broken');
+      });
+
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() {}',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      const result = await messageHandler.handleShaderMessage(shaderEvent);
+
+      expect(result).toEqual({ success: false, errors: ['Fatal error: Error: catastrophic'] });
+      expect(console.error).toHaveBeenCalledWith(
+        'MessageHandler: Failed to send error message:',
+        expect.any(Error)
+      );
+    });
+  });
+
+  describe('debugCompile with existing shader and event', () => {
+    it('should compile debug shader when original code and lastEvent exist', async () => {
+      // First, process a shader to set lastEvent
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      // Now set up debug state
+      mockShaderProcessor.getOriginalShaderCode.mockReturnValue('void mainImage() {}');
+      mockShaderProcessor.debugCompile.mockResolvedValue({ success: true });
+
+      // Trigger debug recompile
+      messageHandler.triggerDebugRecompile();
+
+      // Wait for async
+      await vi.waitFor(() => {
+        expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(shaderEvent.data);
+      });
+    });
+
+    it('should send error messages when debug compile fails', async () => {
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() {}',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+
+      await messageHandler.handleShaderMessage(shaderEvent);
+      mockTransport.postMessage.mockClear();
+
+      mockShaderProcessor.getOriginalShaderCode.mockReturnValue('void mainImage() {}');
+      mockShaderProcessor.debugCompile.mockResolvedValue({ success: false, errors: ['Debug error'] });
+
+      messageHandler.triggerDebugRecompile();
+
+      await vi.waitFor(() => {
+        expect(mockTransport.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'error', payload: ['Debug error'] })
+        );
+      });
+    });
+
+    it('should trigger debug recompile from handleCursorPositionMessage when debug is active', async () => {
+      // Process shader first
+      const shaderEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'shader.glsl',
+          code: 'void mainImage() {}',
+          config: null,
+          buffers: {},
+        } as ShaderSourceMessage,
+      } as MessageEvent;
+      await messageHandler.handleShaderMessage(shaderEvent);
+
+      // Enable debug mode — isActive requires isEnabled + currentLine + lineContent
+      mockShaderProcessor.getOriginalShaderCode.mockReturnValue('void mainImage() {}');
+      shaderDebugManager.toggleEnabled();
+      shaderDebugManager.updateDebugLine(1, 'float x = 1.0;', 'shader.glsl');
+
+      messageHandler.handleCursorPositionMessage({
+        type: 'cursorPosition',
+        payload: { line: 5, lineContent: 'float x = 1.0;', filePath: 'shader.glsl' },
+      } as any);
+
+      await vi.waitFor(() => {
+        expect(mockShaderProcessor.debugCompile).toHaveBeenCalled();
+      });
     });
   });
 });

@@ -31,8 +31,4 @@ export class VSCodeTransport implements Transport {
   isConnected(): boolean {
     return !!this.vscode;
   }
-
-  getVSCodeAPI(): any {
-    return this.vscode;
-  }
 }

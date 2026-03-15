@@ -51,11 +51,6 @@
   export let onTogglePause: () => void = () => {};
   export let onToggleLock: () => void = () => {};
   export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
-  export let onResolutionScaleChange: (scale: number) => void = () => {};
-  export let onCustomResolutionChange: (w: string, h: string) => void = () => {};
-  export let onClearCustomResolution: () => void = () => {};
-  export let onToggleSaveToConfig: () => void = () => {};
-  export let onResetResolution: () => void = () => {};
   export let onZoomChange: (zoom: number) => void = () => {};
   export let onFpsLimitChange: (limit: number) => void = () => {};
   export let onConfig: () => void = () => {};
@@ -254,7 +249,6 @@
 
   function handleResolutionScaleSelect(scale: number) {
     resolutionStore.setScale(scale);
-    onResolutionScaleChange(scale);
   }
 
   function handleApplyCustomResolution() {
@@ -262,7 +256,6 @@
     const hTrimmed = customHeightInput.trim();
     if (wTrimmed && hTrimmed) {
       resolutionStore.setCustomResolution(wTrimmed, hTrimmed);
-      onCustomResolutionChange(wTrimmed, hTrimmed);
     }
   }
 
@@ -270,11 +263,10 @@
     customWidthInput = "";
     customHeightInput = "";
     resolutionStore.clearCustomResolution();
-    onClearCustomResolution();
   }
 
   function handleToggleSaveToConfig() {
-    onToggleSaveToConfig();
+    // No-op: save-to-config not yet wired up
   }
 
   function handleResetResolution() {
@@ -282,7 +274,6 @@
     customHeightInput = "";
     resolutionStore.reset();
     aspectRatioStore.setMode("auto");
-    onResetResolution();
   }
 
   function handleZoomChange(event: Event) {

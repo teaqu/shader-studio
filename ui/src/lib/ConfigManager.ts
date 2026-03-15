@@ -95,7 +95,7 @@ export class ConfigManager {
     /**
      * Get the next available buffer name (BufferA, BufferB, etc.)
      */
-    getNextBufferName(): string {
+    private getNextBufferName(): string {
         if (!this.config) {
             return 'BufferA';
         }
@@ -305,22 +305,6 @@ export class ConfigManager {
     }
 
     /**
-     * Update the configuration version
-     */
-    updateVersion(version: string): boolean {
-        if (!this.config) {
-            return false;
-        }
-
-        const updatedConfig = {
-            ...this.config,
-            version
-        };
-        this.updateConfig(updatedConfig);
-        return true;
-    }
-
-    /**
      * Add a common buffer pass to the configuration
      */
     public addCommonBuffer(): boolean {
@@ -371,53 +355,6 @@ export class ConfigManager {
      */
     getConfig(): ShaderConfig | null {
         return this.config;
-    }
-
-    /**
-     * Get configuration as JSON string
-     */
-    getConfigAsJson(): string {
-        return this.config ? JSON.stringify(this.config, null, 2) : '';
-    }
-
-    /**
-     * Check if configuration is valid
-     */
-    isValid(): boolean {
-        return this.config !== null && typeof this.config === 'object';
-    }
-
-    /**
-     * Get configuration statistics
-     */
-    getStats(): {
-        version: string;
-        bufferCount: number;
-        imageInputs: number;
-        totalInputs: number;
-    } {
-        if (!this.config) {
-            return {
-                version: '',
-                bufferCount: 0,
-                imageInputs: 0,
-                totalInputs: 0
-            };
-        }
-
-        const buffers = this.getBufferList();
-        const imageInputs = Object.keys(this.config.passes.Image.inputs || {}).length;
-        const totalInputs = buffers.reduce((total, bufferName) => {
-            const buffer = this.getBuffer(bufferName);
-            return total + Object.keys(buffer?.inputs || {}).length;
-        }, imageInputs);
-
-        return {
-            version: this.config.version || '',
-            bufferCount: buffers.length,
-            imageInputs,
-            totalInputs
-        };
     }
 
     /**

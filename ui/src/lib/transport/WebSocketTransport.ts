@@ -154,15 +154,4 @@ export class WebSocketTransport implements Transport {
   isConnected(): boolean {
     return this.connected && this.ws?.readyState === WebSocket.OPEN;
   }
-
-  getWebSocket(): WebSocket | null {
-    return this.ws;
-  }
-
-  reconnect(): void {
-    this.dispose();
-    this.reconnectAttempts = 0;
-    this.reconnectDelay = 1000;
-    this.connect();
-  }
 }

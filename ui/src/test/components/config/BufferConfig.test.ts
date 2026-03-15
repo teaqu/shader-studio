@@ -300,6 +300,435 @@ describe('BufferConfig', () => {
     });
   });
 
+  describe('Path Input', () => {
+    it('should update config when path is changed', async () => {
+      const config: BufferPass = { path: 'old.glsl', inputs: {} };
+
+      const { getByDisplayValue } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const pathInput = getByDisplayValue('old.glsl');
+      await fireEvent.input(pathInput, { target: { value: 'new.glsl' } });
+
+      expect(mockOnUpdate).toHaveBeenCalled();
+      const updatedConfig = mockOnUpdate.mock.calls[0][1];
+      expect(updatedConfig.path).toBe('new.glsl');
+    });
+
+    it('should show validation errors when config is invalid', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'texture' as any } // no path => invalid
+        }
+      };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const errorMessages = container.querySelectorAll('.error-message');
+      expect(errorMessages.length).toBeGreaterThan(0);
+    });
+
+    it('should not show path input for image pass', () => {
+      const config: ImagePass = { inputs: {} };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        isImagePass: true,
+      });
+
+      const pathInput = container.querySelector('.config-input');
+      expect(pathInput).toBeNull();
+    });
+
+    it('should set pathInputFocused on focus and blur', async () => {
+      const config: BufferPass = { path: 'test.glsl', inputs: {} };
+
+      const { getByDisplayValue } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const pathInput = getByDisplayValue('test.glsl');
+      await fireEvent.focus(pathInput);
+      // After focus, typing should be possible without being overridden
+      await fireEvent.input(pathInput, { target: { value: 'editing.glsl' } });
+
+      await fireEvent.blur(pathInput);
+      // After blur, the reactive statement will sync from config prop
+    });
+  });
+
+  describe('Channel Modal Interaction', () => {
+    it('should open modal when clicking a channel box', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Click on the iChannel0 box
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.click(channelBox);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Modal should be open - ChannelConfigModal with isOpen=true
+      // The modal has overlay class when open
+      const modal = container.querySelector('.modal-overlay');
+      expect(modal).not.toBeNull();
+    });
+
+    it('should open modal via keyboard Enter on channel box', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.keyDown(channelBox, { key: 'Enter' });
+      await new Promise(r => setTimeout(r, 10));
+
+      const modal = container.querySelector('.modal-overlay');
+      expect(modal).not.toBeNull();
+    });
+
+    it('should open modal for empty channel (no input configured)', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {}
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Click on an empty channel slot (iChannel0 should be padded in)
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.click(channelBox);
+      await new Promise(r => setTimeout(r, 10));
+
+      const modal = container.querySelector('.modal-overlay');
+      expect(modal).not.toBeNull();
+    });
+
+    it('should open modal for add channel and use next available name', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' },
+          iChannel1: { type: 'keyboard' },
+          iChannel2: { type: 'keyboard' },
+          iChannel3: { type: 'keyboard' },
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      await fireEvent.click(getByText('Add Channel'));
+      await new Promise(r => setTimeout(r, 10));
+
+      const modal = container.querySelector('.modal-overlay');
+      expect(modal).not.toBeNull();
+    });
+
+    it('should open Add Channel via keyboard Enter', async () => {
+      const config: BufferPass = { path: 'buffer.glsl', inputs: {} };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const addBox = getByText('Add Channel').closest('.channel-box')!;
+      await fireEvent.keyDown(addBox, { key: 'Enter' });
+      await new Promise(r => setTimeout(r, 10));
+
+      const modal = container.querySelector('.modal-overlay');
+      expect(modal).not.toBeNull();
+    });
+  });
+
+  describe('Sort Channels', () => {
+    it('should not call onUpdate when sort is clicked with no inputs', async () => {
+      const config: BufferPass = { path: 'buffer.glsl', inputs: undefined as any };
+
+      const { queryByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Sort button shouldn't even appear with 0-1 inputs, but test the function guard
+      expect(queryByText('Sort A-Z')).toBeNull();
+      expect(mockOnUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should maintain all channels after sorting', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          charlie: { type: 'keyboard' },
+          alpha: { type: 'texture', path: 'tex.png' },
+          bravo: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      await fireEvent.click(getByText('Sort A-Z'));
+
+      const updatedConfig = mockOnUpdate.mock.calls[mockOnUpdate.mock.calls.length - 1][1];
+      const keys = Object.keys(updatedConfig.inputs);
+      expect(keys).toEqual(['alpha', 'bravo', 'charlie']);
+      // Verify values are preserved
+      expect(updatedConfig.inputs.alpha.type).toBe('texture');
+      expect(updatedConfig.inputs.bravo.type).toBe('keyboard');
+    });
+  });
+
+  describe('Channel Names Computation', () => {
+    it('should pad to 4 channels when fewer than 4 inputs exist', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // 4 channel boxes + 1 add channel box = 5 total
+      const channelBoxes = container.querySelectorAll('.channel-box');
+      expect(channelBoxes).toHaveLength(5);
+    });
+
+    it('should not duplicate existing channel names when padding', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' },
+          iChannel2: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Should have iChannel0, iChannel2 (configured) + iChannel1, iChannel3 (padded)
+      expect(getByText('iChannel0')).toBeTruthy();
+      expect(getByText('iChannel1')).toBeTruthy();
+      expect(getByText('iChannel2')).toBeTruthy();
+      expect(getByText('iChannel3')).toBeTruthy();
+    });
+
+    it('should show exactly the configured channels when 4 or more exist', () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          a: { type: 'keyboard' },
+          b: { type: 'keyboard' },
+          c: { type: 'keyboard' },
+          d: { type: 'keyboard' },
+        }
+      };
+
+      const { getByText, queryByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(getByText('a')).toBeTruthy();
+      expect(getByText('b')).toBeTruthy();
+      expect(getByText('c')).toBeTruthy();
+      expect(getByText('d')).toBeTruthy();
+      // No iChannel padding
+      expect(queryByText('iChannel0')).toBeNull();
+    });
+  });
+
+  describe('Modal Save via Tab Selection', () => {
+    it('should call onUpdate when switching tabs in modal (triggers autoSave -> handleModalSave)', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Open modal for iChannel0
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.click(channelBox);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Modal should be open
+      expect(container.querySelector('.modal-overlay')).not.toBeNull();
+
+      // Switch to Textures tab - this triggers selectTab -> autoSave -> onSave -> handleModalSave
+      const texturesTab = getByText('Textures');
+      await fireEvent.click(texturesTab);
+      await new Promise(r => setTimeout(r, 10));
+
+      // handleModalSave should have called bufferConfig.updateInputChannel which calls onUpdate
+      expect(mockOnUpdate).toHaveBeenCalled();
+    });
+  });
+
+  describe('Modal Remove', () => {
+    it('should remove channel and close modal when Remove is clicked', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Open modal for configured channel
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.click(channelBox);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Modal should be open with Remove button
+      const removeBtn = getByText('Remove');
+      expect(removeBtn).toBeTruthy();
+
+      // Click Remove
+      await fireEvent.click(removeBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      // handleModalRemove calls removeInputChannel then closeChannelModal
+      expect(mockOnUpdate).toHaveBeenCalled();
+      const lastCall = mockOnUpdate.mock.calls[mockOnUpdate.mock.calls.length - 1];
+      const updatedConfig = lastCall[1];
+      expect(updatedConfig.inputs.iChannel0).toBeUndefined();
+
+      // Modal should be closed
+      expect(container.querySelector('.modal-overlay')).toBeNull();
+    });
+  });
+
+  describe('Modal Close', () => {
+    it('should close modal when Close button is clicked', async () => {
+      const config: BufferPass = {
+        path: 'buffer.glsl',
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      // Open modal
+      const channelBox = getByText('iChannel0').closest('.channel-box')!;
+      await fireEvent.click(channelBox);
+      await new Promise(r => setTimeout(r, 10));
+      expect(container.querySelector('.modal-overlay')).not.toBeNull();
+
+      // Click Close
+      const closeBtn = getByText('Close');
+      await fireEvent.click(closeBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(container.querySelector('.modal-overlay')).toBeNull();
+    });
+  });
+
+  describe('Image Pass Channels', () => {
+    it('should show channels grid for image pass', () => {
+      const config: ImagePass = {
+        inputs: {
+          iChannel0: { type: 'keyboard' }
+        }
+      };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        isImagePass: true,
+      });
+
+      expect(getByText('iChannel0')).toBeTruthy();
+    });
+  });
+
   describe('audio/video handler props', () => {
     it('should render with onVideoControl and getVideoState props', () => {
       const config: BufferPass = {

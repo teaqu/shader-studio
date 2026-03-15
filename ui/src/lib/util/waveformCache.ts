@@ -69,11 +69,3 @@ async function generatePeaks(
     return null;
   }
 }
-
-export function clearWaveformCache(url?: string): void {
-  if (url) {
-    cache.delete(url);
-  } else {
-    cache.clear();
-  }
-}

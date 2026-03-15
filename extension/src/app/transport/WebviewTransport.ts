@@ -162,10 +162,6 @@ export class WebviewTransport implements MessageTransport {
     this.messageHandler = handler;
   }
 
-  public get panelCount(): number {
-    return this.panels.size;
-  }
-
   public hasActiveClients(): boolean {
     return this.panels.size > 0;
   }

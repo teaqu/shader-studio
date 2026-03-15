@@ -566,7 +566,6 @@ suite('ConfigPathConverter Test Suite', () => {
         let mockConverter: sinon.SinonStubbedInstance<VideoAudioConverter>;
 
         setup(() => {
-            ConfigPathConverter.clearIgnoredVideoFiles();
             showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
             showInfoStub = sandbox.stub(vscode.window, 'showInformationMessage');
             showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
@@ -651,7 +650,6 @@ suite('ConfigPathConverter Test Suite', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
 
             sinon.assert.calledOnce(showWarningStub);
-            assert.ok(ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
 
             // Reset the stub call count
             showWarningStub.resetHistory();
@@ -736,12 +734,12 @@ suite('ConfigPathConverter Test Suite', () => {
 
         test('clicking Convert still triggers conversion (not affected by Ignore feature)', async () => {
             mockConverter.getUnsupportedAudioCodec.resolves('aac');
-            mockConverter.convertAudio.resolves('/absolute/path/to/video_vscode.mp4');
+            mockConverter.convertAudio.resolves('/absolute/path/to/convert-test-video_vscode.mp4');
             showWarningStub.resolves('Convert');
             showInfoStub.resolves(undefined);
 
             const onVideoConverted = sandbox.stub();
-            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/convert-test-video.mp4');
             mockWebview.asWebviewUri.returns(mockUri);
 
             const message = {
@@ -755,7 +753,7 @@ suite('ConfigPathConverter Test Suite', () => {
                             inputs: {
                                 iChannel0: {
                                     type: 'video',
-                                    path: '/absolute/path/to/video.mp4'
+                                    path: '/absolute/path/to/convert-test-video.mp4'
                                 }
                             }
                         }
@@ -775,15 +773,13 @@ suite('ConfigPathConverter Test Suite', () => {
 
             sinon.assert.calledOnce(mockConverter.convertAudio);
             sinon.assert.calledOnce(onVideoConverted);
-            // File should NOT be added to ignored list after Convert
-            assert.ok(!ConfigPathConverter.isVideoFileIgnored('/absolute/path/to/video.mp4'));
         });
 
         test('dismissing without clicking Ignore does not suppress future notifications', async () => {
             mockConverter.getUnsupportedAudioCodec.resolves('aac');
             showWarningStub.resolves(undefined); // dismissed without clicking
 
-            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
+            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/dismiss-test-video.mp4');
             mockWebview.asWebviewUri.returns(mockUri);
 
             const message = {
@@ -797,7 +793,7 @@ suite('ConfigPathConverter Test Suite', () => {
                             inputs: {
                                 iChannel0: {
                                     type: 'video',
-                                    path: '/absolute/path/to/video.mp4'
+                                    path: '/absolute/path/to/dismiss-test-video.mp4'
                                 }
                             }
                         }
@@ -814,65 +810,10 @@ suite('ConfigPathConverter Test Suite', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
 
             sinon.assert.calledOnce(showWarningStub);
-            assert.ok(!ConfigPathConverter.isVideoFileIgnored('/absolute/path/to/video.mp4'));
 
             showWarningStub.resetHistory();
 
             // Second call — should still show warning
-            await ConfigPathConverter.processConfigPaths(
-                message as any,
-                mockWebview,
-                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
-            );
-            await new Promise(resolve => setTimeout(resolve, 10));
-
-            sinon.assert.calledOnce(showWarningStub);
-        });
-
-        test('clearIgnoredVideoFiles resets ignored state', async () => {
-            mockConverter.getUnsupportedAudioCodec.resolves('aac');
-            showWarningStub.resolves('Ignore');
-
-            const videoAbsPath = '/absolute/path/to/video.mp4';
-            const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/video.mp4');
-            mockWebview.asWebviewUri.returns(mockUri);
-
-            const message = {
-                type: 'shaderSource',
-                code: 'shader code',
-                path: '/workspace/shaders/main.glsl',
-                config: {
-                    version: '1.0',
-                    passes: {
-                        Image: {
-                            inputs: {
-                                iChannel0: {
-                                    type: 'video',
-                                    path: videoAbsPath
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            // Ignore the file
-            await ConfigPathConverter.processConfigPaths(
-                message as any,
-                mockWebview,
-                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
-            );
-            await new Promise(resolve => setTimeout(resolve, 10));
-
-            assert.ok(ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
-
-            // Clear ignored files
-            ConfigPathConverter.clearIgnoredVideoFiles();
-            assert.ok(!ConfigPathConverter.isVideoFileIgnored(videoAbsPath));
-
-            showWarningStub.resetHistory();
-
-            // Should show warning again after clearing
             await ConfigPathConverter.processConfigPaths(
                 message as any,
                 mockWebview,

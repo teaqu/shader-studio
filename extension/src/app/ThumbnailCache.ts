@@ -37,15 +37,6 @@ export class ThumbnailCache {
     }
 
     /**
-     * Check if a thumbnail exists in cache
-     */
-    public hasThumbnail(shaderPath: string, modifiedTime?: number): boolean {
-        const cacheKey = this.getCacheKey(shaderPath, modifiedTime);
-        const thumbnailPath = this.getThumbnailPath(cacheKey);
-        return fs.existsSync(thumbnailPath);
-    }
-
-    /**
      * Get a cached thumbnail as a data URI
      */
     public getThumbnail(shaderPath: string, modifiedTime?: number): string | null {
@@ -83,25 +74,6 @@ export class ThumbnailCache {
         } catch (error) {
             console.error(`Failed to save thumbnail: ${error}`);
             return false;
-        }
-    }
-
-    /**
-     * Clear all cached thumbnails
-     */
-    public clearCache(): void {
-        if (!fs.existsSync(this.cacheDir)) {
-            return;
-        }
-
-        const files = fs.readdirSync(this.cacheDir);
-        for (const file of files) {
-            const filePath = path.join(this.cacheDir, file);
-            try {
-                fs.unlinkSync(filePath);
-            } catch (error) {
-                console.error(`Failed to delete cached thumbnail: ${error}`);
-            }
         }
     }
 

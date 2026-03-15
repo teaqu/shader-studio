@@ -87,10 +87,6 @@ export class ShaderStudio {
     return this.context.extensionMode === vscode.ExtensionMode.Development;
   }
 
-  public getDebugModeEnabled(): boolean {
-    return this.isDebugModeEnabled;
-  }
-
   public setDebugModeEnabled(enabled: boolean): void {
     this.isDebugModeEnabled = enabled;
     this.logger.debug(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);

@@ -51,11 +51,4 @@ export class FPSCalculator {
     return this.currentFPS;
   }
 
-  public getSampleCount(): number {
-    return this.frameTimes.length;
-  }
-
-  public isStable(): boolean {
-    return this.frameTimes.length >= this.minSamples;
-  }
 }

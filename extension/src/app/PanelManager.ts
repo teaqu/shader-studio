@@ -36,14 +36,6 @@ export class PanelManager {
     this.messenger.addTransport(this.webviewTransport);
   }
 
-  public getPanel(): vscode.WebviewPanel | undefined {
-    return this.panels.values().next().value;
-  }
-
-  public getPanels(): vscode.WebviewPanel[] {
-    return Array.from(this.panels);
-  }
-
   public createPanel(): void {
     const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
     const lockGroup = vscode.workspace.getConfiguration('shader-studio').get<boolean>('lockEditorGroup', true);
