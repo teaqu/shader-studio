@@ -24,8 +24,12 @@
   import { EditorOverlayManager, type EditorOverlayCallbacks } from "../EditorOverlayManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
+  import { performancePanelStore } from "../stores/performancePanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
+  import { PerformanceMonitor } from "../PerformanceMonitor";
+  import type { PerformanceData } from "../PerformanceMonitor";
+  import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
@@ -110,6 +114,11 @@
   let editorFileCode: string = "";
   let editorBufferNames: string[] = ["Image"];
 
+  // Performance panel state
+  let performancePanelVisible = false;
+  let performanceMonitor: PerformanceMonitor | undefined;
+  let performanceData: PerformanceData | null = null;
+
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
 
   // Extract specific debug state fields so that capturedVariables changes
@@ -177,6 +186,8 @@
     debugState,
     isConfigPanelVisible: configPanelVisible,
     onToggleConfigPanel: handleToggleConfigPanel,
+    isPerformancePanelVisible: performancePanelVisible,
+    onTogglePerformancePanel: handleTogglePerformancePanel,
     isEditorOverlayVisible: editorOverlayVisible,
     onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
     isVimModeEnabled: editorVimMode,
@@ -204,9 +215,13 @@
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
     });
+    const unsubPerf = performancePanelStore.subscribe((state) => {
+      performancePanelVisible = state.isVisible;
+    });
     return () => {
       unsubConfig();
       unsubDebug();
+      unsubPerf();
     };
   });
 
@@ -330,6 +345,23 @@
     configPanelStore.toggle();
   }
 
+  function handleTogglePerformancePanel() {
+    performancePanelStore.toggle();
+  }
+
+  function handlePerformanceClosed() {
+    performancePanelStore.setVisible(false);
+  }
+
+  // Start/stop performance monitor based on panel visibility
+  $: if (performanceMonitor) {
+    if (performancePanelVisible) {
+      performanceMonitor.start();
+    } else {
+      performanceMonitor.stop();
+    }
+  }
+
   function handleFork() {
     if (!initialized) return;
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
@@ -400,6 +432,11 @@
     const lockedPath = shaderStudio.getLockedShaderPath();
     if (!locked || lockedPath === event.data.path) {
       const isFirstShader = !hasShader && event.data.path;
+      if (isFirstShader) {
+        configPanelStore.restoreFromStorage();
+        debugPanelStore.restoreFromStorage();
+        performancePanelStore.restoreFromStorage();
+      }
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
@@ -489,6 +526,12 @@
 
       shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
+
+      // Initialize performance monitor
+      performanceMonitor = new PerformanceMonitor(renderingEngine);
+      performanceMonitor.setStateCallback((data) => {
+        performanceData = data;
+      });
 
       renderingEngine.togglePause();
 
@@ -583,30 +626,24 @@
   let previewEl: HTMLElement;
   let debugEl: HTMLElement;
   let configEl: HTMLElement;
+  let performanceEl: HTMLElement;
 
-  function mountPreview(container: HTMLElement): () => void {
-    if (previewEl) container.appendChild(previewEl);
-    return () => {
-      if (previewEl && previewEl.parentNode === container) container.removeChild(previewEl);
+  function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
+    return (container) => {
+      const el = getEl();
+      if (el) container.appendChild(el);
+      return () => { if (el?.parentNode === container) container.removeChild(el); };
     };
   }
 
-  function mountDebug(container: HTMLElement): () => void {
-    if (debugEl) container.appendChild(debugEl);
-    return () => {
-      if (debugEl && debugEl.parentNode === container) container.removeChild(debugEl);
-    };
-  }
-
-  function mountConfig(container: HTMLElement): () => void {
-    if (configEl) container.appendChild(configEl);
-    return () => {
-      if (configEl && configEl.parentNode === container) container.removeChild(configEl);
-    };
-  }
+  const mountPreview = createMountFn(() => previewEl);
+  const mountDebug = createMountFn(() => debugEl);
+  const mountConfig = createMountFn(() => configEl);
+  const mountPerformance = createMountFn(() => performanceEl);
 
   onDestroy(() => {
     if (recordingManager) recordingManager.dispose();
+    if (performanceMonitor) performanceMonitor.dispose();
     if (audioVideoController) audioVideoController.dispose();
     if (editorOverlayManager) editorOverlayManager.dispose();
     if (variableCaptureManager) variableCaptureManager.dispose();
@@ -680,19 +717,27 @@
       />
     {/if}
   </div>
+  <div class="dockview-panel-source" bind:this={performanceEl}>
+    {#if performancePanelVisible}
+      <FrameTimesPanel data={performanceData} />
+    {/if}
+  </div>
 
   <DockviewLayout
     {mountPreview}
     {mountDebug}
     {mountConfig}
+    {mountPerformance}
     {showDebugPanel}
     showConfigPanel={configPanelVisible}
+    showPerformancePanel={performancePanelVisible}
     {transport}
     on:ready={handleDockviewReady}
     on:previewVisibleChange={handlePreviewVisibleChange}
     on:previewAloneChange={handlePreviewAloneChange}
     on:debugClosed={handleDebugClosed}
     on:configClosed={handleConfigClosed}
+    on:performanceClosed={handlePerformanceClosed}
   />
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />

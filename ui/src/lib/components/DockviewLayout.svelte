@@ -18,15 +18,18 @@
     previewAloneChange: boolean;
     debugClosed: void;
     configClosed: void;
+    performanceClosed: void;
   }>();
 
   // Panel mount callbacks — parent will set Svelte components into these containers
   export let mountPreview: (container: HTMLElement) => (() => void) | void = () => {};
   export let mountDebug: (container: HTMLElement) => (() => void) | void = () => {};
   export let mountConfig: (container: HTMLElement) => (() => void) | void = () => {};
+  export let mountPerformance: (container: HTMLElement) => (() => void) | void = () => {};
 
   export let showDebugPanel: boolean = false;
   export let showConfigPanel: boolean = false;
+  export let showPerformancePanel: boolean = false;
   export let transport: Transport | null = null;
 
   let containerEl: HTMLElement;
@@ -228,6 +231,9 @@
         case "config":
           mountFn = mountConfig;
           break;
+        case "performance":
+          mountFn = mountPerformance;
+          break;
         default:
           return;
       }
@@ -264,6 +270,9 @@
     }
     if (showConfigPanel) {
       addConfigPanel();
+    }
+    if (showPerformancePanel) {
+      addPerformancePanel();
     }
   }
 
@@ -322,6 +331,46 @@
   function removeConfigPanel() {
     if (!api) return;
     const panel = api.getPanel("config");
+    if (panel) {
+      programmaticRemoval = true;
+      api.removePanel(panel);
+      programmaticRemoval = false;
+    }
+  }
+
+  function addPerformancePanel() {
+    if (!api || api.getPanel("performance")) return;
+    // Tab alongside debug/config if either exists, otherwise below preview
+    const debugPanel = api.getPanel("debug");
+    const configPanel = api.getPanel("config");
+    const siblingPanel = debugPanel || configPanel;
+    if (siblingPanel) {
+      api.addPanel({
+        id: "performance",
+        component: "performance",
+        title: "Frame Times",
+        position: {
+          referencePanel: siblingPanel.id,
+          direction: "within",
+        },
+      });
+    } else {
+      api.addPanel({
+        id: "performance",
+        component: "performance",
+        title: "Frame Times",
+        position: {
+          referencePanel: "preview",
+          direction: "below",
+        },
+        initialHeight: 200,
+      });
+    }
+  }
+
+  function removePerformancePanel() {
+    if (!api) return;
+    const panel = api.getPanel("performance");
     if (panel) {
       programmaticRemoval = true;
       api.removePanel(panel);
@@ -401,6 +450,15 @@
     }
   }
 
+  // React to performance panel visibility
+  $: if (api && layoutReady) {
+    if (showPerformancePanel) {
+      addPerformancePanel();
+    } else {
+      removePerformancePanel();
+    }
+  }
+
   onMount(() => {
     api = createDockview(containerEl, {
       createComponent(options) {
@@ -476,6 +534,9 @@
       }
       if (panel.id === "config" && !programmaticRemoval) {
         dispatch("configClosed");
+      }
+      if (panel.id === "performance" && !programmaticRemoval) {
+        dispatch("performanceClosed");
       }
       checkPreviewAlone();
     });

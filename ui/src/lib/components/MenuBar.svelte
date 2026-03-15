@@ -48,6 +48,8 @@
   export let audioVolume: number = 1.0;
   export let audioMuted: boolean = true;
   export let audioVideoController: AudioVideoController | undefined = undefined;
+  export let isPerformancePanelVisible: boolean = false;
+  export let onTogglePerformancePanel: () => void = () => {};
 
   function onVolumeChange(volume: number) {
     audioVideoController?.setVolume(volume);
@@ -365,6 +367,14 @@
               Unlimited
             </button>
           </div>
+          <div class="resolution-separator"></div>
+          <button
+            class="resolution-option menu-title"
+            class:active={isPerformancePanelVisible}
+            on:click={() => { onTogglePerformancePanel(); showFPSMenu = false; }}
+          >
+            <i class="codicon codicon-graph-line"></i> Frame Times
+          </button>
         </div>
       {/if}
     </div>

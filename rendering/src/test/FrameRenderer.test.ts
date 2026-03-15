@@ -173,11 +173,10 @@ describe("FrameRenderer", () => {
       expect(mockFPSCalculator.updateFrame).toHaveBeenCalledTimes(2);
     });
 
-    it("should use ideal interval advancement to prevent FPS drift", () => {
+    it("should use drift-corrected interval to maintain target FPS", () => {
       // On a 144Hz display targeting 30fps, RAF fires every ~6.94ms.
-      // Without ideal advancement, frames snap to RAF ticks and drift below target.
-      // With ideal advancement, lastRenderedAt advances by 33.33ms each time,
-      // so the next frame is measured from the ideal time, not the actual RAF time.
+      // lastRenderedAt advances by exactly minFrameInterval (33.33ms) on each
+      // render, so small timing errors don't accumulate.
       frameRenderer.setRunning(true);
       frameRenderer.setFPSLimit(30);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.03472);
@@ -186,32 +185,31 @@ describe("FrameRenderer", () => {
       const interval = 1000 / 144; // ~6.944ms
 
       // Simulate 144Hz RAF ticks
-      frameRenderer.render(1000);                    // Frame 1: first frame renders
-      frameRenderer.render(1000 + interval * 1);     // ~1006.94 - skip
+      frameRenderer.render(1000);                    // Frame 1: first frame renders, lastRenderedAt = 1000
+      frameRenderer.render(1000 + interval * 1);     // ~1006.94 - skip (6.94 < 30)
       frameRenderer.render(1000 + interval * 2);     // ~1013.89 - skip
       frameRenderer.render(1000 + interval * 3);     // ~1020.83 - skip
       frameRenderer.render(1000 + interval * 4);     // ~1027.78 - skip
-      frameRenderer.render(1000 + interval * 5);     // ~1034.72 - render (elapsed > 33.33)
+      frameRenderer.render(1000 + interval * 5);     // ~1034.72 - render (34.72 >= 30), lastRenderedAt = 1000+33.33 = 1033.33
 
       expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(2);
 
-      // The 3rd render should happen around t=1066.67, not t=1069.44.
-      // Because lastRenderedAt advanced to ~1033.33 (ideal), the next frame
-      // at t=1062.5 (9th tick) should also pass since elapsed = 62.5-33.33 = 29.17 < 30.
-      // But t=1069.44 (10th tick) would have elapsed = 69.44-33.33 = 36.11 >= 30 → render.
-      // Key point: with ideal advancement, we don't lose frames to accumulated drift.
+      // With drift-correction, lastRenderedAt is 1033.33 (ideal time).
+      // Next render needs elapsed >= 30ms from 1033.33.
+      // Tick 10 = 1069.44: elapsed = 1069.44 - 1033.33 = 36.11 >= 30 → render
+      // lastRenderedAt = 1033.33 + 33.33 = 1066.67
       frameRenderer.render(1000 + interval * 6);     // ~1041.67 - skip
       frameRenderer.render(1000 + interval * 7);     // ~1048.61 - skip
       frameRenderer.render(1000 + interval * 8);     // ~1055.56 - skip
-      frameRenderer.render(1000 + interval * 9);     // ~1062.50 - skip
-      frameRenderer.render(1000 + interval * 10);    // ~1069.44 - render
+      frameRenderer.render(1000 + interval * 9);     // ~1062.50 - skip (29.17 < 30)
+      frameRenderer.render(1000 + interval * 10);    // ~1069.44 - render, lastRenderedAt = 1066.67
 
       expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(3);
 
-      // Continue — 3 rendered frames in ~69.44ms = ~43.2 FPS effective rate
-      // which is correct since 144Hz RAF ticks don't align perfectly with 33.33ms.
-      // But over many frames, ideal advancement keeps the average at 30fps.
-      frameRenderer.render(1000 + interval * 14);    // ~1097.22 - render (97.22-66.67=30.56 >= 30)
+      // Drift correction keeps lastRenderedAt at 1066.67.
+      // Tick 14 = 1097.22: elapsed = 1097.22 - 1066.67 = 30.56 >= 30 → render
+      // (Only 4 ticks gap instead of 5, compensating for earlier overshoot)
+      frameRenderer.render(1000 + interval * 14);    // ~1097.22 - render
 
       expect(mockTimeManager.updateFrame).toHaveBeenCalledTimes(4);
     });
@@ -370,8 +368,9 @@ describe("FrameRenderer", () => {
         }
       }
 
-      // 2 seconds at 30fps target = 60 renders.
-      // Allow ±1 for boundary effects on first/last frame.
+      // With drift-correction, lastRenderedAt advances by exactly 33.33ms
+      // each render, so frames alternate between 4 and 5 tick gaps to maintain
+      // the target cadence. Over 288 ticks (~2s) this gives ~60 renders.
       expect(renderCount).toBeGreaterThanOrEqual(59);
       expect(renderCount).toBeLessThanOrEqual(61);
     });
@@ -1407,6 +1406,208 @@ describe("FrameRenderer", () => {
 
       // Frame should not increment when paused
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("frame time history", () => {
+    it("should return empty array initially", () => {
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+    });
+
+    it("should record frame-to-frame deltas after two frames", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+
+      const history = frameRenderer.getFrameTimeHistory();
+      expect(history).toHaveLength(1);
+      expect(history[0]).toBeCloseTo(16.67, 1);
+    });
+
+    it("should not record on first frame (no previous timestamp)", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+    });
+
+    it("should cap history at MAX_HISTORY (3600)", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      // Render 3602 frames so that 3601 deltas would be produced (first frame has no delta)
+      for (let i = 0; i < 3602; i++) {
+        frameRenderer.render(1000 + i * 16.67);
+      }
+
+      const history = frameRenderer.getFrameTimeHistory();
+      expect(history).toHaveLength(3600);
+    });
+
+    it("should ignore large deltas (>= 500ms, simulating tab backgrounding)", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      // Simulate a 600ms gap (tab was backgrounded)
+      frameRenderer.render(1600);
+
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+    });
+
+    it("should reset previousFrameTimestamp when paused (no huge spike on unpause)", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      // Two normal frames
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+
+      // Now pause
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(true);
+      frameRenderer.render(1033.33);
+
+      // Unpause much later — previousFrameTimestamp was reset to null during pause,
+      // so first frame after unpause should not record a delta
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+      frameRenderer.render(5000);
+
+      // Still only 1 entry from before the pause
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+    });
+
+    it("should record correct deltas across multiple frames", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1010);
+      frameRenderer.render(1030);
+      frameRenderer.render(1060);
+
+      const history = frameRenderer.getFrameTimeHistory();
+      expect(history).toHaveLength(3);
+      expect(history[0]).toBeCloseTo(10, 1);
+      expect(history[1]).toBeCloseTo(20, 1);
+      expect(history[2]).toBeCloseTo(30, 1);
+    });
+  });
+
+  describe("frame time count", () => {
+    it("should return 0 initially", () => {
+      expect(frameRenderer.getFrameTimeCount()).toBe(0);
+    });
+
+    it("should increment by 1 for each recorded frame delta", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);   // first frame — no delta (no previous timestamp)
+      expect(frameRenderer.getFrameTimeCount()).toBe(0);
+
+      frameRenderer.render(1016.67); // delta recorded
+      expect(frameRenderer.getFrameTimeCount()).toBe(1);
+
+      frameRenderer.render(1033.33); // another delta
+      expect(frameRenderer.getFrameTimeCount()).toBe(2);
+    });
+
+    it("should NOT increment for ignored large deltas (tab backgrounding)", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67); // +1 → count=1
+      frameRenderer.render(1600);    // 583ms gap — ignored, count stays 1
+
+      expect(frameRenderer.getFrameTimeCount()).toBe(1);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+    });
+
+    it("should NOT increment when paused", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67); // count=1
+
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(true);
+      frameRenderer.render(1033.33); // paused — no delta
+      frameRenderer.render(1050);    // still paused
+
+      expect(frameRenderer.getFrameTimeCount()).toBe(1);
+    });
+
+    it("should keep counting after history is capped at MAX_HISTORY", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      // Render 3602 frames → 3601 deltas, history capped at 3600
+      for (let i = 0; i < 3602; i++) {
+        frameRenderer.render(1000 + i * 16.67);
+      }
+
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(3600);
+      // Count should be 3601 (every frame after the first), NOT 3600
+      expect(frameRenderer.getFrameTimeCount()).toBe(3601);
+    });
+
+    it("should equal history length when history has not been capped", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      for (let i = 0; i < 100; i++) {
+        frameRenderer.render(1000 + i * 16.67);
+      }
+
+      // 100 renders → 99 deltas, history not capped
+      expect(frameRenderer.getFrameTimeCount()).toBe(99);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(99);
+      expect(frameRenderer.getFrameTimeCount()).toBe(frameRenderer.getFrameTimeHistory().length);
+    });
+
+    it("should diverge from history length once history is capped", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      for (let i = 0; i < 4000; i++) {
+        frameRenderer.render(1000 + i * 16.67);
+      }
+
+      // 4000 renders → 3999 deltas, but history capped at 3600
+      expect(frameRenderer.getFrameTimeCount()).toBe(3999);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(3600);
+      expect(frameRenderer.getFrameTimeCount()).toBeGreaterThan(frameRenderer.getFrameTimeHistory().length);
     });
   });
 });

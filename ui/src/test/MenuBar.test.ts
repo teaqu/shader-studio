@@ -91,8 +91,8 @@ describe('MenuBar Component', () => {
 
     it('should display FPS and canvas dimensions', () => {
       render(MenuBar, { props: defaultProps });
-      
-      expect(screen.getByText('60.0 FPS')).toBeInTheDocument();
+
+      expect(screen.getByLabelText('Change FPS limit')).toHaveTextContent('60');
       expect(screen.getByText('800 × 600')).toBeInTheDocument();
     });
 
@@ -788,6 +788,86 @@ describe('MenuBar Component', () => {
       await fireEvent.click(document.body);
       expect(screen.queryByText('Frame Rate Limit')).not.toBeInTheDocument();
     });
+
+    it('should show Frame Times button in FPS menu', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isPerformancePanelVisible: false,
+          onTogglePerformancePanel: vi.fn(),
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+
+      expect(screen.getByText('Frame Times')).toBeInTheDocument();
+    });
+
+    it('should call onTogglePerformancePanel when Frame Times is clicked', async () => {
+      const onTogglePerformancePanel = vi.fn();
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isPerformancePanelVisible: false,
+          onTogglePerformancePanel,
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+      await fireEvent.click(screen.getByText('Frame Times'));
+
+      expect(onTogglePerformancePanel).toHaveBeenCalledOnce();
+    });
+
+    it('should close FPS menu after clicking Frame Times', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isPerformancePanelVisible: false,
+          onTogglePerformancePanel: vi.fn(),
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+      await fireEvent.click(screen.getByText('Frame Times'));
+
+      expect(screen.queryByText('Frame Rate Limit')).not.toBeInTheDocument();
+    });
+
+    it('should show Frame Times button as active when performance panel is visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isPerformancePanelVisible: true,
+          onTogglePerformancePanel: vi.fn(),
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+
+      const frameTimesBtn = screen.getByText('Frame Times');
+      expect(frameTimesBtn).toHaveClass('active');
+    });
+
+    it('should show Frame Times button as inactive when performance panel is not visible', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          isPerformancePanelVisible: false,
+          onTogglePerformancePanel: vi.fn(),
+        },
+      });
+
+      const fpsButton = screen.getByLabelText('Change FPS limit');
+      await fireEvent.click(fpsButton);
+
+      const frameTimesBtn = screen.getByText('Frame Times');
+      expect(frameTimesBtn).not.toHaveClass('active');
+    });
   });
 
   describe('Menu Interactions', () => {
@@ -1258,7 +1338,7 @@ describe('MenuBar Component', () => {
       // Should show 0.00s for time when no timeManager
       expect(screen.getByText('0.00s')).toBeInTheDocument();
       // Should still show FPS
-      expect(screen.getByText('60.0 FPS')).toBeInTheDocument();
+      expect(screen.getByLabelText('Change FPS limit')).toHaveTextContent('60');
     });
 
     it('should update time display when timeManager provides values', async () => {
