@@ -141,4 +141,22 @@ export interface GoToLineMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage;
+export interface SaveFileMessage extends BaseMessage {
+  type: "saveFile";
+  payload: {
+    data: string;
+    defaultName: string;
+    filters: Record<string, string[]>;
+  };
+}
+
+export interface SaveFileResultMessage extends BaseMessage {
+  type: "saveFileResult";
+  payload: {
+    success: boolean;
+    path?: string;
+    error?: string;
+  };
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage;

@@ -331,6 +331,14 @@ export class RenderingEngine implements RenderingEngineInterface {
     };
   }
 
+  public renderForCapture(): void {
+    this.frameRenderer.renderForCapture();
+  }
+
+  public getCanvas(): HTMLCanvasElement | null {
+    return this.glCanvas;
+  }
+
   public readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
     if (!this.glCanvas) {
       return null;

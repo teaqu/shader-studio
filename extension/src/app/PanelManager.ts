@@ -154,6 +154,8 @@ export class PanelManager {
       await this.handleRequestWorkspaceFiles(message.payload, panel);
     } else if (message.type === 'forkShader') {
       await this.handleForkShader(message.payload, panel);
+    } else if (message.type === 'saveFile') {
+      await this.handleSaveFile(message.payload, panel);
     } else if (message.type === 'goToLine') {
       await this.handleGoToLine(message.payload);
     } else if (message.type === 'extensionCommand') {
@@ -384,6 +386,48 @@ export class PanelManager {
     }
   }
 
+  private async handleSaveFile(
+    payload: { data: string; defaultName: string; filters: Record<string, string[]> },
+    panel: vscode.WebviewPanel,
+  ): Promise<void> {
+    try {
+      const filterEntries = Object.entries(payload.filters);
+      const saveFilters: Record<string, string[]> = {};
+      for (const [label, exts] of filterEntries) {
+        saveFilters[label] = exts;
+      }
+
+      const result = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(payload.defaultName),
+        filters: saveFilters,
+      });
+
+      if (!result) {
+        panel.webview.postMessage({
+          type: 'saveFileResult',
+          payload: { success: false, error: 'Cancelled' },
+        });
+        return;
+      }
+
+      const buffer = Buffer.from(payload.data, 'base64');
+      fs.writeFileSync(result.fsPath, buffer);
+
+      panel.webview.postMessage({
+        type: 'saveFileResult',
+        payload: { success: true, path: result.fsPath },
+      });
+
+      this.logger.info(`File saved: ${result.fsPath}`);
+    } catch (error) {
+      panel.webview.postMessage({
+        type: 'saveFileResult',
+        payload: { success: false, error: String(error) },
+      });
+      this.logger.error(`Failed to save file: ${error}`);
+    }
+  }
+
   private async handleGoToLine(payload: { line: number; filePath: string }): Promise<void> {
     try {
       const { line, filePath } = payload;
@@ -500,6 +544,10 @@ export class PanelManager {
       updatedCsp = updatedCsp.includes('worker-src')
         ? updatedCsp.replace(/worker-src[^;]*/, workerSrc)
         : `${updatedCsp}; ${workerSrc}`;
+      // Allow WASM compilation (needed for gifski-wasm GIF encoder)
+      if (!updatedCsp.includes('wasm-unsafe-eval')) {
+        updatedCsp = updatedCsp.replace(/script-src[^;]*/, (match) => `${match} 'wasm-unsafe-eval'`);
+      }
       updatedCsp = updatedCsp.includes('connect-src')
         ? updatedCsp.replace(/connect-src[^;]*/, connectSrc)
         : `${updatedCsp}; ${connectSrc}`;
@@ -513,7 +561,7 @@ export class PanelManager {
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
       
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);

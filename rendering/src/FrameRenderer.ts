@@ -124,6 +124,17 @@ export class FrameRenderer {
     };
   }
 
+  /**
+   * Render a single frame unconditionally for capture.
+   * Bypasses running flag, FPS limit, and duplicate frame skip.
+   */
+  public renderForCapture(): void {
+    this.currentFrameTime = performance.now();
+    const uniforms = this.getUniforms();
+    this.renderBufferPasses(uniforms);
+    this.renderImagePass(uniforms);
+  }
+
   public startRenderLoop(): void {
     if (this.running) {
       return;
