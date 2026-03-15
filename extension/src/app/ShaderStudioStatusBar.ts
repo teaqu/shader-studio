@@ -19,10 +19,10 @@ export class ShaderStudioStatusBar {
         this.isServerRunning = isRunning;
 
         if (isRunning) {
-            this.statusBarItem.text = "$(circle-filled) SHA";
+            this.statusBarItem.text = "$(shader-studio-icon-running)";
             this.statusBarItem.tooltip = `Shader Studio - Server Running${port ? ` on port ${port}` : ''}`;
         } else {
-            this.statusBarItem.text = "SHA";
+            this.statusBarItem.text = "$(shader-studio-icon)";
             this.statusBarItem.tooltip = "Shader Studio - Click for options";
         }
     }

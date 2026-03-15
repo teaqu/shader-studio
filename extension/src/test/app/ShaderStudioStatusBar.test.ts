@@ -47,12 +47,12 @@ suite('ShaderStudioStatusBar Test Suite', () => {
 
         // Stopped state (default)
         statusBar.updateServerStatus(false);
-        assert.strictEqual(mockStatusBarItem.text, 'SHA');
+        assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon)');
         assert.strictEqual(mockStatusBarItem.tooltip, 'Shader Studio - Click for options');
 
         // Running state with port
         statusBar.updateServerStatus(true, 1234);
-        assert.strictEqual(mockStatusBarItem.text, '$(circle-filled) SHA');
+        assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon-running)');
         assert.ok(mockStatusBarItem.tooltip.includes('Server Running'));
         assert.ok(mockStatusBarItem.tooltip.includes('1234'));
     });
