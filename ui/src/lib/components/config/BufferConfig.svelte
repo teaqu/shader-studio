@@ -167,9 +167,7 @@
             on:click={handleSortChannels}
             title="Sort channels alphabetically"
           >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M3.5 2.5v11l-2-2-.7.7L4 15.4l3.2-3.2-.7-.7-2 2v-11h-1zm4 0v1h8v-1h-8zm0 3v1h6v-1h-6zm0 3v1h4v-1h-4zm0 3v1h2v-1h-2z"/>
-            </svg>
+            <i class="codicon codicon-sort-precedence"></i>
             Sort A-Z
           </button>
         </div>

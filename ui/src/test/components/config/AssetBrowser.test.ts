@@ -436,7 +436,7 @@ describe('AssetBrowser', () => {
     });
 
     it('should navigate to next page', async () => {
-      render(AssetBrowser, {
+      const { container } = render(AssetBrowser, {
         extensions: ['png'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
@@ -449,8 +449,8 @@ describe('AssetBrowser', () => {
       // Should have file0..file7 on first page
       expect(screen.getByText('file0.png')).toBeInTheDocument();
 
-      // Click next page button (the ›)
-      const nextBtn = screen.getByText('›');
+      // Click next page button
+      const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
       await new Promise(r => setTimeout(r, 10));
 
@@ -460,7 +460,7 @@ describe('AssetBrowser', () => {
     });
 
     it('should navigate to previous page', async () => {
-      render(AssetBrowser, {
+      const { container } = render(AssetBrowser, {
         extensions: ['png'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
@@ -471,12 +471,12 @@ describe('AssetBrowser', () => {
       await new Promise(r => setTimeout(r, 10));
 
       // Go to page 2
-      const nextBtn = screen.getByText('›');
+      const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
       await new Promise(r => setTimeout(r, 10));
 
       // Go back to page 1
-      const prevBtn = screen.getByText('‹');
+      const prevBtn = container.querySelector('.codicon-chevron-left')!.closest('button')!;
       await fireEvent.click(prevBtn);
       await new Promise(r => setTimeout(r, 10));
 
@@ -504,7 +504,7 @@ describe('AssetBrowser', () => {
     });
 
     it('should disable prev button on first page', async () => {
-      render(AssetBrowser, {
+      const { container } = render(AssetBrowser, {
         extensions: ['png'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
@@ -514,12 +514,12 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles(manyFiles);
       await new Promise(r => setTimeout(r, 10));
 
-      const prevBtn = screen.getByText('‹');
+      const prevBtn = container.querySelector('.codicon-chevron-left')!.closest('button')!;
       expect(prevBtn).toBeDisabled();
     });
 
     it('should disable next button on last page', async () => {
-      render(AssetBrowser, {
+      const { container } = render(AssetBrowser, {
         extensions: ['png'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
@@ -534,12 +534,12 @@ describe('AssetBrowser', () => {
       await fireEvent.click(page3Btn);
       await new Promise(r => setTimeout(r, 10));
 
-      const nextBtn = screen.getByText('›');
+      const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       expect(nextBtn).toBeDisabled();
     });
 
     it('should reset to page 1 when search query changes', async () => {
-      render(AssetBrowser, {
+      const { container } = render(AssetBrowser, {
         extensions: ['png'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
@@ -550,7 +550,7 @@ describe('AssetBrowser', () => {
       await new Promise(r => setTimeout(r, 10));
 
       // Go to page 2
-      const nextBtn = screen.getByText('›');
+      const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
       await new Promise(r => setTimeout(r, 10));
 

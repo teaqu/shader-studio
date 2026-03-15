@@ -8,18 +8,7 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: () => false
 }));
 
-// Mock SVG imports
-vi.mock('../../assets/reset.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/refresh.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/play.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/pause.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/moon.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/sun.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/lock.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/unlock.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/fullscreen.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/menu.svg?raw', () => ({ default: '<svg></svg>' }));
-vi.mock('../../assets/config.svg?raw', () => ({ default: '<svg></svg>' }));
+
 
 describe('MenuBar', () => {
   const mockTimeManager = {

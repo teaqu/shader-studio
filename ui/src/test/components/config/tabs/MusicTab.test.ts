@@ -80,7 +80,7 @@ describe('MusicTab', () => {
       expect(container.querySelector('.btn-control[title="Play"]')).toBeTruthy();
     });
 
-    it('should show unmute button with SVG icon when audio is muted', () => {
+    it('should show unmute button with codicon when audio is muted', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
@@ -91,7 +91,7 @@ describe('MusicTab', () => {
 
       const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
       expect(unmuteBtn).toBeTruthy();
-      expect(unmuteBtn!.querySelector('svg')).toBeTruthy();
+      expect(unmuteBtn!.querySelector('.codicon-mute')).toBeTruthy();
     });
 
     it('should display timer with formatted time', () => {

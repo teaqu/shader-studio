@@ -1,5 +1,6 @@
 <script lang="ts">
-  import loopIcon from "../../assets/refresh.svg?raw";
+
+
 
   export let timeManager: any;
   export let currentTime: number = 0.0;
@@ -93,7 +94,7 @@
             aria-label={loopEnabled ? "Disable loop" : "Enable loop"}
             title={loopEnabled ? "Disable loop" : "Enable loop"}
           >
-            {@html loopIcon}
+            <i class="codicon codicon-sync"></i>
           </button>
         </div>
         <div class="scrub-control">

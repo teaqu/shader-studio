@@ -332,7 +332,7 @@
               on:click={(e) => handlePreviewVideoControlWithSync(videoState?.paused ? 'play' : 'pause', e)}
               title={videoState?.paused ? 'Play' : 'Pause'}
             >
-              {videoState?.paused ? '\u25B6' : '\u23F8'}
+              {#if videoState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
             </button>
             <button
               class="preview-ctrl-btn"
@@ -341,16 +341,9 @@
               disabled={videoState?.muted && globalMuted}
             >
               {#if videoState?.muted}
-                <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                  <line x1="23" y1="9" x2="17" y2="15" />
-                  <line x1="17" y1="9" x2="23" y2="15" />
-                </svg>
+                <i class="codicon codicon-mute"></i>
               {:else}
-                <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                </svg>
+                <i class="codicon codicon-unmute"></i>
               {/if}
             </button>
             <button
@@ -358,7 +351,7 @@
               on:click={(e) => handlePreviewVideoControlWithSync('reset', e)}
               title="Reset to beginning"
             >
-              &#x21BA;
+              <i class="codicon codicon-debug-restart"></i>
             </button>
           </div>
         {/if}
@@ -392,7 +385,7 @@
               on:click={(e) => handlePreviewAudioControl(audioControlState?.paused ? 'play' : 'pause', e)}
               title={audioControlState?.paused ? 'Play' : 'Pause'}
             >
-              {audioControlState?.paused ? '\u25B6' : '\u23F8'}
+              {#if audioControlState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
             </button>
             <button
               class="preview-ctrl-btn"
@@ -401,16 +394,9 @@
               disabled={audioControlState?.muted && globalMuted}
             >
               {#if audioControlState?.muted}
-                <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                  <line x1="23" y1="9" x2="17" y2="15" />
-                  <line x1="17" y1="9" x2="23" y2="15" />
-                </svg>
+                <i class="codicon codicon-mute"></i>
               {:else}
-                <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                </svg>
+                <i class="codicon codicon-unmute"></i>
               {/if}
             </button>
             <button
@@ -418,7 +404,7 @@
               on:click={(e) => handlePreviewAudioControl('reset', e)}
               title="Reset to beginning"
             >
-              &#x21BA;
+              <i class="codicon codicon-debug-restart"></i>
             </button>
           </div>
         {/if}

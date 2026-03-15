@@ -90,7 +90,7 @@
               <span class="stat-label">max</span><span class="stat-val">{fmt(variable.stats.max)}</span>
               <span class="stat-sep">·</span>
               <span class="stat-label">avg</span><span class="stat-val">{fmt(variable.stats.mean)}</span>
-              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle histogram">▼</button>
+              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle histogram"><i class="codicon codicon-chevron-down"></i></button>
             </span>
           {/if}
         {:else}
@@ -120,7 +120,7 @@
                   >({#each variable.channelMeans as v, i
                     }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})</span>
               {/if}
-              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle channel view">▼</button>
+              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle channel view"><i class="codicon codicon-chevron-down"></i></button>
             {/if}
           </span>
         {:else}

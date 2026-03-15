@@ -353,7 +353,7 @@
         on:click={() => handleAudioControl(audioState?.paused ? 'play' : 'pause')}
         title={audioState?.paused ? 'Play' : 'Pause'}
       >
-        {audioState?.paused ? '\u25B6' : '\u23F8'}
+        {#if audioState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
       </button>
       <button
         class="btn-control"
@@ -361,17 +361,9 @@
         title={audioState?.muted ? 'Unmute' : 'Mute'}
       >
         {#if audioState?.muted}
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-            <line x1="23" y1="9" x2="17" y2="15" />
-            <line x1="17" y1="9" x2="23" y2="15" />
-          </svg>
+          <i class="codicon codicon-mute"></i>
         {:else}
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-          </svg>
+          <i class="codicon codicon-unmute"></i>
         {/if}
       </button>
       <button
@@ -379,7 +371,7 @@
         on:click={() => handleAudioControl('reset')}
         title="Reset to beginning"
       >
-        &#x21BA;
+        <i class="codicon codicon-debug-restart"></i>
       </button>
       {#if audioState && audioState.duration > 0}
         <span class="video-timer">{formatTime(audioState.currentTime)} / {formatTime(audioState.duration)}</span>
