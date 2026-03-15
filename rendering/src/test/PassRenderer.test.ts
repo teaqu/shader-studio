@@ -187,6 +187,27 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
     });
 
+    it("should skip keyboard texture update when skipInputUpdates is true", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "keyboard" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockKeyboardTexture = createMockTexture();
+      mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms, true);
+
+      expect(mockResourceManager.updateKeyboardTexture).not.toHaveBeenCalled();
+      // Should still bind the existing texture
+      expect(mockResourceManager.getKeyboardTexture).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
+    });
+
     it("should handle buffer input correctly", () => {
       const passConfig: Pass = {
         name: "TestPass",

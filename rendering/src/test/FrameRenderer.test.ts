@@ -546,7 +546,8 @@ describe("FrameRenderer", () => {
         { name: 'Image', shaderSrc: 'image shader', inputs: {} },
         null,
         { mProgram: {}, mResult: true },
-        expect.any(Object)
+        expect.any(Object),
+        true
       );
     });
 
@@ -640,7 +641,8 @@ describe("FrameRenderer", () => {
         { name: 'Image', shaderSrc: 'image shader', inputs: {} },
         null,
         { mProgram: {}, mResult: true },
-        expect.any(Object)
+        expect.any(Object),
+        false
       );
     });
 
@@ -686,7 +688,8 @@ describe("FrameRenderer", () => {
           frame: 1,
           date: new Float32Array([2025, 1, 1, 0]),
           mouse: new Float32Array([0, 0, 0, 0])
-        })
+        }),
+        false
       );
     });
 
@@ -1401,11 +1404,118 @@ describe("FrameRenderer", () => {
         { name: 'Image', shaderSrc: 'image shader', inputs: {} },
         null,
         { mProgram: {}, mResult: true },
-        expect.any(Object)
+        expect.any(Object),
+        true
       );
 
       // Frame should not increment when paused
       expect(mockTimeManager.incrementFrame).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("paused uniform freezing", () => {
+    it("should freeze uniforms when entering paused state", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      // Pause with initial values
+      const initialMouse = new Float32Array([10, 20, 10, 20]);
+      mockMouseManager.getMouse.mockReturnValue(initialMouse);
+      mockTimeManager.getCurrentTime.mockReturnValue(5.0);
+      mockTimeManager.getCurrentDate.mockReturnValue(new Float32Array([2025, 1, 1, 100]));
+      mockTimeManager.isPaused.mockReturnValue(true);
+      frameRenderer.render(1000);
+
+      // Change mouse and date values — these should be ignored on subsequent paused frames
+      mockMouseManager.getMouse.mockReturnValue(new Float32Array([99, 99, 99, 99]));
+      mockTimeManager.getCurrentDate.mockReturnValue(new Float32Array([2025, 1, 1, 999]));
+
+      mockPassRenderer.renderPass.mockClear();
+      frameRenderer.render(2000);
+
+      // Uniforms should reflect the frozen values from when pause started
+      const passedUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passedUniforms.mouse).toEqual(initialMouse);
+      expect(passedUniforms.date).toEqual(new Float32Array([2025, 1, 1, 100]));
+    });
+
+    it("should use fresh uniforms after unpausing", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      // Render while running
+      mockMouseManager.getMouse.mockReturnValue(new Float32Array([10, 20, 10, 20]));
+      frameRenderer.render(1000);
+
+      // Pause
+      mockTimeManager.isPaused.mockReturnValue(true);
+      frameRenderer.render(2000);
+
+      // Unpause with new mouse
+      mockTimeManager.isPaused.mockReturnValue(false);
+      const newMouse = new Float32Array([50, 60, 50, 60]);
+      mockMouseManager.getMouse.mockReturnValue(newMouse);
+
+      mockPassRenderer.renderPass.mockClear();
+      frameRenderer.render(3000);
+
+      const passedUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passedUniforms.mouse).toEqual(newMouse);
+    });
+
+    it("should pass isPaused=true to renderPass for Image pass when paused", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+      mockTimeManager.isPaused.mockReturnValue(true);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        expect.any(Object),
+        null,
+        expect.any(Object),
+        expect.any(Object),
+        true
+      );
+    });
+
+    it("should pass isPaused=false to renderPass for Image pass when not paused", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
+        expect.any(Object),
+        null,
+        expect.any(Object),
+        expect.any(Object),
+        false
+      );
     });
   });
 
