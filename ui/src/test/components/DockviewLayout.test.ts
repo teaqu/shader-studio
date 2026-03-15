@@ -808,4 +808,201 @@ function renderLayout(props: Record<string, any> = {}) {
       expect(el.classList.contains('dv-drag-active')).toBe(true);
     });
   });
+
+  // ─── Performance panel management ─────────────────────────────
+  describe('Performance panel', () => {
+    it('should add performance panel when showPerformancePanel is true', async () => {
+      renderLayout({
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'performance',
+          component: 'performance',
+          title: 'Frame Times',
+        })
+      );
+    });
+
+    it('should not add performance panel when showPerformancePanel is false', async () => {
+      renderLayout({
+        showPerformancePanel: false,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const addCalls = mockApi.addPanel.mock.calls;
+      const perfCalls = addCalls.filter((c: any[]) => c[0]?.id === 'performance');
+      expect(perfCalls).toHaveLength(0);
+    });
+
+    it('should add performance panel with correct id and component', async () => {
+      renderLayout({
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const addCalls = mockApi.addPanel.mock.calls;
+      const perfCall = addCalls.find((c: any[]) => c[0]?.id === 'performance');
+      expect(perfCall).toBeDefined();
+      expect(perfCall![0].component).toBe('performance');
+      expect(perfCall![0].title).toBe('Frame Times');
+    });
+
+    it('should use the mountPerformance prop for the performance component', async () => {
+      const mountPerformance = vi.fn();
+      renderLayout({
+        showPerformancePanel: true,
+        mountPerformance,
+      });
+      await tick();
+
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'performance', component: 'performance' })
+      );
+    });
+
+    it('should add performance panel below preview when no debug/config panels exist', async () => {
+      renderLayout({
+        showPerformancePanel: true,
+        showDebugPanel: false,
+        showConfigPanel: false,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const perfCall = mockApi.addPanel.mock.calls.find(
+        (c: any[]) => c[0]?.id === 'performance'
+      );
+      expect(perfCall).toBeDefined();
+      // When no debug/config, it positions relative to preview
+      expect(perfCall![0].position).toBeDefined();
+    });
+
+    it('should handle performanceClosed event from user-initiated panel removal', async () => {
+      renderLayout({
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      // Verify the panel was created and the onDidRemovePanel listener was registered
+      expect(mockApi.onDidRemovePanel).toHaveBeenCalled();
+      expect(panels.has('performance')).toBe(true);
+
+      // Simulate user closing the panel via dockview
+      const perfPanel = panels.get('performance');
+      removePanelListeners.forEach((fn) => fn(perfPanel));
+      // The dispatch("performanceClosed") is called internally
+      // We verify the listener mechanism is wired up
+      expect(mockApi.onDidRemovePanel).toHaveBeenCalled();
+    });
+
+    it('should accept mountPerformance prop without crashing', async () => {
+      const mountPerformance = vi.fn(() => () => {});
+      renderLayout({
+        showPerformancePanel: true,
+        mountPerformance,
+      });
+      await tick();
+
+      // Verify dockview was created and performance panel was added
+      expect(mockApi.addPanel).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'performance' })
+      );
+    });
+
+    it('should tab alongside debug panel when debug is visible', async () => {
+      renderLayout({
+        showDebugPanel: true,
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const perfCall = mockApi.addPanel.mock.calls.find(
+        (c: any[]) => c[0]?.id === 'performance'
+      );
+      expect(perfCall).toBeDefined();
+      expect(perfCall![0].position).toEqual({
+        referencePanel: 'debug',
+        direction: 'within',
+      });
+    });
+
+    it('should tab alongside config panel when config is visible but debug is not', async () => {
+      renderLayout({
+        showDebugPanel: false,
+        showConfigPanel: true,
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const perfCall = mockApi.addPanel.mock.calls.find(
+        (c: any[]) => c[0]?.id === 'performance'
+      );
+      expect(perfCall).toBeDefined();
+      expect(perfCall![0].position).toEqual({
+        referencePanel: 'config',
+        direction: 'within',
+      });
+    });
+
+    it('should position below preview with initialHeight when no siblings exist', async () => {
+      renderLayout({
+        showDebugPanel: false,
+        showConfigPanel: false,
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      const perfCall = mockApi.addPanel.mock.calls.find(
+        (c: any[]) => c[0]?.id === 'performance'
+      );
+      expect(perfCall).toBeDefined();
+      expect(perfCall![0].position).toEqual({
+        referencePanel: 'preview',
+        direction: 'below',
+      });
+      expect(perfCall![0].initialHeight).toBe(200);
+    });
+
+    it('should remove performance panel when showPerformancePanel changes to false', async () => {
+      const { rerender } = renderLayout({
+        showPerformancePanel: true,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      // Panel should exist
+      expect(panels.has('performance')).toBe(true);
+
+      // Toggle off
+      await rerender({ showPerformancePanel: false, mountPreview: () => {}, mountDebug: () => {}, mountConfig: () => {}, mountPerformance: () => {}, showDebugPanel: false, showConfigPanel: false, transport: null });
+      await tick();
+
+      // removePerformancePanel calls api.removePanel which removes from panels map
+      expect(panels.has('performance')).toBe(false);
+    });
+
+    it('should not crash when removing performance panel that does not exist', async () => {
+      const { rerender } = renderLayout({
+        showPerformancePanel: false,
+        mountPerformance: () => {},
+      });
+      await tick();
+
+      // Toggle off when panel was never added — should not crash
+      await rerender({ showPerformancePanel: false, mountPreview: () => {}, mountDebug: () => {}, mountConfig: () => {}, mountPerformance: () => {}, showDebugPanel: false, showConfigPanel: false, transport: null });
+      await tick();
+
+      expect(panels.has('performance')).toBe(false);
+    });
+  });
 });

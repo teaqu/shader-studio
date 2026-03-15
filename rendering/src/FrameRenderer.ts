@@ -14,6 +14,12 @@ export class FrameRenderer {
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
   private fpsCalculator: FPSCalculator;
+  private frameTimeBuffer: number[] = new Array(3600);
+  private frameTimeHead = 0;   // write index (circular)
+  private frameTimeLen = 0;    // current occupied length
+  private frameTimeCount = 0;  // total frames ever recorded
+  private static MAX_HISTORY = 3600;
+  private previousFrameTimestamp: number | null = null;
 
   private timeManager: TimeManager;
   private keyboardManager: KeyboardManager;
@@ -169,14 +175,15 @@ export class FrameRenderer {
     if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
       const minFrameInterval = 1000 / this.fpsLimit;
       const elapsed = time - this.lastRenderedAt;
-      // Small tolerance so RAF jitter doesn't skip near-threshold frames
       if (elapsed < minFrameInterval * 0.9) {
         return;
       }
-      // Advance lastRenderedAt by the ideal interval to prevent drift.
-      // If we overshot significantly (e.g. tab was backgrounded), snap to current time.
+      // Drift-correct to maintain target cadence: advance by the exact
+      // interval so small timing errors don't accumulate.
       this.lastRenderedAt += minFrameInterval;
-      if (time - this.lastRenderedAt > minFrameInterval) {
+      // If we've fallen far behind (e.g. tab was backgrounded), snap to
+      // current time so we don't rapid-fire to catch up.
+      if (this.lastRenderedAt < time - minFrameInterval) {
         this.lastRenderedAt = time;
       }
     }
@@ -207,8 +214,27 @@ export class FrameRenderer {
     if (!isPaused || currentFrame === 0) {
       this.renderBufferPasses(uniforms);
     }
-    
+
     this.renderImagePass(uniforms);
+
+    // Track actual frame-to-frame wall time (RAF delta) only when running
+    if (!isPaused) {
+      if (this.previousFrameTimestamp !== null) {
+        const frameDelta = time - this.previousFrameTimestamp;
+        // Ignore unreasonable spikes (e.g. tab was backgrounded)
+        if (frameDelta < 500) {
+          this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
+          this.frameTimeHead = (this.frameTimeHead + 1) % FrameRenderer.MAX_HISTORY;
+          if (this.frameTimeLen < FrameRenderer.MAX_HISTORY) this.frameTimeLen++;
+          this.frameTimeCount++;
+        }
+      }
+      this.previousFrameTimestamp = time;
+    } else {
+      // Reset so we don't get a huge spike when unpausing
+      this.previousFrameTimestamp = null;
+    }
+
     this.keyboardManager.clearPressed();
 
     if (!isPaused) {
@@ -267,6 +293,21 @@ export class FrameRenderer {
     } else {
       this.passRenderer.clearCanvas();
     }
+  }
+
+  public getFrameTimeHistory(): number[] {
+    if (this.frameTimeLen === 0) return [];
+    // Linearize the circular buffer into chronological order
+    const start = (this.frameTimeHead - this.frameTimeLen + FrameRenderer.MAX_HISTORY) % FrameRenderer.MAX_HISTORY;
+    if (start + this.frameTimeLen <= FrameRenderer.MAX_HISTORY) {
+      return this.frameTimeBuffer.slice(start, start + this.frameTimeLen);
+    }
+    // Wraps around: concat tail + head
+    return this.frameTimeBuffer.slice(start).concat(this.frameTimeBuffer.slice(0, this.frameTimeHead));
+  }
+
+  public getFrameTimeCount(): number {
+    return this.frameTimeCount;
   }
 
   public renderSinglePass(pass: Pass): void {

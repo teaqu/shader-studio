@@ -294,6 +294,14 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.frameRenderer.setFPSLimit(limit);
   }
 
+  public getFrameTimeHistory(): number[] {
+    return this.frameRenderer.getFrameTimeHistory();
+  }
+
+  public getFrameTimeCount(): number {
+    return this.frameRenderer.getFrameTimeCount();
+  }
+
   public getUniforms(): import("./models").PassUniforms {
     return this.frameRenderer.getUniforms();
   }

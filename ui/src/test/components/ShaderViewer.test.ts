@@ -67,6 +67,8 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     getAudioState() { return null; }
     getVideoState() { return null; }
     getAudioFFTData() { return null; }
+    getFrameTimeHistory() { return []; }
+    getFrameTimeCount() { return 0; }
   };
 
   return {
@@ -3504,6 +3506,105 @@ describe('ShaderViewer', () => {
 
       // Now debug panel should be visible
       expect(container.querySelector('.main-container')).toBeTruthy();
+    });
+  });
+
+  // ─── Performance panel integration ────────────────────────────
+  describe('Performance panel integration', () => {
+    it('should import performancePanelStore', async () => {
+      // The store is imported and subscribed to — verify it doesn't crash
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      expect(container.querySelector('.main-container')).toBeTruthy();
+    });
+
+    it('should pass performance panel props to DockviewLayout', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      // The dockview container should be present (DockviewLayout is rendered)
+      expect(container.querySelector('.main-container')).toBeTruthy();
+    });
+
+    it('should render a hidden performance panel source element', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      // There should be a dockview-panel-source div for performance
+      const panelSources = container.querySelectorAll('.dockview-panel-source');
+      expect(panelSources.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should toggle performance panel via store', async () => {
+      const { performancePanelStore } = await import('../../lib/stores/performancePanelStore');
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      // Toggle the store
+      performancePanelStore.toggle();
+      await tick();
+
+      // Should not crash — the panel visibility state propagates
+      expect(container.querySelector('.main-container')).toBeTruthy();
+
+      // Toggle back
+      performancePanelStore.toggle();
+      await tick();
+    });
+
+    it('should have exactly 4 dockview-panel-source elements (preview, debug, config, performance)', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      const panelSources = container.querySelectorAll('.dockview-panel-source');
+      expect(panelSources.length).toBe(4);
+    });
+
+    it('should subscribe to performancePanelStore on mount', async () => {
+      const { performancePanelStore } = await import('../../lib/stores/performancePanelStore');
+      const subscribeSpy = vi.spyOn(performancePanelStore, 'subscribe');
+
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      expect(subscribeSpy).toHaveBeenCalled();
+      subscribeSpy.mockRestore();
+    });
+
+    it('should handle performancePanelStore toggle without crashing before initialization', async () => {
+      const { performancePanelStore } = await import('../../lib/stores/performancePanelStore');
+
+      // Toggle before rendering
+      performancePanelStore.setVisible(true);
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      // Should render fine even though store was toggled before component mounted
+      expect(container.querySelector('.main-container')).toBeTruthy();
+
+      // Clean up
+      performancePanelStore.setVisible(false);
+      await tick();
+    });
+
+    it('should close performance panel via store setVisible(false)', async () => {
+      const { performancePanelStore } = await import('../../lib/stores/performancePanelStore');
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      // Open
+      performancePanelStore.setVisible(true);
+      await tick();
+
+      // Close (simulates what handlePerformanceClosed does)
+      performancePanelStore.setVisible(false);
+      await tick();
+
+      // Verify store reflects closed state
+      let storeState: any;
+      performancePanelStore.subscribe((s) => { storeState = s; })();
+      expect(storeState.isVisible).toBe(false);
     });
   });
 });

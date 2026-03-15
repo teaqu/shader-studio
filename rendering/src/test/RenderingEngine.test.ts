@@ -693,19 +693,13 @@ describe("RenderingEngine", () => {
     });
 
     it("should use pauseAll (not pauseAudio) so userPaused is not set", () => {
-      // togglePause pausing uses pauseAll which does NOT set userPaused
-      // This is important so that unpausing via togglePause can resume audio
       mockTimeManager.isPaused.mockReturnValue(false);
       renderingEngine.togglePause();
 
       expect(mockResourceManager.pauseAllAudio).toHaveBeenCalled();
-      // Should NOT be calling individual pauseAudio which sets userPaused
     });
 
     it("should use resumeAll (not forceResumeAll) so user-paused audio stays paused", () => {
-      // togglePause unpausing uses resumeAll which respects userPaused
-      // This means if user explicitly paused one track, toggling shader pause
-      // should not resume that track
       mockTimeManager.isPaused.mockReturnValue(true);
       renderingEngine.togglePause();
 
@@ -1019,6 +1013,55 @@ describe("RenderingEngine", () => {
       expect(mockResourceMgr.unmuteAllAudio).toHaveBeenCalledWith(0.8);
       expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
       expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("frame time history delegation", () => {
+    it("should delegate getFrameTimeHistory to FrameRenderer", () => {
+      const mockHistory = [16.5, 16.7, 16.6];
+      mockFrameRenderer.getFrameTimeHistory = vi.fn().mockReturnValue(mockHistory);
+
+      const result = renderingEngine.getFrameTimeHistory();
+
+      expect(mockFrameRenderer.getFrameTimeHistory).toHaveBeenCalledOnce();
+      expect(result).toBe(mockHistory);
+    });
+
+    it("should return empty array when FrameRenderer returns empty", () => {
+      mockFrameRenderer.getFrameTimeHistory = vi.fn().mockReturnValue([]);
+
+      expect(renderingEngine.getFrameTimeHistory()).toEqual([]);
+    });
+  });
+
+  describe("frame time count delegation", () => {
+    it("should delegate getFrameTimeCount to FrameRenderer", () => {
+      mockFrameRenderer.getFrameTimeCount = vi.fn().mockReturnValue(500);
+
+      const result = renderingEngine.getFrameTimeCount();
+
+      expect(mockFrameRenderer.getFrameTimeCount).toHaveBeenCalledOnce();
+      expect(result).toBe(500);
+    });
+
+    it("should return 0 when FrameRenderer returns 0", () => {
+      mockFrameRenderer.getFrameTimeCount = vi.fn().mockReturnValue(0);
+
+      expect(renderingEngine.getFrameTimeCount()).toBe(0);
+    });
+
+    it("should return count greater than history length when capped", () => {
+      mockFrameRenderer.getFrameTimeHistory = vi.fn().mockReturnValue(
+        Array.from({ length: 3600 }, () => 16.6)
+      );
+      mockFrameRenderer.getFrameTimeCount = vi.fn().mockReturnValue(5000);
+
+      const history = renderingEngine.getFrameTimeHistory();
+      const count = renderingEngine.getFrameTimeCount();
+
+      expect(history).toHaveLength(3600);
+      expect(count).toBe(5000);
+      expect(count).toBeGreaterThan(history.length);
     });
   });
 });
