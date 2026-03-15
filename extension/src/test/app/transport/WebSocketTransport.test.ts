@@ -651,3 +651,106 @@ suite('WebSocketTransport Test Suite', () => {
         });
     });
 });
+
+// Real networking tests — no WebSocketServer stub
+suite('WebSocketTransport port binding', () => {
+    const net = require('net');
+    const transports: WebSocketTransport[] = [];
+
+    const mockShaderProvider = { sendShaderToWebview: () => {} } as any;
+    const mockGlslFileTracker = { getActiveOrLastViewedGLSLEditor: () => null } as any;
+
+    teardown(async () => {
+        for (const t of transports) {
+            t.close();
+        }
+        transports.length = 0;
+        // Brief pause to let ports fully release
+        await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    test('onReady is called with preferred port when available', (done) => {
+        const port = 51560;
+        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+            transports.push(t);
+            assert.strictEqual(actualPort, port);
+            done();
+        });
+    });
+
+    test('onReady is called with a different port when preferred port is in use', (done) => {
+        const port = 51561;
+        const blocker = net.createServer();
+        blocker.listen(port, () => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+                transports.push(t);
+                blocker.close(() => {
+                    assert.notStrictEqual(actualPort, port);
+                    assert.ok(actualPort > 0);
+                    done();
+                });
+            });
+        });
+    });
+
+    test('fallback port is a valid ephemeral port', (done) => {
+        const port = 51562;
+        const blocker = net.createServer();
+        blocker.listen(port, () => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+                transports.push(t);
+                blocker.close(() => {
+                    assert.ok(actualPort >= 1024, `expected ephemeral port, got ${actualPort}`);
+                    assert.ok(actualPort <= 65535);
+                    done();
+                });
+            });
+        });
+    });
+
+    test('two instances on same preferred port get different actual ports', (done) => {
+        const port = 51563;
+        let firstPort: number;
+
+        const t1 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (p1) => {
+            transports.push(t1);
+            firstPort = p1;
+            assert.strictEqual(p1, port);
+
+            const t2 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (p2) => {
+                transports.push(t2);
+                assert.notStrictEqual(p2, firstPort);
+                done();
+            });
+        });
+    });
+
+    test('transport still accepts connections after fallback', (done) => {
+        const { WebSocket } = require('ws');
+        const port = 51564;
+        const blocker = net.createServer();
+        blocker.listen(port, () => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+                transports.push(t);
+                blocker.close(() => {
+                    const ws = new WebSocket(`ws://localhost:${actualPort}`);
+                    ws.on('open', () => {
+                        assert.ok(t.hasActiveClients());
+                        ws.close();
+                        done();
+                    });
+                    ws.on('error', (err: Error) => done(err));
+                });
+            });
+        });
+    });
+
+    test('works without onReady callback', (done) => {
+        const port = 51565;
+        // Should not throw
+        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker);
+        transports.push(t);
+        // Give it a moment to bind
+        setTimeout(done, 100);
+    });
+});

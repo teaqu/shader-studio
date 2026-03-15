@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import * as net from "net";
 import { Logger } from "./services/Logger";
 import { PanelManager } from "./PanelManager";
 import { ShaderProvider } from "./ShaderProvider";
@@ -112,39 +111,23 @@ export class ShaderStudio {
     }
 
     const preferredPort = 51472;
-    if (this.createWebSocketTransport(preferredPort)) {
-      this.logger.info(`Using default WebSocket port: ${preferredPort}`);
-      return;
-    }
-
-    // Fall back to a dynamically allocated free port
-    const server = net.createServer();
-    server.listen(0, () => {
-      const address = server.address() as net.AddressInfo;
-      const port = address.port;
-      server.close(() => {
-        this.logger.info(`Allocated dynamic WebSocket port: ${port}`);
-        this.createWebSocketTransport(port);
-      });
-    });
-    server.on("error", (error) => {
-      this.logger.error(`Failed to find free port for WebSocket: ${error}`);
-    });
+    this.createWebSocketTransport(preferredPort);
   }
 
-  private createWebSocketTransport(port: number): boolean {
+  private createWebSocketTransport(port: number): void {
     try {
       this.webSocketTransport = new WebSocketTransport(
         port,
         this.shaderProvider,
         this.glslFileTracker,
+        (actualPort) => {
+          this.webServer.setWebSocketPort(actualPort);
+          this.logger.info(`WebSocket server ready on port ${actualPort}`);
+        },
       );
       this.messenger.addTransport(this.webSocketTransport);
-      this.webServer.setWebSocketPort(port);
-      return true;
     } catch (error) {
       this.logger.error(`Failed to start WebSocket transport: ${error}`);
-      return false;
     }
   }
 

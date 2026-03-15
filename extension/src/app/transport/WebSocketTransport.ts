@@ -29,28 +29,42 @@ export class WebSocketTransport implements MessageTransport {
   constructor(
     port: number,
     private shaderProvider: ShaderProvider,
-    private glslFileTracker: GlslFileTracker
+    private glslFileTracker: GlslFileTracker,
+    onReady?: (actualPort: number) => void
   ) {
     this.overlayHandler = new OverlayPanelHandler();
 
-    try {
-      this.wsServer = new WebSocketServer({
-        port,
-        perMessageDeflate: true
-      });
+    this.wsServer = new WebSocketServer({ port, perMessageDeflate: true });
 
-      this.wsServer.on("listening", () => {
-        console.log(`WebSocket server listening on port ${port}`);
-      });
-    } catch (error) {
-      console.error(`Failed to create WebSocket server on port ${port}:`, error);
-      throw error;
-    }
-
-    this.wsServer.on("message", (data, isBinary) => {
-      console.log("Received from client:", isBinary ? data : data.toString());
+    this.wsServer.on("listening", () => {
+      const actual = (this.wsServer.address() as { port: number }).port;
+      console.log(`WebSocket server listening on port ${actual}`);
+      onReady?.(actual);
     });
 
+    this.wsServer.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        console.log(`WebSocket port ${port} in use, falling back to dynamic port`);
+        this.wsServer.close();
+        this.wsServer = new WebSocketServer({ port: 0, perMessageDeflate: true });
+        this.wsServer.on("listening", () => {
+          const actual = (this.wsServer.address() as { port: number }).port;
+          console.log(`WebSocket server (fallback) listening on port ${actual}`);
+          onReady?.(actual);
+        });
+        this.wsServer.on("error", (err) => {
+          console.error('WebSocket server fallback error:', err);
+        });
+        this.attachConnectionHandler();
+      } else {
+        console.error(`WebSocket server error on port ${port}:`, error);
+      }
+    });
+
+    this.attachConnectionHandler();
+  }
+
+  private attachConnectionHandler(): void {
     this.wsServer.on("connection", (ws: WebSocket) => {
       console.log(`WebSocket: Client connected. Total clients: ${this.wsClients.size + 1}`);
       this.wsClients.add(ws);
@@ -103,10 +117,6 @@ export class WebSocketTransport implements MessageTransport {
           clearInterval(pingInterval);
         }
       }, 30000);
-    });
-
-    this.wsServer.on("error", (error) => {
-      console.error('WebSocket server error:', error);
     });
   }
 
