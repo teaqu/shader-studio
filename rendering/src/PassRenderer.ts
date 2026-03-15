@@ -40,11 +40,12 @@ export class PassRenderer {
     target: PiRenderTarget | null,
     shader: PiShader | null,
     uniforms: PassUniforms,
+    skipInputUpdates: boolean = false,
   ): void {
     if (!shader) return;
 
     const slotAssignments = assignInputSlots(passConfig.inputs);
-    const textureBindings = this.getTextureBindings(passConfig, slotAssignments);
+    const textureBindings = this.getTextureBindings(passConfig, slotAssignments, skipInputUpdates);
 
     if (target?.mTex0) {
       this.renderer.SetViewport([0, 0, target.mTex0.mXres, target.mTex0.mYres]);
@@ -128,6 +129,7 @@ export class PassRenderer {
   private getTextureBindings(
     passConfig: Pass,
     slotAssignments: SlotAssignment[],
+    skipInputUpdates: boolean = false,
   ): (PiTexture | null)[] {
     const channelCount = Math.max(4, slotAssignments.length);
     const defaultTexture = this.resourceManager.getDefaultTexture();
@@ -145,11 +147,13 @@ export class PassRenderer {
         const imageCache = this.resourceManager.getImageTextureCache();
         textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
       } else if (input.type === "keyboard") {
-        this.resourceManager.updateKeyboardTexture(
-          this.keyboardManager.getKeyHeld(),
-          this.keyboardManager.getKeyPressed(),
-          this.keyboardManager.getKeyToggled(),
-        );
+        if (!skipInputUpdates) {
+          this.resourceManager.updateKeyboardTexture(
+            this.keyboardManager.getKeyHeld(),
+            this.keyboardManager.getKeyPressed(),
+            this.keyboardManager.getKeyToggled(),
+          );
+        }
         textureBindings[slot] = this.resourceManager.getKeyboardTexture() || defaultTexture;
       } else if (input.type === "buffer") {
         if (input.source === passConfig.name) {

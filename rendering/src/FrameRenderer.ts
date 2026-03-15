@@ -20,6 +20,7 @@ export class FrameRenderer {
   private frameTimeCount = 0;  // total frames ever recorded
   private static MAX_HISTORY = 3600;
   private previousFrameTimestamp: number | null = null;
+  private pausedUniforms: PassUniforms | null = null;
 
   private timeManager: TimeManager;
   private keyboardManager: KeyboardManager;
@@ -208,14 +209,22 @@ export class FrameRenderer {
     // Update audio textures (FFT/waveform data) each frame
     this.resourceManager.updateAudioTextures();
 
-    const uniforms = this.getUniforms();
     const isPaused = this.timeManager.isPaused();
+
+    // Freeze all uniforms while paused: cache on entering pause, reuse until unpaused
+    if (isPaused && this.pausedUniforms === null) {
+      this.pausedUniforms = this.getUniforms();
+    } else if (!isPaused) {
+      this.pausedUniforms = null;
+    }
+
+    const uniforms = this.pausedUniforms ?? this.getUniforms();
 
     if (!isPaused || currentFrame === 0) {
       this.renderBufferPasses(uniforms);
     }
 
-    this.renderImagePass(uniforms);
+    this.renderImagePass(uniforms, isPaused);
 
     // Track actual frame-to-frame wall time (RAF delta) only when running
     if (!isPaused) {
@@ -277,7 +286,7 @@ export class FrameRenderer {
     }
   }
 
-  private renderImagePass(uniforms: PassUniforms): void {
+  private renderImagePass(uniforms: PassUniforms, isPaused: boolean = false): void {
     const passes = this.shaderPipeline.getPasses();
     const imagePass = passes.find((p: Pass) => p.name === "Image");
 
@@ -286,7 +295,7 @@ export class FrameRenderer {
       const shader = passShaders[imagePass.name];
       if (shader) {
         const passUniforms = this.getPassUniforms(imagePass, uniforms);
-        this.passRenderer.renderPass(imagePass, null, shader, passUniforms);
+        this.passRenderer.renderPass(imagePass, null, shader, passUniforms, isPaused);
       } else {
         this.passRenderer.clearCanvas();
       }
