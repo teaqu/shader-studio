@@ -41,6 +41,22 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "icons": {
+      "shader-studio-icon": {
+        "description": "Shader Studio icon",
+        "default": {
+          "fontPath": "assets/fonts/shader-studio-codicons.woff",
+          "fontCharacter": "\\F101"
+        }
+      },
+      "shader-studio-icon-running": {
+        "description": "Shader Studio icon (server running)",
+        "default": {
+          "fontPath": "assets/fonts/shader-studio-codicons.woff",
+          "fontCharacter": "\\F102"
+        }
+      }
+    },
     "commands": [
       {
         "command": "shader-studio.view",
