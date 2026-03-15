@@ -6,7 +6,6 @@ import type { ConfigInput } from '@shader-studio/types';
 // Mock waveformCache
 vi.mock('../../../lib/util/waveformCache', () => ({
   getWaveformPeaks: vi.fn().mockResolvedValue(null),
-  clearWaveformCache: vi.fn(),
 }));
 
 import { getWaveformPeaks } from '../../../lib/util/waveformCache';

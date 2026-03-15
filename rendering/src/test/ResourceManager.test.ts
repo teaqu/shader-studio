@@ -570,74 +570,6 @@ describe("ResourceManager", () => {
     });
   });
 
-  describe("getCubemapTexture", () => {
-    it("should return cubemap texture when available", () => {
-      const mockTexture = createMockTexture();
-      const cubemapManager = (resourceManager as any).cubemapTextureManager;
-      cubemapManager.getCubemapTexture.mockReturnValue(mockTexture);
-
-      const result = resourceManager.getCubemapTexture("cubemap.png");
-
-      expect(result).toBe(mockTexture);
-      expect(cubemapManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
-    });
-
-    it("should return null when cubemap texture not found", () => {
-      const cubemapManager = (resourceManager as any).cubemapTextureManager;
-      cubemapManager.getCubemapTexture.mockReturnValue(null);
-
-      const result = resourceManager.getCubemapTexture("nonexistent.png");
-
-      expect(result).toBeNull();
-      expect(cubemapManager.getCubemapTexture).toHaveBeenCalledWith("nonexistent.png");
-    });
-  });
-
-  describe("loadCubemapTexture", () => {
-    it("should load cubemap texture successfully", async () => {
-      const mockTexture = createMockTexture();
-      const cubemapManager = (resourceManager as any).cubemapTextureManager;
-      cubemapManager.loadCubemapFromCrossImage.mockResolvedValue(mockTexture);
-
-      const result = await resourceManager.loadCubemapTexture("cubemap.png");
-
-      expect(result).toBe(mockTexture);
-      expect(cubemapManager.loadCubemapFromCrossImage).toHaveBeenCalledWith("cubemap.png", {});
-    });
-
-    it("should pass options to cubemapTextureManager", async () => {
-      const mockTexture = createMockTexture();
-      const cubemapManager = (resourceManager as any).cubemapTextureManager;
-      cubemapManager.loadCubemapFromCrossImage.mockResolvedValue(mockTexture);
-
-      await resourceManager.loadCubemapTexture("cubemap.png", {
-        filter: "linear",
-        wrap: "clamp",
-        vflip: true,
-      });
-
-      expect(cubemapManager.loadCubemapFromCrossImage).toHaveBeenCalledWith("cubemap.png", {
-        filter: "linear",
-        wrap: "clamp",
-        vflip: true,
-      });
-    });
-
-    it("should return null on error", async () => {
-      const cubemapManager = (resourceManager as any).cubemapTextureManager;
-      cubemapManager.loadCubemapFromCrossImage.mockRejectedValue(new Error("Load failed"));
-
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      const result = await resourceManager.loadCubemapTexture("invalid.png");
-
-      expect(result).toBeNull();
-      expect(consoleSpy).toHaveBeenCalled();
-
-      consoleSpy.mockRestore();
-    });
-  });
-
   describe("video pause and resume", () => {
     it("should pause all videos through resource manager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;
@@ -707,22 +639,6 @@ describe("ResourceManager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;
       resourceManager.controlVideo("vid.mp4", "reset");
       expect(videoManager.resetVideo).toHaveBeenCalledWith("vid.mp4");
-    });
-  });
-
-  describe("setVideoVolume", () => {
-    it("should delegate to VideoTextureManager", () => {
-      const videoManager = (resourceManager as any).videoTextureManager;
-      resourceManager.setVideoVolume("vid.mp4", 0.5);
-      expect(videoManager.setVideoVolume).toHaveBeenCalledWith("vid.mp4", 0.5);
-    });
-  });
-
-  describe("setAllVideoVolumes", () => {
-    it("should delegate to VideoTextureManager", () => {
-      const videoManager = (resourceManager as any).videoTextureManager;
-      resourceManager.setAllVideoVolumes(0.8);
-      expect(videoManager.setAllVideoVolumes).toHaveBeenCalledWith(0.8);
     });
   });
 
@@ -992,22 +908,6 @@ describe("ResourceManager", () => {
       const audioManager = (resourceManager as any).audioTextureManager;
       resourceManager.syncAllAudioToTime(10.0);
       expect(audioManager.syncAllToTime).toHaveBeenCalledWith(10.0);
-    });
-  });
-
-  describe("setAudioVolume", () => {
-    it("should delegate to AudioTextureManager", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      resourceManager.setAudioVolume("audio.mp3", 0.6);
-      expect(audioManager.setAudioVolume).toHaveBeenCalledWith("audio.mp3", 0.6);
-    });
-  });
-
-  describe("setAllAudioVolumes", () => {
-    it("should delegate to AudioTextureManager", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      resourceManager.setAllAudioVolumes(0.9);
-      expect(audioManager.setAllAudioVolumes).toHaveBeenCalledWith(0.9);
     });
   });
 

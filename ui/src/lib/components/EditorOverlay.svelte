@@ -57,7 +57,7 @@
   function registerVimCommands() {
     if (vimCommandsRegistered) return;
     try {
-      const vim = VimMode.Vim;
+      const vim = (VimMode as any).Vim;
       if (!vim?.defineEx) return;
 
       vim.defineEx('bnext', 'bn', () => switchToNextBuffer());
@@ -100,7 +100,7 @@
   function enableVim() {
     if (!editor || !statusBarEl || vimModeInstance) return;
     registerVimCommands();
-    vimModeInstance = initVimMode(editor, statusBarEl);
+    vimModeInstance = initVimMode(editor as any, statusBarEl);
   }
 
   function disableVim() {
@@ -135,7 +135,7 @@
   function createEditor() {
     if (!containerEl || editor) return;
 
-    setupMonacoGlsl(monaco);
+    setupMonacoGlsl(monaco as any);
 
     editor = monaco.editor.create(containerEl, {
       value: shaderCode,

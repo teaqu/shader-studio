@@ -407,6 +407,257 @@ describe('AssetBrowser', () => {
     });
   });
 
+  describe('Pagination', () => {
+    // Generate more than PAGE_SIZE (8) files to trigger pagination
+    const manyFiles = Array.from({ length: 20 }, (_, i) => ({
+      name: `file${i}.png`,
+      workspacePath: `@/textures/file${i}.png`,
+      thumbnailUri: `webview://file${i}.png`,
+      isSameDirectory: false,
+    }));
+
+    it('should paginate files when more than PAGE_SIZE', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Should only show 8 files on the first page
+      const fileCards = screen.getAllByRole('button').filter(b => b.classList.contains('file-card'));
+      expect(fileCards.length).toBe(8);
+
+      // Pagination controls should be visible
+      expect(screen.getByText('1')).toBeInTheDocument();
+    });
+
+    it('should navigate to next page', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Should have file0..file7 on first page
+      expect(screen.getByText('file0.png')).toBeInTheDocument();
+
+      // Click next page button (the ›)
+      const nextBtn = screen.getByText('›');
+      await fireEvent.click(nextBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Now should show file8..file15
+      expect(screen.getByText('file8.png')).toBeInTheDocument();
+      expect(screen.queryByText('file0.png')).not.toBeInTheDocument();
+    });
+
+    it('should navigate to previous page', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Go to page 2
+      const nextBtn = screen.getByText('›');
+      await fireEvent.click(nextBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Go back to page 1
+      const prevBtn = screen.getByText('‹');
+      await fireEvent.click(prevBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(screen.getByText('file0.png')).toBeInTheDocument();
+    });
+
+    it('should jump to a specific page via goToPage', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Click on page 3 button
+      const page3Btn = screen.getByText('3');
+      await fireEvent.click(page3Btn);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Page 3: files 16-19
+      expect(screen.getByText('file16.png')).toBeInTheDocument();
+    });
+
+    it('should disable prev button on first page', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      const prevBtn = screen.getByText('‹');
+      expect(prevBtn).toBeDisabled();
+    });
+
+    it('should disable next button on last page', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Go to last page (page 3)
+      const page3Btn = screen.getByText('3');
+      await fireEvent.click(page3Btn);
+      await new Promise(r => setTimeout(r, 10));
+
+      const nextBtn = screen.getByText('›');
+      expect(nextBtn).toBeDisabled();
+    });
+
+    it('should reset to page 1 when search query changes', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(manyFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      // Go to page 2
+      const nextBtn = screen.getByText('›');
+      await fireEvent.click(nextBtn);
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(screen.queryByText('file0.png')).not.toBeInTheDocument();
+
+      // Type in search => should reset to page 1
+      const searchInput = screen.getByPlaceholderText('Search files...');
+      await fireEvent.input(searchInput, { target: { value: 'file1' } });
+      await new Promise(r => setTimeout(r, 10));
+
+      // file1.png, file10..file19 match - should show first page of those results
+      expect(screen.getByText('file1.png')).toBeInTheDocument();
+    });
+  });
+
+  describe('Loading Timeout', () => {
+    it('should show loading=false immediately when no postMessage function provided', () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        onSelect: mockOnSelect,
+        // No postMessage
+      });
+
+      // Without postMessage, loading is set to false immediately => "No files found"
+      expect(screen.getByText('No files found')).toBeInTheDocument();
+    });
+  });
+
+  describe('Selection Highlight with ./ prefix', () => {
+    it('should highlight file when selectedPath uses ./ prefix', async () => {
+      render(AssetBrowser, {
+        extensions: ['png', 'jpg', 'hdr'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+        selectedPath: './noise.png',
+      });
+
+      simulateWorkspaceFiles(sampleFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      const noiseCard = screen.getByText('noise.png').closest('button');
+      expect(noiseCard?.classList.contains('selected')).toBe(true);
+    });
+
+    it('should not highlight anything when selectedPath is empty', async () => {
+      render(AssetBrowser, {
+        extensions: ['png', 'jpg', 'hdr'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+        selectedPath: '',
+      });
+
+      simulateWorkspaceFiles(sampleFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      const noiseCard = screen.getByText('noise.png').closest('button');
+      expect(noiseCard?.classList.contains('selected')).toBe(false);
+    });
+  });
+
+  describe('Search by workspace path', () => {
+    it('should filter files by workspace path', async () => {
+      render(AssetBrowser, {
+        extensions: ['png', 'jpg', 'hdr'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles(sampleFiles);
+      await new Promise(r => setTimeout(r, 10));
+
+      const searchInput = screen.getByPlaceholderText('Search files...');
+      await fireEvent.input(searchInput, { target: { value: 'materials' } });
+      await new Promise(r => setTimeout(r, 10));
+
+      // Only stone.png is in @/materials/
+      expect(screen.getByText('stone.png')).toBeInTheDocument();
+      expect(screen.queryByText('noise.png')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Non-workspaceFiles messages', () => {
+    it('should ignore messages with a different type', async () => {
+      render(AssetBrowser, {
+        extensions: ['png'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      // Send a message with a different type
+      if (messageHandler) {
+        messageHandler(new MessageEvent('message', {
+          data: { type: 'somethingElse', payload: {} },
+        }));
+      }
+      await new Promise(r => setTimeout(r, 10));
+
+      // Should still be in loading state
+      expect(screen.getByText('Loading files...')).toBeInTheDocument();
+    });
+  });
+
   describe('@/ Workspace Path Handling', () => {
     it('should return @/ prefixed path when selecting non-same-directory file', async () => {
       render(AssetBrowser, {

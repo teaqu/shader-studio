@@ -7,11 +7,11 @@ import type { CapturedVariable } from '../../lib/VariableCaptureManager';
 const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null, gridWidth: 32, gridHeight: 32, declarationLine: 0 } as const;
 
 function makeFloatVar(value: number): CapturedVariable {
-  return { varName: 'myFloat', varType: 'float', value: [value], channelMeans: null, channelStats: null, stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS };
+  return { varName: 'myFloat', varType: 'float', value: [value], channelMeans: null, channelStats: null, stats: null, histogram: null, ...NULL_FIELDS };
 }
 
 function makeVec3Var(x: number, y: number, z: number): CapturedVariable {
-  return { varName: 'myVec3', varType: 'vec3', value: [x, y, z], channelMeans: null, channelStats: null, stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS };
+  return { varName: 'myVec3', varType: 'vec3', value: [x, y, z], channelMeans: null, channelStats: null, stats: null, histogram: null, ...NULL_FIELDS };
 }
 
 function makeGridScalarVar(): CapturedVariable {
@@ -20,7 +20,7 @@ function makeGridScalarVar(): CapturedVariable {
     channelMeans: [0.3],
     channelStats: [{ min: -0.5, max: 1.2, mean: 0.3 }],
     stats: { min: -0.5, max: 1.2, mean: 0.3 },
-    histogram: null, channelHistograms: null, ...NULL_FIELDS,
+    histogram: null, ...NULL_FIELDS,
   };
 }
 
@@ -34,7 +34,7 @@ function makeGridVecVar(): CapturedVariable {
       { min: 0.1, max: 0.8, mean: 0.45 },
       { min: 0.6, max: 1.0, mean: 0.80 },
     ],
-    stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS,
+    stats: null, histogram: null, ...NULL_FIELDS,
   };
 }
 
@@ -47,7 +47,7 @@ function makeConstantVecVar(): CapturedVariable {
       { min: 233223.0, max: 233223.0, mean: 233223.0 },
       { min: 0.0, max: 0.0, mean: 0.0 },
     ],
-    stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS,
+    stats: null, histogram: null, ...NULL_FIELDS,
   };
 }
 
@@ -58,7 +58,7 @@ function makeExpandedVar(): CapturedVariable {
     channelStats: [{ min: 0, max: 1, mean: 0.5 }],
     stats: { min: 0, max: 1, mean: 0.5 },
     histogram: { bins: [3, 5, 4, 2, 6], min: 0, max: 1 },
-    channelHistograms: null, ...NULL_FIELDS,
+    ...NULL_FIELDS,
   };
 }
 
@@ -267,7 +267,7 @@ describe('VariableRow', () => {
     const mat2Var: CapturedVariable = {
       varName: 'myMat', varType: 'mat2', value: [1.0, 0.0, 0.0, 1.0],
       channelMeans: null, channelStats: null, stats: null,
-      histogram: null, channelHistograms: null, ...NULL_FIELDS,
+      histogram: null, ...NULL_FIELDS,
     };
     render(VariableRow, { props: { variable: mat2Var, isPixelMode: true } });
     const content = document.body.textContent ?? '';
@@ -287,7 +287,7 @@ describe('VariableRow', () => {
         { min: 0.0, max: 0.2, mean: 0.1 },
         { min: 0.8, max: 1.0, mean: 0.9 },
       ],
-      stats: null, histogram: null, channelHistograms: null, ...NULL_FIELDS,
+      stats: null, histogram: null, ...NULL_FIELDS,
     };
     render(VariableRow, { props: { variable: mat2Grid, isPixelMode: false } });
     const content = document.body.textContent ?? '';
@@ -346,7 +346,7 @@ describe('VariableRow', () => {
     const loadingVar: CapturedVariable = {
       varName: 'x', varType: 'float', value: null,
       channelMeans: null, channelStats: null, stats: null,
-      histogram: null, channelHistograms: null, ...NULL_FIELDS,
+      histogram: null, ...NULL_FIELDS,
     };
     render(VariableRow, {
       props: { variable: loadingVar, isPixelMode: true },

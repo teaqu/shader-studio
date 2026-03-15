@@ -723,7 +723,7 @@ describe("FrameRenderer", () => {
       expect(mockPassRenderer.renderPass).toHaveBeenCalledTimes(2);
       // Verify that renderPass was called for BufferA and Image, but not common
       const renderPassCalls = vi.mocked(mockPassRenderer.renderPass).mock.calls;
-      const renderedPassNames = renderPassCalls.map(call => call[0].name);
+      const renderedPassNames = renderPassCalls.map((call: any) => call[0].name);
       expect(renderedPassNames).toContain("BufferA");
       expect(renderedPassNames).toContain("Image");
       expect(renderedPassNames).not.toContain("common");
@@ -937,34 +937,6 @@ describe("FrameRenderer", () => {
 
       expect(bufferA.front).toBe(originalBack);
       expect(bufferA.back).toBe(originalFront);
-    });
-  });
-
-  describe("setSampleRate", () => {
-    it("should update the sample rate used in uniforms", () => {
-      frameRenderer.setSampleRate(48000);
-      mockResourceManager.getAudioSampleRate.mockReturnValue(0);
-
-      const uniforms = frameRenderer.getUniforms();
-
-      expect(uniforms.sampleRate).toBe(48000);
-    });
-
-    it("should prefer resourceManager audio sample rate over setSampleRate value", () => {
-      frameRenderer.setSampleRate(48000);
-      mockResourceManager.getAudioSampleRate.mockReturnValue(96000);
-
-      const uniforms = frameRenderer.getUniforms();
-
-      expect(uniforms.sampleRate).toBe(96000);
-    });
-
-    it("should use default sampleRate (44100) when resourceManager returns 0 and setSampleRate is not called", () => {
-      mockResourceManager.getAudioSampleRate.mockReturnValue(0);
-
-      const uniforms = frameRenderer.getUniforms();
-
-      expect(uniforms.sampleRate).toBe(44100);
     });
   });
 

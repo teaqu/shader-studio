@@ -130,16 +130,6 @@ export class ConfigPathConverter {
     });
   }
 
-  /** Clear the set of ignored video files. Useful for testing. */
-  public static clearIgnoredVideoFiles(): void {
-    this.ignoredVideoFiles.clear();
-  }
-
-  /** Check if a video file is ignored for AAC conversion. */
-  public static isVideoFileIgnored(absolutePath: string): boolean {
-    return this.ignoredVideoFiles.has(absolutePath);
-  }
-
   /**
    * Convert a file path to a webview URI.
    */

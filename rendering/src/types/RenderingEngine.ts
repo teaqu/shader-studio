@@ -31,5 +31,12 @@ export interface RenderingEngine {
   resumeAudioContext(): Promise<void>;
   resumeAllAudio(): void;
   updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void;
+  setGlobalVolume(volume: number, muted: boolean): void;
+  controlVideo(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void;
+  getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
+  controlAudio(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void;
+  getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
+  seekAudio(path: string, time: number): void;
+  getAudioFFTData(type: string, path?: string): Uint8Array | null;
   dispose(): void;
 }

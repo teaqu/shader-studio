@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getWaveformPeaks, clearWaveformCache } from '../../lib/util/waveformCache';
+import { getWaveformPeaks } from '../../lib/util/waveformCache';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -21,7 +21,6 @@ function createMockAudioBuffer(channelData: Float32Array, duration: number) {
 
 describe('waveformCache', () => {
   beforeEach(() => {
-    clearWaveformCache();
     vi.clearAllMocks();
   });
 
@@ -123,8 +122,8 @@ describe('waveformCache', () => {
       });
       mockDecodeAudioData.mockResolvedValue(mockBuffer);
 
-      const peaks2 = await getWaveformPeaks('http://example.com/audio.mp3', 2);
-      const peaks4 = await getWaveformPeaks('http://example.com/audio.mp3', 4);
+      const peaks2 = await getWaveformPeaks('http://example.com/diff-numpoints.mp3', 2);
+      const peaks4 = await getWaveformPeaks('http://example.com/diff-numpoints.mp3', 4);
 
       // Should be separate fetches since different numPoints
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -211,87 +210,6 @@ describe('waveformCache', () => {
       expect(peaks).not.toBeNull();
       // duration * 4 = 40, clamped between 30 and 200
       expect(peaks!.length).toBe(40);
-    });
-  });
-
-  describe('clearWaveformCache', () => {
-    it('should clear all cached entries when called without arguments', async () => {
-      const audioData = new Float32Array([1.0, -1.0]);
-      const mockBuffer = createMockAudioBuffer(audioData, 0.5);
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-      });
-      mockDecodeAudioData.mockResolvedValue(mockBuffer);
-
-      await getWaveformPeaks('http://example.com/a.mp3', 2);
-      await getWaveformPeaks('http://example.com/b.mp3', 2);
-
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-
-      clearWaveformCache();
-
-      // After clearing, both should re-fetch
-      await getWaveformPeaks('http://example.com/a.mp3', 2);
-      await getWaveformPeaks('http://example.com/b.mp3', 2);
-
-      expect(mockFetch).toHaveBeenCalledTimes(4);
-    });
-
-    it('should clear only the specified URL entry', async () => {
-      const audioData = new Float32Array([1.0, -1.0]);
-      const mockBuffer = createMockAudioBuffer(audioData, 0.5);
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-      });
-      mockDecodeAudioData.mockResolvedValue(mockBuffer);
-
-      await getWaveformPeaks('http://example.com/a.mp3', 2);
-      await getWaveformPeaks('http://example.com/b.mp3', 2);
-
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-
-      // Clear only 'a' — note the cache key includes numPoints
-      clearWaveformCache('http://example.com/a.mp3:2');
-
-      await getWaveformPeaks('http://example.com/a.mp3', 2);
-      await getWaveformPeaks('http://example.com/b.mp3', 2);
-
-      // Only 'a' should re-fetch (3 total), 'b' should still be cached
-      expect(mockFetch).toHaveBeenCalledTimes(3);
-    });
-  });
-
-  describe('clearWaveformCache edge cases', () => {
-    it('should not throw when clearing non-existent URL', () => {
-      expect(() => clearWaveformCache('http://example.com/never-fetched.mp3')).not.toThrow();
-    });
-
-    it('should handle clearing with numPoints-keyed entries correctly', async () => {
-      const audioData = new Float32Array([1.0, -1.0, 0.5, -0.5]);
-      const mockBuffer = createMockAudioBuffer(audioData, 0.5);
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-      });
-      mockDecodeAudioData.mockResolvedValue(mockBuffer);
-
-      // Cache entries with different numPoints for the same URL
-      await getWaveformPeaks('http://example.com/multi.mp3', 2);
-      await getWaveformPeaks('http://example.com/multi.mp3', 4);
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-
-      // Clear only the numPoints=2 entry
-      clearWaveformCache('http://example.com/multi.mp3:2');
-
-      // numPoints=2 should re-fetch, numPoints=4 should still be cached
-      await getWaveformPeaks('http://example.com/multi.mp3', 2);
-      await getWaveformPeaks('http://example.com/multi.mp3', 4);
-      expect(mockFetch).toHaveBeenCalledTimes(3);
     });
   });
 

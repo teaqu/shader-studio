@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
-  import ChannelPreview from "./ChannelPreview.svelte";
   import MiscTab from "./tabs/MiscTab.svelte";
   import TextureTab from "./tabs/TextureTab.svelte";
   import CubemapTab from "./tabs/CubemapTab.svelte";

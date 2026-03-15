@@ -80,20 +80,3 @@ export const getAspectRatio = (mode: AspectRatioMode): number | null => {
     }
 };
 
-// Helper function to get display label
-export const getAspectRatioLabel = (mode: AspectRatioMode): string => {
-    switch (mode) {
-        case '16:9':
-            return '16:9 (Widescreen)';
-        case '4:3':
-            return '4:3 (Standard)';
-        case '1:1':
-            return '1:1 (Square)';
-        case 'fill':
-            return 'Fill Container';
-        case 'auto':
-            return 'Auto (Screen Ratio)';
-        default:
-            return mode;
-    }
-};

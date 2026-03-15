@@ -534,16 +534,16 @@ function renderLayout(props: Record<string, any> = {}) {
     });
 
     it('ready.showPreview should add preview panel when missing', async () => {
-      let showPreview: (() => void) | null = null;
+      const ref: { showPreview: (() => void) | null } = { showPreview: null };
       renderLayout({
         onready: (event: any) => {
-          showPreview = event.detail.showPreview;
+          ref.showPreview = event.detail.showPreview;
         },
       });
       await tick();
 
       panels.delete('preview');
-      showPreview?.();
+      ref.showPreview?.();
       expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });
   });

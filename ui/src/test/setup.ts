@@ -81,6 +81,8 @@ vi.mock('monaco-vim', () => ({
   VimMode: {
     Vim: {
       defineEx: vi.fn(),
+      defineAction: vi.fn(),
+      mapCommand: vi.fn(),
     },
   },
 }));

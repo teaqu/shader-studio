@@ -353,7 +353,7 @@
   function saveLayout() {
     if (!api) return;
     const serialized = api.toJSON();
-    console.log("[DockviewLayout] saveLayout called, groups:", serialized?.grid?.root?.data?.length ?? "unknown");
+    console.log("[DockviewLayout] saveLayout called, groups:", Array.isArray(serialized?.grid?.root?.data) ? serialized.grid.root.data.length : "unknown");
     layoutStore.save(serialized);
     if (transport) {
       transport.postMessage({ type: "saveLayout", payload: serialized });

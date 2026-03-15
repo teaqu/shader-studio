@@ -7,7 +7,9 @@ function createMockTransport(): Transport {
   return {
     postMessage: vi.fn(),
     onMessage: vi.fn(),
-    dispose: vi.fn()
+    dispose: vi.fn(),
+    getType: () => 'vscode' as const,
+    isConnected: () => true,
   };
 }
 
@@ -383,37 +385,6 @@ describe('ConfigManager', () => {
     });
   });
 
-  describe('getNextBufferName', () => {
-    it('should return BufferA when no config exists', () => {
-      expect(configManager.getNextBufferName()).toBe('BufferA');
-    });
-
-    it('should return BufferA when no buffers exist', () => {
-      configManager.setConfig(createTestConfig());
-      expect(configManager.getNextBufferName()).toBe('BufferA');
-    });
-
-    it('should skip already used buffers', () => {
-      const config = createTestConfig();
-      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
-      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
-      configManager.setConfig(config);
-
-      expect(configManager.getNextBufferName()).toBe('BufferC');
-    });
-
-    it('should continue past BufferD', () => {
-      const config = createTestConfig();
-      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
-      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
-      config.passes.BufferC = { path: 'c.glsl', inputs: {} };
-      config.passes.BufferD = { path: 'd.glsl', inputs: {} };
-      configManager.setConfig(config);
-
-      expect(configManager.getNextBufferName()).toBe('BufferE');
-    });
-  });
-
   describe('generateBufferPath', () => {
     it('should return empty string when no shader path set', () => {
       expect(configManager.generateBufferPath('BufferA')).toBe('');
@@ -481,6 +452,138 @@ describe('ConfigManager', () => {
           shaderPath: ''
         })
       });
+    });
+  });
+
+  describe('updateBufferPath', () => {
+    it('should return false when no config exists', () => {
+      expect(configManager.updateBufferPath('BufferA', 'new.glsl')).toBe(false);
+    });
+
+    it('should return false when buffer does not exist', () => {
+      configManager.setConfig(createTestConfig());
+      expect(configManager.updateBufferPath('BufferA', 'new.glsl')).toBe(false);
+    });
+
+    it('should update the path of an existing buffer', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'old.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const result = configManager.updateBufferPath('BufferA', 'new.glsl');
+      expect(result).toBe(true);
+      expect((configManager.getConfig()!.passes.BufferA as BufferPass).path).toBe('new.glsl');
+    });
+  });
+
+  describe('getBuffer', () => {
+    it('should return null when no config exists', () => {
+      expect(configManager.getBuffer('BufferA')).toBeNull();
+    });
+
+    it('should return null for non-existent buffer', () => {
+      configManager.setConfig(createTestConfig());
+      expect(configManager.getBuffer('BufferX')).toBeNull();
+    });
+
+    it('should return the buffer config for existing buffer', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      const buffer = configManager.getBuffer('BufferA');
+      expect(buffer).toEqual({ path: 'a.glsl', inputs: {} });
+    });
+
+    it('should return the Image pass', () => {
+      configManager.setConfig(createTestConfig());
+      const image = configManager.getBuffer('Image');
+      expect(image).not.toBeNull();
+      expect(image!.inputs).toBeDefined();
+    });
+  });
+
+  describe('setPathMap and getWebviewUri', () => {
+    it('should return undefined for unknown path', () => {
+      expect(configManager.getWebviewUri('unknown.png')).toBeUndefined();
+    });
+
+    it('should return mapped URI for known path', () => {
+      configManager.setPathMap({ 'texture.png': 'https://webview/texture.png' });
+      expect(configManager.getWebviewUri('texture.png')).toBe('https://webview/texture.png');
+    });
+  });
+
+  describe('renameBuffer - additional edge cases', () => {
+    it('should return false when config is null', () => {
+      expect(configManager.renameBuffer('BufferA', 'NewName')).toBe(false);
+    });
+
+    it('should reject renaming common as source', () => {
+      const config = createTestConfig();
+      config.passes.common = { path: 'common.glsl' };
+      configManager.setConfig(config);
+      expect(configManager.renameBuffer('common', 'NewCommon')).toBe(false);
+    });
+
+    it('should return false when old buffer does not exist', () => {
+      configManager.setConfig(createTestConfig());
+      expect(configManager.renameBuffer('NonExistent', 'NewName')).toBe(false);
+    });
+  });
+
+  describe('updateBufferResolution - edge cases', () => {
+    it('should do nothing when no config exists', () => {
+      configManager.updateBufferResolution('BufferA', { width: 256, height: 256 });
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when buffer does not exist', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateBufferResolution('NonExistent', { width: 256, height: 256 });
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateResolution - details', () => {
+    it('should delete resolution when passed undefined', () => {
+      const config = createTestConfig();
+      (config.passes.Image as any).resolution = { scale: 2 };
+      configManager.setConfig(config);
+
+      configManager.updateResolution(undefined);
+
+      const updated = configManager.getConfig()!;
+      expect((updated.passes.Image as any).resolution).toBeUndefined();
+    });
+
+    it('should merge with existing resolution settings', () => {
+      const config = createTestConfig();
+      (config.passes.Image as any).resolution = { scale: 2 };
+      configManager.setConfig(config);
+
+      configManager.updateResolution({ aspectRatio: '4:3' } as any);
+
+      const updated = configManager.getConfig()!;
+      expect((updated.passes.Image as any).resolution).toEqual({
+        scale: 2,
+        aspectRatio: '4:3',
+      });
+    });
+  });
+
+  describe('createBufferFile - no transport', () => {
+    it('should not throw when transport is null', () => {
+      // Create a manager and null out its transport
+      const mgr = new ConfigManager(null as any);
+      // The method checks this.transport before calling postMessage
+      expect(() => mgr.createBufferFile('BufferA', 'file.glsl')).not.toThrow();
+    });
+  });
+
+  describe('dispose', () => {
+    it('should not throw', () => {
+      expect(() => configManager.dispose()).not.toThrow();
     });
   });
 

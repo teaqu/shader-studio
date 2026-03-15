@@ -217,22 +217,9 @@ export class MessageHandler {
     }
   }
 
-  public clearErrors(): void {
-    // Send a success message to clear any previous errors
-    const logMessage: LogMessage = {
-      type: "log",
-      payload: ["Shader compiled and linked"],
-    };
-    this.transport.postMessage(logMessage);
-  }
-
-  public sendSuccessMessage(): void {
-    this.sendSuccessMessages();
-  }
-
   public async reset(onReset?: () => void | Promise<void>): Promise<void> {
     this.cleanup();
-    this.renderEngine.resetTime();
+    this.renderEngine.getTimeManager().cleanup();
 
     if (this.lastEvent && onReset) {
       await onReset();

@@ -12,7 +12,6 @@
   const OFFSET = 20; // Offset from mouse cursor
   const ESTIMATED_WIDTH = 250; // Estimated inspector width
 
-  $: displayX = mouseX;
   $: displayY = mouseY;
 
   // Check if inspector would overflow on the right side

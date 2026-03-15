@@ -28,17 +28,6 @@ suite('ThumbnailCache Test Suite', () => {
         assert.ok(fs.existsSync(cacheDir));
     });
 
-    test('hasThumbnail returns false when not cached', () => {
-        assert.strictEqual(cache.hasThumbnail('/some/shader.glsl'), false);
-    });
-
-    test('saveThumbnail + hasThumbnail returns true after save', () => {
-        const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
-        const saved = cache.saveThumbnail('/some/shader.glsl', dataUri);
-        assert.strictEqual(saved, true);
-        assert.strictEqual(cache.hasThumbnail('/some/shader.glsl'), true);
-    });
-
     test('getThumbnail returns null when not cached', () => {
         assert.strictEqual(cache.getThumbnail('/some/shader.glsl'), null);
     });
@@ -51,20 +40,6 @@ suite('ThumbnailCache Test Suite', () => {
         assert.ok(result!.startsWith('data:image/png;base64,'));
     });
 
-    test('clearCache removes all cached files', () => {
-        const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
-        cache.saveThumbnail('/shader1.glsl', dataUri);
-        cache.saveThumbnail('/shader2.glsl', dataUri);
-
-        assert.strictEqual(cache.hasThumbnail('/shader1.glsl'), true);
-        assert.strictEqual(cache.hasThumbnail('/shader2.glsl'), true);
-
-        cache.clearCache();
-
-        assert.strictEqual(cache.hasThumbnail('/shader1.glsl'), false);
-        assert.strictEqual(cache.hasThumbnail('/shader2.glsl'), false);
-    });
-
     test('pruneCache removes stale thumbnails not matching current shader paths', async () => {
         const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
 
@@ -75,7 +50,7 @@ suite('ThumbnailCache Test Suite', () => {
 
         // Save thumbnail with the real file's modifiedTime
         cache.saveThumbnail(shaderFile, dataUri, stats.mtimeMs);
-        assert.strictEqual(cache.hasThumbnail(shaderFile, stats.mtimeMs), true);
+        assert.ok(cache.getThumbnail(shaderFile, stats.mtimeMs) !== null);
 
         // Also save a thumbnail for a non-existent shader (will be pruned)
         cache.saveThumbnail('/nonexistent/shader.glsl', dataUri, 12345);
@@ -84,7 +59,7 @@ suite('ThumbnailCache Test Suite', () => {
         await cache.pruneCache([shaderFile]);
 
         // The valid thumbnail should still exist
-        assert.strictEqual(cache.hasThumbnail(shaderFile, stats.mtimeMs), true);
+        assert.ok(cache.getThumbnail(shaderFile, stats.mtimeMs) !== null);
     });
 
     test('pruneCache keeps valid thumbnails', async () => {
@@ -98,7 +73,6 @@ suite('ThumbnailCache Test Suite', () => {
 
         await cache.pruneCache([shaderFile]);
 
-        assert.strictEqual(cache.hasThumbnail(shaderFile, stats.mtimeMs), true);
         const result = cache.getThumbnail(shaderFile, stats.mtimeMs);
         assert.ok(result);
     });

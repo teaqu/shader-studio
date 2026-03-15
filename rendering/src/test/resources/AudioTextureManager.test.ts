@@ -575,12 +575,6 @@ describe("AudioTextureManager", () => {
       expect(manager.getAudioCurrentTime("track.mp3")).toBe(10.0);
     });
 
-    it("should handle hasAudioSource check correctly", async () => {
-      expect(manager.hasAudioSource("nonexistent.mp3")).toBe(false);
-
-      await loadTestAudio("track.mp3");
-      expect(manager.hasAudioSource("track.mp3")).toBe(true);
-    });
   });
 
   describe("getAudioDuration", () => {

@@ -115,7 +115,7 @@
   role="button"
   tabindex="0"
   on:click={handleClick}
-  on:keydown={(e) => e.key === 'Enter' && handleClick(e)}
+  on:keydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
 >
   <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
 </div>

@@ -32,13 +32,6 @@ export function parseDimension(value: string, referenceSize: number): number | u
     return Math.round(num);
 }
 
-/**
- * Check if a dimension string is a percentage value.
- */
-export function isPercentage(value: string): boolean {
-    return value.trim().endsWith('%');
-}
-
 function loadInitialState(): ResolutionState {
     const defaultState: ResolutionState = { scale: 1, savedToConfig: false };
 
@@ -171,7 +164,3 @@ const createResolutionStore = () => {
 };
 
 export const resolutionStore = createResolutionStore();
-
-export const getResolutionScale = (state: ResolutionState): number => {
-    return state.scale;
-};

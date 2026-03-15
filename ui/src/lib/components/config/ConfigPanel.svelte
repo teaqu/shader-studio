@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { ConfigManager } from "../../ConfigManager";
-  import type { ShaderConfig, BufferPass } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
 
@@ -195,7 +195,7 @@
           bufferName={activeTab}
           config={activeTabConfig}
           onUpdate={(_passName, updatedConfig) => {
-            configManager?.updateImagePass(updatedConfig);
+            configManager?.updateImagePass(updatedConfig as ImagePass);
           }}
           {getWebviewUri}
           isImagePass={true}

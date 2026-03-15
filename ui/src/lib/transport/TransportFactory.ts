@@ -18,6 +18,3 @@ export function isVSCodeEnvironment(): boolean {
   return typeof acquireVsCodeApi !== 'undefined';
 }
 
-export function isWebSocketSupported(): boolean {
-  return typeof WebSocket !== 'undefined';
-}

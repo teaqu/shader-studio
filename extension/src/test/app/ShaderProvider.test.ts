@@ -462,17 +462,6 @@ suite('ShaderProvider Test Suite', () => {
         });
     });
 
-    suite('removeActiveShader', () => {
-        test('should remove shader from active set', () => {
-            const shaderPath = '/path/to/shader.glsl';
-            (provider as any).activeShaders.add(shaderPath);
-
-            provider.removeActiveShader(shaderPath);
-
-            assert.strictEqual((provider as any).activeShaders.has(shaderPath), false);
-        });
-    });
-
     suite('buildBufferPathMap', () => {
         let resolvePathStub: sinon.SinonStub;
 

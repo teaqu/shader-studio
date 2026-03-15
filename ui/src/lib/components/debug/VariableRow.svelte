@@ -52,7 +52,7 @@
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
     <div class="thumb-col clickable" on:click={onClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onClick()}>
-      <CaptureThumbnail pixels={variable.thumbnail} gridWidth={variable.gridWidth} gridHeight={variable.gridHeight} maxSize={32} />
+      <CaptureThumbnail pixels={variable.thumbnail!} gridWidth={variable.gridWidth} gridHeight={variable.gridHeight} maxSize={32} />
     </div>
   {/if}
 
@@ -67,9 +67,9 @@
           {#if colorStyle}
             <span class="color-swatch" style={colorStyle}></span>
           {/if}
-          {#if variable.value.length === 1}
+          {#if variable.value && variable.value.length === 1}
             <span class:dimmed={isDimmed(variable.value[0])}>{fmt(variable.value[0])}</span>
-          {:else}
+          {:else if variable.value}
             <span class="vec-value"
               >({#each variable.value as v, i
                 }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.value.length - 1}<span class="sep">, </span>{/if}{/each})</span>
@@ -139,7 +139,7 @@
         {:else}
           <!-- Vec: colour frequency bar (only if values are in [0,1]), then per-channel histograms -->
           {#if showColorBar}
-            <ColorFrequencyBar colors={variable.colorFrequencies} />
+            <ColorFrequencyBar colors={variable.colorFrequencies!} />
           {/if}
           {#if variable.channelHistograms !== null}
             <MultiChannelHistogram channels={variable.channelHistograms} />

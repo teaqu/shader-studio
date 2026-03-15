@@ -220,15 +220,6 @@ export class ErrorHandler {
     this.outputChannel.debug("Shader compiled and linked");
   }
 
-  public clearPersistentError(normalizedError: string): void {
-    // Remove specific persistent error when it's actually fixed
-    this.persistentErrors.delete(normalizedError);
-    this.recentErrors.delete(normalizedError);
-
-    // Refresh diagnostics to show updated state
-    this.restorePersistentErrors();
-  }
-
   private restorePersistentErrors(): void {
     // Restore all persistent errors to the diagnostic collection
     for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {

@@ -78,41 +78,18 @@ suite('WebviewTransport Test Suite', () => {
         transport.addPanel(mockPanel2);
         
         assert.strictEqual(transport.hasActiveClients(), true);
-        assert.strictEqual(transport.panelCount, 2);
-        
+
         transport.removePanel(mockPanel as any);
         assert.strictEqual(transport.hasActiveClients(), true);
-        assert.strictEqual(transport.panelCount, 1);
-        
+
         transport.removePanel(mockPanel2);
         assert.strictEqual(transport.hasActiveClients(), false);
-        assert.strictEqual(transport.panelCount, 0);
     });
 
     test('addPanel method adds panel and updates counts', () => {
         transport = new WebviewTransport();
         transport.addPanel(mockPanel as any);
         assert.strictEqual(transport.hasActiveClients(), true);
-        assert.strictEqual(transport.panelCount, 1);
-    });
-
-    test('panelCount matches actual number of panels', () => {
-        transport = new WebviewTransport();
-        
-        assert.strictEqual(transport.panelCount, 0);
-        
-        transport.addPanel(mockPanel as any);
-        assert.strictEqual(transport.panelCount, 1);
-        
-        const mockPanel2 = { ...mockPanel } as any;
-        mockPanel2.webview = { ...mockWebview } as any;
-        mockPanel2.onDidDispose = sandbox.stub().returns({ dispose: sandbox.stub() });
-        
-        transport.addPanel(mockPanel2);
-        assert.strictEqual(transport.panelCount, 2);
-        
-        transport.removePanel(mockPanel as any);
-        assert.strictEqual(transport.panelCount, 1);
     });
 
     test('send method handles no panels gracefully', () => {
@@ -161,7 +138,6 @@ suite('WebviewTransport Test Suite', () => {
         sinon.assert.called(mockPanel.dispose);
         sinon.assert.called(mockPanel2.dispose);
         assert.strictEqual(transport.hasActiveClients(), false);
-        assert.strictEqual(transport.panelCount, 0);
     });
 
     test('onDidDispose callback removes panel from collection', () => {
@@ -178,7 +154,6 @@ suite('WebviewTransport Test Suite', () => {
         disposeCallback();
         
         assert.strictEqual(transport.hasActiveClients(), false);
-        assert.strictEqual(transport.panelCount, 0);
     });
 
     test('send processes shader config paths correctly', async () => {

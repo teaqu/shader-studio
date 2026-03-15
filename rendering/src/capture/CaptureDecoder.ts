@@ -94,33 +94,4 @@ export class CaptureDecoder {
     return { bins, min, max };
   }
 
-  /**
-   * Build histogram with explicit global min/max bounds (for shared-axis multi-channel histograms).
-   */
-  static buildHistogramWithBounds(
-    values: Float32Array,
-    binCount: number,
-    globalMin: number,
-    globalMax: number,
-  ): { bins: number[]; min: number; max: number } {
-    const bins = new Array<number>(binCount).fill(0);
-
-    if (values.length === 0) {
-      return { bins, min: globalMin, max: globalMax };
-    }
-
-    const range = globalMax - globalMin;
-    if (range === 0) {
-      bins[Math.floor(binCount / 2)] = values.length;
-      return { bins, min: globalMin, max: globalMax };
-    }
-
-    for (let i = 0; i < values.length; i++) {
-      const normalized = (values[i] - globalMin) / range;
-      const binIndex = Math.min(Math.max(Math.floor(normalized * binCount), 0), binCount - 1);
-      bins[binIndex]++;
-    }
-
-    return { bins, min: globalMin, max: globalMax };
-  }
 }

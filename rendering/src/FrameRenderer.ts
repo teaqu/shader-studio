@@ -11,7 +11,6 @@ import { FPSCalculator } from "./util/FPSCalculator";
 export class FrameRenderer {
   private running = false;
   private currentFrameTime = 0;
-  private frameCount = 0;
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
   private fpsCalculator: FPSCalculator;
@@ -46,10 +45,6 @@ export class FrameRenderer {
     this.resourceManager = resourceManager;
     this.glCanvas = glCanvas;
     this.fpsCalculator = fpsCalculator;
-  }
-
-  public setSampleRate(rate: number): void {
-    this.sampleRate = rate;
   }
 
   public isRunning(): boolean {
@@ -212,11 +207,9 @@ export class FrameRenderer {
 
   private updateFPSTracking(time: number): void {
     if (this.timeManager.getFrame() === 0) {
-      this.frameCount = 0;
       this.fpsCalculator.reset();
     } else if (!this.timeManager.isPaused()) {
       this.fpsCalculator.updateFrame(time);
-      this.frameCount++;
     }
   }
 

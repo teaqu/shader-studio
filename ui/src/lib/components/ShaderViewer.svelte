@@ -3,11 +3,8 @@
   import { ShaderStudio } from "../ShaderStudio";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
-  import type { AspectRatioMode } from "../stores/aspectRatioStore";
-  import type { QualityMode } from "../stores/qualityStore";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
-  import ErrorDisplay from "./ErrorDisplay.svelte";
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
@@ -35,8 +32,6 @@
   let glCanvas: HTMLCanvasElement;
   let initialized = false;
   let isLocked = false;
-  let isInWindow = false;
-  let isWebServerRunning = false;
   let hasShader = false;
   let errors: string[] = [];
   let currentFPS = 0;
@@ -367,14 +362,6 @@
     isLocked = shaderStudio.getIsLocked();
   }
 
-  function handleAspectRatioChange(mode: AspectRatioMode) {
-    console.log('Aspect ratio changed to:', mode);
-  }
-
-  function handleQualityChange(mode: QualityMode) {
-    console.log('Quality changed to:', mode);
-  }
-
   function handleZoomChange(zoom: number) {
     zoomLevel = zoom;
   }
@@ -446,9 +433,6 @@
       type: 'extensionCommand',
       payload: { command }
     });
-    if (command === 'moveToNewWindow') {
-      isInWindow = true;
-    }
   }
 
   function handleConfigFileSelect(bufferName: string) {
@@ -629,10 +613,6 @@
     pixelInspectorManager.handleMouseMove(event);
   }
 
-  function handleErrorDismiss() {
-    errors = [];
-  }
-
   // Buffer messages that arrive before initialization completes
   let pendingMessages: MessageEvent[] = [];
 
@@ -654,7 +634,7 @@
         }
       });
 
-      const shadderLocker = new ShaderLocker();
+      const shaderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
       // Initialize shader debug manager
@@ -665,7 +645,7 @@
 
       shaderStudio = new ShaderStudio(
         transport,
-        shadderLocker,
+        shaderLocker,
         renderingEngine,
         shaderDebugManager
       );
@@ -763,17 +743,11 @@
 
       // Handle panel state (e.g., moved to new window)
       if (event.data.type === 'panelState') {
-        if (event.data.payload?.isInWindow !== undefined) {
-          isInWindow = event.data.payload.isInWindow;
-        }
         return;
       }
 
       // Handle web server state
       if (event.data.type === 'webServerState') {
-        if (event.data.payload?.isRunning !== undefined) {
-          isWebServerRunning = event.data.payload.isRunning;
-        }
         return;
       }
 
@@ -956,8 +930,6 @@
         onRefresh={handleRefresh}
         onTogglePause={handleTogglePause}
         onToggleLock={handleToggleLock}
-        onAspectRatioChange={handleAspectRatioChange}
-        onQualityChange={handleQualityChange}
         onZoomChange={handleZoomChange}
         onFpsLimitChange={handleFpsLimitChange}
         onConfig={handleConfig}
@@ -972,8 +944,6 @@
         onToggleVimMode={handleToggleVimMode}
         onFork={handleFork}
         onExtensionCommand={handleExtensionCommand}
-        {isInWindow}
-
         {hasShader}
         onResetLayout={handleResetLayout}
         {previewVisible}
@@ -1062,8 +1032,6 @@
       onRefresh={handleRefresh}
       onTogglePause={handleTogglePause}
       onToggleLock={handleToggleLock}
-      onAspectRatioChange={handleAspectRatioChange}
-      onQualityChange={handleQualityChange}
       onZoomChange={handleZoomChange}
       onFpsLimitChange={handleFpsLimitChange}
       onConfig={handleConfig}
@@ -1078,7 +1046,6 @@
       onToggleVimMode={handleToggleVimMode}
       onFork={handleFork}
       onExtensionCommand={handleExtensionCommand}
-      {isInWindow}
       {hasShader}
       onResetLayout={handleResetLayout}
       {previewVisible}

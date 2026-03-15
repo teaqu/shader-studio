@@ -164,13 +164,6 @@ export class ShaderProvider {
   }
 
   /**
-   * Remove a shader from the active tracking set
-   */
-  public removeActiveShader(shaderPath: string): void {
-    this.activeShaders.delete(shaderPath);
-  }
-
-  /**
    * Build a path map for converting resource paths to webview URIs
    */
   private buildPathMap(config: ShaderConfig | null, shaderPath: string): Record<string, string> {
