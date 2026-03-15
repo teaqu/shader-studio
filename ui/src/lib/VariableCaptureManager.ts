@@ -151,11 +151,58 @@ export class VariableCaptureManager {
   private lastGridWidth = 32;
   private lastGridHeight = 32;
   private pollTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _sampleSize = 32;
+  private _gridRefreshMode: RefreshMode = 'polling';
+  private _gridPollingMs = 500;
+  private _pixelRefreshMode: RefreshMode = 'polling';
+  private _pixelPollingMs = 500;
+  private onSampleSettingsChanged: (() => void) | null = null;
 
   constructor(
     private renderingEngine: RenderingEngine,
     private onUpdate: (vars: CapturedVariable[]) => void,
   ) {}
+
+  get sampleSize(): number { return this._sampleSize; }
+  get gridRefreshMode(): RefreshMode { return this._gridRefreshMode; }
+  get gridPollingMs(): number { return this._gridPollingMs; }
+  get pixelRefreshMode(): RefreshMode { return this._pixelRefreshMode; }
+  get pixelPollingMs(): number { return this._pixelPollingMs; }
+
+  setSampleSettingsCallback(callback: () => void): void {
+    this.onSampleSettingsChanged = callback;
+  }
+
+  changeSampleSize(size: number): void {
+    this._sampleSize = size;
+    this.onSampleSettingsChanged?.();
+  }
+
+  changeRefreshMode(mode: RefreshMode, hasPixelCapture: boolean): void {
+    if (hasPixelCapture) {
+      this._pixelRefreshMode = mode;
+    } else {
+      this._gridRefreshMode = mode;
+    }
+    this.onSampleSettingsChanged?.();
+  }
+
+  changePollingMs(ms: number, hasPixelCapture: boolean): void {
+    if (hasPixelCapture) {
+      this._pixelPollingMs = ms;
+    } else {
+      this._gridPollingMs = ms;
+    }
+    this.onSampleSettingsChanged?.();
+  }
+
+  getActiveRefreshMode(hasPixelCapture: boolean): RefreshMode {
+    return hasPixelCapture ? this._pixelRefreshMode : this._gridRefreshMode;
+  }
+
+  getActivePollingMs(hasPixelCapture: boolean): number {
+    return hasPixelCapture ? this._pixelPollingMs : this._gridPollingMs;
+  }
 
   /**
    * Called when any relevant state changes. Marks dirty and schedules capture.

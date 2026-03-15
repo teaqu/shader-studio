@@ -18,17 +18,20 @@
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
-  import type { RefreshMode } from "../VariableCaptureManager";
+  import { AudioVideoController } from "../AudioVideoController";
+  import { MessageRouter, type MessageRouterCallbacks } from "../MessageRouter";
+  import { EditorOverlayManager, type EditorOverlayCallbacks } from "../EditorOverlayManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
-  import { audioStore, linearToPerceptualVolume, type AudioState } from "../stores/audioStore";
+  import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import type { ShaderConfig } from "@shader-studio/types";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
   }) => void = () => {};
 
+  // Core state
   let glCanvas: HTMLCanvasElement;
   let initialized = false;
   let isLocked = false;
@@ -49,19 +52,19 @@
     canvasPosition: null,
   };
 
+  // Managers and controllers
   let shaderStudio: ShaderStudio;
   let renderingEngine: RenderingEngine;
   let transport: Transport = createTransport();
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
-  let debugInspectorEnabled = true; // remember inspector preference across debug sessions
+  let debugInspectorEnabled = true;
   let shaderDebugManager: ShaderDebugManager | undefined;
   let variableCaptureManager: VariableCaptureManager | undefined;
-  let sampleSize = 32;
-  let gridRefreshMode: RefreshMode = 'polling';
-  let gridPollingMs = 500;
-  let pixelRefreshMode: RefreshMode = 'polling';
-  let pixelPollingMs = 500;
+  let audioVideoController: AudioVideoController | undefined;
+  let messageRouter: MessageRouter | undefined;
+  let editorOverlayManager: EditorOverlayManager | undefined;
+
   let debugState: ShaderDebugState = {
     isEnabled: false,
     currentLine: null,
@@ -79,7 +82,7 @@
     capturedVariables: [],
   };
 
-  // Audio state
+  // Audio state (mirrored from AudioVideoController for Svelte reactivity)
   let audioVolume = 1.0;
   let audioMuted = true;
 
@@ -93,6 +96,15 @@
   // Debug panel state
   let debugPanelVisible = true;
 
+  // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
+  let editorOverlayVisible = false;
+  let editorVimMode = false;
+  let currentShaderCode: string = "";
+  let editorBufferName: string = "Image";
+  let editorFilePath: string = "";
+  let editorFileCode: string = "";
+  let editorBufferNames: string[] = ["Image"];
+
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
 
   // Extract specific debug state fields so that capturedVariables changes
@@ -101,26 +113,28 @@
   $: debugCurrentLine = debugState.currentLine;
 
   // Extract inspectorState fields as stable primitives.
-  // inspectorState is reassigned every frame by the pixel inspector (pixel RGB re-reads),
-  // which would cascade into every component that reads it. Primitives use !== so
-  // unchanged booleans/numbers won't trigger downstream re-renders.
   $: inspectorEnabled = inspectorState.isEnabled;
   $: inspectorActive = inspectorState.isActive;
   $: inspectorLocked = inspectorState.isLocked;
   $: inspectorCanvasX = inspectorState.canvasPosition?.x ?? null;
   $: inspectorCanvasY = inspectorState.canvasPosition?.y ?? null;
 
-  // Derive whether we're currently in pixel capture mode (need actual position)
+  // Derive whether we're currently in pixel capture mode
   $: hasPixelCapture = (inspectorActive || inspectorLocked) && (inspectorCanvasX !== null);
-  $: activeRefreshMode = hasPixelCapture ? pixelRefreshMode : gridRefreshMode;
-  $: activePollingMs = hasPixelCapture ? pixelPollingMs : gridPollingMs;
+
+  // Active refresh/polling from VariableCaptureManager
+  $: activeRefreshMode = variableCaptureManager
+    ? variableCaptureManager.getActiveRefreshMode(hasPixelCapture)
+    : 'polling';
+  $: activePollingMs = variableCaptureManager
+    ? variableCaptureManager.getActivePollingMs(hasPixelCapture)
+    : 500;
 
   // Stable pixel coordinates for the capture reactive block
   $: capturePixelX = hasPixelCapture ? inspectorCanvasX : null;
   $: capturePixelY = hasPixelCapture ? inspectorCanvasY : null;
 
   // Reactive: notify variable capture manager when relevant state changes.
-  // Only depends on stable primitives — NOT on inspectorState directly.
   $: if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
     variableCaptureManager.notifyStateChange({
       code: currentShaderCode,
@@ -131,127 +145,49 @@
       canvasHeight,
       loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
       customParams: shaderDebugManager.getCustomParameters(),
-      sampleSize,
-      refreshMode: activeRefreshMode,
-      pollingMs: activePollingMs,
+      sampleSize: variableCaptureManager.sampleSize,
+      refreshMode: variableCaptureManager.getActiveRefreshMode(hasPixelCapture),
+      pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
     });
   }
 
-  // Editor overlay state
-  let editorOverlayVisible = false;
-  let editorVimMode = false;
-  let currentShaderCode: string = "";
+  // Shared MenuBar props — two instances exist in different DOM positions for dockview layout
+  $: menuBarProps = {
+    timeManager,
+    currentFPS,
+    canvasWidth,
+    canvasHeight,
+    isLocked,
+    errors,
+    canvasElement: glCanvas,
+    onReset: handleReset,
+    onRefresh: handleRefresh,
+    onTogglePause: handleTogglePause,
+    onToggleLock: handleToggleLock,
+    onZoomChange: handleZoomChange,
+    onFpsLimitChange: handleFpsLimitChange,
+    onConfig: handleConfig,
+    isDebugEnabled: debugState.isEnabled,
+    onToggleDebugEnabled: handleToggleDebugEnabled,
+    debugState,
+    isConfigPanelVisible: configPanelVisible,
+    onToggleConfigPanel: handleToggleConfigPanel,
+    isEditorOverlayVisible: editorOverlayVisible,
+    onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
+    isVimModeEnabled: editorVimMode,
+    onToggleVimMode: () => editorOverlayManager?.toggleVimMode(),
+    onFork: handleFork,
+    onExtensionCommand: handleExtensionCommand,
+    hasShader,
+    onResetLayout: handleResetLayout,
+    previewVisible,
+    onShowPreview: handleShowPreview,
+    audioVolume,
+    audioMuted,
+    audioVideoController,
+  };
 
-  // Editor file tracking (which file the overlay is editing)
-  let editorBufferName: string = "Image";
-  let editorFilePath: string = "";
-  let editorFileCode: string = "";
-
-  // Derive available buffer names from config
-  $: editorBufferNames = (() => {
-    const names = ["Image"];
-    if (currentConfig?.passes) {
-      for (const name of Object.keys(currentConfig.passes)) {
-        if (name !== "Image") {
-          names.push(name);
-        }
-      }
-    }
-    return names;
-  })();
-
-  function handleVideoControl(path: string, action: string) {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (!engine) return;
-
-    // Block per-video unmute when globally muted
-    if (action === 'unmute' && audioMuted) return;
-
-    engine.controlVideo(path, action as any);
-
-    // After per-video unmute, apply the current global volume
-    if (action === 'unmute') {
-      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
-    }
-  }
-
-  function handleGetVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (engine) {
-      return engine.getVideoState(path);
-    }
-    return null;
-  }
-
-  function handleAudioControl(path: string, action: string) {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (!engine) return;
-
-    // Handle seek action (format: "seek:timeInSeconds")
-    if (action.startsWith('seek:')) {
-      const time = parseFloat(action.substring(5));
-      if (!isNaN(time)) {
-        engine.seekAudio(path, time);
-      }
-      return;
-    }
-
-    // Handle loop region update (format: "loopRegion:start,end")
-    if (action.startsWith('loopRegion:')) {
-      const parts = action.substring(11).split(',');
-      const start = parts[0] ? parseFloat(parts[0]) : undefined;
-      const end = parts[1] ? parseFloat(parts[1]) : undefined;
-      engine.updateAudioLoopRegion(path, isNaN(start as number) ? undefined : start, isNaN(end as number) ? undefined : end);
-      return;
-    }
-
-    // Block per-audio unmute when globally muted
-    if (action === 'unmute' && audioMuted) return;
-
-    engine.controlAudio(path, action as any);
-
-    // After per-audio unmute, apply the current global volume
-    if (action === 'unmute') {
-      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
-    }
-  }
-
-  function handleGetAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (engine) {
-      return engine.getAudioState(path);
-    }
-    return null;
-  }
-
-  function applyGlobalAudioState() {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (engine) {
-      engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), audioMuted);
-    }
-    // Keep audio options in sync so newly loaded audio sources respect global state
-    if (shaderStudio) {
-      shaderStudio.setAudioOptions({ muted: audioMuted, volume: linearToPerceptualVolume(audioVolume) });
-    }
-  }
-
-  function handleVolumeChange(volume: number) {
-    audioStore.setVolume(volume);
-  }
-
-  function handleToggleMute() {
-    audioStore.toggleMute();
-  }
-
-  function handleGetAudioFFT(type: string, path?: string): Uint8Array | null {
-    const engine = shaderStudio?.getRenderingEngine();
-    if (engine) {
-      return engine.getAudioFFTData(type, path);
-    }
-    return null;
-  }
-
-  // Subscribe to stores
+  // Subscribe to config/debug panel stores
   onMount(() => {
     const unsubConfig = configPanelStore.subscribe((state) => {
       configPanelVisible = state.isVisible;
@@ -259,27 +195,20 @@
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
     });
-
-    const unsubAudio = audioStore.subscribe((state: AudioState) => {
-      audioVolume = state.volume;
-      audioMuted = state.muted;
-      applyGlobalAudioState();
-    });
-
     return () => {
       unsubConfig();
       unsubDebug();
-      unsubAudio();
     };
   });
 
-  // Subscribe to editor overlay store
+  // FPS polling
   onMount(() => {
-    const unsubscribe = editorOverlayStore.subscribe((state) => {
-      editorOverlayVisible = state.isVisible;
-      editorVimMode = state.vimMode;
-    });
-    return unsubscribe;
+    const fpsInterval = setInterval(() => {
+      if (initialized && shaderStudio) {
+        currentFPS = renderingEngine.getCurrentFPS();
+      }
+    }, 100);
+    return () => clearInterval(fpsInterval);
   });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
@@ -289,29 +218,33 @@
 
   function handleCanvasResize(data: { width: number; height: number }) {
     if (!initialized) return;
-    const { width, height } = data;
-    canvasWidth = Math.round(width);
-    canvasHeight = Math.round(height);
-    renderingEngine.handleCanvasResize(width, height);
+    canvasWidth = Math.round(data.width);
+    canvasHeight = Math.round(data.height);
+    renderingEngine.handleCanvasResize(data.width, data.height);
+  }
+
+  function handleCanvasClick() {
+    pixelInspectorManager?.handleCanvasClick();
+  }
+
+  function handleCanvasMouseMove(event: MouseEvent) {
+    if (!pixelInspectorManager || !initialized) return;
+    pixelInspectorManager.handleMouseMove(event);
   }
 
   function handleReset() {
     if (!initialized) return;
-    // Unmute audio on reset (user gesture satisfies autoplay policy)
-    // Video mute state is not touched - videos are controlled via config UI only
     audioStore.setMuted(false);
     shaderStudio.handleReset(async () => {
       const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
-        await handleShaderMessage(lastEvent);
+        await messageRouter!.handleMessage(lastEvent);
       }
-      // Explicitly resume audio after reset — audio never auto-plays on
-      // compilation, only on reset. Resume playback + apply global volume.
       const engine = shaderStudio?.getRenderingEngine();
       if (engine) {
         await engine.resumeAudioContext();
         engine.resumeAllAudio();
-        engine.setGlobalVolume(linearToPerceptualVolume(audioVolume), false);
+        engine.setGlobalVolume(linearToPerceptualVolume(audioVideoController!.volume), false);
       }
     });
   }
@@ -323,37 +256,21 @@
 
   function handleConfig() {
     if (!initialized) return;
-    
-    // Get the current shader path from the last shader event
     const lastEvent = shaderStudio.getLastShaderEvent();
-    const shaderPath = lastEvent?.data?.path;
-    
-    if (!shaderPath) {
-      // If no shader path, just request config generation (will fall back to last viewed)
-      transport.postMessage({ 
-        type: 'generateConfig', 
-        payload: {} 
-      });
+    const path = lastEvent?.data?.path;
+    if (!path) {
+      transport.postMessage({ type: 'generateConfig', payload: {} });
       return;
     }
-    
-    // Check if config file exists by trying to fetch it
-    const configPath = shaderPath.replace(/\.glsl$/, '.sha.json');
-    
-    // Send a message to either show existing config or generate new one
-    transport.postMessage({ 
-      type: 'showConfig', 
-      payload: { 
-        shaderPath: configPath 
-      } 
+    transport.postMessage({
+      type: 'showConfig',
+      payload: { shaderPath: path.replace(/\.glsl$/, '.sha.json') }
     });
   }
 
   function handleTogglePause() {
     if (!initialized) return;
     renderingEngine.togglePause();
-    // Don't stop the render loop when paused - keep rendering so scrubbing works
-    // The TimeManager handles not advancing time when paused
   }
 
   function handleToggleLock() {
@@ -373,7 +290,6 @@
 
   function handleToggleInspectorEnabled() {
     if (!pixelInspectorManager) return;
-    // Don't allow enabling inspector when debug is off
     if (!pixelInspectorManager.getState().isEnabled && !shaderDebugManager?.getState().isEnabled) return;
     pixelInspectorManager.toggleEnabled();
     debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
@@ -383,18 +299,13 @@
     if (!shaderDebugManager || !initialized || !hasShader) return;
     shaderDebugManager.toggleEnabled();
 
-    // Send debug mode state to extension
-    const debugState = shaderDebugManager.getState();
     transport.postMessage({
       type: 'debugModeState',
-      payload: {
-        enabled: debugState.isEnabled
-      }
+      payload: { enabled: shaderDebugManager.getState().isEnabled }
     });
 
-    // Restore inspector preference when debug turns on, save & disable when debug turns off
     if (pixelInspectorManager) {
-      if (debugState.isEnabled) {
+      if (shaderDebugManager.getState().isEnabled) {
         pixelInspectorManager.setEnabled(debugInspectorEnabled);
       } else {
         debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
@@ -402,7 +313,6 @@
       }
     }
 
-    // Trigger recompile to immediately show/hide debug visualization
     shaderStudio.triggerDebugRecompile();
   }
 
@@ -411,129 +321,14 @@
     configPanelStore.toggle();
   }
 
-  function handleToggleEditorOverlay() {
-    editorOverlayStore.toggle();
-  }
-
-  function handleToggleVimMode() {
-    editorOverlayStore.toggleVimMode();
-  }
-
   function handleFork() {
     if (!initialized) return;
-    transport.postMessage({
-      type: 'forkShader',
-      payload: { shaderPath }
-    });
+    transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
   }
 
   function handleExtensionCommand(command: string) {
     if (!initialized) return;
-    transport.postMessage({
-      type: 'extensionCommand',
-      payload: { command }
-    });
-  }
-
-  function handleConfigFileSelect(bufferName: string) {
-    if (!initialized) return;
-    editorBufferName = bufferName;
-
-    if (bufferName === "Image") {
-      // Switch back to the main shader file
-      editorFilePath = shaderPath;
-      editorFileCode = currentShaderCode;
-    } else {
-      // Request the buffer file contents from the extension
-      transport.postMessage({
-        type: 'requestFileContents',
-        payload: {
-          bufferName,
-          shaderPath,
-        },
-      });
-    }
-  }
-
-  async function handleEditorCodeChange(code: string) {
-    if (!initialized) return;
-    // Update editor-local state
-    editorFileCode = code;
-
-    if (editorBufferName === "Image") {
-      // Main shader file: also update currentShaderCode and do direct recompile
-      currentShaderCode = code;
-      const lastEvent = shaderStudio.getLastShaderEvent();
-      if (lastEvent) {
-        const syntheticEvent = new MessageEvent('message', {
-          data: {
-            ...lastEvent.data,
-            code,
-          },
-        });
-        handleShaderMessage(syntheticEvent);
-      }
-    } else {
-      // Buffer file: directly update the buffer and recompile the pipeline
-      const result = await renderingEngine.updateBufferAndRecompile(editorBufferName, code);
-      if (result) {
-        if (result.success) {
-          errors = [];
-          renderingEngine.startRenderLoop();
-        } else {
-          errors = result.errors ? result.errors : [];
-        }
-      }
-    }
-  }
-
-  function handleParameterChange(index: number, value: string) {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.setCustomParameter(index, value);
-    shaderStudio.triggerDebugRecompile();
-    notifyVariableCaptureManager();
-  }
-
-  function handleLoopMaxIterChange(loopIndex: number, maxIter: number | null) {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.setLoopMaxIterations(loopIndex, maxIter);
-    shaderStudio.triggerDebugRecompile();
-    notifyVariableCaptureManager();
-  }
-
-  function handleToggleLineLock() {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.toggleLineLock();
-  }
-
-  function handleToggleInlineRendering() {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.toggleInlineRendering();
-    shaderStudio.triggerDebugRecompile();
-  }
-
-  function handleCycleNormalize() {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.cycleNormalizeMode();
-    shaderStudio.triggerDebugRecompile();
-  }
-
-  function handleToggleStep() {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.toggleStep();
-    shaderStudio.triggerDebugRecompile();
-  }
-
-  function handleSetStepEdge(edge: number) {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.setStepEdge(edge);
-    shaderStudio.triggerDebugRecompile();
-  }
-
-  function handleToggleVariableInspector() {
-    if (!shaderDebugManager) return;
-    shaderDebugManager.toggleVariableInspector();
-    notifyVariableCaptureManager();
+    transport.postMessage({ type: 'extensionCommand', payload: { command } });
   }
 
   function handleExpandVarHistogram(varName: string) {
@@ -549,34 +344,8 @@
     if (!debugState.filePath) return;
     transport.postMessage({
       type: 'goToLine',
-      payload: {
-        line: declarationLine,
-        filePath: debugState.filePath,
-      },
+      payload: { line: declarationLine, filePath: debugState.filePath },
     });
-  }
-
-  function handleChangeSampleSize(size: number) {
-    sampleSize = size;
-    notifyVariableCaptureManager();
-  }
-
-  function handleChangeRefreshMode(mode: RefreshMode) {
-    if (hasPixelCapture) {
-      pixelRefreshMode = mode;
-    } else {
-      gridRefreshMode = mode;
-    }
-    notifyVariableCaptureManager();
-  }
-
-  function handleChangePollingMs(ms: number) {
-    if (hasPixelCapture) {
-      pixelPollingMs = ms;
-    } else {
-      gridPollingMs = ms;
-    }
-    notifyVariableCaptureManager();
   }
 
   function notifyVariableCaptureManager() {
@@ -592,9 +361,9 @@
       canvasHeight,
       loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
       customParams: shaderDebugManager.getCustomParameters(),
-      sampleSize,
-      refreshMode: hasPixelCapture ? pixelRefreshMode : gridRefreshMode,
-      pollingMs: hasPixelCapture ? pixelPollingMs : gridPollingMs,
+      sampleSize: variableCaptureManager.sampleSize,
+      refreshMode: variableCaptureManager.getActiveRefreshMode(hasPixelCapture),
+      pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
     });
   }
 
@@ -603,51 +372,53 @@
     return renderingEngine.getUniforms();
   }
 
-  function handleCanvasClick() {
-    if (!pixelInspectorManager) return;
-    pixelInspectorManager.handleCanvasClick();
+  function handleShaderSource(event: MessageEvent) {
+    const locked = shaderStudio.getIsLocked();
+    const lockedPath = shaderStudio.getLockedShaderPath();
+    if (!locked || lockedPath === event.data.path) {
+      const isFirstShader = !hasShader && event.data.path;
+      currentConfig = event.data.config || null;
+      pathMap = event.data.pathMap || {};
+      bufferPathMap = event.data.bufferPathMap || {};
+      shaderPath = event.data.path || "";
+      currentShaderCode = event.data.code || "";
+      if (shaderPath) {
+        hasShader = true;
+      }
+      if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
+        renderingEngine.togglePause();
+      }
+      editorOverlayManager?.setShaderSource(currentShaderCode, shaderPath);
+      editorOverlayManager?.setConfig(currentConfig);
+    }
   }
-
-  function handleCanvasMouseMove(event: MouseEvent) {
-    if (!pixelInspectorManager || !initialized) return;
-    pixelInspectorManager.handleMouseMove(event);
-  }
-
-  // Buffer messages that arrive before initialization completes
-  let pendingMessages: MessageEvent[] = [];
 
   async function initializeApp() {
     try {
-      // Register message listener EARLY to capture messages during initialization
       transport.onMessage(async (event: MessageEvent) => {
         if (initialized) {
-          await handleShaderMessage(event);
-          // Also handle cursor position messages
+          await messageRouter!.handleMessage(event);
           if (event.data.type === 'cursorPosition' && shaderStudio) {
-            const messageHandler = (shaderStudio as any).messageHandler;
-            if (messageHandler) {
-              messageHandler.handleCursorPositionMessage(event.data);
-            }
+            const handler = (shaderStudio as any).messageHandler;
+            handler?.handleCursorPositionMessage(event.data);
           }
         } else {
-          pendingMessages.push(event);
+          messageRouter?.bufferMessage(event);
         }
       });
 
       const shaderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
-      // Initialize shader debug manager
       shaderDebugManager = new ShaderDebugManager();
-      shaderDebugManager.setStateCallback((state) => {
-        debugState = state;
-      });
+      shaderDebugManager.setStateCallback((s) => { debugState = s; });
 
-      shaderStudio = new ShaderStudio(
-        transport,
-        shaderLocker,
-        renderingEngine,
-        shaderDebugManager
+      shaderStudio = new ShaderStudio(transport, shaderLocker, renderingEngine, shaderDebugManager);
+
+      messageRouter = new MessageRouter(() => shaderStudio, messageRouterCallbacks);
+
+      editorOverlayManager = new EditorOverlayManager(
+        transport, () => renderingEngine, editorOverlayCallbacks,
       );
 
       const success = await shaderStudio.initialize(glCanvas);
@@ -658,31 +429,30 @@
 
       timeManager = renderingEngine.getTimeManager();
 
-      // Initialize pixel inspector manager
-      pixelInspectorManager = new PixelInspectorManager((state) => {
-        inspectorState = state;
-      });
-      pixelInspectorManager.initialize(
-        renderingEngine,
-        timeManager,
-        glCanvas
+      // AudioVideoController must be created after shaderStudio.initialize()
+      // because it subscribes to audioStore which fires immediately,
+      // triggering applyGlobalAudioState() which needs a fully initialized engine.
+      audioVideoController = new AudioVideoController(
+        () => shaderStudio,
+        (vol, mut) => { audioVolume = vol; audioMuted = mut; },
       );
 
-      // Initialize variable capture manager
+      pixelInspectorManager = new PixelInspectorManager((s) => { inspectorState = s; });
+      pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
+
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
+      variableCaptureManager.setSampleSettingsCallback(() => notifyVariableCaptureManager());
 
-      // Start paused until a shader is loaded
+      shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
+      shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
+
       renderingEngine.togglePause();
 
       initialized = true;
-
-      // Replay any messages that arrived during initialization
-      for (const msg of pendingMessages) {
-        handleShaderMessage(msg);
-      }
-      pendingMessages = [];
+      messageRouter.markInitialized();
+      messageRouter.replayPendingMessages();
 
       onInitialized({ shaderStudio });
     } catch (err) {
@@ -690,96 +460,38 @@
     }
   }
 
-  async function handleShaderMessage(event: MessageEvent) {
-    if (!initialized) return;
-
-    try {
-      // Handle error messages from the extension directly in the UI
-      if (event.data.type === 'error') {
-        const payload = event.data.payload;
-        errors = Array.isArray(payload) ? payload : [payload];
-        return;
-      }
-
-      // Handle file contents response for editor overlay
-      if (event.data.type === 'fileContents') {
-        editorFilePath = event.data.payload.path || "";
-        editorFileCode = event.data.payload.code || "";
-        return;
-      }
-
-      // Extract config and pathMap from shader source messages
-      // When locked, only accept config from the locked shader's path
-      if (event.data.type === 'shaderSource') {
-        const locked = shaderStudio.getIsLocked();
-        const lockedPath = shaderStudio.getLockedShaderPath();
-        if (!locked || lockedPath === event.data.path) {
-          // Unpause on first shader load
-          const isFirstShader = !hasShader && event.data.path;
-          currentConfig = event.data.config || null;
-          pathMap = event.data.pathMap || {};
-          bufferPathMap = event.data.bufferPathMap || {};
-          shaderPath = event.data.path || "";
-          currentShaderCode = event.data.code || "";
-          if (shaderPath) {
-            hasShader = true;
-          }
-          if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
-            renderingEngine.togglePause();
-          }
-          // Sync editor overlay if it's showing the main shader
-          if (editorBufferName === "Image") {
-            editorFilePath = shaderPath;
-            editorFileCode = currentShaderCode;
-          }
-        }
-      }
-
-      // Handle toggle editor overlay message from extension
-      if (event.data.type === 'toggleEditorOverlay') {
-        editorOverlayStore.toggle();
-        return;
-      }
-
-      // Handle panel state (e.g., moved to new window)
-      if (event.data.type === 'panelState') {
-        return;
-      }
-
-      // Handle web server state
-      if (event.data.type === 'webServerState') {
-        return;
-      }
-
-      if (event.data.type === 'resetLayout') {
-        handleResetLayout();
-        return;
-      }
-
-      const result = await shaderStudio.handleShaderMessage(event);
-
-      // Update errors state based on compilation result
+  // Callback objects for managers — defined as getters to close over Svelte state
+  const messageRouterCallbacks: MessageRouterCallbacks = {
+    onError: (errs) => { errors = errs; },
+    onMessageError: (msg) => { addError(msg); },
+    onFileContents: (path, code) => { editorOverlayManager?.handleFileContents(path, code); },
+    onShaderSource: handleShaderSource,
+    onToggleEditorOverlay: () => { editorOverlayStore.toggle(); },
+    onResetLayout: () => { handleResetLayout(); },
+    onCompilationResult: (result) => {
       if (result) {
-        if (result.success) {
-          errors = [];
-        } else {
-          errors = result.errors && result.errors.length > 0 ? result.errors : [];
-        }
+        errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
       }
+    },
+    onLockStateChanged: (locked) => { isLocked = locked; },
+  };
 
-      // Update the UI lock state to reflect the current state
-      isLocked = shaderStudio.getIsLocked();
-    } catch (err) {
-      const errorMsg = `Shader message handling failed: ${err}`;
-      console.error("ShaderStudio: Error in handleShaderMessage:", err);
-      console.error(
-        "ShaderStudio: Error stack:",
-        err instanceof Error ? err.stack : "No stack",
-      );
-      console.error("ShaderStudio: Event data:", event.data);
-      addError(errorMsg);
-    }
-  }
+  const editorOverlayCallbacks: EditorOverlayCallbacks = {
+    onStateChanged: (state) => {
+      editorOverlayVisible = state.visible;
+      editorVimMode = state.vimMode;
+      editorFilePath = state.filePath;
+      editorFileCode = state.fileCode;
+      editorBufferName = state.bufferName;
+      editorBufferNames = state.bufferNames;
+    },
+    onShaderCodeChanged: (code) => { currentShaderCode = code; },
+    onErrors: (errs) => { errors = errs; },
+    onClearErrors: () => { errors = []; },
+    onStartRenderLoop: () => { renderingEngine.startRenderLoop(); },
+    getLastShaderEvent: () => shaderStudio.getLastShaderEvent(),
+    handleShaderMessage: (event) => { messageRouter!.handleMessage(event); },
+  };
 
   function addError(message: string) {
     errors = [...errors, message];
@@ -788,17 +500,7 @@
     }
   }
 
-  onMount(() => {
-    const fpsInterval = setInterval(() => {
-      if (initialized && shaderStudio) {
-        currentFPS = renderingEngine.getCurrentFPS();
-      }
-    }, 100);
-
-    return () => clearInterval(fpsInterval);
-  });
-
-  // Dockview functions, set when DockviewLayout is ready
+  // Dockview functions
   let resetLayoutFn: (() => void) | null = null;
   let showPreviewFn: (() => void) | null = null;
   let previewVisible = true;
@@ -826,75 +528,52 @@
   }
 
   function handleDebugClosed() {
-    // User closed the debug tab — disable debug mode
     if (shaderDebugManager && debugState.isEnabled) {
       handleToggleDebugEnabled();
     }
   }
 
   function handleConfigClosed() {
-    // User closed the config tab — disable config panel
     configPanelStore.setVisible(false);
   }
 
-  // DOM teleport refs — these elements are rendered in our template (so Svelte manages reactivity)
-  // and then moved into dockview containers by the DockviewLayout component
+  // DOM teleport refs
   let previewEl: HTMLElement;
   let debugEl: HTMLElement;
   let configEl: HTMLElement;
 
   function mountPreview(container: HTMLElement): () => void {
-    if (previewEl) {
-      container.appendChild(previewEl);
-    }
+    if (previewEl) container.appendChild(previewEl);
     return () => {
-      // Move element back to avoid it being destroyed by dockview
-      if (previewEl && previewEl.parentNode === container) {
-        container.removeChild(previewEl);
-      }
+      if (previewEl && previewEl.parentNode === container) container.removeChild(previewEl);
     };
   }
 
   function mountDebug(container: HTMLElement): () => void {
-    if (debugEl) {
-      container.appendChild(debugEl);
-    }
+    if (debugEl) container.appendChild(debugEl);
     return () => {
-      if (debugEl && debugEl.parentNode === container) {
-        container.removeChild(debugEl);
-      }
+      if (debugEl && debugEl.parentNode === container) container.removeChild(debugEl);
     };
   }
 
   function mountConfig(container: HTMLElement): () => void {
-    if (configEl) {
-      container.appendChild(configEl);
-    }
+    if (configEl) container.appendChild(configEl);
     return () => {
-      if (configEl && configEl.parentNode === container) {
-        container.removeChild(configEl);
-      }
+      if (configEl && configEl.parentNode === container) container.removeChild(configEl);
     };
   }
 
   onDestroy(() => {
-    if (variableCaptureManager) {
-      variableCaptureManager.dispose();
-    }
-    if (pixelInspectorManager) {
-      pixelInspectorManager.dispose();
-    }
-    if (renderingEngine) {
-      renderingEngine.dispose();
-    }
-    if (transport) {
-      transport.dispose();
-    }
+    if (audioVideoController) audioVideoController.dispose();
+    if (editorOverlayManager) editorOverlayManager.dispose();
+    if (variableCaptureManager) variableCaptureManager.dispose();
+    if (pixelInspectorManager) pixelInspectorManager.dispose();
+    if (renderingEngine) renderingEngine.dispose();
+    if (transport) transport.dispose();
   });
 </script>
 
 <div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
-  <!-- Panel content rendered declaratively for Svelte reactivity, then teleported into dockview containers -->
   <div class="dockview-panel-source" bind:this={previewEl}>
     <ShaderCanvas
       {zoomLevel}
@@ -909,50 +588,16 @@
         shaderCode={editorFileCode}
         shaderPath={editorFilePath}
         {transport}
-        onCodeChange={handleEditorCodeChange}
+        onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
         vimMode={editorVimMode}
         bufferNames={editorBufferNames}
         activeBufferName={editorBufferName}
-        onBufferSwitch={handleConfigFileSelect}
+        onBufferSwitch={(name) => editorOverlayManager?.handleConfigFileSelect(name, shaderPath)}
         {errors}
       />
     {/if}
     {#if initialized && previewAlone && previewVisible}
-      <MenuBar
-        {timeManager}
-        {currentFPS}
-        {canvasWidth}
-        {canvasHeight}
-        {isLocked}
-        {errors}
-        canvasElement={glCanvas}
-        onReset={handleReset}
-        onRefresh={handleRefresh}
-        onTogglePause={handleTogglePause}
-        onToggleLock={handleToggleLock}
-        onZoomChange={handleZoomChange}
-        onFpsLimitChange={handleFpsLimitChange}
-        onConfig={handleConfig}
-        isDebugEnabled={debugState.isEnabled}
-        onToggleDebugEnabled={handleToggleDebugEnabled}
-        {debugState}
-        isConfigPanelVisible={configPanelVisible}
-        onToggleConfigPanel={handleToggleConfigPanel}
-        isEditorOverlayVisible={editorOverlayVisible}
-        onToggleEditorOverlay={handleToggleEditorOverlay}
-        isVimModeEnabled={editorVimMode}
-        onToggleVimMode={handleToggleVimMode}
-        onFork={handleFork}
-        onExtensionCommand={handleExtensionCommand}
-        {hasShader}
-        onResetLayout={handleResetLayout}
-        {previewVisible}
-        onShowPreview={handleShowPreview}
-        {audioVolume}
-        {audioMuted}
-        onVolumeChange={handleVolumeChange}
-        onToggleMute={handleToggleMute}
-      />
+      <MenuBar {...menuBarProps} />
     {/if}
   </div>
   <div class="dockview-panel-source" bind:this={debugEl}>
@@ -960,26 +605,17 @@
       <DebugPanel
         {debugState}
         {getUniforms}
+        {shaderDebugManager}
+        {variableCaptureManager}
         isInspectorEnabled={inspectorEnabled}
         isInspectorActive={inspectorActive}
         isInspectorLocked={inspectorLocked}
-        onParameterChange={handleParameterChange}
-        onLoopMaxIterChange={handleLoopMaxIterChange}
-        onToggleLineLock={handleToggleLineLock}
         onToggleInspectorEnabled={handleToggleInspectorEnabled}
-        onToggleInlineRendering={handleToggleInlineRendering}
-        onCycleNormalize={handleCycleNormalize}
-        onToggleStep={handleToggleStep}
-        onSetStepEdge={handleSetStepEdge}
-        onToggleVariableInspector={handleToggleVariableInspector}
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
-        {sampleSize}
-        onChangeSampleSize={handleChangeSampleSize}
+        sampleSize={variableCaptureManager?.sampleSize ?? 32}
         refreshMode={activeRefreshMode}
         pollingMs={activePollingMs}
-        onChangeRefreshMode={handleChangeRefreshMode}
-        onChangePollingMs={handleChangePollingMs}
         hasPixelSelected={hasPixelCapture}
       />
     {/if}
@@ -993,14 +629,10 @@
         {transport}
         {shaderPath}
         isVisible={configPanelVisible}
-        onFileSelect={handleConfigFileSelect}
+        onFileSelect={(name) => editorOverlayManager?.handleConfigFileSelect(name, shaderPath)}
         selectedBuffer={editorBufferName}
         isLocked={isLocked}
-        onVideoControl={handleVideoControl}
-        getVideoState={handleGetVideoState}
-        onAudioControl={handleAudioControl}
-        getAudioState={handleGetAudioState}
-        getAudioFFT={handleGetAudioFFT}
+        {audioVideoController}
         globalMuted={audioMuted}
       />
     {/if}
@@ -1020,41 +652,7 @@
     on:configClosed={handleConfigClosed}
   />
   {#if initialized && !(previewAlone && previewVisible)}
-    <MenuBar
-      {timeManager}
-      {currentFPS}
-      {canvasWidth}
-      {canvasHeight}
-      {isLocked}
-      {errors}
-      canvasElement={glCanvas}
-      onReset={handleReset}
-      onRefresh={handleRefresh}
-      onTogglePause={handleTogglePause}
-      onToggleLock={handleToggleLock}
-      onZoomChange={handleZoomChange}
-      onFpsLimitChange={handleFpsLimitChange}
-      onConfig={handleConfig}
-      isDebugEnabled={debugState.isEnabled}
-      onToggleDebugEnabled={handleToggleDebugEnabled}
-      {debugState}
-      isConfigPanelVisible={configPanelVisible}
-      onToggleConfigPanel={handleToggleConfigPanel}
-      isEditorOverlayVisible={editorOverlayVisible}
-      onToggleEditorOverlay={handleToggleEditorOverlay}
-      isVimModeEnabled={editorVimMode}
-      onToggleVimMode={handleToggleVimMode}
-      onFork={handleFork}
-      onExtensionCommand={handleExtensionCommand}
-      {hasShader}
-      onResetLayout={handleResetLayout}
-      {previewVisible}
-      onShowPreview={handleShowPreview}
-      {audioVolume}
-      {audioMuted}
-      onVolumeChange={handleVolumeChange}
-      onToggleMute={handleToggleMute}
-    />
+    <MenuBar {...menuBarProps} />
   {/if}
   <PixelInspector
     isActive={inspectorState.isActive}
@@ -1075,8 +673,6 @@
 </div>
 
 <style>
-  /* Panel source elements are hidden when not yet teleported into dockview.
-     Once moved into a dockview panel container, the parent provides sizing. */
   .dockview-panel-source {
     position: absolute;
     width: 100%;

@@ -851,9 +851,23 @@ describe('ConfigPanel', () => {
     });
   });
 
-  describe('audio/video handler props', () => {
-    it('should accept and pass through onVideoControl prop', async () => {
-      const mockVideoControl = vi.fn();
+  describe('audio/video controller prop', () => {
+    function createMockAudioVideoController() {
+      return {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue(null),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn().mockReturnValue(null),
+        getAudioFFT: vi.fn().mockReturnValue(null),
+        setVolume: vi.fn(),
+        toggleMute: vi.fn(),
+        volume: 1.0,
+        muted: false,
+        dispose: vi.fn(),
+      } as any;
+    }
+
+    it('should accept audioVideoController with video inputs', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -873,17 +887,15 @@ describe('ConfigPanel', () => {
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
-        onVideoControl: mockVideoControl,
+        audioVideoController: createMockAudioVideoController(),
       });
 
       await tick();
 
-      // Component should render without errors when video handler props are provided
       expect(container.querySelector('.config-panel')).toBeTruthy();
     });
 
-    it('should accept and pass through onAudioControl prop', async () => {
-      const mockAudioControl = vi.fn();
+    it('should accept audioVideoController with audio inputs', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -903,12 +915,11 @@ describe('ConfigPanel', () => {
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
-        onAudioControl: mockAudioControl,
+        audioVideoController: createMockAudioVideoController(),
       });
 
       await tick();
 
-      // Component should render without errors when audio handler props are provided
       expect(container.querySelector('.config-panel')).toBeTruthy();
     });
 
@@ -936,7 +947,7 @@ describe('ConfigPanel', () => {
       expect(container.querySelector('.config-panel')).toBeTruthy();
     });
 
-    it('should render with all audio/video handler props provided', async () => {
+    it('should render with audioVideoController and mixed inputs', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -957,11 +968,7 @@ describe('ConfigPanel', () => {
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue(null),
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue(null),
-        getAudioFFT: vi.fn().mockReturnValue(null),
+        audioVideoController: createMockAudioVideoController(),
         globalMuted: false,
       });
 

@@ -18,12 +18,9 @@
   export let existingChannelNames: string[] = [];
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
+  import type { AudioVideoController } from "../../AudioVideoController";
   export let shaderPath: string = "";
-  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let getAudioFFT: ((type: string, path?: string) => Uint8Array | null) | undefined = undefined;
+  export let audioVideoController: AudioVideoController | undefined = undefined;
 
   let editingName = false;
   let nameInput = "";
@@ -261,12 +258,12 @@
 
   /** Resume audio after a config save that triggers a forceCleanup recompile */
   function resumeAudioAfterSave() {
-    if (tempInput?.type === 'audio' && tempInput.path && onAudioControl) {
+    if (tempInput?.type === 'audio' && tempInput.path && audioVideoController) {
       const path = (tempInput as any).resolved_path
         || (getWebviewUri ? getWebviewUri(tempInput.path) : null)
         || lastSelectedResolvedUri
         || tempInput.path;
-      setTimeout(() => onAudioControl!(path, 'play'), 500);
+      setTimeout(() => audioVideoController!.audioControl(path, 'play'), 500);
     }
   }
 
@@ -385,8 +382,7 @@
             onUpdateFilter={updateFilter}
             onUpdateWrap={updateWrap}
             onUpdateVFlip={updateVFlip}
-            {onVideoControl}
-            {getVideoState}
+            {audioVideoController}
           />
 
         {:else if activeTab === "Music"}
@@ -401,8 +397,7 @@
             onUpdatePath={updatePath}
             onUpdateTempInput={(input) => { tempInput = input; }}
             onAutoSave={autoSave}
-            {onAudioControl}
-            {getAudioState}
+            {audioVideoController}
           />
         {/if}
       </div>

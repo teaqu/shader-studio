@@ -1,15 +1,18 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
+  import type { AudioVideoController } from "../../AudioVideoController";
 
   export let channelInput: ConfigInput | undefined;
   export let getWebviewUri: (path: string) => string | undefined;
-  export let getAudioFFT: ((type: string, path?: string) => Uint8Array | null) | undefined = undefined;
-  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
+  export let audioVideoController: AudioVideoController | undefined = undefined;
   export let globalMuted: boolean = false;
+
+  $: onVideoControl = audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined;
+  $: getVideoState = audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined;
+  $: onAudioControl = audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined;
+  $: getAudioState = audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined;
+  $: getAudioFFT = audioVideoController ? (t: string, p?: string) => audioVideoController!.getAudioFFT(t, p) : undefined;
 
   let imageLoaded = false;
   let imageError = false;

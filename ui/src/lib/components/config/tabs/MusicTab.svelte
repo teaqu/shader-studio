@@ -15,9 +15,12 @@
   export let onAssetSelect: (path: string, resolvedUri?: string) => void;
   export let onUpdatePath: (path: string) => void;
   export let onUpdateTempInput: (input: ConfigInput) => void;
+  import type { AudioVideoController } from "../../../AudioVideoController";
   export let onAutoSave: () => void;
-  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
+  export let audioVideoController: AudioVideoController | undefined = undefined;
+
+  $: onAudioControl = audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined;
+  $: getAudioState = audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined;
 
   // Track whether loop region has been changed so we can persist on destroy
   let pendingLoopRegionSave = false;

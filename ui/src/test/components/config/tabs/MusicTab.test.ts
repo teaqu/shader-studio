@@ -19,8 +19,7 @@ describe('MusicTab', () => {
     onUpdatePath: vi.fn(),
     onUpdateTempInput: vi.fn(),
     onAutoSave: vi.fn(),
-    onAudioControl: undefined as ((path: string, action: string) => void) | undefined,
-    getAudioState: undefined as ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined,
+    audioVideoController: undefined as any,
   });
 
   describe('Rendering', () => {
@@ -48,8 +47,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -74,8 +72,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -87,8 +84,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -102,8 +98,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -119,8 +114,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -138,8 +132,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -156,8 +149,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -174,8 +166,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -194,8 +185,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', resolved_path: 'webview://cdn/music.mp3' } as any,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -214,8 +204,7 @@ describe('MusicTab', () => {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
         getWebviewUri: mockWebviewUri,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -235,8 +224,7 @@ describe('MusicTab', () => {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
         getWebviewUri: mockWebviewUri,
-        getAudioState: mockGetAudioState,
-        onAudioControl: vi.fn(),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const resolvedCalls = mockGetAudioState.mock.calls.filter(
@@ -251,8 +239,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -264,8 +251,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 10, endTime: 60 } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -278,8 +264,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 10, endTime: 60 } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -303,8 +288,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: audioInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -325,8 +309,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: audioInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -346,8 +329,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { ...audioInput, resolved_path: 'webview://music.mp3' } as any,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -371,8 +353,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: audioInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -399,8 +380,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -421,8 +401,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -449,8 +428,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -477,8 +455,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 5, endTime: 30 } as ConfigInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -517,8 +494,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 5, endTime: 30 } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -540,8 +516,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 5, endTime: 30 } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
@@ -570,8 +545,7 @@ describe('MusicTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3', startTime: 20, endTime: 60 } as ConfigInput,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(MusicTab, props);
