@@ -670,4 +670,82 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.notCalled(showErrorStub);
     });
   });
+
+  suite('WebSocket port binding', () => {
+    const createdTransports: any[] = [];
+
+    teardown(() => {
+      for (const t of createdTransports) {
+        try { t.close(); } catch {}
+      }
+      createdTransports.length = 0;
+    });
+
+    test('setWebSocketPort is called with the actual bound port', (done) => {
+      const setPortSpy = sandbox.spy(shaderStudio['webServer'], 'setWebSocketPort');
+      const port = 51570;
+
+      shaderStudio['createWebSocketTransport'](port);
+      const transport = shaderStudio['webSocketTransport'];
+      createdTransports.push(transport);
+
+      // setWebSocketPort is called asynchronously via onReady after the server binds
+      const start = Date.now();
+      const check = () => {
+        if (setPortSpy.called) {
+          const calledWith = setPortSpy.getCall(0).args[0];
+          assert.strictEqual(calledWith, port);
+          done();
+        } else if (Date.now() - start < 2000) {
+          setTimeout(check, 20);
+        } else {
+          done(new Error('setWebSocketPort was never called'));
+        }
+      };
+      setTimeout(check, 20);
+    });
+
+    test('setWebSocketPort is called with fallback port when preferred port is in use', (done) => {
+      const net = require('net');
+      const port = 51571;
+      const blocker = net.createServer();
+
+      blocker.listen(port, () => {
+        const setPortSpy = sandbox.spy(shaderStudio['webServer'], 'setWebSocketPort');
+
+        shaderStudio['createWebSocketTransport'](port);
+        const transport = shaderStudio['webSocketTransport'];
+        createdTransports.push(transport);
+
+        const start = Date.now();
+        const check = () => {
+          if (setPortSpy.called) {
+            const actualPort = setPortSpy.getCall(0).args[0];
+            blocker.close(() => {
+              assert.notStrictEqual(actualPort, port, 'should use fallback port, not the blocked one');
+              assert.ok(actualPort > 0);
+              done();
+            });
+          } else if (Date.now() - start < 2000) {
+            setTimeout(check, 20);
+          } else {
+            blocker.close();
+            done(new Error('setWebSocketPort was never called'));
+          }
+        };
+        setTimeout(check, 20);
+      });
+    });
+
+    test('setWebSocketPort is not called synchronously — only after server binds', () => {
+      const setPortSpy = sandbox.spy(shaderStudio['webServer'], 'setWebSocketPort');
+
+      shaderStudio['createWebSocketTransport'](51572);
+      const transport = shaderStudio['webSocketTransport'];
+      createdTransports.push(transport);
+
+      // Immediately after the call (synchronously), port should not yet be set
+      sinon.assert.notCalled(setPortSpy);
+    });
+  });
 });
