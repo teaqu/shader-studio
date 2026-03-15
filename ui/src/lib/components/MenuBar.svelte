@@ -65,10 +65,18 @@
   export let onToggleVimMode: () => void = () => {};
   export let onFork: () => void = () => {};
   export let onExtensionCommand: (command: string) => void = () => {};
+  import type { AudioVideoController } from "../AudioVideoController";
   export let audioVolume: number = 1.0;
   export let audioMuted: boolean = true;
-  export let onVolumeChange: (volume: number) => void = () => {};
-  export let onToggleMute: () => void = () => {};
+  export let audioVideoController: AudioVideoController | undefined = undefined;
+
+  function onVolumeChange(volume: number) {
+    audioVideoController?.setVolume(volume);
+  }
+
+  function onToggleMute() {
+    audioVideoController?.toggleMute();
+  }
   export let hasShader: boolean = false;
   export let onResetLayout: () => void = () => {};
   export let previewVisible: boolean = true;

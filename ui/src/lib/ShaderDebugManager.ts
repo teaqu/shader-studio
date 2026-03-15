@@ -21,6 +21,8 @@ export class ShaderDebugManager {
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
+  private onRecompileNeeded: (() => void) | null = null;
+  private onCaptureStateChanged: (() => void) | null = null;
   private customParameters: Map<number, string> = new Map();
   private loopMaxIterations: Map<number, number> = new Map();
   private lastOriginalCode: string | null = null;
@@ -29,6 +31,14 @@ export class ShaderDebugManager {
 
   public setStateCallback(callback: (state: ShaderDebugState) => void): void {
     this.stateCallback = callback;
+  }
+
+  public setRecompileCallback(callback: () => void): void {
+    this.onRecompileNeeded = callback;
+  }
+
+  public setCaptureStateCallback(callback: () => void): void {
+    this.onCaptureStateChanged = callback;
   }
 
   public toggleEnabled(): void {
@@ -76,6 +86,8 @@ export class ShaderDebugManager {
     } else {
       this.customParameters.set(index, value);
     }
+    this.onRecompileNeeded?.();
+    this.onCaptureStateChanged?.();
   }
 
   public setLoopMaxIterations(loopIndex: number, maxIter: number | null): void {
@@ -84,6 +96,8 @@ export class ShaderDebugManager {
     } else {
       this.loopMaxIterations.set(loopIndex, maxIter);
     }
+    this.onRecompileNeeded?.();
+    this.onCaptureStateChanged?.();
   }
 
   public getCustomParameters(): Map<number, string> {
@@ -107,6 +121,7 @@ export class ShaderDebugManager {
   public toggleInlineRendering(): void {
     this.state.isInlineRenderingEnabled = !this.state.isInlineRenderingEnabled;
     this.notifyStateChange();
+    this.onRecompileNeeded?.();
   }
 
   public cycleNormalizeMode(): void {
@@ -114,16 +129,19 @@ export class ShaderDebugManager {
     const currentIndex = modes.indexOf(this.state.normalizeMode);
     this.state.normalizeMode = modes[(currentIndex + 1) % modes.length];
     this.notifyStateChange();
+    this.onRecompileNeeded?.();
   }
 
   public toggleStep(): void {
     this.state.isStepEnabled = !this.state.isStepEnabled;
     this.notifyStateChange();
+    this.onRecompileNeeded?.();
   }
 
   public setStepEdge(edge: number): void {
     this.state.stepEdge = edge;
     this.notifyStateChange();
+    this.onRecompileNeeded?.();
   }
 
   public setDebugError(error: string | null): void {
@@ -137,6 +155,7 @@ export class ShaderDebugManager {
       this.state.capturedVariables = [];
     }
     this.notifyStateChange();
+    this.onCaptureStateChanged?.();
   }
 
   public setCapturedVariables(vars: CapturedVariable[]): void {

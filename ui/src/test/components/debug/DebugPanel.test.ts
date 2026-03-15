@@ -5,6 +5,8 @@ import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
 import type { ShaderDebugState, DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
 import type { PassUniforms } from '../../../../../rendering/src/models/PassUniforms';
 import type { RefreshMode } from '../../../lib/VariableCaptureManager';
+import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
+import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -55,6 +57,30 @@ const mockUniforms: PassUniforms = {
 
 function mockGetUniforms(): PassUniforms | null {
   return mockUniforms;
+}
+
+function createMockShaderDebugManager() {
+  return {
+    setCustomParameter: vi.fn(),
+    setLoopMaxIterations: vi.fn(),
+    toggleLineLock: vi.fn(),
+    toggleInlineRendering: vi.fn(),
+    cycleNormalizeMode: vi.fn(),
+    toggleStep: vi.fn(),
+    setStepEdge: vi.fn(),
+    toggleVariableInspector: vi.fn(),
+  } as unknown as ShaderDebugManager;
+}
+
+function createMockVariableCaptureManager() {
+  return {
+    changeSampleSize: vi.fn(),
+    changeRefreshMode: vi.fn(),
+    changePollingMs: vi.fn(),
+    sampleSize: 32,
+    getActiveRefreshMode: vi.fn().mockReturnValue('polling'),
+    getActivePollingMs: vi.fn().mockReturnValue(500),
+  } as unknown as VariableCaptureManager;
 }
 
 describe('DebugPanel', () => {
@@ -186,11 +212,11 @@ describe('DebugPanel', () => {
   });
 
   it('lock button toggles active state', async () => {
-    const onToggleLineLock = vi.fn();
+    const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState({ isLineLocked: false }),
       getUniforms: mockGetUniforms,
-      onToggleLineLock,
+      shaderDebugManager: mockDebugManager,
     });
 
     const lockBtn = container.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
@@ -198,7 +224,7 @@ describe('DebugPanel', () => {
     expect(lockBtn.classList.contains('active')).toBe(false);
 
     await fireEvent.click(lockBtn);
-    expect(onToggleLineLock).toHaveBeenCalledOnce();
+    expect(mockDebugManager.toggleLineLock).toHaveBeenCalledOnce();
   });
 
   it('lock button shows active state when locked', () => {
@@ -212,18 +238,18 @@ describe('DebugPanel', () => {
   });
 
   it('inline rendering toggle button present and clickable', async () => {
-    const onToggleInlineRendering = vi.fn();
+    const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
       getUniforms: mockGetUniforms,
-      onToggleInlineRendering,
+      shaderDebugManager: mockDebugManager,
     });
 
     const inlineBtn = container.querySelector('[aria-label="Toggle inline rendering"]') as HTMLElement;
     expect(inlineBtn).toBeTruthy();
 
     await fireEvent.click(inlineBtn);
-    expect(onToggleInlineRendering).toHaveBeenCalledOnce();
+    expect(mockDebugManager.toggleInlineRendering).toHaveBeenCalledOnce();
   });
 
   it('inspector toggle button present and clickable', async () => {
@@ -261,18 +287,18 @@ describe('DebugPanel', () => {
     expect(normalizeBtn).toBeTruthy();
   });
 
-  it('normalize button calls onCycleNormalize', async () => {
-    const onCycleNormalize = vi.fn();
+  it('normalize button calls cycleNormalizeMode on manager', async () => {
+    const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
       getUniforms: mockGetUniforms,
-      onCycleNormalize,
+      shaderDebugManager: mockDebugManager,
     });
 
     const normalizeBtn = container.querySelector('[aria-label="Cycle normalize mode"]') as HTMLElement;
     expect(normalizeBtn).toBeTruthy();
     await fireEvent.click(normalizeBtn);
-    expect(onCycleNormalize).toHaveBeenCalledOnce();
+    expect(mockDebugManager.cycleNormalizeMode).toHaveBeenCalledOnce();
   });
 
   it('normalize button shows active state and badge when mode is soft', () => {
@@ -319,18 +345,18 @@ describe('DebugPanel', () => {
     expect(stepBtn).toBeTruthy();
   });
 
-  it('step button calls onToggleStep', async () => {
-    const onToggleStep = vi.fn();
+  it('step button calls toggleStep on manager', async () => {
+    const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
       getUniforms: mockGetUniforms,
-      onToggleStep,
+      shaderDebugManager: mockDebugManager,
     });
 
     const stepBtn = container.querySelector('[aria-label="Toggle step threshold"]') as HTMLElement;
     expect(stepBtn).toBeTruthy();
     await fireEvent.click(stepBtn);
-    expect(onToggleStep).toHaveBeenCalledOnce();
+    expect(mockDebugManager.toggleStep).toHaveBeenCalledOnce();
   });
 
   it('step button shows active state when step is enabled', () => {
@@ -374,17 +400,17 @@ describe('DebugPanel', () => {
     expect(stepInput).toBeFalsy();
   });
 
-  it('step edge input calls onSetStepEdge', async () => {
-    const onSetStepEdge = vi.fn();
+  it('step edge input calls setStepEdge on manager', async () => {
+    const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState({ isStepEnabled: true, stepEdge: 0.5 }),
       getUniforms: mockGetUniforms,
-      onSetStepEdge,
+      shaderDebugManager: mockDebugManager,
     });
 
     const stepInput = container.querySelector('[aria-label="Step edge threshold"]') as HTMLInputElement;
     await fireEvent.input(stepInput, { target: { value: '0.75' } });
-    expect(onSetStepEdge).toHaveBeenCalledWith(0.75);
+    expect(mockDebugManager.setStepEdge).toHaveBeenCalledWith(0.75);
   });
 
   it('line number tooltip shows fallback text when no lineContent', () => {
@@ -526,17 +552,17 @@ describe('DebugPanel', () => {
       expect(varBtn).toBeTruthy();
     });
 
-    it('variable inspector button calls onToggleVariableInspector', async () => {
-      const onToggleVariableInspector = vi.fn();
+    it('variable inspector button calls toggleVariableInspector on manager', async () => {
+      const mockDebugManager = createMockShaderDebugManager();
       const { container } = render(DebugPanel, {
         debugState: makeDebugState(),
         getUniforms: mockGetUniforms,
-        onToggleVariableInspector,
+        shaderDebugManager: mockDebugManager,
       });
 
       const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
       await fireEvent.click(varBtn);
-      expect(onToggleVariableInspector).toHaveBeenCalledOnce();
+      expect(mockDebugManager.toggleVariableInspector).toHaveBeenCalledOnce();
     });
 
     it('variable inspector button shows active state when enabled', () => {
@@ -762,44 +788,44 @@ describe('DebugPanel', () => {
     });
 
     it('onChangeRefreshMode callback propagates from VariablesSection', async () => {
-      const onChangeRefreshMode = vi.fn();
+      const mockVarCapture = createMockVariableCaptureManager();
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         refreshMode: 'polling' as RefreshMode,
-        onChangeRefreshMode,
+        variableCaptureManager: mockVarCapture,
       });
 
       await fireEvent.click(getCtrlButton(container, 'manual')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('manual');
+      expect(mockVarCapture.changeRefreshMode).toHaveBeenCalledWith('manual', false);
     });
 
     it('onChangeSampleSize callback propagates from VariablesSection', async () => {
-      const onChangeSampleSize = vi.fn();
+      const mockVarCapture = createMockVariableCaptureManager();
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
-        onChangeSampleSize,
+        variableCaptureManager: mockVarCapture,
         hasPixelSelected: false,
       });
 
       await fireEvent.click(getCtrlButton(container, '128')!);
-      expect(onChangeSampleSize).toHaveBeenCalledWith(128);
+      expect(mockVarCapture.changeSampleSize).toHaveBeenCalledWith(128);
     });
 
     it('onChangePollingMs callback propagates from VariablesSection', async () => {
-      const onChangePollingMs = vi.fn();
+      const mockVarCapture = createMockVariableCaptureManager();
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         refreshMode: 'polling' as RefreshMode,
         pollingMs: 500,
-        onChangePollingMs,
+        variableCaptureManager: mockVarCapture,
       });
 
       const msInput = container.querySelector('.ms-input') as HTMLInputElement;
       await fireEvent.input(msInput, { target: { value: '1000' } });
-      expect(onChangePollingMs).toHaveBeenCalledWith(1000);
+      expect(mockVarCapture.changePollingMs).toHaveBeenCalledWith(1000, false);
     });
 
     it('onExpandVarHistogram callback propagates from VariablesSection', async () => {

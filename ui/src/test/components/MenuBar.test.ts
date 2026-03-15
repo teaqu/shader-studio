@@ -67,8 +67,18 @@ describe('MenuBar', () => {
     onShowPreview: vi.fn(),
     audioVolume: 0.75,
     audioMuted: false,
-    onVolumeChange: vi.fn(),
-    onToggleMute: vi.fn(),
+    audioVideoController: {
+      setVolume: vi.fn(),
+      toggleMute: vi.fn(),
+      videoControl: vi.fn(),
+      getVideoState: vi.fn(),
+      audioControl: vi.fn(),
+      getAudioState: vi.fn(),
+      getAudioFFT: vi.fn(),
+      volume: 0.75,
+      muted: false,
+      dispose: vi.fn(),
+    } as any,
   };
 
   beforeEach(() => {
@@ -94,7 +104,7 @@ describe('MenuBar', () => {
       await fireEvent.input(volumeSlider, { target: { value: '0.3' } });
       await tick();
 
-      expect(defaultProps.onVolumeChange).toHaveBeenCalledWith(0.3);
+      expect(defaultProps.audioVideoController.setVolume).toHaveBeenCalledWith(0.3);
     });
 
     it('should display volume percentage label', async () => {
@@ -130,7 +140,7 @@ describe('MenuBar', () => {
       await fireEvent.click(muteButton);
       await tick();
 
-      expect(defaultProps.onToggleMute).toHaveBeenCalledTimes(1);
+      expect(defaultProps.audioVideoController.toggleMute).toHaveBeenCalledTimes(1);
     });
 
     it('should show muted appearance when audioMuted is true', async () => {

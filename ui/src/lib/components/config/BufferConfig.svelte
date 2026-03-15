@@ -20,12 +20,9 @@
   export let suggestedPath: string = "";
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
+  import type { AudioVideoController } from "../../AudioVideoController";
   export let shaderPath: string = "";
-  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let getAudioFFT: ((type: string, path?: string) => Uint8Array | null) | undefined = undefined;
+  export let audioVideoController: AudioVideoController | undefined = undefined;
   export let globalMuted: boolean = false;
 
   let bufferConfig: BufferConfig;
@@ -188,7 +185,7 @@
             role="button"
             tabindex="0"
           >
-            <ChannelPreview channelInput={input} {getWebviewUri} {getAudioFFT} {onVideoControl} {getVideoState} {onAudioControl} {getAudioState} {globalMuted} />
+            <ChannelPreview channelInput={input} {getWebviewUri} {audioVideoController} {globalMuted} />
 
             <div class="channel-footer">
               <h4 class="channel-name">{channelName}</h4>
@@ -230,11 +227,7 @@
   {postMessage}
   {onMessage}
   {shaderPath}
-  {onVideoControl}
-  {getVideoState}
-  {onAudioControl}
-  {getAudioState}
-  {getAudioFFT}
+  {audioVideoController}
 />
 
 <style>

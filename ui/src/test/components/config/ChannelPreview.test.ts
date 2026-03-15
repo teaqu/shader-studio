@@ -384,19 +384,18 @@ describe('ChannelPreview', () => {
       mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 10, duration: 120 });
     });
 
-    it('should show audio controls when onAudioControl is provided', () => {
+    it('should show audio controls when audioVideoController is provided', () => {
       const input: ConfigInput = { type: 'audio', path: 'music.mp3' };
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       expect(container.querySelector('.preview-controls')).toBeTruthy();
     });
 
-    it('should not show audio controls when onAudioControl is not provided', () => {
+    it('should not show audio controls when audioVideoController is not provided', () => {
       const input: ConfigInput = { type: 'audio', path: 'music.mp3' };
       const { container } = render(ChannelPreview, {
         channelInput: input,
@@ -417,8 +416,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
@@ -439,8 +437,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
@@ -460,8 +457,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const resetBtn = container.querySelector('.preview-ctrl-btn[title="Reset to beginning"]') as HTMLButtonElement;
@@ -476,8 +472,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       expect(container.querySelector('.preview-controls')).toBeFalsy();
@@ -494,8 +489,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const timer = container.querySelector('.preview-timer');
@@ -649,7 +643,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        getAudioFFT: mockFFT,
+        audioVideoController: { getAudioFFT: mockFFT, videoControl: vi.fn(), getVideoState: vi.fn(), audioControl: vi.fn(), getAudioState: vi.fn() } as any,
       });
 
       expect(container.querySelector('.fft-canvas')).toBeTruthy();
@@ -669,7 +663,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        getAudioFFT: mockFFT,
+        audioVideoController: { getAudioFFT: mockFFT, videoControl: vi.fn(), getVideoState: vi.fn(), audioControl: vi.fn(), getAudioState: vi.fn() } as any,
       });
 
       await vi.waitFor(() => {
@@ -704,8 +698,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const muteBtn = container.querySelector('.preview-ctrl-btn[title="Unmute"]') as HTMLButtonElement;
@@ -723,8 +716,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const muteBtn = container.querySelector('.preview-ctrl-btn[title="Mute"]') as HTMLButtonElement;
@@ -742,8 +734,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const muteBtn = container.querySelector('.preview-ctrl-btn[title="Mute"]') as HTMLButtonElement;
@@ -764,8 +755,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const muteBtn = container.querySelector('.preview-ctrl-btn[title="Unmute"]') as HTMLButtonElement;
@@ -796,8 +786,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // When duration is 0, the component shows the "Audio" label instead of timer
@@ -817,8 +806,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const timer = container.querySelector('.preview-timer');
@@ -838,8 +826,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const timer = container.querySelector('.preview-timer');
@@ -859,8 +846,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const timer = container.querySelector('.preview-timer');
@@ -879,8 +865,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Non-finite duration means duration > 0 is false for Infinity... actually Infinity > 0 is true
@@ -916,8 +901,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       expect(container.querySelector('.preview-controls')).toBeFalsy();
@@ -940,8 +924,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
@@ -955,8 +938,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
@@ -970,8 +952,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const playBtn = container.querySelector('.preview-ctrl-btn[title="Play"]') as HTMLButtonElement;
@@ -988,8 +969,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const pauseBtn = container.querySelector('.preview-ctrl-btn[title="Pause"]') as HTMLButtonElement;
@@ -1006,8 +986,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const resetBtn = container.querySelector('.preview-ctrl-btn[title="Reset to beginning"]') as HTMLButtonElement;
@@ -1035,8 +1014,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockOnVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockOnVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       expect(container.querySelector('.preview-controls')).toBeFalsy();
@@ -1091,8 +1069,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: mockOnAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
         globalMuted: true
       });
 
@@ -1118,8 +1095,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockVideoControl,
-        getVideoState: mockGetVideoState,
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       await vi.waitFor(() => {
@@ -1147,8 +1123,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: mockVideoControl,
-        getVideoState: mockGetVideoState,
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       await vi.waitFor(() => {

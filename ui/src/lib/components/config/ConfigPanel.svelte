@@ -14,11 +14,8 @@
   export let onFileSelect: (bufferName: string) => void = () => {};
   export let selectedBuffer: string = "Image";
   export let isLocked: boolean = false;
-  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let onAudioControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getAudioState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
-  export let getAudioFFT: ((type: string, path?: string) => Uint8Array | null) | undefined = undefined;
+  import type { AudioVideoController } from "../../AudioVideoController";
+  export let audioVideoController: AudioVideoController | undefined = undefined;
   export let globalMuted: boolean = false;
 
   let configManager: ConfigManager;
@@ -202,11 +199,7 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
-          {onVideoControl}
-          {getVideoState}
-          {onAudioControl}
-          {getAudioState}
-          {getAudioFFT}
+          {audioVideoController}
           {globalMuted}
         />
       {:else}
@@ -225,11 +218,7 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
-          {onVideoControl}
-          {getVideoState}
-          {onAudioControl}
-          {getAudioState}
-          {getAudioFFT}
+          {audioVideoController}
           {globalMuted}
         />
       {/if}

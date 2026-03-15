@@ -4,7 +4,8 @@
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
 
-  import type { RefreshMode } from "../../VariableCaptureManager";
+  import type { ShaderDebugManager } from "../../ShaderDebugManager";
+  import type { VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
   import inspectorIcon from "../../../assets/inspector.svg?raw";
   import lockIcon from "../../../assets/lock.svg?raw";
@@ -16,23 +17,14 @@
   export let isInspectorEnabled: boolean = false;
   export let isInspectorActive: boolean = false;
   export let isInspectorLocked: boolean = false;
-  export let onParameterChange: (index: number, value: string) => void = () => {};
-  export let onLoopMaxIterChange: (loopIndex: number, maxIter: number | null) => void = () => {};
-  export let onToggleLineLock: () => void = () => {};
+  export let shaderDebugManager: ShaderDebugManager | undefined = undefined;
+  export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
   export let onToggleInspectorEnabled: () => void = () => {};
-  export let onToggleInlineRendering: () => void = () => {};
-  export let onCycleNormalize: () => void = () => {};
-  export let onToggleStep: () => void = () => {};
-  export let onSetStepEdge: (edge: number) => void = () => {};
-  export let onToggleVariableInspector: () => void = () => {};
   export let onExpandVarHistogram: (varName: string) => void = () => {};
   export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
   export let sampleSize: number = 32;
-  export let onChangeSampleSize: (size: number) => void = () => {};
   export let refreshMode: RefreshMode = 'polling';
   export let pollingMs: number = 500;
-  export let onChangeRefreshMode: (mode: RefreshMode) => void = () => {};
-  export let onChangePollingMs: (ms: number) => void = () => {};
   export let hasPixelSelected: boolean = false;
 
   let uniforms: PassUniforms | null = null;
@@ -86,11 +78,11 @@
   function handleLoopIterInput(loop: DebugLoopInfo, event: Event) {
     const value = (event.target as HTMLInputElement).value;
     if (value === '' || value === '0') {
-      onLoopMaxIterChange(loop.loopIndex, null);
+      shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, null);
     } else {
       const num = parseInt(value, 10);
       if (!isNaN(num) && num > 0) {
-        onLoopMaxIterChange(loop.loopIndex, num);
+        shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num);
       }
     }
   }
@@ -98,7 +90,7 @@
   function handleStepEdgeInput(event: Event) {
     const value = parseFloat((event.target as HTMLInputElement).value);
     if (!isNaN(value)) {
-      onSetStepEdge(value);
+      shaderDebugManager?.setStepEdge(value);
     }
   }
 
@@ -128,7 +120,7 @@
     <button
       class="header-btn has-tooltip"
       class:active={isInlineOn}
-      on:click={onToggleInlineRendering}
+      on:click={() => shaderDebugManager?.toggleInlineRendering()}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
@@ -140,7 +132,7 @@
     <button
       class="header-btn has-tooltip"
       class:active={isLineLocked}
-      on:click={onToggleLineLock}
+      on:click={() => shaderDebugManager?.toggleLineLock()}
       aria-label="Toggle line lock"
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
     >
@@ -153,7 +145,7 @@
     <button
       class="header-btn has-tooltip"
       class:active={normalizeMode !== 'off'}
-      on:click={onCycleNormalize}
+      on:click={() => shaderDebugManager?.cycleNormalizeMode()}
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
     >
@@ -168,7 +160,7 @@
     <button
       class="header-btn has-tooltip"
       class:active={isStepEnabled}
-      on:click={onToggleStep}
+      on:click={() => shaderDebugManager?.toggleStep()}
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
     >
@@ -184,7 +176,7 @@
         max="1"
         value={stepEdge}
         on:input={handleStepEdgeInput}
-        use:dragScrub={{ step: 0.05, onInput: (v) => onSetStepEdge(v) }}
+        use:dragScrub={{ step: 0.05, onInput: (v) => shaderDebugManager?.setStepEdge(v) }}
         class="step-edge-input"
         aria-label="Step edge threshold"
       />
@@ -192,7 +184,7 @@
     <button
       class="header-btn has-tooltip"
       class:active={isVarInspectorOn}
-      on:click={onToggleVariableInspector}
+      on:click={() => shaderDebugManager?.toggleVariableInspector()}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
@@ -227,7 +219,7 @@
           {#each ctx.parameters as param, index}
             <ParameterEditor
               {param}
-              onChange={(value) => onParameterChange(index, value)}
+              onChange={(value) => shaderDebugManager?.setCustomParameter(index, value)}
             />
           {/each}
         </div>
@@ -248,7 +240,7 @@
                 placeholder="max"
                 value={loop.maxIter ?? ''}
                 on:input={(e) => handleLoopIterInput(loop, e)}
-                use:dragScrub={{ step: 1, onInput: (v) => { const num = Math.max(1, Math.round(v)); onLoopMaxIterChange(loop.loopIndex, num > 0 ? num : null); } }}
+                use:dragScrub={{ step: 1, onInput: (v) => { const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null); } }}
                 class="loop-input"
                 aria-label="Max iterations for loop at line {loop.lineNumber + 1}"
               />
@@ -266,12 +258,10 @@
         isLoading={capturedVariables.length === 0}
         onExpandToggle={onExpandVarHistogram}
         {onVarClick}
+        {variableCaptureManager}
         sampleSize={vsSampleSize}
-        {onChangeSampleSize}
         refreshMode={vsRefreshMode}
         pollingMs={vsPollingMs}
-        {onChangeRefreshMode}
-        {onChangePollingMs}
         hasPixelSelected={vsHasPixelSelected}
       />
     {:else}

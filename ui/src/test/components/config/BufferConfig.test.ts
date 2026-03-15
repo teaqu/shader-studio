@@ -730,7 +730,7 @@ describe('BufferConfig', () => {
   });
 
   describe('audio/video handler props', () => {
-    it('should render with onVideoControl and getVideoState props', () => {
+    it('should render with audioVideoController for video inputs', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -743,14 +743,13 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue(null),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue(null), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       expect(container.querySelector('.channels-grid')).toBeTruthy();
     });
 
-    it('should render with onAudioControl and getAudioState props', () => {
+    it('should render with audioVideoController for audio inputs', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -763,9 +762,7 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue(null),
-        getAudioFFT: vi.fn().mockReturnValue(null),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue(null), getAudioFFT: vi.fn().mockReturnValue(null), videoControl: vi.fn(), getVideoState: vi.fn() } as any,
       });
 
       expect(container.querySelector('.channels-grid')).toBeTruthy();
@@ -786,7 +783,7 @@ describe('BufferConfig', () => {
       expect(container).toBeTruthy();
     });
 
-    it('should render with all audio/video props together', () => {
+    it('should render with audioVideoController and mixed inputs', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -800,11 +797,7 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue(null),
-        onAudioControl: vi.fn(),
-        getAudioState: vi.fn().mockReturnValue(null),
-        getAudioFFT: vi.fn().mockReturnValue(null),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue(null), audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue(null), getAudioFFT: vi.fn().mockReturnValue(null) } as any,
         globalMuted: false,
       });
 

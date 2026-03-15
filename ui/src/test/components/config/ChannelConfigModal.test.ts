@@ -497,8 +497,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: videoInput,
-        onVideoControl: mockVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       // Check buttons have accessible titles
@@ -524,8 +523,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: videoInput,
-        onVideoControl: mockVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       // Mute/unmute button should contain an SVG, not emoji text
@@ -552,8 +550,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: videoInput,
-        onVideoControl: mockVideoControl,
-        getVideoState: mockGetVideoState
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
@@ -897,8 +894,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       // Check buttons have accessible titles
@@ -939,8 +935,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       const timer = container.querySelector('.video-timer');
@@ -961,8 +956,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
       const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
@@ -987,8 +981,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Find the start handle
@@ -1013,8 +1006,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1043,8 +1035,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: { ...audioInput, resolved_path: 'webview://music.mp3' } as any,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const startHandle = container.querySelector('.waveform-handle-start');
@@ -1070,8 +1061,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1116,8 +1106,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const waveformEditor = container.querySelector('.waveform-editor');
@@ -1144,8 +1133,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const waveformEditor = container.querySelector('.waveform-editor');
@@ -1180,8 +1168,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const waveformEditor = container.querySelector('.waveform-editor');
@@ -1219,8 +1206,7 @@ describe('ChannelConfigModal', () => {
         ...defaultProps(),
         channelInput: audioInput,
         getWebviewUri: mockWebviewUri,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Click play button
@@ -1248,8 +1234,7 @@ describe('ChannelConfigModal', () => {
       render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: { ...audioInput, resolved_path: 'webview://cdn/music.mp3' } as any,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Click play
@@ -1276,8 +1261,7 @@ describe('ChannelConfigModal', () => {
         ...defaultProps(),
         channelInput: audioInput,
         getWebviewUri: mockWebviewUri,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const startHandle = container.querySelector('.waveform-handle-start');
@@ -1312,8 +1296,7 @@ describe('ChannelConfigModal', () => {
         ...defaultProps(),
         channelInput: audioInput,
         getWebviewUri: mockWebviewUri,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const waveformEditor = container.querySelector('.waveform-editor');
@@ -1344,8 +1327,7 @@ describe('ChannelConfigModal', () => {
         ...defaultProps(),
         channelInput: audioInput,
         getWebviewUri: mockWebviewUri,
-        getAudioState: mockGetAudioState,
-        onAudioControl: vi.fn(),
+        audioVideoController: { audioControl: vi.fn(), getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // getAudioState should have been called with resolved URI
@@ -1371,8 +1353,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const startHandle = container.querySelector('.waveform-handle-start');
@@ -1403,8 +1384,7 @@ describe('ChannelConfigModal', () => {
       render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Just mouseup on window without any drag
@@ -1433,8 +1413,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Simulate selecting a different song via the path input
@@ -1469,8 +1448,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const pathInput = container.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
@@ -1506,8 +1484,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const startHandle = container.querySelector('.waveform-handle-start');
@@ -1541,8 +1518,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1581,8 +1557,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { rerender } = render(ChannelConfigModal, props);
@@ -1610,8 +1585,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Drag start handle past the end handle position
@@ -1651,8 +1625,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Drag end handle before the start handle position
@@ -1855,8 +1828,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // Waveform editor should be rendered with start/end handles
@@ -1888,8 +1860,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1923,8 +1894,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1958,8 +1928,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -1996,8 +1965,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2034,8 +2002,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2073,8 +2040,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2109,8 +2075,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2144,8 +2109,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { rerender } = render(ChannelConfigModal, props);
@@ -2172,8 +2136,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2222,8 +2185,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const playBtn = container.querySelector('.btn-control[title="Play"]');
@@ -2242,8 +2204,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const playBtn = container.querySelector('.btn-control[title="Play"]');
@@ -2267,8 +2228,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
@@ -2292,8 +2252,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       // When not muted, button title should be "Mute"
@@ -2318,8 +2277,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
       const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
@@ -2347,8 +2305,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2390,8 +2347,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2437,8 +2393,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2475,8 +2430,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2588,8 +2542,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { rerender } = render(ChannelConfigModal, props);
@@ -2623,8 +2576,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container, rerender } = render(ChannelConfigModal, props);
@@ -2660,8 +2612,7 @@ describe('ChannelConfigModal', () => {
       const props = {
         ...defaultProps(),
         channelInput: audioInput,
-        onAudioControl: mockAudioControl,
-        getAudioState: mockGetAudioState,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(ChannelConfigModal, props);

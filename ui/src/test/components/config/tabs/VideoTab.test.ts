@@ -19,8 +19,7 @@ describe('VideoTab', () => {
     onUpdateFilter: vi.fn(),
     onUpdateWrap: vi.fn(),
     onUpdateVFlip: vi.fn(),
-    onVideoControl: undefined as ((path: string, action: string) => void) | undefined,
-    getVideoState: undefined as ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined,
+    audioVideoController: undefined as any,
   });
 
   describe('Rendering', () => {
@@ -159,12 +158,11 @@ describe('VideoTab', () => {
   });
 
   describe('Video Controls', () => {
-    it('should render control buttons when onVideoControl and getVideoState are provided', () => {
+    it('should render control buttons when audioVideoController is provided', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 60 }),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 60 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -174,7 +172,7 @@ describe('VideoTab', () => {
       expect(container.querySelector('.btn-control[title="Reset to beginning"]')).toBeTruthy();
     });
 
-    it('should not render controls when onVideoControl is not provided', () => {
+    it('should not render controls when audioVideoController is not provided', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
@@ -189,8 +187,7 @@ describe('VideoTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -202,8 +199,7 @@ describe('VideoTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 5, duration: 30 }),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 5, duration: 30 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -214,13 +210,12 @@ describe('VideoTab', () => {
       expect(unmuteBtn!.querySelector('svg')).toBeTruthy();
     });
 
-    it('should call onVideoControl when play/pause clicked', async () => {
+    it('should call videoControl when play/pause clicked', async () => {
       const mockVideoControl = vi.fn();
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: mockVideoControl,
-        getVideoState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }),
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -233,13 +228,12 @@ describe('VideoTab', () => {
       expect(call[1]).toBe('play');
     });
 
-    it('should call onVideoControl when reset clicked', async () => {
+    it('should call videoControl when reset clicked', async () => {
       const mockVideoControl = vi.fn();
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: mockVideoControl,
-        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 60 }),
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 60 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -256,8 +250,7 @@ describe('VideoTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 }),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);
@@ -272,8 +265,7 @@ describe('VideoTab', () => {
       const props = {
         ...defaultProps(),
         tempInput: { type: 'video', path: './test.mp4' } as ConfigInput,
-        onVideoControl: vi.fn(),
-        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 60 }),
+        audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 60 }), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
       const { container } = render(VideoTab, props);

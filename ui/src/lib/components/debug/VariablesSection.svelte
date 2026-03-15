@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CapturedVariable, RefreshMode } from '../../VariableCaptureManager';
+  import type { CapturedVariable, RefreshMode, VariableCaptureManager } from '../../VariableCaptureManager';
   import VariableRow from './VariableRow.svelte';
 
   export let capturedVariables: CapturedVariable[] = [];
@@ -7,32 +7,34 @@
   export let isLoading: boolean = false;
   export let onExpandToggle: (varName: string) => void = () => {};
   export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
+  export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
   export let sampleSize: number = 32;
-  export let onChangeSampleSize: (size: number) => void = () => {};
   export let refreshMode: RefreshMode = 'polling';
   export let pollingMs: number = 500;
-  export let onChangeRefreshMode: (mode: RefreshMode) => void = () => {};
-  export let onChangePollingMs: (ms: number) => void = () => {};
   export let hasPixelSelected: boolean = false;
 
   const SAMPLE_SIZES = [16, 32, 64, 128];
 
+  function changeRefreshMode(mode: RefreshMode) {
+    variableCaptureManager?.changeRefreshMode(mode, hasPixelSelected);
+  }
+
   function toggleManual() {
-    onChangeRefreshMode(refreshMode === 'manual' ? 'polling' : 'manual');
+    changeRefreshMode(refreshMode === 'manual' ? 'polling' : 'manual');
   }
 
   function toggleRealtime() {
-    onChangeRefreshMode(refreshMode === 'realtime' ? 'polling' : 'realtime');
+    changeRefreshMode(refreshMode === 'realtime' ? 'polling' : 'realtime');
   }
 
   function togglePause() {
-    onChangeRefreshMode(refreshMode === 'pause' ? 'polling' : 'pause');
+    changeRefreshMode(refreshMode === 'pause' ? 'polling' : 'pause');
   }
 
   function handlePollingMsInput(event: Event) {
     const value = parseInt((event.target as HTMLInputElement).value, 10);
     if (!isNaN(value) && value > 0) {
-      onChangePollingMs(value);
+      variableCaptureManager?.changePollingMs(value, hasPixelSelected);
     }
   }
 </script>
@@ -48,7 +50,7 @@
           <button
             class="ctrl-btn"
             class:active={sampleSize === s}
-            on:click={() => onChangeSampleSize(s)}
+            on:click={() => variableCaptureManager?.changeSampleSize(s)}
             title="Sample {s}×{s} points across canvas"
           >{s}</button>
         {/each}
@@ -65,7 +67,7 @@
       <button
         class="ctrl-btn has-input"
         class:active={refreshMode === 'polling'}
-        on:click={() => { if (refreshMode !== 'polling') onChangeRefreshMode('polling'); }}
+        on:click={() => { if (refreshMode !== 'polling') changeRefreshMode('polling'); }}
         title="Auto-recapture every {pollingMs}ms"
       >
         <input

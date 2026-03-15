@@ -2,19 +2,29 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VariablesSection from '../../lib/components/debug/VariablesSection.svelte';
-import type { RefreshMode, CapturedVariable } from '../../lib/VariableCaptureManager';
+import type { RefreshMode, CapturedVariable, VariableCaptureManager } from '../../lib/VariableCaptureManager';
+
+function createMockVariableCaptureManager(overrides: Partial<VariableCaptureManager> = {}) {
+  return {
+    changeSampleSize: vi.fn(),
+    changeRefreshMode: vi.fn(),
+    changePollingMs: vi.fn(),
+    sampleSize: 32,
+    getActiveRefreshMode: vi.fn().mockReturnValue('polling'),
+    getActivePollingMs: vi.fn().mockReturnValue(500),
+    ...overrides,
+  } as unknown as VariableCaptureManager;
+}
 
 const BASE_PROPS = {
   capturedVariables: [] as CapturedVariable[],
   isPixelMode: false,
   isLoading: false,
   onExpandToggle: () => {},
+  variableCaptureManager: createMockVariableCaptureManager(),
   sampleSize: 32,
-  onChangeSampleSize: () => {},
   refreshMode: 'polling' as RefreshMode,
   pollingMs: 500,
-  onChangeRefreshMode: () => {},
-  onChangePollingMs: () => {},
   hasPixelSelected: false,
 };
 
@@ -108,14 +118,14 @@ describe('VariablesSection', () => {
       expect(getButtonByText(container, '64')).toHaveClass('active');
     });
 
-    it('calls onChangeSampleSize when size button clicked', async () => {
-      const onChangeSampleSize = vi.fn();
+    it('calls changeSampleSize on manager when size button clicked', async () => {
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, onChangeSampleSize },
+        props: { ...BASE_PROPS, variableCaptureManager: mockManager },
       });
 
       await fireEvent.click(getButtonByText(container, '64')!);
-      expect(onChangeSampleSize).toHaveBeenCalledWith(64);
+      expect(mockManager.changeSampleSize).toHaveBeenCalledWith(64);
     });
 
     it('active border follows prop through multiple changes', async () => {
@@ -135,19 +145,19 @@ describe('VariablesSection', () => {
     });
 
     it('click + rerender simulates full parent round-trip', async () => {
-      const onChangeSampleSize = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container, rerender } = render(VariablesSection, {
-        props: { ...BASE_PROPS, sampleSize: 32, onChangeSampleSize },
+        props: { ...BASE_PROPS, sampleSize: 32, variableCaptureManager: mockManager },
       });
 
       expect(getButtonByText(container, '32')).toHaveClass('active');
 
       // User clicks 64
       await fireEvent.click(getButtonByText(container, '64')!);
-      expect(onChangeSampleSize).toHaveBeenCalledWith(64);
+      expect(mockManager.changeSampleSize).toHaveBeenCalledWith(64);
 
       // Parent updates sampleSize prop in response
-      await rerender({ ...BASE_PROPS, sampleSize: 64, onChangeSampleSize });
+      await rerender({ ...BASE_PROPS, sampleSize: 64, variableCaptureManager: mockManager });
 
       expect(getButtonByText(container, '32')).not.toHaveClass('active');
       expect(getButtonByText(container, '64')).toHaveClass('active');
@@ -193,61 +203,61 @@ describe('VariablesSection', () => {
       expect(getButtonByText(container, 'realtime')).toHaveClass('active');
     });
 
-    it('calls onChangeRefreshMode when manual clicked', async () => {
-      const onChangeRefreshMode = vi.fn();
+    it('calls changeRefreshMode on manager when manual clicked', async () => {
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, onChangeRefreshMode },
+        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, variableCaptureManager: mockManager },
       });
 
       await fireEvent.click(getButtonByText(container, 'manual')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('manual');
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('manual', false);
     });
 
     it('toggles manual OFF to polling', async () => {
-      const onChangeRefreshMode = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, onChangeRefreshMode },
+        props: { ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, variableCaptureManager: mockManager },
       });
 
       await fireEvent.click(getButtonByText(container, 'manual')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('polling');
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('polling', false);
     });
 
     it('toggles realtime OFF to polling', async () => {
-      const onChangeRefreshMode = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'realtime' as RefreshMode, onChangeRefreshMode },
+        props: { ...BASE_PROPS, refreshMode: 'realtime' as RefreshMode, variableCaptureManager: mockManager },
       });
 
       await fireEvent.click(getButtonByText(container, 'realtime')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('polling');
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('polling', false);
     });
 
     it('toggles pause OFF to polling', async () => {
-      const onChangeRefreshMode = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'pause' as RefreshMode, onChangeRefreshMode },
+        props: { ...BASE_PROPS, refreshMode: 'pause' as RefreshMode, variableCaptureManager: mockManager },
       });
 
       await fireEvent.click(getButtonByText(container, 'pause')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('polling');
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('polling', false);
     });
 
-    it('calls onChangePollingMs when ms input changed', async () => {
-      const onChangePollingMs = vi.fn();
+    it('calls changePollingMs on manager when ms input changed', async () => {
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, pollingMs: 500, onChangePollingMs },
+        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, pollingMs: 500, variableCaptureManager: mockManager },
       });
 
       const input = container.querySelector('.ms-input') as HTMLInputElement;
       await fireEvent.input(input, { target: { value: '2000' } });
-      expect(onChangePollingMs).toHaveBeenCalledWith(2000);
+      expect(mockManager.changePollingMs).toHaveBeenCalledWith(2000, false);
     });
 
     it('click + rerender simulates refresh mode round-trip', async () => {
-      const onChangeRefreshMode = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container, rerender } = render(VariablesSection, {
-        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, onChangeRefreshMode },
+        props: { ...BASE_PROPS, refreshMode: 'polling' as RefreshMode, variableCaptureManager: mockManager },
       });
 
       const pollingBtn = container.querySelector('.ctrl-btn.has-input');
@@ -255,10 +265,10 @@ describe('VariablesSection', () => {
 
       // User clicks manual
       await fireEvent.click(getButtonByText(container, 'manual')!);
-      expect(onChangeRefreshMode).toHaveBeenCalledWith('manual');
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('manual', false);
 
       // Parent updates refreshMode prop in response
-      await rerender({ ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, onChangeRefreshMode });
+      await rerender({ ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, variableCaptureManager: mockManager });
 
       expect(getButtonByText(container, 'manual')).toHaveClass('active');
       expect(container.querySelector('.ctrl-btn.has-input')).not.toHaveClass('active');
@@ -536,28 +546,28 @@ describe('VariablesSection', () => {
     });
 
     it('pollingMs input ignores non-positive values', async () => {
-      const onChangePollingMs = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, pollingMs: 500, onChangePollingMs },
+        props: { ...BASE_PROPS, pollingMs: 500, variableCaptureManager: mockManager },
       });
 
       const input = container.querySelector('.ms-input') as HTMLInputElement;
       await fireEvent.input(input, { target: { value: '0' } });
-      expect(onChangePollingMs).not.toHaveBeenCalled();
+      expect(mockManager.changePollingMs).not.toHaveBeenCalled();
 
       await fireEvent.input(input, { target: { value: '-100' } });
-      expect(onChangePollingMs).not.toHaveBeenCalled();
+      expect(mockManager.changePollingMs).not.toHaveBeenCalled();
     });
 
     it('pollingMs input ignores NaN values', async () => {
-      const onChangePollingMs = vi.fn();
+      const mockManager = createMockVariableCaptureManager();
       const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, pollingMs: 500, onChangePollingMs },
+        props: { ...BASE_PROPS, pollingMs: 500, variableCaptureManager: mockManager },
       });
 
       const input = container.querySelector('.ms-input') as HTMLInputElement;
       await fireEvent.input(input, { target: { value: 'abc' } });
-      expect(onChangePollingMs).not.toHaveBeenCalled();
+      expect(mockManager.changePollingMs).not.toHaveBeenCalled();
     });
   });
 });

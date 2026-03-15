@@ -14,9 +14,12 @@
   export let onUpdatePath: (path: string) => void;
   export let onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
   export let onUpdateWrap: (wrap: "repeat" | "clamp") => void;
+  import type { AudioVideoController } from "../../../AudioVideoController";
   export let onUpdateVFlip: (vflip: boolean) => void;
-  export let onVideoControl: ((path: string, action: string) => void) | undefined = undefined;
-  export let getVideoState: ((path: string) => { paused: boolean; muted: boolean; currentTime: number; duration: number } | null) | undefined = undefined;
+  export let audioVideoController: AudioVideoController | undefined = undefined;
+
+  $: onVideoControl = audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined;
+  $: getVideoState = audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined;
 
   // Video control state (runtime only, not persisted)
   let videoState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
