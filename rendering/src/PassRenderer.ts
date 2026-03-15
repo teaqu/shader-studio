@@ -65,6 +65,8 @@ export class PassRenderer {
     this.renderer.SetShaderConstant4FV("iDate", uniforms.date);
     this.renderer.SetShaderConstant1FV("iChannelTime", uniforms.channelTime);
     this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
+    this.renderer.SetShaderConstant3FV("iCameraPos", uniforms.cameraPos);
+    this.renderer.SetShaderConstant3FV("iCameraDir", uniforms.cameraDir);
 
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);

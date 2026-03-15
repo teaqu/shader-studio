@@ -137,6 +137,8 @@ const createDefaultUniforms = (): CaptureUniforms => ({
   res: [800, 600],
   mouse: [0, 0, 0, 0],
   date: [2025, 6, 15, 12345],
+  cameraPos: [0, 0, 0],
+  cameraDir: [0, 0, -1],
 });
 
 describe("VariableCapturer", () => {

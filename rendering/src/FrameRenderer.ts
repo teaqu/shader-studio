@@ -6,6 +6,7 @@ import type { Pass, PassUniforms } from "./models";
 import type { TimeManager } from "./util/TimeManager";
 import type { KeyboardManager } from "./input/KeyboardManager";
 import type { MouseManager } from "./input/MouseManager";
+import type { CameraManager } from "./input/CameraManager";
 import { FPSCalculator } from "./util/FPSCalculator";
 
 export class FrameRenderer {
@@ -29,13 +30,16 @@ export class FrameRenderer {
   private bufferManager: BufferManager;
   private passRenderer: PassRenderer;
   private resourceManager: ResourceManager;
+  private cameraManager: CameraManager;
   private glCanvas: HTMLCanvasElement;
   private sampleRate: number = 44100;
+  private lastWallTime: number | null = null;
 
   constructor(
     timeManager: TimeManager,
     keyboardManager: KeyboardManager,
     mouseManager: MouseManager,
+    cameraManager: CameraManager,
     pipeline: ShaderPipeline,
     bufferManager: BufferManager,
     passRenderer: PassRenderer,
@@ -46,6 +50,7 @@ export class FrameRenderer {
     this.timeManager = timeManager;
     this.keyboardManager = keyboardManager;
     this.mouseManager = mouseManager;
+    this.cameraManager = cameraManager;
     this.shaderPipeline = pipeline;
     this.bufferManager = bufferManager;
     this.passRenderer = passRenderer;
@@ -87,6 +92,8 @@ export class FrameRenderer {
       channelTime: [0, 0, 0, 0],
       sampleRate: this.resourceManager.getAudioSampleRate() || this.sampleRate,
       channelLoaded: [0, 0, 0, 0],
+      cameraPos: this.cameraManager.getCameraPos(),
+      cameraDir: this.cameraManager.getCameraDir(),
     };
   }
 
@@ -208,6 +215,11 @@ export class FrameRenderer {
 
     // Update audio textures (FFT/waveform data) each frame
     this.resourceManager.updateAudioTextures();
+
+    // Update camera with wall-clock delta (works even when paused)
+    const wallDt = this.lastWallTime !== null ? (time - this.lastWallTime) / 1000 : 0;
+    this.lastWallTime = time;
+    this.cameraManager.update(wallDt);
 
     const isPaused = this.timeManager.isPaused();
 

@@ -15,6 +15,7 @@ describe("FrameRenderer", () => {
   let mockTimeManager: any;
   let mockKeyboardManager: any;
   let mockMouseManager: any;
+  let mockCameraManager: any;
   let mockShaderPipeline: any;
   let mockBufferManager: any;
   let mockPassRenderer: any;
@@ -40,6 +41,12 @@ describe("FrameRenderer", () => {
 
     mockMouseManager = {
       getMouse: vi.fn(() => new Float32Array([0, 0, 0, 0])),
+    };
+
+    mockCameraManager = {
+      update: vi.fn(),
+      getCameraPos: vi.fn(() => new Float32Array([0, 0, 0])),
+      getCameraDir: vi.fn(() => new Float32Array([0, 0, -1])),
     };
 
     mockShaderPipeline = {
@@ -83,6 +90,7 @@ describe("FrameRenderer", () => {
       mockTimeManager,
       mockKeyboardManager,
       mockMouseManager,
+      mockCameraManager,
       mockShaderPipeline,
       mockBufferManager,
       mockPassRenderer,

@@ -9,6 +9,8 @@ export interface CaptureUniforms {
   res: number[];
   mouse: number[];
   date: number[];
+  cameraPos: number[];
+  cameraDir: number[];
 }
 
 interface PendingCapture {
@@ -362,6 +364,8 @@ export class VariableCapturer {
     gl.uniform1i(gl.getUniformLocation(program, 'iFrame'), uniforms.frame);
     gl.uniform4fv(gl.getUniformLocation(program, 'iMouse'), uniforms.mouse);
     gl.uniform4fv(gl.getUniformLocation(program, 'iDate'), uniforms.date);
+    gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
+    gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
 
     if (captureCoord !== null) {
       const loc = gl.getUniformLocation(program, '_dbgCaptureCoord');
