@@ -38,6 +38,8 @@ uniform int iFrame;
 uniform vec4 iDate;
 uniform float iChannelTime[4];
 uniform float iSampleRate;
+uniform vec3 iCameraPos;
+uniform vec3 iCameraDir;
 uniform struct {
   ${this.getSamplerType(types[0])} sampler;
   vec3 size;

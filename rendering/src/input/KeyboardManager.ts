@@ -40,6 +40,7 @@ export class KeyboardManager {
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", () => { this.keyHeld.fill(0); this.keyPressed.fill(0); });
   }
 
   public clearPressed(): void {

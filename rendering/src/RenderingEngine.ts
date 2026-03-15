@@ -6,6 +6,7 @@ import { BufferManager } from "./BufferManager";
 import { TimeManager } from "./util/TimeManager";
 import { KeyboardManager } from "./input/KeyboardManager";
 import { MouseManager } from "./input/MouseManager";
+import { CameraManager } from "./input/CameraManager";
 import { ShaderPipeline } from "./ShaderPipeline";
 import { PassRenderer } from "./PassRenderer";
 import { FrameRenderer } from "./FrameRenderer";
@@ -27,6 +28,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private timeManager!: TimeManager;
   private keyboardManager!: KeyboardManager;
   private mouseManager!: MouseManager;
+  private cameraManager!: CameraManager;
   private shaderPipeline!: ShaderPipeline;
   private passRenderer!: PassRenderer;
   private frameRenderer!: FrameRenderer;
@@ -48,9 +50,11 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.timeManager = new TimeManager();
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
+    this.cameraManager = new CameraManager(this.keyboardManager);
 
     this.keyboardManager.setupEventListeners();
     this.mouseManager.setupEventListeners(glCanvas);
+    this.cameraManager.setupEventListeners(glCanvas);
 
     this.shaderPipeline = new ShaderPipeline(
       glCanvas,
@@ -73,6 +77,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.timeManager,
       this.keyboardManager,
       this.mouseManager,
+      this.cameraManager,
       this.shaderPipeline,
       this.bufferManager,
       this.passRenderer,
@@ -336,6 +341,8 @@ export class RenderingEngine implements RenderingEngineInterface {
       res: u.res as number[],
       mouse: u.mouse as number[],
       date: u.date as number[],
+      cameraPos: u.cameraPos as number[],
+      cameraDir: u.cameraDir as number[],
     };
   }
 
@@ -373,12 +380,14 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   dispose(): void {
-    // Clean up resources
     if (this.bufferManager) {
       this.bufferManager.dispose();
     }
     if (this.frameRenderer) {
       this.frameRenderer.stopRenderLoop();
+    }
+    if (this.cameraManager) {
+      this.cameraManager.dispose();
     }
   }
 }
