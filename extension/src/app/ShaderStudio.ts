@@ -14,6 +14,7 @@ import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
+import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage, ToggleEditorOverlayMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -33,6 +34,7 @@ export class ShaderStudio {
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
+  private static readonly SCRIPT_EXTENSIONS = new Set(['.js', '.ts', '.mjs']);
 
   constructor(
     context: vscode.ExtensionContext,
@@ -57,9 +59,12 @@ export class ShaderStudio {
     );
     this.shaderProvider = new ShaderProvider(
       this.messenger,
-      () => this.isDebugModeEnabled
+      () => this.isDebugModeEnabled,
     );
     this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
+
+    // On launch: update the workspace .d.ts only if it already exists and the source asset is newer
+    writeWorkspaceTypeDefs(context.extensionPath, false);
     this.panelManager = new PanelManager(
       context,
       this.messenger,
@@ -334,6 +339,9 @@ export class ShaderStudio {
       if (editor && this.glslFileTracker.isGlslEditor(editor)) {
         this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
         this.performShaderUpdate(editor);
+      } else if (this.isScriptFile(event.document)) {
+        // Live-reload script from unsaved editor content
+        this.handleScriptDocumentChange(event.document);
       }
     });
 
@@ -369,6 +377,32 @@ export class ShaderStudio {
     }
 
     this.sendCursorPosition(editor);
+  }
+
+  private isScriptFile(document: vscode.TextDocument): boolean {
+    const ext = path.extname(document.fileName);
+    return ShaderStudio.SCRIPT_EXTENSIONS.has(ext);
+  }
+
+  private handleScriptDocumentChange(document: vscode.TextDocument): void {
+    const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
+    if (!lastViewedFile) {
+      return;
+    }
+
+    // Check if the active shader's config references this script file
+    const scriptPath = document.uri.fsPath;
+    const config = this.shaderProvider.getActiveConfig(lastViewedFile);
+    const resolvedScript = this.shaderProvider.getScriptPath(config, lastViewedFile);
+    if (!resolvedScript || resolvedScript !== scriptPath) {
+      return;
+    }
+
+    // Re-send shader with the unsaved editor content
+    this.shaderProvider.sendShaderWithScriptContent(
+      lastViewedFile,
+      document.getText(),
+    );
   }
 
   private sendCursorPosition(editor: vscode.TextEditor, debounce: boolean = true): void {
@@ -477,4 +511,5 @@ export class ShaderStudio {
   private async newShader(): Promise<void> {
     await this.shaderCreator.create();
   }
+
 }

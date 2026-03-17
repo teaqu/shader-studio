@@ -36,7 +36,10 @@ vi.mock('../../../lib/ConfigManager', () => ({
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
     updateBufferPath: vi.fn(),
+    setScript: vi.fn(),
+    removeScript: vi.fn(),
     generateBufferPath: vi.fn().mockReturnValue('/test/buffer.glsl'),
+    generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
     createBufferFile: vi.fn(),
     getWebviewUri: vi.fn(),
     dispose: vi.fn(),
@@ -57,7 +60,10 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
     updateBufferPath: vi.fn(),
+    setScript: vi.fn(),
+    removeScript: vi.fn(),
     generateBufferPath: vi.fn().mockReturnValue('/test/buffer.glsl'),
+    generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
     createBufferFile: vi.fn(),
     getWebviewUri: vi.fn(),
     dispose: vi.fn(),
@@ -976,6 +982,128 @@ describe('ConfigPanel', () => {
 
       expect(container.querySelector('.config-panel')).toBeTruthy();
       expect(container.querySelector('.tab-navigation')).toBeTruthy();
+    });
+  });
+
+  describe('script tab', () => {
+    it('shows Script tab when config has script field', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+        script: './myshader.uniforms.ts',
+      } as any;
+
+      const { getByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/myshader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+      expect(getByText('Script')).toBeTruthy();
+    });
+
+    it('sends createScriptFile message when Script Create is clicked', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+        script: '',
+      } as any;
+
+      const mockManager = createMockConfigManager([]);
+      mockManager.getConfig.mockReturnValue(config);
+      mockManager.generateScriptPath.mockReturnValue('./myshader.uniforms.ts');
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/myshader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        scriptInfo: null,
+      });
+
+      await tick();
+
+      await fireEvent.click(getByText('Script'));
+      await tick();
+
+      const createBtn = getByText('Create');
+      await fireEvent.click(createBtn);
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'createScriptFile' })
+      );
+    });
+
+    it('sends selectScriptFile message with shaderPath when Select is clicked', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+        script: './myshader.uniforms.ts',
+      } as any;
+
+      const mockManager = createMockConfigManager([]);
+      mockManager.generateScriptPath.mockReturnValue('./myshader.uniforms.ts');
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/myshader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        scriptInfo: { filename: './myshader.uniforms.ts', uniforms: [], fileExists: true } as any,
+      });
+
+      await tick();
+
+      await fireEvent.click(getByText('Script'));
+      await tick();
+
+      await fireEvent.click(getByText('Select'));
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'selectScriptFile',
+        payload: { shaderPath: '/test/myshader.glsl' },
+      });
+    });
+
+    it('does not show Script tab in New dropdown when script already exists', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+        script: './myshader.uniforms.ts',
+      } as any;
+
+      const { container, getByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/myshader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const addNewBtn = getByText('+ New');
+      await fireEvent.mouseEnter(addNewBtn.closest('.add-tab-dropdown')!);
+      await tick();
+
+      // Script option should not appear in dropdown
+      const dropdown = container.querySelector('.dropdown-content');
+      expect(dropdown?.textContent).not.toContain('Script');
     });
   });
 

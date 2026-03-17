@@ -688,4 +688,79 @@ describe('ConfigManager', () => {
       expect(call.payload.skipRefresh).toBeUndefined();
     });
   });
+
+  describe('Script management', () => {
+    it('setScript should add script field to config', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.setScript('./uniforms.ts');
+
+      const config = configManager.getConfig();
+      expect(config?.script).toBe('./uniforms.ts');
+    });
+
+    it('setScript should create default config if none exists', () => {
+      configManager.setScript('./uniforms.ts');
+
+      const config = configManager.getConfig();
+      expect(config).not.toBeNull();
+      expect(config?.script).toBe('./uniforms.ts');
+      expect(config?.passes.Image).toBeDefined();
+    });
+
+    it('setScript should send updateConfig via transport', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.setScript('./uniforms.ts');
+
+      expect(transport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'updateConfig',
+          payload: expect.objectContaining({
+            config: expect.objectContaining({ script: './uniforms.ts' }),
+          }),
+        })
+      );
+    });
+
+    it('removeScript should remove script field from config', () => {
+      const config = createTestConfig();
+      config.script = './uniforms.ts';
+      configManager.setConfig(config);
+
+      configManager.removeScript();
+
+      const updated = configManager.getConfig();
+      expect(updated?.script).toBeUndefined();
+    });
+
+    it('removeScript should preserve other config fields', () => {
+      const config = createTestConfig();
+      config.script = './uniforms.ts';
+      configManager.setConfig(config);
+
+      configManager.removeScript();
+
+      const updated = configManager.getConfig();
+      expect(updated?.version).toBe('1.0');
+      expect(updated?.passes.Image).toBeDefined();
+    });
+
+    it('removeScript should be a no-op when config is null', () => {
+      configManager.removeScript();
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('generateScriptPath should generate path based on shader name', () => {
+      configManager.setShaderPath('/path/to/myshader.glsl');
+      expect(configManager.generateScriptPath()).toBe('./myshader.uniforms.ts');
+    });
+
+    it('generateScriptPath should return empty string when no shader path', () => {
+      expect(configManager.generateScriptPath()).toBe('');
+    });
+
+    it('generateScriptPath should handle shader path with backslashes', () => {
+      configManager.setShaderPath('C:\\shaders\\cool.glsl');
+      expect(configManager.generateScriptPath()).toBe('./cool.uniforms.ts');
+    });
+  });
 });

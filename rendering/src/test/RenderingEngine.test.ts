@@ -22,10 +22,16 @@ describe("RenderingEngine", () => {
       startRenderLoop: vi.fn(),
       stopRenderLoop: vi.fn(),
       setFPSLimit: vi.fn(),
+      setCustomUniformManager: vi.fn(),
     };
 
     Object.defineProperty(renderingEngine, 'frameRenderer', {
       value: mockFrameRenderer,
+      writable: true,
+      configurable: true
+    });
+    Object.defineProperty(renderingEngine, 'customUniformManager', {
+      value: { clear: vi.fn(), loadDeclarations: vi.fn(), hasUniforms: vi.fn().mockReturnValue(false), getValues: vi.fn().mockReturnValue([]) },
       writable: true,
       configurable: true
     });
@@ -37,6 +43,7 @@ describe("RenderingEngine", () => {
     beforeEach(() => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+        setCustomUniformManager: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
         value: mockPipeline, writable: true, configurable: true,
@@ -123,6 +130,7 @@ describe("RenderingEngine", () => {
     beforeEach(() => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+        setCustomUniformManager: vi.fn(),
         getPasses: vi.fn(() => [
           { name: 'Image', shaderSrc: 'void main() {}' },
           { name: 'BufferA', shaderSrc: 'original buffer content' }
@@ -287,6 +295,7 @@ describe("RenderingEngine", () => {
     beforeEach(() => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+        setCustomUniformManager: vi.fn(),
       };
       mockResourceManager = {
         syncAllVideosToTime: vi.fn(),
@@ -524,6 +533,7 @@ describe("RenderingEngine", () => {
     beforeEach(() => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+        setCustomUniformManager: vi.fn(),
       };
       mockResourceManager = {
         syncAllVideosToTime: vi.fn(),

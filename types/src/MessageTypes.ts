@@ -54,6 +54,9 @@ export interface ShaderSourceMessage extends BaseMessage {
   forceCleanup?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
+  scriptBundleError?: string;
+  customUniformDeclarations?: string;
+  customUniformInfo?: { name: string; type: string }[];
   cursorPosition?: {
     line: number;
     character: number;
@@ -133,6 +136,13 @@ export interface ForkShaderMessage extends BaseMessage {
   payload: { shaderPath: string };
 }
 
+export interface CustomUniformValuesMessage extends BaseMessage {
+  type: "customUniformValues";
+  payload: {
+    values: { name: string; type: string; value: number | number[] | boolean }[];
+  };
+}
+
 export interface GoToLineMessage extends BaseMessage {
   type: "goToLine";
   payload: {
@@ -159,4 +169,4 @@ export interface SaveFileResultMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage;

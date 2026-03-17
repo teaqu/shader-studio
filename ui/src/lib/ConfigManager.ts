@@ -326,6 +326,39 @@ export class ConfigManager {
         return true;
     }
 
+    /**
+     * Set the script field on the config
+     */
+    setScript(scriptPath: string): void {
+        this.ensureConfig();
+        const updatedConfig = {
+            ...this.config!,
+            script: scriptPath,
+        };
+        this.updateConfig(updatedConfig);
+    }
+
+    /**
+     * Remove the script field from the config
+     */
+    removeScript(): void {
+        if (!this.config) return;
+        const { script: _, ...rest } = this.config;
+        this.updateConfig(rest as ShaderConfig);
+    }
+
+    /**
+     * Generate a default script filename based on the shader name
+     * e.g., myshader.glsl → myshader.uniforms.ts
+     */
+    generateScriptPath(): string {
+        if (!this.shaderPath) return '';
+        const parts = this.shaderPath.replace(/\\/g, '/').split('/');
+        const filename = parts[parts.length - 1];
+        const baseName = filename.replace(/\.glsl$/, '');
+        return `./${baseName}.uniforms.ts`;
+    }
+
     getBufferList(): string[] {
         if (!this.config) {
             console.log('getBufferList: no config available');

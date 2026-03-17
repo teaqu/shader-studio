@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
@@ -69,6 +69,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     getAudioFFTData() { return null; }
     getFrameTimeHistory() { return []; }
     getFrameTimeCount() { return 0; }
+    setCustomUniformValues() {}
   };
 
   return {
@@ -3605,6 +3606,74 @@ describe('ShaderViewer', () => {
       let storeState: any;
       performancePanelStore.subscribe((s) => { storeState = s; })();
       expect(storeState.isVisible).toBe(false);
+    });
+  });
+
+  describe('actualPollFps decay', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should drop actualPollFps to 0 after custom uniform messages stop arriving', async () => {
+      // Spy on performance.now() so we can control when timestamps become stale.
+      // The real fpsInterval (100ms) will run naturally and evict stale entries.
+      let mockNow = 0;
+      vi.spyOn(performance, 'now').mockImplementation(() => mockNow);
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      // Load a shader with a script so the Script tab is present
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {} }, script: 'uniforms.ts' },
+          pathMap: {},
+        },
+      });
+      await tick();
+
+      // Open config panel and switch to Script tab
+      configPanelStore.setVisible(true);
+      await tick();
+      const scriptTabLabel = Array.from(container.querySelectorAll('.tab-label'))
+        .find(el => el.textContent?.trim() === 'Script');
+      expect(scriptTabLabel).toBeTruthy();
+      fireEvent.click(scriptTabLabel!);
+      await tick();
+
+      // Send several customUniformValues messages at mockNow=0 to push actualPollFps above 0
+      for (let i = 0; i < 5; i++) {
+        await messageHandler({
+          data: {
+            type: 'customUniformValues',
+            payload: { values: [{ name: 'uVal', type: 'float', value: i }] },
+          },
+        });
+        await tick();
+      }
+
+      // Script tab should now be active (ScriptInfo renders with .polling-section)
+      expect(container.querySelector('.polling-section')).toBeTruthy();
+      // Actual fps indicator is always shown — should reflect > 0 after messages
+      const actualFpsEl = container.querySelector('.actual-fps');
+      expect(actualFpsEl).toBeTruthy();
+      expect(actualFpsEl!.textContent).not.toBe('(0fps)');
+
+      // Jump mock time > 1s ahead — all timestamps at t=0 are now stale
+      mockNow = 2000;
+
+      // Wait for the real fpsInterval (100ms) to fire at least once and evict stale entries
+      await new Promise(r => setTimeout(r, 200));
+      await tick();
+
+      // Actual fps should have decayed back to 0
+      expect(container.querySelector('.actual-fps')!.textContent).toBe('(0fps)');
     });
   });
 });

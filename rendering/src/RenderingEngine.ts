@@ -15,6 +15,7 @@ import { ConfigValidator } from "./util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "./models";
+import { CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "./capture/VariableCapturer";
 import type { CaptureUniforms } from "./capture/VariableCapturer";
 
@@ -32,6 +33,8 @@ export class RenderingEngine implements RenderingEngineInterface {
   private shaderPipeline!: ShaderPipeline;
   private passRenderer!: PassRenderer;
   private frameRenderer!: FrameRenderer;
+  private customUniformManager!: CustomUniformManager;
+  private pendingCustomUniformValues: { name: string; type: string; value: number | number[] | boolean }[] | null = null;
   private currentConfig: ShaderConfig | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
@@ -51,6 +54,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
     this.cameraManager = new CameraManager(this.keyboardManager);
+
+    this.customUniformManager = new CustomUniformManager();
 
     this.keyboardManager.setupEventListeners();
     this.mouseManager.setupEventListeners(glCanvas);
@@ -118,6 +123,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     path: string,
     buffers: Record<string, string> = {},
     audioOptions?: { muted?: boolean; volume?: number },
+    customUniformDeclarations?: string,
+    customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined> {
     // Save the config for later use
     this.currentConfig = config;
@@ -131,6 +138,21 @@ export class RenderingEngine implements RenderingEngineInterface {
           errors: [`Invalid shader configuration: ${validation.errors.join(', ')}`],
         };
       }
+    }
+
+    // Load custom uniforms — prefer pre-evaluated declarations from extension host
+    if (customUniformDeclarations && customUniformInfo) {
+      this.customUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
+      // Re-apply any pending values that arrived before/during compilation
+      if (this.pendingCustomUniformValues) {
+        this.customUniformManager.setValues(this.pendingCustomUniformValues as any);
+      }
+      this.shaderPipeline.setCustomUniformManager(this.customUniformManager);
+      this.frameRenderer.setCustomUniformManager(this.customUniformManager);
+    } else {
+      this.customUniformManager.clear();
+      this.shaderPipeline.setCustomUniformManager(null);
+      this.frameRenderer.setCustomUniformManager(null);
     }
 
     const result = await this.shaderPipeline.compileShaderPipeline(
@@ -348,6 +370,27 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public renderForCapture(): void {
     this.frameRenderer.renderForCapture();
+  }
+
+  public getCustomUniformInfo(): { name: string; type: string }[] {
+    if (!this.customUniformManager?.hasUniforms()) return [];
+    return this.customUniformManager.getUniformInfo();
+  }
+
+  public getCustomUniformDeclarations(): string {
+    return this.customUniformManager?.getDeclarations() || '';
+  }
+
+  public getCurrentCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[] {
+    return this.customUniformManager?.getCurrentValues() || [];
+  }
+
+  public setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void {
+    // Always store latest values so they can be applied after compilation
+    this.pendingCustomUniformValues = values;
+    if (this.customUniformManager) {
+      this.customUniformManager.setValues(values as any);
+    }
   }
 
   public getCanvas(): HTMLCanvasElement | null {

@@ -25,6 +25,7 @@
   export let refreshMode: RefreshMode = 'polling';
   export let pollingMs: number = 500;
   export let hasPixelSelected: boolean = false;
+  export let customUniformValues: Record<string, number | number[] | boolean> = {};
 
   let uniforms: PassUniforms | null = null;
   let uniformsHandle: number | null = null;
@@ -101,6 +102,16 @@
     if (!v) return '—';
     return Array.from(v).map(n => n.toFixed(1)).join(', ');
   }
+
+  function formatCustomValue(val: number | number[] | boolean | undefined): string {
+    if (val === undefined) return '—';
+    if (typeof val === 'boolean') return val ? 'true' : 'false';
+    if (typeof val === 'number') return val.toFixed(3);
+    if (Array.isArray(val)) return val.map(v => v.toFixed(2)).join(', ');
+    return String(val);
+  }
+
+  $: customUniformEntries = Object.entries(customUniformValues);
 </script>
 
 <div class="debug-panel">
@@ -263,6 +274,11 @@
         <div class="uniform-row"><span class="uniform-name">iFrame</span><span class="uniform-value">{uniforms.frame}</span></div>
         <div class="uniform-row"><span class="uniform-name">iTimeDelta</span><span class="uniform-value">{uniforms.timeDelta.toFixed(4)}</span></div>
         <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{uniforms.frameRate.toFixed(1)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(uniforms.date)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{uniforms.sampleRate}</span></div>
+        {#each customUniformEntries as [name, value], i}
+          <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
+        {/each}
       {:else}
         <div class="uniform-row"><span class="uniform-value">—</span></div>
       {/if}
@@ -491,6 +507,12 @@
   .var-hint-section {
     border-top: 1px solid var(--vscode-panel-border);
     padding-top: 6px;
+  }
+
+  .uniform-row.custom-first {
+    border-top: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.06));
+    margin-top: 2px;
+    padding-top: 4px;
   }
 
   .uniform-name {

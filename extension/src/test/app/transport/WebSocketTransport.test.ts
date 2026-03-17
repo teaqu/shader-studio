@@ -416,6 +416,45 @@ suite('WebSocketTransport Test Suite', () => {
             assert.ok(writeStub.called);
         });
 
+        test('createScriptFile creates file with clean template (no type boilerplate)', async () => {
+            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(false);
+            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'createScriptFile',
+                    payload: { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(writeStub.calledOnce);
+            const writtenContent = writeStub.firstCall.args[1] as string;
+
+            // Should contain the export function template
+            assert.ok(writtenContent.includes('export function uniforms(ctx: UniformContext)'));
+            assert.ok(writtenContent.includes('Record<string, UniformValue>'));
+
+            // Should NOT contain inlined type definitions
+            assert.ok(!writtenContent.includes('interface UniformContext'));
+            assert.ok(!writtenContent.includes('type UniformValue'));
+        });
+
+        test('createScriptFile does not overwrite existing file', async () => {
+            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(true);
+            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
+
+            await (transport as any).handleClientRequest(
+                {
+                    type: 'createScriptFile',
+                    payload: { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                },
+                mockWsClient,
+            );
+
+            assert.ok(writeStub.notCalled);
+        });
+
         test('updateShaderSource delegates to overlay handler', async () => {
             const overlayHandler = (transport as any).overlayHandler;
             const handleStub = sandbox.stub(overlayHandler, 'handleUpdateShaderSource').resolves();

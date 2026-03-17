@@ -38,8 +38,13 @@ export class WebviewTransport implements MessageTransport {
     this.onVideoConverted = callback;
   }
 
+  /** High-frequency message types that should not be logged */
+  private static readonly QUIET_TYPES = new Set(['customUniformValues']);
+
   public send(message: any): void {
-    console.log(`WebviewTransport: send() called with message type: ${message.type}`);
+    if (!WebviewTransport.QUIET_TYPES.has(message.type)) {
+      console.log(`WebviewTransport: send() called with message type: ${message.type}`);
+    }
 
     if (message.type === "shaderSource" && message.config) {
       // Process config paths async (video audio conversion may be needed)
@@ -75,7 +80,10 @@ export class WebviewTransport implements MessageTransport {
     let sentCount = 0;
     const totalPanels = this.panels.size;
 
-    console.log(`Webview: Sending ${message.type} to ${totalPanels} panels`);
+    const quiet = WebviewTransport.QUIET_TYPES.has(message.type);
+    if (!quiet) {
+      console.log(`Webview: Sending ${message.type} to ${totalPanels} panels`);
+    }
 
     for (const panel of this.panels) {
       try {
@@ -91,7 +99,9 @@ export class WebviewTransport implements MessageTransport {
       }
     }
 
-    console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
+    if (!quiet) {
+      console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
+    }
   }
 
   private handleVideoResourceRoots(message: any): void {

@@ -3,6 +3,7 @@ import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "./models";
 import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "./types/piRenderer";
 import type { KeyboardManager } from "./input/KeyboardManager";
+import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
 import { bindTextures } from "./util/TextureBinder";
 
@@ -40,6 +41,7 @@ export class PassRenderer {
     target: PiRenderTarget | null,
     shader: PiShader | null,
     uniforms: PassUniforms,
+    customUniforms?: CustomUniform[],
     skipInputUpdates: boolean = false,
   ): void {
     if (!shader) return;
@@ -94,6 +96,31 @@ export class PassRenderer {
     for (const { slot, key, isCustomName } of slotAssignments) {
       if (isCustomName) {
         this.renderer.SetShaderTextureUnit(key, slot);
+      }
+    }
+
+    // Set custom uniforms from script
+    if (customUniforms) {
+      for (const u of customUniforms) {
+        switch (u.type) {
+          case 'float':
+            this.renderer.SetShaderConstant1F(u.name, u.value as number);
+            break;
+          case 'vec2':
+            this.renderer.SetShaderConstant2F(u.name, u.value as number[]);
+            break;
+          case 'vec3': {
+            const v3 = u.value as number[];
+            this.renderer.SetShaderConstant3F(u.name, v3[0], v3[1], v3[2]);
+            break;
+          }
+          case 'vec4':
+            this.renderer.SetShaderConstant4FV(u.name, u.value as number[]);
+            break;
+          case 'bool':
+            this.renderer.SetShaderConstant1I(u.name, u.value ? 1 : 0);
+            break;
+        }
       }
     }
 
