@@ -10,6 +10,7 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
 import { WorkspaceFileScanner } from "./WorkspaceFileScanner";
 import { VideoAudioConverter } from "./services/VideoAudioConverter";
+import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class PanelManager {
@@ -143,6 +144,10 @@ export class PanelManager {
       await this.handleConfigUpdate(message.payload);
     } else if (message.type === 'createBufferFile') {
       await this.handleCreateBufferFile(message.payload);
+    } else if (message.type === 'createScriptFile') {
+      await this.handleCreateScriptFile(message.payload, panel);
+    } else if (message.type === 'selectScriptFile') {
+      await this.handleSelectScriptFile(message.payload, panel);
     } else if (message.type === 'updateShaderSource') {
       await this.overlayHandler.handleUpdateShaderSource(message.payload);
     } else if (message.type === 'requestFileContents') {
@@ -170,6 +175,13 @@ export class PanelManager {
       } else if (cmd) {
         await vscode.commands.executeCommand(`shader-studio.${cmd}`);
       }
+    } else if (message.type === 'updateScriptPollingRate') {
+      const fps = message.payload?.fps;
+      if (typeof fps === 'number' && fps > 0) {
+        this.shaderProvider.updateScriptPollingRate(fps);
+      }
+    } else if (message.type === 'resetScriptTime') {
+      this.shaderProvider.resetScriptTime();
     } else if (message.type === 'saveLayout') {
       console.log('[PanelManager] saveLayout received, payload:', message.payload ? 'present' : 'null');
       await this.context.workspaceState.update('shader-studio.dockviewLayout', message.payload);
@@ -308,6 +320,102 @@ export class PanelManager {
     } catch (error) {
       this.logger.error(`Failed to create buffer file: ${error}`);
     }
+  }
+
+  private async handleCreateScriptFile(payload: { scriptPath: string; shaderPath: string }, panel: vscode.WebviewPanel): Promise<void> {
+    try {
+      const shaderDir = payload.shaderPath
+        ? path.dirname(payload.shaderPath)
+        : (() => {
+            const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+            return editor ? path.dirname(editor.document.uri.fsPath) : null;
+          })();
+
+      if (!shaderDir) {
+        this.logger.warn("No shader directory to create script file in");
+        return;
+      }
+
+      // Derive default filename from shader name (e.g. myshader.uniforms.ts)
+      const shaderBaseName = payload.shaderPath
+        ? path.basename(payload.shaderPath).replace(/\.glsl$/, '')
+        : 'uniforms';
+      const defaultName = payload.scriptPath
+        ? path.resolve(shaderDir, payload.scriptPath)
+        : path.join(shaderDir, `${shaderBaseName}.uniforms.ts`);
+
+      const result = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(defaultName),
+        filters: { 'Script files': ['ts', 'js'] },
+        title: 'Create Uniform Script',
+      });
+      if (!result) return;
+      const scriptFilePath = result.fsPath;
+      const relativePath = './' + path.relative(shaderDir, scriptFilePath).replace(/\\/g, '/');
+      panel.webview.postMessage({ type: 'scriptFileCreated', payload: { scriptPath: relativePath } });
+
+      if (!fs.existsSync(scriptFilePath)) {
+        const isTs = scriptFilePath.endsWith('.ts');
+        const template = isTs
+          ? this.buildTsTemplate(scriptFilePath, shaderDir)
+          : `export function uniforms(ctx) {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
+        fs.writeFileSync(scriptFilePath, template, 'utf-8');
+        this.logger.info(`Created script file: ${scriptFilePath}`);
+      } else {
+        this.logger.info(`Script file already exists: ${scriptFilePath}`);
+      }
+
+      // Ensure workspace type defs are present when a .ts script is involved
+      if (scriptFilePath.endsWith('.ts')) {
+        writeWorkspaceTypeDefs(this.context.extensionPath, true);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create script file: ${error}`);
+    }
+  }
+
+  private async handleSelectScriptFile(payload: { shaderPath: string }, panel: vscode.WebviewPanel): Promise<void> {
+    try {
+      const shaderDir = payload.shaderPath
+        ? path.dirname(payload.shaderPath)
+        : (() => {
+            const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+            return editor ? path.dirname(editor.document.uri.fsPath) : null;
+          })();
+
+      const result = await vscode.window.showOpenDialog({
+        defaultUri: shaderDir ? vscode.Uri.file(shaderDir) : undefined,
+        filters: { 'Script files': ['ts', 'js'] },
+        canSelectMany: false,
+        title: 'Select Uniform Script',
+      });
+      if (!result || result.length === 0) return;
+
+      const selectedPath = result[0].fsPath;
+      const relativePath = shaderDir
+        ? './' + path.relative(shaderDir, selectedPath).replace(/\\/g, '/')
+        : selectedPath;
+      panel.webview.postMessage({ type: 'scriptFileCreated', payload: { scriptPath: relativePath } });
+
+      // Ensure workspace type defs are present/up to date for .ts scripts
+      if (selectedPath.endsWith('.ts')) {
+        writeWorkspaceTypeDefs(this.context.extensionPath, true);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to select script file: ${error}`);
+    }
+  }
+
+  private buildTsTemplate(scriptFilePath: string, shaderDir: string): string {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    let refLine = '';
+    if (workspaceRoot) {
+      const dtsPath = path.join(workspaceRoot, '.vscode', 'shader-studio.d.ts');
+      const relToDts = path.relative(path.dirname(scriptFilePath), dtsPath).replace(/\\/g, '/');
+      refLine = `/// <reference path="${relToDts}" />\n`;
+    }
+    const sep = refLine ? '\n' : '';
+    return `${refLine}${sep}export function uniforms(ctx: UniformContext): Record<string, UniformValue> {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
   }
 
   private async handleNavigateToBuffer(
@@ -545,8 +653,12 @@ export class PanelManager {
         ? updatedCsp.replace(/worker-src[^;]*/, workerSrc)
         : `${updatedCsp}; ${workerSrc}`;
       // Allow WASM compilation (needed for gifski-wasm GIF encoder)
+      // and unsafe-eval (needed for custom uniform script evaluation via new Function())
       if (!updatedCsp.includes('wasm-unsafe-eval')) {
         updatedCsp = updatedCsp.replace(/script-src[^;]*/, (match) => `${match} 'wasm-unsafe-eval'`);
+      }
+      if (!updatedCsp.includes('unsafe-eval')) {
+        updatedCsp = updatedCsp.replace(/script-src[^;]*/, (match) => `${match} 'unsafe-eval'`);
       }
       updatedCsp = updatedCsp.includes('connect-src')
         ? updatedCsp.replace(/connect-src[^;]*/, connectSrc)
@@ -561,7 +673,7 @@ export class PanelManager {
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
       
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);

@@ -4,6 +4,7 @@
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
+  import ScriptInfo from "./ScriptInfo.svelte";
 
   export let config: ShaderConfig | null = null;
   export let pathMap: Record<string, string> = {};
@@ -17,14 +18,19 @@
   import type { AudioVideoController } from "../../AudioVideoController";
   export let audioVideoController: AudioVideoController | undefined = undefined;
   export let globalMuted: boolean = false;
+  export let scriptInfo: { filename: string; uniforms: { name: string; type: string }[] } | null = null;
+  export let customUniformValues: Record<string, number | number[] | boolean> = {};
+  export let actualPollFps: number = 0;
+  export let onScriptPollingFpsChange: ((fps: number) => void) | undefined = undefined;
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
 
   // Sync activeTab when parent changes selectedBuffer
+  // Don't override if user is on the Script tab (it has no corresponding buffer)
   $: {
     const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
-    if (displayName !== activeTab) {
+    if (displayName !== activeTab && activeTab !== "Script") {
       activeTab = displayName;
     }
   }
@@ -88,7 +94,54 @@
     }
   }
 
+  function addScript() {
+    if (!configManager) return;
+    configManager.setScript("");
+    config = configManager.getConfig();
+    switchTab("Script");
+  }
+
+  function removeScript() {
+    if (!configManager) return;
+    if (activeTab === "Script") {
+      activeTab = "Image";
+    }
+    configManager.removeScript();
+    config = configManager.getConfig();
+  }
+
+  function handleScriptPathChange(newPath: string) {
+    if (!configManager) return;
+    configManager.setScript(newPath);
+    config = configManager.getConfig();
+  }
+
+  function handleCreateScriptFile() {
+    if (!configManager) return;
+    const scriptPath = config?.script || '';
+    // Send empty scriptPath when no path set — extension will open a save dialog
+    // and respond with a 'scriptFileCreated' message containing the chosen path
+    transport.postMessage({
+      type: 'createScriptFile',
+      payload: { scriptPath, shaderPath }
+    });
+  }
+
+  function handleSelectScriptFile() {
+    transport.postMessage({
+      type: 'selectScriptFile',
+      payload: { shaderPath }
+    });
+  }
+
   function removeBuffer(bufferName: string) {
+    if (bufferName === "Script") {
+      if (activeTab === "Script") {
+        activeTab = "Image";
+      }
+      removeScript();
+      return;
+    }
     if (bufferName === activeTab) {
       activeTab = "Image";
     }
@@ -113,13 +166,18 @@
         tabs.push(name === "common" ? "Common" : name);
       }
     }
+    if (config && config.script !== undefined) {
+      tabs.push("Script");
+    }
     return tabs;
   })();
 
   function switchTab(tabName: string) {
     activeTab = tabName;
-    const actualName = getActualBufferName(tabName);
-    onFileSelect(actualName);
+    if (tabName !== "Script") {
+      const actualName = getActualBufferName(tabName);
+      onFileSelect(actualName);
+    }
   }
 
   function handleTabDblClick(tabName: string) {
@@ -181,13 +239,31 @@
           {#if !config?.passes?.common}
             <button class="dropdown-item" on:click={() => addCommonBuffer()}>Common</button>
           {/if}
+          {#if !(config && config.script !== undefined)}
+            <button class="dropdown-item" on:click={() => addScript()}>Script</button>
+          {/if}
         </div>
       </div>
     </div>
 
     <!-- Tab Content -->
     <div class="tab-content">
-      {#if activeTab === "Image"}
+      {#if activeTab === "Script"}
+        <ScriptInfo
+          filename={scriptInfo?.filename || config?.script || ''}
+          uniforms={scriptInfo?.uniforms || []}
+          uniformValues={customUniformValues}
+          pollingFps={config?.scriptMaxPollingFps ?? 30}
+          actualFps={actualPollFps}
+          onRemove={removeScript}
+          onPollingFpsChange={onScriptPollingFpsChange}
+          onPathChange={handleScriptPathChange}
+          onCreateFile={handleCreateScriptFile}
+          onSelectFile={handleSelectScriptFile}
+          suggestedPath={configManager?.generateScriptPath() || ''}
+          fileExists={scriptInfo ? scriptInfo.fileExists !== false : false}
+        />
+      {:else if activeTab === "Image"}
         <BufferConfig
           bufferName={activeTab}
           config={activeTabConfig}

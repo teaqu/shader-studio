@@ -13,6 +13,12 @@ export interface CaptureUniforms {
   cameraDir: number[];
 }
 
+export interface CaptureCustomUniform {
+  name: string;
+  type: string;
+  value: number | number[] | boolean;
+}
+
 interface PendingCapture {
   varName: string;
   varType: string;
@@ -42,6 +48,10 @@ export class VariableCapturer {
   private quadVao: WebGLVertexArrayObject | null = null;
   private quadBuffer: WebGLBuffer | null = null;
 
+  // Custom uniform state for capture shaders
+  private customUniformDeclarations = '';
+  private customUniforms: CaptureCustomUniform[] = [];
+
   constructor(
     private gl: WebGL2RenderingContext,
     private shaderCompiler: ShaderCompiler,
@@ -49,6 +59,19 @@ export class VariableCapturer {
     this.initQuad();
     // Enable float texture rendering
     this.gl.getExtension('EXT_color_buffer_float');
+  }
+
+  /**
+   * Set custom uniform declarations and current values for capture shader compilation/rendering.
+   */
+  setCustomUniforms(declarations: string, uniforms: CaptureCustomUniform[]): void {
+    if (declarations !== this.customUniformDeclarations) {
+      // Declarations changed — invalidate shader cache since compiled shaders are stale
+      this.shaderCache.clear();
+      this.shaderCacheOrder = [];
+    }
+    this.customUniformDeclarations = declarations;
+    this.customUniforms = uniforms;
   }
 
   /**
@@ -249,7 +272,13 @@ export class VariableCapturer {
       this.shaderCache.delete(oldest);
     }
 
-    const piShader = this.shaderCompiler.compileShader(code);
+    const piShader = this.shaderCompiler.compileShader(
+      code,
+      undefined, // commonCode
+      undefined, // slotAssignments
+      undefined, // channelTypes
+      this.customUniformDeclarations || undefined,
+    );
     if (!piShader || !piShader.mProgram) return null;
 
     this.shaderCache.set(code, { shader: piShader, lastUsed: performance.now() });
@@ -366,6 +395,35 @@ export class VariableCapturer {
     gl.uniform4fv(gl.getUniformLocation(program, 'iDate'), uniforms.date);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
+
+    // Set custom uniforms from script
+    for (const u of this.customUniforms) {
+      const loc = gl.getUniformLocation(program, u.name);
+      if (loc === null) continue;
+      switch (u.type) {
+        case 'float':
+          gl.uniform1f(loc, u.value as number);
+          break;
+        case 'vec2': {
+          const v = u.value as number[];
+          gl.uniform2f(loc, v[0], v[1]);
+          break;
+        }
+        case 'vec3': {
+          const v = u.value as number[];
+          gl.uniform3f(loc, v[0], v[1], v[2]);
+          break;
+        }
+        case 'vec4': {
+          const v = u.value as number[];
+          gl.uniform4f(loc, v[0], v[1], v[2], v[3]);
+          break;
+        }
+        case 'bool':
+          gl.uniform1i(loc, u.value ? 1 : 0);
+          break;
+      }
+    }
 
     if (captureCoord !== null) {
       const loc = gl.getUniformLocation(program, '_dbgCaptureCoord');

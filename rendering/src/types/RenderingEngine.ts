@@ -1,7 +1,7 @@
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
-import type { VariableCapturer, CaptureUniforms } from "../capture/VariableCapturer";
+import type { VariableCapturer, CaptureUniforms, CaptureCustomUniform } from "../capture/VariableCapturer";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -12,6 +12,8 @@ export interface RenderingEngine {
     path: string,
     buffers?: Record<string, string>,
     audioOptions?: { muted?: boolean; volume?: number },
+    customUniformDeclarations?: string,
+    customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
@@ -38,6 +40,10 @@ export interface RenderingEngine {
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null;
   seekAudio(path: string, time: number): void;
   getAudioFFTData(type: string, path?: string): Uint8Array | null;
+  getCustomUniformInfo(): { name: string; type: string }[];
+  getCustomUniformDeclarations(): string;
+  getCurrentCustomUniforms(): CaptureCustomUniform[];
+  setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void;
   renderForCapture(): void;
   getCanvas(): HTMLCanvasElement | null;
   dispose(): void;

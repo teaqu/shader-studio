@@ -568,6 +568,253 @@ describe("VariableCapturer", () => {
     });
   });
 
+  describe("setCustomUniforms", () => {
+    it("should pass custom declarations to compileShader", () => {
+      const declarations = "uniform vec3 uCpu;\nuniform float uSpeed;";
+      capturer.setCustomUniforms(declarations, []);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "capture_code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(shaderCompiler.compileShader).toHaveBeenCalledWith(
+        "capture_code",
+        undefined,
+        undefined,
+        undefined,
+        declarations,
+      );
+    });
+
+    it("should pass undefined when declarations are empty", () => {
+      capturer.setCustomUniforms("", []);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(shaderCompiler.compileShader).toHaveBeenCalledWith(
+        "code",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it("should upload float custom uniform values during render", () => {
+      capturer.setCustomUniforms("uniform float uSpeed;", [
+        { name: "uSpeed", type: "float", value: 2.5 },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(gl.uniform1f).toHaveBeenCalledWith(
+        expect.anything(), // uniform location mock
+        2.5,
+      );
+    });
+
+    it("should upload vec2 custom uniform values", () => {
+      capturer.setCustomUniforms("uniform vec2 uOff;", [
+        { name: "uOff", type: "vec2", value: [1.0, 2.0] },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(gl.uniform2f).toHaveBeenCalledWith(expect.anything(), 1.0, 2.0);
+    });
+
+    it("should upload vec3 custom uniform values", () => {
+      // Need to add uniform3f to the mock
+      (gl as any).uniform3f = vi.fn();
+
+      capturer.setCustomUniforms("uniform vec3 uColor;", [
+        { name: "uColor", type: "vec3", value: [1.0, 0.5, 0.0] },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect((gl as any).uniform3f).toHaveBeenCalledWith(expect.anything(), 1.0, 0.5, 0.0);
+    });
+
+    it("should upload vec4 custom uniform values", () => {
+      (gl as any).uniform4f = vi.fn();
+
+      capturer.setCustomUniforms("uniform vec4 uRect;", [
+        { name: "uRect", type: "vec4", value: [0, 0, 1, 1] },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect((gl as any).uniform4f).toHaveBeenCalledWith(expect.anything(), 0, 0, 1, 1);
+    });
+
+    it("should upload bool custom uniform values as int", () => {
+      capturer.setCustomUniforms("uniform bool uEnabled;", [
+        { name: "uEnabled", type: "bool", value: true },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(expect.anything(), 1);
+    });
+
+    it("should upload false bool as 0", () => {
+      capturer.setCustomUniforms("uniform bool uEnabled;", [
+        { name: "uEnabled", type: "bool", value: false },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(expect.anything(), 0);
+    });
+
+    it("should upload multiple custom uniforms", () => {
+      (gl as any).uniform3f = vi.fn();
+
+      capturer.setCustomUniforms(
+        "uniform float uSpeed;\nuniform vec3 uColor;",
+        [
+          { name: "uSpeed", type: "float", value: 2.0 },
+          { name: "uColor", type: "vec3", value: [1, 0, 0] },
+        ],
+      );
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(gl.uniform1f).toHaveBeenCalledWith(expect.anything(), 2.0);
+      expect((gl as any).uniform3f).toHaveBeenCalledWith(expect.anything(), 1, 0, 0);
+    });
+
+    it("should invalidate shader cache when declarations change", () => {
+      capturer.setCustomUniforms("uniform float uA;", []);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "same_code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+      expect(shaderCompiler.compileShader).toHaveBeenCalledTimes(1);
+
+      // Same declarations — cache hit
+      capturer.setCustomUniforms("uniform float uA;", []);
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "same_code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+      expect(shaderCompiler.compileShader).toHaveBeenCalledTimes(1);
+
+      // Different declarations — cache invalidated
+      capturer.setCustomUniforms("uniform vec3 uB;", []);
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "same_code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+      expect(shaderCompiler.compileShader).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not invalidate cache when only values change", () => {
+      capturer.setCustomUniforms("uniform float uA;", [
+        { name: "uA", type: "float", value: 1.0 },
+      ]);
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      capturer.setCustomUniforms("uniform float uA;", [
+        { name: "uA", type: "float", value: 99.0 },
+      ]);
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      expect(shaderCompiler.compileShader).toHaveBeenCalledTimes(1);
+    });
+
+    it("should also pass declarations in issueCaptureGrid", () => {
+      const declarations = "uniform float uVal;";
+      capturer.setCustomUniforms(declarations, [
+        { name: "uVal", type: "float", value: 3.0 },
+      ]);
+
+      capturer.issueCaptureGrid(
+        [{ varName: "test", varType: "float", captureShader: "grid_code" }],
+        createDefaultUniforms(),
+        4, 4,
+      );
+
+      expect(shaderCompiler.compileShader).toHaveBeenCalledWith(
+        "grid_code",
+        undefined,
+        undefined,
+        undefined,
+        declarations,
+      );
+      expect(gl.uniform1f).toHaveBeenCalledWith(expect.anything(), 3.0);
+    });
+
+    it("should skip uniform upload when getUniformLocation returns null", () => {
+      vi.mocked(gl.getUniformLocation).mockImplementation((_prog: any, name: string) => {
+        if (name === "uMissing") return null;
+        return { loc: true } as any;
+      });
+
+      capturer.setCustomUniforms("uniform float uMissing;", [
+        { name: "uMissing", type: "float", value: 1.0 },
+      ]);
+
+      capturer.issueCaptureAtPixel(
+        [{ varName: "test", varType: "float", captureShader: "code" }],
+        0, 0, 800, 600,
+        createDefaultUniforms(),
+      );
+
+      // uniform1f should have been called for iTime etc., but NOT for uMissing
+      const calls = vi.mocked(gl.uniform1f).mock.calls;
+      const missingCalls = calls.filter(c => c[0] === null);
+      expect(missingCalls).toHaveLength(0);
+    });
+  });
+
   describe("PBO pool reuse", () => {
     it("should reuse PBOs from the pool instead of creating new ones", () => {
       const captures = [

@@ -200,7 +200,7 @@ describe("PassRenderer", () => {
       const mockKeyboardTexture = createMockTexture();
       mockResourceManager.getKeyboardTexture.mockReturnValue(mockKeyboardTexture);
 
-      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms, true);
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms, undefined, true);
 
       expect(mockResourceManager.updateKeyboardTexture).not.toHaveBeenCalled();
       // Should still bind the existing texture

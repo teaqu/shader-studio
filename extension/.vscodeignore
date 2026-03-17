@@ -10,6 +10,7 @@ vsc-extension-quickstart.md
 **/eslint.config.mjs
 **/*.map
 **/*.ts
+!assets/shader-studio-script.d.ts
 **/.vscode-test.*
 scripts
 ../**

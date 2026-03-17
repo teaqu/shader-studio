@@ -22,6 +22,7 @@ suite('Shader Studio Test Suite', () => {
       return undefined;
     });
     sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    sandbox.stub(fs, 'readdirSync').returns([]);
     
     mockOutputChannel = {
       info: sandbox.stub(),
@@ -585,6 +586,7 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.calledOnce(messengerSendSpy);
     });
   });
+
 
   suite('error messages sent to UI', () => {
     let messengerSendSpy: sinon.SinonSpy;

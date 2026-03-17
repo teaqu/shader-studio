@@ -84,5 +84,7 @@ export interface ShaderPasses {
 
 export interface ShaderConfig {
     version: string;
+    script?: string;
+    scriptMaxPollingFps?: number;
     passes: ShaderPasses;
 }

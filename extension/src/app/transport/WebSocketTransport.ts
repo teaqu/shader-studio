@@ -21,9 +21,12 @@ export class WebSocketTransport implements MessageTransport {
     'requestWorkspaceFiles',
     'updateConfig',
     'createBufferFile',
+    'createScriptFile',
     'updateShaderSource',
     'requestFileContents',
     'requestLayout',
+    'updateScriptPollingRate',
+    'resetScriptTime',
   ]);
 
   constructor(
@@ -248,6 +251,9 @@ export class WebSocketTransport implements MessageTransport {
         case 'createBufferFile':
           await this.handleCreateBufferFile(data.payload);
           break;
+        case 'createScriptFile':
+          await this.handleCreateScriptFile(data.payload);
+          break;
         case 'updateShaderSource':
           await this.overlayHandler.handleUpdateShaderSource(data.payload);
           break;
@@ -259,6 +265,16 @@ export class WebSocketTransport implements MessageTransport {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'restoreLayout', payload: null }));
           }
+          break;
+        case 'updateScriptPollingRate': {
+          const fps = data.payload?.fps;
+          if (typeof fps === 'number' && fps > 0) {
+            this.shaderProvider.updateScriptPollingRate(fps);
+          }
+          break;
+        }
+        case 'resetScriptTime':
+          this.shaderProvider.resetScriptTime();
           break;
       }
     } catch (error) {
@@ -352,6 +368,36 @@ export class WebSocketTransport implements MessageTransport {
       }
     } catch (error) {
       console.error(`WebSocket: Failed to create buffer file: ${error}`);
+    }
+  }
+
+  private async handleCreateScriptFile(
+    payload: { scriptPath: string; shaderPath?: string },
+  ): Promise<void> {
+    try {
+      const shaderPath = payload.shaderPath || (() => {
+        const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+        return editor?.document.uri.fsPath;
+      })();
+
+      if (!shaderPath) {
+        console.warn("WebSocket: No shader path for script file creation");
+        return;
+      }
+
+      const shaderDir = path.dirname(shaderPath);
+      const scriptFilePath = path.resolve(shaderDir, payload.scriptPath);
+
+      if (!fs.existsSync(scriptFilePath)) {
+        const isTs = scriptFilePath.endsWith('.ts');
+        const template = isTs
+          ? `export function uniforms(ctx: UniformContext): Record<string, UniformValue> {\n  return {\n    // Example: uSpeed: Math.sin(ctx.iTime) * 0.5 + 0.5,\n  };\n}\n`
+          : `export function uniforms(ctx) {\n  return {\n    // Example: uSpeed: Math.sin(ctx.iTime) * 0.5 + 0.5,\n  };\n}\n`;
+        fs.writeFileSync(scriptFilePath, template, 'utf-8');
+        console.log(`WebSocket: Created script file: ${scriptFilePath}`);
+      }
+    } catch (error) {
+      console.error(`WebSocket: Failed to create script file: ${error}`);
     }
   }
 

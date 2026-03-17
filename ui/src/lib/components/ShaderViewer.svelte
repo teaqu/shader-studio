@@ -102,6 +102,12 @@
   let bufferPathMap: Record<string, string> = {};
   let shaderPath: string = "";
 
+  // Script info for config panel
+  let scriptInfo: { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null = null;
+  let customUniformValues: Record<string, number | number[] | boolean> = {};
+  let actualPollFps = 0;
+  let pollTimestamps: number[] = [];
+
   // Debug panel state
   let debugPanelVisible = true;
 
@@ -231,6 +237,13 @@
       if (initialized && shaderStudio) {
         currentFPS = renderingEngine.getCurrentFPS();
       }
+      // Evict stale poll timestamps so actualPollFps decays to 0 when messages stop
+      const now = performance.now();
+      const cutoff = now - 1000;
+      while (pollTimestamps.length > 0 && pollTimestamps[0] < cutoff) {
+        pollTimestamps.shift();
+      }
+      actualPollFps = pollTimestamps.length;
     }, 100);
     return () => clearInterval(fpsInterval);
   });
@@ -259,6 +272,8 @@
   function handleReset() {
     if (!initialized) return;
     audioStore.setMuted(false);
+    // Reset script time origin so custom uniform iTime matches shader iTime
+    transport.postMessage({ type: 'resetScriptTime' });
     shaderStudio.handleReset(async () => {
       const lastEvent = shaderStudio!.getLastShaderEvent();
       if (lastEvent) {
@@ -289,6 +304,23 @@
     transport.postMessage({
       type: 'showConfig',
       payload: { shaderPath: path.replace(/\.glsl$/, '.sha.json') }
+    });
+  }
+
+  function handleScriptPollingFpsChange(fps: number) {
+    if (!currentConfig || !shaderPath) return;
+    const updatedConfig = { ...currentConfig, scriptMaxPollingFps: fps };
+    currentConfig = updatedConfig;
+    const text = JSON.stringify(updatedConfig, null, 2);
+    // Save config to disk (skip shader refresh)
+    transport.postMessage({
+      type: 'updateConfig',
+      payload: { config: updatedConfig, text, shaderPath, skipRefresh: true },
+    });
+    // Update the live polling rate without restarting the shader
+    transport.postMessage({
+      type: 'updateScriptPollingRate',
+      payload: { fps },
     });
   }
 
@@ -448,6 +480,13 @@
       if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
         renderingEngine.togglePause();
       }
+      scriptInfo = currentConfig?.script
+        ? {
+            filename: currentConfig.script,
+            uniforms: [],
+            fileExists: !event.data.scriptBundleError?.includes('not found'),
+          }
+        : null;
       editorOverlayManager?.setShaderSource(currentShaderCode, shaderPath);
       editorOverlayManager?.setConfig(currentConfig);
     }
@@ -556,9 +595,47 @@
     onCompilationResult: (result) => {
       if (result) {
         errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+        if (result.success && scriptInfo) {
+          scriptInfo = {
+            ...scriptInfo,
+            uniforms: renderingEngine.getCustomUniformInfo(),
+          };
+        }
       }
     },
     onLockStateChanged: (locked) => { isLocked = locked; },
+    onScriptFileCreated: (newScriptPath) => {
+      if (!currentConfig || !shaderPath) return;
+      const updatedConfig = { ...currentConfig, script: newScriptPath };
+      currentConfig = updatedConfig;
+      scriptInfo = { filename: newScriptPath, uniforms: [], fileExists: false };
+      const text = JSON.stringify(updatedConfig, null, 2);
+      transport.postMessage({
+        type: 'updateConfig',
+        payload: { config: updatedConfig, text, shaderPath, skipRefresh: false },
+      });
+    },
+    onCustomUniformValues: (values) => {
+      if (renderingEngine) {
+        renderingEngine.setCustomUniformValues(values);
+      }
+      // Update values map for config panel display
+      const map: Record<string, number | number[] | boolean> = {};
+      for (const v of values) {
+        map[v.name] = v.value;
+      }
+      customUniformValues = map;
+
+      // Track actual poll rate
+      const now = performance.now();
+      pollTimestamps.push(now);
+      // Keep last 1 second of timestamps
+      const cutoff = now - 1000;
+      while (pollTimestamps.length > 0 && pollTimestamps[0] < cutoff) {
+        pollTimestamps.shift();
+      }
+      actualPollFps = pollTimestamps.length;
+    },
   };
 
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
@@ -697,6 +774,7 @@
         refreshMode={activeRefreshMode}
         pollingMs={activePollingMs}
         hasPixelSelected={hasPixelCapture}
+        {customUniformValues}
       />
     {/if}
   </div>
@@ -714,6 +792,10 @@
         isLocked={isLocked}
         {audioVideoController}
         globalMuted={audioMuted}
+        {scriptInfo}
+        {customUniformValues}
+        {actualPollFps}
+        onScriptPollingFpsChange={handleScriptPollingFpsChange}
       />
     {/if}
   </div>

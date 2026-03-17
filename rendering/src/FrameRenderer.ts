@@ -7,6 +7,7 @@ import type { TimeManager } from "./util/TimeManager";
 import type { KeyboardManager } from "./input/KeyboardManager";
 import type { MouseManager } from "./input/MouseManager";
 import type { CameraManager } from "./input/CameraManager";
+import type { CustomUniformManager, CustomUniform } from "./CustomUniformManager";
 import { FPSCalculator } from "./util/FPSCalculator";
 
 export class FrameRenderer {
@@ -34,6 +35,7 @@ export class FrameRenderer {
   private glCanvas: HTMLCanvasElement;
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
+  private customUniformManager: CustomUniformManager | null = null;
 
   constructor(
     timeManager: TimeManager,
@@ -69,6 +71,10 @@ export class FrameRenderer {
 
   public getCurrentFPS(): number {
     return this.fpsCalculator.getFPS();
+  }
+
+  public setCustomUniformManager(manager: CustomUniformManager | null): void {
+    this.customUniformManager = manager;
   }
 
   public setFPSLimit(limit: number): void {
@@ -145,8 +151,9 @@ export class FrameRenderer {
   public renderForCapture(): void {
     this.currentFrameTime = performance.now();
     const uniforms = this.getUniforms();
-    this.renderBufferPasses(uniforms);
-    this.renderImagePass(uniforms);
+    const customUniforms = this.evaluateCustomUniforms();
+    this.renderBufferPasses(uniforms, customUniforms);
+    this.renderImagePass(uniforms, customUniforms);
   }
 
   public startRenderLoop(): void {
@@ -231,12 +238,13 @@ export class FrameRenderer {
     }
 
     const uniforms = this.pausedUniforms ?? this.getUniforms();
+    const customUniforms = this.evaluateCustomUniforms();
 
     if (!isPaused || currentFrame === 0) {
-      this.renderBufferPasses(uniforms);
+      this.renderBufferPasses(uniforms, customUniforms);
     }
 
-    this.renderImagePass(uniforms, isPaused);
+    this.renderImagePass(uniforms, customUniforms, isPaused);
 
     // Track actual frame-to-frame wall time (RAF delta) only when running
     if (!isPaused) {
@@ -263,6 +271,13 @@ export class FrameRenderer {
     }
   }
 
+  private evaluateCustomUniforms(): CustomUniform[] | undefined {
+    if (!this.customUniformManager || !this.customUniformManager.hasUniforms()) {
+      return undefined;
+    }
+    return this.customUniformManager.getValues();
+  }
+
   private updateFPSTracking(time: number): void {
     if (this.timeManager.getFrame() === 0) {
       this.fpsCalculator.reset();
@@ -271,7 +286,7 @@ export class FrameRenderer {
     }
   }
 
-  private renderBufferPasses(uniforms: PassUniforms): void {
+  private renderBufferPasses(uniforms: PassUniforms, customUniforms?: CustomUniform[]): void {
     const passes = this.shaderPipeline.getPasses();
     const passShaders = this.shaderPipeline.getPassShaders();
     const passBuffers = this.bufferManager.getPassBuffers();
@@ -283,22 +298,22 @@ export class FrameRenderer {
 
       const buffers = passBuffers[pass.name];
       const shader = passShaders[pass.name];
-      
+
       // Skip if buffers are missing (prevents "Cannot read properties of undefined (reading 'back')")
       if (!buffers) {
         console.warn(`Missing buffers for pass: ${pass.name}. Skipping render. This may indicate a configuration issue.`);
         continue;
       }
-      
+
       const passUniforms = this.getPassUniforms(pass, uniforms);
-      this.passRenderer.renderPass(pass, buffers.back, shader, passUniforms);
+      this.passRenderer.renderPass(pass, buffers.back, shader, passUniforms, customUniforms);
 
       // Swap front and back buffers
       [buffers.front, buffers.back] = [buffers.back, buffers.front];
     }
   }
 
-  private renderImagePass(uniforms: PassUniforms, isPaused: boolean = false): void {
+  private renderImagePass(uniforms: PassUniforms, customUniforms?: CustomUniform[], isPaused: boolean = false): void {
     const passes = this.shaderPipeline.getPasses();
     const imagePass = passes.find((p: Pass) => p.name === "Image");
 
@@ -307,7 +322,7 @@ export class FrameRenderer {
       const shader = passShaders[imagePass.name];
       if (shader) {
         const passUniforms = this.getPassUniforms(imagePass, uniforms);
-        this.passRenderer.renderPass(imagePass, null, shader, passUniforms, isPaused);
+        this.passRenderer.renderPass(imagePass, null, shader, passUniforms, customUniforms, isPaused);
       } else {
         this.passRenderer.clearCanvas();
       }

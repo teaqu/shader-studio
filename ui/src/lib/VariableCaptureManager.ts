@@ -3,6 +3,8 @@ import type { VariableCapturer } from '../../../rendering/src/capture/VariableCa
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 
+const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
+
 export interface ColorFrequency {
   r: number; g: number; b: number;  // 0–1 range
   freq: number;                     // fraction of total samples
@@ -308,6 +310,15 @@ export class VariableCaptureManager {
     const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
 
     const vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
+
+    // Append custom uniforms (declared in compiler header, not in user code)
+    const customUniforms = this.renderingEngine.getCustomUniformInfo();
+    for (const { name, type } of customUniforms) {
+      if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
+        vars.push({ varName: name, varType: type, declarationLine: -1 });
+      }
+    }
+
     if (vars.length === 0) {
       this.onUpdate([]);
       return;
@@ -346,6 +357,12 @@ export class VariableCaptureManager {
     if (captures.length === 0) { return; }
 
     const uniforms = this.renderingEngine.getCaptureUniforms();
+
+    // Provide custom uniform declarations + values to the capturer so capture shaders compile and render correctly
+    const customDecl = this.renderingEngine.getCustomUniformDeclarations();
+    const customValues = this.renderingEngine.getCurrentCustomUniforms();
+    this.capturer.setCustomUniforms(customDecl, customValues);
+
     this.pendingResults = [];
     this.declaredOrder = captures.map(c => c.varName);
     this.lastGridWidth = gridWidth;

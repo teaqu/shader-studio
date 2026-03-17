@@ -175,6 +175,7 @@ describe('VariableCaptureManager', () => {
       issueCaptureGrid: mockIssueCaptureGrid,
       collectResults: mockCollectResults,
       dispose: mockCapturerDispose,
+      setCustomUniforms: vi.fn(),
     };
 
     mockCreateVariableCapturer = vi.fn().mockReturnValue(mockCapturer);
@@ -183,6 +184,9 @@ describe('VariableCaptureManager', () => {
     mockRenderingEngine = {
       createVariableCapturer: mockCreateVariableCapturer,
       getCaptureUniforms: mockGetCaptureUniforms,
+      getCustomUniformInfo: vi.fn().mockReturnValue([]),
+      getCustomUniformDeclarations: vi.fn().mockReturnValue(''),
+      getCurrentCustomUniforms: vi.fn().mockReturnValue([]),
     };
 
     onUpdate = vi.fn();

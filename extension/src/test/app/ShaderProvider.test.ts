@@ -106,7 +106,7 @@ suite('ShaderProvider Test Suite', () => {
     });
 
     suite('updatePreviewedShadersUsingCommonBuffer', () => {
-        test('should send updates to shaders that use the common buffer', () => {
+        test('should send updates to shaders that use the common buffer', async () => {
             const shaderPath = '/path/to/shader.glsl';
             const commonBufferPath = '/path/to/common.glsl';
 
@@ -131,7 +131,7 @@ suite('ShaderProvider Test Suite', () => {
 
             (provider as any).activeShaders.add(shaderPath);
 
-            (provider as any).updatePreviewedShadersUsingCommonBuffer(commonBufferPath);
+            await (provider as any).updatePreviewedShadersUsingCommonBuffer(commonBufferPath);
 
             sinon.assert.calledOnce(sendSpy);
             const message = sendSpy.firstCall.args[0];
@@ -164,7 +164,7 @@ suite('ShaderProvider Test Suite', () => {
     });
 
     suite('sendShaderToWebview', () => {
-        test('should call updatePreviewedShadersUsingCommonBuffer for common buffer files', () => {
+        test('should call updatePreviewedShadersUsingCommonBuffer for common buffer files', async () => {
             const commonBufferPath = '/path/to/common.glsl';
             const shaderPath = '/path/to/shader.glsl';
 
@@ -190,14 +190,14 @@ suite('ShaderProvider Test Suite', () => {
 
             const updateSpy = sandbox.spy(provider as any, 'updatePreviewedShadersUsingCommonBuffer');
 
-            provider.sendShaderToWebview(mockEditor as any);
+            await provider.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.calledOnce(updateSpy);
             sinon.assert.calledWith(updateSpy, commonBufferPath);
             sinon.assert.calledOnce(sendSpy); // Called by updatePreviewedShadersUsingCommonBuffer
         });
 
-        test('should send regular shader for non-common buffer GLSL files with mainImage', () => {
+        test('should send regular shader for non-common buffer GLSL files with mainImage', async () => {
             const shaderPath = '/path/to/shader.glsl';
 
             const mockEditor = {
@@ -224,7 +224,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            provider.sendShaderToWebview(mockEditor as any);
+            await provider.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.calledOnce(sendSpy);
             const message = sendSpy.firstCall.args[0];
@@ -233,7 +233,7 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.path, shaderPath);
         });
 
-        test('should include forceCleanup in message when option is provided', () => {
+        test('should include forceCleanup in message when option is provided', async () => {
             const shaderPath = '/path/to/shader.glsl';
 
             const mockEditor = {
@@ -260,7 +260,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            provider.sendShaderToWebview(mockEditor as any, { forceCleanup: true });
+            await provider.sendShaderToWebview(mockEditor as any, { forceCleanup: true });
 
             sinon.assert.calledOnce(sendSpy);
             const message = sendSpy.firstCall.args[0];
@@ -268,7 +268,7 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.forceCleanup, true);
         });
 
-        test('should not include forceCleanup when option is not provided', () => {
+        test('should not include forceCleanup when option is not provided', async () => {
             const shaderPath = '/path/to/shader.glsl';
 
             const mockEditor = {
@@ -295,7 +295,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            provider.sendShaderToWebview(mockEditor as any);
+            await provider.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.calledOnce(sendSpy);
             const message = sendSpy.firstCall.args[0];
@@ -303,7 +303,7 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.forceCleanup, undefined);
         });
 
-        test('should NOT include cursor position when debug mode is disabled', () => {
+        test('should NOT include cursor position when debug mode is disabled', async () => {
             const shaderPath = '/path/to/shader.glsl';
             const lineText = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
 
@@ -331,7 +331,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            provider.sendShaderToWebview(mockEditor as any);
+            await provider.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.calledOnce(sendSpy);
             const message = sendSpy.firstCall.args[0];
@@ -339,7 +339,7 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.cursorPosition, undefined, 'cursorPosition should NOT be present when debug is disabled');
         });
 
-        test('should include cursor position when debug mode is enabled', () => {
+        test('should include cursor position when debug mode is enabled', async () => {
             const shaderPath = '/path/to/shader.glsl';
             const lineText = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
 
@@ -371,7 +371,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            providerWithDebug.sendShaderToWebview(mockEditor as any);
+            await providerWithDebug.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.called(sendSpy);
             const message = sendSpy.lastCall.args[0];
@@ -383,7 +383,7 @@ suite('ShaderProvider Test Suite', () => {
             assert.strictEqual(message.cursorPosition.filePath, shaderPath);
         });
 
-        test('should include cursor position with correct line content when debug is enabled', () => {
+        test('should include cursor position with correct line content when debug is enabled', async () => {
             const shaderPath = '/path/to/shader.glsl';
             const line3Text = '  vec2 uv = fragCoord / iResolution.xy;';
 
@@ -415,7 +415,7 @@ suite('ShaderProvider Test Suite', () => {
 
             loadAndProcessConfigStub.returns(mockConfig);
 
-            providerWithDebug.sendShaderToWebview(mockEditor as any);
+            await providerWithDebug.sendShaderToWebview(mockEditor as any);
 
             sinon.assert.called(sendSpy);
             const message = sendSpy.lastCall.args[0];

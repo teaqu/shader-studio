@@ -9,6 +9,8 @@ export interface MessageRouterCallbacks {
   onResetLayout: () => void;
   onCompilationResult: (result: { success: boolean; errors?: string[] } | null) => void;
   onLockStateChanged: (isLocked: boolean) => void;
+  onCustomUniformValues?: (values: { name: string; type: string; value: number | number[] | boolean }[]) => void;
+  onScriptFileCreated?: (scriptPath: string) => void;
 }
 
 export class MessageRouter {
@@ -52,6 +54,16 @@ export class MessageRouter {
           event.data.payload.path || '',
           event.data.payload.code || '',
         );
+        return;
+      }
+
+      if (type === 'customUniformValues') {
+        this.callbacks.onCustomUniformValues?.(event.data.payload.values);
+        return;
+      }
+
+      if (type === 'scriptFileCreated') {
+        this.callbacks.onScriptFileCreated?.(event.data.payload.scriptPath);
         return;
       }
 

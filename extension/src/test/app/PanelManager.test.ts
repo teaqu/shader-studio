@@ -1533,4 +1533,450 @@ suite('PanelManager Test Suite', () => {
             sinon.assert.notCalled(writeStub);
         });
     });
+
+    suite('handleCreateScriptFile', () => {
+        test('always opens save dialog, even when scriptPath is provided', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/shader.uniforms.ts');
+            const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(showSaveStub);
+        });
+
+        test('pre-fills dialog with provided scriptPath when one is given', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            sandbox.stub(fsModule, 'writeFileSync');
+            const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './my.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            const dialogOpts = showSaveStub.firstCall.args[0] as vscode.SaveDialogOptions;
+            assert.ok(
+                dialogOpts?.defaultUri?.fsPath.includes('my.uniforms.ts'),
+                'dialog should pre-fill with the provided path',
+            );
+        });
+
+        test('default dialog name derived from shader basename when scriptPath is empty', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            sandbox.stub(fsModule, 'writeFileSync');
+            const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: '', shaderPath: '/test/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(showSaveStub);
+            const dialogOpts = showSaveStub.firstCall.args[0] as vscode.SaveDialogOptions;
+            assert.ok(
+                dialogOpts?.defaultUri?.fsPath.includes('myshader.uniforms.ts'),
+                'dialog default should use shader basename',
+            );
+            assert.deepStrictEqual(dialogOpts?.filters, { 'Script files': ['ts', 'js'] });
+        });
+
+        test('creates script file with clean template (no type boilerplate)', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/shader.uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            const writtenContent = writeStub.firstCall.args[1] as string;
+            assert.ok(writtenContent.includes('export function uniforms(ctx: UniformContext)'));
+            assert.ok(writtenContent.includes('Record<string, UniformValue>'));
+            assert.ok(!writtenContent.includes('interface UniformContext'));
+            assert.ok(!writtenContent.includes('type UniformValue'));
+        });
+
+        test('does not overwrite existing script file', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(true);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/shader.uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.notCalled(writeStub);
+        });
+
+        test('writes file to path confirmed by save dialog', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/project/shaders/uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './uniforms.ts', shaderPath: '/project/shaders/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            const writtenPath = writeStub.firstCall.args[0] as string;
+            assert.strictEqual(writtenPath, '/project/shaders/uniforms.ts');
+        });
+
+        test('creates plain JS template without TypeScript annotations for .js files', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/uniforms.js');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './uniforms.js', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            const content = writeStub.firstCall.args[1] as string;
+            assert.ok(!content.includes(': UniformContext'), 'JS template should not have TS param type');
+            assert.ok(!content.includes(': Record<string, UniformValue>'), 'JS template should not have TS return type');
+            assert.ok(content.includes('export function uniforms(ctx)'), 'JS template should have plain JS function');
+        });
+
+        test('creates TypeScript template with /// <reference path> and blank line separator', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/workspace/uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/workspace') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './uniforms.ts', shaderPath: '/workspace/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            const content = writeStub.firstCall.args[1] as string;
+            assert.ok(content.includes('/// <reference path='), 'TS template should have reference directive');
+            assert.ok(content.includes('shader-studio.d.ts'), 'reference should point to shader-studio.d.ts');
+            assert.ok(content.includes('export function uniforms(ctx: UniformContext)'), 'TS template should have typed function');
+            // Blank line between reference directive and export function
+            assert.ok(
+                content.includes('/// <reference path=') && content.includes('/>\n\nexport function'),
+                'TS template should have blank line after reference directive',
+            );
+        });
+
+        test('does nothing when save dialog is cancelled', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: '', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.notCalled(writeStub);
+            sinon.assert.notCalled(mockPanel.webview.postMessage);
+        });
+
+        test('posts scriptFileCreated with relative path when save dialog confirmed', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/test') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: '', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(writeStub);
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+            const msg = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(msg.type, 'scriptFileCreated');
+            assert.ok(msg.payload.scriptPath.includes('uniforms.ts'), 'should include filename');
+            assert.ok(msg.payload.scriptPath.startsWith('./'), 'should be relative path');
+        });
+
+        test('does nothing when no shader directory available', async () => {
+            const fsModule = require('fs');
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog');
+
+            // No shaderPath, no active editor
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: './uniforms.ts', shaderPath: '' },
+                {} as any,
+            );
+
+            sinon.assert.notCalled(writeStub);
+            sinon.assert.notCalled(showSaveStub);
+        });
+
+        test('writes workspace .d.ts after creating a .ts script file', async () => {
+            const fsModule = require('fs');
+            const EXT_PATH = mockContext.extensionPath;
+            const SOURCE_PATH = path.join(EXT_PATH, 'assets', 'shader-studio-script.d.ts');
+            const VSCODE_DIR = '/mock/workspace/.vscode';
+            sandbox.stub(fsModule, 'existsSync').callsFake((p: unknown) => {
+                if (p === SOURCE_PATH) return true;
+                if (p === VSCODE_DIR) return true;
+                return false;
+            });
+            sandbox.stub(fsModule, 'readFileSync').callsFake((p: unknown) => {
+                if (p === SOURCE_PATH) return 'interface UniformContext {}';
+                return '';
+            });
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/shader.uniforms.ts');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/mock/workspace') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: '', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            const dtsWrite = writeStub.getCalls().find(c =>
+                (c.args[0] as string).endsWith('shader-studio.d.ts')
+            );
+            assert.ok(dtsWrite, 'workspace .d.ts should be written after creating a .ts script');
+        });
+
+        test('does not write workspace .d.ts when creating a .js script file', async () => {
+            const fsModule = require('fs');
+            sandbox.stub(fsModule, 'existsSync').returns(false);
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/uniforms.js');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(chosenUri);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/mock/workspace') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleCreateScriptFile(
+                { scriptPath: '', shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            // Only the JS file itself should be written (no .d.ts)
+            const dtsWrite = writeStub.getCalls().find(c =>
+                (c.args[0] as string).endsWith('shader-studio.d.ts')
+            );
+            assert.ok(!dtsWrite, 'workspace .d.ts should NOT be written for a .js script');
+        });
+    });
+
+    suite('handleSelectScriptFile', () => {
+        test('opens open dialog and posts scriptFileCreated with relative path on confirm', async () => {
+            const chosenUri = vscode.Uri.file('/test/myshader.uniforms.ts');
+            const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves([chosenUri]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/test/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(showOpenStub);
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+            const msg = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.strictEqual(msg.type, 'scriptFileCreated');
+            assert.ok(msg.payload.scriptPath.startsWith('./'), 'path should be relative');
+            assert.ok(msg.payload.scriptPath.includes('myshader.uniforms.ts'));
+        });
+
+        test('does nothing when open dialog is cancelled', async () => {
+            sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/test/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.notCalled(mockPanel.webview.postMessage);
+        });
+
+        test('does nothing when open dialog returns empty array', async () => {
+            sandbox.stub(vscode.window, 'showOpenDialog').resolves([]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/test/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.notCalled(mockPanel.webview.postMessage);
+        });
+
+        test('opens dialog with shaderPath directory as default', async () => {
+            const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/project/shaders/myshader.glsl' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(showOpenStub);
+            const dialogOpts = showOpenStub.firstCall.args[0] as vscode.OpenDialogOptions;
+            assert.ok(
+                dialogOpts?.defaultUri?.fsPath.includes('shaders'),
+                'dialog should default to shader directory',
+            );
+            assert.deepStrictEqual(dialogOpts?.filters, { 'Script files': ['ts', 'js'] });
+            assert.strictEqual(dialogOpts?.canSelectMany, false);
+        });
+
+        test('uses active editor directory when no shaderPath provided', async () => {
+            const mockEditor = {
+                document: {
+                    uri: { fsPath: '/fallback/dir/shader.glsl' },
+                    languageId: 'glsl',
+                }
+            };
+            const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+            const chosenUri = vscode.Uri.file('/fallback/dir/uniforms.ts');
+            const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves([chosenUri]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '' },
+                mockPanel,
+            );
+
+            sinon.assert.calledOnce(showOpenStub);
+            sinon.assert.calledOnce(mockPanel.webview.postMessage);
+        });
+
+        test('writes workspace .d.ts after selecting a .ts script file', async () => {
+            const fsModule = require('fs');
+            const EXT_PATH = mockContext.extensionPath;
+            const SOURCE_PATH = path.join(EXT_PATH, 'assets', 'shader-studio-script.d.ts');
+            const VSCODE_DIR = '/mock/workspace/.vscode';
+            sandbox.stub(fsModule, 'existsSync').callsFake((p: unknown) => {
+                if (p === SOURCE_PATH) return true;
+                if (p === VSCODE_DIR) return true;
+                return false;
+            });
+            sandbox.stub(fsModule, 'readFileSync').callsFake((p: unknown) => {
+                if (p === SOURCE_PATH) return 'interface UniformContext {}';
+                return '';
+            });
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/myshader.uniforms.ts');
+            sandbox.stub(vscode.window, 'showOpenDialog').resolves([chosenUri]);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/mock/workspace') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/test/myshader.glsl' },
+                mockPanel,
+            );
+
+            const dtsWrite = writeStub.getCalls().find(c =>
+                (c.args[0] as string).endsWith('shader-studio.d.ts')
+            );
+            assert.ok(dtsWrite, 'workspace .d.ts should be written after selecting a .ts script');
+        });
+
+        test('does not write workspace .d.ts when selecting a .js script file', async () => {
+            const fsModule = require('fs');
+            const EXT_PATH = mockContext.extensionPath;
+            const SOURCE_PATH = path.join(EXT_PATH, 'assets', 'shader-studio-script.d.ts');
+            sandbox.stub(fsModule, 'existsSync').callsFake((p: unknown) => {
+                if (p === SOURCE_PATH) return true;
+                return false;
+            });
+            sandbox.stub(fsModule, 'readFileSync').returns('');
+            const writeStub = sandbox.stub(fsModule, 'writeFileSync');
+            const chosenUri = vscode.Uri.file('/test/uniforms.js');
+            sandbox.stub(vscode.window, 'showOpenDialog').resolves([chosenUri]);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+                { uri: vscode.Uri.file('/mock/workspace') }
+            ]);
+
+            const mockPanel = { webview: { postMessage: sandbox.stub() } } as any;
+
+            await (panelManager as any).handleSelectScriptFile(
+                { shaderPath: '/test/shader.glsl' },
+                mockPanel,
+            );
+
+            const dtsWrite = writeStub.getCalls().find(c =>
+                (c.args[0] as string).endsWith('shader-studio.d.ts')
+            );
+            assert.ok(!dtsWrite, 'workspace .d.ts should NOT be written when selecting a .js script');
+        });
+    });
 });

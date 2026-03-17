@@ -7,26 +7,30 @@ import { isGlslDocument } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
-import type { ShaderConfig, ShaderSourceMessage, ErrorMessage } from "@shader-studio/types";
+import { ScriptBundler } from "./ScriptBundler";
+import { ScriptEvaluator } from "./ScriptEvaluator";
+import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
   private configProcessor: ShaderConfigProcessor;
   private getDebugModeEnabled: () => boolean;
+  private scriptBundler = new ScriptBundler();
+  private scriptEvaluator = new ScriptEvaluator();
 
   constructor(
     private messenger: Messenger,
-    getDebugModeEnabled?: () => boolean
+    getDebugModeEnabled?: () => boolean,
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
   }
 
-  public sendShaderToWebview(
+  public async sendShaderToWebview(
     editor: vscode.TextEditor,
     options?: { forceCleanup?: boolean },
-  ): void {
+  ): Promise<void> {
     if (!this.messenger) {
       return;
     }
@@ -83,6 +87,9 @@ export class ShaderProvider {
       bufferPathMap,
     };
 
+    // Bundle script if configured
+    await this.bundleScript(config, shaderPath, message);
+
     // Only include cursor position if debug mode is enabled
     if (this.getDebugModeEnabled()) {
       const line = editor.selection.active.line;
@@ -98,6 +105,7 @@ export class ShaderProvider {
     }
 
     this.messenger.send(message);
+    this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
 
     // Track this shader as active
@@ -156,11 +164,151 @@ export class ShaderProvider {
         bufferPathMap,
       };
 
+      // Bundle script if configured
+      await this.bundleScript(config, shaderPath, message);
+
       this.messenger.send(message);
+      this.startScriptPolling(config);
       this.logger.debug("Shader message sent to webview");
     } catch {
       return;
     }
+  }
+
+  /**
+   * Re-send the active shader, bundling the script from in-memory content
+   * (the unsaved editor buffer) instead of from disk.
+   */
+  public async sendShaderWithScriptContent(
+    shaderPath: string,
+    scriptContent: string,
+  ): Promise<void> {
+    if (!this.messenger) {
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(shaderPath)) {
+        return;
+      }
+
+      const code = fs.readFileSync(shaderPath, "utf-8");
+      if (!code.includes("mainImage")) {
+        return;
+      }
+
+      const buffers: Record<string, string> = {};
+      const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+      const pathMap = this.buildPathMap(config, shaderPath);
+      const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
+
+      const message: ShaderSourceMessage = {
+        type: "shaderSource",
+        code,
+        config,
+        path: shaderPath,
+        buffers,
+        pathMap,
+        bufferPathMap,
+      };
+
+      await this.bundleScript(config, shaderPath, message, scriptContent);
+
+      this.messenger.send(message);
+      this.startScriptPolling(config);
+    } catch {
+      return;
+    }
+  }
+
+  /**
+   * Load the config for a shader path (lightweight, no buffer processing).
+   */
+  public getActiveConfig(shaderPath: string): ShaderConfig | null {
+    return this.configProcessor.loadAndProcessConfig(shaderPath, {});
+  }
+
+  /**
+   * Get the resolved script path for a shader config, if any.
+   */
+  public getScriptPath(config: ShaderConfig | null, shaderPath: string): string | null {
+    if (!config?.script) {
+      return null;
+    }
+    return PathResolver.resolvePath(shaderPath, config.script);
+  }
+
+  private async bundleScript(
+    config: ShaderConfig | null,
+    shaderPath: string,
+    message: ShaderSourceMessage,
+    scriptContent?: string,
+  ): Promise<void> {
+    const scriptPath = this.getScriptPath(config, shaderPath);
+    if (!scriptPath) {
+      this.scriptEvaluator.dispose();
+      return;
+    }
+
+    // When bundling from editor content, skip the file existence check
+    if (scriptContent === undefined && !fs.existsSync(scriptPath)) {
+      message.scriptBundleError = `Script file not found: ${config!.script}`;
+      this.scriptEvaluator.dispose();
+      return;
+    }
+
+    const result = await this.scriptBundler.bundle(scriptPath, scriptContent);
+    if (!result.success || !result.code) {
+      message.scriptBundleError = result.error || "Unknown bundling error";
+      this.scriptEvaluator.dispose();
+      return;
+    }
+
+    // Evaluate script in extension host (Node.js context) to get declarations
+    const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath);
+    if (loadResult.error) {
+      message.scriptBundleError = loadResult.error;
+      return;
+    }
+
+    // Send declarations and type info (not the bundle) to the webview
+    message.customUniformDeclarations = loadResult.declarations;
+    message.customUniformInfo = loadResult.uniforms;
+  }
+
+  /**
+   * Start polling uniform values after the shader message has been sent.
+   * Must be called after messenger.send() so the webview has compiled the shader
+   * and created the CustomUniformManager before values arrive.
+   */
+  private startScriptPolling(config: ShaderConfig | null): void {
+    if (!this.scriptEvaluator.hasUniforms()) {
+      return;
+    }
+    const pollingFps = config?.scriptMaxPollingFps ?? 30;
+    const pollingMs = Math.round(1000 / pollingFps);
+    this.scriptEvaluator.startPolling((values) => {
+      const valuesMessage: CustomUniformValuesMessage = {
+        type: "customUniformValues",
+        payload: { values },
+      };
+      this.messenger.send(valuesMessage);
+    }, pollingMs);
+  }
+
+  /**
+   * Update the script polling rate without resetting the shader.
+   */
+  public updateScriptPollingRate(fps: number): void {
+    const pollingMs = Math.round(1000 / fps);
+    this.scriptEvaluator.updatePollingRate(pollingMs);
+  }
+
+  /**
+   * Reset the script time origin (called on shader reset).
+   */
+  public resetScriptTime(): void {
+    this.scriptEvaluator.resetTime();
   }
 
   /**
@@ -254,7 +402,7 @@ export class ShaderProvider {
   /**
    * Update only the currently active shaders that use the given common buffer
    */
-  private updatePreviewedShadersUsingCommonBuffer(commonBufferPath: string): void {
+  private async updatePreviewedShadersUsingCommonBuffer(commonBufferPath: string): Promise<void> {
     for (const activeShaderPath of this.activeShaders) {
       try {
         const config = this.configProcessor.loadAndProcessConfig(activeShaderPath, {});
@@ -290,7 +438,11 @@ export class ShaderProvider {
             bufferPathMap,
           };
 
+          // Bundle script if configured
+          await this.bundleScript(config, activeShaderPath, message);
+
           this.messenger.send(message);
+          this.startScriptPolling(config);
           this.logger.debug(`Updated active shader: ${activeShaderPath}`);
         }
       } catch (e) {

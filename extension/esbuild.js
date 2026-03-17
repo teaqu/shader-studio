@@ -33,7 +33,7 @@ async function main() {
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode', 'glsl-transpiler'],
+		external: ['vscode', 'glsl-transpiler', 'esbuild'],
 		logLevel: 'silent',
 		plugins: [
 			esbuildProblemMatcherPlugin,

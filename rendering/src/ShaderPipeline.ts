@@ -5,6 +5,7 @@ import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImageP
 import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
+import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
 
 export class ShaderPipeline {
@@ -19,6 +20,7 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private passSlotAssignments: Record<string, SlotAssignment[]> = {};
+  private customUniformManager: CustomUniformManager | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -54,6 +56,10 @@ export class ShaderPipeline {
 
   public getPassShader(passName: string): PiShader | undefined {
     return this.passShaders[passName];
+  }
+
+  public setCustomUniformManager(manager: CustomUniformManager | null): void {
+    this.customUniformManager = manager;
   }
 
   public getShaderPath(): string {
@@ -179,9 +185,10 @@ export class ShaderPipeline {
       this.passSlotAssignments[pass.name] = slotAssignments;
       const channelTypes = this.getChannelTypes(pass);
 
+      const customDecl = this.customUniformManager?.getDeclarations() || undefined;
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes);
+        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);

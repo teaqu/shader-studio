@@ -502,7 +502,8 @@ describe("ShaderPipeline", () => {
                 expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
                 expect.stringContaining("commonFunction"),
                 expect.any(Array),
-                expect.any(Array)
+                expect.any(Array),
+                undefined,
             );
         });
     });
@@ -1309,7 +1310,8 @@ describe("ShaderPipeline", () => {
                 expect.any(String),
                 "",
                 [{ slot: 0, key: "myTexture", isCustomName: true }],
-                expect.any(Array)
+                expect.any(Array),
+                undefined,
             );
         });
     });

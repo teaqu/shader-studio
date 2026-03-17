@@ -555,6 +555,7 @@ describe("FrameRenderer", () => {
         null,
         { mProgram: {}, mResult: true },
         expect.any(Object),
+        undefined,
         true
       );
     });
@@ -624,7 +625,8 @@ describe("FrameRenderer", () => {
         { name: 'Buffer A', shaderSrc: 'buffer shader', inputs: {} },
         { mTex0: {} },
         { mProgram: {}, mResult: true },
-        expect.any(Object)
+        expect.any(Object),
+        undefined,
       );
     });
 
@@ -650,6 +652,7 @@ describe("FrameRenderer", () => {
         null,
         { mProgram: {}, mResult: true },
         expect.any(Object),
+        undefined,
         false
       );
     });
@@ -697,6 +700,7 @@ describe("FrameRenderer", () => {
           date: new Float32Array([2025, 1, 1, 0]),
           mouse: new Float32Array([0, 0, 0, 0])
         }),
+        undefined,
         false
       );
     });
@@ -1406,13 +1410,15 @@ describe("FrameRenderer", () => {
         { name: 'Buffer A', shaderSrc: 'buffer shader', inputs: {} },
         { mTex0: {} },
         { mProgram: {}, mResult: true },
-        expect.any(Object)
+        expect.any(Object),
+        undefined,
       );
       expect(mockPassRenderer.renderPass).toHaveBeenCalledWith(
         { name: 'Image', shaderSrc: 'image shader', inputs: {} },
         null,
         { mProgram: {}, mResult: true },
         expect.any(Object),
+        undefined,
         true
       );
 
@@ -1501,6 +1507,7 @@ describe("FrameRenderer", () => {
         null,
         expect.any(Object),
         expect.any(Object),
+        undefined,
         true
       );
     });
@@ -1522,6 +1529,7 @@ describe("FrameRenderer", () => {
         null,
         expect.any(Object),
         expect.any(Object),
+        undefined,
         false
       );
     });

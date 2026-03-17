@@ -20,6 +20,7 @@ export class ShaderCompiler {
     commonCode?: string,
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
   ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelDeclarations = this.buildChannelDeclarations(slotAssignments, types);
@@ -66,6 +67,10 @@ uniform struct {
 } iCh3;
 `;
 
+    if (customUniformDeclarations) {
+      header += customUniformDeclarations + "\n";
+    }
+
     let commonCodeLineCount = 0;
     if (commonCode) {
       commonCodeLineCount = (commonCode.match(/\n/g) || []).length + 1;
@@ -82,10 +87,11 @@ uniform struct {
     commonCode?: string,
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
   ): PiShader | null {
     const vs =
       `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes);
+    const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
     return this.renderer.CreateShader(vs, fs);
   }
 

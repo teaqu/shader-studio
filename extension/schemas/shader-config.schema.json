@@ -10,6 +10,17 @@
       "const": "1.0",
       "description": "Configuration version"
     },
+    "script": {
+      "type": "string",
+      "description": "Path to a JavaScript file that exports a uniforms(ctx) function for custom uniforms"
+    },
+    "scriptMaxPollingFps": {
+      "type": "number",
+      "description": "Maximum polling rate for the script uniforms function (in evaluations per second). Default: 30",
+      "default": 30,
+      "minimum": 1,
+      "maximum": 120
+    },
     "passes": {
       "$ref": "#/definitions/ShaderPasses"
     }
