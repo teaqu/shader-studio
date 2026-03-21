@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CameraManager } from "../../input/CameraManager";
 import { KeyboardManager } from "../../input/KeyboardManager";
 
+type MockKeyboardManager = KeyboardManager & {
+  press: (code: number) => void;
+  release: (code: number) => void;
+  releaseAll: () => void;
+};
+
 // Create a mock KeyboardManager with controllable key state
-function createMockKeyboardManager() {
+function createMockKeyboardManager(): MockKeyboardManager {
   const keyHeld = new Uint8Array(256);
   return {
     getKeyHeld: () => keyHeld,
-    keyHeld,
     press: (code: number) => { keyHeld[code] = 255; },
     release: (code: number) => { keyHeld[code] = 0; },
     releaseAll: () => { keyHeld.fill(0); },
-    // Stub other methods that KeyboardManager might have
     setupEventListeners: vi.fn(),
     getKeyPressed: () => new Uint8Array(256),
-  } as unknown as KeyboardManager & { keyHeld: Uint8Array; press: (c: number) => void; release: (c: number) => void; releaseAll: () => void };
+  } as unknown as MockKeyboardManager;
 }
 
 describe("CameraManager", () => {
@@ -61,19 +65,19 @@ describe("CameraManager", () => {
       kb.press(65); // A
       camera.update(1.0);
       const pos = camera.getCameraPos();
-      expect(pos[0]).toBeGreaterThan(0); // moved along +X
+      expect(pos[0]).toBeLessThan(0); // moved along -X (left)
     });
 
     it("D should strafe right", () => {
       kb.press(68); // D
       camera.update(1.0);
       const pos = camera.getCameraPos();
-      expect(pos[0]).toBeLessThan(0); // moved along -X
+      expect(pos[0]).toBeGreaterThan(0); // moved along +X (right)
     });
 
     it("W should move in the direction camera is facing (3D)", () => {
       // Look up by simulating pitch
-      kb.press(40); // Down arrow = pitch up
+      kb.press(38); // Up arrow = pitch up
       camera.update(0.5);
       kb.releaseAll();
 
@@ -151,28 +155,28 @@ describe("CameraManager", () => {
       kb.press(37); // Left
       camera.update(0.5);
       const dir = camera.getCameraDir();
-      expect(dir[0]).toBeGreaterThan(0);
+      expect(dir[0]).toBeLessThan(0); // yaw left from -Z → faces -X
     });
 
     it("right arrow should yaw right", () => {
       kb.press(39); // Right
       camera.update(0.5);
       const dir = camera.getCameraDir();
-      expect(dir[0]).toBeLessThan(0);
+      expect(dir[0]).toBeGreaterThan(0); // yaw right from -Z → faces +X
     });
 
-    it("down arrow should pitch up", () => {
-      kb.press(40); // Down
-      camera.update(0.5);
-      const dir = camera.getCameraDir();
-      expect(dir[1]).toBeGreaterThan(0);
-    });
-
-    it("up arrow should pitch down", () => {
+    it("up arrow should pitch up", () => {
       kb.press(38); // Up
       camera.update(0.5);
       const dir = camera.getCameraDir();
-      expect(dir[1]).toBeLessThan(0);
+      expect(dir[1]).toBeGreaterThan(0); // pitch up → dir.y > 0
+    });
+
+    it("down arrow should pitch down", () => {
+      kb.press(40); // Down
+      camera.update(0.5);
+      const dir = camera.getCameraDir();
+      expect(dir[1]).toBeLessThan(0); // pitch down → dir.y < 0
     });
   });
 
@@ -205,8 +209,8 @@ describe("CameraManager", () => {
       moveHandler({ clientX: 150, clientY: 100 });
 
       const dir = camera.getCameraDir();
-      // Should have yawed — X component no longer 0
-      expect(dir[0]).not.toBeCloseTo(0, 2);
+      // Drag right → yaw right → dir.x > 0
+      expect(dir[0]).toBeGreaterThan(0);
 
       windowAddSpy.mockRestore();
     });
@@ -222,10 +226,10 @@ describe("CameraManager", () => {
       const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
 
       listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
-      moveHandler({ clientX: 100, clientY: 50 }); // drag up
+      moveHandler({ clientX: 100, clientY: 50 }); // drag up (dy = -50)
 
       const dir = camera.getCameraDir();
-      expect(dir[1]).toBeGreaterThan(0); // looking up
+      expect(dir[1]).toBeGreaterThan(0); // drag up = look up
 
       windowAddSpy.mockRestore();
     });
@@ -279,7 +283,7 @@ describe("CameraManager", () => {
   describe("pitch clamping", () => {
     it("should not flip when looking straight up", () => {
       // Pitch up aggressively
-      kb.press(40); // Down arrow = pitch up
+      kb.press(38); // Up arrow = pitch up
       for (let i = 0; i < 100; i++) {
         camera.update(0.1);
       }
@@ -294,7 +298,7 @@ describe("CameraManager", () => {
     });
 
     it("should not flip when looking straight down", () => {
-      kb.press(38); // Up arrow = pitch down
+      kb.press(40); // Down arrow = pitch down
       for (let i = 0; i < 100; i++) {
         camera.update(0.1);
       }
@@ -356,7 +360,7 @@ describe("CameraManager", () => {
       camera.update(1.0);
       const pos = camera.getCameraPos();
       expect(pos[2]).toBeLessThan(0); // moved forward (-Z)
-      expect(pos[0]).toBeLessThan(0); // moved right (-X with D)
+      expect(pos[0]).toBeGreaterThan(0); // moved right (+X with D)
     });
 
     it("W+A should move both forward and left", () => {
@@ -365,7 +369,7 @@ describe("CameraManager", () => {
       camera.update(1.0);
       const pos = camera.getCameraPos();
       expect(pos[2]).toBeLessThan(0); // moved forward
-      expect(pos[0]).toBeGreaterThan(0); // moved left (+X with A)
+      expect(pos[0]).toBeLessThan(0); // moved left (-X with A)
     });
 
     it("W+Q should move forward and up", () => {
@@ -377,13 +381,13 @@ describe("CameraManager", () => {
       expect(pos[1]).toBeGreaterThan(0); // up
     });
 
-    it("K+L should pitch and yaw simultaneously", () => {
-      kb.press(40); // Down arrow = pitch up
+    it("up+right arrow should pitch up and yaw right simultaneously", () => {
+      kb.press(38); // Up arrow = pitch up
       kb.press(39); // Right arrow = yaw right
       camera.update(0.5);
       const dir = camera.getCameraDir();
       expect(dir[1]).toBeGreaterThan(0); // pitched up
-      expect(dir[0]).toBeLessThan(0);    // yawed right
+      expect(dir[0]).toBeGreaterThan(0); // yawed right
     });
 
     it("W+A+D should apply both strafes, cancelling horizontally", () => {
