@@ -21,6 +21,7 @@
   export let scriptInfo: { filename: string; uniforms: { name: string; type: string }[] } | null = null;
   export let customUniformValues: Record<string, number | number[] | boolean> = {};
   export let actualPollFps: number = 0;
+  export let uniformActualFps: Record<string, number> = {};
   export let onScriptPollingFpsChange: ((fps: number) => void) | undefined = undefined;
 
   let configManager: ConfigManager;
@@ -253,6 +254,7 @@
           filename={scriptInfo?.filename || config?.script || ''}
           uniforms={scriptInfo?.uniforms || []}
           uniformValues={customUniformValues}
+          {uniformActualFps}
           pollingFps={config?.scriptMaxPollingFps ?? 30}
           actualFps={actualPollFps}
           onRemove={removeScript}

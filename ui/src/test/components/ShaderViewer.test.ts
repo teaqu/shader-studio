@@ -70,6 +70,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     getFrameTimeHistory() { return []; }
     getFrameTimeCount() { return 0; }
     setCustomUniformValues() {}
+    updateCustomUniformValues() {}
   };
 
   return {
@@ -3606,6 +3607,190 @@ describe('ShaderViewer', () => {
       let storeState: any;
       performancePanelStore.subscribe((s) => { storeState = s; })();
       expect(storeState.isVisible).toBe(false);
+    });
+  });
+
+  describe('customUniformValues merge and per-uniform fps', () => {
+    // Helper: set up config panel on the Script tab with 2 uniforms declared
+    async function setupWithUniforms(messageHandler: (e: any) => Promise<void>, container: Element) {
+      const { ShaderStudio } = await import('../../lib/ShaderStudio');
+      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const origHandleShaderMessage = ShaderStudio.prototype.handleShaderMessage;
+      const origGetCustomUniformInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
+
+      // Return success so scriptInfo.uniforms is populated
+      ShaderStudio.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
+      (RenderingEngine.prototype as any).getCustomUniformInfo = vi.fn().mockReturnValue([
+        { name: 'uFast', type: 'float' },
+        { name: 'uStatic', type: 'float' },
+      ]);
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {} }, script: 'uniforms.ts' },
+          pathMap: {},
+        },
+      });
+      await tick();
+
+      configPanelStore.setVisible(true);
+      await tick();
+      const scriptTabLabel = Array.from(container.querySelectorAll('.tab-label'))
+        .find(el => el.textContent?.trim() === 'Script');
+      if (scriptTabLabel) { fireEvent.click(scriptTabLabel); }
+      await tick();
+
+      // Restore after setup so other tests are unaffected
+      ShaderStudio.prototype.handleShaderMessage = origHandleShaderMessage;
+      (RenderingEngine.prototype as any).getCustomUniformInfo = origGetCustomUniformInfo;
+    }
+
+    it('should merge partial customUniformValues update without clearing unchanged uniforms', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await setupWithUniforms(messageHandler, container);
+
+      // Send full initial update with both uniforms
+      await messageHandler({
+        data: { type: 'customUniformValues', payload: { values: [
+          { name: 'uFast', type: 'float', value: 1.0 },
+          { name: 'uStatic', type: 'float', value: 42.0 },
+        ]}},
+      });
+      await tick();
+
+      // Send partial update — only uFast changed
+      await messageHandler({
+        data: { type: 'customUniformValues', payload: { values: [
+          { name: 'uFast', type: 'float', value: 2.0 },
+        ]}},
+      });
+      await tick();
+
+      // Both uniforms must still be visible with correct values
+      const uniformValues = container.querySelectorAll('.uniform-value');
+      const texts = Array.from(uniformValues).map(el => el.textContent?.trim());
+      expect(texts.some(t => t?.includes('2.000'))).toBe(true);  // uFast updated
+      expect(texts.some(t => t?.includes('42.00'))).toBe(true);  // uStatic preserved
+    });
+
+    it('should reset per-uniform fps to 0 after a new shaderSource arrives', async () => {
+      let mockNow = 0;
+      const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => mockNow);
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await setupWithUniforms(messageHandler, container);
+
+      // Enable fps column
+      const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+      if (checkbox) { fireEvent.click(checkbox); await tick(); }
+
+      // Send some updates to build per-uniform timestamps
+      for (let i = 0; i < 4; i++) {
+        await messageHandler({
+          data: { type: 'customUniformValues', payload: { values: [
+            { name: 'uFast', type: 'float', value: i },
+          ]}},
+        });
+        await tick();
+      }
+      await new Promise(r => setTimeout(r, 150));
+      await tick();
+
+      // uFast fps should be > 0 before reset
+      const fpsBeforeReset = parseInt(
+        container.querySelector('.uniform-fps')?.textContent ?? '0'
+      );
+      expect(fpsBeforeReset).toBeGreaterThan(0);
+
+      // Advance time so all existing timestamps become stale
+      mockNow = 2000;
+
+      // Send a new shaderSource — should wipe uniformTimestamps
+      const { ShaderStudio } = await import('../../lib/ShaderStudio');
+      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const origHandle = ShaderStudio.prototype.handleShaderMessage;
+      const origGetInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
+      ShaderStudio.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
+      (RenderingEngine.prototype as any).getCustomUniformInfo = vi.fn().mockReturnValue([
+        { name: 'uFast', type: 'float' },
+        { name: 'uStatic', type: 'float' },
+      ]);
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+          config: { passes: { Image: {} }, script: 'uniforms.ts' },
+          pathMap: {},
+        },
+      });
+      await tick();
+      ShaderStudio.prototype.handleShaderMessage = origHandle;
+      (RenderingEngine.prototype as any).getCustomUniformInfo = origGetInfo;
+
+      // Wait for fpsInterval to evict stale timestamps
+      await new Promise(r => setTimeout(r, 150));
+      await tick();
+
+      const fpsCells = container.querySelectorAll('.uniform-fps');
+      fpsCells.forEach(cell => {
+        expect(cell.textContent).toBe('0fps');
+      });
+
+      nowSpy.mockRestore();
+    });
+
+    it('should track per-uniform fps independently for fast vs static uniforms', async () => {
+      let mockNow = 0;
+      const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => mockNow);
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await setupWithUniforms(messageHandler, container);
+
+      // Enable fps display
+      const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+      if (checkbox) { fireEvent.click(checkbox); await tick(); }
+
+      // Send 4 updates for uFast only, spread within 1s window
+      for (let i = 0; i < 4; i++) {
+        mockNow = i * 100;
+        await messageHandler({
+          data: { type: 'customUniformValues', payload: { values: [
+            { name: 'uFast', type: 'float', value: i },
+          ]}},
+        });
+        await tick();
+      }
+
+      // Wait for fpsInterval to compute per-uniform fps
+      await new Promise(r => setTimeout(r, 150));
+      await tick();
+
+      // uFast should have fps > 0; uStatic should have 0fps
+      const uniformRows = container.querySelectorAll('.uniform-row');
+      let fastFps = -1;
+      let staticFps = -1;
+      uniformRows.forEach(row => {
+        const nameEl = row.querySelector('.uniform-name');
+        const fpsEl = row.querySelector('.uniform-fps');
+        if (!nameEl || !fpsEl) { return; }
+        const fps = parseInt(fpsEl.textContent ?? '0');
+        if (nameEl.textContent?.includes('uFast')) { fastFps = fps; }
+        if (nameEl.textContent?.includes('uStatic')) { staticFps = fps; }
+      });
+      expect(fastFps).toBeGreaterThan(0);
+      expect(staticFps).toBe(0);
+
+      nowSpy.mockRestore();
     });
   });
 

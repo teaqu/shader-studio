@@ -107,6 +107,8 @@
   let customUniformValues: Record<string, number | number[] | boolean> = {};
   let actualPollFps = 0;
   let pollTimestamps: number[] = [];
+  let uniformTimestamps: Record<string, number[]> = {};
+  let uniformActualFps: Record<string, number> = {};
 
   // Debug panel state
   let debugPanelVisible = true;
@@ -244,6 +246,13 @@
         pollTimestamps.shift();
       }
       actualPollFps = pollTimestamps.length;
+      // Evict stale per-uniform timestamps
+      for (const name of Object.keys(uniformTimestamps)) {
+        const ts = uniformTimestamps[name];
+        while (ts.length > 0 && ts[0] < cutoff) ts.shift();
+        uniformActualFps[name] = ts.length;
+      }
+      uniformActualFps = { ...uniformActualFps };
     }, 100);
     return () => clearInterval(fpsInterval);
   });
@@ -480,6 +489,9 @@
       if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
         renderingEngine.togglePause();
       }
+      customUniformValues = {};
+      uniformTimestamps = {};
+      uniformActualFps = {};
       scriptInfo = currentConfig?.script
         ? {
             filename: currentConfig.script,
@@ -617,19 +629,21 @@
     },
     onCustomUniformValues: (values) => {
       if (renderingEngine) {
-        renderingEngine.setCustomUniformValues(values);
+        renderingEngine.updateCustomUniformValues(values);
       }
-      // Update values map for config panel display
-      const map: Record<string, number | number[] | boolean> = {};
-      for (const v of values) {
-        map[v.name] = v.value;
-      }
-      customUniformValues = map;
-
-      // Track actual poll rate
+      // Merge changed values (not full replace)
       const now = performance.now();
+      for (const v of values) {
+        customUniformValues[v.name] = v.value;
+        // Per-uniform fps tracking
+        const ts = uniformTimestamps[v.name] ?? [];
+        ts.push(now);
+        uniformTimestamps[v.name] = ts;
+      }
+      customUniformValues = { ...customUniformValues };
+
+      // Global poll rate tracking
       pollTimestamps.push(now);
-      // Keep last 1 second of timestamps
       const cutoff = now - 1000;
       while (pollTimestamps.length > 0 && pollTimestamps[0] < cutoff) {
         pollTimestamps.shift();
@@ -795,6 +809,7 @@
         {scriptInfo}
         {customUniformValues}
         {actualPollFps}
+        {uniformActualFps}
         onScriptPollingFpsChange={handleScriptPollingFpsChange}
       />
     {/if}

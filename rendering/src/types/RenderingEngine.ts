@@ -44,6 +44,7 @@ export interface RenderingEngine {
   getCustomUniformDeclarations(): string;
   getCurrentCustomUniforms(): CaptureCustomUniform[];
   setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void;
+  updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void;
   renderForCapture(): void;
   getCanvas(): HTMLCanvasElement | null;
   dispose(): void;
