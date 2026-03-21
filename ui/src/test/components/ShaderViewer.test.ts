@@ -840,7 +840,7 @@ describe('ShaderViewer', () => {
     expect(true).toBe(true);
   });
 
-  it('should send forkShader message when fork button is clicked', async () => {
+  it('should send forkShader message when fork option is clicked', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
 
     // Wait for initialization
@@ -865,7 +865,9 @@ describe('ShaderViewer', () => {
     // Clear mocks to ignore initialization messages
     vi.clearAllMocks();
 
-    // Click the fork button
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+
     const forkButton = screen.getByLabelText('Fork shader');
     await fireEvent.click(forkButton);
 
@@ -1057,7 +1059,9 @@ describe('ShaderViewer', () => {
 
     vi.clearAllMocks();
 
-    // Click the fork button which uses shaderPath
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+
     const forkButton = screen.getByLabelText('Fork shader');
     await fireEvent.click(forkButton);
 

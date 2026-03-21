@@ -1273,14 +1273,16 @@ describe('MenuBar Component', () => {
   });
 
   describe('Fork Button', () => {
-    it('should render fork button in toolbar', () => {
+    it('should render fork option in options menu', async () => {
       render(MenuBar, { props: defaultProps });
 
-      const forkButton = screen.getByLabelText('Fork shader');
-      expect(forkButton).toBeInTheDocument();
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByLabelText('Fork shader')).toBeInTheDocument();
     });
 
-    it('should call onFork when fork button is clicked', async () => {
+    it('should call onFork when fork option is clicked', async () => {
       const onFork = vi.fn();
       render(MenuBar, {
         props: {
@@ -1288,6 +1290,9 @@ describe('MenuBar Component', () => {
           onFork
         }
       });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
 
       const forkButton = screen.getByLabelText('Fork shader');
       await fireEvent.click(forkButton);
@@ -1316,9 +1321,8 @@ describe('MenuBar Component', () => {
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
-      // Find the fork button in the options menu (second one with Fork shader label)
-      const forkButtons = screen.getAllByLabelText('Fork shader');
-      await fireEvent.click(forkButtons[forkButtons.length - 1]);
+      const forkButton = screen.getByLabelText('Fork shader');
+      await fireEvent.click(forkButton);
 
       expect(onFork).toHaveBeenCalledOnce();
       // Menu should be closed
@@ -1645,13 +1649,17 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Toggle editor overlay')).not.toBeDisabled();
     });
 
-    it('should disable fork button when hasShader is false', () => {
+    it('should disable fork option when hasShader is false', async () => {
       render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
       expect(screen.getByLabelText('Fork shader')).toBeDisabled();
     });
 
-    it('should enable fork button when hasShader is true', () => {
+    it('should enable fork option when hasShader is true', async () => {
       render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
       expect(screen.getByLabelText('Fork shader')).not.toBeDisabled();
     });
 
@@ -1680,8 +1688,7 @@ describe('MenuBar Component', () => {
       const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
       expect(editorButtons[editorButtons.length - 1]).toBeDisabled();
 
-      const forkButtons = screen.getAllByLabelText('Fork shader');
-      expect(forkButtons[forkButtons.length - 1]).toBeDisabled();
+      expect(screen.getByLabelText('Fork shader')).toBeDisabled();
 
       const lockButtons = screen.getAllByLabelText('Toggle lock');
       expect(lockButtons[lockButtons.length - 1]).toBeDisabled();
@@ -1710,8 +1717,7 @@ describe('MenuBar Component', () => {
       const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
       expect(editorButtons[editorButtons.length - 1]).not.toBeDisabled();
 
-      const forkButtons = screen.getAllByLabelText('Fork shader');
-      expect(forkButtons[forkButtons.length - 1]).not.toBeDisabled();
+      expect(screen.getByLabelText('Fork shader')).not.toBeDisabled();
 
       const lockButtons = screen.getAllByLabelText('Toggle lock');
       expect(lockButtons[lockButtons.length - 1]).not.toBeDisabled();

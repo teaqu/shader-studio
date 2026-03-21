@@ -773,7 +773,6 @@ canvas {
 
 /* Collapsible toolbar buttons - hide progressively as panel shrinks */
 .show-lock,
-.show-fork,
 .show-record,
 .show-editor,
 .show-config,
@@ -783,33 +782,28 @@ canvas {
 }
 
 @container (max-width: 610px) {
-  .collapse-lock { display: none !important; }
-  .show-lock { display: flex !important; }
+  .collapse-debug { display: none !important; }
+  .show-debug { display: flex !important; }
 }
 
 @container (max-width: 595px) {
-  .collapse-record { display: none !important; }
-  .show-record { display: flex !important; }
-}
-
-@container (max-width: 580px) {
-  .collapse-fork { display: none !important; }
-  .show-fork { display: flex !important; }
-}
-
-@container (max-width: 570px) {
   .collapse-editor { display: none !important; }
   .show-editor { display: flex !important; }
 }
 
-@container (max-width: 510px) {
+@container (max-width: 580px) {
   .collapse-config { display: none !important; }
   .show-config { display: flex !important; }
 }
 
-@container (max-width: 450px) {
-  .collapse-debug { display: none !important; }
-  .show-debug { display: flex !important; }
+@container (max-width: 570px) {
+  .collapse-record { display: none !important; }
+  .show-record { display: flex !important; }
+}
+
+@container (max-width: 510px) {
+  .collapse-lock { display: none !important; }
+  .show-lock { display: flex !important; }
 }
 
 @container (max-width: 390px) {
