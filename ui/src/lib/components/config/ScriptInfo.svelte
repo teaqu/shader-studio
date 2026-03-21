@@ -4,6 +4,7 @@
   export let filename: string;
   export let uniforms: { name: string; type: string }[] = [];
   export let uniformValues: Record<string, number | number[] | boolean> = {};
+  export let uniformActualFps: Record<string, number> = {};
   export let pollingFps: number = 30;
   export let actualFps: number = 0;
   export let onRemove: (() => void) | undefined = undefined;
@@ -13,6 +14,8 @@
   export let onSelectFile: (() => void) | undefined = undefined;
   export let suggestedPath: string = '';
   export let fileExists: boolean = true;
+
+  let showUniformFps = false;
 
   function formatValue(val: number | number[] | boolean | undefined): string {
     if (val === undefined) return '—';
@@ -117,13 +120,22 @@
 
   {#if uniforms.length > 0}
     <div class="uniforms-section">
-      <div class="section-label">Uniforms</div>
-      <div class="uniforms-list">
+      <div class="uniforms-header">
+        <span class="section-label">Uniforms</span>
+        <label class="fps-toggle">
+          <input type="checkbox" bind:checked={showUniformFps} />
+          show fps
+        </label>
+      </div>
+      <div class="uniforms-list" class:show-fps={showUniformFps}>
         {#each uniforms as u}
           <div class="uniform-row">
             <span class="uniform-type">{u.type}</span>
             <span class="uniform-name">{u.name}</span>
             <span class="uniform-value">{formatValue(uniformValues[u.name])}</span>
+            {#if showUniformFps}
+              <span class="uniform-fps">{uniformActualFps[u.name] ?? 0}fps</span>
+            {/if}
           </div>
         {/each}
       </div>
@@ -252,10 +264,43 @@
     gap: 6px;
   }
 
+  .uniforms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .fps-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .fps-toggle input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+  }
+
   .uniforms-list {
     display: grid;
     grid-template-columns: 72px 1fr auto;
     gap: 2px 0;
+  }
+
+  .uniforms-list.show-fps {
+    grid-template-columns: 72px 1fr auto auto;
+  }
+
+  .uniform-fps {
+    color: var(--vscode-symbolIcon-numberForeground, var(--vscode-descriptionForeground));
+    font-size: 11px;
+    text-align: right;
+    white-space: nowrap;
+    padding-left: 6px;
   }
 
   .uniform-row {

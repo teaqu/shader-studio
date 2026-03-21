@@ -145,7 +145,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.customUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
       // Re-apply any pending values that arrived before/during compilation
       if (this.pendingCustomUniformValues) {
-        this.customUniformManager.setValues(this.pendingCustomUniformValues as any);
+        this.customUniformManager.setValues(this.pendingCustomUniformValues);
       }
       this.shaderPipeline.setCustomUniformManager(this.customUniformManager);
       this.frameRenderer.setCustomUniformManager(this.customUniformManager);
@@ -389,7 +389,13 @@ export class RenderingEngine implements RenderingEngineInterface {
     // Always store latest values so they can be applied after compilation
     this.pendingCustomUniformValues = values;
     if (this.customUniformManager) {
-      this.customUniformManager.setValues(values as any);
+      this.customUniformManager.setValues(values);
+    }
+  }
+
+  public updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void {
+    if (this.customUniformManager) {
+      this.customUniformManager.updateValues(changed);
     }
   }
 

@@ -2,7 +2,7 @@ export type CustomUniformType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'bool';
 
 export interface CustomUniform {
   name: string;
-  type: CustomUniformType;
+  type: string;
   value: number | number[] | boolean;
 }
 
@@ -32,7 +32,29 @@ export class CustomUniformManager {
    * Set externally-evaluated uniform values (from extension host polling).
    */
   public setValues(values: CustomUniform[]): void {
-    this.externalValues = values;
+    this.externalValues = values.map(u => ({
+      ...u,
+      value: Array.isArray(u.value) ? [...u.value] : u.value,
+    }));
+  }
+
+  /**
+   * Merge a partial update of changed uniforms into externalValues.
+   * Only touches named entries; leaves others unchanged.
+   */
+  public updateValues(changed: CustomUniform[]): void {
+    if (!this.externalValues) {
+      this.externalValues = this.getZeroUniforms();
+    }
+    for (const u of changed) {
+      const idx = this.externalValues.findIndex(v => v.name === u.name);
+      if (idx >= 0) {
+        this.externalValues[idx] = {
+          ...u,
+          value: Array.isArray(u.value) ? [...u.value] : u.value,
+        };
+      }
+    }
   }
 
   public getValues(): CustomUniform[] {

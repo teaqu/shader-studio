@@ -148,6 +148,96 @@ describe("CustomUniformManager", () => {
     });
   });
 
+  describe("updateValues", () => {
+    it("should merge changed values without replacing others", () => {
+      manager.loadDeclarations("uniform float uA;\nuniform float uB;", [
+        { name: "uA", type: "float" },
+        { name: "uB", type: "float" },
+      ]);
+      manager.setValues([
+        { name: "uA", type: "float" as const, value: 1.0 },
+        { name: "uB", type: "float" as const, value: 2.0 },
+      ]);
+
+      manager.updateValues([{ name: "uA", type: "float" as const, value: 9.0 }]);
+
+      const values = manager.getValues();
+      const uA = values.find(v => v.name === "uA");
+      const uB = values.find(v => v.name === "uB");
+      expect(uA?.value).toBe(9.0);
+      expect(uB?.value).toBe(2.0);
+    });
+
+    it("should initialize from zero defaults when externalValues is null", () => {
+      manager.loadDeclarations("uniform float uA;\nuniform float uB;", [
+        { name: "uA", type: "float" },
+        { name: "uB", type: "float" },
+      ]);
+
+      manager.updateValues([{ name: "uA", type: "float" as const, value: 5.0 }]);
+
+      const values = manager.getValues();
+      const uA = values.find(v => v.name === "uA");
+      const uB = values.find(v => v.name === "uB");
+      expect(uA?.value).toBe(5.0);
+      expect(uB?.value).toBe(0); // zero default
+    });
+
+    it("should ignore unknown uniform names", () => {
+      manager.loadDeclarations("uniform float uA;", [
+        { name: "uA", type: "float" },
+      ]);
+      manager.setValues([{ name: "uA", type: "float" as const, value: 1.0 }]);
+
+      // uX does not exist in the known uniforms list
+      manager.updateValues([{ name: "uX", type: "float" as const, value: 99.0 }]);
+
+      const values = manager.getValues();
+      expect(values.find(v => v.name === "uX")).toBeUndefined();
+      expect(values.find(v => v.name === "uA")?.value).toBe(1.0);
+    });
+
+    it("should correctly merge vec3 array values", () => {
+      manager.loadDeclarations("uniform vec3 uColor;\nuniform vec3 uDir;", [
+        { name: "uColor", type: "vec3" },
+        { name: "uDir", type: "vec3" },
+      ]);
+      manager.setValues([
+        { name: "uColor", type: "vec3" as const, value: [1.0, 0.0, 0.0] },
+        { name: "uDir", type: "vec3" as const, value: [0.0, 1.0, 0.0] },
+      ]);
+
+      manager.updateValues([{ name: "uColor", type: "vec3" as const, value: [0.0, 0.0, 1.0] }]);
+
+      const values = manager.getValues();
+      expect(values.find(v => v.name === "uColor")?.value).toEqual([0.0, 0.0, 1.0]);
+      expect(values.find(v => v.name === "uDir")?.value).toEqual([0.0, 1.0, 0.0]);
+    });
+
+    it("should handle updating multiple changed uniforms at once", () => {
+      manager.loadDeclarations("uniform float uA;\nuniform float uB;\nuniform float uC;", [
+        { name: "uA", type: "float" },
+        { name: "uB", type: "float" },
+        { name: "uC", type: "float" },
+      ]);
+      manager.setValues([
+        { name: "uA", type: "float" as const, value: 1.0 },
+        { name: "uB", type: "float" as const, value: 2.0 },
+        { name: "uC", type: "float" as const, value: 3.0 },
+      ]);
+
+      manager.updateValues([
+        { name: "uA", type: "float" as const, value: 9.0 },
+        { name: "uC", type: "float" as const, value: 8.0 },
+      ]);
+
+      const values = manager.getValues();
+      expect(values.find(v => v.name === "uA")?.value).toBe(9.0);
+      expect(values.find(v => v.name === "uB")?.value).toBe(2.0); // unchanged
+      expect(values.find(v => v.name === "uC")?.value).toBe(8.0);
+    });
+  });
+
   describe("setValues / getValues", () => {
     it("should return external values from getValues()", () => {
       manager.loadDeclarations("uniform float uSpeed;", [
@@ -177,6 +267,64 @@ describe("CustomUniformManager", () => {
       manager.clear();
 
       expect(manager.getValues()).toEqual([]);
+    });
+
+    it("should accept empty array, clearing all values", () => {
+      manager.loadDeclarations("uniform float uSpeed;", [
+        { name: "uSpeed", type: "float" },
+      ]);
+      manager.setValues([{ name: "uSpeed", type: "float" as const, value: 1.0 }]);
+
+      manager.setValues([]);
+
+      expect(manager.getValues()).toEqual([]);
+    });
+  });
+
+  describe("deep copy protection", () => {
+    it("setValues does not allow external mutation of stored array values", () => {
+      manager.loadDeclarations("uniform vec3 uColor;", [
+        { name: "uColor", type: "vec3" },
+      ]);
+
+      const incoming = [{ name: "uColor", type: "vec3" as const, value: [1.0, 2.0, 3.0] }];
+      manager.setValues(incoming);
+
+      // Mutate the original array after the call
+      (incoming[0].value as number[])[0] = 99.0;
+
+      const stored = manager.getValues().find(v => v.name === "uColor");
+      expect((stored?.value as number[])[0]).toBe(1.0); // unaffected
+    });
+
+    it("updateValues does not allow external mutation of stored array values", () => {
+      manager.loadDeclarations("uniform vec3 uColor;", [
+        { name: "uColor", type: "vec3" },
+      ]);
+      manager.setValues([{ name: "uColor", type: "vec3" as const, value: [1.0, 0.0, 0.0] }]);
+
+      const incoming = { name: "uColor", type: "vec3" as const, value: [0.0, 1.0, 0.0] };
+      manager.updateValues([incoming]);
+
+      // Mutate the incoming value after the call
+      (incoming.value as number[])[0] = 99.0;
+
+      const stored = manager.getValues().find(v => v.name === "uColor");
+      expect((stored?.value as number[])[0]).toBe(0.0); // unaffected
+    });
+  });
+
+  describe("updateValues edge cases", () => {
+    it("should apply last write when called twice on the same uniform", () => {
+      manager.loadDeclarations("uniform float uVal;", [
+        { name: "uVal", type: "float" },
+      ]);
+      manager.setValues([{ name: "uVal", type: "float" as const, value: 1.0 }]);
+
+      manager.updateValues([{ name: "uVal", type: "float" as const, value: 5.0 }]);
+      manager.updateValues([{ name: "uVal", type: "float" as const, value: 9.0 }]);
+
+      expect(manager.getValues().find(v => v.name === "uVal")?.value).toBe(9.0);
     });
   });
 });

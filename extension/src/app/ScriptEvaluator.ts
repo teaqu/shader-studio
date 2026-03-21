@@ -175,10 +175,11 @@ export class ScriptEvaluator {
     const tick = () => {
       if (!this.pollTimer) return;
 
-      const values = this.evaluate(this.startTime);
-      if (this.valuesChanged(values)) {
-        this.lastValues = values;
-        this.onValues?.(values);
+      const allValues = this.evaluate(this.startTime);
+      const changed = this.getChangedValues(allValues);
+      if (changed.length > 0) {
+        this.lastValues = allValues;
+        this.onValues?.(changed);
       }
 
       // Drift-correct: advance by exact interval, snap if fallen behind
@@ -193,9 +194,10 @@ export class ScriptEvaluator {
 
     // Send initial values immediately — but only if changed (or first time ever)
     const initial = this.evaluate(this.startTime);
-    if (this.lastValues.length === 0 || this.valuesChanged(initial)) {
+    const initialChanged = this.getChangedValues(initial);
+    if (initialChanged.length > 0) {
       this.lastValues = initial;
-      this.onValues?.(initial);
+      this.onValues?.(initialChanged);
     }
     this.pollTimer = setTimeout(tick, intervalMs);
   }
@@ -282,21 +284,26 @@ export class ScriptEvaluator {
     });
   }
 
-  private valuesChanged(newValues: CustomUniformValue[]): boolean {
-    if (newValues.length !== this.lastValues.length) return true;
-    for (let i = 0; i < newValues.length; i++) {
-      const a = newValues[i];
-      const b = this.lastValues[i];
-      if (a.name !== b.name) return true;
+  private getChangedValues(newValues: CustomUniformValue[]): CustomUniformValue[] {
+    if (this.lastValues.length === 0) return newValues;
+    const changed: CustomUniformValue[] = [];
+    for (const a of newValues) {
+      const b = this.lastValues.find(v => v.name === a.name);
+      if (!b) {
+        changed.push(a);
+        continue;
+      }
       if (Array.isArray(a.value) && Array.isArray(b.value)) {
+        let diff = false;
         for (let j = 0; j < a.value.length; j++) {
-          if (a.value[j] !== (b.value as number[])[j]) return true;
+          if (a.value[j] !== (b.value as number[])[j]) { diff = true; break; }
         }
+        if (diff) changed.push(a);
       } else if (a.value !== b.value) {
-        return true;
+        changed.push(a);
       }
     }
-    return false;
+    return changed;
   }
 
   private inferType(value: any): string | null {
