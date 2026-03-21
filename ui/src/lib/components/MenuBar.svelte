@@ -516,15 +516,6 @@
       <i class="codicon codicon-code"></i>
     </button>
     <button
-      class="collapse-fork"
-      on:click={() => { onFork(); }}
-      aria-label="Fork shader"
-      disabled={!hasShader}
-      title="Fork shader to a new file"
-    >
-      <i class="codicon codicon-repo-forked"></i>
-    </button>
-    <button
       class="collapse-config"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
@@ -574,43 +565,18 @@
             </button>
           {/if}
           <button
-            class="options-menu-item show-debug"
-            on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
-            aria-label="Toggle debug mode"
-            class:active={isDebugEnabled}
+            class="options-menu-item show-lock"
+            on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
+            aria-label="Toggle lock"
+            class:active={isLocked}
             disabled={!hasShader}
           >
-            <i class="codicon codicon-bug"></i>
-            <span>Debug</span>
-          </button>
-          <button
-            class="options-menu-item show-editor"
-            on:click={() => { onToggleEditorOverlay(); showOptionsMenu = false; }}
-            aria-label="Toggle editor overlay"
-            class:active={isEditorOverlayVisible}
-            disabled={!hasShader}
-          >
-            <i class="codicon codicon-code"></i>
-            <span>Editor</span>
-          </button>
-          {#if isEditorOverlayVisible}
-            <button
-              class="options-menu-item options-submenu-item"
-              on:click={() => { onToggleVimMode(); }}
-              aria-label="Toggle vim mode"
-              class:active={isVimModeEnabled}
-            >
-              <span>Vim Mode</span>
-            </button>
-          {/if}
-          <button
-            class="options-menu-item show-fork"
-            on:click={() => { onFork(); showOptionsMenu = false; }}
-            aria-label="Fork shader"
-            disabled={!hasShader}
-          >
-            <i class="codicon codicon-repo-forked"></i>
-            <span>Fork</span>
+            {#if isLocked}
+              <i class="codicon codicon-lock"></i>
+            {:else}
+              <i class="codicon codicon-unlock"></i>
+            {/if}
+            <span>{isLocked ? 'Unlock' : 'Lock'}</span>
           </button>
           <button
             class="options-menu-item show-record"
@@ -633,18 +599,34 @@
             <span>Config</span>
           </button>
           <button
-            class="options-menu-item show-lock"
-            on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
-            aria-label="Toggle lock"
-            class:active={isLocked}
+            class="options-menu-item show-editor"
+            on:click={() => { onToggleEditorOverlay(); showOptionsMenu = false; }}
+            aria-label="Toggle editor overlay"
+            class:active={isEditorOverlayVisible}
             disabled={!hasShader}
           >
-            {#if isLocked}
-              <i class="codicon codicon-lock"></i>
-            {:else}
-              <i class="codicon codicon-unlock"></i>
-            {/if}
-            <span>{isLocked ? 'Unlock' : 'Lock'}</span>
+            <i class="codicon codicon-code"></i>
+            <span>Editor</span>
+          </button>
+          {#if isEditorOverlayVisible}
+            <button
+              class="options-menu-item options-submenu-item"
+              on:click={() => { onToggleVimMode(); }}
+              aria-label="Toggle vim mode"
+              class:active={isVimModeEnabled}
+            >
+              <span>Vim Mode</span>
+            </button>
+          {/if}
+          <button
+            class="options-menu-item show-debug"
+            on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
+            aria-label="Toggle debug mode"
+            class:active={isDebugEnabled}
+            disabled={!hasShader}
+          >
+            <i class="codicon codicon-bug"></i>
+            <span>Debug</span>
           </button>
           <button
             class="options-menu-item"
@@ -663,6 +645,64 @@
           >
             <i class="codicon codicon-refresh"></i>
             <span>Refresh</span>
+          </button>
+          {#if showThemeButton}
+            <button
+              class="options-menu-item"
+              on:click={handleThemeToggle}
+              aria-label="Toggle theme"
+            >
+              {#if theme === "light"}
+                <i class="codicon codicon-color-mode"></i>
+                <span>Dark Mode</span>
+              {:else}
+                <i class="codicon codicon-color-mode"></i>
+                <span>Light Mode</span>
+              {/if}
+            </button>
+          {/if}
+          {#if showFullscreenButton}
+            <button
+              class="options-menu-item"
+              on:click={handleFullscreenToggle}
+              aria-label="Toggle fullscreen"
+            >
+              <i class="codicon codicon-screen-full"></i>
+              <span>Fullscreen</span>
+            </button>
+          {/if}
+          <button
+            class="options-menu-item"
+            on:click={() => { onFork(); showOptionsMenu = false; }}
+            aria-label="Fork shader"
+            disabled={!hasShader}
+          >
+            <i class="codicon codicon-repo-forked"></i>
+            <span>Fork</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
+            aria-label="New shader"
+          >
+            <i class="codicon codicon-new-file"></i>
+            <span>New Shader</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; }}
+            aria-label="Shader explorer"
+          >
+            <i class="codicon codicon-book"></i>
+            <span>Shader Explorer</span>
+          </button>
+          <button
+            class="options-menu-item"
+            on:click={() => { onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; }}
+            aria-label="Snippet library"
+          >
+            <i class="codicon codicon-library"></i>
+            <span>Snippet Library</span>
           </button>
           <div class="options-menu-divider"></div>
           <div class="volume-slider-container">
@@ -691,56 +731,6 @@
               {/if}
             </button>
           </div>
-          <div class="options-menu-divider"></div>
-          {#if showThemeButton}
-            <button
-              class="options-menu-item"
-              on:click={handleThemeToggle}
-              aria-label="Toggle theme"
-            >
-              {#if theme === "light"}
-                <i class="codicon codicon-color-mode"></i>
-                <span>Dark Mode</span>
-              {:else}
-                <i class="codicon codicon-color-mode"></i>
-                <span>Light Mode</span>
-              {/if}
-            </button>
-          {/if}
-          {#if showFullscreenButton}
-            <button
-              class="options-menu-item"
-              on:click={handleFullscreenToggle}
-              aria-label="Toggle fullscreen"
-            >
-              <i class="codicon codicon-screen-full"></i>
-              <span>Fullscreen</span>
-            </button>
-          {/if}
-          <button
-            class="options-menu-item"
-            on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
-            aria-label="New shader"
-          >
-            <i class="codicon codicon-new-file"></i>
-            <span>New Shader</span>
-          </button>
-          <button
-            class="options-menu-item"
-            on:click={() => { onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; }}
-            aria-label="Shader explorer"
-          >
-            <i class="codicon codicon-book"></i>
-            <span>Shader Explorer</span>
-          </button>
-          <button
-            class="options-menu-item"
-            on:click={() => { onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; }}
-            aria-label="Snippet library"
-          >
-            <i class="codicon codicon-library"></i>
-            <span>Snippet Library</span>
-          </button>
         </div>
       {/if}
     </div>
