@@ -88,7 +88,7 @@ export class CameraManager {
       const dy = e.clientY - this.lastMouseY;
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
-      this.applyMouseLook(dx * this.lookSpeed, -dy * this.lookSpeed);
+      this.applyMouseLook(-dx * this.lookSpeed, -dy * this.lookSpeed);
     };
 
     this.onMouseUp = (e: MouseEvent) => {
@@ -148,15 +148,15 @@ export class CameraManager {
     }
 
     // A/D: strafe along camera right
-    if (keyHeld[65]) { // A
-      this.position[0] += right[0] * move;
-      this.position[1] += right[1] * move;
-      this.position[2] += right[2] * move;
-    }
-    if (keyHeld[68]) { // D
+    if (keyHeld[65]) { // A - strafe left
       this.position[0] -= right[0] * move;
       this.position[1] -= right[1] * move;
       this.position[2] -= right[2] * move;
+    }
+    if (keyHeld[68]) { // D - strafe right
+      this.position[0] += right[0] * move;
+      this.position[1] += right[1] * move;
+      this.position[2] += right[2] * move;
     }
 
     // Q/E: world-space vertical movement
@@ -166,8 +166,8 @@ export class CameraManager {
     // Arrow key look
     const kls = this.keyLookSpeed * deltaTime;
     if (keyHeld[37] || keyHeld[38] || keyHeld[39] || keyHeld[40]) {
-      const yaw = (keyHeld[39] ? kls : 0) - (keyHeld[37] ? kls : 0);   // Right arrow, Left arrow
-      const pitch = (keyHeld[40] ? kls : 0) - (keyHeld[38] ? kls : 0); // Down arrow up, Up arrow down
+      const yaw = (keyHeld[37] ? kls : 0) - (keyHeld[39] ? kls : 0);   // Left arrow yaws left, Right arrow yaws right
+      const pitch = (keyHeld[38] ? kls : 0) - (keyHeld[40] ? kls : 0); // Up arrow pitches up, Down arrow pitches down
       this.applyMouseLook(yaw, pitch);
     }
   }
