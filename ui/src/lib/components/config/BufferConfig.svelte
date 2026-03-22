@@ -104,6 +104,7 @@
     return [...configKeys, ...pad];
   })();
 
+  let fileType: "glsl-common" | "glsl-buffer" = "glsl-buffer";
   $: fileType = bufferName === 'common' ? 'glsl-common' : 'glsl-buffer';
   $: validation = bufferConfig?.validate() || { isValid: true, errors: [] };
 </script>

@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import MenuBar from '../../lib/components/MenuBar.svelte';
+import { resolutionStore } from '../../lib/stores/resolutionStore';
 
 // Mock TransportFactory
 vi.mock('../../lib/transport/TransportFactory', () => ({
@@ -164,6 +165,28 @@ describe('MenuBar', () => {
       // Volume slider should NOT have muted-slider class
       const volumeSlider = screen.getByLabelText('Volume');
       expect(volumeSlider.classList.contains('muted-slider')).toBe(false);
+    });
+  });
+
+  describe('resolution menu', () => {
+    it('should toggle black canvas background from the resolution menu', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      const toggle = screen.getByLabelText('Black canvas background') as HTMLInputElement;
+      expect(toggle.checked).toBe(false);
+
+      await fireEvent.click(toggle);
+      await tick();
+
+      let state: any;
+      const unsubscribe = resolutionStore.subscribe((value) => { state = value; });
+      unsubscribe();
+      expect(state.forceBlackBackground).toBe(true);
     });
   });
 });

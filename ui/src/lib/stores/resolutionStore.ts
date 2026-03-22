@@ -5,6 +5,7 @@ export interface ResolutionState {
     scale: number;           // 0.25, 0.5, 1, 2, 4
     customWidth?: string;    // "512" (px) or "50%" (percentage)
     customHeight?: string;
+    forceBlackBackground: boolean;
     savedToConfig: boolean;  // whether these settings are pinned to the shader config
 }
 
@@ -33,7 +34,7 @@ export function parseDimension(value: string, referenceSize: number): number | u
 }
 
 function loadInitialState(): ResolutionState {
-    const defaultState: ResolutionState = { scale: 1, savedToConfig: false };
+    const defaultState: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
 
     if (typeof window === 'undefined') return defaultState;
 
@@ -75,7 +76,10 @@ function loadInitialState(): ResolutionState {
 
 function persistGlobal(state: ResolutionState): void {
     if (typeof window === 'undefined') return;
-    const toStore: Partial<ResolutionState> = { scale: state.scale };
+    const toStore: Partial<ResolutionState> = {
+        scale: state.scale,
+        forceBlackBackground: state.forceBlackBackground,
+    };
     if (state.customWidth !== undefined && state.customHeight !== undefined) {
         toStore.customWidth = state.customWidth;
         toStore.customHeight = state.customHeight;
@@ -133,6 +137,7 @@ const createResolutionStore = () => {
                     scale: settings.scale ?? 1,
                     customWidth: settings.customWidth !== undefined ? String(settings.customWidth) : undefined,
                     customHeight: settings.customHeight !== undefined ? String(settings.customHeight) : undefined,
+                    forceBlackBackground: current.forceBlackBackground,
                     savedToConfig: true,
                 };
                 // Skip if store already matches
@@ -150,10 +155,23 @@ const createResolutionStore = () => {
         setSavedToConfig: (saved: boolean) => {
             update(state => ({ ...state, savedToConfig: saved }));
         },
+        setForceBlackBackground: (forceBlackBackground: boolean) => {
+            update(state => {
+                const newState: ResolutionState = {
+                    ...state,
+                    forceBlackBackground,
+                };
+                if (!newState.savedToConfig) {
+                    persistGlobal(newState);
+                }
+                return newState;
+            });
+        },
         reset: () => {
             update(state => {
                 const newState: ResolutionState = {
                     scale: 1,
+                    forceBlackBackground: false,
                     savedToConfig: state.savedToConfig,
                 };
                 if (!newState.savedToConfig) persistGlobal(newState);
