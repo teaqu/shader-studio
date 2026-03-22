@@ -513,7 +513,9 @@
       class="editor-overlay"
       bind:this={containerEl}
     ></div>
-    <div class="vim-status-bar" bind:this={statusBarEl}></div>
+    {#if vimMode}
+      <div class="vim-status-bar" bind:this={statusBarEl}></div>
+    {/if}
   </div>
 {/if}
 
