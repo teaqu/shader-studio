@@ -51,7 +51,7 @@ describe("Shader switch e2e", () => {
     const result = await engine.compileShaderPipeline(BROKEN_SHADER, null, "broken.glsl");
     expect(result?.success).toBe(false);
 
-    // Render a frame — should clear to black since there's no valid shader
+    // Render a frame — should clear because this is a different shader path
     engine.render(16);
     expect(engine.readPixel(0, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 });
 
@@ -117,7 +117,7 @@ describe("Shader switch e2e", () => {
     cleanup(engine, canvas);
   });
 
-  it("should not show previous shader after switching to broken shader even without render", async () => {
+  it("should preserve the previous shader after a failed recompile on the same path", async () => {
     const { engine, canvas } = createEngine();
 
     // Render red
@@ -125,13 +125,12 @@ describe("Shader switch e2e", () => {
     engine.render(0);
     expect(engine.readPixel(0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 });
 
-    // Switch to broken shader — the cleanup in prepareNewCompilation
-    // destroys old shaders, so next render should show black
-    await engine.compileShaderPipeline(BROKEN_SHADER, null, "broken.glsl");
+    // Recompile the same shader path with broken code — last good output should remain
+    await engine.compileShaderPipeline(BROKEN_SHADER, null, "red.glsl");
 
-    // Even one render frame should show black, not the old red
+    // Even after another render frame, the old red shader should still be active
     engine.render(16);
-    expect(engine.readPixel(0, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 });
+    expect(engine.readPixel(0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 255 });
 
     cleanup(engine, canvas);
   });

@@ -350,12 +350,12 @@ describe("RenderingEngine", () => {
       expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
     });
 
-    it("should pause all videos on failed compilation", async () => {
+    it("should leave videos untouched on failed compilation", async () => {
       mockPipeline.compileShaderPipeline.mockResolvedValue({ success: false, error: "syntax error" });
 
       await renderingEngine.compileShaderPipeline("bad code", null, "test.glsl", {});
 
-      expect(mockResourceManager.pauseAllVideos).toHaveBeenCalled();
+      expect(mockResourceManager.pauseAllVideos).not.toHaveBeenCalled();
       expect(mockResourceManager.syncAllVideosToTime).not.toHaveBeenCalled();
       expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
     });
@@ -590,12 +590,12 @@ describe("RenderingEngine", () => {
       expect(mockResourceManager.pauseAllAudio).not.toHaveBeenCalled();
     });
 
-    it("should pause all audio on failed compilation", async () => {
+    it("should leave audio untouched on failed compilation", async () => {
       mockPipeline.compileShaderPipeline.mockResolvedValue({ success: false, error: "syntax error" });
 
       await renderingEngine.compileShaderPipeline("bad code", null, "test.glsl", {});
 
-      expect(mockResourceManager.pauseAllAudio).toHaveBeenCalled();
+      expect(mockResourceManager.pauseAllAudio).not.toHaveBeenCalled();
       expect(mockResourceManager.syncAllAudioToTime).not.toHaveBeenCalled();
       expect(mockResourceManager.resumeAllAudio).not.toHaveBeenCalled();
     });

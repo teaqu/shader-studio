@@ -119,7 +119,7 @@ describe('ShaderProcessor', () => {
 
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
-      expect(mockRenderEngine.stopRenderLoop).toHaveBeenCalled();
+      expect(mockRenderEngine.stopRenderLoop).not.toHaveBeenCalled();
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         message.code,
         message.config,
@@ -287,8 +287,7 @@ describe('ShaderProcessor', () => {
       expect(result.success).toBe(false);
       expect(result.errors).toEqual([errorMessage]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
-      // Should render one frame to clear the canvas
-      expect(mockRenderEngine.render).toHaveBeenCalledOnce();
+      expect(mockRenderEngine.render).not.toHaveBeenCalled();
     });
 
     it('should return warnings when compilation succeeds with warnings', async () => {
@@ -407,7 +406,7 @@ describe('ShaderProcessor', () => {
 
       const result = await shaderProcessor.processCommonBufferUpdate(code);
 
-      expect(mockRenderEngine.stopRenderLoop).toHaveBeenCalled();
+      expect(mockRenderEngine.stopRenderLoop).not.toHaveBeenCalled();
       expect(mockRenderEngine.updateBufferAndRecompile).toHaveBeenCalledWith('common', code);
       expect(mockRenderEngine.startRenderLoop).toHaveBeenCalled();
       expect(result.success).toBe(true);

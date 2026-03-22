@@ -193,7 +193,7 @@ describe("ShaderPipeline", () => {
             expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
         });
 
-        it("should handle compilation errors without affecting path change logic", async () => {
+        it("should clear the current pipeline when a new shader path fails to compile", async () => {
             const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const firstShaderPath = "working_shader.glsl";
 
@@ -222,13 +222,50 @@ describe("ShaderPipeline", () => {
                 {}
             );
 
-            // Cleanup should happen even when compilation fails, if path changed
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
 
             expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
             expect(result.success).toBe(false);
+        });
+
+        it("should preserve the last good passes and shaders when recompilation fails", async () => {
+            const initialShader = createMockShader();
+            mockShaderCompiler.compileShader.mockReturnValueOnce(initialShader);
+
+            await shaderPipeline.compileShaderPipeline(
+                "void mainImage() { gl_FragColor = vec4(1.0); }",
+                null,
+                "working_shader.glsl",
+                {}
+            );
+
+            expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
+            expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+
+            const nextImageShader = createMockShader();
+            mockShaderCompiler.compileShader
+                .mockReturnValueOnce(nextImageShader)
+                .mockReturnValueOnce(null);
+
+            const result = await shaderPipeline.compileShaderPipeline(
+                "void mainImage() { gl_FragColor = vec4(0.0); }",
+                {
+                    passes: {
+                        Image: { inputs: {} },
+                        BufferA: { path: "buffer-a.glsl", inputs: {} },
+                    }
+                } as any,
+                "working_shader.glsl",
+                { BufferA: "void mainImage() { SYNTAX_ERROR; }" }
+            );
+
+            expect(result.success).toBe(false);
+            expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
+            expect(shaderPipeline.getPassShaders()).toEqual({ Image: initialShader });
+            expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+            expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
         });
     });
 
@@ -238,10 +275,10 @@ describe("ShaderPipeline", () => {
             
             // Access private method for testing
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, null, {});
+            const passes = buildPasses(shaderCode, null, {});
             
-            expect(shaderPipeline.getPasses()).toHaveLength(1);
-            expect(shaderPipeline.getPasses()[0]).toEqual({
+            expect(passes).toHaveLength(1);
+            expect(passes[0]).toEqual({
                 name: "Image",
                 shaderSrc: shaderCode,
                 inputs: {},
@@ -263,9 +300,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(2);
             expect(passes[0]).toEqual({
                 name: "BufferA",
@@ -294,9 +330,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(2);
             expect(passes[0]).toEqual({
                 name: "Image",
@@ -326,9 +361,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(1);
             expect(passes[0].name).toBe("BufferA");
         });
@@ -347,9 +381,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(2);
             expect(passes[0].name).toBe("common");
             expect(passes[0].shaderSrc).toBe(buffers.common);
@@ -374,9 +407,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(1);
             expect(passes[0].name).toBe("common");
             expect(passes[0].shaderSrc).toBe(buffers.common);
@@ -393,9 +425,8 @@ describe("ShaderPipeline", () => {
             const buffers = {};
 
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
 
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(1);
             expect(passes[0].name).toBe("Image");
         });
@@ -411,9 +442,8 @@ describe("ShaderPipeline", () => {
             const buffers = {};
 
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
 
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(1);
             expect(passes[0].name).toBe("Image");
         });
@@ -433,13 +463,12 @@ describe("ShaderPipeline", () => {
             };
 
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
 
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(2); // BufferA and BufferB (common is filtered out due to empty content)
 
-            const bufferAPass = passes.find(p => p.name === "BufferA");
-            const bufferBPass = passes.find(p => p.name === "BufferB");
+            const bufferAPass = passes.find((p: any) => p.name === "BufferA");
+            const bufferBPass = passes.find((p: any) => p.name === "BufferB");
 
             expect(bufferAPass?.shaderSrc).toBe("void main() { gl_FragColor = vec4(0.5); }");
             expect(bufferBPass?.shaderSrc).toBe(""); // Missing buffer code gets empty string but path exists
@@ -462,9 +491,8 @@ describe("ShaderPipeline", () => {
             };
             
             const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            buildPasses(shaderCode, config, buffers);
+            const passes = buildPasses(shaderCode, config, buffers);
             
-            const passes = shaderPipeline.getPasses();
             expect(passes).toHaveLength(1);
             expect(passes[0].inputs).toEqual({
                 iChannel0: { type: "texture", path: "texture.jpg" },
