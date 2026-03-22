@@ -1,14 +1,4 @@
 <svg width="64" height="64" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- Wireframe isometric cube - all lines as filled rectangles/polygons -->
-  <!-- Outer hex outline (thick ring) -->
-  <path d="
-    M 512 40 L 960 280 L 960 744 L 512 984 L 64 744 L 64 280 Z
-    M 512 140 L 160 330 L 160 694 L 512 884 L 864 694 L 864 330 Z
-  " fill="currentColor" fill-rule="evenodd"/>
-  <!-- Vertical center line (top to bottom) -->
-  <polygon points="487,80 537,80 537,944 487,944" fill="currentColor"/>
-  <!-- Diagonal line: center to top-left -->
-  <polygon points="88,290 120,260 537,490 512,520" fill="currentColor"/>
-  <!-- Diagonal line: center to top-right -->
-  <polygon points="904,260 936,290 537,520 512,490" fill="currentColor"/>
+  <polygon points="512,80 944,944 80,944" fill="none" stroke="currentColor" stroke-width="60" stroke-linejoin="round"/>
+  <line x1="296" y1="512" x2="512" y2="944" stroke="currentColor" stroke-width="60" stroke-linecap="round"/>
 </svg>

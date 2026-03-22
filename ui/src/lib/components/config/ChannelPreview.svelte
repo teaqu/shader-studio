@@ -436,7 +436,10 @@
       {/if}
       {#if imageError || !imageSrc}
         <div class="preview-fallback">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="36" height="36" opacity="0.4"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.36.2-.8.2-1.14 0l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.36-.2.8-.2 1.14 0l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L5 8.09v7.82l7 3.94 7-3.94V8.09l-7-3.94z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" width="36" height="36" opacity="0.4">
+            <polygon points="12,2 22,20 2,20" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <line x1="7" y1="11" x2="12" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
           <div class="fallback-text">Cubemap</div>
         </div>
       {:else}
