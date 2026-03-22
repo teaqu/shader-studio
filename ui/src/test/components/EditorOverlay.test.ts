@@ -103,8 +103,15 @@ describe('EditorOverlay', () => {
       expect(container.querySelector('.editor-overlay')).toBeTruthy();
     });
 
-    it('should render vim status bar when visible', () => {
+    it('should not render vim status bar when vim mode is disabled', () => {
       const { container } = render(EditorOverlay, { props: defaultProps });
+      expect(container.querySelector('.vim-status-bar')).toBeNull();
+    });
+
+    it('should render vim status bar when vim mode is enabled', () => {
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
       expect(container.querySelector('.vim-status-bar')).toBeTruthy();
     });
 
