@@ -260,4 +260,39 @@ describe("MouseManager", () => {
       expect(mouse[1]).toBe(150);
     });
   });
+
+  describe("setEnabled", () => {
+    it("should ignore mouse events while disabled", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+      mouseManager.setEnabled(false);
+
+      canvas.dispatchEvent(
+        new MouseEvent("mousedown", { clientX: 400, clientY: 300 }),
+      );
+      canvas.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 500, clientY: 350 }),
+      );
+
+      expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
+    });
+
+    it("should stop drag updates after being disabled", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new MouseEvent("mousedown", { clientX: 100, clientY: 100 }),
+      );
+
+      mouseManager.setEnabled(false);
+
+      canvas.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 400, clientY: 300 }),
+      );
+
+      expect(mouseManager.getMouse()[0]).toBe(100);
+      expect(mouseManager.getMouse()[1]).toBe(500);
+    });
+  });
 });

@@ -63,6 +63,7 @@ export class CameraManager {
   private isMouseDown = false;
   private lastMouseX = 0;
   private lastMouseY = 0;
+  private enabled = true;
 
   private canvas: HTMLCanvasElement | null = null;
   private onMouseDown: ((e: MouseEvent) => void) | null = null;
@@ -75,6 +76,7 @@ export class CameraManager {
     this.canvas = canvas;
 
     this.onMouseDown = (e: MouseEvent) => {
+      if (!this.enabled) return;
       if (e.button === 0) {
         this.isMouseDown = true;
         this.lastMouseX = e.clientX;
@@ -83,6 +85,7 @@ export class CameraManager {
     };
 
     this.onMouseMove = (e: MouseEvent) => {
+      if (!this.enabled) return;
       if (!this.isMouseDown) return;
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
@@ -92,6 +95,7 @@ export class CameraManager {
     };
 
     this.onMouseUp = (e: MouseEvent) => {
+      if (!this.enabled) return;
       if (e.button === 0) {
         this.isMouseDown = false;
       }
@@ -124,6 +128,7 @@ export class CameraManager {
   }
 
   update(deltaTime: number): void {
+    if (!this.enabled) return;
     if (deltaTime <= 0 || deltaTime > 1) return;
 
     const keyHeld = this.keyboardManager.getKeyHeld();
@@ -189,6 +194,13 @@ export class CameraManager {
 
   getCameraDir(): Float32Array {
     return this.getForward();
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.isMouseDown = false;
+    }
   }
 
   dispose(): void {

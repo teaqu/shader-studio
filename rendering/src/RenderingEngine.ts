@@ -183,6 +183,12 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.currentConfig;
   }
 
+  public setInputEnabled(enabled: boolean): void {
+    this.keyboardManager.setEnabled(enabled);
+    this.mouseManager.setEnabled(enabled);
+    this.cameraManager.setEnabled(enabled);
+  }
+
   public async updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined> {
     // Get current passes to find the buffer
     const passes = this.shaderPipeline.getPasses();

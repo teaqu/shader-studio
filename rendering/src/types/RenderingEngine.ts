@@ -16,6 +16,7 @@ export interface RenderingEngine {
     customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
+  setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): any[];
   togglePause(): void;

@@ -2,6 +2,7 @@ export class KeyboardManager {
   private keyHeld = new Uint8Array(256);
   private keyPressed = new Uint8Array(256);
   private keyToggled = new Uint8Array(256);
+  private enabled = true;
 
   public getKeyHeld(): Uint8Array {
     return this.keyHeld;
@@ -17,6 +18,7 @@ export class KeyboardManager {
 
   public setupEventListeners(): void {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!this.enabled) return;
       const keyIndex = this.getKeyIndex(e);
       if (keyIndex >= 256) return;
       // If key was not previously held, it's a "just pressed" event
@@ -32,6 +34,7 @@ export class KeyboardManager {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (!this.enabled) return;
       const keyIndex = this.getKeyIndex(e);
       if (keyIndex >= 256) return;
       // Unset key as held
@@ -40,10 +43,22 @@ export class KeyboardManager {
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", () => { this.keyHeld.fill(0); this.keyPressed.fill(0); });
+    window.addEventListener("blur", () => { this.clearTransientState(); });
   }
 
   public clearPressed(): void {
+    this.keyPressed.fill(0);
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.clearTransientState();
+    }
+  }
+
+  private clearTransientState(): void {
+    this.keyHeld.fill(0);
     this.keyPressed.fill(0);
   }
 

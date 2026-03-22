@@ -16,7 +16,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport, mockSetInputEnabled } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -36,8 +36,9 @@ const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport
     isConnected: () => true
   };
   const mockSetAudioOptions = vi.fn();
+  const mockSetInputEnabled = vi.fn();
   const mockCreateTransport = vi.fn(() => mockTransport);
-  return { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport };
+  return { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport, mockSetInputEnabled };
 });
 
 vi.mock('../../../../rendering/src/RenderingEngine', () => {
@@ -57,6 +58,7 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     cleanup() {}
     compileShaderPipeline() { return Promise.resolve({ success: true }); }
     getPasses() { return []; }
+    setInputEnabled(...args: any[]) { return mockSetInputEnabled(...args); }
     setGlobalVolume() {}
     resumeAudioContext() { return Promise.resolve(); }
     resumeAllAudio() {}
@@ -182,6 +184,27 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('should disable shader inputs while editor overlay is visible', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    await tick();
+    await loadShader();
+
+    expect(mockSetInputEnabled).toHaveBeenLastCalledWith(true);
+
+    editorOverlayStore.setVisible(true);
+    await tick();
+
+    expect(mockSetInputEnabled).toHaveBeenLastCalledWith(false);
+
+    editorOverlayStore.setVisible(false);
+    await tick();
+
+    expect(mockSetInputEnabled).toHaveBeenLastCalledWith(true);
   });
 
   // Helper: send a shaderSource message to set hasShader = true
