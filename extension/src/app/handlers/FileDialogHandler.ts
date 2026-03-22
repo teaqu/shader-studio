@@ -41,11 +41,9 @@ export class FileDialogHandler {
       });
       if (!result || result.length === 0) { return; }
       const selectedPath = result[0].fsPath;
-      const relativePath = shaderDir
-        ? './' + path.relative(shaderDir, selectedPath).replace(/\\/g, '/')
-        : selectedPath;
+      const outputPath = this.resolveOutputPath(selectedPath, shaderDir);
       if (isScript && selectedPath.endsWith('.ts')) { writeWorkspaceTypeDefs(this.extensionPath, true); }
-      respondFn({ type: 'fileSelected', payload: { path: relativePath, requestId: payload.requestId } });
+      respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
     } catch (error) {
       this.logger.error(`Failed to select file: ${error}`);
     }
@@ -78,9 +76,7 @@ export class FileDialogHandler {
       });
       if (!result) return;
       const filePath = result.fsPath;
-      const relativePath = shaderDir
-        ? './' + path.relative(shaderDir, filePath).replace(/\\/g, '/')
-        : filePath;
+      const outputPath = this.resolveOutputPath(filePath, shaderDir);
       if (!fs.existsSync(filePath)) {
         let template: string;
         if (isScript) {
@@ -98,7 +94,7 @@ export class FileDialogHandler {
         this.logger.info(`File already exists: ${filePath}`);
       }
       if (isScript && filePath.endsWith('.ts')) writeWorkspaceTypeDefs(this.extensionPath, true);
-      respondFn({ type: 'fileSelected', payload: { path: relativePath, requestId: payload.requestId } });
+      respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
     } catch (error) {
       this.logger.error(`Failed to create file: ${error}`);
     }
@@ -201,6 +197,40 @@ export class FileDialogHandler {
       this.logger.error(`Failed to scan workspace files: ${error}`);
       respondFn({ type: "workspaceFiles", payload: { files: [] } });
     }
+  }
+
+  /**
+   * Resolve the output path for a selected file:
+   * - Outside workspace → absolute path
+   * - Inside shader's directory subtree → relative path (./subdir/file)
+   * - Elsewhere in workspace → workspace-relative path (@/path/from/root)
+   */
+  resolveOutputPath(selectedPath: string, shaderDir: string | null): string {
+    if (!shaderDir) {
+      return selectedPath;
+    }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    // Outside workspace (or no workspace) — use absolute path
+    if (!workspaceRoot || !selectedPath.startsWith(workspaceRoot + path.sep) && selectedPath !== workspaceRoot) {
+      const rel = path.relative(shaderDir, selectedPath);
+      // Only use relative if the file is within the shader's directory subtree
+      if (!rel.startsWith('..')) {
+        return './' + rel.replace(/\\/g, '/');
+      }
+      return selectedPath;
+    }
+
+    // Within workspace — check if it's in shader's subtree (no need to go up)
+    const relToShader = path.relative(shaderDir, selectedPath);
+    if (!relToShader.startsWith('..')) {
+      return './' + relToShader.replace(/\\/g, '/');
+    }
+
+    // Elsewhere in workspace — use @/ prefix
+    const relToWorkspace = path.relative(workspaceRoot, selectedPath);
+    return '@/' + relToWorkspace.replace(/\\/g, '/');
   }
 
   private buildTsTemplate(scriptFilePath: string, shaderDir: string): string {
