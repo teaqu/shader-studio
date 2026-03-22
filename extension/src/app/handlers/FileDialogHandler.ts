@@ -7,6 +7,18 @@ import { WorkspaceFileScanner } from "../WorkspaceFileScanner";
 import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import type { ErrorMessage } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS } from "@shader-studio/types";
+
+function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
+  switch (fileType) {
+    case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
+    case 'texture':  return { 'Texture files': TEXTURE_EXTENSIONS };
+    case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
+    case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
+    case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
+    default:         return { 'GLSL files': GLSL_EXTENSIONS };
+  }
+}
 
 export class FileDialogHandler {
   constructor(
@@ -30,9 +42,7 @@ export class FileDialogHandler {
             return e ? path.dirname(e.document.uri.fsPath) : null;
           })();
       const isScript = payload.fileType === 'script';
-      const filters: { [name: string]: string[] } = isScript
-        ? { 'Script files': ['ts', 'js'] }
-        : { 'GLSL files': ['glsl', 'frag', 'vert'] };
+      const filters = fileTypeToFilters(payload.fileType);
       const result = await vscode.window.showOpenDialog({
         defaultUri: shaderDir ? vscode.Uri.file(shaderDir) : undefined,
         filters,

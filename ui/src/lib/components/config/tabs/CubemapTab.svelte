@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ConfigInput } from "@shader-studio/types";
   import AssetBrowser from "../AssetBrowser.svelte";
-  import { CUBEMAP_EXTENSIONS } from "../../../constants/assetExtensions";
+  import PathInput from "../PathInput.svelte";
+  import { CUBEMAP_EXTENSIONS } from "@shader-studio/types";
 
   export let tempInput: ConfigInput | undefined;
   export let channelName: string;
@@ -26,17 +27,16 @@
   />
 {/if}
 
-<div class="input-group">
-  <label for="path-{channelName}">Path:</label>
-  <input
-    id="path-{channelName}"
-    type="text"
-    value={(tempInput?.type === "cubemap" && tempInput.path) || ""}
-    on:input={(e) => onUpdatePath(e.currentTarget.value)}
-    placeholder="Path to cubemap cross-pattern PNG"
-    class="input-text"
-  />
-</div>
+<PathInput
+  value={(tempInput?.type === "cubemap" && tempInput.path) || ""}
+  placeholder="Path to cubemap cross-pattern PNG"
+  fileType="cubemap"
+  allowCreate={false}
+  {shaderPath}
+  {postMessage}
+  {onMessage}
+  onPathChange={onUpdatePath}
+/>
 
 {#if tempInput?.type === "cubemap"}
   <div class="input-row">
@@ -107,8 +107,7 @@
     color: var(--vscode-foreground, #cccccc);
   }
 
-  .input-select,
-  .input-text {
+  .input-select {
     padding: 8px 12px;
     border: 1px solid var(--vscode-input-border, #3c3c3c);
     border-radius: 4px;
@@ -117,8 +116,7 @@
     font-size: 14px;
   }
 
-  .input-select:focus,
-  .input-text:focus {
+  .input-select:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);
   }

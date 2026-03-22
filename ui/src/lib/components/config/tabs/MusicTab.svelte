@@ -2,14 +2,15 @@
   import { onDestroy, tick } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import AssetBrowser from "../AssetBrowser.svelte";
-  import { AUDIO_EXTENSIONS } from "../../../constants/assetExtensions";
+  import PathInput from "../PathInput.svelte";
+  import { AUDIO_EXTENSIONS } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../../util/waveformCache";
   import { formatTime } from "../../../util/formatTime";
 
   export let tempInput: ConfigInput | undefined;
-  export let channelName: string;
   export let shaderPath: string;
   export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   export let getWebviewUri: (path: string) => string | undefined;
   export let lastSelectedResolvedUri: string;
   export let onAssetSelect: (path: string, resolvedUri?: string) => void;
@@ -291,17 +292,16 @@
   />
 {/if}
 
-<div class="input-group">
-  <label for="path-{channelName}">Path:</label>
-  <input
-    id="path-{channelName}"
-    type="text"
-    value={(tempInput?.type === "audio" && tempInput.path) || ""}
-    on:input={(e) => onUpdatePath(e.currentTarget.value)}
-    placeholder="Path to audio file (.mp3, .wav, .ogg)"
-    class="input-text"
-  />
-</div>
+<PathInput
+  value={(tempInput?.type === "audio" && tempInput.path) || ""}
+  placeholder="Path to audio file (.mp3, .wav, .ogg)"
+  fileType="audio"
+  allowCreate={false}
+  {shaderPath}
+  {postMessage}
+  {onMessage}
+  onPathChange={onUpdatePath}
+/>
 <div class="input-note">
   Audio provides a 512x2 texture: row 0 = FFT frequency data, row 1 = time-domain waveform.
 </div>
@@ -382,33 +382,6 @@
 {/if}
 
 <style>
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-
-  .input-group label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--vscode-foreground, #cccccc);
-  }
-
-  .input-text {
-    padding: 8px 12px;
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 4px;
-    background: var(--vscode-input-background, #2d2d2d);
-    color: var(--vscode-input-foreground, #cccccc);
-    font-size: 14px;
-  }
-
-  .input-text:focus {
-    outline: none;
-    border-color: var(--vscode-focusBorder, #007acc);
-  }
-
   .input-note {
     font-size: 12px;
     color: var(--vscode-descriptionForeground, #888);

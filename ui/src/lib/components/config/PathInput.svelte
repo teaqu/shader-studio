@@ -9,7 +9,8 @@
   export let note: string | undefined = undefined;
   export let shaderPath: string = '';
   export let suggestedPath: string = '';
-  export let fileType: 'script' | 'glsl-buffer' | 'glsl-common' = 'glsl-buffer';
+  export let fileType: 'script' | 'glsl-buffer' | 'glsl-common' | 'texture' | 'video' | 'audio' | 'cubemap' = 'glsl-buffer';
+  export let allowCreate: boolean = true;
   export let postMessage: ((msg: any) => void) | undefined = undefined;
   export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
 
@@ -52,7 +53,7 @@
 
   onDestroy(() => clearTimeout(suppressTimer));
 
-  $: showCreate = !suppressCreate && (localPath === '' || !fileExists);
+  $: showCreate = allowCreate && !suppressCreate && (localPath === '' || !fileExists);
 
   let pendingRequestId: string | null = null;
 

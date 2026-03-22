@@ -386,9 +386,9 @@
         {:else if activeTab === "Music"}
           <MusicTab
             {tempInput}
-            {channelName}
             {shaderPath}
             {postMessage}
+            {onMessage}
             {getWebviewUri}
             {lastSelectedResolvedUri}
             onAssetSelect={handleAssetSelect}
