@@ -6,16 +6,16 @@ import type { BufferPass, ImagePass } from '@shader-studio/types';
 describe('BufferConfig', () => {
   let mockOnUpdate: ReturnType<typeof vi.fn>;
   let mockGetWebviewUri: ReturnType<typeof vi.fn>;
-  let mockOnCreateFile: ReturnType<typeof vi.fn>;
+  let mockPostMessage: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
-    mockOnCreateFile = vi.fn();
+    mockPostMessage = vi.fn();
   });
 
   describe('Create File Button', () => {
-    it('should show create file button when path is empty and suggestedPath provided', () => {
+    it('should show create file button when path is empty and postMessage provided', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
       const { getByText, container } = render(BufferConfig, {
@@ -23,11 +23,12 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onCreateFile: mockOnCreateFile,
+        postMessage: mockPostMessage,
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      expect(getByText('Create myshader.buffera.glsl')).toBeTruthy();
+      expect(getByText('Create')).toBeTruthy();
+      expect(container.querySelector('.create-file-btn')).toBeTruthy();
       // Path input should also be visible alongside the create button
       expect(container.querySelector('.config-input')).toBeTruthy();
     });
@@ -35,16 +36,16 @@ describe('BufferConfig', () => {
     it('should not show create file button when path has a value', () => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
 
-      const { queryByText, getByDisplayValue } = render(BufferConfig, {
+      const { container, queryByText, getByDisplayValue } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onCreateFile: mockOnCreateFile,
+        postMessage: mockPostMessage,
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      expect(queryByText('Create myshader.buffera.glsl')).toBeNull();
+      expect(container.querySelector('.create-file-btn')).toBeNull();
       expect(getByDisplayValue('existing.glsl')).toBeTruthy();
     });
 
@@ -57,14 +58,14 @@ describe('BufferConfig', () => {
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
         isImagePass: true,
-        onCreateFile: mockOnCreateFile,
+        postMessage: mockPostMessage,
         suggestedPath: 'myshader.image.glsl'
       });
 
       expect(queryByText(/Create/)).toBeNull();
     });
 
-    it('should call onCreateFile when create button is clicked', async () => {
+    it('should call postMessage with createFile when create button is clicked', async () => {
       const config: BufferPass = { path: '', inputs: {} };
 
       const { getByText } = render(BufferConfig, {
@@ -72,30 +73,17 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onCreateFile: mockOnCreateFile,
+        postMessage: mockPostMessage,
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      await fireEvent.click(getByText('Create myshader.buffera.glsl'));
-      expect(mockOnCreateFile).toHaveBeenCalledWith('BufferA');
+      await fireEvent.click(getByText('Create'));
+      expect(mockPostMessage).toHaveBeenCalledOnce();
+      expect(mockPostMessage.mock.calls[0][0].type).toBe('createFile');
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
-    it('should not show create file button when no suggestedPath', () => {
-      const config: BufferPass = { path: '', inputs: {} };
-
-      const { queryByText } = render(BufferConfig, {
-        bufferName: 'BufferA',
-        config,
-        onUpdate: mockOnUpdate,
-        getWebviewUri: mockGetWebviewUri,
-        onCreateFile: mockOnCreateFile,
-        suggestedPath: ''
-      });
-
-      expect(queryByText(/Create/)).toBeNull();
-    });
-
-    it('should not show create file button when no onCreateFile handler', () => {
+    it('should not show create file button when no postMessage handler', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
       const { queryByText } = render(BufferConfig, {
@@ -107,6 +95,50 @@ describe('BufferConfig', () => {
       });
 
       expect(queryByText(/Create/)).toBeNull();
+    });
+
+    it('should show select button when postMessage is provided', () => {
+      const config: BufferPass = { path: '', inputs: {} };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+      });
+
+      expect(getByText('Select')).toBeTruthy();
+    });
+
+    it('should not show select button when postMessage is not provided', () => {
+      const config: BufferPass = { path: '', inputs: {} };
+
+      const { queryByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(queryByText('Select')).toBeNull();
+    });
+
+    it('should call postMessage with selectFile when select button is clicked', async () => {
+      const config: BufferPass = { path: 'existing.glsl', inputs: {} };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+      });
+
+      await fireEvent.click(getByText('Select'));
+      expect(mockPostMessage).toHaveBeenCalledOnce();
+      expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
     it('should show path input instead of create button for common buffer with existing path', () => {
@@ -117,7 +149,7 @@ describe('BufferConfig', () => {
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
-        onCreateFile: mockOnCreateFile,
+        postMessage: mockPostMessage,
         suggestedPath: 'myshader.common.glsl'
       });
 

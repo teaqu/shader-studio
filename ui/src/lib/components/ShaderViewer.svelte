@@ -624,17 +624,6 @@
       }
     },
     onLockStateChanged: (locked) => { isLocked = locked; },
-    onScriptFileCreated: (newScriptPath) => {
-      if (!currentConfig || !shaderPath) return;
-      const updatedConfig = { ...currentConfig, script: newScriptPath };
-      currentConfig = updatedConfig;
-      scriptInfo = { filename: newScriptPath, uniforms: [], fileExists: false };
-      const text = JSON.stringify(updatedConfig, null, 2);
-      transport.postMessage({
-        type: 'updateConfig',
-        payload: { config: updatedConfig, text, shaderPath, skipRefresh: false },
-      });
-    },
     onCustomUniformValues: (values) => {
       if (renderingEngine) {
         renderingEngine.updateCustomUniformValues(values);

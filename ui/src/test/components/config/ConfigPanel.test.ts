@@ -1039,7 +1039,7 @@ describe('ConfigPanel', () => {
       await fireEvent.click(createBtn);
 
       expect(mockTransport.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'createScriptFile' })
+        expect.objectContaining({ type: 'createFile' })
       );
     });
 
@@ -1072,10 +1072,9 @@ describe('ConfigPanel', () => {
 
       await fireEvent.click(getByText('Select'));
 
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'selectScriptFile',
-        payload: { shaderPath: '/test/myshader.glsl' },
-      });
+      expect(mockTransport.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'selectFile' })
+      );
     });
 
     it('does not show Script tab in New dropdown when script already exists', async () => {

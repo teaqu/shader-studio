@@ -41,7 +41,8 @@ suite('ShaderProvider Test Suite', () => {
             hasActiveClients: sandbox.stub().returns(true),
             getErrorHandler: sandbox.stub().returns({
                 handleError: sandbox.stub(),
-                handlePersistentError: sandbox.stub()
+                handlePersistentError: sandbox.stub(),
+                clearPersistentErrors: sandbox.stub()
             })
         };
 
@@ -56,145 +57,29 @@ suite('ShaderProvider Test Suite', () => {
         sandbox.restore();
     });
 
-    suite('isCommonBufferFile', () => {
-        test('should return true when file is used as common buffer in active shader', () => {
-            const shaderPath = '/path/to/shader.glsl';
-            const commonBufferPath = '/path/to/common.glsl';
-
-            // Mock config with common buffer
-            const mockConfig = {
-                version: "1.0",
-                passes: {
-                    Image: {},
-                    common: { path: commonBufferPath }
-                }
-            };
-
-            loadAndProcessConfigStub.returns(mockConfig);
-
-            // Add active shader
-            (provider as any).activeShaders.add(shaderPath);
-
-            const result = (provider as any).isCommonBufferFile(commonBufferPath);
-            assert.strictEqual(result, true);
-        });
-
-        test('should return false when file is not used as common buffer', () => {
-            const shaderPath = '/path/to/shader.glsl';
-            const otherPath = '/path/to/other.glsl';
-
-            const mockConfig = {
-                version: "1.0",
-                passes: {
-                    Image: {},
-                    common: { path: '/different/path.glsl' }
-                }
-            };
-
-            loadAndProcessConfigStub.returns(mockConfig);
-
-            (provider as any).activeShaders.add(shaderPath);
-
-            const result = (provider as any).isCommonBufferFile(otherPath);
-            assert.strictEqual(result, false);
-        });
-
-        test('should return false when no active shaders', () => {
-            const result = (provider as any).isCommonBufferFile('/any/path.glsl');
-            assert.strictEqual(result, false);
-        });
-    });
-
-    suite('updatePreviewedShadersUsingCommonBuffer', () => {
-        test('should send updates to shaders that use the common buffer', async () => {
-            const shaderPath = '/path/to/shader.glsl';
-            const commonBufferPath = '/path/to/common.glsl';
-
-            const mockConfig = {
-                version: "1.0",
-                passes: {
-                    Image: {},
-                    common: { path: commonBufferPath }
-                }
-            };
-
-            const mockBuffers = {
-                Image: 'shader code',
-                common: 'common code'
-            };
-
-            loadAndProcessConfigStub.returns(mockConfig);
-            processConfigStub.callsFake((_config: any, _path: any, buffers: any) => {
-                buffers.Image = 'shader code';
-                buffers.common = 'common code';
-            });
-
-            (provider as any).activeShaders.add(shaderPath);
-
-            await (provider as any).updatePreviewedShadersUsingCommonBuffer(commonBufferPath);
-
-            sinon.assert.calledOnce(sendSpy);
-            const message = sendSpy.firstCall.args[0];
-            assert.strictEqual(message.type, 'shaderSource');
-            assert.strictEqual(message.code, 'shader code');
-            assert.strictEqual(message.path, shaderPath);
-            assert.deepStrictEqual(message.buffers, mockBuffers);
-        });
-
-        test('should not send updates to shaders that do not use the common buffer', () => {
-            const shaderPath = '/path/to/shader.glsl';
-            const commonBufferPath = '/path/to/common.glsl';
-
-            const mockConfig = {
-                version: "1.0",
-                passes: {
-                    Image: {},
-                    common: { path: '/different/common.glsl' }
-                }
-            };
-
-            loadAndProcessConfigStub.returns(mockConfig);
-
-            (provider as any).activeShaders.add(shaderPath);
-
-            (provider as any).updatePreviewedShadersUsingCommonBuffer(commonBufferPath);
-
-            sinon.assert.notCalled(sendSpy);
-        });
-    });
 
     suite('sendShaderToWebview', () => {
-        test('should call updatePreviewedShadersUsingCommonBuffer for common buffer files', async () => {
-            const commonBufferPath = '/path/to/common.glsl';
+
+        test('should clear persistent errors before processing', async () => {
             const shaderPath = '/path/to/shader.glsl';
 
             const mockEditor = {
                 document: {
-                    getText: sandbox.stub().returns('common code'),
-                    uri: { fsPath: commonBufferPath },
-                    languageId: 'glsl'
-                }
+                    getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
+                    uri: { fsPath: shaderPath },
+                    languageId: 'glsl',
+                    lineAt: sandbox.stub().returns({ text: '' })
+                },
+                selection: { active: { line: 0, character: 0 } }
             };
 
-            const mockConfig = {
-                version: "1.0",
-                passes: {
-                    Image: {},
-                    common: { path: commonBufferPath }
-                }
-            };
+            loadAndProcessConfigStub.returns(null);
 
-            loadAndProcessConfigStub.returns(mockConfig);
-
-            (provider as any).activeShaders.add(shaderPath);
-
-            const updateSpy = sandbox.spy(provider as any, 'updatePreviewedShadersUsingCommonBuffer');
+            const clearPersistentErrorsStub = mockMessenger.getErrorHandler().clearPersistentErrors;
 
             await provider.sendShaderToWebview(mockEditor as any);
 
-            sinon.assert.calledOnce(updateSpy);
-            sinon.assert.calledWith(updateSpy, commonBufferPath);
-            sinon.assert.calledOnce(sendSpy); // Called by updatePreviewedShadersUsingCommonBuffer
+            sinon.assert.calledOnce(clearPersistentErrorsStub);
         });
 
         test('should send regular shader for non-common buffer GLSL files with mainImage', async () => {
@@ -528,6 +413,21 @@ suite('ShaderProvider Test Suite', () => {
     });
 
     suite('sendShaderFromPath', () => {
+        test('should clear persistent errors before processing', async () => {
+            const shaderPath = '/path/to/shader.glsl';
+            const fs = require('fs');
+
+            sandbox.stub(fs, 'existsSync').returns(true);
+            sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+            loadAndProcessConfigStub.returns(null);
+
+            const clearPersistentErrorsStub = mockMessenger.getErrorHandler().clearPersistentErrors;
+
+            await provider.sendShaderFromPath(shaderPath);
+
+            sinon.assert.calledOnce(clearPersistentErrorsStub);
+        });
+
         test('should include forceCleanup in message when option is provided', async () => {
             const shaderPath = '/path/to/shader.glsl';
             const fs = require('fs');

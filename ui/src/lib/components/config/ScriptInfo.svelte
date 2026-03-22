@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import PathInput from './PathInput.svelte';
 
   export let filename: string;
   export let uniforms: { name: string; type: string }[] = [];
@@ -9,10 +9,11 @@
   export let actualFps: number = 0;
   export let onPollingFpsChange: ((fps: number) => void) | undefined = undefined;
   export let onPathChange: ((path: string) => void) | undefined = undefined;
-  export let onCreateFile: (() => void) | undefined = undefined;
-  export let onSelectFile: (() => void) | undefined = undefined;
   export let suggestedPath: string = '';
   export let fileExists: boolean = true;
+  export let shaderPath: string = '';
+  export let postMessage: ((msg: any) => void) | undefined = undefined;
+  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
 
   let showUniformFps = false;
 
@@ -48,74 +49,20 @@
     onPollingFpsChange?.(fps);
   }
 
-  let pathInputFocused = false;
-  let localPath = filename;
-  $: if (!pathInputFocused) localPath = filename;
-
-  function handlePathInput(e: Event) {
-    localPath = (e.target as HTMLInputElement).value;
-    // Commit immediately so parent can update fileExists
-    onPathChange?.(localPath);
-  }
-
-  function handlePathCommit() {
-    if (localPath !== filename) {
-      onPathChange?.(localPath);
-    }
-  }
-
-  // Suppress the Create button briefly after filename changes externally (e.g. after Select),
-  // preventing a flash while fileExists hasn't yet been confirmed by the extension.
-  let suppressCreate = false;
-  let suppressTimer: ReturnType<typeof setTimeout> | undefined;
-  let prevFilename = filename;
-
-  $: {
-    if (filename !== prevFilename) {
-      prevFilename = filename;
-      if (filename) {
-        suppressCreate = true;
-        clearTimeout(suppressTimer);
-        suppressTimer = setTimeout(() => { suppressCreate = false; }, 400);
-      } else {
-        suppressCreate = false;
-      }
-    }
-  }
-
-  $: if (fileExists) { suppressCreate = false; clearTimeout(suppressTimer); }
-
-  onDestroy(() => clearTimeout(suppressTimer));
-
-  $: showCreate = !suppressCreate && (localPath === '' || !fileExists) && !!onCreateFile;
 </script>
 
 <div class="script-tab-content">
-  <div class="input-group">
-    <div class="input-row">
-      <label for="script-path">Path:</label>
-      <input
-        id="script-path"
-        type="text"
-        value={localPath}
-        on:input={handlePathInput}
-        on:focus={() => pathInputFocused = true}
-        on:blur={() => { pathInputFocused = false; handlePathCommit(); }}
-        class="config-input"
-        placeholder={suggestedPath || 'e.g., ./uniforms.ts'}
-      />
-    </div>
-    {#if showCreate || onSelectFile}
-      <div class="input-actions">
-        {#if onSelectFile}
-          <button class="select-file-btn" on:click={onSelectFile}>Select</button>
-        {/if}
-        {#if showCreate}
-          <button class="create-file-btn" on:click={onCreateFile}>Create</button>
-        {/if}
-      </div>
-    {/if}
-  </div>
+  <PathInput
+    value={filename}
+    placeholder={suggestedPath || 'e.g., ./uniforms.ts'}
+    {onPathChange}
+    {fileExists}
+    fileType="script"
+    {shaderPath}
+    suggestedPath={suggestedPath}
+    {postMessage}
+    {onMessage}
+  />
 
   {#if uniforms.length > 0}
     <div class="uniforms-section">
@@ -179,75 +126,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .input-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .input-row label {
-    color: var(--vscode-foreground, #ccc);
-    white-space: nowrap;
-    font-size: 14px;
-  }
-
-  .config-input {
-    flex: 1;
-    background: var(--vscode-input-background, #fff);
-    color: var(--vscode-input-foreground, #333);
-    border: 1px solid var(--vscode-input-border, #ccc);
-    padding: 8px 12px;
-    font-size: 14px;
-    border-radius: 4px;
-    outline: none;
-  }
-
-  .config-input:focus {
-    border-color: var(--vscode-focusBorder, #007acc);
-  }
-
-  .input-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 4px;
-  }
-
-  .create-file-btn {
-    padding: 4px 12px;
-    font-size: 13px;
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .create-file-btn:hover {
-    background: var(--vscode-button-hoverBackground);
-  }
-
-  .select-file-btn {
-    padding: 4px 12px;
-    font-size: 13px;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .select-file-btn:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
   }
 
   .section-label {

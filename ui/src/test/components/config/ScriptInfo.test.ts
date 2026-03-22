@@ -76,17 +76,17 @@ describe('ScriptInfo', () => {
   });
 
   describe('Select button', () => {
-    it('shows Select button when onSelectFile is provided', async () => {
+    it('shows Select button when postMessage is provided', async () => {
       const { getByText } = render(ScriptInfo, {
         filename: './x.ts',
-        onSelectFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: true,
       });
       await tick();
       expect(getByText('Select')).toBeTruthy();
     });
 
-    it('does not show Select button when onSelectFile is not provided', async () => {
+    it('does not show Select button when postMessage is not provided', async () => {
       const { queryByText } = render(ScriptInfo, {
         filename: './x.ts',
         fileExists: true,
@@ -95,22 +95,24 @@ describe('ScriptInfo', () => {
       expect(queryByText('Select')).toBeNull();
     });
 
-    it('calls onSelectFile when Select is clicked', async () => {
-      const onSelectFile = vi.fn();
+    it('calls postMessage with selectFile when Select is clicked', async () => {
+      const postMessage = vi.fn();
       const { getByText } = render(ScriptInfo, {
         filename: './x.ts',
-        onSelectFile,
+        postMessage,
         fileExists: true,
       });
       await tick();
       await fireEvent.click(getByText('Select'));
-      expect(onSelectFile).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledOnce();
+      expect(postMessage.mock.calls[0][0].type).toBe('selectFile');
+      expect(postMessage.mock.calls[0][0].payload.fileType).toBe('script');
     });
 
     it('Select button is present even when file exists', async () => {
       const { getByText } = render(ScriptInfo, {
         filename: './x.ts',
-        onSelectFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: true,
       });
       await tick();
@@ -119,10 +121,10 @@ describe('ScriptInfo', () => {
   });
 
   describe('Create button', () => {
-    it('shows Create when filename is empty and onCreateFile is provided', async () => {
+    it('shows Create when filename is empty and postMessage is provided', async () => {
       const { getByText } = render(ScriptInfo, {
         filename: '',
-        onCreateFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: false,
       });
       await tick();
@@ -132,7 +134,7 @@ describe('ScriptInfo', () => {
     it('shows Create when file does not exist and a path is set', async () => {
       const { getByText } = render(ScriptInfo, {
         filename: './missing.ts',
-        onCreateFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: false,
       });
       await tick();
@@ -142,14 +144,14 @@ describe('ScriptInfo', () => {
     it('hides Create when file exists', async () => {
       const { queryByText } = render(ScriptInfo, {
         filename: './exists.ts',
-        onCreateFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: true,
       });
       await tick();
       expect(queryByText('Create')).toBeNull();
     });
 
-    it('does not show Create when onCreateFile is not provided', async () => {
+    it('does not show Create when postMessage is not provided', async () => {
       const { queryByText } = render(ScriptInfo, {
         filename: '',
         fileExists: false,
@@ -161,7 +163,7 @@ describe('ScriptInfo', () => {
     it('shows Create reactively when path is cleared without blur', async () => {
       const { getByRole, getByText } = render(ScriptInfo, {
         filename: './x.ts',
-        onCreateFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: true,
       });
       await tick();
@@ -172,44 +174,46 @@ describe('ScriptInfo', () => {
       expect(getByText('Create')).toBeTruthy();
     });
 
-    it('calls onCreateFile when Create is clicked', async () => {
-      const onCreateFile = vi.fn();
+    it('calls postMessage with createFile when Create is clicked', async () => {
+      const postMessage = vi.fn();
       const { getByText } = render(ScriptInfo, {
         filename: '',
-        onCreateFile,
+        postMessage,
         fileExists: false,
       });
       await tick();
       await fireEvent.click(getByText('Create'));
-      expect(onCreateFile).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledOnce();
+      expect(postMessage.mock.calls[0][0].type).toBe('createFile');
+      expect(postMessage.mock.calls[0][0].payload.fileType).toBe('script');
     });
 
     it('suppresses Create flash immediately after filename prop changes to non-empty', async () => {
-      const onCreateFile = vi.fn();
+      const postMessage = vi.fn();
       const { queryByText, rerender } = render(ScriptInfo, {
         filename: '',
-        onCreateFile,
+        postMessage,
         fileExists: false,
       });
       await tick();
       expect(queryByText('Create')).toBeTruthy();
 
       // Simulate external selection setting the filename (fileExists still false momentarily)
-      await rerender({ filename: './selected.ts', onCreateFile, fileExists: false });
+      await rerender({ filename: './selected.ts', postMessage, fileExists: false });
       await tick();
       expect(queryByText('Create')).toBeNull();
     });
 
     it('shows Create after suppress timeout if file still does not exist', async () => {
-      const onCreateFile = vi.fn();
+      const postMessage = vi.fn();
       const { queryByText, rerender } = render(ScriptInfo, {
         filename: '',
-        onCreateFile,
+        postMessage,
         fileExists: false,
       });
       await tick();
 
-      await rerender({ filename: './selected.ts', onCreateFile, fileExists: false });
+      await rerender({ filename: './selected.ts', postMessage, fileExists: false });
       await tick();
       expect(queryByText('Create')).toBeNull(); // suppressed
 
@@ -219,19 +223,19 @@ describe('ScriptInfo', () => {
     });
 
     it('clears suppress when fileExists becomes true (file confirmed to exist)', async () => {
-      const onCreateFile = vi.fn();
+      const postMessage = vi.fn();
       const { queryByText, rerender } = render(ScriptInfo, {
         filename: '',
-        onCreateFile,
+        postMessage,
         fileExists: false,
       });
       await tick();
 
-      await rerender({ filename: './selected.ts', onCreateFile, fileExists: false });
+      await rerender({ filename: './selected.ts', postMessage, fileExists: false });
       await tick();
       expect(queryByText('Create')).toBeNull(); // suppressed
 
-      await rerender({ filename: './selected.ts', onCreateFile, fileExists: true });
+      await rerender({ filename: './selected.ts', postMessage, fileExists: true });
       await tick();
       expect(queryByText('Create')).toBeNull(); // file exists → correctly hidden (not just suppressed)
     });
@@ -241,8 +245,7 @@ describe('ScriptInfo', () => {
     it('renders Select before Create in the DOM', async () => {
       const { container } = render(ScriptInfo, {
         filename: '',
-        onSelectFile: vi.fn(),
-        onCreateFile: vi.fn(),
+        postMessage: vi.fn(),
         fileExists: false,
       });
       await tick();

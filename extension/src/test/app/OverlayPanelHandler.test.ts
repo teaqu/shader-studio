@@ -105,14 +105,10 @@ suite('OverlayPanelHandler Test Suite', () => {
     });
 
     suite('handleRequestFileContents', () => {
-        let mockPanel: any;
+        let respondFn: sinon.SinonStub;
 
         setup(() => {
-            mockPanel = {
-                webview: {
-                    postMessage: sandbox.stub(),
-                },
-            } as any;
+            respondFn = sandbox.stub();
         });
 
         test('should send file contents when config and buffer file exist', async () => {
@@ -135,12 +131,12 @@ suite('OverlayPanelHandler Test Suite', () => {
             // When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.calledOnce, 'postMessage should be called once');
-            const message = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.ok(respondFn.calledOnce, 'respondFn should be called once');
+            const message = respondFn.firstCall.args[0];
             assert.strictEqual(message.type, 'fileContents');
             assert.strictEqual(message.payload.code, 'buffer shader code');
             assert.strictEqual(message.payload.bufferName, 'BufferA');
@@ -151,22 +147,22 @@ suite('OverlayPanelHandler Test Suite', () => {
             // Given / When
             await handler.handleRequestFileContents(
                 { bufferName: '', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.notCalled, 'postMessage should not be called');
+            assert.ok(respondFn.notCalled, 'respondFn should not be called');
         });
 
         test('should return early when shaderPath is missing', async () => {
             // Given / When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.notCalled, 'postMessage should not be called');
+            assert.ok(respondFn.notCalled, 'respondFn should not be called');
         });
 
         test('should return early when config file does not exist', async () => {
@@ -177,11 +173,11 @@ suite('OverlayPanelHandler Test Suite', () => {
             // When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.notCalled, 'postMessage should not be called');
+            assert.ok(respondFn.notCalled, 'respondFn should not be called');
         });
 
         test('should return early when buffer has no path in config', async () => {
@@ -198,11 +194,11 @@ suite('OverlayPanelHandler Test Suite', () => {
             // When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.notCalled, 'postMessage should not be called');
+            assert.ok(respondFn.notCalled, 'respondFn should not be called');
         });
 
         test('should send empty code when buffer file does not exist', async () => {
@@ -222,12 +218,12 @@ suite('OverlayPanelHandler Test Suite', () => {
             // When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.calledOnce, 'postMessage should be called once');
-            const message = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.ok(respondFn.calledOnce, 'respondFn should be called once');
+            const message = respondFn.firstCall.args[0];
             assert.strictEqual(message.type, 'fileContents');
             assert.strictEqual(message.payload.code, '');
             assert.strictEqual(message.payload.bufferName, 'BufferA');
@@ -257,12 +253,12 @@ suite('OverlayPanelHandler Test Suite', () => {
             // When
             await handler.handleRequestFileContents(
                 { bufferName: 'BufferA', shaderPath: '/path/to/shader.glsl' },
-                mockPanel,
+                respondFn,
             );
 
             // Then
-            assert.ok(mockPanel.webview.postMessage.calledOnce, 'postMessage should be called once');
-            const message = mockPanel.webview.postMessage.firstCall.args[0];
+            assert.ok(respondFn.calledOnce, 'respondFn should be called once');
+            const message = respondFn.firstCall.args[0];
             assert.strictEqual(message.type, 'fileContents');
             assert.strictEqual(message.payload.code, 'in-memory buffer code');
             assert.strictEqual(message.payload.bufferName, 'BufferA');
