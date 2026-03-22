@@ -54,6 +54,8 @@ vi.mock('monaco-editor', () => ({
       setValue: vi.fn(),
       focus: vi.fn(),
       updateOptions: vi.fn(),
+      saveViewState: vi.fn(() => null),
+      restoreViewState: vi.fn(),
       getPosition: vi.fn(),
       setPosition: vi.fn(),
       getScrollTop: vi.fn(() => 0),

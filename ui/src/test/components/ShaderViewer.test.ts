@@ -168,6 +168,15 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
 }));
 
 describe('ShaderViewer', () => {
+  function getEditorOverlayVisible(): boolean {
+    let value = false;
+    const unsubscribe = editorOverlayStore.subscribe((state) => {
+      value = state.isVisible;
+    });
+    unsubscribe();
+    return value;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     configPanelStore.setVisible(false);
