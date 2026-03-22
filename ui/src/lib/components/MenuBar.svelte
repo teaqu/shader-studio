@@ -75,11 +75,6 @@
   $: hasErrors = errors.length > 0;
   $: errorMessage = hasErrors ? errors.join('\n') : '';
 
-  // Debug logging
-  $: if (errors.length > 0) {
-    console.log('[MenuBar] Errors updated:', errors, 'hasErrors:', hasErrors);
-  }
-
   let currentTime = 0.0;
   let timeUpdateHandle: number | null = null;
   let isPaused = false;
@@ -87,7 +82,7 @@
   let showThemeButton = false;
   let showFullscreenButton = false;
   let currentAspectRatio: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, savedToConfig: false };
+  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
   let showResolutionMenu = false;
   let customWidthInput = "";
   let customHeightInput = "";
@@ -252,6 +247,11 @@
     const target = event.target as HTMLInputElement;
     zoomLevel = parseFloat(target.value);
     onZoomChange(zoomLevel);
+  }
+
+  function handleForceBlackBackgroundChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    resolutionStore.setForceBlackBackground(target.checked);
   }
 
   function handleToggleLock() {
@@ -463,6 +463,17 @@
             <button class="reset-resolution-btn" on:click={handleResetResolution}>
               Reset
             </button>
+          </div>
+
+          <div class="resolution-section">
+            <label class="save-to-config-label">
+              <input
+                type="checkbox"
+                checked={currentResolution.forceBlackBackground}
+                on:change={handleForceBlackBackgroundChange}
+              />
+              Black canvas background
+            </label>
           </div>
 
           <div class="resolution-separator"></div>

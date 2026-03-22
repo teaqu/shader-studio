@@ -19,7 +19,7 @@
 
   let glCanvas: HTMLCanvasElement;
   let currentAspectMode: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, savedToConfig: false };
+  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
   let aspectRatioCalculator: AspectRatioCalculator;
   let resizeCanvasToFitAspectRatio: () => void;
 
@@ -112,6 +112,7 @@
 
 <div
   class="canvas-container"
+  class:force-black-background={currentResolution.forceBlackBackground}
   role="button"
   tabindex="0"
   on:click={handleClick}
@@ -119,3 +120,9 @@
 >
   <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
 </div>
+
+<style>
+  .canvas-container.force-black-background {
+    background: #000;
+  }
+</style>

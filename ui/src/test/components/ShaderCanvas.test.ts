@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import ShaderCanvas from '../../lib/components/ShaderCanvas.svelte';
+import { resolutionStore } from '../../lib/stores/resolutionStore';
 
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -33,6 +34,21 @@ describe('ShaderCanvas Component', () => {
       expect(focusSpy).not.toHaveBeenCalled();
 
       focusSpy.mockRestore();
+    });
+  });
+
+  describe('background override', () => {
+    it('should apply a black canvas background when forced in the resolution store', async () => {
+      resolutionStore.setForceBlackBackground(true);
+
+      const { container } = render(ShaderCanvas, {
+        props: defaultProps,
+      });
+
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      expect(canvasContainer.classList.contains('force-black-background')).toBe(true);
+
+      resolutionStore.setForceBlackBackground(false);
     });
   });
 
