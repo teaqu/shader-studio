@@ -28,6 +28,7 @@
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
+  const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 
   function focusMonacoTextInput() {
     if (!containerEl) return;
@@ -304,6 +305,10 @@
       },
     });
 
+    if (shaderPath && savedViewStates.has(shaderPath)) {
+      editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
+    }
+
     editor.onKeyDown?.((event: any) => {
       const browserKey = event.browserEvent?.key;
 
@@ -376,6 +381,9 @@
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
     }
     if (editor) {
+      if (shaderPath) {
+        savedViewStates.set(shaderPath, editor.saveViewState());
+      }
       editor.dispose();
       editor = null;
     }
@@ -457,10 +465,18 @@
     const currentValue = editor.getValue();
 
     if (fileChanged) {
+      if (lastShaderPath) {
+        savedViewStates.set(lastShaderPath, editor.saveViewState());
+      }
       // Switched to a different file — always apply, reset state
       editor.setValue(shaderCode);
-      editor.setPosition({ lineNumber: 1, column: 1 });
-      editor.setScrollTop(0);
+      const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
+      if (nextViewState) {
+        editor.restoreViewState(nextViewState);
+      } else {
+        editor.setPosition({ lineNumber: 1, column: 1 });
+        editor.setScrollTop(0);
+      }
       lastSentCode = null;
       lastShaderPath = shaderPath;
     } else if (currentValue === shaderCode) {

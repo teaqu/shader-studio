@@ -58,6 +58,19 @@ export class PanelManager {
     await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
   }
 
+  public toggleEditorOverlayInActivePanel(): void {
+    const activePanel =
+      Array.from(this.panels).find((panel) => panel.active) ??
+      Array.from(this.panels).find((panel) => panel.visible);
+
+    if (!activePanel) {
+      this.logger.debug("No active shader panel available for editor overlay toggle");
+      return;
+    }
+
+    activePanel.webview.postMessage({ type: "toggleEditorOverlay" });
+  }
+
   private createWebviewPanel(editor: vscode.TextEditor | null): void {
     this.createWebviewPanelInColumn(editor, vscode.ViewColumn.Beside);
   }

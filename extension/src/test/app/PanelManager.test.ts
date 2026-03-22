@@ -102,6 +102,38 @@ suite('PanelManager Test Suite', () => {
         // This is verified by the fact that we only use WebviewTransport in the constructor
     });
 
+    test('toggleEditorOverlayInActivePanel posts only to the active panel', () => {
+        const activePanel = createMockWebviewPanel() as any;
+        activePanel.active = true;
+        activePanel.visible = true;
+
+        const inactivePanel = createMockWebviewPanel() as any;
+        inactivePanel.active = false;
+        inactivePanel.visible = true;
+
+        (panelManager as any).panels.add(inactivePanel);
+        (panelManager as any).panels.add(activePanel);
+
+        panelManager.toggleEditorOverlayInActivePanel();
+
+        sinon.assert.calledOnce(activePanel.webview.postMessage);
+        sinon.assert.notCalled(inactivePanel.webview.postMessage);
+        sinon.assert.calledWith(activePanel.webview.postMessage, { type: 'toggleEditorOverlay' });
+    });
+
+    test('toggleEditorOverlayInActivePanel falls back to a visible panel when none is active', () => {
+        const visiblePanel = createMockWebviewPanel() as any;
+        visiblePanel.active = false;
+        visiblePanel.visible = true;
+
+        (panelManager as any).panels.add(visiblePanel);
+
+        panelManager.toggleEditorOverlayInActivePanel();
+
+        sinon.assert.calledOnce(visiblePanel.webview.postMessage);
+        sinon.assert.calledWith(visiblePanel.webview.postMessage, { type: 'toggleEditorOverlay' });
+    });
+
     test('createPanel handles no GLSL editor gracefully', () => {
         // Given
         const mockWebviewPanel = createMockWebviewPanel();

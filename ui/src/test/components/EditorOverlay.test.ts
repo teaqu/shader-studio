@@ -44,6 +44,8 @@ function createMockEditorWithCallbacks() {
     setValue: vi.fn(),
     focus: vi.fn(),
     updateOptions: vi.fn(),
+    saveViewState: vi.fn(() => ({ cursorState: [], viewState: 'saved' })),
+    restoreViewState: vi.fn(),
     getPosition: vi.fn((): any => null),
     setPosition: vi.fn(),
     getScrollTop: vi.fn(() => 0),
@@ -115,6 +117,26 @@ describe('EditorOverlay', () => {
       // Toggle visibility off — should destroy editor
       await rerender({ ...defaultProps, isVisible: false });
       expect(mockEditor.dispose).toHaveBeenCalled();
+    });
+
+    it('should restore the saved view state when the overlay is hidden and shown again', async () => {
+      const monaco = await import('monaco-editor');
+      const firstEditor = createMockEditorWithCallbacks().mockEditor;
+      const secondEditor = createMockEditorWithCallbacks().mockEditor;
+      const savedViewState = { cursorState: [{ position: { lineNumber: 7, column: 3 } }] } as any;
+
+      firstEditor.saveViewState.mockReturnValue(savedViewState);
+      vi.mocked(monaco.editor.create)
+        .mockReturnValueOnce(firstEditor as any)
+        .mockReturnValueOnce(secondEditor as any);
+
+      const { rerender } = render(EditorOverlay, { props: defaultProps });
+
+      await rerender({ ...defaultProps, isVisible: false });
+      expect(firstEditor.saveViewState).toHaveBeenCalled();
+
+      await rerender({ ...defaultProps, isVisible: true });
+      expect(secondEditor.restoreViewState).toHaveBeenCalledWith(savedViewState);
     });
   });
 

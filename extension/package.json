@@ -128,6 +128,13 @@
         "title": "Shader Studio: Reset Panel Layout"
       }
     ],
+    "keybindings": [
+      {
+        "command": "shader-studio.toggleEditorOverlay",
+        "key": "ctrl+`",
+        "when": "activeWebviewPanelId == 'shader-studio'"
+      }
+    ],
     "menus": {},
     "configuration": {
       "title": "Shader Studio",

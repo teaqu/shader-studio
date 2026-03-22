@@ -15,7 +15,7 @@ import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
 import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
-import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage, ToggleEditorOverlayMessage } from "@shader-studio/types";
+import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
   private panelManager: PanelManager;
@@ -304,8 +304,7 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.toggleEditorOverlay", () => {
         this.logger.info("shader-studio.toggleEditorOverlay command executed");
-        const message: ToggleEditorOverlayMessage = { type: "toggleEditorOverlay" };
-        this.messenger.send(message);
+        this.panelManager.toggleEditorOverlayInActivePanel();
       }),
     );
 
