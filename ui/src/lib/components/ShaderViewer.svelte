@@ -761,6 +761,9 @@
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
     />
+    {#if !hasShader}
+      <div class="no-active-shader-state">No active shader</div>
+    {/if}
     {#if initialized}
       <EditorOverlay
         isVisible={editorOverlayVisible}
@@ -875,5 +878,18 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .no-active-shader-state {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 13px;
+    letter-spacing: 0.08em;
   }
 </style>

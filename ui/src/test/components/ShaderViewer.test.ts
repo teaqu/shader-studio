@@ -240,6 +240,14 @@ describe('ShaderViewer', () => {
     expect(container).toBeTruthy();
   });
 
+  it('should show a no active shader state when no shader is loaded', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    expect(screen.getByText('No active shader')).toBeTruthy();
+  });
+
   it('should call onInitialized callback after initialization', async () => {
     const onInitialized = vi.fn();
     
