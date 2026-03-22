@@ -163,7 +163,8 @@ suite('FileDialogHandler Test Suite', () => {
             assert.ok((opts.defaultUri as vscode.Uri).fsPath.includes('active'));
         });
 
-        test('produces relative path when shaderPath is provided', async () => {
+        test('produces relative path when file is in shader subtree', async () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
             const selectedUri = vscode.Uri.file('/test/textures/image.png');
             sandbox.stub(vscode.window, 'showOpenDialog').resolves([selectedUri]);
 
@@ -175,6 +176,58 @@ suite('FileDialogHandler Test Suite', () => {
             assert.ok(respondFn.calledOnce);
             const msg = respondFn.firstCall.args[0];
             assert.strictEqual(msg.payload.path, './textures/image.png');
+        });
+    });
+
+    suite('resolveOutputPath', () => {
+        const shaderDir = '/workspace/shaders';
+
+        test('returns relative path for file in shader subdirectory', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const result = handler.resolveOutputPath('/workspace/shaders/textures/img.png', shaderDir);
+            assert.strictEqual(result, './textures/img.png');
+        });
+
+        test('returns relative path for file in same directory as shader', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const result = handler.resolveOutputPath('/workspace/shaders/img.png', shaderDir);
+            assert.strictEqual(result, './img.png');
+        });
+
+        test('returns @/ path for file elsewhere in workspace', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const result = handler.resolveOutputPath('/workspace/shared/textures/img.png', shaderDir);
+            assert.strictEqual(result, '@/shared/textures/img.png');
+        });
+
+        test('returns absolute path for file outside workspace', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const result = handler.resolveOutputPath('/other/project/img.png', shaderDir);
+            assert.strictEqual(result, '/other/project/img.png');
+        });
+
+        test('returns absolute path when there is no workspace', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
+            const result = handler.resolveOutputPath('/some/dir/img.png', shaderDir);
+            assert.strictEqual(result, '/some/dir/img.png');
+        });
+
+        test('returns absolute path when shaderDir is null', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const result = handler.resolveOutputPath('/workspace/shaders/img.png', null);
+            assert.strictEqual(result, '/workspace/shaders/img.png');
+        });
+
+        test('returns relative path for sibling file when no workspace', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
+            const result = handler.resolveOutputPath('/workspace/shaders/textures/img.png', shaderDir);
+            assert.strictEqual(result, './textures/img.png');
+        });
+
+        test('returns absolute path for file above shader dir when no workspace', () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(undefined);
+            const result = handler.resolveOutputPath('/workspace/other/img.png', shaderDir);
+            assert.strictEqual(result, '/workspace/other/img.png');
         });
     });
 
@@ -344,6 +397,42 @@ suite('FileDialogHandler Test Suite', () => {
             );
 
             assert.ok(writeTypeDefsStub.calledOnce);
+        });
+
+        test('uses @/ path when created file is elsewhere in workspace', async () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(false);
+            sandbox.stub(fs, 'writeFileSync');
+
+            const savedUri = vscode.Uri.file('/workspace/shared/common.glsl');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(savedUri);
+
+            await handler.handleCreateFile(
+                { shaderPath: '/workspace/shaders/shader.glsl', suggestedPath: 'common.glsl', fileType: 'glsl-common', requestId: 'req-ws' },
+                respondFn,
+            );
+
+            assert.ok(respondFn.calledOnce);
+            assert.strictEqual(respondFn.firstCall.args[0].payload.path, '@/shared/common.glsl');
+        });
+
+        test('uses absolute path when created file is outside workspace', async () => {
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: { fsPath: '/workspace' } }]);
+            const fs = require('fs');
+            sandbox.stub(fs, 'existsSync').returns(false);
+            sandbox.stub(fs, 'writeFileSync');
+
+            const savedUri = vscode.Uri.file('/other/dir/common.glsl');
+            sandbox.stub(vscode.window, 'showSaveDialog').resolves(savedUri);
+
+            await handler.handleCreateFile(
+                { shaderPath: '/workspace/shaders/shader.glsl', suggestedPath: 'common.glsl', fileType: 'glsl-common', requestId: 'req-abs' },
+                respondFn,
+            );
+
+            assert.ok(respondFn.calledOnce);
+            assert.strictEqual(respondFn.firstCall.args[0].payload.path, '/other/dir/common.glsl');
         });
     });
 

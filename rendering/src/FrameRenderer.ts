@@ -301,7 +301,6 @@ export class FrameRenderer {
 
       // Skip if buffers are missing (prevents "Cannot read properties of undefined (reading 'back')")
       if (!buffers) {
-        console.warn(`Missing buffers for pass: ${pass.name}. Skipping render. This may indicate a configuration issue.`);
         continue;
       }
 
