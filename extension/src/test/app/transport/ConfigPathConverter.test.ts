@@ -859,4 +859,40 @@ suite('ConfigPathConverter Test Suite', () => {
             sinon.assert.notCalled(showWarningStub);
         });
     });
+
+    test('processConfigPaths processes cubemap input paths correctly', async () => {
+        const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/cubemap.png');
+        mockWebview.asWebviewUri.returns(mockUri);
+
+        const originalMessage = {
+            type: 'shaderSource',
+            code: 'shader code',
+            config: {
+                version: '1.0',
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: 'cubemap',
+                                path: '/absolute/path/to/cubemap.png'
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const processedMessage = await ConfigPathConverter.processConfigPaths(
+            originalMessage as any,
+            mockWebview
+        );
+
+        // Path is preserved, resolved_path has webview URI
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/cubemap.png');
+        assert.strictEqual((processedMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, mockUri.toString());
+
+        // Original is not mutated
+        assert.strictEqual((originalMessage.config.passes.Image.inputs as any).iChannel0.path, '/absolute/path/to/cubemap.png');
+        assert.strictEqual((originalMessage.config.passes.Image.inputs as any).iChannel0.resolved_path, undefined);
+    });
 });

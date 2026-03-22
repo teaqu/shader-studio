@@ -441,12 +441,128 @@ suite('WebviewTransport Test Suite', () => {
                     }
                 }
             };
-            
+
             transport.send(message);
             await flush();
 
             // Video path is preserved as the original path, so its directory
             // gets added to localResourceRoots for webview access
+            assert.strictEqual((mockWebview.options.localResourceRoots || []).length, 1);
+        });
+
+        test('should add texture directory to localResourceRoots', async () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+
+            mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/texture.png'));
+            mockWebview.options = { localResourceRoots: [] };
+
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'texture', path: '/downloads/texture.png' }
+                            }
+                        }
+                    }
+                }
+            };
+
+            transport.send(message);
+            await flush();
+
+            const roots = mockWebview.options.localResourceRoots || [];
+            assert.strictEqual(roots.length, 1);
+            assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
+        });
+
+        test('should add audio directory to localResourceRoots', async () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+
+            mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/music.mp3'));
+            mockWebview.options = { localResourceRoots: [] };
+
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'audio', path: '/downloads/music.mp3' }
+                            }
+                        }
+                    }
+                }
+            };
+
+            transport.send(message);
+            await flush();
+
+            const roots = mockWebview.options.localResourceRoots || [];
+            assert.strictEqual(roots.length, 1);
+            assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
+        });
+
+        test('should add cubemap directory to localResourceRoots', async () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+
+            mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/cubemap.png'));
+            mockWebview.options = { localResourceRoots: [] };
+
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'cubemap', path: '/downloads/cubemap.png' }
+                            }
+                        }
+                    }
+                }
+            };
+
+            transport.send(message);
+            await flush();
+
+            const roots = mockWebview.options.localResourceRoots || [];
+            assert.strictEqual(roots.length, 1);
+            assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
+        });
+
+        test('should not add duplicate directories to localResourceRoots', async () => {
+            transport = new WebviewTransport();
+            transport.addPanel(mockPanel as any);
+
+            mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/file.png'));
+            mockWebview.options = { localResourceRoots: [] };
+
+            const message = {
+                type: 'shaderSource',
+                config: {
+                    version: '1.0',
+                    passes: {
+                        Image: {
+                            inputs: {
+                                iChannel0: { type: 'texture', path: '/downloads/texture1.png' },
+                                iChannel1: { type: 'texture', path: '/downloads/texture2.png' }
+                            }
+                        }
+                    }
+                }
+            };
+
+            transport.send(message);
+            await flush();
+
+            // Both textures are in the same directory — should only add once
             assert.strictEqual((mockWebview.options.localResourceRoots || []).length, 1);
         });
 

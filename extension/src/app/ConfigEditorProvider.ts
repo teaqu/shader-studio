@@ -54,37 +54,51 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview,
         );
 
+        function addAssetToWebview(originalPath: string, configDir: string): [string, string] | null {
+            const absolutePath = path.isAbsolute(originalPath)
+                ? originalPath
+                : path.join(configDir, originalPath);
+
+            const assetDirUri = vscode.Uri.file(path.dirname(absolutePath));
+            const currentRoots = webviewPanel.webview.options.localResourceRoots ?? [];
+            if (!currentRoots.some((r: vscode.Uri) => r.fsPath === assetDirUri.fsPath)) {
+                webviewPanel.webview.options = {
+                    ...webviewPanel.webview.options,
+                    localResourceRoots: [...currentRoots, assetDirUri],
+                };
+            }
+
+            const webviewUri = ConfigPathConverter.convertUriForClient(absolutePath, webviewPanel.webview);
+            return [originalPath, webviewUri];
+        }
+
+        function buildPathMap(config: ShaderConfig, configDir: string): Record<string, string> {
+            const pathMap: Record<string, string> = {};
+            for (const pass of Object.values(config.passes || {})) {
+                if (!pass || typeof pass !== 'object' || !('inputs' in pass) || !pass.inputs) {
+                    continue;
+                }
+                for (const input of Object.values(pass.inputs)) {
+                    if (!input || typeof input !== 'object' || !('path' in input) || !input.path) {
+                        continue;
+                    }
+                    const entry = addAssetToWebview(input.path as string, configDir);
+                    if (entry) {
+                        pathMap[entry[0]] = entry[1];
+                    }
+                }
+            }
+            return pathMap;
+        }
+
         function updateWebview() {
             const configText = document.getText();
-            const pathMap: Record<string, string> = {};
+            let pathMap: Record<string, string> = {};
 
-            // Create a map of original paths to webview URIs for previews
             try {
                 if (configText.trim()) {
                     const config: ShaderConfig = JSON.parse(configText);
-                    const configDir = path.dirname(document.uri.fsPath);
-
-                    // Collect all texture/video paths and convert them
-                    for (const [passName, pass] of Object.entries(config.passes || {})) {
-                        if (pass && typeof pass === 'object' && 'inputs' in pass) {
-                            const inputs = pass.inputs;
-                            if (inputs) {
-                                for (const key of Object.keys(inputs)) {
-                                    const input = inputs[key as keyof typeof inputs];
-                                    if (input && typeof input === 'object' && 'path' in input && input.path) {
-                                        const originalPath = input.path as string;
-                                        // Resolve relative path to absolute
-                                        const absolutePath = path.isAbsolute(originalPath)
-                                            ? originalPath
-                                            : path.join(configDir, originalPath);
-                                        // Convert to webview URI
-                                        const webviewUri = ConfigPathConverter.convertUriForClient(absolutePath, webviewPanel.webview);
-                                        pathMap[originalPath] = webviewUri;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    pathMap = buildPathMap(config, path.dirname(document.uri.fsPath));
                 }
             } catch (error) {
                 console.error("Failed to process config paths:", error);

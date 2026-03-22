@@ -388,4 +388,58 @@ suite('ConfigEditorProvider Test Suite', () => {
     sinon.assert.calledOnce(mockShaderProvider.sendShaderFromPath);
     sinon.assert.calledWith(mockShaderProvider.sendShaderFromPath, expectedShaderPath, { forceCleanup: true });
   });
+
+  test('should add out-of-workspace asset directories to localResourceRoots', async () => {
+    const fs = require('fs');
+
+    const mockContext = {
+      extensionPath: '/mock/extension/path',
+    } as any as vscode.ExtensionContext;
+
+    sandbox.stub(fs, 'readFileSync').returns('<html></html>');
+    sandbox.stub(fs, 'existsSync').returns(false);
+
+    const mockShaderProvider = {
+      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromPath: sandbox.stub().resolves(),
+    } as any;
+
+    const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
+
+    const configPath = '/mock/path/shader.sha.json';
+    const configJson = {
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'texture', path: '/Users/calum/Downloads/texture.png' },
+          },
+        },
+      },
+    };
+    const configDocument = {
+      uri: vscode.Uri.file(configPath),
+      getText: sandbox.stub().returns(JSON.stringify(configJson)),
+      lineCount: 1,
+    } as any;
+
+    const webviewPanel = createMockWebviewPanel();
+    webviewPanel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.file('/mock/extension/path/config-ui-dist')],
+    };
+
+    sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake(() => {
+      return { dispose: sandbox.stub() } as any;
+    });
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+
+    await provider.resolveCustomTextEditor(configDocument, webviewPanel, {} as any);
+
+    const roots = webviewPanel.webview.options.localResourceRoots || [];
+    const fsPaths = roots.map((r: vscode.Uri) => r.fsPath);
+    assert.ok(
+      fsPaths.some((p: string) => p === '/Users/calum/Downloads'),
+      `Expected /Users/calum/Downloads in localResourceRoots, got: ${fsPaths.join(', ')}`
+    );
+  });
 });

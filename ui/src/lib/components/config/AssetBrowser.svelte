@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
-  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "../../constants/assetExtensions";
+  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../util/waveformCache";
 
   export let extensions: string[];

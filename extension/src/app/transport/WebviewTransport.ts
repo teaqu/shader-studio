@@ -114,9 +114,9 @@ export class WebviewTransport implements MessageTransport {
       return;
     }
 
-    // Store original paths before ConfigPathConverter processes them
-    const videoPaths: string[] = [];
-    
+    // Collect paths for all input types that reference local files
+    const inputPaths: string[] = [];
+
     for (const passName of Object.keys(message.config.passes)) {
       const pass = message.config.passes[passName];
       if (!pass?.inputs) {
@@ -125,33 +125,33 @@ export class WebviewTransport implements MessageTransport {
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (input?.path && input.type === "video") {
+        if (input?.path && (input.type === "video" || input.type === "texture" || input.type === "audio" || input.type === "cubemap")) {
           // If path is already a webview URI, we can't extract the original path easily
           // So we'll skip localResourceRoots handling for webview URIs
           if (!input.path.startsWith('vscode-webview://')) {
-            videoPaths.push(input.path);
+            inputPaths.push(input.path);
           }
         }
       }
     }
 
-    // Add video directories to localResourceRoots
+    // Add input directories to localResourceRoots
     const shaderPath = message.path || '';
-    for (const videoPath of videoPaths) {
+    for (const inputPath of inputPaths) {
       // Resolve @ and relative paths to absolute
-      const resolvedVideoPath = shaderPath ? PathResolver.resolvePath(shaderPath, videoPath) : videoPath;
-      const videoDir = path.dirname(resolvedVideoPath);
+      const resolvedPath = shaderPath ? PathResolver.resolvePath(shaderPath, inputPath) : inputPath;
+      const inputDir = path.dirname(resolvedPath);
       const currentRoots = firstPanel.webview.options.localResourceRoots ?? [];
-      const videoDirUri = vscode.Uri.file(videoDir);
-      
-      const hasVideoDir = currentRoots.some((root: vscode.Uri) => 
-        root.fsPath === videoDirUri.fsPath
+      const inputDirUri = vscode.Uri.file(inputDir);
+
+      const hasInputDir = currentRoots.some((root: vscode.Uri) =>
+        root.fsPath === inputDirUri.fsPath
       );
-      
-      if (!hasVideoDir) {
+
+      if (!hasInputDir) {
         firstPanel.webview.options = {
           ...firstPanel.webview.options,
-          localResourceRoots: [...currentRoots, videoDirUri]
+          localResourceRoots: [...currentRoots, inputDirUri]
         };
       }
     }
