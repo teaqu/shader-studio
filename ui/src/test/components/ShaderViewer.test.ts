@@ -723,6 +723,19 @@ describe('ShaderViewer', () => {
     await tick();
     await tick();
 
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/shader.glsl' },
+      },
+    });
+    await tick();
+
     // Editor overlay should NOT be visible by default
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
 
@@ -1018,7 +1031,7 @@ describe('ShaderViewer', () => {
     expect(pauseButton.classList.contains('error')).toBe(false);
   });
 
-  it('should handle toggleEditorOverlay message from extension', async () => {
+  it('should ignore toggleEditorOverlay message when no shader is active', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     await tick();
@@ -1029,11 +1042,37 @@ describe('ShaderViewer', () => {
     // Editor overlay should not be visible initially
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
 
-    // Send toggleEditorOverlay message
     await messageHandler({ data: { type: 'toggleEditorOverlay' } });
     await tick();
 
-    // Editor overlay should now be visible
+    // Editor overlay should stay hidden without an active shader
+    expect(container.querySelector('.editor-wrapper')).toBeFalsy();
+  });
+
+  it('should handle toggleEditorOverlay message from extension when a shader is active', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    expect(container.querySelector('.editor-wrapper')).toBeFalsy();
+
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+        config: { passes: { image: {} } },
+        pathMap: { image: '/test/shader.glsl' },
+      },
+    });
+    await tick();
+
+    await messageHandler({ data: { type: 'toggleEditorOverlay' } });
+    await tick();
+
     expect(container.querySelector('.editor-wrapper')).toBeTruthy();
   });
 
@@ -2481,9 +2520,36 @@ describe('ShaderViewer', () => {
   });
 
   describe('handleToggleEditorOverlay', () => {
+    it('should not toggle editor overlay via toolbar when no shader is active', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      expect(editorButton).toHaveAttribute('disabled');
+
+      await fireEvent.click(editorButton);
+      await tick();
+
+      expect(container.querySelector('.editor-wrapper')).toBeFalsy();
+    });
+
     it('should toggle editor overlay via store', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
+      await tick();
+
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: '/test/shader.glsl' },
+        },
+      });
       await tick();
 
       // Find the editor overlay toggle button

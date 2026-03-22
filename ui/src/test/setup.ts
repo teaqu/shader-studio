@@ -33,18 +33,39 @@ import '@testing-library/jest-dom';
 // jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
 vi.mock('monaco-editor', () => ({
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
+  KeyMod: { Shift: 1024 },
+  KeyCode: { KeyA: 31, KeyI: 39, KeyO: 45 },
+  Range: class Range {
+    startLineNumber: number;
+    startColumn: number;
+    endLineNumber: number;
+    endColumn: number;
+    constructor(startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number) {
+      this.startLineNumber = startLineNumber;
+      this.startColumn = startColumn;
+      this.endLineNumber = endLineNumber;
+      this.endColumn = endColumn;
+    }
+  },
   editor: {
     create: vi.fn(() => ({
       dispose: vi.fn(),
       getValue: vi.fn(() => ''),
       setValue: vi.fn(),
+      focus: vi.fn(),
+      updateOptions: vi.fn(),
       getPosition: vi.fn(),
       setPosition: vi.fn(),
       getScrollTop: vi.fn(() => 0),
       setScrollTop: vi.fn(),
+      addCommand: vi.fn(() => "cmd"),
+      executeEdits: vi.fn(),
       hasTextFocus: vi.fn(() => false),
       onDidChangeModelContent: vi.fn(),
       onDidScrollChange: vi.fn(),
+      onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
       getOption: vi.fn(() => 0),
       getModel: vi.fn(() => ({
         getLineMaxColumn: vi.fn(() => 80),
@@ -76,6 +97,7 @@ vi.mock('@shader-studio/monaco', () => ({
 // Mock monaco-vim — requires browser APIs not available in jsdom
 vi.mock('monaco-vim', () => ({
   initVimMode: vi.fn(() => ({
+    on: vi.fn(),
     dispose: vi.fn(),
   })),
   VimMode: {
@@ -93,5 +115,3 @@ vi.mock('monaco-vim', () => ({
   getState: vi.fn(() => ({})),
   setState: vi.fn()
 }));
-
-

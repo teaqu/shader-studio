@@ -32,23 +32,30 @@ async function getLatestMockEditor() {
 function createMockEditorWithCallbacks() {
   let contentChangeCallback: (() => void) | null = null;
   let scrollChangeCallback: (() => void) | null = null;
+  let keyDownCallback: ((event: any) => void) | null = null;
+  const model = {
+    getLineMaxColumn: vi.fn(() => 80),
+    getLineCount: vi.fn(() => 10),
+    getLineContent: vi.fn(() => ''),
+  };
   const mockEditor = {
     dispose: vi.fn(),
     getValue: vi.fn(() => ''),
     setValue: vi.fn(),
-    getPosition: vi.fn(() => null),
+    focus: vi.fn(),
+    updateOptions: vi.fn(),
+    getPosition: vi.fn((): any => null),
     setPosition: vi.fn(),
     getScrollTop: vi.fn(() => 0),
     setScrollTop: vi.fn(),
+    addCommand: vi.fn(() => 'cmd'),
+    executeEdits: vi.fn(),
     hasTextFocus: vi.fn(() => false),
     onDidChangeModelContent: vi.fn((cb: any) => { contentChangeCallback = cb; }),
     onDidScrollChange: vi.fn((cb: any) => { scrollChangeCallback = cb; }),
+    onKeyDown: vi.fn((cb: any) => { keyDownCallback = cb; }),
     getOption: vi.fn(() => 0),
-    getModel: vi.fn(() => ({
-      getLineMaxColumn: vi.fn(() => 80),
-      getLineCount: vi.fn(() => 10),
-      getLineContent: vi.fn(() => ''),
-    })),
+    getModel: vi.fn(() => model),
     deltaDecorations: vi.fn(() => []),
     getVisibleRanges: vi.fn(() => []),
     getAction: vi.fn(() => ({ run: vi.fn() })),
@@ -56,8 +63,10 @@ function createMockEditorWithCallbacks() {
   };
   return {
     mockEditor,
+    model,
     getContentChangeCallback: () => contentChangeCallback,
     getScrollChangeCallback: () => scrollChangeCallback,
+    getKeyDownCallback: () => keyDownCallback,
   };
 }
 
@@ -154,6 +163,22 @@ describe('EditorOverlay', () => {
       const { setupMonacoGlsl } = await import('@shader-studio/monaco');
       render(EditorOverlay, { props: defaultProps });
       expect(setupMonacoGlsl).toHaveBeenCalled();
+    });
+
+    it('should create the overlay editor with Monaco options suited to the overlay', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, { props: defaultProps });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall).toBeTruthy();
+      expect(createCall?.[1]).toMatchObject({
+        domReadOnly: false,
+        editContext: false,
+        occurrencesHighlight: 'off',
+        padding: { top: 0 },
+        readOnly: false,
+        selectionHighlight: false,
+      });
     });
   });
 
@@ -346,6 +371,35 @@ describe('EditorOverlay', () => {
       expect(disposeFn).toHaveBeenCalled();
     });
 
+    it('should clear the visible vim status text when vim mode is disabled', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      let onModeChange: ((payload: { mode?: string }) => void) | undefined;
+      const disposeFn = vi.fn();
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
+          if (event === 'vim-mode-change') onModeChange = cb;
+        }),
+        dispose: disposeFn,
+      } as any);
+
+      const { container, rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      const status = container.querySelector('.vim-status-bar') as HTMLDivElement;
+      onModeChange?.({ mode: 'insert' });
+      expect(status.textContent).toContain('INSERT');
+
+      await rerender({ ...defaultProps, vimMode: false });
+
+      expect(disposeFn).toHaveBeenCalled();
+      expect(status.textContent).toBe('');
+    });
+
     it('should enable vim when vimMode changes to true after creation', async () => {
       const { initVimMode } = await import('monaco-vim');
       vi.mocked(initVimMode).mockClear();
@@ -402,6 +456,237 @@ describe('EditorOverlay', () => {
       showHoverCall[1]();
       expect(triggerMock).toHaveBeenCalledWith('vim', 'editor.action.showHover', null);
     });
+
+    it('should update the visible status text from vim-mode-change events', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      let onModeChange: ((payload: { mode?: string }) => void) | undefined;
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
+          if (event === 'vim-mode-change') onModeChange = cb;
+        }),
+        dispose: vi.fn(),
+        constructor: { keyMap: { vim: { call: vi.fn() } }, signal: vi.fn() },
+        state: { keyMap: 'vim', vim: { insertMode: false } },
+        toggleOverwrite: vi.fn(),
+        setOption: vi.fn(),
+      } as any);
+
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      const status = container.querySelector('.vim-status-bar') as HTMLDivElement;
+      expect(status.textContent).toContain('NORMAL');
+
+      onModeChange?.({ mode: 'visual' });
+      expect(status.textContent).toContain('VISUAL');
+
+      onModeChange?.({ mode: 'insert' });
+      expect(status.textContent).toContain('INSERT');
+    });
+
+    it('should switch to a thin line cursor in insert mode and block cursor in normal mode', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      let onModeChange: ((payload: { mode?: string }) => void) | undefined;
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
+          if (event === 'vim-mode-change') onModeChange = cb;
+        }),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { vim: {} } },
+      } as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      expect(mockEditor.updateOptions).toHaveBeenCalledWith({ cursorStyle: 'block', cursorWidth: 2 });
+
+      onModeChange?.({ mode: 'insert' });
+      expect(mockEditor.updateOptions).toHaveBeenCalledWith({ cursorStyle: 'line', cursorWidth: 1 });
+
+      onModeChange?.({ mode: 'normal' });
+      expect(mockEditor.updateOptions).toHaveBeenCalledWith({ cursorStyle: 'block', cursorWidth: 2 });
+    });
+
+    it('should fall back to insert mode for i when monaco-vim key lookup is undefined', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 3, column: 5 });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      const vimState = { keyMap: 'vim', vim: { insertMode: false, visualMode: false } };
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: vimState,
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      const keyDown = getKeyDownCallback();
+      expect(keyDown).toBeTruthy();
+
+      keyDown!({
+        keyCode: 39,
+        browserEvent: { key: 'i', code: 'KeyI', shiftKey: false, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      const status = container.querySelector('.vim-status-bar') as HTMLDivElement;
+      expect(vimState.keyMap).toBe('vim-insert');
+      expect(vimState.vim.insertMode).toBe(true);
+      expect(status.textContent).toContain('INSERT');
+    });
+
+    it('should move one column right for a fallback before entering insert mode', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 2, column: 4 });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      const vimState = { keyMap: 'vim', vim: { insertMode: false, visualMode: false } };
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: vimState,
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      getKeyDownCallback()!({
+        keyCode: 31,
+        browserEvent: { key: 'a', code: 'KeyA', shiftKey: false, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 5 });
+      expect(vimState.vim.insertMode).toBe(true);
+    });
+
+    it('should move to first non-whitespace column for I fallback', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 1, column: 8 });
+      model.getLineContent.mockReturnValue('    foo();');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      getKeyDownCallback()!({
+        keyCode: 31,
+        browserEvent: { key: 'I', code: 'KeyI', shiftKey: true, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 1, column: 5 });
+    });
+
+    it('should move to end of line for A fallback', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 4, column: 2 });
+      model.getLineMaxColumn.mockReturnValue(17);
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      getKeyDownCallback()!({
+        keyCode: 31,
+        browserEvent: { key: 'A', code: 'KeyA', shiftKey: true, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 4, column: 17 });
+    });
+
+    it('should insert a new line below for o fallback', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 6, column: 3 });
+      model.getLineMaxColumn.mockReturnValue(12);
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      getKeyDownCallback()!({
+        keyCode: 45,
+        browserEvent: { key: 'o', code: 'KeyO', shiftKey: false, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      expect(mockEditor.executeEdits).toHaveBeenCalledWith('vim-fallback', [expect.objectContaining({ text: '\n' })]);
+      expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 7, column: 1 });
+    });
+
+    it('should insert a new line above for O fallback', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 6, column: 3 });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      getKeyDownCallback()!({
+        keyCode: 45,
+        browserEvent: { key: 'O', code: 'KeyO', shiftKey: true, defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      });
+
+      expect(mockEditor.executeEdits).toHaveBeenCalledWith('vim-fallback', [expect.objectContaining({ text: '\n' })]);
+      expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 6, column: 1 });
+    });
+
+    it('should apply the bottomInset to the wrapper style', () => {
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, bottomInset: 44 },
+      });
+
+      const wrapper = container.querySelector('.editor-wrapper') as HTMLDivElement;
+      expect(wrapper.getAttribute('style')).toContain('bottom: 44px;');
+    });
+
   });
 
   // Test group: Content changes and debounced updates

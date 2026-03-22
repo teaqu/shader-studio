@@ -18,7 +18,7 @@
   import type { AudioVideoController } from "../../AudioVideoController";
   export let audioVideoController: AudioVideoController | undefined = undefined;
   export let globalMuted: boolean = false;
-  export let scriptInfo: { filename: string; uniforms: { name: string; type: string }[] } | null = null;
+  export let scriptInfo: { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null = null;
   export let customUniformValues: Record<string, number | number[] | boolean> = {};
   export let actualPollFps: number = 0;
   export let uniformActualFps: Record<string, number> = {};
@@ -223,9 +223,16 @@
             <span
               class="tab-close"
               role="button"
-              tabindex="-1"
+              tabindex="0"
               on:click|stopPropagation={() => removeBuffer(tabName)}
+              on:keydown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  removeBuffer(tabName);
+                }
+              }}
               title="Remove {tabName}"
+              aria-label="Remove {tabName}"
             >
               ×
             </span>
@@ -257,7 +264,6 @@
           {uniformActualFps}
           pollingFps={config?.scriptMaxPollingFps ?? 30}
           actualFps={actualPollFps}
-          onRemove={removeScript}
           onPollingFpsChange={onScriptPollingFpsChange}
           onPathChange={handleScriptPathChange}
           onCreateFile={handleCreateScriptFile}

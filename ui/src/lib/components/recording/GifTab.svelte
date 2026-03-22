@@ -120,9 +120,9 @@
     <button class="resolution-option menu-title" class:active={gifResPreset === "720p"} on:click={() => (gifResPreset = "720p")}>720p</button>
     <button class="resolution-option menu-title" class:active={gifResPreset === "1080p"} on:click={() => (gifResPreset = "1080p")}>1080p</button>
     <div class="recording-custom-res" class:active={gifResPreset === "custom"} on:click={() => (gifResPreset = "custom")} on:keydown={() => (gifResPreset = "custom")} role="button" tabindex="0">
-      <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder="{canvasWidth}" min="1" step="1" on:focus={() => (gifResPreset = "custom")} />
+      <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder={String(canvasWidth)} min="1" step="1" on:focus={() => (gifResPreset = "custom")} />
       <span class="recording-custom-res-sep">&times;</span>
-      <input type="number" class="recording-custom-res-input" bind:value={customResH} placeholder="{canvasHeight}" min="1" step="1" on:focus={() => (gifResPreset = "custom")} />
+      <input type="number" class="recording-custom-res-input" bind:value={customResH} placeholder={String(canvasHeight)} min="1" step="1" on:focus={() => (gifResPreset = "custom")} />
     </div>
   </div>
 </div>

@@ -75,7 +75,7 @@
     width={W}
     height={H}
     style="width: 100%; height: auto; display: block;"
-  />
+  ></canvas>
   <div class="axis-labels">
     <span><span class="ax">x</span> {fmt(xMin)} – {fmt(xMax)}</span>
     <span><span class="ax">y</span> {fmt(yMin)} – {fmt(yMax)}</span>

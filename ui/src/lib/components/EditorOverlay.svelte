@@ -11,6 +11,7 @@
   export let transport: Transport;
   export let onCodeChange: (code: string) => void = () => {};
   export let vimMode: boolean = false;
+  export let bottomInset: number = 0;
   export let bufferNames: string[] = ["Image"];
   export let activeBufferName: string = "Image";
   export let onBufferSwitch: (bufferName: string) => void = () => {};
@@ -25,6 +26,60 @@
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
   let lastShaderPath: string = "";
+  let vimStatusAttached = false;
+  let vimCurrentMode = "normal";
+
+  function focusMonacoTextInput() {
+    if (!containerEl) return;
+    const input = (containerEl.querySelector("textarea.inputarea")
+      || containerEl.querySelector(".monaco-editor textarea")
+      || containerEl.querySelector("textarea")) as HTMLTextAreaElement | null;
+    input?.focus({ preventScroll: true });
+  }
+
+  function syncVimStatus(mode?: string) {
+    vimCurrentMode = mode ?? "normal";
+    if (!statusBarEl) return;
+
+    switch (mode) {
+      case "insert":
+        statusBarEl.textContent = "-- INSERT --";
+        break;
+      case "visual":
+        statusBarEl.textContent = "-- VISUAL --";
+        break;
+      case "visualblock":
+        statusBarEl.textContent = "-- VISUAL BLOCK --";
+        break;
+      case "replace":
+        statusBarEl.textContent = "-- REPLACE --";
+        break;
+      default:
+        statusBarEl.textContent = "-- NORMAL --";
+        break;
+    }
+  }
+
+  function syncCursorForMode(mode?: string) {
+    if (!editor) return;
+
+    if (mode === "insert" || mode === "replace") {
+      editor.updateOptions({
+        cursorStyle: "line",
+        cursorWidth: 1,
+      });
+      return;
+    }
+
+    editor.updateOptions({
+      cursorStyle: "block",
+      cursorWidth: 2,
+    });
+  }
+
+  function handleContainerMouseDown() {
+    focusMonacoTextInput();
+  }
 
   function editorHasFocus(): boolean {
     if (!editor) return false;
@@ -98,9 +153,22 @@
   }
 
   function enableVim() {
-    if (!editor || !statusBarEl || vimModeInstance) return;
+    if (!editor || vimModeInstance) return;
     registerVimCommands();
-    vimModeInstance = initVimMode(editor as any, statusBarEl);
+    vimModeInstance = initVimMode(editor as any, statusBarEl ?? null);
+    vimModeInstance.on?.("vim-mode-change", ({ mode }: { mode?: string }) => {
+      syncVimStatus(mode);
+      syncCursorForMode(mode);
+      if (mode === "insert" || mode === "replace") {
+        requestAnimationFrame(() => focusMonacoTextInput());
+      }
+    });
+    editor.updateOptions({ readOnly: false, domReadOnly: false });
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
+    vimStatusAttached = !!statusBarEl;
+    syncVimStatus();
+    syncCursorForMode();
   }
 
   function disableVim() {
@@ -108,6 +176,62 @@
       vimModeInstance.dispose();
       vimModeInstance = null;
     }
+    vimStatusAttached = false;
+    if (statusBarEl) {
+      statusBarEl.textContent = "";
+    }
+  }
+
+  function fallbackEnterInsertMode(key: string) {
+    if (!editor || !vimModeInstance?.state?.vim) return;
+
+    const position = editor.getPosition();
+    const model = editor.getModel();
+    if (!position || !model) return;
+
+    const lineNumber = position.lineNumber;
+    const lineContent = model.getLineContent(lineNumber);
+    const lineMaxColumn = model.getLineMaxColumn(lineNumber);
+
+    switch (key) {
+      case "a":
+        editor.setPosition({
+          lineNumber,
+          column: Math.min(position.column + 1, lineMaxColumn),
+        });
+        break;
+      case "I": {
+        const indentColumn = (lineContent.match(/^\s*/) ?? [""])[0].length + 1;
+        editor.setPosition({ lineNumber, column: indentColumn });
+        break;
+      }
+      case "A":
+        editor.setPosition({ lineNumber, column: lineMaxColumn });
+        break;
+      case "o":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, lineMaxColumn, lineNumber, lineMaxColumn),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 1, column: 1 });
+        break;
+      case "O":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber, column: 1 });
+        break;
+      default:
+        break;
+    }
+
+    vimModeInstance.state.keyMap = "vim-insert";
+    vimModeInstance.state.vim.insertMode = true;
+    vimModeInstance.state.vim.visualMode = false;
+    syncVimStatus("insert");
+    syncCursorForMode("insert");
+    requestAnimationFrame(() => focusMonacoTextInput());
   }
 
   function updateBlankLineDecorations() {
@@ -151,10 +275,12 @@
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
       renderLineHighlight: "line",
+      selectionHighlight: false,
+      occurrencesHighlight: "off",
       automaticLayout: true,
       fontSize: 14,
       lineHeight: 20,
-      padding: { top: 8 },
+      padding: { top: 0 },
       stickyScroll: { enabled: false },
       folding: false,
       glyphMargin: false,
@@ -164,6 +290,9 @@
       scrollBeyondLastLine: false,
       contextmenu: false,
       fixedOverflowWidgets: true,
+      readOnly: false,
+      domReadOnly: false,
+      editContext: false,
       cursorStyle: "line",
       cursorWidth: 2,
       cursorBlinking: "smooth",
@@ -175,7 +304,23 @@
       },
     });
 
+    editor.onKeyDown?.((event: any) => {
+      const browserKey = event.browserEvent?.key;
+
+      if (
+        browserKey
+        && ["i", "a", "I", "A", "o", "O"].includes(browserKey)
+        && vimCurrentMode === "normal"
+        && vimModeInstance?.state?.vim
+      ) {
+        event.browserEvent?.preventDefault?.();
+        event.browserEvent?.stopPropagation?.();
+        fallbackEnterInsertMode(browserKey);
+      }
+    });
+
     editor.onDidScrollChange(() => updateBlankLineDecorations());
+    containerEl.addEventListener("mousedown", handleContainerMouseDown, true);
 
     editor.onDidChangeModelContent(() => {
       if (!editor) return;
@@ -211,6 +356,8 @@
       enableVim();
     }
 
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
     editorReady = true;
   }
@@ -225,6 +372,9 @@
       persistTimer = null;
     }
     disableVim();
+    if (containerEl) {
+      containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
+    }
     if (editor) {
       editor.dispose();
       editor = null;
@@ -240,6 +390,10 @@
   $: if (!isVisible && editor) {
     destroyEditor();
   }
+  $: if (isVisible && editor) {
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
+  }
 
   // React to vim mode toggle
   $: if (editor) {
@@ -248,6 +402,17 @@
     } else if (!vimMode && vimModeInstance) {
       disableVim();
     }
+  }
+
+  // The status bar element can bind after editor creation.
+  // Re-attempt so Vim mode can attach status UI when available.
+  $: if (editor && vimMode && !vimModeInstance) {
+    enableVim();
+  }
+  $: if (editor && vimMode && vimModeInstance && statusBarEl && !vimStatusAttached) {
+    vimModeInstance.dispose();
+    vimModeInstance = null;
+    enableVim();
   }
 
   // React to error changes — set Monaco markers
@@ -327,7 +492,7 @@
 </script>
 
 {#if isVisible}
-  <div class="editor-wrapper" class:ready={editorReady}>
+  <div class="editor-wrapper" class:ready={editorReady} style={`bottom: ${bottomInset}px;`}>
     <div
       class="editor-overlay"
       bind:this={containerEl}
@@ -343,7 +508,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 500;
+    z-index: 1200;
     pointer-events: auto;
     display: flex;
     flex-direction: column;
@@ -362,19 +527,20 @@
   }
 
   .vim-status-bar {
-    height: 20px;
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    min-height: 20px;
     font-family: monospace;
     font-size: 12px;
     color: #d4d4d4;
-    background: rgba(10, 10, 10, 0.75);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(10, 10, 10, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
     padding: 0 8px;
     line-height: 20px;
-    flex-shrink: 0;
-  }
-
-  .vim-status-bar:empty {
-    display: none;
+    z-index: 1200;
+    pointer-events: none;
   }
 
   /* Make ALL Monaco backgrounds transparent */
@@ -383,6 +549,18 @@
   .editor-overlay :global(.monaco-editor-background),
   .editor-overlay :global(.monaco-editor .inputarea.ime-input) {
     background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .editor-overlay :global(.monaco-editor.focused),
+  .editor-overlay :global(.monaco-editor:focus),
+  .editor-overlay :global(.monaco-editor [tabindex]:focus),
+  .editor-overlay :global(.monaco-editor textarea:focus) {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
   }
 
   /* Force-hide Monaco's internal textarea */

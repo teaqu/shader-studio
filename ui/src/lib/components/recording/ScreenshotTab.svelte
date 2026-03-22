@@ -70,9 +70,9 @@
     <button class="resolution-option menu-title" class:active={screenshotResPreset === "1080p"} on:click={() => (screenshotResPreset = "1080p")}>1080p</button>
     <button class="resolution-option menu-title" class:active={screenshotResPreset === "4k"} on:click={() => (screenshotResPreset = "4k")}>4K</button>
     <div class="recording-custom-res" class:active={screenshotResPreset === "custom"} on:click={() => (screenshotResPreset = "custom")} on:keydown={() => (screenshotResPreset = "custom")} role="button" tabindex="0">
-      <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder="{canvasWidth}" min="1" step="1" on:focus={() => (screenshotResPreset = "custom")} />
+      <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder={String(canvasWidth)} min="1" step="1" on:focus={() => (screenshotResPreset = "custom")} />
       <span class="recording-custom-res-sep">&times;</span>
-      <input type="number" class="recording-custom-res-input" bind:value={customResH} placeholder="{canvasHeight}" min="1" step="1" on:focus={() => (screenshotResPreset = "custom")} />
+      <input type="number" class="recording-custom-res-input" bind:value={customResH} placeholder={String(canvasHeight)} min="1" step="1" on:focus={() => (screenshotResPreset = "custom")} />
     </div>
   </div>
 </div>

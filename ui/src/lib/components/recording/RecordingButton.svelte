@@ -100,7 +100,7 @@
     flex-direction: column;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
+    z-index: 1301;
     animation: aspect-menu-appear 0.2s ease-out;
   }
 </style>

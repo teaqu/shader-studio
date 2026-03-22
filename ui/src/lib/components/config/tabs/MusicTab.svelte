@@ -369,6 +369,7 @@
       <button
         class="btn-control"
         on:click={() => handleAudioControl('reset')}
+        aria-label="Reset audio to beginning"
         title="Reset to beginning"
       >
         <i class="codicon codicon-debug-restart"></i>
