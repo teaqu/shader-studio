@@ -1,14 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock recordingStore
-const mockSubscribe = vi.fn((cb: any) => {
-  cb({ isRecording: false });
-  return () => {};
-});
+const {
+  mockSubscribe,
+  mockCaptureScreenshot,
+  mockRecord,
+  mockCancel,
+} = vi.hoisted(() => ({
+  mockSubscribe: vi.fn((cb: any) => {
+    cb({ isRecording: false });
+    return () => {};
+  }),
+  mockCaptureScreenshot: vi.fn(() => Promise.resolve(new Blob(['img'], { type: 'image/png' }))),
+  mockRecord: vi.fn(() => Promise.resolve(new Blob(['vid'], { type: 'video/webm' }))),
+  mockCancel: vi.fn(),
+}));
 
 vi.mock('../lib/stores/recordingStore', () => ({
   recordingStore: {
-    subscribe: (...args: any[]) => mockSubscribe(...args),
+    subscribe: mockSubscribe,
     startRecording: vi.fn(),
     updateProgress: vi.fn(),
     setFinalizing: vi.fn(),
@@ -17,11 +26,6 @@ vi.mock('../lib/stores/recordingStore', () => ({
     reset: vi.fn(),
   },
 }));
-
-// Mock ShaderRecorder
-const mockCaptureScreenshot = vi.fn(() => Promise.resolve(new Blob(['img'], { type: 'image/png' })));
-const mockRecord = vi.fn(() => Promise.resolve(new Blob(['vid'], { type: 'video/webm' })));
-const mockCancel = vi.fn();
 
 vi.mock('../lib/recording/ShaderRecorder', () => ({
   ShaderRecorder: vi.fn(() => ({

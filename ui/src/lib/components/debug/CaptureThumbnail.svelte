@@ -33,6 +33,8 @@
 
 <div
   class="thumb-wrap"
+  role="img"
+  aria-label="Captured variable thumbnail"
   on:mouseenter={() => hovered = true}
   on:mouseleave={() => hovered = false}
 >
@@ -42,7 +44,7 @@
     height={gridHeight}
     style="width: {displayWidth}px; height: {displayHeight}px; image-rendering: pixelated;"
     class="thumb"
-  />
+  ></canvas>
   {#if canExpand && hovered}
     <canvas
       width={gridWidth}
@@ -50,7 +52,7 @@
       style="width: {gridWidth}px; height: {gridHeight}px; image-rendering: pixelated;"
       class="thumb-expanded"
       use:drawExpanded={{ pixels, gridWidth, gridHeight }}
-    />
+    ></canvas>
   {/if}
 </div>
 

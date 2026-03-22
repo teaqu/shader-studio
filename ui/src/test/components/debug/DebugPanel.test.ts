@@ -53,6 +53,8 @@ const mockUniforms: PassUniforms = {
   channelTime: [0, 0, 0, 0],
   sampleRate: 44100,
   channelLoaded: [0, 0, 0, 0],
+  cameraPos: [0, 0, 5],
+  cameraDir: [0, 0, -1],
 };
 
 function mockGetUniforms(): PassUniforms | null {

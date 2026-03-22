@@ -160,6 +160,7 @@
         <button
           class="btn-control"
           on:click={() => handleVideoControl('reset')}
+          aria-label="Reset video to beginning"
           title="Reset to beginning"
         >
           <i class="codicon codicon-debug-restart"></i>

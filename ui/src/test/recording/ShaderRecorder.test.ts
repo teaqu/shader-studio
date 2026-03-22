@@ -163,7 +163,7 @@ describe('ShaderRecorder', () => {
     });
 
     it('should dispose offscreen engine even on error', async () => {
-      mockCompileShaderPipeline.mockResolvedValueOnce({ success: false, errors: ['bad shader'] });
+      mockCompileShaderPipeline.mockResolvedValueOnce({ success: false, errors: ['bad shader'] } as any);
       const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
 
       await expect(recorder.captureScreenshot(config, shaderInfo)).rejects.toThrow('Shader compilation failed');
@@ -302,7 +302,7 @@ describe('ShaderRecorder', () => {
     });
 
     it('should dispose offscreen engine on compilation error', async () => {
-      mockCompileShaderPipeline.mockResolvedValueOnce({ success: false, errors: ['error'] });
+      mockCompileShaderPipeline.mockResolvedValueOnce({ success: false, errors: ['error'] } as any);
 
       await expect(recorder.record(baseConfig, shaderInfo)).rejects.toThrow('Shader compilation failed');
       expect(mockDispose).toHaveBeenCalled();

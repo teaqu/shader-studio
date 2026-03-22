@@ -7,7 +7,6 @@
   export let uniformActualFps: Record<string, number> = {};
   export let pollingFps: number = 30;
   export let actualFps: number = 0;
-  export let onRemove: (() => void) | undefined = undefined;
   export let onPollingFpsChange: ((fps: number) => void) | undefined = undefined;
   export let onPathChange: ((path: string) => void) | undefined = undefined;
   export let onCreateFile: (() => void) | undefined = undefined;

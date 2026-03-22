@@ -194,6 +194,7 @@
   }
 
   :global(.recording-custom-res-input) {
+    appearance: textfield;
     background: transparent;
     border: none;
     color: var(--vscode-input-foreground);
@@ -240,6 +241,7 @@
   }
 
   :global(.recording-custom-fps-input) {
+    appearance: textfield;
     background: transparent;
     border: none;
     color: var(--vscode-input-foreground);

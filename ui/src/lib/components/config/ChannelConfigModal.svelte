@@ -306,7 +306,7 @@
         {:else}
           <h2 id="modal-title" class="channel-title">
             <span>{channelName}</span>
-            <button class="rename-btn" on:click|stopPropagation={startRename} title="Rename channel">
+            <button class="rename-btn" on:click|stopPropagation={startRename} title="Rename channel" aria-label="Rename channel">
               <i class="codicon codicon-edit"></i>
             </button>
           </h2>

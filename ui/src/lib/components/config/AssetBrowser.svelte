@@ -216,7 +216,7 @@
       placeholder="Search files..."
       bind:value={searchQuery}
     />
-    <button class="refresh-btn" on:click={requestFiles} title="Refresh">
+    <button class="refresh-btn" on:click={requestFiles} title="Refresh" aria-label="Refresh files">
       <i class="codicon codicon-refresh"></i>
     </button>
   </div>
@@ -325,6 +325,7 @@
             class="page-button"
             on:click={prevPage}
             disabled={currentPage === 1}
+            aria-label="Previous page"
           >
             <i class="codicon codicon-chevron-left"></i>
           </button>
@@ -382,6 +383,7 @@
             class="page-button"
             on:click={nextPage}
             disabled={currentPage === totalPages}
+            aria-label="Next page"
           >
             <i class="codicon codicon-chevron-right"></i>
           </button>
@@ -510,14 +512,6 @@
     object-fit: cover;
   }
 
-  .media-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    color: var(--vscode-descriptionForeground, #888);
-  }
 
   .audio-card {
     grid-column: span 2;

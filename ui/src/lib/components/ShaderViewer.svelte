@@ -482,9 +482,10 @@
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
       shaderPath = event.data.path || "";
+      hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
-      if (shaderPath) {
-        hasShader = true;
+      if (!hasShader) {
+        editorOverlayStore.setVisible(false);
       }
       if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
         renderingEngine.togglePause();
@@ -602,7 +603,10 @@
     onMessageError: (msg) => { addError(msg); },
     onFileContents: (path, code) => { editorOverlayManager?.handleFileContents(path, code); },
     onShaderSource: handleShaderSource,
-    onToggleEditorOverlay: () => { editorOverlayStore.toggle(); },
+    onToggleEditorOverlay: () => {
+      if (!hasShader) return;
+      editorOverlayStore.toggle();
+    },
     onResetLayout: () => { handleResetLayout(); },
     onCompilationResult: (result) => {
       if (result) {
@@ -654,7 +658,7 @@
 
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
-      editorOverlayVisible = state.visible;
+      editorOverlayVisible = hasShader && state.visible;
       editorVimMode = state.vimMode;
       editorFilePath = state.filePath;
       editorFileCode = state.fileCode;
@@ -756,6 +760,7 @@
     {#if initialized}
       <EditorOverlay
         isVisible={editorOverlayVisible}
+        bottomInset={previewAlone && previewVisible ? 44 : 0}
         shaderCode={editorFileCode}
         shaderPath={editorFilePath}
         {transport}

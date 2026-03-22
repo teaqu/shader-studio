@@ -349,6 +349,7 @@
             <button
               class="preview-ctrl-btn"
               on:click={(e) => handlePreviewVideoControlWithSync('reset', e)}
+              aria-label="Reset video to beginning"
               title="Reset to beginning"
             >
               <i class="codicon codicon-debug-restart"></i>
@@ -402,6 +403,7 @@
             <button
               class="preview-ctrl-btn"
               on:click={(e) => handlePreviewAudioControl('reset', e)}
+              aria-label="Reset audio to beginning"
               title="Reset to beginning"
             >
               <i class="codicon codicon-debug-restart"></i>

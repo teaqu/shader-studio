@@ -912,7 +912,7 @@
         {/each}
       </div>
     </div>
-    <div class="graph-container" on:wheel={handleWheel} on:mousedown={handleMouseDown}
+    <div class="graph-container" role="presentation" on:wheel={handleWheel} on:mousedown={handleMouseDown}
       on:mousemove={handleGraphMouseMove} on:mouseleave={handleGraphMouseLeave}>
       <canvas bind:this={graphCanvas} class="frame-graph" class:dragging></canvas>
     </div>

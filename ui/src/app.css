@@ -182,7 +182,8 @@ canvas {
   border-top: 1px solid var(--vscode-panel-border);
   height: 30px;
   flex-shrink: 0;
-  z-index: 1000;
+  position: relative;
+  z-index: 1300;
   container-type: inline-size;
 }
 
@@ -264,7 +265,7 @@ canvas {
   white-space: pre-wrap;
   width: max-content;
   max-width: min(700px, 70vw);
-  z-index: 1000;
+  z-index: 1301;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.1s ease-in;
@@ -368,7 +369,7 @@ canvas {
   padding: 0.5rem 0;
   min-width: 180px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001;
+  z-index: 1301;
   animation: aspect-menu-appear 0.2s ease-out;
 }
 
@@ -383,7 +384,7 @@ canvas {
   padding: 1rem;
   min-width: 220px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001;
+  z-index: 1301;
   animation: aspect-menu-appear 0.2s ease-out;
 }
 
@@ -705,7 +706,7 @@ canvas {
   padding: 0.5rem 0.4rem;
   min-width: 160px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001;
+  z-index: 1301;
   animation: options-menu-appear 0.2s ease-out;
   display: flex;
   flex-direction: column;
@@ -877,7 +878,7 @@ canvas {
   padding: 0.75rem;
   min-width: 170px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001;
+  z-index: 1301;
   animation: aspect-menu-appear 0.2s ease-out;
 }
 
@@ -892,7 +893,7 @@ canvas {
   padding: 1rem;
   min-width: 250px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001;
+  z-index: 1301;
   animation: time-menu-appear 0.2s ease-out;
 }
 

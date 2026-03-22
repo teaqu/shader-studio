@@ -42,6 +42,8 @@
 
 <div class="histogram-wrap">
   <svg
+    role="img"
+    aria-label="Variable histogram"
     width="100%"
     height={HEIGHT}
     viewBox="0 0 100 {HEIGHT}"
