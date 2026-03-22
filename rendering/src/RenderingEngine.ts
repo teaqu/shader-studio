@@ -174,9 +174,6 @@ export class RenderingEngine implements RenderingEngineInterface {
       }
       // Audio never auto-plays on compilation — it only starts on explicit user
       // action (reset button). Keep it paused regardless of shader pause state.
-    } else {
-      this.resourceManager.pauseAllVideos();
-      this.resourceManager.pauseAllAudio();
     }
 
     return result;

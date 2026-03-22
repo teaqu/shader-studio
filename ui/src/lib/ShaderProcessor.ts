@@ -42,8 +42,6 @@ export class ShaderProcessor {
     this.originalShaderCode = code;
     this.shaderDebugManager.setOriginalCode(code);
 
-    this.renderEngine.stopRenderLoop();
-
     if (forceCleanup) {
       this.renderEngine.cleanup();
     }
@@ -74,8 +72,6 @@ export class ShaderProcessor {
           return fallbackResult;
         }
 
-        // Render one frame to clear the canvas (no valid shader → black)
-        this.renderEngine.render();
         return {
           success: false,
           errors: result?.errors || ["Unknown compilation error"]
@@ -161,8 +157,6 @@ export class ShaderProcessor {
 
   public async processCommonBufferUpdate(code: string): Promise<CompilationResult> {
     try {
-      this.renderEngine.stopRenderLoop();
-
       const result = await this.renderEngine.updateBufferAndRecompile('common', code);
 
       if (!result?.success) {
@@ -190,8 +184,6 @@ export class ShaderProcessor {
 
     const { config, path, buffers } = message;
     const debugState = this.shaderDebugManager.getState();
-
-    this.renderEngine.stopRenderLoop();
 
     // Get debug-modified code (debug mode is guaranteed to be active)
     const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(

@@ -73,14 +73,32 @@ export class ShaderPipeline {
     buffers: Record<string, string> = {},
     audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
-    this.prepareNewCompilation(path);
-    this.buildPasses(code, config, buffers);
-
-    const compilation = await this.compileShaders();
+    const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
+    const nextPasses = this.buildPasses(code, config, buffers);
+    const compilation = await this.compileShaders(nextPasses, pathChanged);
 
     if (!compilation.success) {
+      if (pathChanged) {
+        this.applyFailedCompilation(path, nextPasses);
+      }
       return compilation;
     }
+
+    if (!compilation.passShaders || !compilation.passBuffers || !compilation.passSlotAssignments) {
+      return {
+        success: false,
+        errors: ["Compiled pipeline result was incomplete"],
+      };
+    }
+
+    this.applyCompiledPipeline(
+      path,
+      nextPasses,
+      compilation.passShaders,
+      compilation.passBuffers,
+      compilation.passSlotAssignments,
+      pathChanged,
+    );
 
     const compileWarnings = compilation.warnings || [];
     const resourceWarnings = await this.updateResources(audioOptions);
@@ -88,36 +106,25 @@ export class ShaderPipeline {
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
-  private prepareNewCompilation(path: string): void {
-    this.currentShaderRenderID++;
-
-    if (this.shaderPath !== "" && this.shaderPath !== path) {
-      this.cleanup();
-    }
-
-    this.shaderPath = path;
-  }
-
   private buildPasses(
     code: string,
     config: ShaderConfig | null,
     buffers: Record<string, string>
-  ): void {
+  ): Pass[] {
     const passNames = config?.passes
       ? Object.keys(config.passes)
       : [];
 
     if (passNames.length === 0) {
-      this.passes = [{
+      return [{
         name: "Image",
         shaderSrc: code,
         inputs: {},
         path: undefined,
       }];
-      return;
     }
 
-    this.passes = passNames
+    return passNames
       .map(passName => {
         const pass = config?.passes?.[passName];
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
@@ -154,18 +161,26 @@ export class ShaderPipeline {
     return types;
   }
 
-  private async compileShaders(): Promise<CompilationResult> {
-    const oldPassShaders = { ...this.passShaders };
+  private async compileShaders(
+    candidatePasses: Pass[],
+    pathChanged: boolean,
+  ): Promise<CompilationResult & {
+    passShaders?: Record<string, PiShader>;
+    passBuffers?: Record<string, any>;
+    passSlotAssignments?: Record<string, SlotAssignment[]>;
+  }> {
     const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
 
     const newPassShaders: Record<string, PiShader> = {};
     const newPassBuffers: Record<string, any> = {};
+    const createdPassBuffers: Record<string, any> = {};
+    const newPassSlotAssignments: Record<string, SlotAssignment[]> = {};
 
     // Extract common code if it exists
-    const commonBufferPass = this.passes.find(pass => pass.name === "common");
+    const commonBufferPass = candidatePasses.find(pass => pass.name === "common");
     const commonCode = commonBufferPass?.shaderSrc || "";
 
-    for (const pass of this.passes) {
+    for (const pass of candidatePasses) {
       // Skip common as it's not a render target and doesn't need mainImage
       if (pass.name === "common") {
         continue;
@@ -174,6 +189,7 @@ export class ShaderPipeline {
       // Check if buffer pass has empty shader source (likely missing or invalid file)
       if (!pass.shaderSrc || pass.shaderSrc.trim() === "") {
         this.cleanupPartialShaders(newPassShaders);
+        this.bufferManager.cleanupBuffers(createdPassBuffers);
         const pathInfo = pass.path ? ` (path: "${pass.path}")` : "";
         return {
           success: false,
@@ -182,7 +198,7 @@ export class ShaderPipeline {
       }
 
       const slotAssignments = assignInputSlots(pass.inputs);
-      this.passSlotAssignments[pass.name] = slotAssignments;
+      newPassSlotAssignments[pass.name] = slotAssignments;
       const channelTypes = this.getChannelTypes(pass);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
@@ -192,6 +208,7 @@ export class ShaderPipeline {
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
+        this.bufferManager.cleanupBuffers(createdPassBuffers);
 
         if (!shader) {
           return {
@@ -219,34 +236,71 @@ export class ShaderPipeline {
       }
 
       newPassShaders[pass.name] = shader;
-      this.passShaders[pass.name] = shader;
 
       if (pass.name !== "Image" && pass.name !== "common") {
-        if (oldPassBuffers[pass.name]) {
+        if (!pathChanged && oldPassBuffers[pass.name]) {
           newPassBuffers[pass.name] = oldPassBuffers[pass.name];
           delete oldPassBuffers[pass.name];
         } else {
-          newPassBuffers[pass.name] = this.bufferManager
+          const createdBuffer = this.bufferManager
             .createPingPongBuffers(
               this.canvas.width || 800,
               this.canvas.height || 600,
             );
+          newPassBuffers[pass.name] = createdBuffer;
+          createdPassBuffers[pass.name] = createdBuffer;
         }
       }
     }
 
-    this.bufferManager.setPassBuffers(newPassBuffers);
+    return {
+      success: true,
+      passShaders: newPassShaders,
+      passBuffers: newPassBuffers,
+      passSlotAssignments: newPassSlotAssignments,
+    };
+  }
 
-    // Clean up old resources
-    for (const key in oldPassShaders) {
-      const shader = oldPassShaders[key];
-      if (shader) {
-        this.renderer.DestroyShader(shader);
+  private applyCompiledPipeline(
+    path: string,
+    nextPasses: Pass[],
+    nextPassShaders: Record<string, PiShader>,
+    nextPassBuffers: Record<string, any>,
+    nextPassSlotAssignments: Record<string, SlotAssignment[]>,
+    pathChanged: boolean,
+  ): void {
+    this.currentShaderRenderID++;
+
+    if (pathChanged) {
+      this.cleanup();
+    } else {
+      const oldPassShaders = this.passShaders;
+      const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
+
+      this.cleanupShaders(oldPassShaders);
+
+      for (const name of Object.keys(nextPassBuffers)) {
+        delete oldPassBuffers[name];
       }
+      this.bufferManager.cleanupBuffers(oldPassBuffers);
     }
-    this.bufferManager.cleanupBuffers(oldPassBuffers);
 
-    return { success: true };
+    this.shaderPath = path;
+    this.passes = nextPasses;
+    this.passShaders = nextPassShaders;
+    this.passSlotAssignments = nextPassSlotAssignments;
+    this.bufferManager.setPassBuffers(nextPassBuffers);
+  }
+
+  private applyFailedCompilation(
+    path: string,
+    nextPasses: Pass[],
+  ): void {
+    this.cleanup();
+    this.currentShaderRenderID++;
+    this.shaderPath = path;
+    this.passes = nextPasses;
+    this.passSlotAssignments = {};
   }
 
   private async updateResources(audioOptions?: { muted?: boolean; volume?: number }): Promise<string[]> {
