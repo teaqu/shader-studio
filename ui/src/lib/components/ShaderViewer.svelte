@@ -403,6 +403,10 @@
     }
   }
 
+  $: if (initialized && renderingEngine) {
+    renderingEngine.setInputEnabled(!editorOverlayVisible);
+  }
+
   function handleFork() {
     if (!initialized) return;
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });

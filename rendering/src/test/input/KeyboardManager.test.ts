@@ -233,4 +233,33 @@ describe("KeyboardManager", () => {
       expect(keyboardManager.getKeyHeld()[66]).toBe(255);
     });
   });
+
+  describe("setEnabled", () => {
+    beforeEach(() => {
+      keyboardManager.setupEventListeners();
+    });
+
+    it("should ignore key events while disabled", () => {
+      keyboardManager.setEnabled(false);
+
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { keyCode: 65 } as any),
+      );
+
+      expect(keyboardManager.getKeyHeld()[65]).toBe(0);
+      expect(keyboardManager.getKeyPressed()[65]).toBe(0);
+      expect(keyboardManager.getKeyToggled()[65]).toBe(0);
+    });
+
+    it("should clear held and pressed keys when disabled", () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { keyCode: 65 } as any),
+      );
+
+      keyboardManager.setEnabled(false);
+
+      expect(keyboardManager.getKeyHeld()[65]).toBe(0);
+      expect(keyboardManager.getKeyPressed()[65]).toBe(0);
+    });
+  });
 });

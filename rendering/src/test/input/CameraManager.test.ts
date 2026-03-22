@@ -280,6 +280,41 @@ describe("CameraManager", () => {
     });
   });
 
+  describe("setEnabled", () => {
+    it("should ignore keyboard-driven updates while disabled", () => {
+      kb.press(87); // W
+      camera.setEnabled(false);
+      camera.update(1.0);
+
+      const pos = camera.getCameraPos();
+      expect(pos[0]).toBe(0);
+      expect(pos[1]).toBe(0);
+      expect(pos[2]).toBe(0);
+    });
+
+    it("should ignore mouse drag while disabled", () => {
+      const listeners: Record<string, Function> = {};
+      const canvas = {
+        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+      } as unknown as HTMLCanvasElement;
+      const windowAddSpy = vi.spyOn(window, "addEventListener");
+
+      camera.setupEventListeners(canvas);
+      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
+
+      camera.setEnabled(false);
+      listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
+      moveHandler({ clientX: 150, clientY: 100 });
+
+      const dir = camera.getCameraDir();
+      expect(dir[0]).toBeCloseTo(0, 5);
+      expect(dir[1]).toBeCloseTo(0, 5);
+      expect(dir[2]).toBeCloseTo(-1, 5);
+
+      windowAddSpy.mockRestore();
+    });
+  });
+
   describe("pitch clamping", () => {
     it("should not flip when looking straight up", () => {
       // Pitch up aggressively

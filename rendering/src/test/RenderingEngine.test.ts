@@ -287,6 +287,30 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("setInputEnabled", () => {
+    it("should delegate input enable state to keyboard, mouse, and camera managers", () => {
+      const mockKeyboardManager = { setEnabled: vi.fn() };
+      const mockMouseManager = { setEnabled: vi.fn() };
+      const mockCameraManager = { setEnabled: vi.fn() };
+
+      Object.defineProperty(renderingEngine, "keyboardManager", {
+        value: mockKeyboardManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "mouseManager", {
+        value: mockMouseManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "cameraManager", {
+        value: mockCameraManager, writable: true, configurable: true,
+      });
+
+      renderingEngine.setInputEnabled(false);
+
+      expect(mockKeyboardManager.setEnabled).toHaveBeenCalledWith(false);
+      expect(mockMouseManager.setEnabled).toHaveBeenCalledWith(false);
+      expect(mockCameraManager.setEnabled).toHaveBeenCalledWith(false);
+    });
+  });
+
   describe("video sync on compilation", () => {
     let mockPipeline: any;
     let mockResourceManager: any;
