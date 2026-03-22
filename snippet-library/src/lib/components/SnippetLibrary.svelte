@@ -5,6 +5,7 @@
   import CategoryAccordion from './CategoryAccordion.svelte';
   import AddSnippetModal from './AddSnippetModal.svelte';
   import SnippetDetailModal from './SnippetDetailModal.svelte';
+  import { buildPreviewShader } from '../preview/previewTemplates';
 
   let vscode: VsCodeApi | null = $state(null);
   let snippets: Snippet[] = $state([]);
@@ -117,6 +118,13 @@
       type: 'insertSnippet',
       body: [...snippet.body],
     });
+  }
+
+  function handleCreateScene(snippet: Snippet) {
+    if (!vscode) return;
+    const shaderCode = buildPreviewShader(snippet.body, snippet.call, snippet.category, snippet.example, snippet.prefix);
+    if (!shaderCode) return;
+    vscode.postMessage({ type: 'createScene', shaderCode });
   }
 
   function handleEdit(snippet: Snippet) {
@@ -249,6 +257,7 @@
   snippet={detailSnippet}
   onClose={handleCloseDetail}
   onInsert={handleInsert}
+  onCreateScene={handleCreateScene}
 />
 
 <style>

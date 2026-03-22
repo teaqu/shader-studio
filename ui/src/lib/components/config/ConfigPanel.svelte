@@ -55,7 +55,7 @@
   });
 
   // Update config manager when props change
-  $: if (configManager && config) {
+  $: if (configManager) {
     configManager.setConfig(config);
   }
 
@@ -65,18 +65,6 @@
 
   $: if (configManager && shaderPath) {
     configManager.setShaderPath(shaderPath);
-  }
-
-  function handleCreateFile(bufferName: string) {
-    if (!configManager) return;
-    const filePath = configManager.generateBufferPath(bufferName);
-    if (!filePath) return;
-
-    // Update the buffer path in config
-    configManager.updateBufferPath(bufferName, filePath);
-
-    // Send message to extension to create the file
-    configManager.createBufferFile(bufferName, filePath);
   }
 
   function addCommonBuffer() {
@@ -115,24 +103,6 @@
     if (!configManager) return;
     configManager.setScript(newPath);
     config = configManager.getConfig();
-  }
-
-  function handleCreateScriptFile() {
-    if (!configManager) return;
-    const scriptPath = config?.script || '';
-    // Send empty scriptPath when no path set — extension will open a save dialog
-    // and respond with a 'scriptFileCreated' message containing the chosen path
-    transport.postMessage({
-      type: 'createScriptFile',
-      payload: { scriptPath, shaderPath }
-    });
-  }
-
-  function handleSelectScriptFile() {
-    transport.postMessage({
-      type: 'selectScriptFile',
-      payload: { shaderPath }
-    });
   }
 
   function removeBuffer(bufferName: string) {
@@ -266,10 +236,11 @@
           actualFps={actualPollFps}
           onPollingFpsChange={onScriptPollingFpsChange}
           onPathChange={handleScriptPathChange}
-          onCreateFile={handleCreateScriptFile}
-          onSelectFile={handleSelectScriptFile}
           suggestedPath={configManager?.generateScriptPath() || ''}
           fileExists={scriptInfo ? scriptInfo.fileExists !== false : false}
+          {shaderPath}
+          postMessage={(msg) => transport.postMessage(msg)}
+          onMessage={(handler) => transport.onMessage(handler)}
         />
       {:else if activeTab === "Image"}
         <BufferConfig
@@ -297,7 +268,6 @@
             );
           }}
           {getWebviewUri}
-          onCreateFile={handleCreateFile}
           suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}

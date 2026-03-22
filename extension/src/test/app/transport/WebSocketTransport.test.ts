@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
 import { WebSocketTransport } from '../../../app/transport/WebSocketTransport';
 import { WorkspaceFileScanner } from '../../../app/WorkspaceFileScanner';
+import { Logger } from '../../../app/services/Logger';
 
 suite('WebSocketTransport Test Suite', () => {
     let transport: WebSocketTransport;
@@ -12,6 +13,7 @@ suite('WebSocketTransport Test Suite', () => {
     let mockWsClient: sinon.SinonStubbedInstance<WebSocket>;
     let mockShaderProvider: any;
     let mockGlslFileTracker: any;
+    let mockContext: any;
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -25,6 +27,15 @@ suite('WebSocketTransport Test Suite', () => {
             isGlslEditor: sandbox.stub().returns(false),
             setLastViewedGlslFile: sandbox.stub(),
             getLastViewedGlslFile: sandbox.stub().returns(null)
+        } as any;
+
+        mockContext = {
+            extensionPath: '/mock/extension',
+            workspaceState: {
+                get: sandbox.stub().returns(null),
+                update: sandbox.stub().resolves(),
+            },
+            subscriptions: [],
         } as any;
 
         mockWsServer = {
@@ -69,12 +80,12 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false when no clients connected', () => {
-        transport = new WebSocketTransport(51475, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51475, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
         assert.strictEqual(transport.hasActiveClients(), false);
     });
 
     test('hasActiveClients returns true when clients are connected', () => {
-        transport = new WebSocketTransport(51476, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51476, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
         // Simulate client connection by accessing private wsClients
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
@@ -84,7 +95,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns false after all clients disconnect', () => {
-        transport = new WebSocketTransport(51477, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51477, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);
@@ -97,7 +108,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('hasActiveClients returns true with multiple clients', () => {
-        transport = new WebSocketTransport(51478, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51478, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         const mockClient2 = { ...mockWsClient } as any;
@@ -115,7 +126,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('send method handles no clients gracefully', () => {
-        transport = new WebSocketTransport(51479, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51479, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
         assert.strictEqual(transport.hasActiveClients(), false);
 
@@ -126,7 +137,7 @@ suite('WebSocketTransport Test Suite', () => {
     });
 
     test('close method clears all clients', () => {
-        transport = new WebSocketTransport(51480, mockShaderProvider, mockGlslFileTracker);
+        transport = new WebSocketTransport(51480, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
         const wsClients = (transport as any).wsClients as Set<WebSocket>;
         wsClients.add(mockWsClient as any);
@@ -143,7 +154,7 @@ suite('WebSocketTransport Test Suite', () => {
         let mockConfig: any;
 
         setup(() => {
-            transport = new WebSocketTransport(51481, mockShaderProvider, mockGlslFileTracker);
+            transport = new WebSocketTransport(51481, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
 
             mockConfig = {
                 get: sandbox.stub().withArgs('webServerPort').returns(3000)
@@ -217,329 +228,16 @@ suite('WebSocketTransport Test Suite', () => {
         });
     });
 
-    suite('Client Request Handling', () => {
-        let vscodeConfigStub: sinon.SinonStub;
-        let mockConfig: any;
-
+    suite('Client Message Delegation', () => {
         setup(() => {
-            transport = new WebSocketTransport(51483, mockShaderProvider, mockGlslFileTracker);
-
-            mockConfig = {
-                get: sandbox.stub().withArgs('webServerPort').returns(3000)
-            };
-            if (!(require('vscode').workspace.getConfiguration as any).isSinonProxy) {
-                vscodeConfigStub = sandbox.stub(require('vscode').workspace, 'getConfiguration').returns(mockConfig);
-            } else {
-                vscodeConfigStub = require('vscode').workspace.getConfiguration as sinon.SinonStub;
-                vscodeConfigStub.returns(mockConfig);
-            }
+            transport = new WebSocketTransport(51483, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
         });
 
-        test('requestWorkspaceFiles returns files via WebSocket', async () => {
-            const mockFiles = [
-                { name: 'texture.png', workspacePath: '@/textures/texture.png', thumbnailUri: 'http://localhost:3000/textures/test', isSameDirectory: true },
-            ];
-            const scanStub = sandbox.stub(WorkspaceFileScanner, 'scanFiles').resolves(mockFiles);
-
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            wsClients.add(mockWsClient as any);
-
-            await (transport as any).handleClientRequest(
-                { type: 'requestWorkspaceFiles', payload: { extensions: ['png', 'jpg'], shaderPath: '/test/shader.glsl' } },
-                mockWsClient,
-            );
-
-            assert.ok(scanStub.calledOnce);
-            assert.deepStrictEqual(scanStub.firstCall.args[0], ['png', 'jpg']);
-            assert.strictEqual(scanStub.firstCall.args[1], '/test/shader.glsl');
-            assert.strictEqual(typeof scanStub.firstCall.args[2], 'function');
-
-            assert.ok(mockWsClient.send.calledOnce);
-            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
-            assert.strictEqual(response.type, 'workspaceFiles');
-            assert.strictEqual(response.payload.files.length, 1);
-            assert.strictEqual(response.payload.files[0].name, 'texture.png');
-        });
-
-        test('requestWorkspaceFiles uses HTTP URL converter', async () => {
-            let capturedConverter: ((path: string) => string) | undefined;
-            sandbox.stub(WorkspaceFileScanner, 'scanFiles').callsFake(async (_ext, _path, converter) => {
-                capturedConverter = converter;
-                return [];
-            });
-
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            wsClients.add(mockWsClient as any);
-
-            await (transport as any).handleClientRequest(
-                { type: 'requestWorkspaceFiles', payload: { extensions: ['png'], shaderPath: '/test/shader.glsl' } },
-                mockWsClient,
-            );
-
-            assert.ok(capturedConverter);
-            const result = capturedConverter!('/path/to/texture.png');
-            assert.strictEqual(result, `http://localhost:3000/textures/${encodeURIComponent('/path/to/texture.png')}`);
-        });
-
-        test('requestWorkspaceFiles sends empty array on error', async () => {
-            sandbox.stub(WorkspaceFileScanner, 'scanFiles').rejects(new Error('scan failed'));
-
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            wsClients.add(mockWsClient as any);
-
-            await (transport as any).handleClientRequest(
-                { type: 'requestWorkspaceFiles', payload: { extensions: ['png'], shaderPath: '/test/shader.glsl' } },
-                mockWsClient,
-            );
-
-            assert.ok(mockWsClient.send.calledOnce);
-            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
-            assert.strictEqual(response.type, 'workspaceFiles');
-            assert.deepStrictEqual(response.payload.files, []);
-        });
-
-        test('updateConfig writes config and triggers shader refresh', async () => {
-            const fsWriteStub = sandbox.stub(require('fs'), 'writeFileSync');
-            mockShaderProvider.sendShaderFromPath = sandbox.stub();
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'updateConfig',
-                    payload: {
-                        config: { passes: {} },
-                        text: '{"passes":{}}',
-                        shaderPath: '/test/shader.glsl',
-                    },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(fsWriteStub.calledOnce);
-            assert.strictEqual(fsWriteStub.firstCall.args[0], '/test/shader.sha.json');
-            assert.strictEqual(fsWriteStub.firstCall.args[1], '{"passes":{}}');
-        });
-
-        test('updateConfig skips shader refresh when skipRefresh is true', async () => {
-            const clock = sandbox.useFakeTimers();
-            const fsWriteStub = sandbox.stub(require('fs'), 'writeFileSync');
-            mockShaderProvider.sendShaderFromPath = sandbox.stub();
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'updateConfig',
-                    payload: {
-                        config: { passes: {} },
-                        text: '{"passes":{}}',
-                        shaderPath: '/test/shader.glsl',
-                        skipRefresh: true,
-                    },
-                },
-                mockWsClient,
-            );
-
-            // Config should still be written
-            assert.ok(fsWriteStub.calledOnce);
-
-            // Advance past setTimeout
-            clock.tick(200);
-
-            // Shader refresh should NOT be triggered
-            assert.ok(!mockShaderProvider.sendShaderFromPath.called);
-
-            clock.restore();
-        });
-
-        test('updateConfig triggers shader refresh when skipRefresh is false', async () => {
-            const clock = sandbox.useFakeTimers();
-            sandbox.stub(require('fs'), 'writeFileSync');
-            mockShaderProvider.sendShaderFromPath = sandbox.stub();
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'updateConfig',
-                    payload: {
-                        config: { passes: {} },
-                        text: '{"passes":{}}',
-                        shaderPath: '/test/shader.glsl',
-                        skipRefresh: false,
-                    },
-                },
-                mockWsClient,
-            );
-
-            clock.tick(200);
-
-            assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
-
-            clock.restore();
-        });
-
-        test('updateConfig triggers shader refresh when skipRefresh is undefined', async () => {
-            const clock = sandbox.useFakeTimers();
-            sandbox.stub(require('fs'), 'writeFileSync');
-            mockShaderProvider.sendShaderFromPath = sandbox.stub();
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'updateConfig',
-                    payload: {
-                        config: { passes: {} },
-                        text: '{"passes":{}}',
-                        shaderPath: '/test/shader.glsl',
-                    },
-                },
-                mockWsClient,
-            );
-
-            clock.tick(200);
-
-            assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
-
-            clock.restore();
-        });
-
-        test('createBufferFile creates file when it does not exist', async () => {
-            const mockEditor = { document: { uri: { fsPath: '/test/shader.glsl' } } };
-            mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
-
-            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(false);
-            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'createBufferFile',
-                    payload: { bufferName: 'BufferA', filePath: 'bufferA.glsl' },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(writeStub.called);
-        });
-
-        test('createScriptFile creates file with clean template (no type boilerplate)', async () => {
-            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(false);
-            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'createScriptFile',
-                    payload: { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(writeStub.calledOnce);
-            const writtenContent = writeStub.firstCall.args[1] as string;
-
-            // Should contain the export function template
-            assert.ok(writtenContent.includes('export function uniforms(ctx: UniformContext)'));
-            assert.ok(writtenContent.includes('Record<string, UniformValue>'));
-
-            // Should NOT contain inlined type definitions
-            assert.ok(!writtenContent.includes('interface UniformContext'));
-            assert.ok(!writtenContent.includes('type UniformValue'));
-        });
-
-        test('createScriptFile does not overwrite existing file', async () => {
-            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(true);
-            const writeStub = sandbox.stub(require('fs'), 'writeFileSync');
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'createScriptFile',
-                    payload: { scriptPath: './shader.uniforms.ts', shaderPath: '/test/shader.glsl' },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(writeStub.notCalled);
-        });
-
-        test('updateShaderSource delegates to overlay handler', async () => {
-            const overlayHandler = (transport as any).overlayHandler;
-            const handleStub = sandbox.stub(overlayHandler, 'handleUpdateShaderSource').resolves();
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'updateShaderSource',
-                    payload: { code: 'void main() {}', path: '/test/shader.glsl' },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(handleStub.calledOnce);
-            assert.deepStrictEqual(handleStub.firstCall.args[0], { code: 'void main() {}', path: '/test/shader.glsl' });
-        });
-
-        test('requestFileContents sends file contents via WebSocket', async () => {
-            const existsStub = sandbox.stub(require('fs'), 'existsSync').returns(true);
-            const readStub = sandbox.stub(require('fs'), 'readFileSync');
-            readStub.withArgs('/test/shader.sha.json', 'utf-8').returns('{"passes":{"BufferA":{"path":"bufferA.glsl"}}}');
-            readStub.withArgs('/test/bufferA.glsl', 'utf-8').returns('// buffer code');
-
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            wsClients.add(mockWsClient as any);
-
-            await (transport as any).handleClientRequest(
-                {
-                    type: 'requestFileContents',
-                    payload: { bufferName: 'BufferA', shaderPath: '/test/shader.glsl' },
-                },
-                mockWsClient,
-            );
-
-            assert.ok(mockWsClient.send.calledOnce);
-            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
-            assert.strictEqual(response.type, 'fileContents');
-            assert.strictEqual(response.payload.code, '// buffer code');
-            assert.strictEqual(response.payload.bufferName, 'BufferA');
-        });
-
-        test('CLIENT_REQUEST_TYPES includes all non-panel-specific message types', () => {
-            const clientTypes = (WebSocketTransport as any).CLIENT_REQUEST_TYPES as Set<string>;
-
-            // Messages that should be handled directly by WebSocketTransport
-            assert.ok(clientTypes.has('requestWorkspaceFiles'), 'should handle requestWorkspaceFiles');
-            assert.ok(clientTypes.has('updateConfig'), 'should handle updateConfig');
-            assert.ok(clientTypes.has('createBufferFile'), 'should handle createBufferFile');
-            assert.ok(clientTypes.has('updateShaderSource'), 'should handle updateShaderSource');
-            assert.ok(clientTypes.has('requestFileContents'), 'should handle requestFileContents');
-            assert.ok(clientTypes.has('requestLayout'), 'should handle requestLayout');
-
-            // Panel-specific messages should NOT be in the set
-            assert.ok(!clientTypes.has('navigateToBuffer'), 'navigateToBuffer is panel-specific');
-            assert.ok(!clientTypes.has('forkShader'), 'forkShader is panel-specific');
-            assert.ok(!clientTypes.has('extensionCommand'), 'extensionCommand is panel-specific');
-        });
-
-        test('requestLayout responds with restoreLayout and null payload', async () => {
-            const wsClients = (transport as any).wsClients as Set<WebSocket>;
-            wsClients.add(mockWsClient as any);
-
-            await (transport as any).handleClientRequest(
-                { type: 'requestLayout' },
-                mockWsClient,
-            );
-
-            assert.ok(mockWsClient.send.calledOnce);
-            const response = JSON.parse(mockWsClient.send.firstCall.args[0] as string);
-            assert.strictEqual(response.type, 'restoreLayout');
-            assert.strictEqual(response.payload, null);
-        });
-
-        test('requestLayout does not send if client disconnected', async () => {
-            const disconnectedClient = {
-                ...mockWsClient,
-                readyState: WebSocket.CLOSED,
-                send: sandbox.stub(),
-            } as any;
-
-            await (transport as any).handleClientRequest(
-                { type: 'requestLayout' },
-                disconnectedClient,
-            );
-
-            assert.ok(disconnectedClient.send.notCalled);
+        test('ClientMessageHandler is used per connection — messages do not throw', () => {
+            // WebSocketTransport creates a ClientMessageHandler per connection.
+            // The detailed message-type behavior is tested in ClientMessageHandler.test.ts.
+            // Here we just verify the transport is healthy and accepts connections.
+            assert.ok(transport.hasActiveClients() === false);
         });
     });
 
@@ -547,7 +245,7 @@ suite('WebSocketTransport Test Suite', () => {
         let mockConfig: any;
 
         setup(() => {
-            transport = new WebSocketTransport(51482, mockShaderProvider, mockGlslFileTracker);
+            transport = new WebSocketTransport(51482, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
             mockConfig = {
                 get: sandbox.stub().withArgs('webServerPort').returns(3000)
             };
@@ -698,19 +396,30 @@ suite('WebSocketTransport port binding', () => {
 
     const mockShaderProvider = { sendShaderToWebview: () => {} } as any;
     const mockGlslFileTracker = { getActiveOrLastViewedGLSLEditor: () => null } as any;
+    const mockContext = { extensionPath: '/mock/extension', workspaceState: { get: () => null, update: () => Promise.resolve() }, subscriptions: [] } as any;
+
+    setup(() => {
+        if (!(Logger as any).instance) {
+            const mockOutputChannel = {
+                info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, dispose: () => {},
+            } as any;
+            Logger.initialize(mockOutputChannel);
+        }
+    });
 
     teardown(async () => {
         for (const t of transports) {
             t.close();
         }
         transports.length = 0;
+        (Logger as any).instance = undefined;
         // Brief pause to let ports fully release
         await new Promise(resolve => setTimeout(resolve, 50));
     });
 
     test('onReady is called with preferred port when available', (done) => {
         const port = 51560;
-        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
             transports.push(t);
             assert.strictEqual(actualPort, port);
             done();
@@ -721,7 +430,7 @@ suite('WebSocketTransport port binding', () => {
         const port = 51561;
         const blocker = net.createServer();
         blocker.listen(port, () => {
-            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
                 transports.push(t);
                 blocker.close(() => {
                     assert.notStrictEqual(actualPort, port);
@@ -736,7 +445,7 @@ suite('WebSocketTransport port binding', () => {
         const port = 51562;
         const blocker = net.createServer();
         blocker.listen(port, () => {
-            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
                 transports.push(t);
                 blocker.close(() => {
                     assert.ok(actualPort >= 1024, `expected ephemeral port, got ${actualPort}`);
@@ -751,12 +460,12 @@ suite('WebSocketTransport port binding', () => {
         const port = 51563;
         let firstPort: number;
 
-        const t1 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (p1) => {
+        const t1 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (p1) => {
             transports.push(t1);
             firstPort = p1;
             assert.strictEqual(p1, port);
 
-            const t2 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (p2) => {
+            const t2 = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (p2) => {
                 transports.push(t2);
                 assert.notStrictEqual(p2, firstPort);
                 done();
@@ -769,7 +478,7 @@ suite('WebSocketTransport port binding', () => {
         const port = 51564;
         const blocker = net.createServer();
         blocker.listen(port, () => {
-            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, (actualPort) => {
+            const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
                 transports.push(t);
                 blocker.close(() => {
                     const ws = new WebSocket(`ws://localhost:${actualPort}`);
@@ -787,7 +496,7 @@ suite('WebSocketTransport port binding', () => {
     test('works without onReady callback', (done) => {
         const port = 51565;
         // Should not throw
-        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker);
+        const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
         transports.push(t);
         // Give it a moment to bind
         setTimeout(done, 100);

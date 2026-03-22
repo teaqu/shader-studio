@@ -125,6 +125,8 @@ export class ShaderStudio {
         port,
         this.shaderProvider,
         this.glslFileTracker,
+        this.context,
+        this.context.extensionPath,
         (actualPort) => {
           this.webServer.setWebSocketPort(actualPort);
           this.logger.info(`WebSocket server ready on port ${actualPort}`);

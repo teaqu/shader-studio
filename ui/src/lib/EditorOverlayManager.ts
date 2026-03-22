@@ -88,13 +88,14 @@ export class EditorOverlayManager {
     if (bufferName === 'Image') {
       this.filePath = shaderPath;
       this.fileCode = this.shaderCode;
-      this.notifyStateChanged();
     } else {
       this.transport.postMessage({
         type: 'requestFileContents',
         payload: { bufferName, shaderPath },
       });
     }
+
+    this.notifyStateChanged();
   }
 
   async handleEditorCodeChange(code: string): Promise<void> {

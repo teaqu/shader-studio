@@ -224,6 +224,7 @@ suite('ShaderConfigProcessor Test Suite', () => {
         });
     });
 
+
     suite('loadAndProcessConfig - editor memory reading', () => {
         let fsReadFileSyncStub: sinon.SinonStub;
         let textDocumentsStub: sinon.SinonStub;

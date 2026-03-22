@@ -42,13 +42,10 @@ export class ShaderProvider {
     const code = editor.document.getText();
     const shaderPath = editor.document.uri.fsPath;
 
-    // Check if this file is a common buffer (referenced as common in any config)
-    // This check should happen BEFORE the mainImage check
-    if (this.isCommonBufferFile(shaderPath)) {
-      this.logger.debug(`common buffer file updated: ${shaderPath}. Updating previewed shaders that use it...`);
-      this.updatePreviewedShadersUsingCommonBuffer(shaderPath);
-      return;
-    }
+    // Clear stale persistent errors before re-evaluating the shader.
+    // This ensures "file not found" errors from a previous load don't survive
+    // after the file has been created.
+    this.messenger.getErrorHandler().clearPersistentErrors();
 
     // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
@@ -124,6 +121,9 @@ export class ShaderProvider {
       if (!fs.existsSync(shaderPath)) {
         return;
       }
+
+      // Clear stale persistent errors before re-evaluating
+      this.messenger.getErrorHandler().clearPersistentErrors();
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
@@ -378,76 +378,4 @@ export class ShaderProvider {
     return bufferPathMap;
   }
 
-  /**
-   * Check if the given file path is used as a common buffer in any currently active shader config
-   */
-  private isCommonBufferFile(shaderPath: string): boolean {
-    try {
-      // Check only currently active shaders
-      for (const activeShaderPath of this.activeShaders) {
-        const config = this.configProcessor.loadAndProcessConfig(activeShaderPath, {});
-        
-        // Check both "common" and "CommonBuffer" keys for backward compatibility
-        if (config?.passes?.common?.path === shaderPath) {
-          return true;
-        }
-      }
-    } catch (e) {
-      this.logger.warn('Failed to check for common buffer usage in active shaders');
-    }
-
-    return false;
-  }
-
-  /**
-   * Update only the currently active shaders that use the given common buffer
-   */
-  private async updatePreviewedShadersUsingCommonBuffer(commonBufferPath: string): Promise<void> {
-    for (const activeShaderPath of this.activeShaders) {
-      try {
-        const config = this.configProcessor.loadAndProcessConfig(activeShaderPath, {});
-        // Check if this active shader uses the commonBufferPath as common
-        if (config?.passes?.common?.path === commonBufferPath) {
-          // Collect buffer contents (including the updated common buffer)
-          const buffers: Record<string, string> = {};
-          this.configProcessor.processConfig(config, activeShaderPath, buffers);
-
-          // Read the main shader file directly to ensure we have the correct Image code
-          let imageCode = "";
-          try {
-            // For Image pass, the code is the main shader file itself
-            // Read the active shader file directly
-            const fs = require('fs');
-            imageCode = fs.readFileSync(activeShaderPath, 'utf8');
-          } catch (e) {
-            this.logger.warn(`Failed to read Image shader for ${activeShaderPath}: ${e}`);
-            imageCode = buffers.Image || "";
-          }
-
-          // Build path map for resource URIs
-          const pathMap = this.buildPathMap(config, activeShaderPath);
-          const bufferPathMap = this.buildBufferPathMap(config, activeShaderPath);
-
-          const message: ShaderSourceMessage = {
-            type: "shaderSource",
-            code: imageCode,
-            config,
-            path: activeShaderPath,
-            buffers,
-            pathMap,
-            bufferPathMap,
-          };
-
-          // Bundle script if configured
-          await this.bundleScript(config, activeShaderPath, message);
-
-          this.messenger.send(message);
-          this.startScriptPolling(config);
-          this.logger.debug(`Updated active shader: ${activeShaderPath}`);
-        }
-      } catch (e) {
-        this.logger.warn(`Failed to update active shader using common buffer: ${activeShaderPath}`);
-      }
-    }
-  }
 }

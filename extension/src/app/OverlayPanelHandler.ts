@@ -55,7 +55,7 @@ export class OverlayPanelHandler {
 
   public async handleRequestFileContents(
     payload: { bufferName: string; shaderPath: string },
-    panel: vscode.WebviewPanel,
+    respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
       const { bufferName, shaderPath: mainShaderPath } = payload;
@@ -82,7 +82,7 @@ export class OverlayPanelHandler {
 
       if (!fs.existsSync(bufferFilePath)) {
         this.logger.warn(`Buffer file not found: ${bufferFilePath}`);
-        panel.webview.postMessage({
+        respondFn({
           type: 'fileContents',
           payload: { code: '', path: bufferFilePath, bufferName },
         });
@@ -96,7 +96,7 @@ export class OverlayPanelHandler {
       );
       const code = openDoc ? openDoc.getText() : fs.readFileSync(bufferFilePath, 'utf-8');
 
-      panel.webview.postMessage({
+      respondFn({
         type: 'fileContents',
         payload: { code, path: bufferFilePath, bufferName },
       });

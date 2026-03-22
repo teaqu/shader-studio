@@ -169,6 +169,35 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('shader switching', () => {
+    it('should not carry over buffers from previous shader when new shader has no config', () => {
+      // Simulate first shader with multiple buffers
+      const firstConfig = createTestConfig();
+      firstConfig.passes.BufferA = { path: './a.glsl', inputs: {} };
+      firstConfig.passes.BufferB = { path: './b.glsl', inputs: {} };
+      configManager.setShaderPath('/shaders/first.glsl');
+      configManager.setConfig(firstConfig);
+
+      // Switch to a second shader with no config
+      configManager.setShaderPath('/shaders/second.glsl');
+      configManager.setConfig(null);
+
+      // Adding a buffer should start from a clean default config
+      const name = configManager.addBuffer();
+      const config = configManager.getConfig();
+
+      expect(name).toBe('BufferA');
+      expect(Object.keys(config!.passes)).toEqual(['Image', 'BufferA']);
+      expect(config!.passes.BufferA).toEqual({ path: '', inputs: {} });
+    });
+
+    it('setConfig(null) should clear existing config so getConfig returns null', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.setConfig(null);
+      expect(configManager.getConfig()).toBeNull();
+    });
+  });
+
   describe('addBuffer', () => {
     it('should add a buffer with empty path', () => {
       configManager.setConfig(createTestConfig());

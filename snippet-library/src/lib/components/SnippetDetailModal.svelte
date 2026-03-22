@@ -5,10 +5,11 @@
   import MonacoEditor from './MonacoEditor.svelte';
   import { stripSnippetPlaceholders } from '../preview/previewTemplates';
 
-  let { snippet, onClose, onInsert }: {
+  let { snippet, onClose, onInsert, onCreateScene }: {
     snippet: Snippet | null;
     onClose: () => void;
     onInsert: (snippet: Snippet) => void;
+    onCreateScene?: (snippet: Snippet) => void;
   } = $props();
 
   let codeCopied = $state(false);
@@ -188,6 +189,9 @@
 
       <div class="detail-actions">
         <button class="btn-insert" onclick={() => onInsert(snippet)}>Insert into Editor</button>
+        {#if onCreateScene}
+          <button class="btn-create-scene" onclick={() => onCreateScene(snippet)}>Create Scene</button>
+        {/if}
         <button class="btn-close" onclick={onClose}>Close</button>
       </div>
     </div>
