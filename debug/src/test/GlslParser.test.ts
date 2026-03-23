@@ -57,6 +57,31 @@ describe("GlslParser", () => {
       expect(result.start).toBe(0);
     });
 
+    it("should find mainImage when cursor is on the function declaration line", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 0);
+      expect(result.name).toBe("mainImage");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(2);
+    });
+
+    it("should find mainImage on declaration line when brace is on next line", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord)",
+        "{",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 0);
+      expect(result.name).toBe("mainImage");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(3);
+    });
+
     it("should find helper function when cursor is on its closing brace line", () => {
       const lines = [
         "float sphere(vec3 p, float r) {",

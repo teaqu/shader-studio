@@ -328,6 +328,16 @@ describe("CodeGenerator", () => {
       expect(result.args).toBe("uv, 0.5, vec3(0.5)");
     });
 
+    it("should handle qualified parameters and allocate temps for out/inout params", () => {
+      const lines = ["vec3 getPixel(in vec2 coord, float time, out vec3 tmp, inout float gain) {"];
+      const functionInfo: FunctionInfo = { name: "getPixel", start: 0, end: 2 };
+      const result = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+      expect(result.args).toBe("uv, 0.5, _dbgArg2, _dbgArg3");
+      expect(result.setup[0]).toContain("vec2 uv = fragCoord / iResolution.xy");
+      expect(result.setup).toContain("  vec3 _dbgArg2 = vec3(0.5);");
+      expect(result.setup).toContain("  float _dbgArg3 = 0.5;");
+    });
+
     it("should return empty for no-param functions", () => {
       const lines = ["float fn() {"];
       const functionInfo: FunctionInfo = { name: "fn", start: 0, end: 2 };
@@ -370,6 +380,57 @@ describe("CodeGenerator", () => {
       expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord)");
       // Should call sdf with default params
       expect(result).toContain("sdf(uv)");
+    });
+
+    it("should call helper functions with qualified parameters", () => {
+      const lines = [
+        "vec3 getPixel(in vec2 coord, float time) {",
+        "  vec3 color = vec3(coord, time);",
+        "  return color;",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "getPixel", start: 0, end: 3 };
+      const varInfo: VarInfo = { name: "_dbgReturn", type: "vec3" };
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 2, varInfo);
+
+      expect(result).toContain("vec2 uv = fragCoord / iResolution.xy;");
+      expect(result).toContain("vec3 result = getPixel(uv, 0.5);");
+    });
+
+    it("should pass temp variables for out parameters in helper function calls", () => {
+      const lines = [
+        "float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {",
+        "  p = ori + dir;",
+        "  return 1.0;",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "heightMapTracing", start: 0, end: 3 };
+      const varInfo: VarInfo = { name: "_dbgReturn", type: "float" };
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 2, varInfo);
+
+      expect(result).toContain("vec3 _dbgArg2 = vec3(0.5);");
+      expect(result).toContain("float result = heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
+    });
+
+    it("should capture non-return vars on return lines without rewriting earlier returns", () => {
+      const lines = [
+        "float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {",
+        "  if (true) {",
+        "    p = ori + dir;",
+        "    return 1.0;",
+        "  }",
+        "  return 2.0;",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "heightMapTracing", start: 0, end: 6 };
+      const varInfo: VarInfo = { name: "ori", type: "vec3" };
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 5, varInfo);
+
+      expect(result).toContain("vec3 _dbgCaptured;");
+      expect(result).toContain("_dbgCaptured = ori;");
+      expect(result).toContain("return 1.0;");
+      expect(result).toContain("heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
+      expect(result).toContain("fragColor = vec4(_dbgCaptured, 1.0)");
     });
   });
 

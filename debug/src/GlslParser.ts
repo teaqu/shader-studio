@@ -11,6 +11,41 @@ export interface VarInfo {
 
 export class GlslParser {
   static findEnclosingFunction(lines: string[], lineNum: number): FunctionInfo {
+    const functionDeclPattern = /(?:void|float|int|bool|vec2|vec3|vec4|mat2|mat3|mat4)\s+(\w+)\s*\(/;
+
+    const currentLine = lines[lineNum] ?? '';
+    const currentMatch = currentLine.match(functionDeclPattern);
+    if (currentMatch) {
+      const functionStart = lineNum;
+      let braceDepth = 0;
+      let functionEnd = -1;
+      let foundStart = false;
+
+      for (let i = functionStart; i < lines.length; i++) {
+        const strippedLine = lines[i].replace(/\/\/.*$/, '');
+        for (const char of strippedLine) {
+          if (char === '{') {
+            braceDepth++;
+            foundStart = true;
+          }
+          if (char === '}') {
+            braceDepth--;
+            if (foundStart && braceDepth === 0) {
+              functionEnd = i;
+              break;
+            }
+          }
+        }
+        if (functionEnd !== -1) break;
+      }
+
+      return {
+        name: currentMatch[1],
+        start: functionStart,
+        end: functionEnd
+      };
+    }
+
     // Walk backwards counting braces (// comments stripped).
     // { decrements depth, } increments depth.
     // When depth goes negative, we've just crossed a function's opening brace —
@@ -36,7 +71,7 @@ export class GlslParser {
 
       // Record when we've crossed the enclosing function's opening brace
       if (braceDepth < 0) {
-        const funcMatch = line.match(/(?:void|float|int|bool|vec2|vec3|vec4|mat2|mat3|mat4)\s+(\w+)\s*\(/);
+        const funcMatch = line.match(functionDeclPattern);
         if (funcMatch) {
           functionName = funcMatch[1];
           functionStart = i;

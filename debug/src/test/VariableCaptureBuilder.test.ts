@@ -32,6 +32,18 @@ const withLoop = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(acc);
 }`;
 
+const signatureBraceNextLine = `void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+const helperWithOutParam = `float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {
+  float tm = 0.0;
+  p = ori + dir * tm;
+  return tm;
+}`;
+
 describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
   it("should return all capturable vars in mainImage", () => {
     const vars = VariableCaptureBuilder.getAllInScopeVariables(simpleMainImage, 3);
@@ -72,6 +84,30 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n${decls}\n  fragColor = vec4(v0);\n}`;
     const vars = VariableCaptureBuilder.getAllInScopeVariables(shader, 20);
     expect(vars.length).toBeLessThanOrEqual(15);
+  });
+
+  it("should include mainImage parameters on the function declaration line", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(simpleMainImage, 0);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("fragColor");
+    expect(names).toContain("fragCoord");
+  });
+
+  it("should include parameters on the declaration line when brace is on next line", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(signatureBraceNextLine, 0);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("fragColor");
+    expect(names).toContain("fragCoord");
+  });
+
+  it("should include out parameters for helper functions when they are in scope", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(helperWithOutParam, 3);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("ori");
+    expect(names).toContain("dir");
+    expect(names).toContain("p");
+    expect(names).toContain("tm");
+    expect(names).toContain("_dbgReturn");
   });
 });
 
@@ -163,5 +199,25 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).not.toBeNull();
     expect(result).not.toContain("vec2(128.0, 72.0)");
     expect(result).toContain("_dbgCaptureCoord");
+  });
+
+  it("should generate capture shader for fragCoord on the function declaration line", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      signatureBraceNextLine, 0, "fragCoord", "vec2", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("fragColor = vec4(fragCoord, 0.0, 0.0);");
+  });
+
+  it("should generate capture shader for helper out parameters", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperWithOutParam, 3, "p", "vec3", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec3 _dbgCaptured;");
+    expect(result).toContain("_dbgCaptured = p;");
+    expect(result).toContain("vec3 _dbgArg2 = vec3(0.5);");
+    expect(result).toContain("heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
+    expect(result).toContain("fragColor = vec4(_dbgCaptured, 0.0);");
   });
 });

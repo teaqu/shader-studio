@@ -41,6 +41,7 @@
   $: isStepEnabled = debugState.isStepEnabled;
   $: stepEdge = debugState.stepEdge;
   $: debugError = debugState.debugError;
+  $: lineTooltipText = debugError || (debugState.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''));
   $: showParams = isInlineOn && isInFunction && ctx !== null;
   $: showLoops = isInlineOn && ctx !== null && ctx.loops.length > 0;
   $: hasContentAboveUniforms = (showParams && ctx && ctx.parameters.length > 0) || showLoops;
@@ -193,7 +194,19 @@
       <i class="codicon codicon-symbol-variable"></i>
     </button>
     {#if lineNum !== null}
-      <span class="header-info has-tooltip" class:error={debugError} class:has-line-content={!debugError && debugState.lineContent} data-tooltip={debugError || (debugState.lineContent ? debugState.lineContent.trim() : `Line ${lineNum}`)}>L{lineNum}</span>
+      <span class="line-tooltip-anchor">
+        <span
+          class="header-info"
+          class:error={debugError}
+          class:has-line-content={!debugError && debugState.lineContent}
+          data-tooltip={lineTooltipText}
+        >L{lineNum}</span>
+        <div
+          class="line-tooltip"
+          class:error={debugError}
+          class:has-line-content={!debugError && debugState.lineContent}
+        >{lineTooltipText}</div>
+      </span>
     {/if}
     {#if isInlineOn && ctx}
       <span class="header-info fn-name">{ctx.functionName}</span>
@@ -345,12 +358,42 @@
     position: relative;
   }
 
+  .line-tooltip-anchor {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .line-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    transform: translateY(6px);
+    padding: 4px 8px;
+    background: var(--vscode-editorHoverWidget-background, #2d2d30);
+    color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+    border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    border-radius: 3px;
+    font-size: 12px;
+    z-index: 100;
+    width: max-content;
+    max-width: 250px;
+    white-space: pre;
+    user-select: text;
+    cursor: text;
+    opacity: 0;
+    transition: opacity 0.15s ease-in;
+  }
+
+  .line-tooltip-anchor:hover .line-tooltip {
+    opacity: 1;
+  }
+
   .has-tooltip::after {
     content: attr(data-tooltip);
     position: absolute;
     top: 100%;
     left: 0;
-    margin-top: 6px;
+    transform: translateY(6px);
     padding: 4px 8px;
     background: var(--vscode-editorHoverWidget-background, #2d2d30);
     color: var(--vscode-editorHoverWidget-foreground, #cccccc);
@@ -359,7 +402,7 @@
     font-size: 12px;
     white-space: pre;
     z-index: 100;
-    pointer-events: none;
+    pointer-events: auto;
     opacity: 0;
     transition: opacity 0.15s ease-in;
     width: max-content;
@@ -377,8 +420,22 @@
     font-family: var(--vscode-editor-font-family, monospace);
   }
 
+  .line-tooltip.has-line-content {
+    white-space: pre-wrap;
+    max-width: 350px;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+
   /* Error tooltip - left-aligned from line number, wraps long messages */
   .header-info.error::after {
+    background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+    border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+    color: var(--vscode-errorForeground, #f44747);
+    white-space: pre-wrap;
+    max-width: 350px;
+  }
+
+  .line-tooltip.error {
     background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
     border-color: var(--vscode-inputValidation-errorBorder, #be1100);
     color: var(--vscode-errorForeground, #f44747);
