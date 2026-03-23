@@ -1,4 +1,14 @@
 <svg width="64" height="64" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="512,80 944,944 80,944" fill="none" stroke="currentColor" stroke-width="60" stroke-linejoin="round"/>
-  <line x1="296" y1="512" x2="512" y2="944" stroke="currentColor" stroke-width="60" stroke-linecap="round"/>
+  <!--
+    Single path, nonzero winding:
+    - Outer triangle (CW): fills everything
+    - Left hole (CCW): carves out lower-left inner region
+    - Right hole (CCW): carves out upper-right inner region
+    The diagonal strip between the two holes is naturally filled.
+  -->
+  <path fill="currentColor" d="
+    M512,2 L1001,979 L24,979 Z
+    M296,590 L137,909 L456,909 Z
+    M512,158 L335,512 L534,909 L888,909 Z
+  "/>
 </svg>

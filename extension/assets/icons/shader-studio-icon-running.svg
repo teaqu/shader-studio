@@ -1,5 +1,12 @@
 <svg width="64" height="64" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="80,944 296,512 512,944" fill="currentColor"/>
-  <polygon points="512,80 944,944 80,944" fill="none" stroke="currentColor" stroke-width="60" stroke-linejoin="round"/>
-  <line x1="296" y1="512" x2="512" y2="944" stroke="currentColor" stroke-width="60" stroke-linecap="round"/>
+  <!--
+    Single path, nonzero winding:
+    - Outer triangle (CW): fills everything
+    - Right hole only (CCW): carves out upper-right inner region
+    Left inner region is filled = active/running indicator
+  -->
+  <path fill="currentColor" d="
+    M512,2 L1001,979 L24,979 Z
+    M512,158 L335,512 L534,909 L888,909 Z
+  "/>
 </svg>
