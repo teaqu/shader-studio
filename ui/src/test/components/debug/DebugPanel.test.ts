@@ -472,6 +472,39 @@ describe('DebugPanel', () => {
     expect(lineInfo?.classList.contains('error')).toBe(false);
   });
 
+  it('does not show the line error tooltip when hovered directly without first hovering the line badge', async () => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ debugError: 'Some error' }),
+      getUniforms: mockGetUniforms,
+    });
+
+    const tooltip = container.querySelector('.line-tooltip') as HTMLElement;
+    expect(tooltip.classList.contains('visible')).toBe(false);
+
+    await fireEvent.mouseEnter(tooltip);
+    expect(tooltip.classList.contains('visible')).toBe(false);
+  });
+
+  it('keeps the line error tooltip visible when moving from the line badge onto the tooltip', async () => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ debugError: 'Some error' }),
+      getUniforms: mockGetUniforms,
+    });
+
+    const lineInfo = container.querySelector('.header-info') as HTMLElement;
+    const tooltip = container.querySelector('.line-tooltip') as HTMLElement;
+
+    await fireEvent.mouseEnter(lineInfo);
+    expect(tooltip.classList.contains('visible')).toBe(true);
+
+    await fireEvent.mouseEnter(tooltip);
+    await fireEvent.mouseLeave(lineInfo);
+    expect(tooltip.classList.contains('visible')).toBe(true);
+
+    await fireEvent.mouseLeave(tooltip);
+    expect(tooltip.classList.contains('visible')).toBe(false);
+  });
+
   it('loop rows show Iterations label', () => {
     const ctx = makeFunctionContext({
       loops: [

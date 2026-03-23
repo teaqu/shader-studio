@@ -1596,6 +1596,43 @@ describe('MenuBar Component', () => {
 
       expect(onTogglePause).toHaveBeenCalledOnce();
     });
+
+    it('should not show the pause error tooltip when hovered directly without first hovering the pause button', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Error message']
+        }
+      });
+
+      const tooltip = screen.getByText('Error message');
+      expect(tooltip).not.toHaveClass('visible');
+
+      await fireEvent.mouseEnter(tooltip);
+      expect(tooltip).not.toHaveClass('visible');
+    });
+
+    it('should keep the pause error tooltip visible when moving from the pause button onto the tooltip', async () => {
+      render(MenuBar, {
+        props: {
+          ...defaultProps,
+          errors: ['Error message']
+        }
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      const tooltip = screen.getByText('Error message');
+
+      await fireEvent.mouseEnter(pauseButton);
+      expect(tooltip).toHaveClass('visible');
+
+      await fireEvent.mouseEnter(tooltip);
+      await fireEvent.mouseLeave(pauseButton);
+      expect(tooltip).toHaveClass('visible');
+
+      await fireEvent.mouseLeave(tooltip);
+      expect(tooltip).not.toHaveClass('visible');
+    });
   });
 
   describe('No Shader Disabled State', () => {
