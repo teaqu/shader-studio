@@ -38,6 +38,8 @@
   let layoutReady = false;
   let programmaticRemoval = false;
   let lastPreviewAlone: boolean | null = null;
+  // Full layout snapshots saved before each panel removal — used to restore exact positions
+  const panelSnapshots = new Map<string, SerializedDockview>();
 
   function checkPreviewAlone() {
     if (!api) return;
@@ -276,17 +278,38 @@
     }
   }
 
+  // Try to restore a panel using a full-layout snapshot saved before its last removal.
+  // Returns true if the snapshot context matched and fromJSON was called to restore.
+  // Context matches when the currently-open panels == snapshot panels minus the panel being added.
+  function tryRestoreFromSnapshot(panelId: string): boolean {
+    if (!api) return false;
+    const snapshot = panelSnapshots.get(panelId);
+    if (!snapshot) return false;
+
+    const snapshotPanelIds = new Set(Object.keys(snapshot.panels ?? {}));
+    if (!snapshotPanelIds.has(panelId)) return false;
+
+    const currentIds = new Set(api.panels.map((p) => p.id));
+    const snapshotOtherIds = new Set(snapshotPanelIds);
+    snapshotOtherIds.delete(panelId);
+
+    if (snapshotOtherIds.size !== currentIds.size) return false;
+    if (![...snapshotOtherIds].every((id) => currentIds.has(id))) return false;
+
+    restoreFromData(snapshot);
+    return true;
+  }
+
   function addDebugPanel() {
     if (!api || api.getPanel("debug")) return;
+    if (tryRestoreFromSnapshot("debug")) return;
+
     api.addPanel({
       id: "debug",
       component: "debug",
       title: "Debug",
-      position: {
-        referencePanel: "preview",
-        direction: "below",
-      },
-      initialHeight: 200,
+      position: { referencePanel: "preview", direction: "below" },
+      initialHeight: 350,
     });
   }
 
@@ -294,6 +317,7 @@
     if (!api) return;
     const panel = api.getPanel("debug");
     if (panel) {
+      panelSnapshots.set("debug", api.toJSON());
       programmaticRemoval = true;
       api.removePanel(panel);
       programmaticRemoval = false;
@@ -302,36 +326,22 @@
 
   function addConfigPanel() {
     if (!api || api.getPanel("config")) return;
-    // Place config alongside debug if debug exists, otherwise below preview
-    const debugPanel = api.getPanel("debug");
-    if (debugPanel) {
-      api.addPanel({
-        id: "config",
-        component: "config",
-        title: "Config",
-        position: {
-          referencePanel: "debug",
-          direction: "within",
-        },
-      });
-    } else {
-      api.addPanel({
-        id: "config",
-        component: "config",
-        title: "Config",
-        position: {
-          referencePanel: "preview",
-          direction: "below",
-        },
-        initialHeight: 250,
-      });
-    }
+    if (tryRestoreFromSnapshot("config")) return;
+
+    api.addPanel({
+      id: "config",
+      component: "config",
+      title: "Config",
+      position: { referencePanel: "preview", direction: "below" },
+      initialHeight: 250,
+    });
   }
 
   function removeConfigPanel() {
     if (!api) return;
     const panel = api.getPanel("config");
     if (panel) {
+      panelSnapshots.set("config", api.toJSON());
       programmaticRemoval = true;
       api.removePanel(panel);
       programmaticRemoval = false;
@@ -340,38 +350,22 @@
 
   function addPerformancePanel() {
     if (!api || api.getPanel("performance")) return;
-    // Tab alongside debug/config if either exists, otherwise below preview
-    const debugPanel = api.getPanel("debug");
-    const configPanel = api.getPanel("config");
-    const siblingPanel = debugPanel || configPanel;
-    if (siblingPanel) {
-      api.addPanel({
-        id: "performance",
-        component: "performance",
-        title: "Frame Times",
-        position: {
-          referencePanel: siblingPanel.id,
-          direction: "within",
-        },
-      });
-    } else {
-      api.addPanel({
-        id: "performance",
-        component: "performance",
-        title: "Frame Times",
-        position: {
-          referencePanel: "preview",
-          direction: "below",
-        },
-        initialHeight: 200,
-      });
-    }
+    if (tryRestoreFromSnapshot("performance")) return;
+
+    api.addPanel({
+      id: "performance",
+      component: "performance",
+      title: "Frame Times",
+      position: { referencePanel: "preview", direction: "below" },
+      initialHeight: 200,
+    });
   }
 
   function removePerformancePanel() {
     if (!api) return;
     const panel = api.getPanel("performance");
     if (panel) {
+      panelSnapshots.set("performance", api.toJSON());
       programmaticRemoval = true;
       api.removePanel(panel);
       programmaticRemoval = false;
@@ -391,6 +385,7 @@
 
   function resetLayout() {
     if (!api) return;
+    panelSnapshots.clear();
     layoutStore.clear();
     if (transport) {
       transport.postMessage({ type: "saveLayout", payload: null });
@@ -421,10 +416,13 @@
     if (!api) return;
     try {
       console.log("[DockviewLayout] restoreFromData called, panels:", JSON.stringify(data?.panels ?? {}));
+      programmaticRemoval = true;
       api.fromJSON(data);
+      programmaticRemoval = false;
       console.log("[DockviewLayout] fromJSON succeeded, total panels:", api.panels.length);
       layoutReady = true;
     } catch (e) {
+      programmaticRemoval = false;
       console.warn("[DockviewLayout] fromJSON FAILED, falling back to default:", e);
       api.clear();
       createDefaultLayout();
