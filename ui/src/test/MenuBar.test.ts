@@ -354,11 +354,12 @@ describe('MenuBar Component', () => {
 
   describe('Resolution Menu', () => {
     it('should show resolution menu when resolution button is clicked', async () => {
-      render(MenuBar, { props: defaultProps });
+      const { container } = render(MenuBar, { props: defaultProps });
       
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
       
+      expect(container.querySelector('.resolution-menu')).toBeInTheDocument();
       expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
       expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
       expect(screen.getByText('Zoom')).toBeInTheDocument();
@@ -747,11 +748,12 @@ describe('MenuBar Component', () => {
 
   describe('FPS Menu', () => {
     it('should show FPS menu when FPS button is clicked', async () => {
-      render(MenuBar, { props: defaultProps });
+      const { container } = render(MenuBar, { props: defaultProps });
 
       const fpsButton = screen.getByLabelText('Change FPS limit');
       await fireEvent.click(fpsButton);
 
+      expect(container.querySelector('.fps-menu')).toBeInTheDocument();
       expect(screen.getByText('Frame Rate Limit')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '30 FPS' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '60 FPS' })).toBeInTheDocument();
