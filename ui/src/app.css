@@ -175,12 +175,13 @@ canvas {
   background-color: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground);
   padding: 0.4rem 1rem;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.8rem;
   border-top: 1px solid var(--vscode-panel-border);
-  height: 30px;
+  min-height: 30px;
+  height: auto;
   flex-shrink: 0;
   position: relative;
   z-index: 1300;
@@ -191,6 +192,19 @@ canvas {
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  min-width: 0;
+}
+
+.left-group {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.right-group {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  min-width: max-content;
 }
 
 .menu-title {
@@ -219,6 +233,21 @@ canvas {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.menu-bar .toolbar-icon-button {
+  padding: 0.2rem 0.45rem;
+  min-width: 28px;
+}
+
+.menu-bar button,
+.menu-bar .options-menu-button,
+.menu-bar .time-button,
+.menu-bar .fps-button,
+.menu-bar .resolution-button {
+  min-height: 24px;
 }
 
 .menu-bar button:hover {
@@ -248,7 +277,9 @@ canvas {
 
 .pause-button-container {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .error-tooltip {
@@ -337,6 +368,8 @@ canvas {
 
 .resolution-menu-container {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .menu-bar .resolution-button {
@@ -346,7 +379,11 @@ canvas {
   padding: 0.2rem 0.6rem;
   border-radius: 4px;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--vscode-editor-foreground);
   font-size: var(--vscode-font-size, 13px) !important;
   font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
@@ -679,6 +716,10 @@ canvas {
 /* Options Menu Styles */
 .options-menu-container {
   position: relative;
+  flex: 0 0 auto;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .options-menu-button {
@@ -691,6 +732,8 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  min-width: 24px;
 }
 
 .options-menu-button:hover {
@@ -784,32 +827,113 @@ canvas {
   display: none !important;
 }
 
-@container (max-width: 610px) {
+@container (max-width: 760px) {
+  .menu-bar {
+    padding: 0.35rem 0.8rem;
+    gap: 0.65rem;
+  }
+
+  .left-group,
+  .right-group {
+    gap: 0.6rem;
+  }
+
+  .menu-bar button,
+  .menu-bar .options-menu-button,
+  .menu-bar .time-button,
+  .menu-bar .fps-button,
+  .menu-bar .resolution-button {
+    padding: 0.25rem 0.5rem;
+    min-height: 23px;
+  }
+
+  .menu-bar .toolbar-icon-button {
+    padding: 0.18rem 0.38rem;
+    min-width: 26px;
+  }
+}
+
+@container (max-width: 620px) {
+  .menu-bar {
+    padding: 0.3rem 0.6rem;
+    gap: 0.45rem;
+  }
+
+  .left-group,
+  .right-group {
+    gap: 0.35rem;
+  }
+
+  .menu-title,
+  .menu-bar .time-button,
+  .menu-bar .fps-button,
+  .menu-bar .resolution-button {
+    font-size: 12px !important;
+  }
+
+  .menu-bar .resolution-button {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-bar button,
+  .menu-bar .options-menu-button,
+  .menu-bar .time-button,
+  .menu-bar .fps-button,
+  .menu-bar .resolution-button {
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+    min-height: 21px;
+  }
+
+  .menu-bar .toolbar-icon-button {
+    padding: 0.12rem 0.28rem;
+    min-width: 24px;
+  }
+}
+
+@container (max-width: 500px) {
+  .menu-bar {
+    gap: 0.3rem;
+  }
+
+  .left-group,
+  .right-group {
+    gap: 0.15rem;
+  }
+
+  .menu-bar .resolution-button {
+    max-width: 88px;
+  }
+}
+
+@container (max-width: 430px) {
   .collapse-debug { display: none !important; }
   .show-debug { display: flex !important; }
 }
 
-@container (max-width: 595px) {
+@container (max-width: 410px) {
   .collapse-editor { display: none !important; }
   .show-editor { display: flex !important; }
 }
 
-@container (max-width: 580px) {
+@container (max-width: 390px) {
   .collapse-config { display: none !important; }
   .show-config { display: flex !important; }
 }
 
-@container (max-width: 570px) {
+@container (max-width: 370px) {
   .collapse-record { display: none !important; }
   .show-record { display: flex !important; }
 }
 
-@container (max-width: 510px) {
+@container (max-width: 340px) {
   .collapse-lock { display: none !important; }
   .show-lock { display: flex !important; }
 }
 
-@container (max-width: 390px) {
+@container (max-width: 310px) {
   .collapse-inspector { display: none !important; }
   .show-inspector { display: flex !important; }
 }
@@ -817,6 +941,7 @@ canvas {
 /* Time Menu Styles */
 .time-menu-container {
   position: relative;
+  flex: 0 0 auto;
 }
 
 .menu-bar .time-button {
@@ -846,6 +971,7 @@ canvas {
 
 .fps-menu-container {
   position: relative;
+  flex: 0 0 auto;
 }
 
 .menu-bar .fps-button {

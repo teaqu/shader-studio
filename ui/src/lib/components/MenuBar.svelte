@@ -366,7 +366,7 @@
   <div class="left-group">
     {#if compileMode === "manual"}
       <button
-        class="compile-now-button"
+        class="compile-now-button toolbar-icon-button"
         on:click={onManualCompile}
         aria-label="Compile shader"
         disabled={!hasShader}
@@ -375,11 +375,12 @@
         <i class="codicon codicon-run-all"></i>
       </button>
     {/if}
-    <button on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
+    <button class="toolbar-icon-button" on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
       <i class="codicon codicon-debug-restart"></i>
     </button>
     <div class="pause-button-container">
       <button
+        class="toolbar-icon-button"
         on:click={onTogglePause}
         aria-label="Toggle pause"
         class:error={hasErrors}
@@ -577,7 +578,7 @@
   </div>
   <div class="right-group">
     <button
-      class="collapse-debug"
+      class="collapse-debug toolbar-icon-button"
       on:click={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
@@ -589,7 +590,7 @@
       <i class="codicon codicon-bug"></i>
     </button>
     <button
-      class="collapse-editor"
+      class="collapse-editor toolbar-icon-button"
       on:click={onToggleEditorOverlay}
       aria-label="Toggle editor overlay"
       class:active={isEditorOverlayVisible}
@@ -599,7 +600,7 @@
       <i class="codicon codicon-code"></i>
     </button>
     <button
-      class="collapse-config"
+      class="collapse-config toolbar-icon-button"
       on:click={onToggleConfigPanel}
       aria-label="Toggle config panel"
       class:active={isConfigPanelVisible}
@@ -620,7 +621,7 @@
       {onRecord}
       {onCancel}
     />
-    <button class="collapse-lock" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
+    <button class="collapse-lock toolbar-icon-button" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         <i class="codicon codicon-lock"></i>
       {:else}
