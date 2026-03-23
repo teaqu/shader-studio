@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
+import { TabGroupResolver } from "./TabGroupResolver";
 
 interface SnippetEntry {
     prefix: string;
@@ -34,9 +35,11 @@ export class SnippetLibraryProvider {
     private panel: vscode.WebviewPanel | undefined;
     private lastActiveEditor: vscode.TextEditor | undefined;
     private editorChangeDisposable: vscode.Disposable | undefined;
+    private tabGroupResolver: TabGroupResolver;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
+        this.tabGroupResolver = new TabGroupResolver();
 
         // Track the last active text editor so we can insert into it
         // even when the snippet library panel has focus
@@ -47,6 +50,7 @@ export class SnippetLibraryProvider {
             }
         });
         context.subscriptions.push(this.editorChangeDisposable);
+        context.subscriptions.push(this.tabGroupResolver);
     }
 
     public static register(
@@ -65,15 +69,17 @@ export class SnippetLibraryProvider {
     }
 
     public show(): void {
+        const targetColumn = this.getTargetColumn();
+
         if (this.panel) {
-            this.panel.reveal(vscode.ViewColumn.Active);
+            this.panel.reveal(targetColumn);
             return;
         }
 
         this.panel = vscode.window.createWebviewPanel(
             "shader-studio.snippetLibrary",
             "Snippet Library",
-            vscode.ViewColumn.Active,
+            targetColumn,
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
@@ -142,6 +148,14 @@ export class SnippetLibraryProvider {
         });
 
         this.panel.webview.html = this.getHtmlForWebview(this.panel.webview);
+    }
+
+    private getTargetColumn(): vscode.ViewColumn {
+        return this.tabGroupResolver.findColumnForExtensionTab(
+            ["shader-studio"],
+            ["Shader Studio"],
+            vscode.ViewColumn.One,
+        );
     }
 
     private async sendSnippets(): Promise<void> {

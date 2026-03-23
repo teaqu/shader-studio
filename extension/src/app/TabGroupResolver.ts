@@ -32,6 +32,15 @@ export class TabGroupResolver {
         return this.resolveColumn(groups, this.lastActiveEditorColumn);
     }
 
+    public findColumnForExtensionTab(
+        viewTypes: readonly string[],
+        labels: readonly string[],
+        fallback: vscode.ViewColumn,
+    ): vscode.ViewColumn {
+        const groups = vscode.window.tabGroups.all as readonly TabGroupInfo[];
+        return this.resolveExtensionTabColumn(groups, viewTypes, labels, fallback);
+    }
+
     /**
      * Pure logic extracted for testability.
      */
@@ -54,6 +63,25 @@ export class TabGroupResolver {
         }
 
         return eligible[0].viewColumn;
+    }
+
+    public resolveExtensionTabColumn(
+        groups: readonly TabGroupInfo[],
+        viewTypes: readonly string[],
+        labels: readonly string[],
+        fallback: vscode.ViewColumn,
+    ): vscode.ViewColumn {
+        const match = groups.find((group) =>
+            group.tabs.some((tab) => {
+                const tabViewType = (tab.input as any)?.viewType;
+                return (
+                    (typeof tabViewType === "string" && viewTypes.includes(tabViewType)) ||
+                    labels.includes(tab.label)
+                );
+            }),
+        );
+
+        return match?.viewColumn ?? fallback;
     }
 
     /**

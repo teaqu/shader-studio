@@ -27,7 +27,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
     });
 
     suite('Panel View Column', () => {
-        test('should open panel in the active view column', () => {
+        test('should open panel in the shader studio view column when available', () => {
             const mockWebview = {
                 html: '',
                 onDidReceiveMessage: sandbox.stub(),
@@ -40,6 +40,14 @@ suite('SnippetLibraryProvider Test Suite', () => {
                 viewColumn: vscode.ViewColumn.Two,
             };
 
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [
+                    {
+                        viewColumn: vscode.ViewColumn.Two,
+                        tabs: [{ label: 'Shader Studio', input: { viewType: 'shader-studio' } }],
+                    },
+                ],
+            });
             const createPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel as any);
 
             const provider = new SnippetLibraryProvider(mockContext);
@@ -48,13 +56,47 @@ suite('SnippetLibraryProvider Test Suite', () => {
             assert.ok(createPanelStub.calledOnce, 'createWebviewPanel should be called');
             assert.strictEqual(
                 createPanelStub.firstCall.args[2],
-                vscode.ViewColumn.Active,
-                'should open in ViewColumn.Active'
+                vscode.ViewColumn.Two,
+                'should open in Shader Studio view column'
             );
         });
 
-        test('should reveal existing panel in the active view column', () => {
+        test('should fall back to ViewColumn.One when shader studio is not open', () => {
+            const mockWebview = {
+                html: '',
+                onDidReceiveMessage: sandbox.stub(),
+                asWebviewUri: sandbox.stub().callsFake((uri: vscode.Uri) => uri),
+                cspSource: 'fake-csp',
+            };
+            const mockPanel = {
+                webview: mockWebview,
+                onDidDispose: sandbox.stub(),
+                viewColumn: vscode.ViewColumn.One,
+            };
+
+            sandbox.stub(vscode.window, 'tabGroups').value({ all: [] });
+            const createPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel as any);
+
+            const provider = new SnippetLibraryProvider(mockContext);
+            provider.show();
+
+            assert.strictEqual(
+                createPanelStub.firstCall.args[2],
+                vscode.ViewColumn.One,
+                'should fall back to ViewColumn.One'
+            );
+        });
+
+        test('should reveal existing panel in the shader studio view column', () => {
             const revealStub = sandbox.stub();
+            sandbox.stub(vscode.window, 'tabGroups').value({
+                all: [
+                    {
+                        viewColumn: vscode.ViewColumn.Three,
+                        tabs: [{ label: 'Shader Studio', input: { viewType: 'shader-studio' } }],
+                    },
+                ],
+            });
             const provider = new SnippetLibraryProvider(mockContext);
             (provider as any).panel = { reveal: revealStub };
 
@@ -63,8 +105,8 @@ suite('SnippetLibraryProvider Test Suite', () => {
             assert.ok(revealStub.calledOnce, 'reveal should be called');
             assert.strictEqual(
                 revealStub.firstCall.args[0],
-                vscode.ViewColumn.Active,
-                'should reveal in ViewColumn.Active'
+                vscode.ViewColumn.Three,
+                'should reveal in Shader Studio view column'
             );
         });
     });
