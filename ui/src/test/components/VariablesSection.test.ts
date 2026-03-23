@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import VariablesSection from '../../lib/components/debug/VariablesSection.svelte';
 import type { RefreshMode, CapturedVariable, VariableCaptureManager } from '../../lib/VariableCaptureManager';
 
@@ -20,6 +21,7 @@ const BASE_PROPS = {
   capturedVariables: [] as CapturedVariable[],
   isPixelMode: false,
   isLoading: false,
+  captureError: null as string | null,
   onExpandToggle: () => {},
   variableCaptureManager: createMockVariableCaptureManager(),
   sampleSize: 32,
@@ -71,6 +73,15 @@ function getButtonByText(container: HTMLElement, text: string): HTMLElement | un
 }
 
 describe('VariablesSection', () => {
+  it('shows capture errors instead of the loading state when capture fails', () => {
+    const { getByText, queryByText } = render(VariablesSection, {
+      props: { ...BASE_PROPS, isLoading: true, captureError: 'Failed to capture variables' },
+    });
+
+    expect(getByText('Failed to capture variables')).toBeInTheDocument();
+    expect(queryByText('Capturing...')).not.toBeInTheDocument();
+  });
+
   // ----------------------------------------------------------------
   // Sample size buttons
   // ----------------------------------------------------------------

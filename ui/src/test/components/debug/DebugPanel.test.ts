@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { render, fireEvent, screen } from '@testing-library/svelte';
 import { describe, it, expect, vi } from 'vitest';
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
 import type { ShaderDebugState, DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
 import type { PassUniforms } from '../../../../../rendering/src/models/PassUniforms';
@@ -97,6 +98,21 @@ describe('DebugPanel', () => {
 
     expect(inspectorBtn).toBeTruthy();
     expect(inlineBtn).toBeTruthy();
+  });
+
+  it('uses explicit variable capture loading and error state', () => {
+    const { getByText, queryByText } = render(DebugPanel, {
+      debugState: makeDebugState({
+        isVariableInspectorEnabled: true,
+        capturedVariables: [],
+      }),
+      getUniforms: mockGetUniforms,
+      isVariableCaptureLoading: false,
+      variableCaptureError: 'Failed to capture variables',
+    });
+
+    expect(getByText('Failed to capture variables')).toBeInTheDocument();
+    expect(queryByText('Capturing...')).not.toBeInTheDocument();
   });
 
   it('shows line number and function name when inline rendering is on and context exists', () => {

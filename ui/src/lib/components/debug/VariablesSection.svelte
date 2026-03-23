@@ -5,6 +5,7 @@
   export let capturedVariables: CapturedVariable[] = [];
   export let isPixelMode: boolean = false;
   export let isLoading: boolean = false;
+  export let captureError: string | null = null;
   export let onExpandToggle: (varName: string) => void = () => {};
   export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
   export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
@@ -107,7 +108,11 @@
     </div>
   </div>
 
-  {#if isLoading && capturedVariables.length === 0}
+  {#if captureError && capturedVariables.length === 0}
+    <div class="error-row">
+      <span class="error-text">{captureError}</span>
+    </div>
+  {:else if isLoading && capturedVariables.length === 0}
     <div class="loading-row">
       <span class="loading-text">Capturing...</span>
     </div>
@@ -214,7 +219,8 @@
   }
 
   .loading-row,
-  .empty-row {
+  .empty-row,
+  .error-row {
     padding: 2px 0;
   }
 
@@ -223,5 +229,11 @@
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
     font-style: italic;
+  }
+
+  .error-text {
+    font-size: 12px;
+    color: var(--vscode-inputValidation-errorForeground, #f48771);
+    white-space: pre-wrap;
   }
 </style>

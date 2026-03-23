@@ -4,6 +4,7 @@ import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilde
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 
 const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
+const MAX_EMPTY_COLLECTION_FRAMES = 120;
 
 export interface ColorFrequency {
   r: number; g: number; b: number;  // 0–1 range
@@ -148,6 +149,7 @@ export class VariableCaptureManager {
   // Accumulate partial PBO results until all fences have signaled
   private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
   private expectedCount = 0;
+  private emptyCollectFrames = 0;
   private declaredOrder: string[] = [];
   private varDeclarationLines: Map<string, number> = new Map();
   private lastGridWidth = 32;
@@ -159,6 +161,8 @@ export class VariableCaptureManager {
   private _pixelRefreshMode: RefreshMode = 'polling';
   private _pixelPollingMs = 500;
   private onSampleSettingsChanged: (() => void) | null = null;
+  private onLoadingStateChanged: ((isLoading: boolean) => void) | null = null;
+  private onErrorChanged: ((error: string | null) => void) | null = null;
 
   constructor(
     private renderingEngine: RenderingEngine,
@@ -173,6 +177,14 @@ export class VariableCaptureManager {
 
   setSampleSettingsCallback(callback: () => void): void {
     this.onSampleSettingsChanged = callback;
+  }
+
+  setLoadingStateCallback(callback: (isLoading: boolean) => void): void {
+    this.onLoadingStateChanged = callback;
+  }
+
+  setErrorCallback(callback: (error: string | null) => void): void {
+    this.onErrorChanged = callback;
   }
 
   changeSampleSize(size: number): void {
@@ -236,6 +248,7 @@ export class VariableCaptureManager {
   dispose(): void {
     this.disposed = true;
     this.loopRunning = false;
+    this.emitLoadingState(false);
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
@@ -258,11 +271,13 @@ export class VariableCaptureManager {
     if (this.collecting && this.capturer) {
       const results = this.capturer.collectResults();
       if (results.length > 0) {
+        this.emptyCollectFrames = 0;
         this.pendingResults.push(...results);
         if (this.pendingResults.length >= this.expectedCount) {
           this.decodeAndUpdate(this.pendingResults);
-          this.pendingResults = [];
         }
+      } else if (this.noteEmptyCollectFrame()) {
+        this.finishCollection([]);
       }
     }
 
@@ -303,9 +318,14 @@ export class VariableCaptureManager {
       try {
         this.capturer = this.renderingEngine.createVariableCapturer();
       } catch {
+        this.emitErrorState('Failed to initialize variable capture');
         return;
       }
     }
+
+    this.capturer.setCompileContext(this.renderingEngine.getVariableCaptureCompileContext(params.code));
+    this.capturer.clearLastError();
+    this.emitErrorState(null);
 
     const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
 
@@ -320,7 +340,8 @@ export class VariableCaptureManager {
     }
 
     if (vars.length === 0) {
-      this.onUpdate([]);
+      this.emitErrorState(null);
+      this.finishCollection([]);
       return;
     }
 
@@ -354,7 +375,11 @@ export class VariableCaptureManager {
       }
     }
 
-    if (captures.length === 0) { return; }
+    if (captures.length === 0) {
+      this.emitErrorState(null);
+      this.finishCollection([]);
+      return;
+    }
 
     const uniforms = this.renderingEngine.getCaptureUniforms();
 
@@ -367,6 +392,7 @@ export class VariableCaptureManager {
     this.declaredOrder = captures.map(c => c.varName);
     this.lastGridWidth = gridWidth;
     this.lastGridHeight = gridHeight;
+    this.emptyCollectFrames = 0;
 
     let issued: number;
     if (isPixelMode) {
@@ -382,9 +408,14 @@ export class VariableCaptureManager {
       issued = this.capturer.issueCaptureGrid(captures, uniforms, gridWidth, gridHeight);
     }
 
-    if (issued === 0) { return; }
+    if (issued === 0) {
+      this.emitErrorState('Failed to capture variables');
+      this.finishCollection([]);
+      return;
+    }
     this.expectedCount = issued;
     this.collecting = true;
+    this.emitLoadingState(true);
 
     // Store mode context for decoding
     (this as any)._lastCaptureMode = isPixelMode ? 'pixel' : 'grid';
@@ -485,8 +516,31 @@ export class VariableCaptureManager {
         const bi = this.declaredOrder.indexOf(b.varName);
         return ai - bi;
       });
-      this.collecting = false;
-      this.onUpdate(capturedVars);
     }
+
+    this.emitErrorState(null);
+    this.finishCollection(capturedVars);
+  }
+
+  private noteEmptyCollectFrame(): boolean {
+    this.emptyCollectFrames += 1;
+    return this.emptyCollectFrames >= MAX_EMPTY_COLLECTION_FRAMES;
+  }
+
+  private finishCollection(vars: CapturedVariable[]): void {
+    this.collecting = false;
+    this.pendingResults = [];
+    this.expectedCount = 0;
+    this.emptyCollectFrames = 0;
+    this.emitLoadingState(false);
+    this.onUpdate(vars);
+  }
+
+  private emitLoadingState(isLoading: boolean): void {
+    this.onLoadingStateChanged?.(isLoading);
+  }
+
+  private emitErrorState(error: string | null): void {
+    this.onErrorChanged?.(error);
   }
 }

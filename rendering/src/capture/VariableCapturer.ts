@@ -1,5 +1,6 @@
-import type { ShaderCompiler } from '../ShaderCompiler';
+import type { ShaderCompiler, ChannelSamplerType } from '../ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
+import type { SlotAssignment } from '../util/InputSlotAssigner';
 
 export interface CaptureUniforms {
   time: number;
@@ -17,6 +18,12 @@ export interface CaptureCustomUniform {
   name: string;
   type: string;
   value: number | number[] | boolean;
+}
+
+export interface CaptureCompileContext {
+  commonCode?: string;
+  slotAssignments?: SlotAssignment[];
+  channelTypes?: ChannelSamplerType[];
 }
 
 interface PendingCapture {
@@ -51,14 +58,38 @@ export class VariableCapturer {
   // Custom uniform state for capture shaders
   private customUniformDeclarations = '';
   private customUniforms: CaptureCustomUniform[] = [];
+  private compileContext: CaptureCompileContext = {};
+  private lastError: string | null = null;
 
   constructor(
     private gl: WebGL2RenderingContext,
     private shaderCompiler: ShaderCompiler,
+    compileContext: CaptureCompileContext = {},
   ) {
+    this.compileContext = compileContext;
     this.initQuad();
     // Enable float texture rendering
     this.gl.getExtension('EXT_color_buffer_float');
+  }
+
+  setCompileContext(context: CaptureCompileContext): void {
+    const nextCommonCode = context.commonCode || '';
+    const nextAssignments = JSON.stringify(context.slotAssignments || []);
+    const nextTypes = JSON.stringify(context.channelTypes || []);
+    const currentCommonCode = this.compileContext.commonCode || '';
+    const currentAssignments = JSON.stringify(this.compileContext.slotAssignments || []);
+    const currentTypes = JSON.stringify(this.compileContext.channelTypes || []);
+
+    if (
+      nextCommonCode !== currentCommonCode ||
+      nextAssignments !== currentAssignments ||
+      nextTypes !== currentTypes
+    ) {
+      this.shaderCache.clear();
+      this.shaderCacheOrder = [];
+    }
+
+    this.compileContext = context;
   }
 
   /**
@@ -74,6 +105,14 @@ export class VariableCapturer {
     this.customUniforms = uniforms;
   }
 
+  clearLastError(): void {
+    this.lastError = null;
+  }
+
+  getLastError(): string | null {
+    return this.lastError;
+  }
+
   /**
    * Issue N async captures (one per variable) at a specific pixel. Returns immediately.
    * Call collectResults() on next frame to get decoded values.
@@ -86,6 +125,7 @@ export class VariableCapturer {
     canvasHeight: number,
     uniforms: CaptureUniforms,
   ): number {
+    this.clearLastError();
     if (captures.length === 0) return 0;
 
     const fbo = this.createFloatFBO(1, 1);
@@ -96,40 +136,46 @@ export class VariableCapturer {
     let issued = 0;
 
     for (const cap of captures) {
-      const piShader = this.getOrCompileShader(cap.captureShader);
-      if (!piShader || !piShader.mProgram) continue;
+      try {
+        const piShader = this.getOrCompileShader(cap.captureShader);
+        if (!piShader || !piShader.mProgram) continue;
 
-      this.renderCaptureShader(
-        piShader,
-        fbo,
-        1,
-        1,
-        uniforms,
-        canvasWidth,
-        canvasHeight,
-        { x: pixelX + 0.5, y: captureY + 0.5 }, // pass coord for _dbgCaptureCoord
-      );
+        this.renderCaptureShader(
+          piShader,
+          fbo,
+          1,
+          1,
+          uniforms,
+          canvasWidth,
+          canvasHeight,
+          { x: pixelX + 0.5, y: captureY + 0.5 }, // pass coord for _dbgCaptureCoord
+        );
 
-      const dataSize = 1 * 1 * RGBA_CHANNELS * FLOAT_BYTES; // 16 bytes
-      const pbo = this.allocatePBO(dataSize);
+        const dataSize = 1 * 1 * RGBA_CHANNELS * FLOAT_BYTES; // 16 bytes
+        const pbo = this.allocatePBO(dataSize);
 
-      this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, pbo);
-      this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, fbo);
-      this.gl.readPixels(0, 0, 1, 1, this.gl.RGBA, this.gl.FLOAT, 0);
-      this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, null);
-      this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, null);
+        this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, pbo);
+        this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, fbo);
+        this.gl.readPixels(0, 0, 1, 1, this.gl.RGBA, this.gl.FLOAT, 0);
+        this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, null);
+        this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, null);
 
-      const fence = this.gl.fenceSync(this.gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
-      this.gl.flush();
+        const fence = this.gl.fenceSync(this.gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
+        this.gl.flush();
 
-      this.pendingCaptures.push({
-        varName: cap.varName,
-        varType: cap.varType,
-        pbo,
-        fence,
-        dataSize,
-      });
-      issued++;
+        this.pendingCaptures.push({
+          varName: cap.varName,
+          varType: cap.varType,
+          pbo,
+          fence,
+          dataSize,
+        });
+        issued++;
+      } catch (error) {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        console.error(`[VariableCapture] Failed pixel capture for ${cap.varName}:`, error);
+        continue;
+      }
     }
 
     this.gl.deleteFramebuffer(fbo);
@@ -145,6 +191,7 @@ export class VariableCapturer {
     gridWidth: number,
     gridHeight: number,
   ): number {
+    this.clearLastError();
     if (captures.length === 0) return 0;
 
     const fbo = this.createFloatFBO(gridWidth, gridHeight);
@@ -152,40 +199,46 @@ export class VariableCapturer {
     let issued = 0;
 
     for (const cap of captures) {
-      const piShader = this.getOrCompileShader(cap.captureShader);
-      if (!piShader || !piShader.mProgram) continue;
+      try {
+        const piShader = this.getOrCompileShader(cap.captureShader);
+        if (!piShader || !piShader.mProgram) continue;
 
-      this.renderCaptureShader(
-        piShader,
-        fbo,
-        gridWidth,
-        gridHeight,
-        uniforms,
-        uniforms.res[0],
-        uniforms.res[1],
-        null,
-      );
+        this.renderCaptureShader(
+          piShader,
+          fbo,
+          gridWidth,
+          gridHeight,
+          uniforms,
+          uniforms.res[0],
+          uniforms.res[1],
+          null,
+        );
 
-      const dataSize = gridWidth * gridHeight * RGBA_CHANNELS * FLOAT_BYTES;
-      const pbo = this.allocatePBO(dataSize);
+        const dataSize = gridWidth * gridHeight * RGBA_CHANNELS * FLOAT_BYTES;
+        const pbo = this.allocatePBO(dataSize);
 
-      this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, pbo);
-      this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, fbo);
-      this.gl.readPixels(0, 0, gridWidth, gridHeight, this.gl.RGBA, this.gl.FLOAT, 0);
-      this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, null);
-      this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, null);
+        this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, pbo);
+        this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, fbo);
+        this.gl.readPixels(0, 0, gridWidth, gridHeight, this.gl.RGBA, this.gl.FLOAT, 0);
+        this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, null);
+        this.gl.bindBuffer(this.gl.PIXEL_PACK_BUFFER, null);
 
-      const fence = this.gl.fenceSync(this.gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
-      this.gl.flush();
+        const fence = this.gl.fenceSync(this.gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
+        this.gl.flush();
 
-      this.pendingCaptures.push({
-        varName: cap.varName,
-        varType: cap.varType,
-        pbo,
-        fence,
-        dataSize,
-      });
-      issued++;
+        this.pendingCaptures.push({
+          varName: cap.varName,
+          varType: cap.varType,
+          pbo,
+          fence,
+          dataSize,
+        });
+        issued++;
+      } catch (error) {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        console.error(`[VariableCapture] Failed grid capture for ${cap.varName}:`, error);
+        continue;
+      }
     }
 
     this.gl.deleteFramebuffer(fbo);
@@ -274,12 +327,21 @@ export class VariableCapturer {
 
     const piShader = this.shaderCompiler.compileShader(
       code,
-      undefined, // commonCode
-      undefined, // slotAssignments
-      undefined, // channelTypes
+      this.compileContext.commonCode,
+      this.compileContext.slotAssignments,
+      this.compileContext.channelTypes,
       this.customUniformDeclarations || undefined,
     );
-    if (!piShader || !piShader.mProgram) return null;
+    if (!piShader || !piShader.mProgram) {
+      if (piShader?.mInfo) {
+        this.lastError = piShader.mInfo;
+        console.error('[VariableCapture] Shader compile failed:', piShader.mInfo);
+      } else {
+        this.lastError = 'Shader compile failed';
+        console.error('[VariableCapture] Shader compile failed');
+      }
+      return null;
+    }
 
     this.shaderCache.set(code, { shader: piShader, lastUsed: performance.now() });
     this.shaderCacheOrder.push(code);

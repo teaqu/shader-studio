@@ -27,6 +27,8 @@
   export let pollingMs: number = 500;
   export let hasPixelSelected: boolean = false;
   export let customUniformValues: Record<string, number | number[] | boolean> = {};
+  export let isVariableCaptureLoading: boolean = false;
+  export let variableCaptureError: string | null = null;
 
   let uniforms: PassUniforms | null = null;
   let uniformsHandle: number | null = null;
@@ -352,7 +354,8 @@
       <VariablesSection
         {capturedVariables}
         isPixelMode={isInspectorActive || isInspectorLocked}
-        isLoading={capturedVariables.length === 0}
+        isLoading={isVariableCaptureLoading}
+        captureError={variableCaptureError}
         onExpandToggle={onExpandVarHistogram}
         {onVarClick}
         {variableCaptureManager}

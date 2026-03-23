@@ -62,14 +62,14 @@ export class VariableCaptureBuilder {
     // so the return value appears in the variable preview panel.
     // Uses detectVariableAndType to handle multi-line returns correctly.
     if (debugLine !== -1 && functionInfo.start >= 0 && result.length < 15) {
-      const funcLine = lines[functionInfo.start];
+      const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
       const returnTypeMatch = funcLine.match(
         /^\s*(float|vec2|vec3|vec4|int|bool|mat2)\s+\w+\s*\(/
       );
       if (returnTypeMatch && CAPTURABLE_TYPES.has(returnTypeMatch[1])) {
         const lineContent = lines[resolvedLine] || '';
         const varInfo = GlslParser.detectVariableAndType(
-          lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine
+          lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine, false
         );
         if (varInfo && varInfo.name === '_dbgReturn') {
           result.push({ varName: '_dbgReturn', varType: returnTypeMatch[1], declarationLine: resolvedLine });
@@ -181,10 +181,35 @@ export class VariableCaptureBuilder {
     customParameters: Map<number, string>,
   ): string {
     const captureVarName = '_dbgCaptured';
-    const helperFunctions: string[] = [];
-    for (let i = 0; i < functionInfo.start; i++) {
-      helperFunctions.push(lines[i]);
-    }
+    const mainImageRange = (() => {
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (/void\s+mainImage\s*\(/.test(lines[i])) {
+          start = i;
+          break;
+        }
+      }
+      if (start === -1) return null;
+      let braceDepth = 0;
+      let started = false;
+      for (let i = start; i < lines.length; i++) {
+        const stripped = lines[i].replace(/\/\/.*$/, '');
+        for (const char of stripped) {
+          if (char === '{') { braceDepth++; started = true; }
+          if (char === '}') { braceDepth--; }
+        }
+        if (started && braceDepth === 0) {
+          return { start, end: i };
+        }
+      }
+      return null;
+    })();
+    const beforeTarget = lines.slice(0, functionInfo.start);
+    const afterTargetStart = functionInfo.end + 1;
+    const afterTargetBeforeMainImage = mainImageRange
+      ? lines.slice(afterTargetStart, mainImageRange.start)
+      : lines.slice(afterTargetStart);
+    const afterMainImage = mainImageRange ? lines.slice(mainImageRange.end + 1) : [];
 
     let truncationEnd: number;
     if (containingLoops.length > 0) {
@@ -194,10 +219,16 @@ export class VariableCaptureBuilder {
       // Extend for multi-line statements
       truncationEnd = CodeGenerator.extendForMultiLine(lines, truncationEnd);
     }
+    truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionInfo.start, truncationEnd);
 
     // Detect return statement range on the debug line
     const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
-    const useCaptureSideChannel = returnRange !== null && varInfo.name !== '_dbgReturn';
+    const useCaptureSideChannel =
+      returnRange !== null &&
+      varInfo.name !== '_dbgReturn' &&
+      VariableCaptureBuilder.isOutParameter(lines, functionInfo.start, varInfo.name);
+    const returnRanges = CodeGenerator.findReturnRanges(lines, functionInfo.start, truncationEnd);
+    const returnRangeMap = new Map(returnRanges.map(range => [range.start, range]));
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
@@ -210,21 +241,30 @@ export class VariableCaptureBuilder {
         );
       }
 
-      // Handle return statement lines
-      if (returnRange && i >= returnRange.start && i <= returnRange.end) {
-        if (useCaptureSideChannel && i === returnRange.start) {
-          const indent = line.match(/^\s*/)?.[0] || '  ';
-          functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
-        } else if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
-          const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
-          const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
-          if (returnMatch) {
-            const indent = line.match(/^\s*/)?.[0] || '  ';
-            functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+      const currentReturnRange = returnRangeMap.get(i);
+      if (currentReturnRange) {
+        const indent = line.match(/^\s*/)?.[0] || '  ';
+        const isTargetReturn =
+          returnRange !== null &&
+          currentReturnRange.start === returnRange.start &&
+          currentReturnRange.end === returnRange.end;
+
+        if (isTargetReturn) {
+          if (useCaptureSideChannel) {
+            functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
+          } else if (varInfo.name === '_dbgReturn') {
+            const fullReturn = lines.slice(currentReturnRange.start, currentReturnRange.end + 1).join(' ');
+            const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
+            if (returnMatch) {
+              functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+            }
           }
+        } else {
+          functionLines.push(`${indent}// Debug: stripped earlier return`);
         }
-        if (!useCaptureSideChannel) {
-          // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+
+        i = currentReturnRange.end;
+        if (!useCaptureSideChannel || !isTargetReturn) {
           continue;
         }
       }
@@ -277,11 +317,13 @@ export class VariableCaptureBuilder {
       : `${setupCode}  ${varInfo.type} result = ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`;
 
     const wrapper = [];
-    wrapper.push(...helperFunctions);
+    wrapper.push(...beforeTarget);
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
     }
     wrapper.push(...result);
+    wrapper.push(...afterTargetBeforeMainImage);
+    wrapper.push(...afterMainImage);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     wrapper.push(callLine);
@@ -359,5 +401,22 @@ export class VariableCaptureBuilder {
       }
     }
     return -1;
+  }
+
+  private static isOutParameter(lines: string[], functionStart: number, varName: string): boolean {
+    const signature = GlslParser.getFullFunctionSignature(lines, functionStart);
+    const paramsMatch = signature.match(/\(([^)]*)\)/);
+    if (!paramsMatch || !paramsMatch[1].trim()) {
+      return false;
+    }
+
+    for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
+      const match = pair.match(/^(?:(in|out|inout)\s+)?(?:const\s+)?(?:vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)$/);
+      if (match && match[1] === 'out' && match[2] === varName) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

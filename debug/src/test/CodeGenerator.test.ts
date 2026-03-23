@@ -3,6 +3,24 @@ import { CodeGenerator } from "../CodeGenerator";
 import type { FunctionInfo, VarInfo } from "../GlslParser";
 
 describe("CodeGenerator", () => {
+  describe("extendForPreprocessorConditionals", () => {
+    it("extends truncation to the matching #endif when inside an active branch", () => {
+      const lines = [
+        "vec2 evalBezier(float t) {",
+        "#if 0",
+        "  return vec2(0.0);",
+        "#else",
+        "  vec2 v = vec2(t);",
+        "  return v;",
+        "#endif",
+        "}",
+      ];
+
+      const result = CodeGenerator.extendForPreprocessorConditionals(lines, 0, 5);
+      expect(result).toBe(6);
+    });
+  });
+
   describe("generateReturnStatementForVar", () => {
     it("should visualize float as grayscale", () => {
       const result = CodeGenerator.generateReturnStatementForVar("float", "d");
@@ -250,6 +268,44 @@ describe("CodeGenerator", () => {
     });
   });
 
+  describe("wrapFunctionForDebugging", () => {
+    it("preserves #endif when truncating inside a preprocessor branch", () => {
+      const shader = [
+        "vec2 evalBezier( float t, vec2 v0, vec2 v1, vec2 v2, vec2 v3 )",
+        "{",
+        "#if 0",
+        "    vec2 a0=v0+(v1-v0)*t;",
+        "    return a0;",
+        "#else",
+        "    vec2 v21 = 3.0*(v2-v1);",
+        "    vec2 v10 = 3.0*(v1-v0);",
+        "    vec2 v03 =     (v0-v3);",
+        "    return (((v21-v10)-t*(v03+v21))*t+v10)*t+v0;",
+        "#endif    ",
+        "}",
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(0.0);",
+        "}",
+      ];
+
+      const functionInfo: FunctionInfo = { name: "evalBezier", start: 0, end: 11 };
+      const varInfo: VarInfo = { name: "_dbgReturn", type: "vec2" };
+
+      const result = CodeGenerator.wrapFunctionForDebugging(
+        shader,
+        functionInfo,
+        9,
+        varInfo,
+        [],
+        new Map(),
+        new Map(),
+      );
+
+      expect(result).toContain("#endif");
+    });
+  });
+
   describe("insertShadowVariable", () => {
     it("should return unchanged lines when no containing loops", () => {
       const lines = [
@@ -412,7 +468,24 @@ describe("CodeGenerator", () => {
       expect(result).toContain("float result = heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
     });
 
-    it("should capture non-return vars on return lines without rewriting earlier returns", () => {
+    it("should generate a full default call for helpers with multi-line signatures", () => {
+      const lines = [
+        "vec2 bezier( vec2 p,",
+        "             vec2 v0, vec2 v1, vec2 v2, vec2 v3,",
+        "             vec2 wd, float bo )",
+        "{",
+        "    return wd;",
+        "}",
+      ];
+      const functionInfo = { name: "bezier", start: 0, end: 5 };
+      const varInfo = { name: "_dbgReturn", type: "vec2" };
+
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 4, varInfo);
+
+      expect(result).toContain("vec2 result = bezier(uv, uv, uv, uv, uv, uv, 0.5);");
+    });
+
+    it("should capture non-return vars on return lines while stripping earlier returns", () => {
       const lines = [
         "float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {",
         "  if (true) {",
@@ -428,9 +501,57 @@ describe("CodeGenerator", () => {
 
       expect(result).toContain("vec3 _dbgCaptured;");
       expect(result).toContain("_dbgCaptured = ori;");
-      expect(result).toContain("return 1.0;");
+      expect(result).toContain("// Debug: stripped earlier return");
       expect(result).toContain("heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
       expect(result).toContain("fragColor = vec4(_dbgCaptured, 1.0)");
+    });
+
+    it("should strip earlier returns in multi-return helpers when debugging a later variable", () => {
+      const lines = [
+        "float clouds(vec3 p, out float cloudHeight, bool sampleNoise) {",
+        "  if (p.y < 0.0) {",
+        "    return 0.0;",
+        "  }",
+        "  cloudHeight = p.y;",
+        "  float cloud = cloudHeight;",
+        "  if (cloud <= 0.0) {",
+        "    return 0.0;",
+        "  }",
+        "  float shape = cloud * 0.5;",
+        "  return shape;",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "clouds", start: 0, end: 11 };
+      const varInfo: VarInfo = { name: "shape", type: "float" };
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 9, varInfo);
+
+      expect(result).toContain("// Debug: stripped earlier return");
+      expect(result).toContain("float shape = cloud * 0.5;");
+      expect(result).toContain("return shape;");
+    });
+
+    it("should preserve helper functions defined after the target helper", () => {
+      const lines = [
+        "float clouds(vec3 p, out float cloudHeight, bool sampleNoise) {",
+        "  cloudHeight = saturateLater(p.y);",
+        "  return cloudHeight;",
+        "}",
+        "",
+        "float saturateLater(float x) {",
+        "  return clamp(x, 0.0, 1.0);",
+        "}",
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "clouds", start: 0, end: 3 };
+      const varInfo: VarInfo = { name: "cloudHeight", type: "float" };
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 1, varInfo);
+
+      expect(result).toContain("float saturateLater(float x) {");
+      expect(result).toContain("return clamp(x, 0.0, 1.0);");
+      expect(result).toContain("cloudHeight = saturateLater(p.y);");
     });
   });
 

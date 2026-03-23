@@ -140,6 +140,8 @@
   let debugRefreshMode: import('../VariableCaptureManager').RefreshMode = 'polling';
   let debugPollingMs = 500;
   let lastSentDebugEnabled: boolean | null = null;
+  let isVariableCaptureLoading = false;
+  let variableCaptureError: string | null = null;
 
   $: showDebugPanel = debugPanelVisible;
 
@@ -670,6 +672,12 @@
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
+      variableCaptureManager.setLoadingStateCallback((isLoading) => {
+        isVariableCaptureLoading = isLoading;
+      });
+      variableCaptureManager.setErrorCallback((error) => {
+        variableCaptureError = error;
+      });
       variableCaptureManager.setSampleSettingsCallback(() => {
         debugSampleSize = variableCaptureManager?.sampleSize ?? 32;
         debugRefreshMode = variableCaptureManager?.getActiveRefreshMode(hasPixelCapture) ?? 'polling';
@@ -895,6 +903,8 @@
         refreshMode={debugRefreshMode}
         pollingMs={debugPollingMs}
         hasPixelSelected={hasPixelCapture}
+        isVariableCaptureLoading={isVariableCaptureLoading}
+        variableCaptureError={variableCaptureError}
         {customUniformValues}
       />
     {/if}

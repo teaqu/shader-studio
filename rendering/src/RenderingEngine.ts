@@ -17,7 +17,9 @@ import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "./models";
 import { CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "./capture/VariableCapturer";
-import type { CaptureUniforms } from "./capture/VariableCapturer";
+import type { CaptureCompileContext, CaptureUniforms } from "./capture/VariableCapturer";
+import { assignInputSlots } from "./util/InputSlotAssigner";
+import type { ChannelSamplerType } from "./ShaderCompiler";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -353,7 +355,29 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public createVariableCapturer(): VariableCapturer {
     const gl = this.glCanvas!.getContext('webgl2')!;
-    return new VariableCapturer(gl, this.shaderCompiler);
+    return new VariableCapturer(gl, this.shaderCompiler, this.getVariableCaptureCompileContext());
+  }
+
+  public getVariableCaptureCompileContext(code?: string): CaptureCompileContext {
+    const passes = this.shaderPipeline.getPasses();
+    const commonCode = passes.find(pass => pass.name === "common")?.shaderSrc || '';
+
+    const targetPass = (code
+      ? passes.find(pass => pass.name !== "common" && pass.shaderSrc === code)
+      : undefined) || passes.find(pass => pass.name === "Image") || passes.find(pass => pass.name !== "common");
+
+    if (!targetPass) {
+      return { commonCode };
+    }
+
+    const slotAssignments = assignInputSlots(targetPass.inputs || {});
+    const channelTypes: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
+
+    return {
+      commonCode,
+      slotAssignments,
+      channelTypes,
+    };
   }
 
   public getCaptureUniforms(): CaptureUniforms {

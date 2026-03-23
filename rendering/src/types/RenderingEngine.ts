@@ -1,7 +1,7 @@
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
-import type { VariableCapturer, CaptureUniforms, CaptureCustomUniform } from "../capture/VariableCapturer";
+import type { VariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -30,6 +30,7 @@ export interface RenderingEngine {
   cleanup(): void;
   readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null;
   createVariableCapturer(): VariableCapturer;
+  getVariableCaptureCompileContext(code?: string): CaptureCompileContext;
   getCaptureUniforms(): CaptureUniforms;
   resumeAudioContext(): Promise<void>;
   resumeAllAudio(): void;

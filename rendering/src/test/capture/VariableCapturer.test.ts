@@ -163,6 +163,29 @@ describe("VariableCapturer", () => {
     it("should request EXT_color_buffer_float extension", () => {
       expect(gl.getExtension).toHaveBeenCalledWith("EXT_color_buffer_float");
     });
+
+    it("passes capture compile context to shader compilation", () => {
+      const withContext = new VariableCapturer(gl, shaderCompiler, {
+        commonCode: "float saturate(float x) { return clamp(x, 0.0, 1.0); }",
+        slotAssignments: [{ slot: 0, key: "noiseTex", isCustomName: true }],
+        channelTypes: ['2D', '2D', '2D', '2D'],
+      });
+
+      withContext.issueCaptureGrid(
+        [{ varName: "x", varType: "float", captureShader: "void mainImage(out vec4 c, in vec2 f){ c=vec4(1.0); }" }],
+        createDefaultUniforms(),
+        1,
+        1,
+      );
+
+      expect(shaderCompiler.compileShader).toHaveBeenCalledWith(
+        expect.any(String),
+        "float saturate(float x) { return clamp(x, 0.0, 1.0); }",
+        [{ slot: 0, key: "noiseTex", isCustomName: true }],
+        ['2D', '2D', '2D', '2D'],
+        undefined,
+      );
+    });
   });
 
   describe("issueCaptureAtPixel", () => {
@@ -208,6 +231,35 @@ describe("VariableCapturer", () => {
       const captures = [
         { varName: "failing", varType: "float", captureShader: "bad" },
         { varName: "working", varType: "float", captureShader: "good" },
+      ];
+
+      const result = capturer.issueCaptureAtPixel(
+        captures,
+        100,
+        200,
+        800,
+        600,
+        createDefaultUniforms(),
+      );
+
+      expect(result).toBe(1);
+    });
+
+    it("should continue issuing later captures when one shader compile throws", () => {
+      vi.mocked(shaderCompiler.compileShader)
+        .mockImplementationOnce(() => {
+          throw new Error("compile failed");
+        })
+        .mockImplementationOnce((): PiShader => ({
+          mProgram: {} as WebGLProgram,
+          mResult: true,
+          mInfo: "",
+          mHeaderLines: 0,
+        }));
+
+      const captures = [
+        { varName: "bad", varType: "float", captureShader: "bad" },
+        { varName: "good", varType: "float", captureShader: "good" },
       ];
 
       const result = capturer.issueCaptureAtPixel(
@@ -352,6 +404,33 @@ describe("VariableCapturer", () => {
       );
 
       expect(result).toBe(0);
+    });
+
+    it("should continue issuing grid captures when one shader compile throws", () => {
+      vi.mocked(shaderCompiler.compileShader)
+        .mockImplementationOnce(() => {
+          throw new Error("compile failed");
+        })
+        .mockImplementationOnce((): PiShader => ({
+          mProgram: {} as WebGLProgram,
+          mResult: true,
+          mInfo: "",
+          mHeaderLines: 0,
+        }));
+
+      const captures = [
+        { varName: "bad", varType: "float", captureShader: "bad" },
+        { varName: "good", varType: "float", captureShader: "good" },
+      ];
+
+      const result = capturer.issueCaptureGrid(
+        captures,
+        createDefaultUniforms(),
+        2,
+        2,
+      );
+
+      expect(result).toBe(1);
     });
   });
 

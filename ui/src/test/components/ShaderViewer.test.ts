@@ -72,6 +72,23 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     getAudioFFTData() { return null; }
     getFrameTimeHistory() { return []; }
     getFrameTimeCount() { return 0; }
+    createVariableCapturer() {
+      return {
+        setCustomUniforms() {},
+        setCompileContext() {},
+        clearLastError() {},
+        getLastError() { return null; },
+        issueCaptureAtPixel() { return 0; },
+        issueCaptureGrid() { return 0; },
+        collectResults() { return []; },
+        dispose() {},
+      };
+    }
+    getVariableCaptureCompileContext() { return { commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] }; }
+    getCaptureUniforms() { return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] }; }
+    getCustomUniformDeclarations() { return ''; }
+    getCurrentCustomUniforms() { return []; }
+    getCustomUniformInfo() { return []; }
     setCustomUniformValues() {}
     updateCustomUniformValues() {}
   };
@@ -296,8 +313,8 @@ describe('ShaderViewer', () => {
         type: 'shaderSource',
         path: '/test/shader.glsl',
         code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
-        config: { passes: { image: {} } },
-        pathMap: { image: '/test/shader.glsl' },
+        config: { passes: { Image: {} } },
+        pathMap: { Image: '/test/shader.glsl' },
       },
     });
     await tick();
