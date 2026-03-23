@@ -170,7 +170,6 @@ describe('VariableRow', () => {
     render(VariableRow, { props: { variable: v, isPixelMode: false } });
     const canvas = document.querySelector('canvas') as HTMLCanvasElement;
     expect(canvas).toBeInTheDocument();
-    // Height should be maxSize (32), width proportionally shorter
     expect(canvas.style.height).toBe('32px');
     const expectedWidth = Math.round(32 * (24 / 43));
     expect(canvas.style.width).toBe(`${expectedWidth}px`);

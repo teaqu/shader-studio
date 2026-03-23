@@ -89,7 +89,6 @@
     top: 0;
     left: 0;
     z-index: 10;
-    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }
 </style>
