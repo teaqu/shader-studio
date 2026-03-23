@@ -38,6 +38,38 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     }
   });
 
+  it('should handle qualified parameters for uncalled functions', () => {
+    const shader = `vec3 getPixel(in vec2 coord, float time) {
+  vec3 color = vec3(coord, time);
+  return color;
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 1, '  vec3 color = vec3(coord, time);');
+
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result).toContain('vec3 getPixel(in vec2 coord, float time)');
+      expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
+      expect(result).toContain('vec3 result = getPixel(uv, 0.5)');
+      expect(result).toContain('fragColor = vec4(result, 1.0)');
+    }
+  });
+
+  it('should allocate an out argument temp when debugging helper functions with out params', () => {
+    const shader = `float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {
+  p = ori + dir;
+  return 1.0;
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '  return 1.0;');
+
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result).toContain('vec3 _dbgArg2 = vec3(0.5);');
+      expect(result).toContain('float result = heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);');
+    }
+  });
+
   it('should handle function with no parameters (not called)', () => {
     const shader = `float getValue() {
   float x = 0.5;

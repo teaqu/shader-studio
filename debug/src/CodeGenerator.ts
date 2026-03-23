@@ -1,6 +1,22 @@
 import type { FunctionInfo, VarInfo } from './GlslParser';
 
 export class CodeGenerator {
+  private static defaultParameterValue(type: string): string {
+    switch (type) {
+      case 'vec2': return 'uv';
+      case 'vec3': return 'vec3(0.5)';
+      case 'vec4': return 'vec4(0.5)';
+      case 'float': return '0.5';
+      case 'int': return '1';
+      case 'bool': return 'true';
+      case 'mat2': return 'mat2(1.0)';
+      case 'mat3': return 'mat3(1.0)';
+      case 'mat4': return 'mat4(1.0)';
+      case 'sampler2D': return 'iChannel0';
+      default: return '0.0';
+    }
+  }
+
   /**
    * Soft normalization: v / (|v| + 1) * 0.5 + 0.5
    * Maps any range to 0-1: negative → below 0.5, positive → above 0.5, zero → 0.5 (gray).
@@ -294,47 +310,35 @@ export class CodeGenerator {
     const paramPairs = paramsStr.split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
-      const match = pair.match(/^\s*(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)\s*$/);
+      const match = pair.match(/^\s*(?:(in|out|inout)\s+)?(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)\s*$/);
 
       if (match) {
-        const type = match[1];
+        const qualifier = match[1];
+        const type = match[2];
+        const defaultValue = CodeGenerator.defaultParameterValue(type);
 
         switch (type) {
           case 'vec2':
             if (!setup.some(s => s.includes('vec2 uv'))) {
               setup.push('  vec2 uv = fragCoord / iResolution.xy;');
             }
-            args.push('uv');
+            if (qualifier === 'out' || qualifier === 'inout') {
+              const tempName = `_dbgArg${args.length}`;
+              setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+              args.push(tempName);
+            } else {
+              args.push(defaultValue);
+            }
             break;
-          case 'vec3':
-            args.push('vec3(0.5)');
-            break;
-          case 'vec4':
-            args.push('vec4(0.5)');
-            break;
-          case 'float':
-            args.push('0.5');
-            break;
-          case 'int':
-            args.push('1');
-            break;
-          case 'bool':
-            args.push('true');
-            break;
-          case 'mat2':
-            args.push('mat2(1.0)');
-            break;
-          case 'mat3':
-            args.push('mat3(1.0)');
-            break;
-          case 'mat4':
-            args.push('mat4(1.0)');
-            break;
-          case 'sampler2D':
-            args.push('iChannel0');
-            break;
-          default:
-            args.push('0.0');
+          default: {
+            if (qualifier === 'out' || qualifier === 'inout') {
+              const tempName = `_dbgArg${args.length}`;
+              setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+              args.push(tempName);
+            } else {
+              args.push(defaultValue);
+            }
+          }
         }
       }
     }
@@ -373,6 +377,35 @@ export class CodeGenerator {
     const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result', normalizeMode, stepEdge);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
     return `${setupCode}  ${varInfo.type} result = ${functionName}(${args.join(', ')});\n${visualization}`;
+  }
+
+  static generateProcedureCall(
+    lines: string[],
+    functionName: string,
+    functionInfo: FunctionInfo,
+    targetVarName: string,
+    targetVarType: string,
+    customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
+  ): string {
+    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+    const defaultArgs = params.args ? params.args.split(', ') : [];
+
+    const args = defaultArgs.map((arg, index) => {
+      const custom = customParameters.get(index);
+      return custom !== undefined ? custom : arg;
+    });
+
+    let setup = [...params.setup];
+    const anyArgUsesUv = args.some(arg => arg === 'uv' || arg.includes('uv'));
+    if (!anyArgUsesUv) {
+      setup = setup.filter(s => !s.includes('vec2 uv'));
+    }
+
+    const visualization = CodeGenerator.generateReturnStatementForVar(targetVarType, targetVarName, normalizeMode, stepEdge);
+    const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
+    return `${setupCode}  ${functionName}(${args.join(', ')});\n${visualization}`;
   }
 
   /**
@@ -451,6 +484,7 @@ export class CodeGenerator {
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
   ): string {
+    const captureVarName = '_dbgCaptured';
     const helperFunctions: string[] = [];
     for (let i = 0; i < functionInfo.start; i++) {
       helperFunctions.push(lines[i]);
@@ -468,12 +502,13 @@ export class CodeGenerator {
 
     // Detect return statement range on the debug line
     const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
+    const useCaptureSideChannel = returnRange !== null && varInfo.name !== '_dbgReturn';
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
-      if (i === functionInfo.start) {
+      if (i === functionInfo.start && !useCaptureSideChannel) {
         line = line.replace(
           /^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\s+\w+\s*\()/,
           `${varInfo.type}$2`
@@ -482,7 +517,10 @@ export class CodeGenerator {
 
       // Handle return statement lines
       if (returnRange && i >= returnRange.start && i <= returnRange.end) {
-        if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
+        if (useCaptureSideChannel && i === returnRange.start) {
+          const indent = line.match(/^\s*/)?.[0] || '  ';
+          functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
+        } else if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
           // Convert the full (possibly multi-line) return to a variable assignment
           const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
           const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
@@ -491,8 +529,10 @@ export class CodeGenerator {
             functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
           }
         }
-        // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
-        continue;
+        if (!useCaptureSideChannel) {
+          // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+          continue;
+        }
       }
 
       functionLines.push(line);
@@ -517,17 +557,26 @@ export class CodeGenerator {
     // Insert return before the appended closing braces
     const originalLength = cappedLines.length;
     const result = closedLines.slice(0, originalLength);
-    const indent = '  ';
-    const returnVar = shadowVarName || varInfo.name;
-    result.push(`${indent}return ${returnVar};`);
-    result.push(...closedLines.slice(originalLength));
+    if (!useCaptureSideChannel) {
+      const indent = '  ';
+      const returnVar = shadowVarName || varInfo.name;
+      result.push(`${indent}return ${returnVar};`);
+      result.push(...closedLines.slice(originalLength));
+    } else {
+      result.push(...closedLines.slice(originalLength));
+    }
 
     const wrapper = [];
     wrapper.push(...helperFunctions);
+    if (useCaptureSideChannel) {
+      wrapper.push(`${varInfo.type} ${captureVarName};`);
+    }
     wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
+    const call = useCaptureSideChannel
+      ? CodeGenerator.generateProcedureCall(lines, functionInfo.name!, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge)
+      : CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 

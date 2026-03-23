@@ -40,20 +40,6 @@ export class VariableCaptureBuilder {
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
     const varLineMap = GlslParser.buildVariableLineMap(lines, resolvedLine, functionInfo, varTypes);
 
-    // In line mode (not whole-shader), exclude `out`/`inout` parameters for helper functions.
-    // For mainImage, keep fragColor visible since it's the shader output.
-    const outParams = new Set<string>();
-    if (debugLine !== -1 && functionInfo.start >= 0 && functionInfo.name !== 'mainImage') {
-      const funcLine = lines[functionInfo.start];
-      const paramsMatch = funcLine.match(/\(([^)]*)\)/);
-      if (paramsMatch && paramsMatch[1].trim()) {
-        for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
-          const match = pair.match(/^(out|inout)\s+\S+\s+(\w+)/);
-          if (match) outParams.add(match[2]);
-        }
-      }
-    }
-
     // In mainImage, defer fragColor to append at the end of the list
     const isMainImage = functionInfo.name === 'mainImage';
     let fragColorType: string | null = null;
@@ -61,7 +47,7 @@ export class VariableCaptureBuilder {
 
     const result: CaptureVarInfo[] = [];
     for (const [varName, varType] of varTypes) {
-      if (CAPTURABLE_TYPES.has(varType) && !outParams.has(varName)) {
+      if (CAPTURABLE_TYPES.has(varType)) {
         if (isMainImage && varName === 'fragColor') {
           fragColorType = varType;
           fragColorLine = varLineMap.get(varName) ?? functionInfo.start;
@@ -194,6 +180,7 @@ export class VariableCaptureBuilder {
     loopMaxIterations: Map<number, number>,
     customParameters: Map<number, string>,
   ): string {
+    const captureVarName = '_dbgCaptured';
     const helperFunctions: string[] = [];
     for (let i = 0; i < functionInfo.start; i++) {
       helperFunctions.push(lines[i]);
@@ -210,12 +197,13 @@ export class VariableCaptureBuilder {
 
     // Detect return statement range on the debug line
     const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
+    const useCaptureSideChannel = returnRange !== null && varInfo.name !== '_dbgReturn';
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
-      if (i === functionInfo.start) {
+      if (i === functionInfo.start && !useCaptureSideChannel) {
         line = line.replace(
           /^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\s+\w+\s*\()/,
           `${varInfo.type}$2`
@@ -224,7 +212,10 @@ export class VariableCaptureBuilder {
 
       // Handle return statement lines
       if (returnRange && i >= returnRange.start && i <= returnRange.end) {
-        if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
+        if (useCaptureSideChannel && i === returnRange.start) {
+          const indent = line.match(/^\s*/)?.[0] || '  ';
+          functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
+        } else if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
           const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
           const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
           if (returnMatch) {
@@ -232,8 +223,10 @@ export class VariableCaptureBuilder {
             functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
           }
         }
-        // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
-        continue;
+        if (!useCaptureSideChannel) {
+          // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+          continue;
+        }
       }
 
       functionLines.push(line);
@@ -253,10 +246,14 @@ export class VariableCaptureBuilder {
 
     const originalLength = cappedLines.length;
     const result = closedLines.slice(0, originalLength);
-    const indent = '  ';
-    const returnVar = shadowVarName || varInfo.name;
-    result.push(`${indent}return ${returnVar};`);
-    result.push(...closedLines.slice(originalLength));
+    if (!useCaptureSideChannel) {
+      const indent = '  ';
+      const returnVar = shadowVarName || varInfo.name;
+      result.push(`${indent}return ${returnVar};`);
+      result.push(...closedLines.slice(originalLength));
+    } else {
+      result.push(...closedLines.slice(originalLength));
+    }
 
     // Build the parameters for function call
     const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
@@ -272,12 +269,18 @@ export class VariableCaptureBuilder {
       setup = setup.filter(s => !s.includes('vec2 uv'));
     }
 
-    const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, 'result');
+    const captureTarget = useCaptureSideChannel ? captureVarName : 'result';
+    const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, captureTarget);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
-    const callLine = `${setupCode}  ${varInfo.type} result = ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`;
+    const callLine = useCaptureSideChannel
+      ? `${setupCode}  ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`
+      : `${setupCode}  ${varInfo.type} result = ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`;
 
     const wrapper = [];
     wrapper.push(...helperFunctions);
+    if (useCaptureSideChannel) {
+      wrapper.push(`${varInfo.type} ${captureVarName};`);
+    }
     wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');

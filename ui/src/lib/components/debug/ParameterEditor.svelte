@@ -245,7 +245,7 @@
 </div>
 
 {#if isVec && mode === 'custom'}
-  <div class="vec-components">
+  <div class="vec-components" class:compact-rgb={param.type === 'vec3'}>
     {#each { length: compCount } as _, i}
       <div class="vec-comp-row">
         <span class="comp-label">{labels[i]}</span>
@@ -349,11 +349,26 @@
     margin-bottom: 4px;
   }
 
+  .vec-components.compact-rgb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
   .vec-comp-row {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 2px 0;
+  }
+
+  .vec-components.compact-rgb .vec-comp-row {
+    padding: 0;
+  }
+
+  .vec-components.compact-rgb .color-picker {
+    margin-left: 0;
   }
 
   .comp-label {
