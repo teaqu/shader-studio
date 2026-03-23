@@ -13,6 +13,7 @@ import type { ShaderConfig } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
+  private panelSlots: Map<vscode.WebviewPanel, number> = new Map();
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private videoAudioConverter: VideoAudioConverter;
@@ -95,6 +96,7 @@ export class PanelManager {
     editor: vscode.TextEditor | null,
     viewColumn: vscode.ViewColumn,
   ): void {
+    const layoutSlot = this.allocateLayoutSlot();
     const workspaceFolders =
       vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? [];
     const shaderDir = editor
@@ -119,11 +121,12 @@ export class PanelManager {
     );
 
     this.panels.add(panel);
+    this.panelSlots.set(panel, layoutSlot);
 
     // Add panel to the shared webview transport
     this.webviewTransport.addPanel(panel);
 
-    this.setupWebviewHtml(panel);
+    this.setupWebviewHtml(panel, layoutSlot);
 
     if (editor) {
       setTimeout(
@@ -144,6 +147,7 @@ export class PanelManager {
     panel.onDidDispose(() => {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
+      this.panelSlots.delete(panel);
     });
 
     this.logger.info("Webview panel created");
@@ -152,6 +156,15 @@ export class PanelManager {
     if (lockGroup) {
       this.lockPanelEditorGroup(panel);
     }
+  }
+
+  private allocateLayoutSlot(): number {
+    let slot = 1;
+    const usedSlots = new Set(this.panelSlots.values());
+    while (usedSlots.has(slot)) {
+      slot++;
+    }
+    return slot;
   }
 
   private async lockPanelEditorGroup(panel: vscode.WebviewPanel): Promise<void> {
@@ -246,7 +259,7 @@ export class PanelManager {
     }
   }
 
-  private setupWebviewHtml(panel: vscode.WebviewPanel): void {
+  private setupWebviewHtml(panel: vscode.WebviewPanel, layoutSlot: number): void {
     const htmlPath = path.join(
       this.context.extensionPath,
       "ui-dist",
@@ -255,6 +268,9 @@ export class PanelManager {
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
 
     let processedHtml = rawHtml;
+
+    const layoutMeta = `<meta name="shader-studio-layout-slot" content="vscode:${layoutSlot}"><meta name="shader-studio-host-type" content="vscode">`;
+    processedHtml = processedHtml.replace(/<head([^>]*)>/i, `<head$1>${layoutMeta}`);
 
     // Convert relative resource URLs to webview URIs
     processedHtml = processedHtml.replace(

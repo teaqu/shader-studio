@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { createSlotPersistedStore } from "./createSlotPersistedStore";
 
 export interface EditorOverlayState {
   isVisible: boolean;
@@ -6,50 +6,33 @@ export interface EditorOverlayState {
 }
 
 const STORAGE_KEY = "shader-studio-editor-overlay-state";
+const DEFAULT_STATE: EditorOverlayState = { isVisible: false, vimMode: false };
 
 function createEditorOverlayStore() {
-  const getInitialState = (): EditorOverlayState => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (error) {
-      console.warn("Failed to load editor overlay state from localStorage:", error);
-    }
-    return { isVisible: false, vimMode: false };
-  };
-
-  const { subscribe, update } = writable<EditorOverlayState>(getInitialState());
-
-  const persist = (state: EditorOverlayState) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn("Failed to save editor overlay state to localStorage:", error);
-    }
-  };
+  const store = createSlotPersistedStore<EditorOverlayState>({
+    storageKey: STORAGE_KEY,
+    defaultState: DEFAULT_STATE,
+    loadErrorMessage: "Failed to load editor overlay state from localStorage:",
+    saveErrorMessage: "Failed to save editor overlay state to localStorage:",
+    parseStoredState: (parsed, defaultState) => {
+      const state = parsed as Partial<EditorOverlayState> | null;
+      return {
+        isVisible: state?.isVisible ?? defaultState.isVisible,
+        vimMode: state?.vimMode ?? defaultState.vimMode,
+      };
+    },
+  });
 
   return {
-    subscribe,
+    subscribe: store.subscribe,
+    setLayoutSlot: store.setLayoutSlot,
+    restoreFromStorage: store.restoreFromStorage,
     toggle: () =>
-      update((state) => {
-        const newState = { ...state, isVisible: !state.isVisible };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
     setVisible: (visible: boolean) =>
-      update((state) => {
-        const newState = { ...state, isVisible: visible };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
     toggleVimMode: () =>
-      update((state) => {
-        const newState = { ...state, vimMode: !state.vimMode };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, vimMode: !state.vimMode })),
   };
 }
 

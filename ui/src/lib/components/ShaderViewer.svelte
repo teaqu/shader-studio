@@ -32,6 +32,7 @@
   import type { PerformanceData } from "../PerformanceMonitor";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { ShaderConfig } from "@shader-studio/types";
+  import { allocateWebLayoutSlot, getInjectedLayoutSlot, releaseWebLayoutSlot } from "../util/layoutSlot";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -62,6 +63,9 @@
   let shaderStudio: ShaderStudio;
   let renderingEngine: RenderingEngine;
   let transport: Transport = createTransport();
+  let layoutSlot = transport.getType() === 'vscode'
+    ? (getInjectedLayoutSlot() ?? 'vscode:1')
+    : allocateWebLayoutSlot();
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let debugInspectorEnabled = true;
@@ -135,8 +139,9 @@
   let debugSampleSize = 32;
   let debugRefreshMode: import('../VariableCaptureManager').RefreshMode = 'polling';
   let debugPollingMs = 500;
+  let lastSentDebugEnabled: boolean | null = null;
 
-  $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
+  $: showDebugPanel = debugPanelVisible;
 
   $: if (initialized && compileMode !== lastSentCompileMode) {
     transport.postMessage({
@@ -243,6 +248,11 @@
 
   // Subscribe to config/debug panel stores
   onMount(() => {
+    configPanelStore.setLayoutSlot(layoutSlot);
+    debugPanelStore.setLayoutSlot(layoutSlot);
+    performancePanelStore.setLayoutSlot(layoutSlot);
+    editorOverlayStore.setLayoutSlot(layoutSlot);
+
     const unsubConfig = configPanelStore.subscribe((state) => {
       configPanelVisible = state.isVisible;
     });
@@ -251,10 +261,6 @@
       persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
       persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
       persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
-
-      shaderDebugManager?.setVariableInspectorEnabled(state.isVariableInspectorEnabled);
-      shaderDebugManager?.setInlineRenderingEnabled(state.isInlineRenderingEnabled);
-      pixelInspectorManager?.setEnabled(state.isPixelInspectorEnabled && (shaderDebugManager?.getState().isEnabled ?? false));
     });
     const unsubPerf = performancePanelStore.subscribe((state) => {
       performancePanelVisible = state.isVisible;
@@ -391,32 +397,18 @@
   }
 
   function handleToggleInspectorEnabled() {
-    if (!pixelInspectorManager) return;
-    if (!pixelInspectorManager.getState().isEnabled && !shaderDebugManager?.getState().isEnabled) return;
-    pixelInspectorManager.toggleEnabled();
-    debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
-    debugPanelStore.setPixelInspectorEnabled(debugInspectorEnabled);
+    if (!initialized || !debugPanelVisible) return;
+    debugPanelStore.setPixelInspectorEnabled(!persistedPixelInspectorEnabled);
+  }
+
+  function handleToggleInlineRendering() {
+    if (!initialized || !debugPanelVisible) return;
+    debugPanelStore.setInlineRenderingEnabled(!persistedInlineRenderingEnabled);
   }
 
   function handleToggleDebugEnabled() {
-    if (!shaderDebugManager || !initialized || !hasShader) return;
-    shaderDebugManager.toggleEnabled();
-
-    transport.postMessage({
-      type: 'debugModeState',
-      payload: { enabled: shaderDebugManager.getState().isEnabled }
-    });
-
-    if (pixelInspectorManager) {
-      if (shaderDebugManager.getState().isEnabled) {
-        pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled);
-      } else {
-        debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
-        pixelInspectorManager.setEnabled(false);
-      }
-    }
-
-    shaderStudio.triggerDebugRecompile();
+    if (!initialized || !hasShader) return;
+    debugPanelStore.toggle();
   }
 
   function handleToggleConfigPanel() {
@@ -443,6 +435,54 @@
 
   $: if (initialized && renderingEngine) {
     renderingEngine.setInputEnabled(!editorOverlayVisible);
+  }
+
+  $: if (initialized && shaderDebugManager && pixelInspectorManager && hasShader) {
+    const currentEnabled = shaderDebugManager.getState().isEnabled;
+    if (currentEnabled !== debugPanelVisible) {
+      shaderDebugManager.toggleEnabled();
+      transport.postMessage({
+        type: 'debugModeState',
+        payload: { enabled: debugPanelVisible }
+      });
+      lastSentDebugEnabled = debugPanelVisible;
+
+      if (debugPanelVisible) {
+        pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled);
+      } else {
+        debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
+        pixelInspectorManager.setEnabled(false);
+      }
+
+      shaderStudio.triggerDebugRecompile();
+    } else if (lastSentDebugEnabled !== debugPanelVisible) {
+      transport.postMessage({
+        type: 'debugModeState',
+        payload: { enabled: debugPanelVisible }
+      });
+      lastSentDebugEnabled = debugPanelVisible;
+    }
+  }
+
+  $: if (shaderDebugManager) {
+    const currentInlineEnabled = shaderDebugManager.getState().isInlineRenderingEnabled;
+    if (currentInlineEnabled !== persistedInlineRenderingEnabled) {
+      shaderDebugManager.setInlineRenderingEnabled(persistedInlineRenderingEnabled);
+    }
+
+    const currentVariableInspectorEnabled = shaderDebugManager.getState().isVariableInspectorEnabled;
+    if (currentVariableInspectorEnabled !== persistedVariableInspectorEnabled) {
+      shaderDebugManager.setVariableInspectorEnabled(persistedVariableInspectorEnabled);
+    }
+  }
+
+  $: if (pixelInspectorManager) {
+    const desiredInspectorEnabled = persistedPixelInspectorEnabled && debugPanelVisible;
+    const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
+    if (currentInspectorEnabled !== desiredInspectorEnabled) {
+      pixelInspectorManager.setEnabled(desiredInspectorEnabled);
+    }
+    debugInspectorEnabled = desiredInspectorEnabled;
   }
 
   function handleFork() {
@@ -528,6 +568,7 @@
         configPanelStore.restoreFromStorage();
         debugPanelStore.restoreFromStorage();
         performancePanelStore.restoreFromStorage();
+        editorOverlayStore.restoreFromStorage();
       }
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
@@ -763,9 +804,7 @@
   }
 
   function handleDebugClosed() {
-    if (shaderDebugManager && debugState.isEnabled) {
-      handleToggleDebugEnabled();
-    }
+    debugPanelStore.setVisible(false);
   }
 
   function handleConfigClosed() {
@@ -792,6 +831,9 @@
   const mountPerformance = createMountFn(() => performanceEl);
 
   onDestroy(() => {
+    if (transport?.getType() === 'websocket') {
+      releaseWebLayoutSlot();
+    }
     if (recordingManager) recordingManager.dispose();
     if (performanceMonitor) performanceMonitor.dispose();
     if (audioVideoController) audioVideoController.dispose();
@@ -836,7 +878,7 @@
     {/if}
   </div>
   <div class="dockview-panel-source" bind:this={debugEl}>
-    {#if showDebugPanel}
+    {#if debugState.isEnabled}
       <DebugPanel
         {debugState}
         {getUniforms}
@@ -846,6 +888,7 @@
         isInspectorActive={inspectorActive}
         isInspectorLocked={inspectorLocked}
         onToggleInspectorEnabled={handleToggleInspectorEnabled}
+        onToggleInlineRendering={handleToggleInlineRendering}
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
         sampleSize={debugSampleSize}
@@ -893,6 +936,7 @@
     showConfigPanel={configPanelVisible}
     showPerformancePanel={performancePanelVisible}
     {transport}
+    {layoutSlot}
     on:ready={handleDockviewReady}
     on:previewVisibleChange={handlePreviewVisibleChange}
     on:previewAloneChange={handlePreviewAloneChange}

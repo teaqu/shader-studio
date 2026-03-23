@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { createSlotPersistedStore } from "./createSlotPersistedStore";
 
 export interface DebugPanelState {
   isVisible: boolean;
@@ -8,72 +8,45 @@ export interface DebugPanelState {
 }
 
 const STORAGE_KEY = "shader-studio-debug-panel-state";
+const DEFAULT_STATE: DebugPanelState = {
+  isVisible: false,
+  isVariableInspectorEnabled: false,
+  isInlineRenderingEnabled: true,
+  isPixelInspectorEnabled: true,
+};
 
 function createDebugPanelStore() {
   // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
-  const { subscribe, set, update } = writable<DebugPanelState>({
-    isVisible: true,
-    isVariableInspectorEnabled: false,
-    isInlineRenderingEnabled: true,
-    isPixelInspectorEnabled: true,
+  const store = createSlotPersistedStore<DebugPanelState>({
+    storageKey: STORAGE_KEY,
+    defaultState: DEFAULT_STATE,
+    loadErrorMessage: "Failed to restore debug panel state from localStorage:",
+    saveErrorMessage: "Failed to save debug panel state to localStorage:",
+    parseStoredState: (parsed, defaultState) => {
+      const state = parsed as Partial<DebugPanelState> | null;
+      return {
+        isVisible: state?.isVisible ?? defaultState.isVisible,
+        isVariableInspectorEnabled: state?.isVariableInspectorEnabled ?? defaultState.isVariableInspectorEnabled,
+        isInlineRenderingEnabled: state?.isInlineRenderingEnabled ?? defaultState.isInlineRenderingEnabled,
+        isPixelInspectorEnabled: state?.isPixelInspectorEnabled ?? defaultState.isPixelInspectorEnabled,
+      };
+    },
   });
 
-  const persist = (state: DebugPanelState) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn("Failed to save debug panel state to localStorage:", error);
-    }
-  };
-
   return {
-    subscribe,
+    subscribe: store.subscribe,
+    setLayoutSlot: store.setLayoutSlot,
     toggle: () =>
-      update((state) => {
-        const newState = { ...state, isVisible: !state.isVisible };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
     setVisible: (visible: boolean) =>
-      update((state) => {
-        const newState = { ...state, isVisible: visible };
-        persist(newState);
-        return newState;
-      }),
-    restoreFromStorage: () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          set({
-            isVisible: parsed.isVisible ?? true,
-            isVariableInspectorEnabled: parsed.isVariableInspectorEnabled ?? false,
-            isInlineRenderingEnabled: parsed.isInlineRenderingEnabled ?? true,
-            isPixelInspectorEnabled: parsed.isPixelInspectorEnabled ?? true,
-          });
-        }
-      } catch (error) {
-        console.warn("Failed to restore debug panel state from localStorage:", error);
-      }
-    },
+      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
+    restoreFromStorage: store.restoreFromStorage,
     setVariableInspectorEnabled: (enabled: boolean) =>
-      update((state) => {
-        const newState = { ...state, isVariableInspectorEnabled: enabled };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isVariableInspectorEnabled: enabled })),
     setInlineRenderingEnabled: (enabled: boolean) =>
-      update((state) => {
-        const newState = { ...state, isInlineRenderingEnabled: enabled };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isInlineRenderingEnabled: enabled })),
     setPixelInspectorEnabled: (enabled: boolean) =>
-      update((state) => {
-        const newState = { ...state, isPixelInspectorEnabled: enabled };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isPixelInspectorEnabled: enabled })),
   };
 }
 

@@ -1,50 +1,33 @@
-import { writable } from "svelte/store";
+import { createSlotPersistedStore } from "./createSlotPersistedStore";
 
 export interface ConfigPanelState {
   isVisible: boolean;
 }
 
 const STORAGE_KEY = "shader-studio-config-panel-state";
+const DEFAULT_STATE: ConfigPanelState = { isVisible: false };
 
 function createConfigPanelStore() {
   // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
-  const { subscribe, set, update } = writable<ConfigPanelState>({ isVisible: false });
-
-  const persist = (state: ConfigPanelState) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn("Failed to save config panel state to localStorage:", error);
-    }
-  };
+  const store = createSlotPersistedStore<ConfigPanelState>({
+    storageKey: STORAGE_KEY,
+    defaultState: DEFAULT_STATE,
+    loadErrorMessage: "Failed to restore config panel state from localStorage:",
+    saveErrorMessage: "Failed to save config panel state to localStorage:",
+    parseStoredState: (parsed, defaultState) => {
+      const state = parsed as Partial<ConfigPanelState> | null;
+      return state?.isVisible ? { isVisible: true } : defaultState;
+    },
+  });
 
   return {
-    subscribe,
+    subscribe: store.subscribe,
+    setLayoutSlot: store.setLayoutSlot,
     toggle: () =>
-      update((state) => {
-        const newState = { ...state, isVisible: !state.isVisible };
-        persist(newState);
-        return newState;
-      }),
+      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
     setVisible: (visible: boolean) =>
-      update((state) => {
-        const newState = { ...state, isVisible: visible };
-        persist(newState);
-        return newState;
-      }),
-    restoreFromStorage: () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.isVisible) {
-            set({ isVisible: true });
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to restore config panel state from localStorage:", error);
-      }
-    },
+      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
+    restoreFromStorage: store.restoreFromStorage,
   };
 }
 

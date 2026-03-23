@@ -225,8 +225,30 @@ describe('DebugPanel', () => {
     expect(lockBtn).toBeTruthy();
     expect(lockBtn.classList.contains('active')).toBe(false);
 
-    await fireEvent.click(lockBtn);
+    await fireEvent.pointerDown(lockBtn);
     expect(mockDebugManager.toggleLineLock).toHaveBeenCalledOnce();
+  });
+
+  it('does not invoke a header action twice for duplicate pointerdown events from the same pointer', async () => {
+    const mockDebugManager = createMockShaderDebugManager();
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ isLineLocked: false }),
+      getUniforms: mockGetUniforms,
+      shaderDebugManager: mockDebugManager,
+    });
+
+    const lockBtn = container.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
+    expect(lockBtn).toBeTruthy();
+
+    await fireEvent.pointerDown(lockBtn, { pointerId: 7, button: 0, isPrimary: true });
+    await fireEvent.pointerDown(lockBtn, { pointerId: 7, button: 0, isPrimary: true });
+
+    expect(mockDebugManager.toggleLineLock).toHaveBeenCalledTimes(1);
+
+    await fireEvent.pointerUp(window, { pointerId: 7, button: 0, isPrimary: true });
+    await fireEvent.pointerDown(lockBtn, { pointerId: 7, button: 0, isPrimary: true });
+
+    expect(mockDebugManager.toggleLineLock).toHaveBeenCalledTimes(2);
   });
 
   it('lock button shows active state when locked', () => {
@@ -240,18 +262,18 @@ describe('DebugPanel', () => {
   });
 
   it('inline rendering toggle button present and clickable', async () => {
-    const mockDebugManager = createMockShaderDebugManager();
+    const onToggleInlineRendering = vi.fn();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
       getUniforms: mockGetUniforms,
-      shaderDebugManager: mockDebugManager,
+      onToggleInlineRendering,
     });
 
     const inlineBtn = container.querySelector('[aria-label="Toggle inline rendering"]') as HTMLElement;
     expect(inlineBtn).toBeTruthy();
 
-    await fireEvent.click(inlineBtn);
-    expect(mockDebugManager.toggleInlineRendering).toHaveBeenCalledOnce();
+    await fireEvent.pointerDown(inlineBtn);
+    expect(onToggleInlineRendering).toHaveBeenCalledOnce();
   });
 
   it('inspector toggle button present and clickable', async () => {
@@ -265,7 +287,7 @@ describe('DebugPanel', () => {
     const inspectorBtn = container.querySelector('[aria-label="Toggle inspector"]') as HTMLElement;
     expect(inspectorBtn).toBeTruthy();
 
-    await fireEvent.click(inspectorBtn);
+    await fireEvent.pointerDown(inspectorBtn);
     expect(onToggleInspectorEnabled).toHaveBeenCalledOnce();
   });
 
@@ -299,7 +321,7 @@ describe('DebugPanel', () => {
 
     const normalizeBtn = container.querySelector('[aria-label="Cycle normalize mode"]') as HTMLElement;
     expect(normalizeBtn).toBeTruthy();
-    await fireEvent.click(normalizeBtn);
+    await fireEvent.pointerDown(normalizeBtn);
     expect(mockDebugManager.cycleNormalizeMode).toHaveBeenCalledOnce();
   });
 
@@ -357,7 +379,7 @@ describe('DebugPanel', () => {
 
     const stepBtn = container.querySelector('[aria-label="Toggle step threshold"]') as HTMLElement;
     expect(stepBtn).toBeTruthy();
-    await fireEvent.click(stepBtn);
+    await fireEvent.pointerDown(stepBtn);
     expect(mockDebugManager.toggleStep).toHaveBeenCalledOnce();
   });
 
@@ -596,7 +618,7 @@ describe('DebugPanel', () => {
       });
 
       const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
-      await fireEvent.click(varBtn);
+      await fireEvent.pointerDown(varBtn);
       expect(mockDebugManager.toggleVariableInspector).toHaveBeenCalledOnce();
     });
 

@@ -342,6 +342,7 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.resetLayout", () => {
         this.logger.info("shader-studio.resetLayout command executed");
+        this.context.workspaceState.update('shader-studio.dockviewLayouts', undefined);
         this.context.workspaceState.update('shader-studio.dockviewLayout', undefined);
         const message: ResetLayoutMessage = { type: "resetLayout" };
         this.messenger.send(message);
