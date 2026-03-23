@@ -49,6 +49,16 @@ describe('TimeControls Component', () => {
       expect(container.querySelector('.time-menu')).toBeInTheDocument();
     });
 
+    it('should render the time menu container with both sections when opened', async () => {
+      const { container } = render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const menu = container.querySelector('.time-menu');
+      expect(menu).toBeInTheDocument();
+      expect(menu?.textContent).toContain('Time Range');
+      expect(menu?.textContent).toContain('Speed');
+    });
+
     it('should update time display when currentTime prop changes', async () => {
       const { rerender } = render(TimeControls, { props: defaultProps });
 

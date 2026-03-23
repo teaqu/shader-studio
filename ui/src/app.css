@@ -186,6 +186,7 @@ canvas {
   position: relative;
   z-index: 1300;
   container-type: inline-size;
+  overflow: visible;
 }
 
 .left-group, .right-group {
@@ -197,7 +198,7 @@ canvas {
 
 .left-group {
   flex: 1 1 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .right-group {
