@@ -58,11 +58,13 @@
 
   <div class="var-body">
     <div class="var-header">
-      <span class="var-name">{variable.varName}</span>
-      <span class="var-type">{variable.varType}</span>
-      {#if variable.declarationLine >= 0}
-        <span class="var-line" on:click={onLineClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
-      {/if}
+      <div class="var-meta">
+        <span class="var-name" title={variable.varName}>{variable.varName}</span>
+        <span class="var-type">{variable.varType}</span>
+        {#if variable.declarationLine >= 0}
+          <span class="var-line" on:click={onLineClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
+        {/if}
+      </div>
 
       {#if hasPixelData}
         <!-- Exact pixel values -->
@@ -176,7 +178,15 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .var-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .var-name {
@@ -187,7 +197,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex-shrink: 0;
+    flex: 1 1 auto;
   }
 
   .var-line {
@@ -207,6 +217,10 @@
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     flex-shrink: 0;
+    max-width: 52px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .var-value {
@@ -216,6 +230,8 @@
     display: flex;
     align-items: center;
     gap: 3px;
+    flex-shrink: 0;
+    max-width: 100%;
   }
 
   .color-swatch {

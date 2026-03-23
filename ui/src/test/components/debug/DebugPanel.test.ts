@@ -34,8 +34,8 @@ function makeFunctionContext(overrides: Partial<DebugFunctionContext> = {}): Deb
     functionName: 'sdf',
     returnType: 'float',
     parameters: [
-      { name: 'p', type: 'vec2', uvValue: 'uv', centeredUvValue: '((fragCoord * 2.0 - iResolution.xy) / iResolution.y)', defaultCustomValue: 'vec2(0.5)', mode: 'uv', customValue: 'vec2(0.5)' },
-      { name: 'r', type: 'float', uvValue: 'uv.x', centeredUvValue: '((fragCoord * 2.0 - iResolution.xy) / iResolution.y).x', defaultCustomValue: '0.5', mode: 'custom', customValue: '0.5' },
+      { name: 'p', type: 'vec2', uvValue: 'uv', centeredUvValue: '((fragCoord * 2.0 - iResolution.xy) / iResolution.y)', defaultExpression: 'uv', expression: 'uv' },
+      { name: 'r', type: 'float', uvValue: 'uv.x', centeredUvValue: '((fragCoord * 2.0 - iResolution.xy) / iResolution.y).x', defaultExpression: '0.5', expression: '0.5' },
     ],
     isFunction: true,
     loops: [],
@@ -178,6 +178,29 @@ describe('DebugPanel', () => {
     const loopHeaders = container.querySelectorAll('.loop-header');
     expect(loopHeaders[0].textContent).toBe('for (int i = 0; i < 10; i++)');
     expect(loopHeaders[1].textContent).toBe('for (int j = 0; j < 5; j++)');
+  });
+
+  it('highlights loop keywords and types in loop headers', () => {
+    const ctx = makeFunctionContext({
+      loops: [
+        {
+          loopIndex: 0,
+          lineNumber: 367,
+          endLine: 370,
+          loopHeader: 'for(int i = 0; i < STEPS_PRIMARY; i++)',
+          maxIter: null,
+        },
+      ],
+    });
+
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ functionContext: ctx }),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(container.querySelector('.loop-keyword')?.textContent).toBe('for');
+    expect(container.querySelector('.loop-type')?.textContent).toBe('int');
+    expect(container.querySelector('.loop-number')?.textContent).toBe('0');
   });
 
   it('shows line content in line number tooltip when debugState.lineContent is set', () => {
