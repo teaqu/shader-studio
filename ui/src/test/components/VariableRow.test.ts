@@ -298,48 +298,60 @@ describe('VariableRow', () => {
     expect(btn).toBeInTheDocument();
   });
 
-  it('calls onClick when variable name is clicked', async () => {
-    const onClick = vi.fn();
-    render(VariableRow, {
-      props: { variable: makeFloatVar(0.5), isPixelMode: true, onClick },
-    });
-    const nameEl = document.querySelector('.var-name.clickable') as HTMLElement;
-    expect(nameEl).toBeInTheDocument();
-    await fireEvent.click(nameEl);
-    expect(onClick).toHaveBeenCalledOnce();
+  it('shows line number for variable with valid declarationLine', () => {
+    const v = { ...makeFloatVar(0.5), declarationLine: 6 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    expect(document.body.textContent).toContain('L7');
   });
 
-  it('calls onClick when thumbnail is clicked', async () => {
-    const onClick = vi.fn();
-    const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
-    const v = { ...makeGridVecVar(), thumbnail: thumb };
-    render(VariableRow, { props: { variable: v, isPixelMode: false, onClick } });
-    const thumbCol = document.querySelector('.thumb-col.clickable') as HTMLElement;
-    expect(thumbCol).toBeInTheDocument();
-    await fireEvent.click(thumbCol);
-    expect(onClick).toHaveBeenCalledOnce();
+  it('does not show line number when declarationLine is -1', () => {
+    const v = { ...makeFloatVar(0.5), declarationLine: -1 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const lineEl = document.querySelector('.var-line');
+    expect(lineEl).not.toBeInTheDocument();
   });
 
-  it('does not call onClick when expand button is clicked', async () => {
-    const onClick = vi.fn();
-    const onExpandToggle = vi.fn();
-    render(VariableRow, {
-      props: { variable: makeGridScalarVar(), isPixelMode: false, onClick, onExpandToggle },
-    });
-    const btn = document.querySelector('.expand-btn') as HTMLElement;
-    await fireEvent.click(btn);
-    expect(onExpandToggle).toHaveBeenCalledOnce();
-    expect(onClick).not.toHaveBeenCalled();
+  it('var-name is not clickable', () => {
+    render(VariableRow, { props: { variable: makeFloatVar(0.5), isPixelMode: false } });
+    expect(document.querySelector('.var-name.clickable')).not.toBeInTheDocument();
   });
 
-  it('calls onClick via keyboard Enter on variable name', async () => {
-    const onClick = vi.fn();
-    render(VariableRow, {
-      props: { variable: makeFloatVar(0.5), isPixelMode: true, onClick },
-    });
-    const nameEl = document.querySelector('.var-name.clickable') as HTMLElement;
-    await fireEvent.keyDown(nameEl, { key: 'Enter' });
-    expect(onClick).toHaveBeenCalledOnce();
+  it('calls onLineClick when line number is clicked', async () => {
+    const onLineClick = vi.fn();
+    const v = { ...makeFloatVar(0.5), declarationLine: 4 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false, onLineClick } });
+    const lineEl = document.querySelector('.var-line') as HTMLElement;
+    expect(lineEl).toBeInTheDocument();
+    await fireEvent.click(lineEl);
+    expect(onLineClick).toHaveBeenCalledOnce();
+  });
+
+  it('calls onLineClick via keyboard Enter on line number', async () => {
+    const onLineClick = vi.fn();
+    const v = { ...makeFloatVar(0.5), declarationLine: 2 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false, onLineClick } });
+    const lineEl = document.querySelector('.var-line') as HTMLElement;
+    await fireEvent.keyDown(lineEl, { key: 'Enter' });
+    expect(onLineClick).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onLineClick for non-Enter keyboard keys', async () => {
+    const onLineClick = vi.fn();
+    const v = { ...makeFloatVar(0.5), declarationLine: 4 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false, onLineClick } });
+    const lineEl = document.querySelector('.var-line') as HTMLElement;
+    for (const key of [' ', 'Space', 'ArrowUp', 'ArrowDown', 'Tab', 'a', 'Escape']) {
+      await fireEvent.keyDown(lineEl, { key });
+    }
+    expect(onLineClick).not.toHaveBeenCalled();
+  });
+
+  it('line badge has role=button and tabindex=0', () => {
+    const v = { ...makeFloatVar(0.5), declarationLine: 3 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const lineEl = document.querySelector('.var-line') as HTMLElement;
+    expect(lineEl).toHaveAttribute('role', 'button');
+    expect(lineEl).toHaveAttribute('tabindex', '0');
   });
 
   it('shows dash placeholder when no value and no stats', () => {

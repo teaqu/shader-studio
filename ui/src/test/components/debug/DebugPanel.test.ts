@@ -855,6 +855,30 @@ describe('DebugPanel', () => {
       }
     });
 
+    it('onVarClick callback propagates when line badge is clicked', async () => {
+      const onVarClick = vi.fn();
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isVariableInspectorEnabled: true,
+          capturedVariables: [{
+            varName: 'myVar', varType: 'float', value: null,
+            channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+            stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+            channelHistograms: null, colorFrequencies: null, thumbnail: null,
+            declarationLine: 12, gridWidth: 32, gridHeight: 32,
+          }],
+        }),
+        getUniforms: mockGetUniforms,
+        onVarClick,
+      });
+
+      const lineEl = container.querySelector('.var-line') as HTMLElement;
+      expect(lineEl).toBeInTheDocument();
+      expect(lineEl.textContent).toBe('L13');
+      await fireEvent.click(lineEl);
+      expect(onVarClick).toHaveBeenCalledWith('myVar', 12);
+    });
+
     it('refreshMode border survives rapid debugState changes', async () => {
       const { container, rerender } = render(DebugPanel, {
         props: {
