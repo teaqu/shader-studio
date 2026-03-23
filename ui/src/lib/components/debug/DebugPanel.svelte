@@ -180,6 +180,24 @@
       isLineTooltipHoverArmed = false;
     }
   }
+
+  function escapeLoopHeader(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function highlightLoopHeader(value: string) {
+    const escaped = escapeLoopHeader(value);
+    const tokenPattern = /(\b(?:for|while|if|return)\b|\b(?:int|float|bool|vec[234])\b|-?\b\d+\b)/g;
+
+    return escaped.replace(tokenPattern, (token) => {
+      if (/^(for|while|if|return)$/.test(token)) return `<span class="loop-keyword">${token}</span>`;
+      if (/^(int|float|bool|vec[234])$/.test(token)) return `<span class="loop-type">${token}</span>`;
+      return `<span class="loop-number">${token}</span>`;
+    });
+  }
 </script>
 
 <svelte:window
@@ -330,7 +348,9 @@
           {#each ctx.loops as loop}
             <div class="loop-row">
               <span class="loop-line">L{loop.lineNumber + 1}:</span>
-              <span class="loop-header has-tooltip" data-tooltip={loop.loopHeader}>{loop.loopHeader}</span>
+              <span class="loop-header has-tooltip" data-tooltip={loop.loopHeader}>
+                {@html highlightLoopHeader(loop.loopHeader)}
+              </span>
               <span class="loop-iter-label">Iterations</span>
               <input
                 type="number"
@@ -615,6 +635,19 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+
+  .loop-header :global(.loop-keyword) {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+    font-weight: 600;
+  }
+
+  .loop-header :global(.loop-type) {
+    color: var(--vscode-symbolIcon-classForeground, #4ec9b0);
+  }
+
+  .loop-header :global(.loop-number) {
+    color: var(--vscode-debugTokenExpression-number, #b5cea8);
   }
 
   .loop-iter-label {

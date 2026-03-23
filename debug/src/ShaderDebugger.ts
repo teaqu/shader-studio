@@ -171,9 +171,8 @@ export class ShaderDebugger {
         type,
         uvValue,
         centeredUvValue,
-        defaultCustomValue,
-        mode: type === 'vec2' ? 'uv' : 'custom',
-        customValue: defaultCustomValue,
+        defaultExpression: type === 'vec2' ? uvValue : defaultCustomValue,
+        expression: type === 'vec2' ? uvValue : defaultCustomValue,
       });
     }
 

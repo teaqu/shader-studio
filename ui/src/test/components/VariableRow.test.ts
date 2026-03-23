@@ -315,6 +315,22 @@ describe('VariableRow', () => {
     expect(document.querySelector('.var-name.clickable')).not.toBeInTheDocument();
   });
 
+  it('keeps long variable names constrained and exposes full name via title', () => {
+    const v = {
+      ...makeFloatVar(0.5),
+      varName: 'this_is_a_very_long_variable_name_that_should_not_overlap_vec3',
+      varType: 'vec3',
+    };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const nameEl = document.querySelector('.var-name') as HTMLElement;
+    const metaEl = document.querySelector('.var-meta') as HTMLElement;
+    const typeEl = document.querySelector('.var-type') as HTMLElement;
+
+    expect(nameEl).toHaveAttribute('title', v.varName);
+    expect(metaEl).toBeInTheDocument();
+    expect(typeEl.textContent).toBe('vec3');
+  });
+
   it('calls onLineClick when line number is clicked', async () => {
     const onLineClick = vi.fn();
     const v = { ...makeFloatVar(0.5), declarationLine: 4 };

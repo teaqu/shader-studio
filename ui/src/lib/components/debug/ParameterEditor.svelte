@@ -1,86 +1,117 @@
 <script lang="ts">
-  import type { DebugParameterInfo, ParameterMode } from "../../types/ShaderDebugState";
+  import type { DebugParameterInfo } from "../../types/ShaderDebugState";
   import { dragScrub } from "../../actions/dragScrub";
 
   export let param: DebugParameterInfo;
   export let onChange: (glslValue: string) => void = () => {};
 
-  let mode: ParameterMode = param.mode;
-  let customValue: string = param.customValue;
-  let presetExpression: string = '';
+  let expression = param.expression || param.defaultExpression;
+  let presetMenu: HTMLDetailsElement | undefined;
 
-  // Float-specific
-  let floatValue = parseFloat(param.defaultCustomValue) || 0.5;
-
-  // Vec component values and per-component modes
-  let vecComponents: number[] = parseVecComponents(param.defaultCustomValue, param.type);
-  let vecComponentModes: string[] = initComponentModes(param.type);
-  let vecComponentPresets: string[] = initComponentPresets(param.type);
-
-  // Bool
-  let boolValue = param.defaultCustomValue === 'true';
-
-  // sampler2D channel
-  let channel = param.defaultCustomValue;
-
-  // Component labels per vec type
-  const vecLabels: Record<string, string[]> = {
-    'vec2': ['X', 'Y'],
-    'vec3': ['R', 'G', 'B'],
-    'vec4': ['X', 'Y', 'Z', 'W'],
-  };
-
-  // Preset options per type
+  const isVec = param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4';
+  const componentCount = param.type === 'vec2' ? 2 : param.type === 'vec3' ? 3 : param.type === 'vec4' ? 4 : 0;
   const floatPresets = ['iTime', 'sin(iTime)', 'cos(iTime)', 'fract(iTime)', 'iTimeDelta'];
   const intPresets = ['iFrame', 'int(iTime)'];
   const boolPresets = ['iTime > 1.0', 'iFrame > 30'];
-
-  // Per-component presets (float-level values suitable for a single component)
-  const componentPresets = ['iTime', 'sin(iTime)', 'cos(iTime)', 'fract(iTime)', 'uv.x', 'uv.y'];
-
-  // Whole-vec presets
   const vec2Presets = ['iMouse.xy/iResolution.xy', 'iResolution.xy'];
   const vec3Presets = ['vec3(iTime)', 'vec3(sin(iTime))'];
   const vec4Presets = ['vec4(iTime)', 'vec4(sin(iTime), cos(iTime), 0.0, 1.0)'];
+  const quickExpressions: Record<string, string[]> = {
+    float: floatPresets,
+    int: intPresets,
+    bool: boolPresets,
+    vec2: vec2Presets,
+    vec3: vec3Presets,
+    vec4: vec4Presets,
+    sampler2D: ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'],
+  };
 
-  function getPresetsForType(type: string): string[] {
-    switch (type) {
-      case 'float': return floatPresets;
-      case 'int': return intPresets;
-      case 'vec2': return vec2Presets;
-      case 'vec3': return vec3Presets;
-      case 'vec4': return vec4Presets;
-      case 'bool': return boolPresets;
-      default: return [];
+  function normalizeExpression(type: string, value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return trimmed;
+
+    if (type === 'vec2' || type === 'vec3' || type === 'vec4') {
+      const ctorMatch = trimmed.match(/^\s*vec[234]\s*\(/);
+      if (ctorMatch) return trimmed;
+      if (trimmed.includes(',')) return `${type}(${trimmed})`;
     }
+
+    return trimmed;
   }
 
-  $: presets = getPresetsForType(param.type);
-  $: isVec = param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4';
-  $: compCount = isVec ? (param.type === 'vec2' ? 2 : param.type === 'vec3' ? 3 : 4) : 0;
-  $: labels = vecLabels[param.type] || [];
-
-  function initComponentModes(type: string): string[] {
-    const count = type === 'vec2' ? 2 : type === 'vec3' ? 3 : type === 'vec4' ? 4 : 0;
-    return new Array(count).fill('custom');
+  function escapeExpression(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
-  function initComponentPresets(type: string): string[] {
-    const count = type === 'vec2' ? 2 : type === 'vec3' ? 3 : type === 'vec4' ? 4 : 0;
-    return new Array(count).fill('');
+  function highlightExpression(value: string): string {
+    const escaped = escapeExpression(value || '');
+    const tokenPattern = /(\b(?:vec[234]|float|int|bool|true|false)\b|\b(?:sin|cos|tan|fract|mix|clamp|min|max|normalize|length|dot|pow|smoothstep|step)\b(?=\s*\()|\bi(?:Time|TimeDelta|Frame|Mouse|Resolution|Channel[0-3])\b|-?\b\d*\.?\d+(?:e[+-]?\d+)?\b)/g;
+
+    return escaped.replace(tokenPattern, (token) => {
+      if (/^-?\d/.test(token)) return `<span class="expr-number">${token}</span>`;
+      if (/^(true|false|bool)$/.test(token)) return `<span class="expr-keyword">${token}</span>`;
+      if (/^(vec[234]|float|int)$/.test(token)) return `<span class="expr-type">${token}</span>`;
+      if (/^i(?:Time|TimeDelta|Frame|Mouse|Resolution|Channel[0-3])$/.test(token)) return `<span class="expr-uniform">${token}</span>`;
+      return `<span class="expr-fn">${token}</span>`;
+    });
   }
 
-  function parseVecComponents(value: string, type: string): number[] {
-    const parenMatch = value.match(/\(([^)]*)\)/);
-    const inner = parenMatch ? parenMatch[1] : value;
-    const match = inner.match(/[\d.eE+-]+/g);
-    const nums = match ? match.map(Number).filter(n => !isNaN(n)) : [];
-    switch (type) {
-      case 'vec2': return nums.length >= 2 ? nums.slice(0, 2) : [nums[0] ?? 0.5, nums[0] ?? 0.5];
-      case 'vec3': return nums.length >= 3 ? nums.slice(0, 3) : [nums[0] ?? 0.5, nums[0] ?? 0.5, nums[0] ?? 0.5];
-      case 'vec4': return nums.length >= 4 ? nums.slice(0, 4) : [nums[0] ?? 0.5, nums[0] ?? 0.5, nums[0] ?? 0.5, nums[0] ?? 1.0];
-      default: return [];
-    }
+  function parseNumericValue(value: string): number | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (!/^-?\d*\.?\d+(e[+-]?\d+)?$/i.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function parseVectorComponents(type: string, value: string): number[] | null {
+    const trimmed = normalizeExpression(type, value);
+    const ctor = trimmed.match(/^vec[234]\((.*)\)$/);
+    if (!ctor) return null;
+
+    const parts = ctor[1].split(',').map(part => part.trim()).filter(Boolean);
+    if (parts.length !== componentCount) return null;
+
+    const values = parts.map(parseNumericValue);
+    if (values.some(v => v === null)) return null;
+    return values as number[];
+  }
+
+  function emit(nextValue: string) {
+    expression = nextValue;
+    onChange(normalizeExpression(param.type, nextValue));
+  }
+
+  function applyQuickExpression(value: string) {
+    emit(value);
+  }
+
+  function handlePresetSelect(value: string) {
+    applyQuickExpression(value);
+    presetMenu?.removeAttribute('open');
+  }
+
+  function handleExpressionInput(event: Event) {
+    emit((event.target as HTMLInputElement).value);
+  }
+
+  function handleExpressionBlur() {
+    expression = normalizeExpression(param.type, expression);
+  }
+
+  function updateFloatValue(next: number) {
+    emit(String(next));
+  }
+
+  function updateBoolValue(next: boolean) {
+    emit(next ? 'true' : 'false');
+  }
+
+  function updateSampler(value: string) {
+    emit(value);
   }
 
   function vecToHex(components: number[]): string {
@@ -90,202 +121,135 @@
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
-  function getComponentExpression(index: number): string {
-    const compMode = vecComponentModes[index];
-    if (compMode === 'custom') {
-      return String(vecComponents[index]);
-    } else if (compMode.startsWith('preset:')) {
-      return compMode.substring(7);
-    }
-    return String(vecComponents[index]);
-  }
-
-  function emitValue() {
-    if (mode === 'uv') {
-      onChange(param.uvValue);
-      return;
-    }
-    if (mode === 'centered-uv') {
-      onChange(param.centeredUvValue);
-      return;
-    }
-    if (mode === 'preset') {
-      onChange(presetExpression);
-      return;
-    }
-    // mode === 'custom'
-    switch (param.type) {
-      case 'float':
-        onChange(String(floatValue));
-        break;
-      case 'vec2':
-      case 'vec3':
-      case 'vec4': {
-        const components = [];
-        for (let i = 0; i < compCount; i++) {
-          components.push(getComponentExpression(i));
-        }
-        onChange(`${param.type}(${components.join(', ')})`);
-        break;
-      }
-      case 'int':
-        onChange(customValue);
-        break;
-      case 'bool':
-        onChange(boolValue ? 'true' : 'false');
-        break;
-      case 'sampler2D':
-        onChange(channel);
-        break;
-      default:
-        onChange(customValue);
-    }
-  }
-
-  function handleModeChange(event: Event) {
-    const val = (event.target as HTMLSelectElement).value;
-    if (val.startsWith('preset:')) {
-      mode = 'preset';
-      presetExpression = val.substring(7);
-    } else {
-      mode = val as ParameterMode;
-    }
-    emitValue();
-  }
-
-  function handleComponentModeChange(index: number, event: Event) {
-    const val = (event.target as HTMLSelectElement).value;
-    vecComponentModes[index] = val;
-    vecComponentModes = [...vecComponentModes];
-    emitValue();
-  }
-
-  function handleFloatInput(event: Event) {
-    floatValue = parseFloat((event.target as HTMLInputElement).value) || 0;
-    emitValue();
-  }
-
-  function handleVecInput(index: number, event: Event) {
-    vecComponents[index] = parseFloat((event.target as HTMLInputElement).value) || 0;
-    vecComponents = [...vecComponents];
-    emitValue();
-  }
-
-  function handleBoolChange(event: Event) {
-    boolValue = (event.target as HTMLInputElement).checked;
-    emitValue();
-  }
-
-  function handleChannelChange(event: Event) {
-    channel = (event.target as HTMLSelectElement).value;
-    emitValue();
-  }
-
-  function handleIntInput(event: Event) {
-    customValue = (event.target as HTMLInputElement).value;
-    emitValue();
-  }
-
   function handleColorPicker(event: Event) {
     const hex = (event.target as HTMLInputElement).value;
-    const r = parseInt(hex.slice(1, 3), 16) / 255;
-    const g = parseInt(hex.slice(3, 5), 16) / 255;
-    const b = parseInt(hex.slice(5, 7), 16) / 255;
-    vecComponents = [r, g, b];
-    emitValue();
+    const r = (parseInt(hex.slice(1, 3), 16) / 255).toFixed(2);
+    const g = (parseInt(hex.slice(3, 5), 16) / 255).toFixed(2);
+    const b = (parseInt(hex.slice(5, 7), 16) / 255).toFixed(2);
+    if (param.type === 'vec3') {
+      emit(`vec3(${r}, ${g}, ${b})`);
+    } else if (param.type === 'vec4') {
+      const components = parseVectorComponents('vec4', expression) || [Number(r), Number(g), Number(b), 1];
+      emit(`vec4(${r}, ${g}, ${b}, ${components[3].toFixed(2)})`);
+    }
   }
 
-  $: isSampler = param.type === 'sampler2D';
-  $: showModeDropdown = !isSampler;
-  $: modeSelectValue = mode === 'preset' ? `preset:${presetExpression}` : mode;
+  $: floatValue = parseNumericValue(expression);
+  $: boolValue = expression.trim() === 'true';
+  $: vecComponents = isVec ? parseVectorComponents(param.type, expression) : null;
+  $: quickChips = quickExpressions[param.type] || [];
+  $: sliderDisplayValue = Number.isFinite(floatValue ?? NaN) ? Math.max(0, Math.min(1, floatValue as number)) : 0;
+  $: highlightedExpression = highlightExpression(expression || param.defaultExpression);
 </script>
 
-<div class="param-row">
-  <span class="param-name">{param.name}</span>
-  <span class="param-type">{param.type}</span>
-
-  {#if showModeDropdown}
-    <select class="mode-select" value={modeSelectValue} on:change={handleModeChange} aria-label="Parameter mode for {param.name}">
-      <option value="uv">UV</option>
-      <option value="centered-uv">Centered UV</option>
-      <option value="custom">Custom</option>
-      {#if presets.length > 0}
-        <optgroup label="Uniforms">
-          {#each presets as preset}
-            <option value="preset:{preset}">{preset}</option>
-          {/each}
-        </optgroup>
-      {/if}
-    </select>
-  {/if}
-
-  {#if isSampler}
-    <select class="channel-select" value={channel} on:change={handleChannelChange} aria-label="Channel for {param.name}">
-      <option value="iChannel0">iChannel0</option>
-      <option value="iChannel1">iChannel1</option>
-      <option value="iChannel2">iChannel2</option>
-      <option value="iChannel3">iChannel3</option>
-    </select>
-  {:else if mode === 'centered-uv'}
-    <span class="preset-label">centered</span>
-  {:else if mode === 'custom'}
-    {#if param.type === 'float'}
-      <input type="number" step="0.01" value={floatValue} on:input={handleFloatInput} use:dragScrub={{ step: 0.01, onInput: (v) => { floatValue = v; emitValue(); } }} class="value-input" aria-label="Float value for {param.name}" />
-      <input type="range" min="0" max="1" step="0.01" value={floatValue} on:input={handleFloatInput} class="value-slider" aria-label="Float slider for {param.name}" />
-    {:else if isVec}
-      <!-- handled below in component rows -->
-    {:else if param.type === 'int'}
-      <input type="number" step="1" value={customValue} on:input={handleIntInput} use:dragScrub={{ step: 1, onInput: (v) => { customValue = String(v); emitValue(); } }} class="value-input" aria-label="Int value for {param.name}" />
-    {:else if param.type === 'bool'}
-      <input type="checkbox" checked={boolValue} on:change={handleBoolChange} aria-label="Bool value for {param.name}" />
+<div class="param-editor">
+  <div class="param-row">
+    <span class="param-name">{param.name}</span>
+    <span class="param-type">{param.type}</span>
+    <div class="expression-shell">
+      <div class="expression-highlight" aria-hidden="true">
+        {@html highlightedExpression}
+      </div>
+      <input
+        class="expression-input"
+        type="text"
+        value={expression}
+        on:input={handleExpressionInput}
+        on:blur={handleExpressionBlur}
+        aria-label="Expression for {param.name}"
+        placeholder={param.defaultExpression}
+        spellcheck="false"
+      />
+    </div>
+    {#if param.type === 'vec3' || param.type === 'vec4'}
+      <input
+        type="color"
+        value={vecToHex(vecComponents || [0, 0, 0])}
+        on:input={handleColorPicker}
+        class="color-picker"
+        aria-label="Color picker for {param.name}"
+      />
     {/if}
-  {:else if mode === 'preset'}
-    <span class="preset-label">{presetExpression}</span>
+    {#if param.type === 'float'}
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={sliderDisplayValue}
+        on:input={(e) => updateFloatValue(parseFloat((e.target as HTMLInputElement).value) || 0)}
+        use:dragScrub={{ step: 0.01, onInput: (v) => updateFloatValue(v) }}
+        class="value-slider value-slider-inline"
+        aria-label="Float slider for {param.name}"
+      />
+    {/if}
+    {#if quickChips.length > 0}
+      <details class="preset-menu" bind:this={presetMenu}>
+        <summary class="preset-trigger" aria-label="Preset for {param.name}">
+          <span class="preset-icon" aria-hidden="true">⋯</span>
+        </summary>
+        <div class="preset-popover">
+          {#each quickChips as chip}
+            <button
+              class="preset-option"
+              type="button"
+              on:click={() => handlePresetSelect(chip)}
+            >
+              {chip}
+            </button>
+          {/each}
+        </div>
+      </details>
+    {/if}
+  </div>
+
+  {#if param.type === 'int'}
+    <div class="control-row">
+      <input
+        type="number"
+        step="1"
+        value={parseNumericValue(expression) ?? ''}
+        on:input={(e) => emit((e.target as HTMLInputElement).value)}
+        use:dragScrub={{ step: 1, onInput: (v) => emit(String(Math.round(v))) }}
+        class="value-input"
+        aria-label="Int value for {param.name}"
+      />
+    </div>
+  {:else if param.type === 'bool'}
+    <div class="control-row">
+      <label class="checkbox-row">
+        <input
+          type="checkbox"
+          checked={boolValue}
+          on:change={(e) => updateBoolValue((e.target as HTMLInputElement).checked)}
+          aria-label="Bool value for {param.name}"
+        />
+        <span>Toggle</span>
+      </label>
+    </div>
+  {:else if param.type === 'sampler2D'}
+    <div class="control-row">
+      <select class="channel-select" value={expression} on:change={(e) => updateSampler((e.target as HTMLSelectElement).value)} aria-label="Channel for {param.name}">
+        <option value="iChannel0">iChannel0</option>
+        <option value="iChannel1">iChannel1</option>
+        <option value="iChannel2">iChannel2</option>
+        <option value="iChannel3">iChannel3</option>
+      </select>
+    </div>
   {/if}
 </div>
 
-{#if isVec && mode === 'custom'}
-  <div class="vec-components" class:compact-rgb={param.type === 'vec3'}>
-    {#each { length: compCount } as _, i}
-      <div class="vec-comp-row">
-        <span class="comp-label">{labels[i]}</span>
-        <select
-          class="comp-mode-select"
-          value={vecComponentModes[i]}
-          on:change={(e) => handleComponentModeChange(i, e)}
-          aria-label="{labels[i]} component mode for {param.name}"
-        >
-          <option value="custom">Custom</option>
-          {#each componentPresets as preset}
-            <option value="preset:{preset}">{preset}</option>
-          {/each}
-        </select>
-        {#if vecComponentModes[i] === 'custom'}
-          <input
-            type="number"
-            step="0.01"
-            value={vecComponents[i]}
-            on:input={(e) => handleVecInput(i, e)}
-            use:dragScrub={{ step: 0.01, onInput: (v) => { vecComponents[i] = v; vecComponents = [...vecComponents]; emitValue(); } }}
-            class="value-input vec-input"
-            aria-label="{labels[i]} value"
-          />
-        {/if}
-      </div>
-    {/each}
-    {#if param.type === 'vec3'}
-      <input type="color" value={vecToHex(vecComponents)} on:input={handleColorPicker} class="color-picker" aria-label="Color picker for {param.name}" />
-    {/if}
-  </div>
-{/if}
-
 <style>
+  .param-editor {
+    padding: 4px 0 6px;
+  }
+
   .param-row {
     display: flex;
-    align-items: center;
     gap: 6px;
-    padding: 3px 0;
-    font-size: 14px;
+    align-items: center;
+    flex-wrap: nowrap;
+    min-width: 0;
   }
 
   .param-name {
@@ -300,91 +264,178 @@
     min-width: 40px;
   }
 
-  .mode-select, .channel-select {
-    background: var(--vscode-dropdown-background);
-    color: var(--vscode-dropdown-foreground);
-    border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 2px;
-    padding: 2px 4px;
-    font-size: 13px;
-  }
-
-  .value-input {
+  .expression-input,
+  .value-input,
+  .channel-select,
+  .preset-trigger {
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
     border-radius: 2px;
-    padding: 2px 6px;
+    padding: 3px 6px;
     font-size: 13px;
-    width: 60px;
   }
 
-  .vec-input {
-    width: 50px;
+  .expression-input {
+    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+    background: transparent;
+    color: transparent;
+    caret-color: var(--vscode-input-foreground);
+    position: relative;
+    z-index: 1;
+  }
+
+  .expression-input::placeholder {
+    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+  }
+
+  .expression-shell {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+  }
+
+  .expression-shell:focus-within {
+    border-color: var(--vscode-focusBorder);
+  }
+
+  .expression-highlight {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+    font-size: 13px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-input-foreground);
+  }
+
+  .expression-highlight :global(.expr-keyword) {
+    color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground));
+  }
+
+  .expression-highlight :global(.expr-type) {
+    color: var(--vscode-symbolIcon-classForeground, var(--vscode-editor-foreground));
+  }
+
+  .expression-highlight :global(.expr-uniform) {
+    color: var(--vscode-debugTokenExpression-name, var(--vscode-editor-foreground));
+  }
+
+  .expression-highlight :global(.expr-number) {
+    color: var(--vscode-debugTokenExpression-number, var(--vscode-editor-foreground));
+  }
+
+  .expression-highlight :global(.expr-fn) {
+    color: var(--vscode-symbolIcon-functionForeground, var(--vscode-editor-foreground));
+  }
+
+  .preset-menu {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .preset-trigger {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    min-width: 28px;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    padding: 3px 0;
+  }
+
+  .preset-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .preset-menu[open] .preset-trigger {
+    border-color: var(--vscode-focusBorder);
+  }
+
+  .preset-icon {
+    font-size: 16px;
+    line-height: 1;
+    transform: translateY(-1px);
+  }
+
+  .preset-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    max-width: 240px;
+    padding: 4px;
+    background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+    border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+    z-index: 3;
+  }
+
+  .preset-option {
+    background: transparent;
+    border: 0;
+    border-radius: 3px;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  .preset-option:hover {
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .value-input {
+    width: 70px;
   }
 
   .value-slider {
-    width: 70px;
+    width: 90px;
     height: 16px;
+  }
+
+  .value-slider-inline {
+    width: 116px;
+    flex: 0 0 116px;
+  }
+
+  .checkbox-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
   }
 
   .color-picker {
     width: 26px;
-    height: 22px;
+    height: 24px;
     padding: 0;
     border: 1px solid var(--vscode-input-border);
     cursor: pointer;
-    margin-left: 26px;
-  }
-
-  .preset-label {
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 13px;
-    color: var(--vscode-editor-foreground);
-    opacity: 0.8;
-  }
-
-  .vec-components {
-    padding-left: 6px;
-    margin-bottom: 4px;
-  }
-
-  .vec-components.compact-rgb {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .vec-comp-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 0;
-  }
-
-  .vec-components.compact-rgb .vec-comp-row {
-    padding: 0;
-  }
-
-  .vec-components.compact-rgb .color-picker {
-    margin-left: 0;
-  }
-
-  .comp-label {
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    min-width: 14px;
-    text-align: center;
-  }
-
-  .comp-mode-select {
-    background: var(--vscode-dropdown-background);
-    color: var(--vscode-dropdown-foreground);
-    border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 2px;
-    padding: 2px 4px;
-    font-size: 12px;
   }
 </style>

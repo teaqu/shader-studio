@@ -59,18 +59,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     const params = ctx!.parameters;
     expect(params).toHaveLength(6);
 
-    // vec2 defaults to UV mode
-    expect(params[0]).toMatchObject({ name: 'a', type: 'vec2', mode: 'uv', uvValue: 'uv' });
-    // float defaults to custom
-    expect(params[1]).toMatchObject({ name: 'b', type: 'float', mode: 'custom', defaultCustomValue: '0.5', uvValue: 'uv.x' });
-    // vec3 defaults to custom
-    expect(params[2]).toMatchObject({ name: 'c', type: 'vec3', mode: 'custom', defaultCustomValue: 'vec3(0.5)', uvValue: 'vec3(uv, 0.0)' });
-    // vec4 defaults to custom
-    expect(params[3]).toMatchObject({ name: 'd', type: 'vec4', mode: 'custom', defaultCustomValue: 'vec4(0.5)', uvValue: 'vec4(uv, 0.0, 1.0)' });
-    // int defaults to custom
-    expect(params[4]).toMatchObject({ name: 'e', type: 'int', mode: 'custom', defaultCustomValue: '1', uvValue: 'int(uv.x * 10.0)' });
-    // bool defaults to custom
-    expect(params[5]).toMatchObject({ name: 'f', type: 'bool', mode: 'custom', defaultCustomValue: 'true', uvValue: 'uv.x > 0.5' });
+    expect(params[0]).toMatchObject({ name: 'a', type: 'vec2', uvValue: 'uv', defaultExpression: 'uv', expression: 'uv' });
+    expect(params[1]).toMatchObject({ name: 'b', type: 'float', defaultExpression: '0.5', expression: '0.5', uvValue: 'uv.x' });
+    expect(params[2]).toMatchObject({ name: 'c', type: 'vec3', defaultExpression: 'vec3(0.5)', expression: 'vec3(0.5)', uvValue: 'vec3(uv, 0.0)' });
+    expect(params[3]).toMatchObject({ name: 'd', type: 'vec4', defaultExpression: 'vec4(0.5)', expression: 'vec4(0.5)', uvValue: 'vec4(uv, 0.0, 1.0)' });
+    expect(params[4]).toMatchObject({ name: 'e', type: 'int', defaultExpression: '1', expression: '1', uvValue: 'int(uv.x * 10.0)' });
+    expect(params[5]).toMatchObject({ name: 'f', type: 'bool', defaultExpression: 'true', expression: 'true', uvValue: 'uv.x > 0.5' });
   });
 
   it('should handle sampler2D parameters with default value iChannel0', () => {
@@ -83,8 +77,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(ctx!.parameters[0]).toMatchObject({
       name: 'tex',
       type: 'sampler2D',
-      defaultCustomValue: 'iChannel0',
-      mode: 'custom',
+      defaultExpression: 'iChannel0',
+      expression: 'iChannel0',
     });
   });
 
