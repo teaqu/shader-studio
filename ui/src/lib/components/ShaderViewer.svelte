@@ -113,6 +113,9 @@
 
   // Debug panel state
   let debugPanelVisible = true;
+  let persistedVariableInspectorEnabled = false;
+  let persistedInlineRenderingEnabled = true;
+  let persistedPixelInspectorEnabled = true;
 
   // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
   let editorOverlayVisible = false;
@@ -245,6 +248,13 @@
     });
     const unsubDebug = debugPanelStore.subscribe((state) => {
       debugPanelVisible = state.isVisible;
+      persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
+      persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
+      persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
+
+      shaderDebugManager?.setVariableInspectorEnabled(state.isVariableInspectorEnabled);
+      shaderDebugManager?.setInlineRenderingEnabled(state.isInlineRenderingEnabled);
+      pixelInspectorManager?.setEnabled(state.isPixelInspectorEnabled && (shaderDebugManager?.getState().isEnabled ?? false));
     });
     const unsubPerf = performancePanelStore.subscribe((state) => {
       performancePanelVisible = state.isVisible;
@@ -385,6 +395,7 @@
     if (!pixelInspectorManager.getState().isEnabled && !shaderDebugManager?.getState().isEnabled) return;
     pixelInspectorManager.toggleEnabled();
     debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
+    debugPanelStore.setPixelInspectorEnabled(debugInspectorEnabled);
   }
 
   function handleToggleDebugEnabled() {
@@ -398,7 +409,7 @@
 
     if (pixelInspectorManager) {
       if (shaderDebugManager.getState().isEnabled) {
-        pixelInspectorManager.setEnabled(debugInspectorEnabled);
+        pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled);
       } else {
         debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
         pixelInspectorManager.setEnabled(false);
@@ -564,6 +575,8 @@
 
       shaderDebugManager = new ShaderDebugManager();
       shaderDebugManager.setStateCallback((s) => { debugState = s; });
+      shaderDebugManager.setVariableInspectorEnabled(persistedVariableInspectorEnabled);
+      shaderDebugManager.setInlineRenderingEnabled(persistedInlineRenderingEnabled);
 
       shaderStudio = new ShaderStudio(transport, shaderLocker, renderingEngine, shaderDebugManager);
 
@@ -610,6 +623,8 @@
 
       pixelInspectorManager = new PixelInspectorManager((s) => { inspectorState = s; });
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
+      debugInspectorEnabled = persistedPixelInspectorEnabled;
+      pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled && debugState.isEnabled);
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
@@ -623,6 +638,11 @@
 
       shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
+      shaderDebugManager.setStateCallback((s) => {
+        debugState = s;
+        debugPanelStore.setVariableInspectorEnabled(s.isVariableInspectorEnabled);
+        debugPanelStore.setInlineRenderingEnabled(s.isInlineRenderingEnabled);
+      });
 
       // Initialize performance monitor
       performanceMonitor = new PerformanceMonitor(renderingEngine);

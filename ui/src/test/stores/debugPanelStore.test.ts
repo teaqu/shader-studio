@@ -17,6 +17,9 @@ describe('debugPanelStore', () => {
     const store = await importStore();
     const state = get(store);
     expect(state.isVisible).toBe(true);
+    expect(state.isVariableInspectorEnabled).toBe(false);
+    expect(state.isInlineRenderingEnabled).toBe(true);
+    expect(state.isPixelInspectorEnabled).toBe(true);
   });
 
   it('should not restore from localStorage on creation (deferred restore)', async () => {
@@ -31,10 +34,16 @@ describe('debugPanelStore', () => {
   it('restoreFromStorage should apply saved state', async () => {
     localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
       isVisible: false,
+      isVariableInspectorEnabled: true,
+      isInlineRenderingEnabled: false,
+      isPixelInspectorEnabled: false,
     }));
     const store = await importStore();
     store.restoreFromStorage();
     expect(get(store).isVisible).toBe(false);
+    expect(get(store).isVariableInspectorEnabled).toBe(true);
+    expect(get(store).isInlineRenderingEnabled).toBe(false);
+    expect(get(store).isPixelInspectorEnabled).toBe(false);
   });
 
   it('restoreFromStorage should handle invalid localStorage gracefully', async () => {
@@ -80,5 +89,17 @@ describe('debugPanelStore', () => {
     store.setVisible(false);
     const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
     expect(stored.isVisible).toBe(false);
+  });
+
+  it('should persist variable inspector, inline rendering, and pixel inspector toggles', async () => {
+    const store = await importStore();
+    store.setVariableInspectorEnabled(true);
+    store.setInlineRenderingEnabled(false);
+    store.setPixelInspectorEnabled(false);
+
+    const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
+    expect(stored.isVariableInspectorEnabled).toBe(true);
+    expect(stored.isInlineRenderingEnabled).toBe(false);
+    expect(stored.isPixelInspectorEnabled).toBe(false);
   });
 });

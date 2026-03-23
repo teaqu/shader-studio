@@ -124,6 +124,15 @@ export class ShaderDebugManager {
     this.onRecompileNeeded?.();
   }
 
+  public setInlineRenderingEnabled(enabled: boolean): void {
+    if (this.state.isInlineRenderingEnabled === enabled) {
+      return;
+    }
+    this.state.isInlineRenderingEnabled = enabled;
+    this.notifyStateChange();
+    this.onRecompileNeeded?.();
+  }
+
   public cycleNormalizeMode(): void {
     const modes: NormalizeMode[] = ['off', 'soft', 'abs'];
     const currentIndex = modes.indexOf(this.state.normalizeMode);
@@ -152,6 +161,18 @@ export class ShaderDebugManager {
   public toggleVariableInspector(): void {
     this.state.isVariableInspectorEnabled = !this.state.isVariableInspectorEnabled;
     if (!this.state.isVariableInspectorEnabled) {
+      this.state.capturedVariables = [];
+    }
+    this.notifyStateChange();
+    this.onCaptureStateChanged?.();
+  }
+
+  public setVariableInspectorEnabled(enabled: boolean): void {
+    if (this.state.isVariableInspectorEnabled === enabled) {
+      return;
+    }
+    this.state.isVariableInspectorEnabled = enabled;
+    if (!enabled) {
       this.state.capturedVariables = [];
     }
     this.notifyStateChange();
