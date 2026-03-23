@@ -251,7 +251,34 @@ describe('VariablesSection', () => {
 
       const input = container.querySelector('.ms-input') as HTMLInputElement;
       await fireEvent.input(input, { target: { value: '2000' } });
+      expect(mockManager.changeRefreshMode).not.toHaveBeenCalled();
       expect(mockManager.changePollingMs).toHaveBeenCalledWith(2000, false);
+    });
+
+    it('switches to polling when ms input changed from another refresh mode', async () => {
+      const mockManager = createMockVariableCaptureManager();
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, pollingMs: 500, variableCaptureManager: mockManager },
+      });
+
+      const input = container.querySelector('.ms-input') as HTMLInputElement;
+      await fireEvent.input(input, { target: { value: '750' } });
+
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('polling', false);
+      expect(mockManager.changePollingMs).toHaveBeenCalledWith(750, false);
+    });
+
+    it('switches to polling when ms input is focused from another refresh mode', async () => {
+      const mockManager = createMockVariableCaptureManager();
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, refreshMode: 'manual' as RefreshMode, pollingMs: 500, variableCaptureManager: mockManager },
+      });
+
+      const input = container.querySelector('.ms-input') as HTMLInputElement;
+      await fireEvent.focus(input);
+
+      expect(mockManager.changeRefreshMode).toHaveBeenCalledWith('polling', false);
+      expect(mockManager.changePollingMs).not.toHaveBeenCalled();
     });
 
     it('click + rerender simulates refresh mode round-trip', async () => {

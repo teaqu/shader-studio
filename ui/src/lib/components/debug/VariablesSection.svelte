@@ -34,7 +34,16 @@
   function handlePollingMsInput(event: Event) {
     const value = parseInt((event.target as HTMLInputElement).value, 10);
     if (!isNaN(value) && value > 0) {
+      if (refreshMode !== 'polling') {
+        variableCaptureManager?.changeRefreshMode('polling', hasPixelSelected);
+      }
       variableCaptureManager?.changePollingMs(value, hasPixelSelected);
+    }
+  }
+
+  function handlePollingMsFocus() {
+    if (refreshMode !== 'polling') {
+      variableCaptureManager?.changeRefreshMode('polling', hasPixelSelected);
     }
   }
 </script>
@@ -76,6 +85,7 @@
           min="1"
           step="100"
           value={pollingMs}
+          on:focus={handlePollingMsFocus}
           on:input={handlePollingMsInput}
           on:click|stopPropagation
           title="Custom refresh interval in milliseconds"

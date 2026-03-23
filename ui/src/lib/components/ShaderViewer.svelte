@@ -129,6 +129,9 @@
   let performanceData: PerformanceData | null = null;
   let compileMode: CompileMode = "hot";
   let lastSentCompileMode: CompileMode | null = null;
+  let debugSampleSize = 32;
+  let debugRefreshMode: import('../VariableCaptureManager').RefreshMode = 'polling';
+  let debugPollingMs = 500;
 
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
 
@@ -162,6 +165,12 @@
   $: activePollingMs = variableCaptureManager
     ? variableCaptureManager.getActivePollingMs(hasPixelCapture)
     : 500;
+  $: if (variableCaptureManager) {
+    hasPixelCapture;
+    debugSampleSize = variableCaptureManager.sampleSize;
+    debugRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelCapture);
+    debugPollingMs = variableCaptureManager.getActivePollingMs(hasPixelCapture);
+  }
 
   // Stable pixel coordinates for the capture reactive block
   $: capturePixelX = hasPixelCapture ? inspectorCanvasX : null;
@@ -605,7 +614,12 @@
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
-      variableCaptureManager.setSampleSettingsCallback(() => notifyVariableCaptureManager());
+      variableCaptureManager.setSampleSettingsCallback(() => {
+        debugSampleSize = variableCaptureManager?.sampleSize ?? 32;
+        debugRefreshMode = variableCaptureManager?.getActiveRefreshMode(hasPixelCapture) ?? 'polling';
+        debugPollingMs = variableCaptureManager?.getActivePollingMs(hasPixelCapture) ?? 500;
+        notifyVariableCaptureManager();
+      });
 
       shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
@@ -814,9 +828,9 @@
         onToggleInspectorEnabled={handleToggleInspectorEnabled}
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
-        sampleSize={variableCaptureManager?.sampleSize ?? 32}
-        refreshMode={activeRefreshMode}
-        pollingMs={activePollingMs}
+        sampleSize={debugSampleSize}
+        refreshMode={debugRefreshMode}
+        pollingMs={debugPollingMs}
         hasPixelSelected={hasPixelCapture}
         {customUniformValues}
       />

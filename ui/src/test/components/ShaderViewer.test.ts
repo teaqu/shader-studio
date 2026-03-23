@@ -185,31 +185,51 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
 const { mockVCMFactory } = vi.hoisted(() => {
   const mockVCMFactory = {
     _callback: null as ((vars: any[]) => void) | null,
+    _sampleSettingsCallback: null as (() => void) | null,
+    sampleSize: 32,
+    refreshMode: 'polling',
+    pollingMs: 500,
     inject(vars: any[]) { this._callback?.(vars); },
-    reset() { this._callback = null; },
+    emitSampleSettings() { this._sampleSettingsCallback?.(); },
+    reset() {
+      this._callback = null;
+      this._sampleSettingsCallback = null;
+      this.sampleSize = 32;
+      this.refreshMode = 'polling';
+      this.pollingMs = 500;
+    },
   };
   return { mockVCMFactory };
 });
 
 vi.mock('../../lib/VariableCaptureManager', () => ({
   VariableCaptureManager: class {
-    sampleSize = 32;
     constructor(_engine: any, cb: (vars: any[]) => void) {
       mockVCMFactory._callback = cb;
     }
-    setSampleSettingsCallback() {}
+    get sampleSize() { return mockVCMFactory.sampleSize; }
+    setSampleSettingsCallback(cb: () => void) { mockVCMFactory._sampleSettingsCallback = cb; }
     notifyStateChange() {}
-    dispose() {}
-    changeSampleSize() {}
-    changeRefreshMode() {}
-    changePollingMs() {}
+    dispose() { mockVCMFactory.reset(); }
+    changeSampleSize(size: number) {
+      mockVCMFactory.sampleSize = size;
+      mockVCMFactory.emitSampleSettings();
+    }
+    changeRefreshMode(mode: string) {
+      mockVCMFactory.refreshMode = mode;
+      mockVCMFactory.emitSampleSettings();
+    }
+    changePollingMs(ms: number) {
+      mockVCMFactory.pollingMs = ms;
+      mockVCMFactory.emitSampleSettings();
+    }
     setHistogramExpanded() {}
-    getActiveRefreshMode() { return 'polling'; }
-    getActivePollingMs() { return 500; }
-    get gridRefreshMode() { return 'polling'; }
-    get gridPollingMs() { return 500; }
-    get pixelRefreshMode() { return 'polling'; }
-    get pixelPollingMs() { return 500; }
+    getActiveRefreshMode() { return mockVCMFactory.refreshMode; }
+    getActivePollingMs() { return mockVCMFactory.pollingMs; }
+    get gridRefreshMode() { return mockVCMFactory.refreshMode; }
+    get gridPollingMs() { return mockVCMFactory.pollingMs; }
+    get pixelRefreshMode() { return mockVCMFactory.refreshMode; }
+    get pixelPollingMs() { return mockVCMFactory.pollingMs; }
   },
 }));
 
@@ -225,6 +245,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockVCMFactory.reset();
     compileModeStore.setMode('hot');
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(true);
@@ -279,12 +300,43 @@ describe('ShaderViewer', () => {
     await tick();
   }
 
+  function getCtrlButton(container: HTMLElement, text: string): HTMLElement | undefined {
+    return Array.from(container.querySelectorAll('.ctrl-btn')).find(
+      (b) => b.textContent?.trim() === text,
+    ) as HTMLElement | undefined;
+  }
+
   it('should render without crashing', async () => {
     const { container } = render(ShaderViewer, {
       onInitialized: vi.fn()
     });
 
     expect(container).toBeTruthy();
+  });
+
+  it('should update the active debugger size button after sample size changes', async () => {
+    const { container } = render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    await tick();
+    await loadShader();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+
+    const variableInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    await fireEvent.click(variableInspectorButton);
+    await tick();
+
+    expect(getCtrlButton(container, '32')).toHaveClass('active');
+
+    await fireEvent.click(getCtrlButton(container, '64')!);
+    await tick();
+
+    expect(getCtrlButton(container, '64')).toHaveClass('active');
+    expect(getCtrlButton(container, '32')).not.toHaveClass('active');
   });
 
   it('should show a no active shader state when no shader is loaded', async () => {
