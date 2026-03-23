@@ -12,17 +12,19 @@ let addPanelListeners: ((panel: any) => void)[] = [];
 let panels: Map<string, any> = new Map();
 let mockApi: any;
 
-function makeMockPanel(id: string, groupPanelCount = 1) {
+function makeMockPanel(id: string, groupPanelIds: string[] = [id], groupHeight = 0) {
   return {
     id,
     api: {
       id,
       group: {
-        panels: Array.from({ length: groupPanelCount }, (_, i) => ({ id: `p${i}` })),
+        panels: groupPanelIds.map((pid) => ({ id: pid })),
+        height: groupHeight,
       },
     },
   };
 }
+
 
 vi.mock('dockview-core', () => {
   return {
@@ -46,8 +48,23 @@ vi.mock('dockview-core', () => {
           panels.clear();
           mockApi.panels = [];
         }),
-        toJSON: vi.fn(() => ({})),
-        fromJSON: vi.fn(),
+        toJSON: vi.fn(() => ({
+          panels: Object.fromEntries(
+            [...panels.entries()].map(([id]) => [id, { id, component: id, title: id }])
+          ),
+          grid: {
+            root: { type: 'leaf', data: { views: [...panels.keys()] } },
+            orientation: 'VERTICAL',
+          },
+        })),
+        fromJSON: vi.fn((data: any) => {
+          panels.clear();
+          for (const id of Object.keys(data?.panels ?? {})) {
+            const panel = makeMockPanel(id);
+            panels.set(id, panel);
+          }
+          mockApi.panels = Array.from(panels.values());
+        }),
         dispose: vi.fn(),
         onDidLayoutChange: vi.fn((fn: () => void) => {
           layoutChangeListeners.push(fn);
@@ -569,7 +586,7 @@ function renderLayout(props: Record<string, any> = {}) {
       );
     });
 
-    it('should add config panel within debug panel when debug exists', async () => {
+    it('should add config panel below preview even when debug panel exists', async () => {
       renderLayout({ showDebugPanel: true, showConfigPanel: true });
       await tick();
 
@@ -578,9 +595,10 @@ function renderLayout(props: Record<string, any> = {}) {
           id: 'config',
           component: 'config',
           position: {
-            referencePanel: 'debug',
-            direction: 'within',
+            referencePanel: 'preview',
+            direction: 'below',
           },
+          initialHeight: 250,
         })
       );
     });
@@ -609,7 +627,7 @@ function renderLayout(props: Record<string, any> = {}) {
   });
 
   describe('debug panel management', () => {
-    it('should add debug panel below preview with initialHeight 200', async () => {
+    it('should add debug panel below preview with initialHeight 350', async () => {
       renderLayout({ showDebugPanel: true });
       await tick();
 
@@ -622,9 +640,22 @@ function renderLayout(props: Record<string, any> = {}) {
             referencePanel: 'preview',
             direction: 'below',
           },
-          initialHeight: 200,
+          initialHeight: 350,
         })
       );
+    });
+
+    it('should open below preview even when config is already open (no auto-tab default)', async () => {
+      // Start with only config open, then toggle debug on — should open below, not tab with config
+      const { rerender } = renderLayout({ showConfigPanel: true });
+      await tick();
+
+      await rerender({ mountPreview: () => {}, mountDebug: () => {}, mountConfig: () => {}, mountPerformance: () => {}, showDebugPanel: true, showConfigPanel: true, showPerformancePanel: false, transport: null });
+      await tick();
+
+      const debugCall = mockApi.addPanel.mock.calls.find((c: any[]) => c[0]?.id === 'debug');
+      expect(debugCall).toBeDefined();
+      expect(debugCall![0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
     });
 
     it('should remove debug panel when showDebugPanel becomes false', async () => {
@@ -637,6 +668,409 @@ function renderLayout(props: Record<string, any> = {}) {
       await tick();
 
       expect(mockApi.removePanel).toHaveBeenCalled();
+    });
+  });
+
+  // ─── Panel snapshot position restore ──────────────────────────
+
+  describe('panel snapshot position restore', () => {
+    const rerenderProps = (overrides: Record<string, any> = {}) => ({
+      mountPreview: () => {},
+      mountDebug: () => {},
+      mountConfig: () => {},
+      mountPerformance: () => {},
+      showDebugPanel: false,
+      showConfigPanel: false,
+      showPerformancePanel: false,
+      transport: null,
+      ...overrides,
+    });
+
+    // ── First open (no snapshot) ──
+
+    it('uses addPanel with default position on first open (no snapshot) — debug', async () => {
+      renderLayout({ showDebugPanel: true });
+      await tick();
+
+      const calls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'debug');
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+      expect(calls[0][0].initialHeight).toBe(350);
+    });
+
+    it('uses addPanel with default position on first open (no snapshot) — config', async () => {
+      renderLayout({ showConfigPanel: true });
+      await tick();
+
+      const calls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'config');
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+      expect(calls[0][0].initialHeight).toBe(250);
+    });
+
+    it('uses addPanel with default position on first open (no snapshot) — performance', async () => {
+      renderLayout({ showPerformancePanel: true });
+      await tick();
+
+      const calls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'performance');
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+      expect(calls[0][0].initialHeight).toBe(200);
+    });
+
+    // ── Snapshot captured before panel is removed ──
+
+    it('toJSON is called before removePanel so snapshot includes the panel being closed', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      const callOrder: string[] = [];
+      mockApi.toJSON.mockImplementation(() => {
+        callOrder.push('toJSON');
+        return {
+          panels: Object.fromEntries([...panels.entries()].map(([id]) => [id, { id, component: id, title: id }])),
+          grid: { root: { type: 'leaf', data: { views: [...panels.keys()] } }, orientation: 'VERTICAL' },
+        };
+      });
+      mockApi.removePanel.mockImplementation((panel: any) => {
+        callOrder.push('removePanel');
+        panels.delete(panel.id);
+        mockApi.panels = Array.from(panels.values());
+        removePanelListeners.forEach((fn) => fn(panel));
+      });
+
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+
+      const toJSONIdx = callOrder.indexOf('toJSON');
+      const removePanelIdx = callOrder.indexOf('removePanel');
+      expect(toJSONIdx).toBeGreaterThanOrEqual(0);
+      expect(removePanelIdx).toBeGreaterThan(toJSONIdx);
+    });
+
+    // ── Context-match: fromJSON called ──
+
+    it('calls fromJSON with full snapshot when debug context matches', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before + 1);
+      const arg = mockApi.fromJSON.mock.calls[before][0];
+      expect(arg.panels).toHaveProperty('debug');
+      expect(arg.panels).toHaveProperty('preview');
+    });
+
+    it('calls fromJSON with full snapshot when config context matches', async () => {
+      const { rerender } = renderLayout({ showConfigPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showConfigPanel: false }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showConfigPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before + 1);
+      const arg = mockApi.fromJSON.mock.calls[before][0];
+      expect(arg.panels).toHaveProperty('config');
+    });
+
+    it('calls fromJSON with full snapshot when performance context matches', async () => {
+      const { rerender } = renderLayout({ showPerformancePanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showPerformancePanel: false }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showPerformancePanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before + 1);
+      const arg = mockApi.fromJSON.mock.calls[before][0];
+      expect(arg.panels).toHaveProperty('performance');
+    });
+
+    it('calls fromJSON when debug closed and reopened with config also present throughout', async () => {
+      // All three open: close debug, context = {preview, config} on both sides
+      const { rerender } = renderLayout({ showDebugPanel: true, showConfigPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before + 1);
+      const arg = mockApi.fromJSON.mock.calls[before][0];
+      expect(arg.panels).toHaveProperty('debug');
+      expect(arg.panels).toHaveProperty('config');
+    });
+
+    // ── programmaticRemoval prevents spurious close events during fromJSON ──
+
+    it('does not dispatch debugClosed when snapshot restore causes fromJSON to remove then re-add panels', async () => {
+      const debugClosedHandler = vi.fn();
+      const { rerender } = render(DockviewLayout, {
+        props: rerenderProps({ showDebugPanel: true, showConfigPanel: true }),
+        events: { debugClosed: debugClosedHandler },
+      });
+      await tick();
+
+      // Close debug — saves snapshot
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+
+      debugClosedHandler.mockClear();
+
+      // Reopen debug via snapshot — fromJSON removes+re-adds all panels internally
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      // programmaticRemoval must be set during fromJSON so this is never fired
+      expect(debugClosedHandler).not.toHaveBeenCalled();
+    });
+
+    it('does not dispatch configClosed when debug snapshot restore runs fromJSON', async () => {
+      const configClosedHandler = vi.fn();
+      const { rerender } = render(DockviewLayout, {
+        props: rerenderProps({ showDebugPanel: true, showConfigPanel: true }),
+        events: { configClosed: configClosedHandler },
+      });
+      await tick();
+
+      // Close debug (config stays open)
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+
+      configClosedHandler.mockClear();
+
+      // Restore debug via snapshot — fromJSON internally removes config then re-adds it
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      expect(configClosedHandler).not.toHaveBeenCalled();
+    });
+
+    it('does not dispatch performanceClosed when snapshot restore runs fromJSON', async () => {
+      const perfClosedHandler = vi.fn();
+      const { rerender } = render(DockviewLayout, {
+        props: rerenderProps({ showDebugPanel: true, showPerformancePanel: true }),
+        events: { performanceClosed: perfClosedHandler },
+      });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false, showPerformancePanel: true }));
+      await tick();
+
+      perfClosedHandler.mockClear();
+
+      await rerender(rerenderProps({ showDebugPanel: true, showPerformancePanel: true }));
+      await tick();
+
+      expect(perfClosedHandler).not.toHaveBeenCalled();
+    });
+
+    it('still dispatches configClosed when user closes config after a snapshot restore', async () => {
+      const configClosedHandler = vi.fn();
+      const { rerender } = render(DockviewLayout, {
+        props: rerenderProps({ showDebugPanel: true, showConfigPanel: true }),
+        events: { configClosed: configClosedHandler },
+      });
+      await tick();
+
+      // Close and restore debug via snapshot
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      // Now user closes config via the X tab — should dispatch configClosed
+      const configPanel = panels.get('config');
+      removePanelListeners.forEach((fn) => fn(configPanel));
+
+      expect(configClosedHandler).toHaveBeenCalledTimes(1);
+    });
+
+    // ── Context mismatch: falls back to addPanel ──
+
+    it('falls back to addPanel when extra panel is present that was not in snapshot', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+
+      // Config added after debug was closed — context mismatch
+      await rerender(rerenderProps({ showConfigPanel: true }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before);
+      const debugCalls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'debug');
+      expect(debugCalls[debugCalls.length - 1][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+    });
+
+    it('falls back to addPanel when a panel from the snapshot is now missing', async () => {
+      // debug+config open, close debug (snapshot = {preview,config,debug}), then close config too
+      const { rerender } = renderLayout({ showDebugPanel: true, showConfigPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: false }));
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      // Current = {preview}, snapshot others = {preview, config} → mismatch
+      await rerender(rerenderProps({ showDebugPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before);
+      const debugCalls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'debug');
+      expect(debugCalls[debugCalls.length - 1][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+    });
+
+    // ── Reverse-order restore ──
+
+    it('restores both panels correctly when reopened in reverse close order', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true, showConfigPanel: true });
+      await tick();
+
+      // Close debug first (snapshot: {preview,config,debug})
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+
+      // Close config second (snapshot: {preview,config})
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: false }));
+      await tick();
+
+      // Reopen config first — context {preview} matches snapshot {preview} → fromJSON
+      const beforeConfig = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: false, showConfigPanel: true }));
+      await tick();
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(beforeConfig + 1);
+      expect(mockApi.fromJSON.mock.calls[beforeConfig][0].panels).toHaveProperty('config');
+
+      // Reopen debug — context {preview,config} matches snapshot {preview,config} → fromJSON
+      const beforeDebug = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(beforeDebug + 1);
+      expect(mockApi.fromJSON.mock.calls[beforeDebug][0].panels).toHaveProperty('debug');
+    });
+
+    // ── Snapshot overwritten on second close ──
+
+    it('snapshot is updated when panel is closed a second time (new position)', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      // First close — snapshot saved with debug at default position
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+      const firstSnapshotArg = mockApi.toJSON.mock.results[mockApi.toJSON.mock.results.length - 1].value;
+
+      // Reopen via snapshot (fromJSON restores the panel)
+      await rerender(rerenderProps({ showDebugPanel: true }));
+      await tick();
+
+      // Second close — snapshot should be freshly saved again
+      const toJSONCallsBefore = mockApi.toJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+
+      // toJSON was called again for the second close
+      expect(mockApi.toJSON.mock.calls.length).toBeGreaterThan(toJSONCallsBefore);
+
+      // Reopen again — should call fromJSON with the updated snapshot
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true }));
+      await tick();
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before + 1);
+    });
+
+    // ── resetLayout clears snapshots ──
+
+    it('resetLayout clears snapshots so next open uses addPanel instead of fromJSON', async () => {
+      const ref: { resetLayout: (() => void) | null } = { resetLayout: null };
+      render(DockviewLayout, {
+        props: rerenderProps({ showDebugPanel: true }),
+        events: { ready: (e: any) => { ref.resetLayout = e.detail.resetLayout; } },
+      });
+      await tick();
+
+      // Build a snapshot by closing debug
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+      await rerender(rerenderProps({ showDebugPanel: false }));
+      await tick();
+
+      // Reset layout — clears all snapshots
+      ref.resetLayout?.();
+      await tick();
+
+      const before = mockApi.fromJSON.mock.calls.length;
+      await rerender(rerenderProps({ showDebugPanel: true }));
+      await tick();
+
+      // fromJSON should NOT have been called for snapshot restore
+      expect(mockApi.fromJSON).toHaveBeenCalledTimes(before);
+      const debugCalls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'debug');
+      expect(debugCalls[debugCalls.length - 1][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+    });
+  });
+
+  // ─── Layout reset ──────────────────────────────────────────────
+
+  describe('layout reset', () => {
+    it('resetLayout calls api.clear and layoutStore.clear, rebuilding default layout', async () => {
+      // In Svelte 5, createEventDispatcher routes through $$events (not onXxx props).
+      // Pass events as a top-level render option so Svelte.mount receives them correctly.
+      const ref: { resetLayout: (() => void) | null } = { resetLayout: null };
+      render(DockviewLayout, {
+        props: {
+          mountPreview: () => {},
+          mountDebug: () => {},
+          mountConfig: () => {},
+          mountPerformance: () => {},
+          showDebugPanel: false,
+          showConfigPanel: false,
+          showPerformancePanel: false,
+          transport: null,
+        },
+        events: {
+          ready: (event: any) => {
+            ref.resetLayout = event.detail.resetLayout;
+          },
+        },
+      });
+      await tick();
+
+      expect(ref.resetLayout).not.toBeNull();
+
+      const clearCallsBefore = (mockApi.clear as ReturnType<typeof vi.fn>).mock.calls.length;
+
+      ref.resetLayout!();
+
+      expect((mockApi.clear as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(clearCallsBefore);
+      expect(layoutStore.clear).toHaveBeenCalled();
+      // createDefaultLayout re-adds preview after reset
+      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });
   });
 
@@ -916,7 +1350,7 @@ function renderLayout(props: Record<string, any> = {}) {
       );
     });
 
-    it('should tab alongside debug panel when debug is visible', async () => {
+    it('should open below preview even when debug is visible (no auto-tab)', async () => {
       renderLayout({
         showDebugPanel: true,
         showPerformancePanel: true,
@@ -929,12 +1363,12 @@ function renderLayout(props: Record<string, any> = {}) {
       );
       expect(perfCall).toBeDefined();
       expect(perfCall![0].position).toEqual({
-        referencePanel: 'debug',
-        direction: 'within',
+        referencePanel: 'preview',
+        direction: 'below',
       });
     });
 
-    it('should tab alongside config panel when config is visible but debug is not', async () => {
+    it('should open below preview even when config is visible (no auto-tab)', async () => {
       renderLayout({
         showDebugPanel: false,
         showConfigPanel: true,
@@ -948,8 +1382,8 @@ function renderLayout(props: Record<string, any> = {}) {
       );
       expect(perfCall).toBeDefined();
       expect(perfCall![0].position).toEqual({
-        referencePanel: 'config',
-        direction: 'within',
+        referencePanel: 'preview',
+        direction: 'below',
       });
     });
 
