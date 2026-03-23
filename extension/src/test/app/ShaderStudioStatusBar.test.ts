@@ -138,6 +138,17 @@ suite('ShaderStudioStatusBar Test Suite', () => {
         assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.newShader'));
     });
 
+    test('showShaderStudioMenu should execute open-shader-explorer', async () => {
+        statusBar = new ShaderStudioStatusBar(mockContext);
+
+        const choice = { label: '$(library) Shader Explorer', description: 'Open the Shader Explorer', action: 'open-shader-explorer' } as any;
+        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+
+        await statusBar.showShaderStudioMenu();
+
+        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openShaderExplorer'));
+    });
+
     test('showShaderStudioMenu should execute open-settings', async () => {
         statusBar = new ShaderStudioStatusBar(mockContext);
 

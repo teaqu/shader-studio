@@ -69,6 +69,11 @@ export class ShaderStudioStatusBar {
             action: 'new-shader'
         });
         items.push({
+            label: '$(library) Shader Explorer',
+            description: 'Open the Shader Explorer',
+            action: 'open-shader-explorer'
+        });
+        items.push({
             label: '$(gear) Settings',
             description: 'Open Shader Studio settings',
             action: 'open-settings'
@@ -101,6 +106,9 @@ export class ShaderStudioStatusBar {
                     break;
                 case 'new-shader':
                     await vscode.commands.executeCommand('shader-studio.newShader');
+                    break;
+                case 'open-shader-explorer':
+                    await vscode.commands.executeCommand('shader-studio.openShaderExplorer');
                     break;
                 case 'open-settings':
                     await vscode.commands.executeCommand('shader-studio.openSettings');
