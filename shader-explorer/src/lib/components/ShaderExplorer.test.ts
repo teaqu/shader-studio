@@ -789,10 +789,11 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         function saveState() {
             if (vscode && stateRestored) {
-                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
                 vscode.postMessage({ type: 'saveState', state });
             }
         }
@@ -809,6 +810,7 @@ describe('ShaderExplorer - State Persistence', () => {
                 pageSize: 20,
                 cardSize: 280,
                 hideFailedShaders: false,
+                openFilesOnSelect: true,
             },
         });
     });
@@ -821,10 +823,11 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         function saveState() {
             if (vscode && stateRestored) {
-                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
                 vscode.postMessage({ type: 'saveState', state });
             }
         }
@@ -841,6 +844,7 @@ describe('ShaderExplorer - State Persistence', () => {
                 pageSize: 20,
                 cardSize: 280,
                 hideFailedShaders: false,
+                openFilesOnSelect: true,
             },
         });
     });
@@ -853,10 +857,11 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         function saveState() {
             if (vscode && stateRestored) {
-                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
                 vscode.postMessage({ type: 'saveState', state });
             }
         }
@@ -873,6 +878,7 @@ describe('ShaderExplorer - State Persistence', () => {
                 pageSize: 50,
                 cardSize: 280,
                 hideFailedShaders: false,
+                openFilesOnSelect: true,
             },
         });
     });
@@ -885,10 +891,11 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         function saveState() {
             if (vscode && stateRestored) {
-                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
                 vscode.postMessage({ type: 'saveState', state });
             }
         }
@@ -905,6 +912,7 @@ describe('ShaderExplorer - State Persistence', () => {
                 pageSize: 20,
                 cardSize: 400,
                 hideFailedShaders: false,
+                openFilesOnSelect: true,
             },
         });
     });
@@ -917,10 +925,11 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         function saveState() {
             if (vscode && stateRestored) {
-                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
                 vscode.postMessage({ type: 'saveState', state });
             }
         }
@@ -937,6 +946,40 @@ describe('ShaderExplorer - State Persistence', () => {
                 pageSize: 20,
                 cardSize: 280,
                 hideFailedShaders: true,
+                openFilesOnSelect: true,
+            },
+        });
+    });
+
+    it('should save state when openFilesOnSelect changes', () => {
+        const vscode = mockVscodeApi;
+        const stateRestored = true;
+        let sortBy = 'name';
+        let sortOrder = 'desc';
+        let pageSize = 20;
+        let cardSize = 280;
+        let hideFailedShaders = false;
+        let openFilesOnSelect = true;
+
+        function saveState() {
+            if (vscode && stateRestored) {
+                const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
+                vscode.postMessage({ type: 'saveState', state });
+            }
+        }
+
+        openFilesOnSelect = false;
+        saveState();
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: 'saveState',
+            state: {
+                sortBy: 'name',
+                sortOrder: 'desc',
+                pageSize: 20,
+                cardSize: 280,
+                hideFailedShaders: false,
+                openFilesOnSelect: false,
             },
         });
     });
@@ -991,6 +1034,7 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         const savedState = {
             sortBy: 'name' as const,
@@ -998,6 +1042,7 @@ describe('ShaderExplorer - State Persistence', () => {
             pageSize: 50,
             cardSize: 600,
             hideFailedShaders: true,
+            openFilesOnSelect: false,
         };
 
         // Simulate state restoration
@@ -1010,12 +1055,16 @@ describe('ShaderExplorer - State Persistence', () => {
         if (typeof savedState.hideFailedShaders === 'boolean') {
             hideFailedShaders = savedState.hideFailedShaders;
         }
+        if (typeof savedState.openFilesOnSelect === 'boolean') {
+            openFilesOnSelect = savedState.openFilesOnSelect;
+        }
 
         expect(sortBy).toBe('name');
         expect(sortOrder).toBe('asc');
         expect(pageSize).toBe(50);
         expect(cardSize).toBe(600);
         expect(hideFailedShaders).toBe(true);
+        expect(openFilesOnSelect).toBe(false);
     });
 
     it('should handle partial savedState', () => {
@@ -1024,6 +1073,7 @@ describe('ShaderExplorer - State Persistence', () => {
         let pageSize = 20;
         let cardSize = 280;
         let hideFailedShaders = false;
+        let openFilesOnSelect = true;
 
         const savedState: Partial<{
             sortBy: 'name' | 'updated' | 'created';
@@ -1046,6 +1096,9 @@ describe('ShaderExplorer - State Persistence', () => {
         if (typeof savedState.hideFailedShaders === 'boolean') {
             hideFailedShaders = savedState.hideFailedShaders;
         }
+        if (typeof (savedState as any).openFilesOnSelect === 'boolean') {
+            openFilesOnSelect = (savedState as any).openFilesOnSelect;
+        }
 
         // Only specified values should change
         expect(sortBy).toBe('name');
@@ -1053,6 +1106,7 @@ describe('ShaderExplorer - State Persistence', () => {
         expect(pageSize).toBe(20); // Unchanged
         expect(cardSize).toBe(500);
         expect(hideFailedShaders).toBe(false); // Unchanged
+        expect(openFilesOnSelect).toBe(true); // Unchanged
     });
 });
 
@@ -1268,7 +1322,7 @@ describe('ShaderPreview - Hover Functionality', () => {
     });
 });
 
-describe('ShaderExplorer - Config Button Functionality', () => {
+describe('ShaderExplorer - Shader Selection', () => {
     let mockVscodeApi: any;
     let postMessageSpy: any;
 
@@ -1280,7 +1334,7 @@ describe('ShaderExplorer - Config Button Functionality', () => {
         vi.clearAllMocks();
     });
 
-    it('should send openConfig message when opening existing config', () => {
+    it('should send openShader message when openFilesOnSelect is enabled', () => {
         const vscode = mockVscodeApi;
         const shader = {
             path: '/test/shader.glsl',
@@ -1288,106 +1342,12 @@ describe('ShaderExplorer - Config Button Functionality', () => {
             relativePath: 'test/shader.glsl',
             configPath: '/test/shader.sv.json',
         };
-
-        function openConfig(shader: any) {
-            if (shader.configPath) {
-                vscode?.postMessage({
-                    type: 'openConfig',
-                    path: shader.configPath,
-                });
-            }
-        }
-
-        openConfig(shader);
-
-        expect(postMessageSpy).toHaveBeenCalledWith({
-            type: 'openConfig',
-            path: '/test/shader.sv.json',
-        });
-    });
-
-    it('should not send message when opening config with no configPath', () => {
-        const vscode = mockVscodeApi;
-        const shader = {
-            path: '/test/shader.glsl',
-            name: 'shader.glsl',
-            relativePath: 'test/shader.glsl',
-            configPath: undefined,
-        };
-
-        function openConfig(shader: any) {
-            if (shader.configPath) {
-                vscode?.postMessage({
-                    type: 'openConfig',
-                    path: shader.configPath,
-                });
-            }
-        }
-
-        openConfig(shader);
-
-        expect(postMessageSpy).not.toHaveBeenCalled();
-    });
-
-    it('should send createConfig message when creating new config', () => {
-        const vscode = mockVscodeApi;
-        const shader = {
-            path: '/test/shader.glsl',
-            name: 'shader.glsl',
-            relativePath: 'test/shader.glsl',
-            configPath: undefined,
-        };
-
-        function createConfig(shader: any) {
-            vscode?.postMessage({
-                type: 'createConfig',
-                shaderPath: shader.path,
-            });
-        }
-
-        createConfig(shader);
-
-        expect(postMessageSpy).toHaveBeenCalledWith({
-            type: 'createConfig',
-            shaderPath: '/test/shader.glsl',
-        });
-    });
-
-    it('should handle createConfig with vscode unavailable', () => {
-        const vscode: any = null;
-        const shader = {
-            path: '/test/shader.glsl',
-            name: 'shader.glsl',
-            relativePath: 'test/shader.glsl',
-        };
-
-        function createConfig(shader: any) {
-            vscode?.postMessage({
-                type: 'createConfig',
-                shaderPath: shader.path,
-            });
-        }
-
-        // Should not throw
-        createConfig(shader);
-
-        expect(postMessageSpy).not.toHaveBeenCalled();
-    });
-
-    it('should send openShader message with config path', () => {
-        const vscode = mockVscodeApi;
-        const shader = {
-            path: '/test/shader.glsl',
-            name: 'shader.glsl',
-            relativePath: 'test/shader.glsl',
-            configPath: '/test/shader.sv.json',
-        };
+        const openFilesOnSelect = true;
 
         function openShader(shader: any) {
             vscode?.postMessage({
-                type: 'openShader',
+                type: openFilesOnSelect ? 'openShader' : 'activateShader',
                 path: shader.path,
-                configPath: shader.configPath,
             });
         }
 
@@ -1396,7 +1356,6 @@ describe('ShaderExplorer - Config Button Functionality', () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: 'openShader',
             path: '/test/shader.glsl',
-            configPath: '/test/shader.sv.json',
         });
     });
 
@@ -1408,12 +1367,12 @@ describe('ShaderExplorer - Config Button Functionality', () => {
             relativePath: 'test/shader.glsl',
             configPath: undefined,
         };
+        const openFilesOnSelect = true;
 
         function openShader(shader: any) {
             vscode?.postMessage({
-                type: 'openShader',
+                type: openFilesOnSelect ? 'openShader' : 'activateShader',
                 path: shader.path,
-                configPath: shader.configPath,
             });
         }
 
@@ -1422,60 +1381,31 @@ describe('ShaderExplorer - Config Button Functionality', () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: 'openShader',
             path: '/test/shader.glsl',
-            configPath: undefined,
         });
     });
 
-    it('should differentiate between shaders with and without configs', () => {
-        const shaderWithConfig = {
-            path: '/test/shader1.glsl',
-            name: 'shader1.glsl',
-            relativePath: 'test/shader1.glsl',
-            configPath: '/test/shader1.sv.json',
-            hasConfig: true,
-        };
-
-        const shaderWithoutConfig = {
-            path: '/test/shader2.glsl',
-            name: 'shader2.glsl',
-            relativePath: 'test/shader2.glsl',
-            configPath: undefined,
-            hasConfig: false,
-        };
-
-        expect(shaderWithConfig.hasConfig).toBe(true);
-        expect(shaderWithConfig.configPath).toBeDefined();
-        
-        expect(shaderWithoutConfig.hasConfig).toBe(false);
-        expect(shaderWithoutConfig.configPath).toBeUndefined();
-    });
-
-    it('should handle openConfig for multiple shaders', () => {
+    it('should send activateShader message when openFilesOnSelect is disabled', () => {
         const vscode = mockVscodeApi;
-        const shaders = [
-            { path: '/test/shader1.glsl', configPath: '/test/shader1.sv.json' },
-            { path: '/test/shader2.glsl', configPath: '/test/shader2.sv.json' },
-        ];
+        const shader = {
+            path: '/test/shader.glsl',
+            name: 'shader.glsl',
+            relativePath: 'test/shader.glsl',
+            configPath: undefined,
+        };
+        const openFilesOnSelect = false;
 
-        function openConfig(shader: any) {
-            if (shader.configPath) {
-                vscode?.postMessage({
-                    type: 'openConfig',
-                    path: shader.configPath,
-                });
-            }
+        function openShader(shader: any) {
+            vscode?.postMessage({
+                type: openFilesOnSelect ? 'openShader' : 'activateShader',
+                path: shader.path,
+            });
         }
 
-        shaders.forEach(shader => openConfig(shader));
+        openShader(shader);
 
-        expect(postMessageSpy).toHaveBeenCalledTimes(2);
-        expect(postMessageSpy).toHaveBeenNthCalledWith(1, {
-            type: 'openConfig',
-            path: '/test/shader1.sv.json',
-        });
-        expect(postMessageSpy).toHaveBeenNthCalledWith(2, {
-            type: 'openConfig',
-            path: '/test/shader2.sv.json',
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: 'activateShader',
+            path: '/test/shader.glsl',
         });
     });
 });

@@ -334,6 +334,12 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.hasActiveViewer", () => {
+        return this.messenger.hasActiveClients();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.resetLayout", () => {
         this.logger.info("shader-studio.resetLayout command executed");
         this.context.workspaceState.update('shader-studio.dockviewLayout', undefined);
