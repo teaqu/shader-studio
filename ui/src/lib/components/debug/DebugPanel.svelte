@@ -29,6 +29,9 @@
 
   let uniforms: PassUniforms | null = null;
   let uniformsHandle: number | null = null;
+  let isLineTooltipTriggerHovered = false;
+  let isLineTooltipHovered = false;
+  let isLineTooltipHoverArmed = false;
 
   $: ctx = debugState.functionContext;
   $: isInlineOn = debugState.isInlineRenderingEnabled;
@@ -113,6 +116,39 @@
   }
 
   $: customUniformEntries = Object.entries(customUniformValues);
+  $: isLineTooltipVisible =
+    isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered);
+
+  function handleLineTooltipTriggerEnter() {
+    isLineTooltipHoverArmed = true;
+    isLineTooltipTriggerHovered = true;
+  }
+
+  function handleLineTooltipTriggerLeave(event: MouseEvent) {
+    isLineTooltipTriggerHovered = false;
+    const nextTarget = event.relatedTarget as Node | null;
+    const enteredTooltip =
+      nextTarget instanceof Node &&
+      (nextTarget as HTMLElement).closest?.('.line-tooltip');
+    if (!isLineTooltipHovered && !enteredTooltip) {
+      isLineTooltipHoverArmed = false;
+    }
+  }
+
+  function handleLineTooltipEnter() {
+    isLineTooltipHovered = true;
+  }
+
+  function handleLineTooltipLeave(event: MouseEvent) {
+    isLineTooltipHovered = false;
+    const nextTarget = event.relatedTarget as Node | null;
+    const returnedToTrigger =
+      nextTarget instanceof Node &&
+      (nextTarget as HTMLElement).closest?.('.header-info');
+    if (!returnedToTrigger) {
+      isLineTooltipHoverArmed = false;
+    }
+  }
 </script>
 
 <div class="debug-panel">
@@ -200,11 +236,18 @@
           class:error={debugError}
           class:has-line-content={!debugError && debugState.lineContent}
           data-tooltip={lineTooltipText}
+          role="presentation"
+          on:mouseenter={handleLineTooltipTriggerEnter}
+          on:mouseleave={handleLineTooltipTriggerLeave}
         >L{lineNum}</span>
         <div
           class="line-tooltip"
+          class:visible={isLineTooltipVisible}
           class:error={debugError}
           class:has-line-content={!debugError && debugState.lineContent}
+          role="presentation"
+          on:mouseenter={handleLineTooltipEnter}
+          on:mouseleave={handleLineTooltipLeave}
         >{lineTooltipText}</div>
       </span>
     {/if}
@@ -367,7 +410,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    transform: translateY(6px);
+    transform: translateY(0);
     padding: 4px 8px;
     background: var(--vscode-editorHoverWidget-background, #2d2d30);
     color: var(--vscode-editorHoverWidget-foreground, #cccccc);
@@ -384,7 +427,7 @@
     transition: opacity 0.15s ease-in;
   }
 
-  .line-tooltip-anchor:hover .line-tooltip {
+  .line-tooltip.visible {
     opacity: 1;
   }
 

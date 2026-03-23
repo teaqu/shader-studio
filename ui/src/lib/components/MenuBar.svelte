@@ -96,6 +96,9 @@
   let recordingMenuOpen = false;
   let zoomLevel = 1.0;
   let currentFPSLimit = 0;
+  let isPauseTooltipTriggerHovered = false;
+  let isPauseTooltipHovered = false;
+  let isPauseTooltipHoverArmed = false;
 
   const compileModeIcons: Record<CompileMode, string> = {
     hot: "flame",
@@ -108,6 +111,9 @@
     save: "Compile on save mode",
     manual: "Manual compile mode",
   };
+
+  $: isPauseTooltipVisible =
+    isPauseTooltipTriggerHovered || (isPauseTooltipHoverArmed && isPauseTooltipHovered);
 
   onMount(() => {
     if (timeManager) {
@@ -285,6 +291,37 @@
     onVolumeChange(parseFloat(target.value));
   }
 
+  function handlePauseTooltipTriggerEnter() {
+    isPauseTooltipHoverArmed = true;
+    isPauseTooltipTriggerHovered = true;
+  }
+
+  function handlePauseTooltipTriggerLeave(event: MouseEvent) {
+    isPauseTooltipTriggerHovered = false;
+    const nextTarget = event.relatedTarget as Node | null;
+    const enteredTooltip =
+      nextTarget instanceof Node &&
+      (nextTarget as HTMLElement).closest?.('.error-tooltip');
+    if (!isPauseTooltipHovered && !enteredTooltip) {
+      isPauseTooltipHoverArmed = false;
+    }
+  }
+
+  function handlePauseTooltipEnter() {
+    isPauseTooltipHovered = true;
+  }
+
+  function handlePauseTooltipLeave(event: MouseEvent) {
+    isPauseTooltipHovered = false;
+    const nextTarget = event.relatedTarget as Node | null;
+    const returnedToTrigger =
+      nextTarget instanceof Node &&
+      (nextTarget as HTMLElement).closest?.('.pause-button-container button');
+    if (!returnedToTrigger) {
+      isPauseTooltipHoverArmed = false;
+    }
+  }
+
 
 
 
@@ -347,6 +384,8 @@
         aria-label="Toggle pause"
         class:error={hasErrors}
         disabled={!hasShader}
+        on:mouseenter={handlePauseTooltipTriggerEnter}
+        on:mouseleave={handlePauseTooltipTriggerLeave}
       >
         {#if isPaused}
           <i class="codicon codicon-play"></i>
@@ -355,7 +394,13 @@
         {/if}
       </button>
       {#if hasErrors}
-        <div class="error-tooltip">{errorMessage}</div>
+        <div
+          class="error-tooltip"
+          class:visible={isPauseTooltipVisible}
+          role="presentation"
+          on:mouseenter={handlePauseTooltipEnter}
+          on:mouseleave={handlePauseTooltipLeave}
+        >{errorMessage}</div>
       {/if}
     </div>
     <TimeControls {timeManager} {currentTime} disabled={!hasShader} />

@@ -255,7 +255,7 @@ canvas {
   position: absolute;
   bottom: 100%;
   left: 0;
-  transform: translateY(-8px);
+  transform: translateY(0);
   padding: 8px 12px;
   background-color: var(--vscode-inputValidation-errorBackground);
   color: var(--vscode-errorForeground);
@@ -273,7 +273,7 @@ canvas {
   transition: opacity 0.1s ease-in;
 }
 
-.pause-button-container:hover .error-tooltip {
+.error-tooltip.visible {
   opacity: 1;
 }
 
