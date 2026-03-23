@@ -2,13 +2,21 @@ import { writable } from "svelte/store";
 
 export interface DebugPanelState {
   isVisible: boolean;
+  isVariableInspectorEnabled: boolean;
+  isInlineRenderingEnabled: boolean;
+  isPixelInspectorEnabled: boolean;
 }
 
 const STORAGE_KEY = "shader-studio-debug-panel-state";
 
 function createDebugPanelStore() {
   // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
-  const { subscribe, set, update } = writable<DebugPanelState>({ isVisible: true });
+  const { subscribe, set, update } = writable<DebugPanelState>({
+    isVisible: true,
+    isVariableInspectorEnabled: false,
+    isInlineRenderingEnabled: true,
+    isPixelInspectorEnabled: true,
+  });
 
   const persist = (state: DebugPanelState) => {
     try {
@@ -37,13 +45,35 @@ function createDebugPanelStore() {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          const visible = parsed.isVisible ?? true;
-          set({ isVisible: visible });
+          set({
+            isVisible: parsed.isVisible ?? true,
+            isVariableInspectorEnabled: parsed.isVariableInspectorEnabled ?? false,
+            isInlineRenderingEnabled: parsed.isInlineRenderingEnabled ?? true,
+            isPixelInspectorEnabled: parsed.isPixelInspectorEnabled ?? true,
+          });
         }
       } catch (error) {
         console.warn("Failed to restore debug panel state from localStorage:", error);
       }
     },
+    setVariableInspectorEnabled: (enabled: boolean) =>
+      update((state) => {
+        const newState = { ...state, isVariableInspectorEnabled: enabled };
+        persist(newState);
+        return newState;
+      }),
+    setInlineRenderingEnabled: (enabled: boolean) =>
+      update((state) => {
+        const newState = { ...state, isInlineRenderingEnabled: enabled };
+        persist(newState);
+        return newState;
+      }),
+    setPixelInspectorEnabled: (enabled: boolean) =>
+      update((state) => {
+        const newState = { ...state, isPixelInspectorEnabled: enabled };
+        persist(newState);
+        return newState;
+      }),
   };
 }
 

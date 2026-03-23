@@ -249,6 +249,9 @@ describe('ShaderViewer', () => {
     compileModeStore.setMode('hot');
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(true);
+    debugPanelStore.setVariableInspectorEnabled(false);
+    debugPanelStore.setInlineRenderingEnabled(true);
+    debugPanelStore.setPixelInspectorEnabled(true);
     editorOverlayStore.setVisible(false);
   });
 
