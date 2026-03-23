@@ -13,6 +13,7 @@
   let pageSize = $state(20);
   let cardSize = $state(280); // Card width in pixels (200-500)
   let hideFailedShaders = $state(false);
+  let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
   let forceFresh = $state(false); // Flag to force fresh rendering, ignoring cache
@@ -20,7 +21,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -152,6 +153,9 @@
           if (typeof message.savedState.hideFailedShaders === 'boolean') {
             hideFailedShaders = message.savedState.hideFailedShaders;
           }
+          if (typeof message.savedState.openFilesOnSelect === 'boolean') {
+            openFilesOnSelect = message.savedState.openFilesOnSelect;
+          }
         }
         
         stateRestored = true;
@@ -163,25 +167,8 @@
 
   function openShader(shader: ShaderFile) {
     vscode?.postMessage({
-      type: 'openShader',
+      type: openFilesOnSelect ? 'openShader' : 'activateShader',
       path: shader.path,
-      configPath: shader.configPath
-    });
-  }
-
-  function openConfig(shader: ShaderFile) {
-    if (shader.configPath) {
-      vscode?.postMessage({
-        type: 'openConfig',
-        path: shader.configPath
-      });
-    }
-  }
-
-  function createConfig(shader: ShaderFile) {
-    vscode?.postMessage({
-      type: 'createConfig',
-      shaderPath: shader.path
     });
   }
 
@@ -258,6 +245,10 @@
         <input type="checkbox" bind:checked={hideFailedShaders} />
         <span class="checkbox-label">Hide Failed</span>
       </label>
+      <label class="checkbox-control">
+        <input type="checkbox" bind:checked={openFilesOnSelect} />
+        <span class="checkbox-label">Open Files</span>
+      </label>
       <button class="icon-button" onclick={refreshShaders} title="Refresh">
         ↻
       </button>
@@ -289,8 +280,6 @@
             {forceFresh}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}
-            onOpenConfig={() => openConfig(shader)}
-            onCreateConfig={() => createConfig(shader)}
             onCompilationFailed={() => handleCompilationFailure(shader)}
           />
         {/each}

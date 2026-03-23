@@ -2,14 +2,12 @@
   import type { ShaderFile } from '../types/ShaderFile';
   import ShaderPreview from './ShaderPreview.svelte';
 
-  let { shader, vscodeApi, cardSize = 280, forceFresh = false, onOpen, onOpenConfig, onCreateConfig, onCompilationFailed }: {
+  let { shader, vscodeApi, cardSize = 280, forceFresh = false, onOpen, onCompilationFailed }: {
     shader: ShaderFile;
     vscodeApi: any;
     cardSize?: number;
     forceFresh?: boolean;
     onOpen?: () => void;
-    onOpenConfig?: () => void;
-    onCreateConfig?: () => void;
     onCompilationFailed?: () => void;
   } = $props();
   
@@ -43,26 +41,6 @@
   <div class="shader-info">
     <div class="shader-name" title={displayName}>{displayName}</div>
     <div class="shader-path" title={shader.relativePath}>{shader.relativePath}</div>
-    
-    <div class="shader-actions">
-      {#if shader.hasConfig}
-        <button 
-          class="action-btn" 
-          onclick={(e) => { e.stopPropagation(); onOpenConfig?.(); }}
-          title="Open config"
-        >
-          ⚙️ Config
-        </button>
-      {:else}
-        <button 
-          class="action-btn create" 
-          onclick={(e) => { e.stopPropagation(); onCreateConfig?.(); }}
-          title="Create config"
-        >
-          + Config
-        </button>
-      {/if}
-    </div>
   </div>
 </div>
 
@@ -114,35 +92,5 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .shader-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 4px;
-  }
-
-  .action-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .action-btn:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
-  }
-
-  .action-btn.create {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-  }
-
-  .action-btn.create:hover {
-    background: var(--vscode-button-hoverBackground);
   }
 </style>

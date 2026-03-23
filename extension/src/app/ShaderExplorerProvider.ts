@@ -89,6 +89,10 @@ export class ShaderExplorerProvider {
                     await this.openShader(message.path);
                     break;
 
+                case "activateShader":
+                    await this.activateShader(message.path);
+                    break;
+
                 case "openConfig":
                     await this.openConfig(message.path);
                     break;
@@ -250,6 +254,27 @@ export class ShaderExplorerProvider {
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to open shader: ${error}`,
+            );
+        }
+    }
+
+    private async activateShader(shaderPath: string): Promise<void> {
+        try {
+            const hasActiveViewer = await vscode.commands.executeCommand<boolean>(
+                "shader-studio.hasActiveViewer",
+            );
+
+            if (!hasActiveViewer) {
+                await vscode.commands.executeCommand("shader-studio.view");
+            }
+
+            await vscode.commands.executeCommand(
+                "shader-studio.refreshSpecificShaderByPath",
+                shaderPath,
+            );
+        } catch (error) {
+            vscode.window.showErrorMessage(
+                `Failed to activate shader: ${error}`,
             );
         }
     }

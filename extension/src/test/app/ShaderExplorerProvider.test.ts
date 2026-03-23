@@ -410,6 +410,63 @@ suite('ShaderExplorerProvider Test Suite', () => {
         });
     });
 
+    suite('Message Handling - activateShader', () => {
+        test('should activate shader by delegating to refreshSpecificShaderByPath', async () => {
+            const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand');
+            executeCommandStub.withArgs('shader-studio.hasActiveViewer').resolves(true);
+            executeCommandStub.withArgs(
+                'shader-studio.refreshSpecificShaderByPath',
+                '/test/shader.glsl',
+            ).resolves();
+
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+            const messageHandler = setupMessageHandler(mockPanel);
+            await messageHandler({ type: 'activateShader', path: '/test/shader.glsl' });
+
+            assert.ok(executeCommandStub.calledWith(
+                'shader-studio.hasActiveViewer',
+            ));
+            assert.ok(executeCommandStub.calledWith(
+                'shader-studio.refreshSpecificShaderByPath',
+                '/test/shader.glsl',
+            ));
+        });
+
+        test('should open Shader Studio and activate shader when there is no active viewer', async () => {
+            const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand');
+            executeCommandStub.withArgs('shader-studio.hasActiveViewer').resolves(false);
+            executeCommandStub.withArgs('shader-studio.view').resolves();
+            executeCommandStub.withArgs(
+                'shader-studio.refreshSpecificShaderByPath',
+                '/test/shader.glsl',
+            ).resolves();
+
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+            const messageHandler = setupMessageHandler(mockPanel);
+            await messageHandler({ type: 'activateShader', path: '/test/shader.glsl' });
+
+            assert.ok(executeCommandStub.calledWith('shader-studio.hasActiveViewer'));
+            assert.ok(executeCommandStub.calledWith('shader-studio.view'));
+            assert.ok(executeCommandStub.calledWith(
+                'shader-studio.refreshSpecificShaderByPath',
+                '/test/shader.glsl',
+            ));
+        });
+
+        test('should show error message if activating shader fails', async () => {
+            const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand');
+            executeCommandStub.withArgs('shader-studio.hasActiveViewer').rejects(new Error('Activation failed'));
+            const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
+
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+            const messageHandler = setupMessageHandler(mockPanel);
+            await messageHandler({ type: 'activateShader', path: '/test/shader.glsl' });
+
+            assert.ok(showErrorMessageStub.calledOnce);
+            assert.ok(showErrorMessageStub.firstCall.args[0].includes('Failed to activate shader'));
+        });
+    });
+
     suite('Message Handling - openConfig', () => {
         test('should open config file on openConfig message', async () => {
             const mockDocument = {} as any;
