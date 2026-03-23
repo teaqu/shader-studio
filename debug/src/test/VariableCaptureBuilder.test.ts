@@ -44,6 +44,67 @@ const helperWithOutParam = `float heightMapTracing(vec3 ori, vec3 dir, out vec3 
   return tm;
 }`;
 
+const multiLineSignatureHelper = `vec2 bezier( vec2 p,
+             vec2 v0, vec2 v1, vec2 v2, vec2 v3,
+             vec2 wd, float bo )
+{
+    float ymi = min(min(v0.y,v1.y),min(v2.y,v3.y));
+    float yma = max(max(v0.y,v1.y),max(v2.y,v3.y));
+    if( p.y<ymi-bo || p.y>yma+bo ) return wd;
+
+    const int num = 10;
+    vec2 a = v0;
+    for( int i=1; i<num; i++ )
+    {
+        float t = float(i)/float(num-1);
+        vec2 b = wd;
+        a = b;
+    }
+    return wd;
+}`;
+
+const multiReturnHelper = `float clouds(vec3 p, out float cloudHeight, bool sampleNoise) {
+  if (p.y < 0.0) {
+    return 0.0;
+  }
+
+  cloudHeight = p.y;
+  float cloud = cloudHeight;
+  if (cloud <= 0.0) {
+    return 0.0;
+  }
+
+  float shape = cloud * 0.5;
+  return shape;
+}`;
+
+const helperWithLaterDependency = `float clouds(vec3 p, out float cloudHeight, bool sampleNoise) {
+  cloudHeight = saturateLater(p.y);
+  return cloudHeight;
+}
+
+float saturateLater(float x) {
+  return clamp(x, 0.0, 1.0);
+}`;
+
+const helperWithPreprocessorReturn = `vec2 evalBezier( float t, vec2 v0, vec2 v1, vec2 v2, vec2 v3 )
+{
+#if 0
+    vec2 a0=v0+(v1-v0)*t, a1=v1+(v2-v1)*t, a2=v2+(v3-v2)*t;
+    vec2 b0=a0+(a1-a0)*t, b1=a1+(a2-a1)*t;
+    return  b0+(b1-b0)*t;
+#else
+    vec2 v21 = 3.0*(v2-v1);
+    vec2 v10 = 3.0*(v1-v0);
+    vec2 v03 =     (v0-v3);
+    return (((v21-v10)-t*(v03+v21))*t+v10)*t+v0;
+#endif    
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  fragColor = vec4(0.0);
+}`;
+
 describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
   it("should return all capturable vars in mainImage", () => {
     const vars = VariableCaptureBuilder.getAllInScopeVariables(simpleMainImage, 3);
@@ -109,6 +170,17 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     expect(names).toContain("tm");
     expect(names).toContain("_dbgReturn");
   });
+
+  it("should include _dbgReturn for helpers with multi-line signatures", () => {
+    const shaderLines = multiLineSignatureHelper.split("\n");
+    const returnLine = shaderLines.findIndex(line => line.trim() === "return wd;");
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(multiLineSignatureHelper, returnLine);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("wd");
+    expect(names).toContain("_dbgReturn");
+    const dbgReturn = vars.find(v => v.varName === "_dbgReturn");
+    expect(dbgReturn?.varType).toBe("vec2");
+  });
 });
 
 describe("VariableCaptureBuilder.generateCaptureShader", () => {
@@ -168,6 +240,17 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).toContain("fragColor = vec4(uv, 0.0, 0.0);");
   });
 
+  it("keeps preprocessor conditionals balanced for helper capture wrappers", () => {
+    const lines = helperWithPreprocessorReturn.split('\n');
+    const debugLine = lines.findIndex(line => line.includes("return (((v21-v10)"));
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperWithPreprocessorReturn, debugLine, "_dbgReturn", "vec2", new Map(), new Map(), false
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("#endif");
+  });
+
   it("should inject non-square grid coord for wide grid (gridWidth > gridHeight)", () => {
     const result = VariableCaptureBuilder.generateCaptureShader(
       simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 128, 72
@@ -219,5 +302,25 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).toContain("vec3 _dbgArg2 = vec3(0.5);");
     expect(result).toContain("heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
     expect(result).toContain("fragColor = vec4(_dbgCaptured, 0.0);");
+  });
+
+  it("should strip earlier returns in multi-return helpers so later variables remain capturable", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      multiReturnHelper, 11, "shape", "float", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("// Debug: stripped earlier return");
+    expect(result).toContain("float shape = cloud * 0.5;");
+    expect(result).toContain("return shape;");
+  });
+
+  it("should preserve support functions defined after the target helper", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperWithLaterDependency, 1, "cloudHeight", "float", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("float saturateLater(float x) {");
+    expect(result).toContain("return clamp(x, 0.0, 1.0);");
+    expect(result).toContain("cloudHeight = saturateLater(p.y);");
   });
 });

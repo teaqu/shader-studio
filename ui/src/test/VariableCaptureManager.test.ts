@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VariableCaptureManager, computeGridDimensions } from '../lib/VariableCaptureManager';
 import type { CapturedVariable } from '../lib/VariableCaptureManager';
@@ -134,6 +135,7 @@ describe('computeGridDimensions', () => {
 describe('VariableCaptureManager', () => {
   let manager: VariableCaptureManager;
   let onUpdate: ReturnType<typeof vi.fn>;
+  let onError: ReturnType<typeof vi.fn>;
 
   let mockCollectResults: ReturnType<typeof vi.fn>;
   let mockIssueCaptureAtPixel: ReturnType<typeof vi.fn>;
@@ -176,6 +178,9 @@ describe('VariableCaptureManager', () => {
       collectResults: mockCollectResults,
       dispose: mockCapturerDispose,
       setCustomUniforms: vi.fn(),
+      setCompileContext: vi.fn(),
+      clearLastError: vi.fn(),
+      getLastError: vi.fn().mockReturnValue(null),
     };
 
     mockCreateVariableCapturer = vi.fn().mockReturnValue(mockCapturer);
@@ -183,6 +188,7 @@ describe('VariableCaptureManager', () => {
 
     mockRenderingEngine = {
       createVariableCapturer: mockCreateVariableCapturer,
+      getVariableCaptureCompileContext: vi.fn().mockReturnValue({ commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] }),
       getCaptureUniforms: mockGetCaptureUniforms,
       getCustomUniformInfo: vi.fn().mockReturnValue([]),
       getCustomUniformDeclarations: vi.fn().mockReturnValue(''),
@@ -190,7 +196,9 @@ describe('VariableCaptureManager', () => {
     };
 
     onUpdate = vi.fn();
+    onError = vi.fn();
     manager = new VariableCaptureManager(mockRenderingEngine, onUpdate);
+    manager.setErrorCallback(onError);
   });
 
   afterEach(() => {
@@ -573,7 +581,8 @@ describe('VariableCaptureManager', () => {
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
       flushRAF(); // issue → issued=0 → no collecting
 
-      expect(onUpdate).not.toHaveBeenCalled();
+      expect(onUpdate).toHaveBeenCalledOnce();
+      expect(onUpdate.mock.calls[0][0]).toEqual([]);
       expect(rafCallbacks).toHaveLength(0); // loop stopped (poll scheduled instead)
     });
 
@@ -590,6 +599,23 @@ describe('VariableCaptureManager', () => {
       // No captures passed to issueCaptureGrid because generates returned null
       // (captures array is empty, so early return before calling issue)
       expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+      expect(onUpdate).toHaveBeenCalledOnce();
+      expect(onUpdate.mock.calls[0][0]).toEqual([]);
+    });
+
+    it('stops collecting and clears variables after repeated empty collection frames', () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
+      mockIssueCaptureGrid.mockReturnValue(1);
+      mockCollectResults.mockReturnValue([]);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      flushRAF(); // issue
+      flushRAF(120); // collect keeps returning empty
+
+      expect(onUpdate).toHaveBeenCalledOnce();
+      expect(onUpdate.mock.calls[0][0]).toEqual([]);
+      expect(rafCallbacks).toHaveLength(0);
     });
   });
 
@@ -609,6 +635,29 @@ describe('VariableCaptureManager', () => {
       expect(() => flushRAF()).not.toThrow();
 
       expect(onUpdate).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith('Failed to initialize variable capture');
+    });
+
+    it('surfaces capture compile errors when no shaders issue successfully', () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
+      mockIssueCaptureGrid.mockReturnValue(0);
+      mockCreateVariableCapturer.mockReturnValue({
+        issueCaptureAtPixel: mockIssueCaptureAtPixel,
+        issueCaptureGrid: mockIssueCaptureGrid,
+        collectResults: mockCollectResults,
+        dispose: mockCapturerDispose,
+        setCustomUniforms: vi.fn(),
+        setCompileContext: vi.fn(),
+        clearLastError: vi.fn(),
+        getLastError: vi.fn().mockReturnValue('Shader compile failed: missing saturate'),
+      });
+
+      manager.notifyStateChange(BASE_PARAMS);
+      flushRAF();
+
+      expect(onError).toHaveBeenCalledWith('Failed to capture variables');
+      expect(onUpdate).toHaveBeenCalledWith([]);
     });
 
     it('createVariableCapturer called only once (cached)', () => {

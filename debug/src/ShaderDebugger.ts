@@ -45,7 +45,7 @@ export class ShaderDebugger {
     // Extract function return type if we're in a function
     let functionReturnType: string | undefined;
     if (functionInfo.name && functionInfo.start >= 0) {
-      const funcLine = lines[functionInfo.start];
+      const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
       const returnTypeMatch = funcLine.match(/^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\s+\w+\s*\(/);
       if (returnTypeMatch) {
         functionReturnType = returnTypeMatch[1];
@@ -109,12 +109,12 @@ export class ShaderDebugger {
     }
 
     // Parse return type
-    const funcLine = lines[functionInfo.start];
+    const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
     const returnTypeMatch = funcLine.match(/^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4|int|bool)\s+\w+\s*\(/);
     const returnType = returnTypeMatch ? returnTypeMatch[1] : 'void';
 
     // Parse parameters
-    const parameters = ShaderDebugger.extractParameters(funcLine);
+    const parameters = ShaderDebugger.extractParameters(lines, functionInfo.start);
 
     // Find loops between function start and debug line
     const loops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
@@ -140,8 +140,9 @@ export class ShaderDebugger {
     return CodeGenerator.applyOutputPostProcessing(originalCode, normalizeMode, stepEdge);
   }
 
-  private static extractParameters(funcLine: string): DebugParameterInfo[] {
+  private static extractParameters(lines: string[], startLine: number): DebugParameterInfo[] {
     const parameters: DebugParameterInfo[] = [];
+    const funcLine = GlslParser.getFullFunctionSignature(lines, startLine);
     const paramsMatch = funcLine.match(/\(([^)]*)\)/);
 
     if (!paramsMatch || !paramsMatch[1].trim()) {
@@ -408,6 +409,8 @@ export class ShaderDebugger {
         }
       }
     }
+
+    truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionStart, truncationEnd);
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
 

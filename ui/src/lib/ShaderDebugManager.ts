@@ -263,6 +263,7 @@ export class ShaderDebugManager {
 
     if (result === null) {
       this.state.debugError = 'No debuggable variable on this line';
+      this.state.capturedVariables = [];
       this.notifyStateChange();
     } else {
       this.state.debugError = null;

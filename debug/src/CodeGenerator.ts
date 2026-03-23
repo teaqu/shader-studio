@@ -1,3 +1,4 @@
+import { GlslParser } from './GlslParser';
 import type { FunctionInfo, VarInfo } from './GlslParser';
 
 export class CodeGenerator {
@@ -299,8 +300,8 @@ export class CodeGenerator {
     const setup: string[] = [];
     const args: string[] = [];
 
-    const funcLine = lines[functionInfo.start];
-    const paramsMatch = funcLine.match(/\(([^)]*)\)/);
+    const signature = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
+    const paramsMatch = signature.match(/\(([^)]*)\)/s);
 
     if (!paramsMatch || !paramsMatch[1].trim()) {
       return { args: '', setup: [] };
@@ -429,6 +430,45 @@ export class CodeGenerator {
   }
 
   /**
+   * Extends truncation to keep preprocessor conditionals structurally balanced.
+   * This prevents wrappers from cutting inside `#if/#else/#endif` blocks.
+   */
+  static extendForPreprocessorConditionals(
+    lines: string[],
+    startLine: number,
+    truncationEnd: number,
+  ): number {
+    let conditionalDepth = 0;
+
+    for (let i = startLine; i <= truncationEnd; i++) {
+      const trimmed = (lines[i] || '').trim();
+      if (/^#\s*(if|ifdef|ifndef)\b/.test(trimmed)) {
+        conditionalDepth++;
+      } else if (/^#\s*endif\b/.test(trimmed)) {
+        conditionalDepth = Math.max(0, conditionalDepth - 1);
+      }
+    }
+
+    if (conditionalDepth === 0) {
+      return truncationEnd;
+    }
+
+    for (let i = truncationEnd + 1; i < lines.length; i++) {
+      const trimmed = (lines[i] || '').trim();
+      if (/^#\s*(if|ifdef|ifndef)\b/.test(trimmed)) {
+        conditionalDepth++;
+      } else if (/^#\s*endif\b/.test(trimmed)) {
+        conditionalDepth--;
+        if (conditionalDepth === 0) {
+          return i;
+        }
+      }
+    }
+
+    return truncationEnd;
+  }
+
+  /**
    * Finds the range of a return statement that contains the debug line.
    * Scans backward from debugLine to find `return`, forward to find `;`.
    * Returns null if the debug line is not part of a return statement.
@@ -473,6 +513,36 @@ export class CodeGenerator {
     return null;
   }
 
+  static findReturnRanges(lines: string[], startLine: number, endLine: number): Array<{ start: number; end: number }> {
+    const ranges: Array<{ start: number; end: number }> = [];
+    const stripComments = (line: string): string => {
+      const commentIndex = line.indexOf('//');
+      return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+    };
+
+    for (let i = startLine; i <= endLine; i++) {
+      const content = stripComments(lines[i] || '').trim();
+      if (!/^return\b/.test(content)) {
+        continue;
+      }
+
+      let returnEnd = i;
+      if (!content.endsWith(';')) {
+        for (let j = i + 1; j <= endLine && j < i + 20; j++) {
+          if (stripComments(lines[j] || '').trim().endsWith(';')) {
+            returnEnd = j;
+            break;
+          }
+        }
+      }
+
+      ranges.push({ start: i, end: returnEnd });
+      i = returnEnd;
+    }
+
+    return ranges;
+  }
+
   static wrapFunctionForDebugging(
     lines: string[],
     functionInfo: FunctionInfo,
@@ -485,10 +555,7 @@ export class CodeGenerator {
     stepEdge: number | null = null,
   ): string {
     const captureVarName = '_dbgCaptured';
-    const helperFunctions: string[] = [];
-    for (let i = 0; i < functionInfo.start; i++) {
-      helperFunctions.push(lines[i]);
-    }
+    const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
 
     // Determine truncation end: outermost loop endLine or debug line
     let truncationEnd: number;
@@ -499,10 +566,13 @@ export class CodeGenerator {
       // Extend for multi-line statements
       truncationEnd = CodeGenerator.extendForMultiLine(lines, truncationEnd);
     }
+    truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionInfo.start, truncationEnd);
 
     // Detect return statement range on the debug line
     const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
     const useCaptureSideChannel = returnRange !== null && varInfo.name !== '_dbgReturn';
+    const returnRanges = CodeGenerator.findReturnRanges(lines, functionInfo.start, truncationEnd);
+    const returnRangeMap = new Map(returnRanges.map(range => [range.start, range]));
 
     const functionLines = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
@@ -515,22 +585,30 @@ export class CodeGenerator {
         );
       }
 
-      // Handle return statement lines
-      if (returnRange && i >= returnRange.start && i <= returnRange.end) {
-        if (useCaptureSideChannel && i === returnRange.start) {
-          const indent = line.match(/^\s*/)?.[0] || '  ';
-          functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
-        } else if (varInfo.name === '_dbgReturn' && i === returnRange.start) {
-          // Convert the full (possibly multi-line) return to a variable assignment
-          const fullReturn = lines.slice(returnRange.start, returnRange.end + 1).join(' ');
-          const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
-          if (returnMatch) {
-            const indent = line.match(/^\s*/)?.[0] || '  ';
-            functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+      const currentReturnRange = returnRangeMap.get(i);
+      if (currentReturnRange) {
+        const indent = line.match(/^\s*/)?.[0] || '  ';
+        const isTargetReturn =
+          returnRange !== null &&
+          currentReturnRange.start === returnRange.start &&
+          currentReturnRange.end === returnRange.end;
+
+        if (isTargetReturn) {
+          if (useCaptureSideChannel) {
+            functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
+          } else if (varInfo.name === '_dbgReturn') {
+            const fullReturn = lines.slice(currentReturnRange.start, currentReturnRange.end + 1).join(' ');
+            const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
+            if (returnMatch) {
+              functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+            }
           }
+        } else {
+          functionLines.push(`${indent}// Debug: stripped earlier return`);
         }
-        if (!useCaptureSideChannel) {
-          // Skip return lines (for _dbgReturn: continuation lines; for others: all lines)
+
+        i = currentReturnRange.end;
+        if (!useCaptureSideChannel || !isTargetReturn) {
           continue;
         }
       }
@@ -567,11 +645,13 @@ export class CodeGenerator {
     }
 
     const wrapper = [];
-    wrapper.push(...helperFunctions);
+    wrapper.push(...sourceSegments.beforeTarget);
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
     }
     wrapper.push(...result);
+    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
+    wrapper.push(...sourceSegments.afterMainImage);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     const call = useCaptureSideChannel
@@ -597,11 +677,7 @@ export class CodeGenerator {
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
   ): string {
-    // Everything before the function
-    const helperFunctions: string[] = [];
-    for (let i = 0; i < functionInfo.start; i++) {
-      helperFunctions.push(lines[i]);
-    }
+    const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
 
     // The full function body, unmodified
     const functionLines: string[] = [];
@@ -617,8 +693,10 @@ export class CodeGenerator {
 
     // Build the wrapper
     const wrapper: string[] = [];
-    wrapper.push(...helperFunctions);
+    wrapper.push(...sourceSegments.beforeTarget);
     wrapper.push(...cappedLines);
+    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
+    wrapper.push(...sourceSegments.afterMainImage);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
@@ -708,5 +786,62 @@ export class CodeGenerator {
     wrapper.push(`  ${CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge)}`);
     wrapper.push('}');
     return wrapper.join('\n');
+  }
+
+  private static splitSourceForHelperWrapper(
+    lines: string[],
+    functionInfo: FunctionInfo,
+  ): { beforeTarget: string[]; afterTargetBeforeMainImage: string[]; afterMainImage: string[] } {
+    const mainImageRange = CodeGenerator.findMainImageRange(lines);
+    const beforeTarget = lines.slice(0, functionInfo.start);
+    const afterTargetStart = functionInfo.end + 1;
+
+    if (mainImageRange === null) {
+      return {
+        beforeTarget,
+        afterTargetBeforeMainImage: lines.slice(afterTargetStart),
+        afterMainImage: [],
+      };
+    }
+
+    return {
+      beforeTarget,
+      afterTargetBeforeMainImage: lines.slice(afterTargetStart, mainImageRange.start),
+      afterMainImage: lines.slice(mainImageRange.end + 1),
+    };
+  }
+
+  private static findMainImageRange(lines: string[]): { start: number; end: number } | null {
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/void\s+mainImage\s*\(/.test(lines[i])) {
+        start = i;
+        break;
+      }
+    }
+
+    if (start === -1) {
+      return null;
+    }
+
+    let braceDepth = 0;
+    let started = false;
+    for (let i = start; i < lines.length; i++) {
+      const stripped = lines[i].replace(/\/\/.*$/, '');
+      for (const char of stripped) {
+        if (char === '{') {
+          braceDepth++;
+          started = true;
+        }
+        if (char === '}') {
+          braceDepth--;
+        }
+      }
+      if (started && braceDepth === 0) {
+        return { start, end: i };
+      }
+    }
+
+    return null;
   }
 }

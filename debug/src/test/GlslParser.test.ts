@@ -109,6 +109,35 @@ describe("GlslParser", () => {
       expect(result.start).toBe(0);
       expect(result.end).toBe(2);
     });
+
+    it("should fall back cleanly for function names ShaderFrog rejects", () => {
+      const lines = [
+        "vec4 sample(sampler2D tex, vec2 uv) {",
+        "  return texture(tex, uv);",
+        "}",
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 1);
+      expect(result.name).toBe("sample");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(2);
+    });
+
+    it("should keep function mapping stable through preprocessor conditionals", () => {
+      const lines = [
+        "vec2 evalBezier( float t, vec2 v0, vec2 v1, vec2 v2, vec2 v3 )",
+        "{",
+        "#if 0",
+        "    return v0;",
+        "#else",
+        "    return v3;",
+        "#endif",
+        "}",
+      ];
+      const result = GlslParser.findEnclosingFunction(lines, 5);
+      expect(result.name).toBe("evalBezier");
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(7);
+    });
   });
 
   describe("buildVariableTypeMap", () => {
@@ -156,6 +185,39 @@ describe("GlslParser", () => {
       expect(varTypes.get("a")).toBe("float");
       expect(varTypes.has("b")).toBe(false);
       expect(varTypes.has("c")).toBe(false);
+    });
+
+    it("should exclude inactive preprocessor branch declarations", () => {
+      const lines = [
+        "vec2 evalBezier( float t, vec2 v0, vec2 v1, vec2 v2, vec2 v3 )",
+        "{",
+        "#if 0",
+        "    vec2 a0 = v0;",
+        "#else",
+        "    vec2 v21 = 3.0*(v2-v1);",
+        "#endif",
+        "    return v21;",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 7);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 7, functionInfo);
+
+      expect(varTypes.get("t")).toBe("float");
+      expect(varTypes.get("v21")).toBe("vec2");
+      expect(varTypes.has("a0")).toBe(false);
+    });
+
+    it("should fall back to legacy parameter discovery when the parser rejects a function", () => {
+      const lines = [
+        "vec4 sample(sampler2D tex, vec2 uv) {",
+        "  return texture(tex, uv);",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 1);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 1, functionInfo);
+
+      expect(varTypes.get("tex")).toBe("sampler2D");
+      expect(varTypes.get("uv")).toBe("vec2");
     });
   });
 
@@ -245,6 +307,52 @@ describe("GlslParser", () => {
       expect(GlslParser.detectVariableAndType("    while (true) {", varTypes, undefined, lines)).toBeNull();
     });
 
+    it("should not merge a for-loop header with the next declaration", () => {
+      const lines = [
+        "vec2 bezier( vec2 p,",
+        "             vec2 v0, vec2 v1, vec2 v2, vec2 v3,",
+        "             vec2 wd, float bo )",
+        "{",
+        "    const int num = 10;",
+        "    for( int i=1; i<num; i++ )",
+        "    {",
+        "        float t = float(i)/float(num-1);",
+        "    }",
+        "}",
+      ];
+      const varTypes = new Map([
+        ["p", "vec2"],
+        ["v0", "vec2"],
+        ["v1", "vec2"],
+        ["v2", "vec2"],
+        ["v3", "vec2"],
+        ["wd", "vec2"],
+        ["bo", "float"],
+        ["num", "int"],
+        ["i", "int"],
+      ]);
+
+      const result = GlslParser.detectVariableAndType(lines[5], varTypes, "vec2", lines, 5);
+      expect(result).toBeNull();
+    });
+
+    it("should detect return on a function with a multi-line signature", () => {
+      const lines = [
+        "vec2 bezier( vec2 p,",
+        "             vec2 v0, vec2 v1, vec2 v2, vec2 v3,",
+        "             vec2 wd, float bo )",
+        "{",
+        "    return wd;",
+        "}",
+      ];
+      const varTypes = new Map([
+        ["wd", "vec2"],
+      ]);
+
+      const result = GlslParser.detectVariableAndType(lines[4], varTypes, "vec2", lines, 4);
+      expect(result).toEqual({ name: "_dbgReturn", type: "vec2" });
+    });
+
     it("should return null for function call with no lines context", () => {
       const varTypes = new Map<string, string>();
       const result = GlslParser.detectVariableAndType("    red();", varTypes);
@@ -261,6 +369,21 @@ describe("GlslParser", () => {
       const varTypes = new Map<string, string>();
       const result = GlslParser.detectVariableAndType(lines[2], varTypes, undefined, lines, 2);
       expect(result).toEqual({ name: "col", type: "vec3" });
+    });
+
+    it("should ignore returns in inactive preprocessor branches", () => {
+      const lines = [
+        "float foo() {",
+        "#if 0",
+        "  return 1.0;",
+        "#else",
+        "  return 2.0;",
+        "#endif",
+        "}",
+      ];
+      const varTypes = new Map<string, string>();
+      const result = GlslParser.detectVariableAndType(lines[2], varTypes, "float", lines, 2);
+      expect(result).toBeNull();
     });
   });
 
@@ -431,6 +554,20 @@ describe("GlslParser", () => {
       expect(lineMap.has('p')).toBe(false);
       expect(lineMap.has('d')).toBe(false);
       expect(lineMap.get('uv')).toBe(6);
+    });
+
+    it("should preserve parameter line mapping in legacy fallback mode", () => {
+      const lines = [
+        "vec4 sample(sampler2D tex, vec2 uv) {",
+        "  return texture(tex, uv);",
+        "}",
+      ];
+      const funcInfo = GlslParser.findEnclosingFunction(lines, 1);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 1, funcInfo);
+      const lineMap = GlslParser.buildVariableLineMap(lines, 1, funcInfo, varTypes);
+
+      expect(lineMap.get('tex')).toBe(0);
+      expect(lineMap.get('uv')).toBe(0);
     });
   });
 
