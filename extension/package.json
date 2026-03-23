@@ -119,6 +119,10 @@
         "title": "Shader Studio: Toggle Editor Overlay"
       },
       {
+        "command": "shader-studio.manualCompile",
+        "title": "Shader Studio: Manual Compile"
+      },
+      {
         "command": "shader-studio.openSnippetLibrary",
         "title": "Shader Studio: Open Snippet Library",
         "icon": "$(code)"
@@ -133,6 +137,11 @@
         "command": "shader-studio.toggleEditorOverlay",
         "key": "ctrl+`",
         "when": "activeWebviewPanelId == 'shader-studio'"
+      },
+      {
+        "command": "shader-studio.manualCompile",
+        "key": "ctrl+enter",
+        "mac": "ctrl+enter"
       }
     ],
     "menus": {},

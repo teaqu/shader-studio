@@ -27,6 +27,7 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { editorOverlayStore } from "../stores/editorOverlayStore";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
+  import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import { PerformanceMonitor } from "../PerformanceMonitor";
   import type { PerformanceData } from "../PerformanceMonitor";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
@@ -126,8 +127,18 @@
   let performancePanelVisible = false;
   let performanceMonitor: PerformanceMonitor | undefined;
   let performanceData: PerformanceData | null = null;
+  let compileMode: CompileMode = "hot";
+  let lastSentCompileMode: CompileMode | null = null;
 
   $: showDebugPanel = debugState.isEnabled && debugPanelVisible;
+
+  $: if (initialized && compileMode !== lastSentCompileMode) {
+    transport.postMessage({
+      type: 'setCompileMode',
+      payload: { mode: compileMode },
+    });
+    lastSentCompileMode = compileMode;
+  }
 
   // Extract specific debug state fields so that capturedVariables changes
   // don't re-trigger the capture loop (Svelte tracks the whole object reference).
@@ -213,6 +224,9 @@
     onRecord: handleRecord,
     onCancel: handleCancelRecording,
     isRecording,
+    compileMode,
+    onSetCompileMode: handleSetCompileMode,
+    onManualCompile: handleManualCompile,
   };
 
   // Subscribe to config/debug panel stores
@@ -226,10 +240,14 @@
     const unsubPerf = performancePanelStore.subscribe((state) => {
       performancePanelVisible = state.isVisible;
     });
+    const unsubCompileMode = compileModeStore.subscribe((state) => {
+      compileMode = state.mode;
+    });
     return () => {
       unsubConfig();
       unsubDebug();
       unsubPerf();
+      unsubCompileMode();
     };
   });
 
@@ -431,6 +449,15 @@
     transport.postMessage({ type: 'extensionCommand', payload: { command } });
   }
 
+  function handleSetCompileMode(mode: CompileMode) {
+    compileModeStore.setMode(mode);
+  }
+
+  async function handleManualCompile() {
+    if (!initialized || compileMode !== 'manual') return;
+    handleExtensionCommand('manualCompile');
+  }
+
   function handleExpandVarHistogram(varName: string) {
     if (!variableCaptureManager) return;
     const vars = debugState.capturedVariables;
@@ -612,6 +639,7 @@
       editorOverlayStore.toggle();
     },
     onResetLayout: () => { handleResetLayout(); },
+    onManualCompile: () => { void handleManualCompile(); },
     onCompilationResult: (result) => {
       if (result) {
         errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
@@ -761,6 +789,7 @@
         shaderPath={editorFilePath}
         {transport}
         onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
+        {compileMode}
         vimMode={editorVimMode}
         bufferNames={editorBufferNames}
         activeBufferName={editorBufferName}

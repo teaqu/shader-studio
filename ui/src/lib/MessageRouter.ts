@@ -7,6 +7,7 @@ export interface MessageRouterCallbacks {
   onShaderSource: (event: MessageEvent) => void;
   onToggleEditorOverlay: () => void;
   onResetLayout: () => void;
+  onManualCompile: () => void;
   onCompilationResult: (result: { success: boolean; errors?: string[] } | null) => void;
   onLockStateChanged: (isLocked: boolean) => void;
   onCustomUniformValues?: (values: { name: string; type: string; value: number | number[] | boolean }[]) => void;
@@ -80,6 +81,11 @@ export class MessageRouter {
 
       if (type === 'resetLayout') {
         this.callbacks.onResetLayout();
+        return;
+      }
+
+      if (type === 'manualCompile') {
+        this.callbacks.onManualCompile();
         return;
       }
 

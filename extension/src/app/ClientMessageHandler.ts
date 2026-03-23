@@ -100,6 +100,9 @@ export class ClientMessageHandler {
         respondFn({ type: 'restoreLayout', payload: layout });
         break;
       }
+      case 'setCompileMode':
+        await vscode.commands.executeCommand('shader-studio.setCompileMode', message.payload?.mode);
+        break;
     }
   }
 }

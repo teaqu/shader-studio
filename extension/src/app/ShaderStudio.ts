@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { PanelManager } from "./PanelManager";
@@ -15,6 +14,7 @@ import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
 import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
+import { CompileController, type CompileMode } from "./CompileController";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -34,7 +34,7 @@ export class ShaderStudio {
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
-  private static readonly SCRIPT_EXTENSIONS = new Set(['.js', '.ts', '.mjs']);
+  private compileController: CompileController;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -60,6 +60,12 @@ export class ShaderStudio {
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
+    );
+    this.compileController = new CompileController(
+      context,
+      this.glslFileTracker,
+      this.shaderProvider,
+      this.messenger,
     );
     this.configGenerator = new ConfigGenerator(this.glslFileTracker, this.messenger, this.logger);
 
@@ -311,6 +317,23 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.manualCompile", () => {
+        this.logger.info("shader-studio.manualCompile command executed");
+        if (this.compileController.getMode() !== "manual") {
+          return;
+        }
+        void this.compileController.manualCompileCurrentShader(vscode.window.activeTextEditor);
+      }),
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.setCompileMode", (mode: CompileMode) => {
+        this.logger.info(`shader-studio.setCompileMode command executed: ${mode}`);
+        this.compileController.setMode(mode);
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.resetLayout", () => {
         this.logger.info("shader-studio.resetLayout command executed");
         this.context.workspaceState.update('shader-studio.dockviewLayout', undefined);
@@ -322,28 +345,21 @@ export class ShaderStudio {
 
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (!editor) {
-        return;
-      }
-      if (this.glslFileTracker.isGlslEditor(editor)) {
-        this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
-        this.performShaderUpdate(editor);
-      }
+      this.compileController.handleActiveEditorChange(editor);
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        return;
-      }
+      this.compileController.handleTextDocumentChange(
+        vscode.window.activeTextEditor,
+        event,
+      );
+    });
 
-      if (editor && this.glslFileTracker.isGlslEditor(editor)) {
-        this.glslFileTracker.setLastViewedGlslFile(editor.document.uri.fsPath);
-        this.performShaderUpdate(editor);
-      } else if (this.isScriptFile(event.document)) {
-        // Live-reload script from unsaved editor content
-        this.handleScriptDocumentChange(event.document);
-      }
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      this.compileController.handleTextDocumentSave(
+        document,
+        vscode.window.visibleTextEditors,
+      );
     });
 
     // Track cursor position in GLSL editors for debug mode
@@ -356,12 +372,6 @@ export class ShaderStudio {
 
   private isGlslEditor(editor: vscode.TextEditor): boolean {
     return this.glslFileTracker.isGlslEditor(editor);
-  }
-
-  private performShaderUpdate(editor: vscode.TextEditor): void {
-    if (this.messenger.hasActiveClients()) {
-      this.shaderProvider.sendShaderToWebview(editor);
-    }
   }
 
   private handleCursorPositionChange(event: vscode.TextEditorSelectionChangeEvent): void {
@@ -378,32 +388,6 @@ export class ShaderStudio {
     }
 
     this.sendCursorPosition(editor);
-  }
-
-  private isScriptFile(document: vscode.TextDocument): boolean {
-    const ext = path.extname(document.fileName);
-    return ShaderStudio.SCRIPT_EXTENSIONS.has(ext);
-  }
-
-  private handleScriptDocumentChange(document: vscode.TextDocument): void {
-    const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
-    if (!lastViewedFile) {
-      return;
-    }
-
-    // Check if the active shader's config references this script file
-    const scriptPath = document.uri.fsPath;
-    const config = this.shaderProvider.getActiveConfig(lastViewedFile);
-    const resolvedScript = this.shaderProvider.getScriptPath(config, lastViewedFile);
-    if (!resolvedScript || resolvedScript !== scriptPath) {
-      return;
-    }
-
-    // Re-send shader with the unsaved editor content
-    this.shaderProvider.sendShaderWithScriptContent(
-      lastViewedFile,
-      document.getText(),
-    );
   }
 
   private sendCursorPosition(editor: vscode.TextEditor, debounce: boolean = true): void {

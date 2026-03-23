@@ -100,6 +100,11 @@ export class EditorOverlayManager {
 
   async handleEditorCodeChange(code: string): Promise<void> {
     this.fileCode = code;
+    this.notifyStateChanged();
+  }
+
+  async compileCurrentCode(): Promise<void> {
+    const code = this.fileCode;
 
     if (this.bufferName === 'Image') {
       this.shaderCode = code;
@@ -123,7 +128,6 @@ export class EditorOverlayManager {
         }
       }
     }
-    this.notifyStateChanged();
   }
 
   toggle(): void {

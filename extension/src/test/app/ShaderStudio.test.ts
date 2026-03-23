@@ -10,6 +10,8 @@ suite('Shader Studio Test Suite', () => {
   let mockDiagnosticCollection: vscode.DiagnosticCollection;
   let sandbox: sinon.SinonSandbox;
   let sendShaderSpy: sinon.SinonSpy;
+  let activeEditorChangeListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
+  let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
 
   setup(() => {
     sandbox = sinon.createSandbox();
@@ -84,6 +86,17 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({
       get: sandbox.stub()
     } as any);
+    sandbox.stub(vscode.window, 'onDidChangeActiveTextEditor').callsFake((listener: any) => {
+      activeEditorChangeListener = listener;
+      return { dispose: sandbox.stub() } as any;
+    });
+    sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake((listener: any) => {
+      textDocumentChangeListener = listener;
+      return { dispose: sandbox.stub(), _listener: listener, _event: 'onDidChangeTextDocument' } as any;
+    });
+    sandbox.stub(vscode.window, 'onDidChangeTextEditorSelection').callsFake((listener: any) => {
+      return { dispose: sandbox.stub() } as any;
+    });
     sandbox.stub(vscode.window, 'registerCustomEditorProvider').returns({
       dispose: sandbox.stub()
     } as any);
@@ -208,29 +221,15 @@ suite('Shader Studio Test Suite', () => {
   }
 
   function simulateTextDocumentChange(editor: vscode.TextEditor): void {
-    const textDocumentChangeHandlers = mockContext.subscriptions
-      .filter((sub: any) => sub._listener && sub._event === 'onDidChangeTextDocument');
-
-    if (textDocumentChangeHandlers.length > 0) {
+    if (textDocumentChangeListener) {
       const changeEvent = { document: editor.document } as vscode.TextDocumentChangeEvent;
-      textDocumentChangeHandlers.forEach((handler: any) => {
-        if (handler._listener) {
-          handler._listener(changeEvent);
-        }
-      });
+      textDocumentChangeListener(changeEvent);
     }
   }
 
-  function simulateActiveEditorChange(editor: vscode.TextEditor): void {
-    const activeEditorChangeHandlers = mockContext.subscriptions
-      .filter((sub: any) => sub._listener && sub._event === 'onDidChangeActiveTextEditor');
-
-    if (activeEditorChangeHandlers.length > 0) {
-      activeEditorChangeHandlers.forEach((handler: any) => {
-        if (handler._listener) {
-          handler._listener(editor);
-        }
-      });
+  function simulateActiveEditorChange(editor: vscode.TextEditor | undefined): void {
+    if (activeEditorChangeListener) {
+      activeEditorChangeListener(editor);
     }
   }
 
@@ -251,11 +250,159 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.notCalled(sendShaderSpy);
   });
 
-  test('performShaderUpdate method respects client connection status', () => {
+  test('should process shader updates on first active shader selection when compile mode is manual', () => {
     const mockEditor = createMockGLSLEditor();
+    shaderStudio['compileController'].setMode('manual');
+
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    shaderStudio['panelManager'].createPanel();
+
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditor);
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditor);
+  });
+
+  test('should not process shader updates when focus leaves and returns to the same shader in manual mode', () => {
+    const mockEditor = createMockGLSLEditor();
+    shaderStudio['compileController'].setMode('manual');
+
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    shaderStudio['panelManager'].createPanel();
+
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditor);
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(undefined);
+    simulateActiveEditorChange(mockEditor);
+
+    sinon.assert.notCalled(sendShaderSpy);
+  });
+
+  test('should process shader updates on active editor change when compile mode is manual and shader file changes', () => {
+    const mockEditorA = createMockGLSLEditor();
+    const mockEditorB = {
+      ...createMockGLSLEditor(),
+      document: {
+        ...createMockGLSLEditor().document,
+        fileName: '/mock/path/other-shader.glsl',
+        uri: vscode.Uri.file('/mock/path/other-shader.glsl'),
+      },
+    } as vscode.TextEditor;
+    shaderStudio['compileController'].setMode('manual');
+
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    shaderStudio['panelManager'].createPanel();
+
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditorA);
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditorB);
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditorB);
+  });
+
+  test('should process shader updates on first active shader selection when compile mode is save', () => {
+    const mockEditor = createMockGLSLEditor();
+    shaderStudio['compileController'].setMode('save');
+
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    shaderStudio['panelManager'].createPanel();
+
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditor);
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditor);
+  });
+
+  test('should process shader updates on active editor change when compile mode is save and shader file changes', () => {
+    const mockEditorA = createMockGLSLEditor();
+    const mockEditorB = {
+      ...createMockGLSLEditor(),
+      document: {
+        ...createMockGLSLEditor().document,
+        fileName: '/mock/path/other-save-shader.glsl',
+        uri: vscode.Uri.file('/mock/path/other-save-shader.glsl'),
+      },
+    } as vscode.TextEditor;
+    shaderStudio['compileController'].setMode('save');
+
+    const mockWebviewPanel = {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: () => { } }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+    };
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    shaderStudio['panelManager'].createPanel();
+
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditorA);
+    sendShaderSpy.resetHistory();
+    simulateActiveEditorChange(mockEditorB);
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditorB);
+  });
+
+  test('compile controller respects client connection status for active editor changes', () => {
+    const mockEditor = createMockGLSLEditor();
+    shaderStudio['compileController'].setMode('hot');
 
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), false);
-    shaderStudio['performShaderUpdate'](mockEditor);
+    shaderStudio['compileController'].handleActiveEditorChange(mockEditor);
     sinon.assert.notCalled(sendShaderSpy);
 
     const mockWebviewPanel = {
@@ -274,7 +421,7 @@ suite('Shader Studio Test Suite', () => {
     
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
-    shaderStudio['performShaderUpdate'](mockEditor);
+    shaderStudio['compileController'].handleActiveEditorChange(mockEditor);
     sinon.assert.calledOnce(sendShaderSpy);
     sinon.assert.calledWith(sendShaderSpy, mockEditor);
   });
@@ -323,8 +470,8 @@ suite('Shader Studio Test Suite', () => {
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
     const mockEditor = createMockGLSLNoLanguageEditor();
-    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
-    shaderStudio['performShaderUpdate'](mockEditor);
+    shaderStudio['compileController'].setMode('hot');
+    shaderStudio['compileController'].handleActiveEditorChange(mockEditor);
     sinon.assert.calledOnce(sendShaderSpy);
     sinon.assert.calledWith(sendShaderSpy, mockEditor);
   });
@@ -424,6 +571,39 @@ suite('Shader Studio Test Suite', () => {
     toggleOverlayCall.args[1]();
 
     sinon.assert.calledOnce(toggleOverlaySpy);
+  });
+
+  test('manualCompile command should compile the active shader only in manual mode', () => {
+    shaderStudio['compileController'].setMode('manual');
+    const mockEditor = createMockGLSLEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const manualCompileCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.manualCompile'
+    );
+
+    assert.ok(manualCompileCall, 'manualCompile command should be registered');
+
+    manualCompileCall.args[1]();
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, mockEditor);
+  });
+
+  test('manualCompile command should no-op outside manual mode', () => {
+    shaderStudio['compileController'].setMode('hot');
+
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const manualCompileCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.manualCompile'
+    );
+
+    assert.ok(manualCompileCall, 'manualCompile command should be registered');
+
+    manualCompileCall.args[1]();
+
+    sinon.assert.notCalled(sendShaderSpy);
   });
 
   suite('sendCursorPosition debounce tests', () => {

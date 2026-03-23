@@ -7,6 +7,7 @@ import { configPanelStore } from '../../lib/stores/configPanelStore';
 import { debugPanelStore } from '../../lib/stores/debugPanelStore';
 import { editorOverlayStore } from '../../lib/stores/editorOverlayStore';
 import { audioStore } from '../../lib/stores/audioStore';
+import { compileModeStore } from '../../lib/stores/compileModeStore';
 
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -179,6 +180,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    compileModeStore.setMode('hot');
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(true);
     editorOverlayStore.setVisible(false);
@@ -1261,6 +1263,17 @@ describe('ShaderViewer', () => {
     });
   });
 
+  it('should send compile mode to extension when initialized', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'setCompileMode',
+      payload: { mode: 'hot' }
+    });
+  });
+
   it('should not toggle config panel when no shader is loaded', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -2028,6 +2041,34 @@ describe('ShaderViewer', () => {
 
       // After clicking, lock state should toggle
       expect(lockButton).toBeTruthy();
+    });
+  });
+
+  describe('manual compile mode', () => {
+    it('shows compile button after cycling to manual mode and compiles on click', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+      await tick();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      const manualModeButton = screen.getByLabelText('Set manual compile mode');
+      await fireEvent.click(manualModeButton);
+      await tick();
+
+      const compileButton = screen.getByLabelText('Compile shader');
+      vi.clearAllMocks();
+
+      await fireEvent.click(compileButton);
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'extensionCommand',
+        payload: { command: 'manualCompile' },
+      });
     });
   });
 
@@ -2830,6 +2871,10 @@ describe('ShaderViewer', () => {
 
   describe('handleShaderMessage result paths', () => {
     it('should clear errors when result is successful', async () => {
+      const { ShaderStudio } = await import('../../lib/ShaderStudio');
+      const originalHandleShaderMessage = ShaderStudio.prototype.handleShaderMessage;
+      ShaderStudio.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true, errors: [] });
+
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -2857,11 +2902,9 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Errors should be cleared by the successful result from handleShaderMessage
-      // (MockShaderStudio returns { running: true } which has truthy result.success is undefined
-      // but result is truthy, and result.success is falsy, so errors would be set to [])
-      // Actually the mock returns { running: true }, result.success is undefined (falsy),
-      // so errors = result.errors?.length > 0 ? result.errors : [] = []
       expect(pauseButton.classList.contains('error')).toBe(false);
+
+      ShaderStudio.prototype.handleShaderMessage = originalHandleShaderMessage;
     });
 
     it('should handle result with empty errors array', async () => {

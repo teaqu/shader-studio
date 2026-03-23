@@ -476,6 +476,19 @@ suite('ClientMessageHandler Test Suite', () => {
         });
     });
 
+    suite('setCompileMode', () => {
+        test('executes setCompileMode via vscode.commands.executeCommand', async () => {
+            const execStub = vscode.commands.executeCommand as sinon.SinonStub;
+
+            await handler.handle(
+                { type: 'setCompileMode', payload: { mode: 'manual' } },
+                respondFn,
+            );
+
+            assert.ok(execStub.calledWith('shader-studio.setCompileMode', 'manual'));
+        });
+    });
+
     suite('updateScriptPollingRate', () => {
         test('calls shaderProvider.updateScriptPollingRate with fps', async () => {
             await handler.handle(
