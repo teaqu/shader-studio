@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
-const STORAGE_KEY = 'shader-studio-dockview-layout';
+const STORAGE_KEY = 'shader-studio-dockview-layout:web:1';
+const OTHER_STORAGE_KEY = 'shader-studio-dockview-layout:web:2';
 
 describe('layoutStore', () => {
   beforeEach(() => {
@@ -19,6 +20,13 @@ describe('layoutStore', () => {
     panels: {},
   };
 
+  const mockState = {
+    activeLayout: mockLayout,
+    panelSnapshots: {
+      debug: mockLayout,
+    },
+  };
+
   it('should have null initial state', async () => {
     const store = await importStore();
     expect(get(store)).toBeNull();
@@ -26,53 +34,64 @@ describe('layoutStore', () => {
 
   it('save should update store value', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
-    expect(get(store)).toEqual(mockLayout);
+    store.save('web:1', mockState as any);
+    expect(get(store)).toEqual(mockState);
   });
 
-  it('save should persist to localStorage', async () => {
+  it('save should persist to localStorage by slot', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
+    store.save('web:1', mockState as any);
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored).toEqual(mockLayout);
+    expect(stored).toEqual(mockState);
   });
 
   it('load should restore from localStorage and update store', async () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockLayout));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockState));
     const store = await importStore();
-    const result = store.load();
-    expect(result).toEqual(mockLayout);
-    expect(get(store)).toEqual(mockLayout);
+    const result = store.load('web:1');
+    expect(result).toEqual(mockState);
+    expect(get(store)).toEqual(mockState);
   });
 
   it('load should return null when localStorage is empty', async () => {
     const store = await importStore();
-    const result = store.load();
+    const result = store.load('web:1');
     expect(result).toBeNull();
     expect(get(store)).toBeNull();
+  });
+
+  it('load should isolate state by slot', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockState));
+    localStorage.setItem(OTHER_STORAGE_KEY, JSON.stringify({ activeLayout: null, panelSnapshots: {} }));
+    const store = await importStore();
+    const result = store.load('web:2');
+    expect(result).toEqual({ activeLayout: null, panelSnapshots: {} });
   });
 
   it('load should return null on invalid JSON in localStorage', async () => {
     localStorage.setItem(STORAGE_KEY, 'not-valid-json');
     const store = await importStore();
-    const result = store.load();
+    const result = store.load('web:1');
     expect(result).toBeNull();
   });
 
   it('clear should reset store to null', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
-    expect(get(store)).toEqual(mockLayout);
-    store.clear();
+    store.save('web:1', mockState as any);
+    expect(get(store)).toEqual(mockState);
+    store.clear('web:1');
     expect(get(store)).toBeNull();
   });
 
-  it('clear should remove from localStorage', async () => {
+  it('clear should remove from localStorage for only the requested slot', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
+    store.save('web:1', mockState as any);
+    store.save('web:2', { activeLayout: null, panelSnapshots: {} } as any);
     expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
-    store.clear();
+    expect(localStorage.getItem(OTHER_STORAGE_KEY)).not.toBeNull();
+    store.clear('web:1');
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(OTHER_STORAGE_KEY)).not.toBeNull();
   });
 
   it('save should handle localStorage errors gracefully', async () => {
@@ -81,9 +100,8 @@ describe('layoutStore', () => {
     const origSetItem = localStorage.setItem.bind(localStorage);
     localStorage.setItem = () => { throw new Error('QuotaExceeded'); };
 
-    // Should not throw
-    store.save(mockLayout as any);
-    expect(get(store)).toEqual(mockLayout); // store still updated
+    store.save('web:1', mockState as any);
+    expect(get(store)).toEqual(mockState);
     expect(warnSpy).toHaveBeenCalled();
 
     localStorage.setItem = origSetItem;
@@ -96,7 +114,7 @@ describe('layoutStore', () => {
     const origGetItem = localStorage.getItem.bind(localStorage);
     localStorage.getItem = () => { throw new Error('SecurityError'); };
 
-    const result = store.load();
+    const result = store.load('web:1');
     expect(result).toBeNull();
     expect(warnSpy).toHaveBeenCalled();
 
@@ -106,28 +124,26 @@ describe('layoutStore', () => {
 
   it('clear should handle localStorage errors gracefully', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
+    store.save('web:1', mockState as any);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const origRemoveItem = localStorage.removeItem.bind(localStorage);
     localStorage.removeItem = () => { throw new Error('SecurityError'); };
 
-    // Should not throw
-    store.clear();
-    expect(get(store)).toBeNull(); // store still cleared
+    store.clear('web:1');
+    expect(get(store)).toBeNull();
     expect(warnSpy).toHaveBeenCalled();
 
     localStorage.removeItem = origRemoveItem;
     warnSpy.mockRestore();
   });
 
-  it('save then load roundtrip should produce equal layout', async () => {
+  it('save then load roundtrip should produce equal state', async () => {
     const store = await importStore();
-    store.save(mockLayout as any);
+    store.save('web:1', mockState as any);
 
-    // Reset module to simulate fresh load
     vi.resetModules();
     const freshStore = await importStore();
-    const loaded = freshStore.load();
-    expect(loaded).toEqual(mockLayout);
+    const loaded = freshStore.load('web:1');
+    expect(loaded).toEqual(mockState);
   });
 });

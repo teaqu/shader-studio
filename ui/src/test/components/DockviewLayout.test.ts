@@ -65,7 +65,13 @@ vi.mock('dockview-core', () => {
           }
           mockApi.panels = Array.from(panels.values());
         }),
-        dispose: vi.fn(),
+        dispose: vi.fn(() => {
+          for (const panel of Array.from(panels.values())) {
+            removePanelListeners.forEach((fn) => fn(panel));
+          }
+          panels.clear();
+          mockApi.panels = [];
+        }),
         onDidLayoutChange: vi.fn((fn: () => void) => {
           layoutChangeListeners.push(fn);
           return { dispose: vi.fn() };
@@ -131,6 +137,7 @@ function renderLayout(props: Record<string, any> = {}) {
         showDebugPanel: false,
         showConfigPanel: false,
         transport: null,
+        layoutSlot: 'web:1',
         ...props,
       },
     });
@@ -395,7 +402,6 @@ function renderLayout(props: Record<string, any> = {}) {
         width: 800, height: 500, x: 0, y: 100, toJSON: () => {},
       });
 
-      // Mouse at y=103, which is 3px from top (within 8px threshold)
       await fireEvent.mouseMove(el, { clientY: 103 });
       expect(el.classList.contains('dv-sash-hover')).toBe(false);
 
@@ -416,7 +422,6 @@ function renderLayout(props: Record<string, any> = {}) {
         width: 800, height: 500, x: 0, y: 100, toJSON: () => {},
       });
 
-      // Mouse at y=200, which is 100px from top (well beyond threshold)
       await fireEvent.mouseMove(el, { clientY: 200 });
       expect(el.classList.contains('dv-sash-hover')).toBe(false);
     });
@@ -433,12 +438,10 @@ function renderLayout(props: Record<string, any> = {}) {
         width: 800, height: 500, x: 0, y: 100, toJSON: () => {},
       });
 
-      // Activate top edge and wait for reveal
       await fireEvent.mouseMove(el, { clientY: 103 });
       vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
-      // Move away from top edge — target is plain content
       const content = document.createElement('div');
       content.className = 'content';
       el.appendChild(content);
@@ -447,10 +450,8 @@ function renderLayout(props: Record<string, any> = {}) {
       Object.defineProperty(event, 'target', { value: content });
       el.dispatchEvent(event);
 
-      // Still visible immediately
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
-      // After 400ms should collapse
       vi.advanceTimersByTime(400);
       expect(el.classList.contains('dv-sash-hover')).toBe(false);
 
@@ -473,12 +474,10 @@ function renderLayout(props: Record<string, any> = {}) {
       sash.className = 'dv-sash';
       el.appendChild(sash);
 
-      // Activate top edge and wait for reveal
       await fireEvent.mouseMove(el, { clientY: 103 });
       vi.advanceTimersByTime(300);
       expect(el.classList.contains('dv-sash-hover')).toBe(true);
 
-      // Move away but onto a sash — should NOT collapse
       const event = new MouseEvent('mousemove', { clientY: 200, bubbles: true });
       Object.defineProperty(event, 'target', { value: sash });
       el.dispatchEvent(event);
@@ -502,6 +501,13 @@ function renderLayout(props: Record<string, any> = {}) {
 
       vi.advanceTimersByTime(500);
       expect(mockApi.toJSON).toHaveBeenCalled();
+      expect(layoutStore.save).toHaveBeenCalledWith(
+        'web:1',
+        expect.objectContaining({
+          activeLayout: expect.any(Object),
+          panelSnapshots: expect.any(Object),
+        }),
+      );
 
       vi.useRealTimers();
     });
@@ -514,7 +520,7 @@ function renderLayout(props: Record<string, any> = {}) {
       await tick();
 
       expect(transport.onMessage).toHaveBeenCalledTimes(1);
-      expect(transport.postMessage).toHaveBeenCalledWith({ type: 'requestLayout' });
+      expect(transport.postMessage).toHaveBeenCalledWith({ type: 'requestLayout', payload: { layoutSlot: 'web:1' } });
     });
 
     it('should restore layout from transport payload', async () => {
@@ -522,18 +528,24 @@ function renderLayout(props: Record<string, any> = {}) {
       renderLayout({ transport });
       await tick();
 
-      transport.emit({ type: 'restoreLayout', payload: { panels: {}, grid: { root: { type: 'branch', data: [] } } } });
+      transport.emit({
+        type: 'restoreLayout',
+        payload: {
+          layoutSlot: 'web:1',
+          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
+        },
+      });
       expect(mockApi.fromJSON).toHaveBeenCalledTimes(1);
     });
 
     it('should restore from local layout when transport payload is null', async () => {
-      vi.mocked(layoutStore.load).mockReturnValue({ panels: {}, grid: { root: { type: 'branch', data: [] } } } as any);
+      vi.mocked(layoutStore.load).mockReturnValue({ activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} } as any);
       const transport = createMockTransport();
       renderLayout({ transport });
       await tick();
 
-      transport.emit({ type: 'restoreLayout', payload: null });
-      expect(layoutStore.load).toHaveBeenCalled();
+      transport.emit({ type: 'restoreLayout', payload: { layoutSlot: 'web:1', state: null } });
+      expect(layoutStore.load).toHaveBeenCalledWith('web:1');
       expect(mockApi.fromJSON).toHaveBeenCalledTimes(1);
     });
 
@@ -545,9 +557,31 @@ function renderLayout(props: Record<string, any> = {}) {
         throw new Error('bad layout');
       });
 
-      transport.emit({ type: 'restoreLayout', payload: { panels: {}, grid: { root: { type: 'branch', data: [] } } } });
+      transport.emit({
+        type: 'restoreLayout',
+        payload: {
+          layoutSlot: 'web:1',
+          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
+        },
+      });
       expect(mockApi.clear).toHaveBeenCalled();
       expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
+    });
+
+    it('should ignore restore payloads for a different layout slot', async () => {
+      const transport = createMockTransport();
+      renderLayout({ transport, layoutSlot: 'web:2' });
+      await tick();
+
+      transport.emit({
+        type: 'restoreLayout',
+        payload: {
+          layoutSlot: 'web:1',
+          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
+        },
+      });
+
+      expect(mockApi.fromJSON).not.toHaveBeenCalled();
     });
 
     it('ready.showPreview should add preview panel when missing', async () => {
@@ -683,6 +717,7 @@ function renderLayout(props: Record<string, any> = {}) {
       showConfigPanel: false,
       showPerformancePanel: false,
       transport: null,
+      layoutSlot: 'web:1',
       ...overrides,
     });
 
@@ -1035,6 +1070,29 @@ function renderLayout(props: Record<string, any> = {}) {
     });
   });
 
+  describe('teardown removal handling', () => {
+    it('does not dispatch debugClosed during component teardown', async () => {
+      const debugClosedHandler = vi.fn();
+      const { unmount } = render(DockviewLayout, {
+        props: {
+          mountPreview: () => {},
+          mountDebug: () => {},
+          mountConfig: () => {},
+          showDebugPanel: true,
+          showConfigPanel: false,
+          transport: null,
+          layoutSlot: 'web:1',
+        },
+        events: { debugClosed: debugClosedHandler },
+      });
+      await tick();
+
+      unmount();
+
+      expect(debugClosedHandler).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── Layout reset ──────────────────────────────────────────────
 
   describe('layout reset', () => {
@@ -1052,6 +1110,7 @@ function renderLayout(props: Record<string, any> = {}) {
           showConfigPanel: false,
           showPerformancePanel: false,
           transport: null,
+          layoutSlot: 'web:1',
         },
         events: {
           ready: (event: any) => {
@@ -1068,7 +1127,7 @@ function renderLayout(props: Record<string, any> = {}) {
       ref.resetLayout!();
 
       expect((mockApi.clear as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(clearCallsBefore);
-      expect(layoutStore.clear).toHaveBeenCalled();
+      expect(layoutStore.clear).toHaveBeenCalledWith('web:1');
       // createDefaultLayout re-adds preview after reset
       expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });

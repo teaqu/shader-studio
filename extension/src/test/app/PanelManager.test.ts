@@ -338,6 +338,21 @@ suite('PanelManager Test Suite', () => {
             // Should NOT contain WebSocket port configuration
             assert.ok(!html.includes('window.shaderViewConfig'), 'Should not inject WebSocket config');
             assert.ok(!html.includes('port:'), 'Should not contain port configuration');
+            assert.ok(html.includes('shader-studio-layout-slot'), 'Should inject layout slot metadata');
+            assert.ok(html.includes('content="vscode:1"'), 'Should inject the first VS Code layout slot');
+        });
+
+        test('should assign unique layout slot metadata to multiple panels', () => {
+            const firstPanel = createMockWebviewPanel();
+            const secondPanel = createMockWebviewPanel();
+            createWebviewPanelStub.onFirstCall().returns(firstPanel as any);
+            createWebviewPanelStub.onSecondCall().returns(secondPanel as any);
+
+            panelManager.createPanel();
+            panelManager.createPanel();
+
+            assert.ok(firstPanel.webview.html.includes('content="vscode:1"'));
+            assert.ok(secondPanel.webview.html.includes('content="vscode:2"'));
         });
 
         test('should add media-src to existing CSP for video support', () => {

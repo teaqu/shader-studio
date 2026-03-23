@@ -10,7 +10,7 @@
   } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
   import type { Transport } from "../transport/MessageTransport";
-  import { layoutStore } from "../stores/layoutStore";
+  import { layoutStore, type PersistedLayoutState } from "../stores/layoutStore";
 
   const dispatch = createEventDispatcher<{
     ready: { api: DockviewApi; resetLayout: () => void; showPreview: () => void };
@@ -31,15 +31,45 @@
   export let showConfigPanel: boolean = false;
   export let showPerformancePanel: boolean = false;
   export let transport: Transport | null = null;
+  export let layoutSlot: string | null = null;
 
   let containerEl: HTMLElement;
   let api: DockviewApi | null = null;
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let layoutReady = false;
   let programmaticRemoval = false;
+  let isDestroying = false;
   let lastPreviewAlone: boolean | null = null;
+  let requestedLayoutSlot: string | null = null;
+  let restoredLayoutSlot: string | null = null;
   // Full layout snapshots saved before each panel removal — used to restore exact positions
   const panelSnapshots = new Map<string, SerializedDockview>();
+
+  function getPersistedState(activeLayout: SerializedDockview | null): PersistedLayoutState {
+    return {
+      activeLayout,
+      panelSnapshots: Object.fromEntries(panelSnapshots.entries()),
+    };
+  }
+
+  function persistState(activeLayout: SerializedDockview | null) {
+    if (!layoutSlot) return;
+    const state = getPersistedState(activeLayout);
+    layoutStore.save(layoutSlot, state);
+    if (transport) {
+      transport.postMessage({
+        type: "saveLayout",
+        payload: { layoutSlot, state },
+      });
+    }
+  }
+
+  function hydrateSnapshots(state: PersistedLayoutState | null) {
+    panelSnapshots.clear();
+    for (const [panelId, snapshot] of Object.entries(state?.panelSnapshots ?? {})) {
+      panelSnapshots.set(panelId, snapshot);
+    }
+  }
 
   function checkPreviewAlone() {
     if (!api) return;
@@ -384,27 +414,21 @@
   }
 
   function resetLayout() {
-    if (!api) return;
+    if (!api || !layoutSlot) return;
     panelSnapshots.clear();
-    layoutStore.clear();
+    layoutStore.clear(layoutSlot);
     if (transport) {
-      transport.postMessage({ type: "saveLayout", payload: null });
+      transport.postMessage({ type: "saveLayout", payload: { layoutSlot, state: null } });
     }
     api.clear();
     createDefaultLayout();
   }
 
   function saveLayout() {
-    if (!api) return;
+    if (!api || !layoutSlot) return;
     const serialized = api.toJSON();
     console.log("[DockviewLayout] saveLayout called, groups:", Array.isArray(serialized?.grid?.root?.data) ? serialized.grid.root.data.length : "unknown");
-    layoutStore.save(serialized);
-    if (transport) {
-      transport.postMessage({ type: "saveLayout", payload: serialized });
-      console.log("[DockviewLayout] saveLayout sent via transport");
-    } else {
-      console.log("[DockviewLayout] saveLayout: no transport, localStorage only");
-    }
+    persistState(serialized);
   }
 
   function scheduleLayoutSave() {
@@ -427,6 +451,40 @@
       api.clear();
       createDefaultLayout();
       layoutReady = true;
+    }
+  }
+
+  function restoreFromState(state: PersistedLayoutState | null) {
+    hydrateSnapshots(state);
+    if (state?.activeLayout) {
+      restoreFromData(state.activeLayout);
+    } else {
+      createDefaultLayout();
+      layoutReady = true;
+    }
+    restoredLayoutSlot = layoutSlot;
+  }
+
+  function requestInitialLayoutIfReady() {
+    if (!api || layoutReady || !layoutSlot) return;
+
+    if (transport) {
+      if (requestedLayoutSlot === layoutSlot) return;
+      console.log("[DockviewLayout] sending requestLayout for slot", layoutSlot);
+      transport.postMessage({ type: "requestLayout", payload: { layoutSlot } });
+      requestedLayoutSlot = layoutSlot;
+      return;
+    }
+
+    if (restoredLayoutSlot === layoutSlot) return;
+    const savedState = layoutStore.load(layoutSlot);
+    if (savedState) {
+      restoreFromState(savedState);
+    } else {
+      hydrateSnapshots(null);
+      createDefaultLayout();
+      layoutReady = true;
+      restoredLayoutSlot = layoutSlot;
     }
   }
 
@@ -475,39 +533,35 @@
       console.log("[DockviewLayout] transport available, registering restoreLayout handler");
       transport.onMessage((event: MessageEvent) => {
         if (event.data.type === "restoreLayout") {
-          console.log("[DockviewLayout] restoreLayout received, payload:", event.data.payload ? "present" : "null", "api:", !!api, "layoutReady:", layoutReady);
+          const restoreLayoutSlot = event.data.payload?.layoutSlot ?? null;
+          const restoreState = event.data.payload?.state ?? null;
+          console.log("[DockviewLayout] restoreLayout received, payload:", restoreState ? "present" : "null", "slot:", restoreLayoutSlot, "api:", !!api, "layoutReady:", layoutReady);
           if (api && !layoutReady) {
-            if (event.data.payload) {
-              restoreFromData(event.data.payload);
+            if (restoreLayoutSlot && layoutSlot && restoreLayoutSlot !== layoutSlot) {
+              return;
+            }
+            if (restoreState) {
+              restoreFromState(restoreState);
             } else {
               // No saved layout from extension — try localStorage fallback
-              const localLayout = layoutStore.load();
-              console.log("[DockviewLayout] no extension layout, localStorage:", localLayout ? "found" : "empty");
-              if (localLayout) {
-                restoreFromData(localLayout);
+              const localState = layoutSlot ? layoutStore.load(layoutSlot) : null;
+              console.log("[DockviewLayout] no extension layout, localStorage:", localState ? "found" : "empty");
+              if (localState) {
+                restoreFromState(localState);
               } else {
+                hydrateSnapshots(null);
                 console.log("[DockviewLayout] creating default layout");
                 createDefaultLayout();
                 layoutReady = true;
+                restoredLayoutSlot = layoutSlot;
               }
             }
           }
         }
       });
-
-      // Request layout from extension
-      console.log("[DockviewLayout] sending requestLayout");
-      transport.postMessage({ type: "requestLayout" });
-    } else {
-      // No transport (web server mode) — use localStorage only
-      const savedLayout = layoutStore.load();
-      if (savedLayout) {
-        restoreFromData(savedLayout);
-      } else {
-        createDefaultLayout();
-        layoutReady = true;
-      }
     }
+
+    requestInitialLayoutIfReady();
 
     // Save layout on changes — also clear drag-active as a fallback.
     // When dockview moves a panel, the drag source element gets removed from
@@ -527,13 +581,13 @@
       if (panel.id === "preview") {
         dispatch("previewVisibleChange", false);
       }
-      if (panel.id === "debug" && !programmaticRemoval) {
+      if (panel.id === "debug" && !programmaticRemoval && !isDestroying) {
         dispatch("debugClosed");
       }
-      if (panel.id === "config" && !programmaticRemoval) {
+      if (panel.id === "config" && !programmaticRemoval && !isDestroying) {
         dispatch("configClosed");
       }
-      if (panel.id === "performance" && !programmaticRemoval) {
+      if (panel.id === "performance" && !programmaticRemoval && !isDestroying) {
         dispatch("performanceClosed");
       }
       checkPreviewAlone();
@@ -567,7 +621,12 @@
     Promise.resolve().then(() => checkPreviewAlone());
   });
 
+  $: if (api && !layoutReady && layoutSlot) {
+    requestInitialLayoutIfReady();
+  }
+
   onDestroy(() => {
+    isDestroying = true;
     // Flush any pending layout save before disposal
     if (saveTimeout) {
       clearTimeout(saveTimeout);

@@ -521,49 +521,48 @@ suite('ClientMessageHandler Test Suite', () => {
     });
 
     suite('saveLayout', () => {
-        test('persists layout to workspaceState', async () => {
-            const layoutPayload = { state: 'some-layout-data' };
+        test('delegates layout persistence', async () => {
+            const layoutPayload = { layoutSlot: 'vscode:2', state: { activeLayout: { state: 'some-layout-data' }, panelSnapshots: {} } };
+            const saveStub = sandbox.stub((handler as any).layoutStateStore, 'save').resolves();
 
             await handler.handle(
                 { type: 'saveLayout', payload: layoutPayload },
                 respondFn,
             );
 
-            assert.ok((mockContext.workspaceState.update as sinon.SinonStub).calledOnce);
-            const call = (mockContext.workspaceState.update as sinon.SinonStub).firstCall;
-            assert.strictEqual(call.args[0], 'shader-studio.dockviewLayout');
-            assert.deepStrictEqual(call.args[1], layoutPayload);
+            assert.ok(saveStub.calledOnceWithExactly('vscode:2', layoutPayload.state));
         });
     });
 
     suite('requestLayout', () => {
-        test('responds with restoreLayout and saved layout', async () => {
-            const savedLayout = { state: 'saved-layout' };
-            (mockContext.workspaceState.get as sinon.SinonStub).returns(savedLayout);
+        test('loads from the layout store and responds with restoreLayout', async () => {
+            const savedLayout = { activeLayout: { state: 'saved-layout' }, panelSnapshots: {} };
+            const loadStub = sandbox.stub((handler as any).layoutStateStore, 'load').returns(savedLayout);
 
             await handler.handle(
-                { type: 'requestLayout' },
+                { type: 'requestLayout', payload: { layoutSlot: 'vscode:2' } },
                 respondFn,
             );
 
+            assert.ok(loadStub.calledOnceWithExactly('vscode:2'));
             assert.ok(respondFn.calledOnce);
             const msg = respondFn.firstCall.args[0];
             assert.strictEqual(msg.type, 'restoreLayout');
-            assert.deepStrictEqual(msg.payload, savedLayout);
+            assert.deepStrictEqual(msg.payload, { layoutSlot: 'vscode:2', state: savedLayout });
         });
 
         test('responds with null when no layout is saved', async () => {
-            (mockContext.workspaceState.get as sinon.SinonStub).returns(null);
+            sandbox.stub((handler as any).layoutStateStore, 'load').returns(null);
 
             await handler.handle(
-                { type: 'requestLayout' },
+                { type: 'requestLayout', payload: { layoutSlot: 'vscode:2' } },
                 respondFn,
             );
 
             assert.ok(respondFn.calledOnce);
             const msg = respondFn.firstCall.args[0];
             assert.strictEqual(msg.type, 'restoreLayout');
-            assert.strictEqual(msg.payload, null);
+            assert.deepStrictEqual(msg.payload, { layoutSlot: 'vscode:2', state: null });
         });
     });
 

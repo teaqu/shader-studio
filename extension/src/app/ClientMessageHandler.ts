@@ -4,6 +4,7 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { Messenger } from "./transport/Messenger";
 import { OverlayPanelHandler } from "./OverlayPanelHandler";
 import { Logger } from "./services/Logger";
+import { LayoutStateStore } from "./services/LayoutStateStore";
 import { ConfigUpdateHandler } from "./handlers/ConfigUpdateHandler";
 import { NavigationHandler } from "./handlers/NavigationHandler";
 import { FileDialogHandler } from "./handlers/FileDialogHandler";
@@ -14,6 +15,7 @@ export class ClientMessageHandler {
   readonly nav: NavigationHandler;
   readonly files: FileDialogHandler;
   private logger: Logger;
+  private layoutStateStore: LayoutStateStore;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -24,6 +26,7 @@ export class ClientMessageHandler {
     getPanelColumns?: () => Set<vscode.ViewColumn>,
   ) {
     this.logger = Logger.getInstance();
+    this.layoutStateStore = new LayoutStateStore(context);
     this.overlay = new OverlayPanelHandler();
     this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger);
     this.nav = new NavigationHandler(glslFileTracker, getPanelColumns ?? (() => new Set()), this.logger);
@@ -93,11 +96,12 @@ export class ClientMessageHandler {
         this.shaderProvider.resetScriptTime();
         break;
       case 'saveLayout':
-        await this.context.workspaceState.update('shader-studio.dockviewLayout', message.payload);
+        await this.layoutStateStore.save(message.payload?.layoutSlot ?? null, message.payload?.state ?? null);
         break;
       case 'requestLayout': {
-        const layout = this.context.workspaceState.get('shader-studio.dockviewLayout', null);
-        respondFn({ type: 'restoreLayout', payload: layout });
+        const layoutSlot = message.payload?.layoutSlot ?? null;
+        const state = this.layoutStateStore.load(layoutSlot);
+        respondFn({ type: 'restoreLayout', payload: { layoutSlot, state } });
         break;
       }
       case 'setCompileMode':

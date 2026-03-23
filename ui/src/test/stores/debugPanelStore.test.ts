@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 describe('debugPanelStore', () => {
+  const SLOT_KEY = 'shader-studio-debug-panel-state:vscode:1';
+  const OTHER_SLOT_KEY = 'shader-studio-debug-panel-state:vscode:2';
+
   beforeEach(() => {
     localStorage.clear();
     // Re-import fresh module each test to get clean initial state
@@ -15,30 +18,33 @@ describe('debugPanelStore', () => {
 
   it('should have default initial state when localStorage is empty', async () => {
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     const state = get(store);
-    expect(state.isVisible).toBe(true);
+    expect(state.isVisible).toBe(false);
     expect(state.isVariableInspectorEnabled).toBe(false);
     expect(state.isInlineRenderingEnabled).toBe(true);
     expect(state.isPixelInspectorEnabled).toBe(true);
   });
 
   it('should not restore from localStorage on creation (deferred restore)', async () => {
-    localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
+    localStorage.setItem(SLOT_KEY, JSON.stringify({
       isVisible: false,
     }));
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     const state = get(store);
-    expect(state.isVisible).toBe(true);
+    expect(state.isVisible).toBe(false);
   });
 
   it('restoreFromStorage should apply saved state', async () => {
-    localStorage.setItem('shader-studio-debug-panel-state', JSON.stringify({
+    localStorage.setItem(SLOT_KEY, JSON.stringify({
       isVisible: false,
       isVariableInspectorEnabled: true,
       isInlineRenderingEnabled: false,
       isPixelInspectorEnabled: false,
     }));
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.restoreFromStorage();
     expect(get(store).isVisible).toBe(false);
     expect(get(store).isVariableInspectorEnabled).toBe(true);
@@ -47,37 +53,42 @@ describe('debugPanelStore', () => {
   });
 
   it('restoreFromStorage should handle invalid localStorage gracefully', async () => {
-    localStorage.setItem('shader-studio-debug-panel-state', 'not-json');
+    localStorage.setItem(SLOT_KEY, 'not-json');
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.restoreFromStorage();
-    expect(get(store).isVisible).toBe(true);
+    expect(get(store).isVisible).toBe(false);
   });
 
   it('should fall back to defaults on invalid localStorage', async () => {
-    localStorage.setItem('shader-studio-debug-panel-state', 'not-json');
+    localStorage.setItem(SLOT_KEY, 'not-json');
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     const state = get(store);
-    expect(state.isVisible).toBe(true);
+    expect(state.isVisible).toBe(false);
   });
 
   it('toggle should flip isVisible', async () => {
     const store = await importStore();
-    expect(get(store).isVisible).toBe(true);
-    store.toggle();
+    store.setLayoutSlot('vscode:1');
     expect(get(store).isVisible).toBe(false);
     store.toggle();
     expect(get(store).isVisible).toBe(true);
+    store.toggle();
+    expect(get(store).isVisible).toBe(false);
   });
 
   it('toggle should persist to localStorage', async () => {
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.toggle();
-    const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
-    expect(stored.isVisible).toBe(false);
+    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
+    expect(stored.isVisible).toBe(true);
   });
 
   it('setVisible should set visibility directly', async () => {
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.setVisible(false);
     expect(get(store).isVisible).toBe(false);
     store.setVisible(true);
@@ -86,20 +97,38 @@ describe('debugPanelStore', () => {
 
   it('setVisible should persist to localStorage', async () => {
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.setVisible(false);
-    const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
+    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
     expect(stored.isVisible).toBe(false);
   });
 
   it('should persist variable inspector, inline rendering, and pixel inspector toggles', async () => {
     const store = await importStore();
+    store.setLayoutSlot('vscode:1');
     store.setVariableInspectorEnabled(true);
     store.setInlineRenderingEnabled(false);
     store.setPixelInspectorEnabled(false);
 
-    const stored = JSON.parse(localStorage.getItem('shader-studio-debug-panel-state')!);
+    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
     expect(stored.isVariableInspectorEnabled).toBe(true);
     expect(stored.isInlineRenderingEnabled).toBe(false);
     expect(stored.isPixelInspectorEnabled).toBe(false);
+  });
+
+  it('restores and persists state independently per slot', async () => {
+    localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: false }));
+    localStorage.setItem(OTHER_SLOT_KEY, JSON.stringify({ isVisible: true, isVariableInspectorEnabled: true }));
+    const store = await importStore();
+
+    store.setLayoutSlot('vscode:1');
+    store.restoreFromStorage();
+    expect(get(store).isVisible).toBe(false);
+    expect(get(store).isVariableInspectorEnabled).toBe(false);
+
+    store.setLayoutSlot('vscode:2');
+    store.restoreFromStorage();
+    expect(get(store).isVisible).toBe(true);
+    expect(get(store).isVariableInspectorEnabled).toBe(true);
   });
 });

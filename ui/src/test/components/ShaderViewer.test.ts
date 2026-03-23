@@ -248,7 +248,7 @@ describe('ShaderViewer', () => {
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
     configPanelStore.setVisible(false);
-    debugPanelStore.setVisible(true);
+    debugPanelStore.setVisible(false);
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setPixelInspectorEnabled(true);
@@ -330,7 +330,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     const variableInspectorButton = screen.getByLabelText('Toggle variable inspector');
-    await fireEvent.click(variableInspectorButton);
+    await fireEvent.pointerDown(variableInspectorButton);
     await tick();
 
     expect(getCtrlButton(container, '32')).toHaveClass('active');
@@ -722,7 +722,7 @@ describe('ShaderViewer', () => {
 
     // Turn off inspector within debug mode
     const inspectorButton = screen.getByLabelText('Toggle inspector');
-    await fireEvent.click(inspectorButton);
+    await fireEvent.pointerDown(inspectorButton);
     await tick();
     await tick();
     expect(inspectorButton.classList.contains('active')).toBe(false);
@@ -759,9 +759,11 @@ describe('ShaderViewer', () => {
 
     // Turn off inspector, then back on
     const inspectorButton = screen.getByLabelText('Toggle inspector');
-    await fireEvent.click(inspectorButton); // off
+    await fireEvent.pointerDown(inspectorButton); // off
+    await fireEvent.pointerUp(window);
     await tick();
-    await fireEvent.click(inspectorButton); // on
+    await fireEvent.pointerDown(inspectorButton); // on
+    await fireEvent.pointerUp(window);
     await tick();
     await tick();
     expect(inspectorButton.classList.contains('active')).toBe(true);
@@ -1572,7 +1574,7 @@ describe('ShaderViewer', () => {
     // Click variable inspector toggle
     const varInspectorButton = container.querySelector('[aria-label="Toggle variable inspector"]');
     if (varInspectorButton) {
-      await fireEvent.click(varInspectorButton);
+      await fireEvent.pointerDown(varInspectorButton);
       await tick();
 
       // Should not crash — variable inspector is now enabled
@@ -2802,10 +2804,50 @@ describe('ShaderViewer', () => {
       // Find the inline rendering toggle
       const inlineButton = container.querySelector('[aria-label="Toggle inline rendering"]');
       if (inlineButton) {
-        await fireEvent.click(inlineButton);
+        await fireEvent.pointerDown(inlineButton);
         await tick();
         expect(container.querySelector('.main-container')).toBeTruthy();
       }
+    });
+
+    it('should toggle inline rendering active state with a single click', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      await fireEvent.click(debugButton);
+      await tick();
+      await tick();
+
+      const inlineButton = container.querySelector('[aria-label="Toggle inline rendering"]') as HTMLButtonElement;
+      expect(inlineButton.classList.contains('active')).toBe(true);
+
+      await fireEvent.pointerDown(inlineButton);
+      await tick();
+
+      expect(inlineButton.classList.contains('active')).toBe(false);
+    });
+
+    it('should toggle pixel inspector active state with a single click', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      await fireEvent.click(debugButton);
+      await tick();
+      await tick();
+
+      const inspectorButton = container.querySelector('[aria-label="Toggle inspector"]') as HTMLButtonElement;
+      expect(inspectorButton.classList.contains('active')).toBe(true);
+
+      await fireEvent.pointerDown(inspectorButton);
+      await tick();
+
+      expect(inspectorButton.classList.contains('active')).toBe(false);
     });
 
     it('should toggle line lock in debug panel', async () => {
@@ -2823,7 +2865,7 @@ describe('ShaderViewer', () => {
       // Find the line lock toggle
       const lineLockButton = container.querySelector('[aria-label="Toggle line lock"]');
       if (lineLockButton) {
-        await fireEvent.click(lineLockButton);
+        await fireEvent.pointerDown(lineLockButton);
         await tick();
         expect(container.querySelector('.main-container')).toBeTruthy();
       }
@@ -2844,7 +2886,7 @@ describe('ShaderViewer', () => {
       // Find the normalize cycle button
       const normalizeButton = container.querySelector('[aria-label="Cycle normalize mode"]');
       if (normalizeButton) {
-        await fireEvent.click(normalizeButton);
+        await fireEvent.pointerDown(normalizeButton);
         await tick();
         expect(container.querySelector('.main-container')).toBeTruthy();
       }
@@ -3706,36 +3748,18 @@ describe('ShaderViewer', () => {
     });
   });
 
-  describe('showDebugPanel derived state', () => {
-    it('should only show debug panel when debug is enabled AND debugPanelVisible', async () => {
+  describe('debug dock visibility and content', () => {
+    it('should show debug content when the debug panel is opened', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
       await loadShader();
 
-      // Set debug panel store to not visible
-      debugPanelStore.setVisible(false);
-      await tick();
-
-      // Enable debug mode
-      const debugButton = screen.getByLabelText('Toggle debug mode');
-      await fireEvent.click(debugButton);
-      await tick();
-      await tick();
-
-      // Debug panel should NOT be visible because debugPanelVisible is false
-      // (Even though debug is enabled)
-      // The showDebugPanel = debugState.isEnabled && debugPanelVisible
-      // With debugPanelVisible = false, the debug panel content should be hidden
-      // This tests the derived state
-
-      // Restore debug panel visibility
       debugPanelStore.setVisible(true);
       await tick();
       await tick();
 
-      // Now debug panel should be visible
-      expect(container.querySelector('.main-container')).toBeTruthy();
+      expect(container.querySelector('[aria-label="Toggle variable inspector"]')).toBeTruthy();
     });
   });
 
@@ -4148,7 +4172,7 @@ describe('ShaderViewer', () => {
 
       // Enable variable inspector
       const varInspectorBtn = screen.getByLabelText('Toggle variable inspector');
-      await fireEvent.click(varInspectorBtn);
+      await fireEvent.pointerDown(varInspectorBtn);
       await tick();
 
       // Inject captured variables
@@ -4197,7 +4221,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       const varInspectorBtn = screen.getByLabelText('Toggle variable inspector');
-      await fireEvent.click(varInspectorBtn);
+      await fireEvent.pointerDown(varInspectorBtn);
       await tick();
 
       mockVCMFactory.inject([{ ...TEST_VAR, declarationLine: -1 }]);

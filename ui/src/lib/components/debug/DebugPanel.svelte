@@ -19,6 +19,7 @@
   export let shaderDebugManager: ShaderDebugManager | undefined = undefined;
   export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
   export let onToggleInspectorEnabled: () => void = () => {};
+  export let onToggleInlineRendering: () => void = () => {};
   export let onExpandVarHistogram: (varName: string) => void = () => {};
   export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
   export let sampleSize: number = 32;
@@ -32,6 +33,7 @@
   let isLineTooltipTriggerHovered = false;
   let isLineTooltipHovered = false;
   let isLineTooltipHoverArmed = false;
+  const activeHeaderPointers = new Set<number>();
 
   $: ctx = debugState.functionContext;
   $: isInlineOn = debugState.isInlineRenderingEnabled;
@@ -77,6 +79,7 @@
     if (uniformsHandle !== null) {
       cancelAnimationFrame(uniformsHandle);
     }
+    activeHeaderPointers.clear();
   });
 
   function handleLoopIterInput(loop: DebugLoopInfo, event: Event) {
@@ -115,6 +118,32 @@
     return String(val);
   }
 
+  function activateHeaderControl(action: () => void) {
+    action();
+  }
+
+  function handleHeaderControlPointerDown(event: PointerEvent, action: () => void) {
+    const isPrimaryPress = event.isPrimary ?? true;
+    const isMainButton = event.button ?? 0;
+    if (!isPrimaryPress || isMainButton !== 0) return;
+    if (activeHeaderPointers.has(event.pointerId)) return;
+
+    activeHeaderPointers.add(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+    activateHeaderControl(action);
+  }
+
+  function handleHeaderControlPointerEnd(event: PointerEvent) {
+    activeHeaderPointers.delete(event.pointerId);
+  }
+
+  function handleHeaderControlKeydown(event: KeyboardEvent, action: () => void) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    activateHeaderControl(action);
+  }
+
   $: customUniformEntries = Object.entries(customUniformValues);
   $: isLineTooltipVisible =
     isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered);
@@ -151,13 +180,20 @@
   }
 </script>
 
+<svelte:window
+  on:pointerup={handleHeaderControlPointerEnd}
+  on:pointercancel={handleHeaderControlPointerEnd}
+/>
+
 <div class="debug-panel">
   <div class="debug-header">
     <button
       class="header-btn has-tooltip"
       class:active={isInspectorEnabled}
       class:disabled={!debugState.isEnabled}
-      on:click={onToggleInspectorEnabled}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInspectorEnabled)}
+      on:keydown={(event) => handleHeaderControlKeydown(event, onToggleInspectorEnabled)}
+      on:click|preventDefault|stopPropagation={() => {}}
       disabled={!debugState.isEnabled}
       aria-label="Toggle inspector"
       data-tooltip="Pixel Inspector{!debugState.isEnabled ? ' (enable debug first)' : ''}"
@@ -167,7 +203,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isInlineOn}
-      on:click={() => shaderDebugManager?.toggleInlineRendering()}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInlineRendering)}
+      on:keydown={(event) => handleHeaderControlKeydown(event, onToggleInlineRendering)}
+      on:click|preventDefault|stopPropagation={() => {}}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
@@ -176,7 +214,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isLineLocked}
-      on:click={() => shaderDebugManager?.toggleLineLock()}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleLineLock())}
+      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleLineLock())}
+      on:click|preventDefault|stopPropagation={() => {}}
       aria-label="Toggle line lock"
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
     >
@@ -189,7 +229,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={normalizeMode !== 'off'}
-      on:click={() => shaderDebugManager?.cycleNormalizeMode()}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.cycleNormalizeMode())}
+      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.cycleNormalizeMode())}
+      on:click|preventDefault|stopPropagation={() => {}}
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
     >
@@ -201,7 +243,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isStepEnabled}
-      on:click={() => shaderDebugManager?.toggleStep()}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleStep())}
+      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleStep())}
+      on:click|preventDefault|stopPropagation={() => {}}
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
     >
@@ -223,7 +267,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isVarInspectorOn}
-      on:click={() => shaderDebugManager?.toggleVariableInspector()}
+      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleVariableInspector())}
+      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleVariableInspector())}
+      on:click|preventDefault|stopPropagation={() => {}}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
@@ -445,7 +491,7 @@
     font-size: 12px;
     white-space: pre;
     z-index: 100;
-    pointer-events: auto;
+    pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease-in;
     width: max-content;
