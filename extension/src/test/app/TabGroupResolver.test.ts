@@ -206,4 +206,65 @@ suite('TabGroupResolver', () => {
             assert.strictEqual(resolver.resolveColumn(groups, undefined), vscode.ViewColumn.Two);
         });
     });
+
+    suite('resolveExtensionTabColumn', () => {
+        let resolver: TabGroupResolver;
+
+        setup(() => {
+            resolver = new TabGroupResolver();
+        });
+
+        teardown(() => {
+            resolver.dispose();
+        });
+
+        test('returns the matching column by viewType', () => {
+            const groups = [
+                makeGroup(vscode.ViewColumn.One, [makeTab('shader.glsl')]),
+                makeGroup(vscode.ViewColumn.Two, [makeTab('Shader Explorer', 'shader-studio.shaderExplorer')]),
+            ];
+
+            assert.strictEqual(
+                resolver.resolveExtensionTabColumn(
+                    groups,
+                    ['shader-studio.shaderExplorer'],
+                    ['Shader Explorer'],
+                    vscode.ViewColumn.One,
+                ),
+                vscode.ViewColumn.Two,
+            );
+        });
+
+        test('returns the matching column by label fallback', () => {
+            const groups = [
+                makeGroup(vscode.ViewColumn.Three, [makeTab('Shader Explorer')]),
+            ];
+
+            assert.strictEqual(
+                resolver.resolveExtensionTabColumn(
+                    groups,
+                    ['shader-studio.shaderExplorer'],
+                    ['Shader Explorer'],
+                    vscode.ViewColumn.One,
+                ),
+                vscode.ViewColumn.Three,
+            );
+        });
+
+        test('returns fallback when no matching tab exists', () => {
+            const groups = [
+                makeGroup(vscode.ViewColumn.Two, [makeTab('shader.glsl')]),
+            ];
+
+            assert.strictEqual(
+                resolver.resolveExtensionTabColumn(
+                    groups,
+                    ['shader-studio.shaderExplorer'],
+                    ['Shader Explorer'],
+                    vscode.ViewColumn.One,
+                ),
+                vscode.ViewColumn.One,
+            );
+        });
+    });
 });
