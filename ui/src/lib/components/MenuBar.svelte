@@ -11,6 +11,7 @@
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import RecordingButton from "./recording/RecordingButton.svelte";
   import type { OnScreenshot, OnRecord } from "../recording/types";
+  import type { CompileMode } from "../stores/compileModeStore";
 
 
 
@@ -50,6 +51,9 @@
   export let audioVideoController: AudioVideoController | undefined = undefined;
   export let isPerformancePanelVisible: boolean = false;
   export let onTogglePerformancePanel: () => void = () => {};
+  export let compileMode: CompileMode = "hot";
+  export let onSetCompileMode: (mode: CompileMode) => void = () => {};
+  export let onManualCompile: () => void = () => {};
 
   function onVolumeChange(volume: number) {
     audioVideoController?.setVolume(volume);
@@ -92,6 +96,18 @@
   let recordingMenuOpen = false;
   let zoomLevel = 1.0;
   let currentFPSLimit = 0;
+
+  const compileModeIcons: Record<CompileMode, string> = {
+    hot: "flame",
+    save: "save",
+    manual: "clock",
+  };
+
+  const compileModeLabels: Record<CompileMode, string> = {
+    hot: "Hot compile mode",
+    save: "Compile on save mode",
+    manual: "Manual compile mode",
+  };
 
   onMount(() => {
     if (timeManager) {
@@ -311,6 +327,17 @@
 
 <div class="menu-bar">
   <div class="left-group">
+    {#if compileMode === "manual"}
+      <button
+        class="compile-now-button"
+        on:click={onManualCompile}
+        aria-label="Compile shader"
+        disabled={!hasShader}
+        title="Compile shader"
+      >
+        <i class="codicon codicon-run-all"></i>
+      </button>
+    {/if}
     <button on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
       <i class="codicon codicon-debug-restart"></i>
     </button>
@@ -716,6 +743,42 @@
             <span>Snippet Library</span>
           </button>
           <div class="options-menu-divider"></div>
+          <div class="options-menu-item compile-mode-menu-item">
+            <span>Mode</span>
+            <div class="compile-mode-selector" role="group" aria-label="Compile mode">
+              <button
+                class="compile-mode-button"
+                class:active={compileMode === "hot"}
+                on:click={() => onSetCompileMode("hot")}
+                aria-label="Set hot compile mode"
+                disabled={!hasShader}
+                title={compileModeLabels.hot}
+              >
+                <i class={`codicon codicon-${compileModeIcons.hot}`}></i>
+              </button>
+              <button
+                class="compile-mode-button"
+                class:active={compileMode === "save"}
+                on:click={() => onSetCompileMode("save")}
+                aria-label="Set save compile mode"
+                disabled={!hasShader}
+                title={compileModeLabels.save}
+              >
+                <i class={`codicon codicon-${compileModeIcons.save}`}></i>
+              </button>
+              <button
+                class="compile-mode-button"
+                class:active={compileMode === "manual"}
+                on:click={() => onSetCompileMode("manual")}
+                aria-label="Set manual compile mode"
+                disabled={!hasShader}
+                title={compileModeLabels.manual}
+              >
+                <i class={`codicon codicon-${compileModeIcons.manual}`}></i>
+              </button>
+            </div>
+          </div>
+          <div class="options-menu-divider"></div>
           <div class="volume-slider-container">
             <input
               type="range"
@@ -749,6 +812,25 @@
 </div>
 
 <style>
+  .compile-mode-selector {
+    display: flex;
+    gap: 2px;
+  }
+
+  .compile-mode-menu-item {
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .compile-mode-button {
+    min-width: 32px;
+  }
+
+  .compile-now-button {
+    min-width: 32px;
+  }
+
   .options-menu-divider {
     height: 1px;
     background: var(--border-color, rgba(128, 128, 128, 0.3));

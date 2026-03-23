@@ -106,6 +106,17 @@ export interface ResetLayoutMessage extends BaseMessage {
   type: "resetLayout";
 }
 
+export interface ManualCompileMessage extends BaseMessage {
+  type: "manualCompile";
+}
+
+export interface SetCompileModeMessage extends BaseMessage {
+  type: "setCompileMode";
+  payload: {
+    mode: "hot" | "save" | "manual";
+  };
+}
+
 export interface NavigateToBufferMessage extends BaseMessage {
   type: "navigateToBuffer";
   payload: {
@@ -169,4 +180,4 @@ export interface SaveFileResultMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage;

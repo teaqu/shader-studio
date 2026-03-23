@@ -739,6 +739,40 @@ describe('EditorOverlay', () => {
       expect(onCodeChange).toHaveBeenCalledWith('new code');
     });
 
+    it('should not call onCodeChange in manual mode but should still persist edits', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('manual code');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const onCodeChange = vi.fn();
+      const transport = {
+        postMessage: vi.fn(),
+        onMessage: vi.fn(),
+        dispose: vi.fn(),
+        getType: () => 'vscode' as const,
+        isConnected: () => true,
+      } as Transport;
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, transport, onCodeChange, compileMode: 'manual' },
+      });
+
+      getContentChangeCallback()!();
+
+      vi.advanceTimersByTime(30);
+      expect(onCodeChange).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(470);
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateShaderSource',
+        payload: {
+          code: 'manual code',
+          path: '/test.glsl',
+        },
+      });
+    });
+
     it('should send updateShaderSource message after persist debounce', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();

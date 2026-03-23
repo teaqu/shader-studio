@@ -55,6 +55,9 @@ describe('MenuBar', () => {
     onResetLayout: vi.fn(),
     previewVisible: true,
     onShowPreview: vi.fn(),
+    compileMode: 'hot' as const,
+    onSetCompileMode: vi.fn(),
+    onManualCompile: vi.fn(),
     audioVolume: 0.75,
     audioMuted: false,
     audioVideoController: {
@@ -187,6 +190,44 @@ describe('MenuBar', () => {
       const unsubscribe = resolutionStore.subscribe((value) => { state = value; });
       unsubscribe();
       expect(state.forceBlackBackground).toBe(true);
+    });
+  });
+
+  describe('compile mode', () => {
+    it('sets hot/save/manual compile mode from the inline selector', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      const hotButton = screen.getByLabelText('Set hot compile mode');
+      const saveButton = screen.getByLabelText('Set save compile mode');
+      const manualButton = screen.getByLabelText('Set manual compile mode');
+
+      expect(hotButton.getAttribute('title')).toBe('Hot compile mode');
+
+      await fireEvent.click(saveButton);
+      await fireEvent.click(manualButton);
+
+      expect(defaultProps.onSetCompileMode).toHaveBeenNthCalledWith(1, 'save');
+      expect(defaultProps.onSetCompileMode).toHaveBeenNthCalledWith(2, 'manual');
+    });
+
+    it('shows manual compile action only in the options menu for manual mode', async () => {
+      render(MenuBar, { props: { ...defaultProps, compileMode: 'manual' as const } });
+      await tick();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      const compileButton = screen.getByLabelText('Compile shader');
+      expect(compileButton).toBeTruthy();
+
+      await fireEvent.click(compileButton);
+      expect(defaultProps.onManualCompile).toHaveBeenCalledTimes(1);
     });
   });
 });

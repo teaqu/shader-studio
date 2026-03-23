@@ -16,6 +16,7 @@
   export let activeBufferName: string = "Image";
   export let onBufferSwitch: (bufferName: string) => void = () => {};
   export let errors: string[] = [];
+  export let compileMode: "hot" | "save" | "manual" = "hot";
 
   let containerEl: HTMLDivElement;
   let statusBarEl: HTMLDivElement;
@@ -333,11 +334,13 @@
       const code = editor.getValue();
       if (code === undefined || !shaderPath) return;
 
-      // Fast recompile for immediate visual feedback
-      if (recompileTimer) clearTimeout(recompileTimer);
-      recompileTimer = setTimeout(() => {
-        onCodeChange(code);
-      }, 30);
+      if (compileMode === "hot") {
+        // Fast recompile for immediate visual feedback
+        if (recompileTimer) clearTimeout(recompileTimer);
+        recompileTimer = setTimeout(() => {
+          onCodeChange(code);
+        }, 30);
+      }
 
       // Slower debounce for file persistence to extension
       if (persistTimer) clearTimeout(persistTimer);

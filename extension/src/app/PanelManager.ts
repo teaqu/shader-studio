@@ -71,16 +71,20 @@ export class PanelManager {
   }
 
   public toggleEditorOverlayInActivePanel(): void {
+    this.postMessageToActivePanel({ type: "toggleEditorOverlay" }, "editor overlay toggle");
+  }
+
+  private postMessageToActivePanel(message: unknown, actionName: string): void {
     const activePanel =
       Array.from(this.panels).find((panel) => panel.active) ??
       Array.from(this.panels).find((panel) => panel.visible);
 
     if (!activePanel) {
-      this.logger.debug("No active shader panel available for editor overlay toggle");
+      this.logger.debug(`No active shader panel available for ${actionName}`);
       return;
     }
 
-    activePanel.webview.postMessage({ type: "toggleEditorOverlay" });
+    activePanel.webview.postMessage(message);
   }
 
   private createWebviewPanel(editor: vscode.TextEditor | null): void {
