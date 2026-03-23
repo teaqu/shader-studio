@@ -9,7 +9,7 @@
   export let variable: CapturedVariable;
   export let isPixelMode: boolean;
   export let onExpandToggle: () => void = () => {};
-  export let onClick: () => void = () => {};
+  export let onLineClick: () => void = () => {};
 
   $: isScalar = variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool';
   $: isVec = variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4' || variable.varType === 'mat2';
@@ -51,15 +51,18 @@
 
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
-    <div class="thumb-col clickable" on:click={onClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onClick()}>
+    <div class="thumb-col">
       <CaptureThumbnail pixels={variable.thumbnail!} gridWidth={variable.gridWidth} gridHeight={variable.gridHeight} maxSize={32} />
     </div>
   {/if}
 
   <div class="var-body">
     <div class="var-header">
-      <span class="var-name clickable" on:click={onClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onClick()}>{variable.varName}</span>
+      <span class="var-name">{variable.varName}</span>
       <span class="var-type">{variable.varType}</span>
+      {#if variable.declarationLine >= 0}
+        <span class="var-line" on:click={onLineClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
+      {/if}
 
       {#if hasPixelData}
         <!-- Exact pixel values -->
@@ -159,14 +162,6 @@
     font-size: 13px;
   }
 
-  .clickable {
-    cursor: pointer;
-  }
-
-  .clickable:hover {
-    opacity: 0.8;
-  }
-
   .thumb-col {
     flex-shrink: 0;
     padding-top: 1px;
@@ -195,9 +190,16 @@
     flex-shrink: 0;
   }
 
-  .var-name.clickable:hover {
+  .var-line {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .var-line:hover {
+    color: var(--vscode-editor-foreground);
     text-decoration: underline;
-    opacity: 1;
   }
 
   .var-type {

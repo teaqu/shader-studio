@@ -425,54 +425,33 @@ describe('VariablesSection', () => {
   });
 
   // ----------------------------------------------------------------
-  // onVarClick passthrough
+  // Line number display
   // ----------------------------------------------------------------
-  describe('onVarClick passthrough', () => {
-    it('calls onVarClick with varName and declarationLine when variable name clicked', async () => {
+  describe('line number display', () => {
+    it('shows line numbers for each variable', () => {
+      const vars = [
+        makeGridVar('a', 'float', 0.1, 2),
+        makeGridVar('b', 'float', 0.2, 11),
+      ];
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, capturedVariables: vars },
+      });
+      const lineEls = container.querySelectorAll('.var-line');
+      expect(lineEls.length).toBe(2);
+      expect(lineEls[0].textContent).toBe('L3');
+      expect(lineEls[1].textContent).toBe('L12');
+    });
+
+    it('calls onVarClick with varName and declarationLine when line number clicked', async () => {
       const onVarClick = vi.fn();
       const vars = [makeGridVar('myFloat', 'float', 0.5, 7)];
-
       const { container } = render(VariablesSection, {
         props: { ...BASE_PROPS, capturedVariables: vars, onVarClick },
       });
-
-      const nameEl = container.querySelector('.var-name.clickable') as HTMLElement;
-      expect(nameEl).toBeTruthy();
-      await fireEvent.click(nameEl);
+      const lineEl = container.querySelector('.var-line') as HTMLElement;
+      expect(lineEl).toBeTruthy();
+      await fireEvent.click(lineEl);
       expect(onVarClick).toHaveBeenCalledWith('myFloat', 7);
-    });
-
-    it('calls onVarClick with correct args for each variable', async () => {
-      const onVarClick = vi.fn();
-      const vars = [
-        makeGridVar('a', 'float', 0.1, 3),
-        makeGridVar('b', 'float', 0.2, 12),
-      ];
-
-      const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, capturedVariables: vars, onVarClick },
-      });
-
-      const names = container.querySelectorAll('.var-name.clickable');
-      expect(names.length).toBe(2);
-      await fireEvent.click(names[1] as HTMLElement);
-      expect(onVarClick).toHaveBeenCalledWith('b', 12);
-    });
-
-    it('does not call onVarClick when expand button is clicked', async () => {
-      const onVarClick = vi.fn();
-      const onExpandToggle = vi.fn();
-      const vars = [makeGridVar('x', 'float', 0.5, 5)];
-
-      const { container } = render(VariablesSection, {
-        props: { ...BASE_PROPS, capturedVariables: vars, onVarClick, onExpandToggle },
-      });
-
-      const expandBtn = container.querySelector('.expand-btn') as HTMLElement;
-      if (expandBtn) {
-        await fireEvent.click(expandBtn);
-        expect(onVarClick).not.toHaveBeenCalled();
-      }
     });
   });
 

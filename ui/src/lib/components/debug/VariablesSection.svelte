@@ -111,7 +111,7 @@
         {variable}
         {isPixelMode}
         onExpandToggle={() => onExpandToggle(variable.varName)}
-        onClick={() => onVarClick(variable.varName, variable.declarationLine)}
+        onLineClick={() => onVarClick(variable.varName, variable.declarationLine)}
       />
     {/each}
   {/if}

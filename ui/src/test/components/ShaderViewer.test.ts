@@ -87,9 +87,23 @@ vi.mock('../../lib/ShaderStudio', () => {
     transport: Transport;
     private _locked = false;
     private _lockedPath: string | undefined = undefined;
+    private _shaderDebugManager: any;
 
-    constructor(transport: Transport) {
+    constructor(transport: Transport, _locker: any, _engine: any, shaderDebugManager: any) {
       this.transport = transport;
+      this._shaderDebugManager = shaderDebugManager;
+    }
+
+    get messageHandler() {
+      const mgr = this._shaderDebugManager;
+      return {
+        handleCursorPositionMessage(msg: any) {
+          const { line, lineContent, filePath } = msg.payload ?? {};
+          if (line !== undefined && mgr) {
+            mgr.updateDebugLine(line, lineContent, filePath);
+          }
+        }
+      };
     }
 
     async initialize(glCanvas: HTMLCanvasElement): Promise<boolean> {
@@ -166,6 +180,37 @@ vi.mock('../../lib/ShaderStudio', () => {
 vi.mock('../../lib/transport/TransportFactory', () => ({
   createTransport: mockCreateTransport,
   isVSCodeEnvironment: () => false
+}));
+
+const { mockVCMFactory } = vi.hoisted(() => {
+  const mockVCMFactory = {
+    _callback: null as ((vars: any[]) => void) | null,
+    inject(vars: any[]) { this._callback?.(vars); },
+    reset() { this._callback = null; },
+  };
+  return { mockVCMFactory };
+});
+
+vi.mock('../../lib/VariableCaptureManager', () => ({
+  VariableCaptureManager: class {
+    sampleSize = 32;
+    constructor(_engine: any, cb: (vars: any[]) => void) {
+      mockVCMFactory._callback = cb;
+    }
+    setSampleSettingsCallback() {}
+    notifyStateChange() {}
+    dispose() {}
+    changeSampleSize() {}
+    changeRefreshMode() {}
+    changePollingMs() {}
+    setHistogramExpanded() {}
+    getActiveRefreshMode() { return 'polling'; }
+    getActivePollingMs() { return 500; }
+    get gridRefreshMode() { return 'polling'; }
+    get gridPollingMs() { return 500; }
+    get pixelRefreshMode() { return 'polling'; }
+    get pixelPollingMs() { return 500; }
+  },
 }));
 
 describe('ShaderViewer', () => {
@@ -2504,31 +2549,6 @@ describe('ShaderViewer', () => {
     });
   });
 
-  describe('handleVarClick', () => {
-    it('should send goToLine message when variable is clicked in debug panel', async () => {
-      render(ShaderViewer, { onInitialized: vi.fn() });
-      await tick();
-      await tick();
-      await loadShader();
-
-      // Enable debug mode
-      const debugButton = screen.getByLabelText('Toggle debug mode');
-      await fireEvent.click(debugButton);
-      await tick();
-      await tick();
-
-      // The handleVarClick function requires debugState.filePath to be set
-      // It sends a goToLine message via transport
-      // Since filePath is null by default, verify the guard works
-      vi.clearAllMocks();
-
-      // No goToLine should be sent because filePath is null
-      const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
-      const goToLineCalls = calls.filter((c: any[]) => c[0]?.type === 'goToLine');
-      expect(goToLineCalls).toHaveLength(0);
-    });
-  });
-
   describe('handleChangeRefreshMode', () => {
     it('should update gridRefreshMode when no pixel is captured', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
@@ -4012,6 +4032,123 @@ describe('ShaderViewer', () => {
 
       // Actual fps should have decayed back to 0
       expect(container.querySelector('.actual-fps')!.textContent).toBe('(0fps)');
+    });
+  });
+
+  describe('handleVarClick', () => {
+    beforeEach(() => {
+      // Re-apply ResizeObserver mock - vi.clearAllMocks() in the outer beforeEach
+      // clears the implementation, so we need to restore it for each test.
+      global.ResizeObserver = vi.fn().mockImplementation(() => ({
+        observe: vi.fn(),
+        unobserve: vi.fn(),
+        disconnect: vi.fn(),
+      }));
+    });
+
+    const TEST_FILE = '/test/shader.glsl';
+    const TEST_VAR: any = {
+      varName: 'myVar', varType: 'float', value: null,
+      channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+      stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+      channelHistograms: null, colorFrequencies: null, thumbnail: null,
+      declarationLine: 5, gridWidth: 32, gridHeight: 32,
+    };
+
+    async function setupWithVars(filePath: string | null = TEST_FILE) {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+
+      // Load shader
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: TEST_FILE,
+          code: 'void mainImage(out vec4 o, vec2 uv) { float myVar = 0.5; o = vec4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: TEST_FILE },
+        },
+      });
+      await tick();
+
+      // Send a separate cursorPosition message to set filePath in debugState
+      if (filePath !== null) {
+        await messageHandler({
+          data: {
+            type: 'cursorPosition',
+            payload: { line: 5, lineContent: 'float myVar = 0.5;', filePath },
+          },
+        });
+        await tick();
+      }
+
+      // Enable debug mode
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      await fireEvent.click(debugButton);
+      await tick();
+
+      // Enable variable inspector
+      const varInspectorBtn = screen.getByLabelText('Toggle variable inspector');
+      await fireEvent.click(varInspectorBtn);
+      await tick();
+
+      // Inject captured variables
+      mockVCMFactory.inject([TEST_VAR]);
+      await tick();
+    }
+
+    it('sends goToLine message with correct line and filePath when line badge clicked', async () => {
+      await setupWithVars();
+      vi.clearAllMocks();
+
+      const lineEl = document.querySelector('.var-line') as HTMLElement;
+      expect(lineEl).toBeInTheDocument();
+      expect(lineEl.textContent).toBe('L6');
+
+      await fireEvent.click(lineEl);
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'goToLine',
+        payload: { line: 5, filePath: TEST_FILE },
+      });
+    });
+
+    it('does not send goToLine when filePath is null', async () => {
+      await setupWithVars(null); // no cursorPosition → filePath stays null
+      vi.clearAllMocks();
+
+      const lineEl = document.querySelector('.var-line') as HTMLElement;
+      expect(lineEl).toBeInTheDocument();
+
+      await fireEvent.click(lineEl);
+
+      const goToLineCalls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c: any[]) => c[0]?.type === 'goToLine');
+      expect(goToLineCalls).toHaveLength(0);
+    });
+
+    it('does not render line badge for variable with declarationLine -1', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+
+      const debugButton = screen.getByLabelText('Toggle debug mode');
+      await fireEvent.click(debugButton);
+      await tick();
+
+      const varInspectorBtn = screen.getByLabelText('Toggle variable inspector');
+      await fireEvent.click(varInspectorBtn);
+      await tick();
+
+      mockVCMFactory.inject([{ ...TEST_VAR, declarationLine: -1 }]);
+      await tick();
+
+      expect(document.querySelector('.var-line')).not.toBeInTheDocument();
     });
   });
 });
