@@ -1,22 +1,33 @@
 <script lang="ts">
   import type { DebugParameterInfo } from "../../types/ShaderDebugState";
   import { dragScrub } from "../../actions/dragScrub";
+  import { CodeJar } from "codejar";
+  import { onMount, onDestroy } from "svelte";
 
   export let param: DebugParameterInfo;
   export let onChange: (glslValue: string) => void = () => {};
 
   let expression = param.expression || param.defaultExpression;
+  let lastSyncedExpression = expression;
   let presetMenu: HTMLDetailsElement | undefined;
+  let jarEl: HTMLDivElement | undefined;
+  let jar: ReturnType<typeof CodeJar> | undefined;
 
   const isVec = param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4';
   const componentCount = param.type === 'vec2' ? 2 : param.type === 'vec3' ? 3 : param.type === 'vec4' ? 4 : 0;
-  const floatPresets = ['iTime', 'sin(iTime)', 'cos(iTime)', 'fract(iTime)', 'iTimeDelta'];
-  const intPresets = ['iFrame', 'int(iTime)'];
-  const boolPresets = ['iTime > 1.0', 'iFrame > 30'];
-  const vec2Presets = ['iMouse.xy/iResolution.xy', 'iResolution.xy'];
-  const vec3Presets = ['vec3(iTime)', 'vec3(sin(iTime))'];
-  const vec4Presets = ['vec4(iTime)', 'vec4(sin(iTime), cos(iTime), 0.0, 1.0)'];
-  const quickExpressions: Record<string, string[]> = {
+  type Preset = string | { label: string; value: string };
+  const floatPresets: Preset[] = ['iTime', 'sin(iTime)', 'cos(iTime)', 'fract(iTime)', 'iTimeDelta'];
+  const intPresets: Preset[] = ['iFrame', 'int(iTime)'];
+  const boolPresets: Preset[] = ['iTime > 1.0', 'iFrame > 30'];
+  const vec2Presets: Preset[] = [
+    { label: 'uv', value: 'fragCoord.xy/iResolution.xy' },
+    { label: 'uv centered', value: '(fragCoord.xy * 2.0 - iResolution.xy) / iResolution.y' },
+    'iMouse.xy/iResolution.xy',
+    'iResolution.xy',
+  ];
+  const vec3Presets: Preset[] = ['vec3(iTime)', 'vec3(sin(iTime))'];
+  const vec4Presets: Preset[] = ['vec4(iTime)', 'vec4(sin(iTime), cos(iTime), 0.0, 1.0)'];
+  const quickExpressions: Record<string, Preset[]> = {
     float: floatPresets,
     int: intPresets,
     bool: boolPresets,
@@ -25,6 +36,8 @@
     vec4: vec4Presets,
     sampler2D: ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'],
   };
+  function presetLabel(p: Preset): string { return typeof p === 'string' ? p : p.label; }
+  function presetValue(p: Preset): string { return typeof p === 'string' ? p : p.value; }
 
   function normalizeExpression(type: string, value: string): string {
     const trimmed = value.trim();
@@ -82,25 +95,43 @@
 
   function emit(nextValue: string) {
     expression = nextValue;
-    onChange(normalizeExpression(param.type, nextValue));
-  }
-
-  function applyQuickExpression(value: string) {
-    emit(value);
+    const normalized = normalizeExpression(param.type, nextValue);
+    lastSyncedExpression = normalized;
+    onChange(normalized);
+    if (jar && jar.toString() !== nextValue) {
+      jar.updateCode(nextValue);
+    }
   }
 
   function handlePresetSelect(value: string) {
-    applyQuickExpression(value);
+    emit(value);
     presetMenu?.removeAttribute('open');
   }
 
-  function handleExpressionInput(event: Event) {
-    emit((event.target as HTMLInputElement).value);
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') e.preventDefault();
   }
 
-  function handleExpressionBlur() {
-    expression = normalizeExpression(param.type, expression);
+  function handleBlur() {
+    const normalized = normalizeExpression(param.type, expression);
+    if (normalized !== expression) emit(normalized);
   }
+
+  onMount(() => {
+    if (!jarEl) return;
+    jar = CodeJar(jarEl, (el) => {
+      el.innerHTML = highlightExpression(el.textContent ?? '');
+    });
+    jar.updateCode(expression);
+    jar.onUpdate((code) => {
+      expression = code;
+      const normalized = normalizeExpression(param.type, code);
+      lastSyncedExpression = normalized;
+      onChange(normalized);
+    });
+  });
+
+  onDestroy(() => jar?.destroy());
 
   function updateFloatValue(next: number) {
     emit(String(next));
@@ -139,28 +170,32 @@
   $: vecComponents = isVec ? parseVectorComponents(param.type, expression) : null;
   $: quickChips = quickExpressions[param.type] || [];
   $: sliderDisplayValue = Number.isFinite(floatValue ?? NaN) ? Math.max(0, Math.min(1, floatValue as number)) : 0;
-  $: highlightedExpression = highlightExpression(expression || param.defaultExpression);
+  $: {
+    const incoming = param.expression || param.defaultExpression;
+    if (incoming !== lastSyncedExpression) {
+      expression = incoming;
+      lastSyncedExpression = incoming;
+      jar?.updateCode(incoming);
+    }
+  }
 </script>
 
 <div class="param-editor">
   <div class="param-row">
     <span class="param-name">{param.name}</span>
     <span class="param-type">{param.type}</span>
-    <div class="expression-shell">
-      <div class="expression-highlight" aria-hidden="true">
-        {@html highlightedExpression}
-      </div>
-      <input
-        class="expression-input"
-        type="text"
-        value={expression}
-        on:input={handleExpressionInput}
-        on:blur={handleExpressionBlur}
-        aria-label="Expression for {param.name}"
-        placeholder={param.defaultExpression}
-        spellcheck="false"
-      />
-    </div>
+    <div
+      class="expression-editor"
+      bind:this={jarEl}
+      data-placeholder={param.defaultExpression}
+      role="textbox"
+      tabindex="0"
+      aria-label="Expression for {param.name}"
+      aria-multiline="false"
+      spellcheck="false"
+      on:keydown={handleKeydown}
+      on:blur={handleBlur}
+    ></div>
     {#if param.type === 'vec3' || param.type === 'vec4'}
       <input
         type="color"
@@ -193,9 +228,9 @@
             <button
               class="preset-option"
               type="button"
-              on:click={() => handlePresetSelect(chip)}
+              on:click={() => handlePresetSelect(presetValue(chip))}
             >
-              {chip}
+              {presetLabel(chip)}
             </button>
           {/each}
         </div>
@@ -264,7 +299,6 @@
     min-width: 40px;
   }
 
-  .expression-input,
   .value-input,
   .channel-select,
   .preset-trigger {
@@ -276,66 +310,58 @@
     font-size: 13px;
   }
 
-  .expression-input {
-    width: 100%;
-    flex: 1 1 auto;
-    min-width: 0;
-    font-family: var(--vscode-editor-font-family, monospace);
-    background: transparent;
-    color: transparent;
-    caret-color: var(--vscode-input-foreground);
-    position: relative;
-    z-index: 1;
-  }
-
-  .expression-input::placeholder {
-    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
-  }
-
-  .expression-shell {
-    position: relative;
+  .expression-editor {
     flex: 1 1 auto;
     min-width: 0;
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
     border-radius: 2px;
-  }
-
-  .expression-shell:focus-within {
-    border-color: var(--vscode-focusBorder);
-  }
-
-  .expression-highlight {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
     padding: 3px 6px;
-    overflow: hidden;
-    white-space: nowrap;
-    pointer-events: none;
     font-size: 13px;
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--vscode-input-foreground);
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    outline: none;
+    line-height: 1.4;
   }
 
-  .expression-highlight :global(.expr-keyword) {
+  .expression-editor::-webkit-scrollbar {
+    display: none;
+  }
+
+  .expression-editor:focus {
+    border-color: var(--vscode-focusBorder);
+  }
+
+  .expression-editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+    pointer-events: none;
+  }
+
+  .expression-editor :global(::selection) {
+    background: var(--vscode-editor-selectionBackground, rgba(128, 128, 128, 0.35));
+  }
+
+  .expression-editor :global(.expr-keyword) {
     color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground));
   }
 
-  .expression-highlight :global(.expr-type) {
+  .expression-editor :global(.expr-type) {
     color: var(--vscode-symbolIcon-classForeground, var(--vscode-editor-foreground));
   }
 
-  .expression-highlight :global(.expr-uniform) {
+  .expression-editor :global(.expr-uniform) {
     color: var(--vscode-debugTokenExpression-name, var(--vscode-editor-foreground));
   }
 
-  .expression-highlight :global(.expr-number) {
+  .expression-editor :global(.expr-number) {
     color: var(--vscode-debugTokenExpression-number, var(--vscode-editor-foreground));
   }
 
-  .expression-highlight :global(.expr-fn) {
+  .expression-editor :global(.expr-fn) {
     color: var(--vscode-symbolIcon-functionForeground, var(--vscode-editor-foreground));
   }
 

@@ -332,7 +332,17 @@
     {#if isInlineOn}
       {#if showParams && ctx && ctx.parameters.length > 0}
         <div class="section">
-          <div class="section-label">Parameters</div>
+          <div class="section-heading">
+            <div class="section-label">Parameters</div>
+            <button
+              class="section-reset"
+              type="button"
+              on:click={() => shaderDebugManager?.resetCustomParameters()}
+              aria-label="Reset parameters"
+            >
+              Reset
+            </button>
+          </div>
           {#each ctx.parameters as param, index}
             <ParameterEditor
               {param}
@@ -612,6 +622,33 @@
     color: var(--vscode-descriptionForeground);
     margin-bottom: 4px;
     font-weight: 600;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .section-heading .section-label {
+    margin-bottom: 0;
+  }
+
+  .section-reset {
+    background: var(--vscode-button-secondaryBackground, var(--vscode-toolbar-hoverBackground));
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 4px;
+    color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 8px;
+  }
+
+  .section-reset:hover {
+    background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
   }
 
   .loop-row {
