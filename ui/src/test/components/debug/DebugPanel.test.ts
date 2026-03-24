@@ -65,6 +65,7 @@ function mockGetUniforms(): PassUniforms | null {
 function createMockShaderDebugManager() {
   return {
     setCustomParameter: vi.fn(),
+    resetCustomParameters: vi.fn(),
     setLoopMaxIterations: vi.fn(),
     toggleLineLock: vi.fn(),
     toggleInlineRendering: vi.fn(),
@@ -138,6 +139,21 @@ describe('DebugPanel', () => {
     const sectionLabels = container.querySelectorAll('.section-label');
     const labelTexts = Array.from(sectionLabels).map(el => el.textContent);
     expect(labelTexts).toContain('Parameters');
+  });
+
+  it('shows a reset action for parameters and calls resetCustomParameters', async () => {
+    const shaderDebugManager = createMockShaderDebugManager();
+    render(DebugPanel, {
+      debugState: makeDebugState({ functionContext: makeFunctionContext() }),
+      getUniforms: mockGetUniforms,
+      shaderDebugManager,
+    });
+
+    const resetBtn = screen.getByLabelText('Reset parameters');
+    expect(resetBtn).toBeInTheDocument();
+    expect(resetBtn).toHaveClass('section-reset');
+    await fireEvent.click(resetBtn);
+    expect((shaderDebugManager as any).resetCustomParameters).toHaveBeenCalledOnce();
   });
 
   it('shows loop controls with line number prefixes', () => {

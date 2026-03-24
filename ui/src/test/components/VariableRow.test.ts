@@ -331,6 +331,16 @@ describe('VariableRow', () => {
     expect(typeEl.textContent).toBe('vec3');
   });
 
+  it('reserves the preview column width when thumbnail is shown', () => {
+    const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
+    const v = { ...makeGridVecVar(), thumbnail: thumb };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const thumbCol = document.querySelector('.thumb-col') as HTMLElement;
+    expect(thumbCol).toBeInTheDocument();
+    expect(thumbCol.querySelector('canvas')).toBeInTheDocument();
+    expect(thumbCol.nextElementSibling).toHaveClass('var-body');
+  });
+
   it('calls onLineClick when line number is clicked', async () => {
     const onLineClick = vi.fn();
     const v = { ...makeFloatVar(0.5), declarationLine: 4 };

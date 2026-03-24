@@ -167,6 +167,10 @@
   .thumb-col {
     flex-shrink: 0;
     padding-top: 1px;
+    width: 32px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
   }
 
   .var-body {
@@ -197,11 +201,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1 1 auto;
   }
 
   .var-line {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--vscode-descriptionForeground);
     flex-shrink: 0;
     cursor: pointer;
@@ -213,7 +216,7 @@
   }
 
   .var-type {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     flex-shrink: 0;

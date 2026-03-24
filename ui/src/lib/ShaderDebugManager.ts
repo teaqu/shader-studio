@@ -86,6 +86,8 @@ export class ShaderDebugManager {
     } else {
       this.customParameters.set(index, value);
     }
+    this.syncFunctionContextParameters();
+    this.notifyStateChange();
     this.onRecompileNeeded?.();
     this.onCaptureStateChanged?.();
   }
@@ -102,6 +104,17 @@ export class ShaderDebugManager {
 
   public getCustomParameters(): Map<number, string> {
     return new Map(this.customParameters);
+  }
+
+  public resetCustomParameters(): void {
+    if (this.customParameters.size === 0) {
+      return;
+    }
+    this.customParameters.clear();
+    this.syncFunctionContextParameters();
+    this.notifyStateChange();
+    this.onRecompileNeeded?.();
+    this.onCaptureStateChanged?.();
   }
 
   public getLoopMaxIterations(): Map<number, number> {
@@ -210,6 +223,19 @@ export class ShaderDebugManager {
     }
 
     this.state.functionContext = context;
+    this.syncFunctionContextParameters();
+  }
+
+  private syncFunctionContextParameters(): void {
+    const context = this.state.functionContext;
+    if (!context) {
+      return;
+    }
+
+    context.parameters = context.parameters.map((param, index) => ({
+      ...param,
+      expression: this.customParameters.get(index) ?? param.defaultExpression,
+    }));
   }
 
   private notifyStateChange(): void {

@@ -27,6 +27,7 @@
     "@shader-studio/rendering": "*",
     "@shader-studio/types": "*",
     "@vscode/codicons": "^0.0.45",
+    "codejar": "^4.3.0",
     "dockview-core": "^5.0.0",
     "gifski-wasm": "^2.2.0",
     "monaco-editor": "^0.55.1",

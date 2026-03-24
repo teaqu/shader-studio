@@ -3,10 +3,21 @@ import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
 
 describe('ShaderDebugManager - Custom Parameters', () => {
   let manager: ShaderDebugManager;
+  const shader = `float sdf(vec2 p, float r) {
+  float d = length(p) - r;
+  return d;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(0.0);
+}`;
 
   beforeEach(() => {
     manager = new ShaderDebugManager();
     manager.toggleEnabled(); // inline rendering defaults to on
+    manager.setOriginalCode(shader);
+    manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
   });
 
   describe('setCustomParameter', () => {
@@ -26,6 +37,20 @@ describe('ShaderDebugManager - Custom Parameters', () => {
       const params = manager.getCustomParameters();
       params.set(1, 'should not affect original');
       expect(manager.getCustomParameters().has(1)).toBe(false);
+    });
+
+    it('should immediately reflect custom expressions in the live function context', () => {
+      manager.setCustomParameter(1, '2.0');
+
+      expect(manager.getState().functionContext?.parameters[1].expression).toBe('2.0');
+    });
+
+    it('should reset live function context expressions back to defaults', () => {
+      manager.setCustomParameter(1, '2.0');
+
+      manager.resetCustomParameters();
+
+      expect(manager.getState().functionContext?.parameters[1].expression).toBe('0.5');
     });
   });
 
@@ -50,18 +75,7 @@ describe('ShaderDebugManager - Custom Parameters', () => {
   });
 
   describe('modifyShaderForDebugging with custom params', () => {
-    const shader = `float sdf(vec2 p, float r) {
-  float d = length(p) - r;
-  return d;
-}
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-  vec2 uv = fragCoord / iResolution.xy;
-  fragColor = vec4(0.0);
-}`;
-
     it('should pass custom parameters through to ShaderDebugger', () => {
-      manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
       manager.setCustomParameter(1, '2.0');
 
       const result = manager.modifyShaderForDebugging(shader, 1);
@@ -95,8 +109,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     });
 
     it('should produce different output with custom params vs defaults', () => {
-      manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
-
       const resultDefault = manager.modifyShaderForDebugging(shader, 1);
 
       manager.setCustomParameter(1, '3.14');
