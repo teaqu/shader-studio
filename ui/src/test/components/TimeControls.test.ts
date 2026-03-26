@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import TimeControls from '../../lib/components/TimeControls.svelte';
 
@@ -227,10 +226,9 @@ describe('TimeControls Component', () => {
     });
 
     it('should update speed when slider is changed', async () => {
-      const user = userEvent.setup();
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
-      await user.click(timeButton);
+      await fireEvent.click(timeButton);
 
       const speedSlider = container.querySelector('#speed-slider') as HTMLInputElement;
       // For range inputs, we need to use fireEvent since userEvent doesn't support sliders well
@@ -281,10 +279,9 @@ describe('TimeControls Component', () => {
     });
 
     it('should set time when scrub slider is dragged', async () => {
-      const user = userEvent.setup();
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
-      await user.click(timeButton);
+      await fireEvent.click(timeButton);
 
       const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
       // For range inputs, we need to use fireEvent since userEvent doesn't support sliders well
@@ -411,26 +408,25 @@ describe('TimeControls Component', () => {
     });
 
     it('should handle complete workflow: open menu, enable loop, change duration, change speed', async () => {
-      const user = userEvent.setup();
       const { container } = render(TimeControls, { props: defaultProps });
 
       // Open menu
       const timeButton = screen.getByText('3.14s');
-      await user.click(timeButton);
+      await fireEvent.click(timeButton);
 
       // Enable loop
       const loopButton = container.querySelector('.loop-toggle-button') as HTMLElement;
-      await user.click(loopButton);
+      await fireEvent.click(loopButton);
       expect(mockTimeManager.setLoopEnabled).toHaveBeenCalledWith(true);
 
       // Change duration
       const preset30s = screen.getByText('30s');
-      await user.click(preset30s);
+      await fireEvent.click(preset30s);
       expect(mockTimeManager.setLoopDuration).toHaveBeenCalledWith(30);
 
       // Change speed
       const preset2x = screen.getByText('2×');
-      await user.click(preset2x);
+      await fireEvent.click(preset2x);
       expect(mockTimeManager.setSpeed).toHaveBeenCalledWith(2.0);
     });
   });

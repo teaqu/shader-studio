@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 // Polyfill ImageData for jsdom (used by GIF recording path)
 if (typeof globalThis.ImageData === 'undefined') {
@@ -98,6 +98,7 @@ describe('ShaderRecorder', () => {
   let recorder: ShaderRecorder;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     recorder = new ShaderRecorder();
     // Mock document.createElement to return a canvas-like object
@@ -116,6 +117,10 @@ describe('ShaderRecorder', () => {
       }),
     } as any);
     vi.spyOn(document.body, 'appendChild').mockImplementation(() => null as any);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('captureScreenshot', () => {
@@ -180,99 +185,97 @@ describe('ShaderRecorder', () => {
   describe('record', () => {
     const baseConfig: RecordingConfig = {
       format: 'webm',
-      duration: 2,
+      duration: 0.1,
       startTime: 0,
-      fps: 30,
+      fps: 10,
       width: 800,
       height: 600,
     };
 
+    async function rec(config: RecordingConfig) {
+      const p = recorder.record(config, shaderInfo);
+      await vi.runAllTimersAsync();
+      return p;
+    }
+
     it('should create offscreen engine and compile shader', async () => {
-      await recorder.record(baseConfig, shaderInfo);
+      await rec(baseConfig);
 
       expect(mockInitialize).toHaveBeenCalledWith(expect.anything(), true);
       expect(mockCompileShaderPipeline).toHaveBeenCalled();
     });
 
     it('should set preview canvas for live preview', async () => {
-      await recorder.record(baseConfig, shaderInfo);
+      await rec(baseConfig);
 
       expect(mockSetPreviewCanvas).toHaveBeenCalledWith(expect.anything());
     });
 
     it('should start recording in store with correct format and frame count', async () => {
-      const config: RecordingConfig = { ...baseConfig, format: 'mp4', duration: 5, fps: 30 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, format: 'mp4', duration: 5, fps: 30 });
 
       // 5 seconds * 30 fps = 150 frames (Math.ceil)
       expect(mockStartRecording).toHaveBeenCalledWith('mp4', 150);
     });
 
     it('should round dimensions to even numbers for MP4', async () => {
-      const config: RecordingConfig = { ...baseConfig, format: 'mp4', width: 801, height: 601 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, format: 'mp4', width: 801, height: 601 });
 
       expect(mockHandleCanvasResize).toHaveBeenCalledWith(802, 602);
     });
 
     it('should not round dimensions for WebM', async () => {
-      const config: RecordingConfig = { ...baseConfig, format: 'webm', width: 801, height: 601 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, format: 'webm', width: 801, height: 601 });
 
       expect(mockHandleCanvasResize).toHaveBeenCalledWith(801, 601);
     });
 
     it('should not round even dimensions for MP4', async () => {
-      const config: RecordingConfig = { ...baseConfig, format: 'mp4', width: 1920, height: 1080 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, format: 'mp4', width: 1920, height: 1080 });
 
       expect(mockHandleCanvasResize).toHaveBeenCalledWith(1920, 1080);
     });
 
     it('should not round dimensions for GIF', async () => {
-      const config: RecordingConfig = { ...baseConfig, format: 'gif', width: 801, height: 601 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, format: 'gif', width: 801, height: 601 });
 
       expect(mockHandleCanvasResize).toHaveBeenCalledWith(801, 601);
     });
 
     it('should use VideoEncoderWrapper for webm format', async () => {
-      await recorder.record({ ...baseConfig, format: 'webm' }, shaderInfo);
+      await rec({ ...baseConfig, format: 'webm' });
       expect(VideoEncoderWrapper).toHaveBeenCalled();
       expect(GifEncoderWrapper).not.toHaveBeenCalled();
     });
 
     it('should use VideoEncoderWrapper for mp4 format', async () => {
-      await recorder.record({ ...baseConfig, format: 'mp4' }, shaderInfo);
+      await rec({ ...baseConfig, format: 'mp4' });
       expect(VideoEncoderWrapper).toHaveBeenCalled();
       expect(GifEncoderWrapper).not.toHaveBeenCalled();
     });
 
     it('should use GifEncoderWrapper for gif format', async () => {
-      await recorder.record({ ...baseConfig, format: 'gif' }, shaderInfo);
+      await rec({ ...baseConfig, format: 'gif' });
       expect(GifEncoderWrapper).toHaveBeenCalled();
       expect(VideoEncoderWrapper).not.toHaveBeenCalled();
     });
 
     it('should render correct number of frames', async () => {
-      const config: RecordingConfig = { ...baseConfig, duration: 1, fps: 10 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, duration: 1, fps: 10 });
 
       // 1 second * 10 fps = 10 frames
       expect(mockRenderForCapture).toHaveBeenCalledTimes(10);
     });
 
     it('should set correct time for each frame during video recording', async () => {
-      const config: RecordingConfig = { ...baseConfig, duration: 0.1, fps: 10, startTime: 5.0 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, duration: 0.1, fps: 10, startTime: 5.0 });
 
       // 1 frame: time = 5.0 + 0 * 0.1 = 5.0
       expect(mockSetTime).toHaveBeenCalledWith(5.0);
     });
 
     it('should update progress during recording', async () => {
-      const config: RecordingConfig = { ...baseConfig, duration: 0.5, fps: 10 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, duration: 0.5, fps: 10 });
 
       // 5 frames, progress updated each frame
       expect(mockUpdateProgress).toHaveBeenCalledTimes(5);
@@ -280,21 +283,20 @@ describe('ShaderRecorder', () => {
     });
 
     it('should set finalizing state before finishing', async () => {
-      await recorder.record(baseConfig, shaderInfo);
+      await rec(baseConfig);
       expect(mockSetFinalizing).toHaveBeenCalled();
     });
 
     it('should flush video encoder periodically', async () => {
       // With fps=30, flushInterval = max(4, ceil(30/2)) = 15
       // For 30 frames (1s), flush at frame 14, 29
-      const config: RecordingConfig = { ...baseConfig, duration: 1, fps: 30 };
-      await recorder.record(config, shaderInfo);
+      await rec({ ...baseConfig, duration: 1, fps: 30 });
 
       expect(mockVideoFlush).toHaveBeenCalled();
     });
 
     it('should dispose offscreen engine after recording', async () => {
-      await recorder.record(baseConfig, shaderInfo);
+      await rec(baseConfig);
 
       expect(mockDispose).toHaveBeenCalled();
       expect(mockReset).toHaveBeenCalled();
@@ -310,7 +312,7 @@ describe('ShaderRecorder', () => {
     });
 
     it('should return a Blob', async () => {
-      const blob = await recorder.record(baseConfig, shaderInfo);
+      const blob = await rec(baseConfig);
       expect(blob).toBeInstanceOf(Blob);
     });
   });
@@ -336,7 +338,10 @@ describe('ShaderRecorder', () => {
         height: 600,
       };
 
-      await expect(recorder.record(config, shaderInfo)).rejects.toThrow('Recording cancelled');
+      const p = recorder.record(config, shaderInfo);
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow('Recording cancelled');
 
       // Should have rendered only a few frames before cancellation
       expect(mockRenderForCapture.mock.calls.length).toBeLessThan(300);

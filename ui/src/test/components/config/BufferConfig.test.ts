@@ -1,5 +1,6 @@
 import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { tick } from 'svelte';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
 import type { BufferPass, ImagePass } from '@shader-studio/types';
 
@@ -424,7 +425,7 @@ describe('BufferConfig', () => {
       // Click on the iChannel0 box
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.click(channelBox);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Modal should be open - ChannelConfigModal with isOpen=true
       // The modal has overlay class when open
@@ -449,7 +450,7 @@ describe('BufferConfig', () => {
 
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.keyDown(channelBox, { key: 'Enter' });
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
@@ -471,7 +472,7 @@ describe('BufferConfig', () => {
       // Click on an empty channel slot (iChannel0 should be padded in)
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.click(channelBox);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
@@ -496,7 +497,7 @@ describe('BufferConfig', () => {
       });
 
       await fireEvent.click(getByText('Add Channel'));
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
@@ -514,7 +515,7 @@ describe('BufferConfig', () => {
 
       const addBox = getByText('Add Channel').closest('.channel-box')!;
       await fireEvent.keyDown(addBox, { key: 'Enter' });
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
@@ -655,7 +656,7 @@ describe('BufferConfig', () => {
       // Open modal for iChannel0
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.click(channelBox);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Modal should be open
       expect(container.querySelector('.modal-overlay')).not.toBeNull();
@@ -663,7 +664,7 @@ describe('BufferConfig', () => {
       // Switch to Textures tab - this triggers selectTab -> autoSave -> onSave -> handleModalSave
       const texturesTab = getByText('Textures');
       await fireEvent.click(texturesTab);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // handleModalSave should have called bufferConfig.updateInputChannel which calls onUpdate
       expect(mockOnUpdate).toHaveBeenCalled();
@@ -689,7 +690,7 @@ describe('BufferConfig', () => {
       // Open modal for configured channel
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.click(channelBox);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Modal should be open with Remove button
       const removeBtn = getByText('Remove');
@@ -697,7 +698,7 @@ describe('BufferConfig', () => {
 
       // Click Remove
       await fireEvent.click(removeBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // handleModalRemove calls removeInputChannel then closeChannelModal
       expect(mockOnUpdate).toHaveBeenCalled();
@@ -729,13 +730,13 @@ describe('BufferConfig', () => {
       // Open modal
       const channelBox = getByText('iChannel0').closest('.channel-box')!;
       await fireEvent.click(channelBox);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
       expect(container.querySelector('.modal-overlay')).not.toBeNull();
 
       // Click Close
       const closeBtn = getByText('Close');
       await fireEvent.click(closeBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(container.querySelector('.modal-overlay')).toBeNull();
     });

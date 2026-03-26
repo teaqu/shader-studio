@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import FrameTimesPanel from '../../../lib/components/performance/FrameTimesPanel.svelte';
 import type { PerformanceData } from '../../../lib/PerformanceMonitor';
 
@@ -594,7 +595,7 @@ describe('FrameTimesPanel Component', () => {
       // Simulate mouse moving over the graph at x=300 (middle of 600px canvas)
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
       // afterUpdate triggers redraw — in test env we need to wait for tick
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       // Should have drawn a vertical dashed line (moveTo + lineTo for cursor)
       const setLineDashCalls = mockContext.setLineDash.mock.calls;
@@ -618,7 +619,7 @@ describe('FrameTimesPanel Component', () => {
       vi.clearAllMocks();
 
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       const fillTextCalls = mockContext.fillText.mock.calls;
       const tooltipCall = fillTextCalls.find(
@@ -640,7 +641,7 @@ describe('FrameTimesPanel Component', () => {
       vi.clearAllMocks();
 
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       const fillTextCalls = mockContext.fillText.mock.calls;
       const tooltipCall = fillTextCalls.find(
@@ -659,7 +660,7 @@ describe('FrameTimesPanel Component', () => {
 
       // Hover near the middle — should show a time offset like "-1.5s"
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       const fillTextCalls = mockContext.fillText.mock.calls;
       const tooltipCall = fillTextCalls.find(
@@ -677,13 +678,13 @@ describe('FrameTimesPanel Component', () => {
 
       // Move in
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       vi.clearAllMocks();
 
       // Mouse leave
       await fireEvent.mouseLeave(graphContainer);
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       // After leaving, no cursor dot should be drawn
       const arcCalls = mockContext.arc.mock.calls;
@@ -700,13 +701,13 @@ describe('FrameTimesPanel Component', () => {
 
       // Start hover
       await fireEvent.mouseMove(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       vi.clearAllMocks();
 
       // Start drag
       await fireEvent.mouseDown(graphContainer, { clientX: 300, clientY: 100 });
-      await new Promise(r => setTimeout(r, 0));
+      await tick();
 
       // After mousedown, hoverX should be -1 so no cursor
       const arcCalls = mockContext.arc.mock.calls;

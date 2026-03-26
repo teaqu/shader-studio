@@ -15,6 +15,8 @@ export default defineConfig({
         environment: 'jsdom',
         globals: true,
         setupFiles: ['./src/test/setup.ts'],
+        pool: 'vmThreads',
+        poolOptions: { vmThreads: { maxThreads: 4 } },
     },
     resolve: {
         conditions: process.env.VITEST ? ['browser'] : undefined,

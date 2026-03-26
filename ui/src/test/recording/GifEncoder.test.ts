@@ -18,14 +18,11 @@ class MockWorker {
   terminate = mockTerminate;
 
   constructor() {
-    // Capture handlers for test access
+    // Capture handlers for test access — onmessage/onerror are set before postMessage is called
     const self = this;
     mockPostMessage.mockImplementation(() => {
-      // Store the handlers after they're set
-      setTimeout(() => {
-        workerOnMessage = self.onmessage;
-        workerOnError = self.onerror;
-      }, 0);
+      workerOnMessage = self.onmessage;
+      workerOnError = self.onerror;
     });
   }
 }
@@ -127,11 +124,6 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      // Wait for postMessage to be called
-      await vi.waitFor(() => {
-        expect(mockPostMessage).toHaveBeenCalledTimes(1);
-      });
-
       const msg = mockPostMessage.mock.calls[0][0];
       expect(msg.type).toBe('encode');
       expect(msg.numFrames).toBe(2);
@@ -145,7 +137,7 @@ describe('GifEncoderWrapper', () => {
       expect(msg.wasmBytes).toBeInstanceOf(ArrayBuffer);
 
       // Simulate worker completing
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1, 2, 3]) } } as any);
 
       const result = await finishPromise;
@@ -159,12 +151,12 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = enc.finish();
 
-      await vi.waitFor(() => { expect(mockPostMessage).toHaveBeenCalled(); });
+      
       const msg = mockPostMessage.mock.calls[0][0];
       expect(msg.quality).toBe(50);
       expect(msg.repeat).toBe(-1);
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await finishPromise;
     });
@@ -175,13 +167,13 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(mockPostMessage).toHaveBeenCalled(); });
+      
       // Second arg to postMessage is transferables
       const transferables = mockPostMessage.mock.calls[0][1];
       expect(transferables).toHaveLength(1);
       expect(transferables[0]).toBeInstanceOf(ArrayBuffer);
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await finishPromise;
     });
@@ -192,7 +184,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'error', message: 'WASM failed' } } as any);
 
       await expect(finishPromise).rejects.toThrow('GIF encode: WASM failed');
@@ -204,7 +196,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(workerOnError).not.toBeNull(); });
+      
       workerOnError!({ message: 'Script error' } as any);
 
       await expect(finishPromise).rejects.toThrow('GIF worker error: Script error');
@@ -216,7 +208,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await finishPromise;
 
@@ -229,7 +221,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'error', message: 'fail' } } as any);
 
       await expect(finishPromise).rejects.toThrow();
@@ -244,7 +236,7 @@ describe('GifEncoderWrapper', () => {
 
       // After finish starts, adding more frames shouldn't affect the encode
       // (frames array was cleared)
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await finishPromise;
     });
@@ -269,7 +261,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(mockPostMessage).toHaveBeenCalled(); });
+      
 
       encoder.cancel();
 
@@ -283,7 +275,7 @@ describe('GifEncoderWrapper', () => {
 
       const finishPromise = encoder.finish();
 
-      await vi.waitFor(() => { expect(mockPostMessage).toHaveBeenCalled(); });
+      
 
       encoder.cancel();
 
@@ -310,9 +302,9 @@ describe('GifEncoderWrapper', () => {
       const finishPromise = encoder.finish();
 
       // Worker was created and postMessage was called — proves blob URL worker works
-      await vi.waitFor(() => { expect(mockPostMessage).toHaveBeenCalled(); });
+      
 
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await finishPromise;
     });
@@ -322,7 +314,7 @@ describe('GifEncoderWrapper', () => {
       encoder.addFrame(makeImageData(10, 10));
       encoder.addFrame(makeImageData(10, 10));
       let p = encoder.finish();
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await p;
 
@@ -334,7 +326,7 @@ describe('GifEncoderWrapper', () => {
       enc2.addFrame(makeImageData(10, 10));
       enc2.addFrame(makeImageData(10, 10));
       p = enc2.finish();
-      await vi.waitFor(() => { expect(workerOnMessage).not.toBeNull(); });
+      
       workerOnMessage!({ data: { type: 'done', data: new Uint8Array([1]) } } as any);
       await p;
 
