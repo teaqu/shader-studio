@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import '@testing-library/jest-dom';
 import type { Writable } from 'svelte/store';
 import RecordingPanel from '../../../lib/components/recording/RecordingPanel.svelte';
@@ -248,10 +249,10 @@ describe('RecordingPanel', () => {
 
     // Simulate recording start and stop
     getMockStore().set({ ...makeDefaultState(), isRecording: true, format: 'gif', totalFrames: 10 });
-    await new Promise((r) => setTimeout(r, 0));
+    await tick();
 
     getMockStore().set(makeDefaultState());
-    await new Promise((r) => setTimeout(r, 0));
+    await tick();
 
     // GIF tab should still be active after recording ends
     expect(container.querySelector('.recording-tab.active')).toHaveTextContent('GIF');

@@ -425,12 +425,17 @@ describe('waveformCache', () => {
         .mockResolvedValueOnce(fastBuffer)
         .mockResolvedValueOnce(slowBuffer);
 
+      vi.useFakeTimers();
+
       // Start slow first, then fast
       const slowPromise = getWaveformPeaks('http://example.com/slow.mp3', 2);
       const fastPromise = getWaveformPeaks('http://example.com/fast.mp3', 2);
 
       const fastResult = await fastPromise;
+      await vi.advanceTimersByTimeAsync(51);
       const slowResult = await slowPromise;
+
+      vi.useRealTimers();
 
       expect(fastResult).not.toBeNull();
       expect(slowResult).not.toBeNull();

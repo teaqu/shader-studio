@@ -27,7 +27,7 @@
     "dev:ui": "npm run dev -w ui",
     "dev:shader-explorer": "npm run dev -w shader-explorer",
     "dev:snippet-library": "npm run dev -w snippet-library",
-    "test": "npm run test --workspaces --if-present",
+    "test": "vitest run",
     "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist types/node_modules types/dist",
     "watch:extension": "npm run watch -w extension"
   },

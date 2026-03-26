@@ -1,5 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { tick } from 'svelte';
 import AssetBrowser from '../../../lib/components/config/AssetBrowser.svelte';
 
 describe('AssetBrowser', () => {
@@ -83,7 +84,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles(sampleFiles);
 
       // Wait for reactivity
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('noise.png')).toBeInTheDocument();
       expect(screen.getByText('gradient.jpg')).toBeInTheDocument();
@@ -100,7 +101,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('Same Folder')).toBeInTheDocument();
       expect(screen.getByText('Workspace')).toBeInTheDocument();
@@ -115,7 +116,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles([]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('No files found')).toBeInTheDocument();
     });
@@ -131,7 +132,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const noiseCard = screen.getByText('noise.png').closest('button');
       await fireEvent.click(noiseCard!);
@@ -148,7 +149,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const skyCard = screen.getByText('sky.hdr').closest('button');
       await fireEvent.click(skyCard!);
@@ -167,11 +168,11 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const searchInput = screen.getByPlaceholderText('Search files...');
       await fireEvent.input(searchInput, { target: { value: 'noise' } });
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('noise.png')).toBeInTheDocument();
       expect(screen.queryByText('gradient.jpg')).not.toBeInTheDocument();
@@ -189,7 +190,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       mockPostMessage.mockClear();
 
@@ -214,7 +215,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const noiseCard = screen.getByText('noise.png').closest('button');
       expect(noiseCard?.classList.contains('selected')).toBe(true);
@@ -233,7 +234,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const skyCard = screen.getByText('sky.hdr').closest('button');
       expect(skyCard?.classList.contains('selected')).toBe(true);
@@ -255,7 +256,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles([
         { name: 'clip.mp4', workspacePath: '@/videos/clip.mp4', thumbnailUri: 'webview://clip.mp4', isSameDirectory: false },
       ]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const card = screen.getByText('clip.mp4').closest('button')!;
       const video = card.querySelector('video');
@@ -277,7 +278,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles([
         { name: 'song.mp3', workspacePath: '@/music/song.mp3', thumbnailUri: 'webview://song.mp3', isSameDirectory: false },
       ]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const card = screen.getByText('song.mp3').closest('button')!;
       const waveformThumbnail = card.querySelector('.audio-waveform-thumbnail');
@@ -297,7 +298,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles([
         { name: 'song.mp3', workspacePath: '@/music/song.mp3', thumbnailUri: 'webview://song.mp3', isSameDirectory: false },
       ]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const card = screen.getByText('song.mp3').closest('button')!;
       const waveformThumbnail = card.querySelector('.audio-waveform-thumbnail')!;
@@ -316,7 +317,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles([
         { name: 'clip.mp4', workspacePath: '@/videos/clip.mp4', thumbnailUri: 'webview://clip.mp4', isSameDirectory: false },
       ]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const card = screen.getByText('clip.mp4').closest('button')!;
       const video = card.querySelector('video')!;
@@ -343,7 +344,7 @@ describe('AssetBrowser', () => {
       simulateWorkspaceFiles([
         { name: 'texture.png', workspacePath: '@/textures/texture.png', thumbnailUri: 'webview://texture.png', isSameDirectory: false },
       ]);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const card = screen.getByText('texture.png').closest('button')!;
       const img = card.querySelector('img');
@@ -379,7 +380,7 @@ describe('AssetBrowser', () => {
         },
       }));
 
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('noise.png')).toBeInTheDocument();
       expect(screen.getByText('gradient.jpg')).toBeInTheDocument();
@@ -425,7 +426,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Should only show 8 files on the first page
       const fileCards = screen.getAllByRole('button').filter(b => b.classList.contains('file-card'));
@@ -444,7 +445,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Should have file0..file7 on first page
       expect(screen.getByText('file0.png')).toBeInTheDocument();
@@ -452,7 +453,7 @@ describe('AssetBrowser', () => {
       // Click next page button
       const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Now should show file8..file15
       expect(screen.getByText('file8.png')).toBeInTheDocument();
@@ -468,17 +469,17 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Go to page 2
       const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Go back to page 1
       const prevBtn = container.querySelector('.codicon-chevron-left')!.closest('button')!;
       await fireEvent.click(prevBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.getByText('file0.png')).toBeInTheDocument();
     });
@@ -492,12 +493,12 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Click on page 3 button
       const page3Btn = screen.getByText('3');
       await fireEvent.click(page3Btn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Page 3: files 16-19
       expect(screen.getByText('file16.png')).toBeInTheDocument();
@@ -512,7 +513,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const prevBtn = container.querySelector('.codicon-chevron-left')!.closest('button')!;
       expect(prevBtn).toBeDisabled();
@@ -527,12 +528,12 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Go to last page (page 3)
       const page3Btn = screen.getByText('3');
       await fireEvent.click(page3Btn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       expect(nextBtn).toBeDisabled();
@@ -547,19 +548,19 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(manyFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Go to page 2
       const nextBtn = container.querySelector('.codicon-chevron-right')!.closest('button')!;
       await fireEvent.click(nextBtn);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       expect(screen.queryByText('file0.png')).not.toBeInTheDocument();
 
       // Type in search => should reset to page 1
       const searchInput = screen.getByPlaceholderText('Search files...');
       await fireEvent.input(searchInput, { target: { value: 'file1' } });
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // file1.png, file10..file19 match - should show first page of those results
       expect(screen.getByText('file1.png')).toBeInTheDocument();
@@ -591,7 +592,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const noiseCard = screen.getByText('noise.png').closest('button');
       expect(noiseCard?.classList.contains('selected')).toBe(true);
@@ -607,7 +608,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const noiseCard = screen.getByText('noise.png').closest('button');
       expect(noiseCard?.classList.contains('selected')).toBe(false);
@@ -624,11 +625,11 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       const searchInput = screen.getByPlaceholderText('Search files...');
       await fireEvent.input(searchInput, { target: { value: 'materials' } });
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Only stone.png is in @/materials/
       expect(screen.getByText('stone.png')).toBeInTheDocument();
@@ -651,7 +652,7 @@ describe('AssetBrowser', () => {
           data: { type: 'somethingElse', payload: {} },
         }));
       }
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Should still be in loading state
       expect(screen.getByText('Loading files...')).toBeInTheDocument();
@@ -668,7 +669,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Click a workspace file (not in same directory)
       const stoneCard = screen.getByText('stone.png').closest('button');
@@ -686,7 +687,7 @@ describe('AssetBrowser', () => {
       });
 
       simulateWorkspaceFiles(sampleFiles);
-      await new Promise(r => setTimeout(r, 10));
+      await tick();
 
       // Click a same-directory file
       const gradientCard = screen.getByText('gradient.jpg').closest('button');
