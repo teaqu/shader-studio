@@ -236,6 +236,42 @@ describe("GlslParser", () => {
     });
   });
 
+  describe("global variable analysis", () => {
+    const shader = [
+      "vec3 red = vec3(1.0, 0.0, 0.0);",
+      "float exposure = 1.5;",
+      "",
+      "float helper(vec2 uv) {",
+      "  float local = exposure * uv.x;",
+      "  return local;",
+      "}",
+      "",
+      "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+      "  vec3 red = vec3(0.0);",
+      "  fragColor = vec4(red, 1.0);",
+      "}",
+    ];
+
+    it("should extract top-level global variables", () => {
+      expect(GlslParser.getGlobalVariables(shader)).toEqual([
+        { name: "red", type: "vec3", declarationLine: 0 },
+        { name: "exposure", type: "float", declarationLine: 1 },
+      ]);
+    });
+
+    it("should return only globals used by a helper function", () => {
+      const functionInfo = GlslParser.findEnclosingFunction(shader, 4);
+      expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([
+        { name: "exposure", type: "float", declarationLine: 1 },
+      ]);
+    });
+
+    it("should exclude shadowed globals from used globals", () => {
+      const functionInfo = GlslParser.findEnclosingFunction(shader, 10);
+      expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([]);
+    });
+  });
+
   describe("detectVariableAndType", () => {
     it("should detect a variable declaration", () => {
       const varTypes = new Map<string, string>();
