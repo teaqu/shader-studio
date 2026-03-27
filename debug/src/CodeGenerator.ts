@@ -555,7 +555,9 @@ export class CodeGenerator {
     stepEdge: number | null = null,
   ): string {
     const captureVarName = '_dbgCaptured';
+    const debugFunctionName = `_dbg_${functionInfo.name}`;
     const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
+    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
 
     // Determine truncation end: outermost loop endLine or debug line
     let truncationEnd: number;
@@ -578,10 +580,12 @@ export class CodeGenerator {
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
-      if (i === functionInfo.start && !useCaptureSideChannel) {
-        line = line.replace(
-          /^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\s+\w+\s*\()/,
-          `${varInfo.type}$2`
+      if (i === functionInfo.start) {
+        line = CodeGenerator.renameFunctionSignature(
+          line,
+          functionInfo.name!,
+          debugFunctionName,
+          useCaptureSideChannel ? undefined : varInfo.type,
         );
       }
 
@@ -646,17 +650,19 @@ export class CodeGenerator {
 
     const wrapper = [];
     wrapper.push(...sourceSegments.beforeTarget);
+    wrapper.push(...originalTarget);
+    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
+    wrapper.push(...sourceSegments.afterMainImage);
+    wrapper.push('');
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
     }
     wrapper.push(...result);
-    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
-    wrapper.push(...sourceSegments.afterMainImage);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     const call = useCaptureSideChannel
-      ? CodeGenerator.generateProcedureCall(lines, functionInfo.name!, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge)
-      : CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
+      ? CodeGenerator.generateProcedureCall(lines, debugFunctionName, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge)
+      : CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -678,11 +684,17 @@ export class CodeGenerator {
     stepEdge: number | null = null,
   ): string {
     const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
+    const debugFunctionName = `_dbg_${functionInfo.name}`;
+    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
 
     // The full function body, unmodified
     const functionLines: string[] = [];
     for (let i = functionInfo.start; i <= functionInfo.end; i++) {
-      functionLines.push(lines[i]);
+      if (i === functionInfo.start) {
+        functionLines.push(CodeGenerator.renameFunctionSignature(lines[i], functionInfo.name!, debugFunctionName));
+      } else {
+        functionLines.push(lines[i]);
+      }
     }
 
     // Cap loops in the full function body
@@ -694,12 +706,14 @@ export class CodeGenerator {
     // Build the wrapper
     const wrapper: string[] = [];
     wrapper.push(...sourceSegments.beforeTarget);
-    wrapper.push(...cappedLines);
+    wrapper.push(...originalTarget);
     wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
     wrapper.push(...sourceSegments.afterMainImage);
     wrapper.push('');
+    wrapper.push(...cappedLines);
+    wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    const call = CodeGenerator.generateFunctionCall(lines, functionInfo.name!, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
+    const call = CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -843,5 +857,25 @@ export class CodeGenerator {
     }
 
     return null;
+  }
+
+  private static renameFunctionSignature(
+    line: string,
+    originalName: string,
+    newName: string,
+    newReturnType?: string,
+  ): string {
+    // Only rename the cloned debug helper signature. The original helper must stay
+    // untouched so any existing callers in preserved shader source keep working.
+    const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const signaturePattern = new RegExp(
+      `^(\\s*)(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\\s+)${escapedName}(\\s*\\()`
+    );
+
+    return line.replace(
+      signaturePattern,
+      (_match, indent, returnType, spacing, openParen) =>
+        `${indent}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
+    );
   }
 }

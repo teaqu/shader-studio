@@ -12,11 +12,12 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float circle(vec2 st)');
+      expect(result).toContain('float _dbg_circle(vec2 st)');
       expect(result).toContain('float _dbgReturn = length(st)');
       expect(result).toContain('return _dbgReturn;');
       expect(result).toContain('void mainImage');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('float result = circle(uv)');
+      expect(result).toContain('float result = _dbg_circle(uv)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });
@@ -31,9 +32,10 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float sdCircle(vec2 p, float r)');
+      expect(result).toContain('float _dbg_sdCircle(vec2 p, float r)');
       expect(result).toContain('float _dbgReturn = length(p) - r');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('float result = sdCircle(uv, 0.5)');
+      expect(result).toContain('float result = _dbg_sdCircle(uv, 0.5)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });
@@ -49,8 +51,9 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec3 getPixel(in vec2 coord, float time)');
+      expect(result).toContain('vec3 _dbg_getPixel(in vec2 coord, float time)');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec3 result = getPixel(uv, 0.5)');
+      expect(result).toContain('vec3 result = _dbg_getPixel(uv, 0.5)');
       expect(result).toContain('fragColor = vec4(result, 1.0)');
     }
   });
@@ -66,7 +69,8 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec3 _dbgArg2 = vec3(0.5);');
-      expect(result).toContain('float result = heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);');
+      expect(result).toContain('float _dbg_heightMapTracing(vec3 ori, vec3 dir, out vec3 p)');
+      expect(result).toContain('float result = _dbg_heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);');
     }
   });
 
@@ -81,8 +85,9 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float getValue()');
+      expect(result).toContain('float _dbg_getValue()');
       expect(result).toContain('float x = 0.5');
-      expect(result).toContain('float result = getValue()');
+      expect(result).toContain('float result = _dbg_getValue()');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });
@@ -98,8 +103,9 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec3 palette(float t)');
+      expect(result).toContain('vec3 _dbg_palette(float t)');
       expect(result).toContain('vec3 a = vec3(0.5)');
-      expect(result).toContain('vec3 result = palette(0.5)');
+      expect(result).toContain('vec3 result = _dbg_palette(0.5)');
       expect(result).toContain('fragColor = vec4(result, 1.0)');
     }
   });
@@ -115,8 +121,9 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec3 blend(vec3 a, vec3 b, float t)');
+      expect(result).toContain('vec3 _dbg_blend(vec3 a, vec3 b, float t)');
       expect(result).toContain('vec3 result = mix(a, b, t)');
-      expect(result).toContain('vec3 result = blend(vec3(0.5), vec3(0.5), 0.5)');
+      expect(result).toContain('vec3 result = _dbg_blend(vec3(0.5), vec3(0.5), 0.5)');
       expect(result).toContain('fragColor = vec4(result, 1.0)');
     }
   });
@@ -131,9 +138,10 @@ describe('ShaderDebugger - Uncalled Functions', () => {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec2 rotate(vec2 v, mat2 m)');
+      expect(result).toContain('vec2 _dbg_rotate(vec2 v, mat2 m)');
       expect(result).toContain('vec2 _dbgReturn = m * v');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec2 result = rotate(uv, mat2(1.0))');
+      expect(result).toContain('vec2 result = _dbg_rotate(uv, mat2(1.0))');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
   });
@@ -151,9 +159,10 @@ float sky(vec2 uv) {
     if (result) {
       expect(result).toContain('vec3 skyColor = vec3(0.5, 0.7, 1.0)');
       expect(result).toContain('float sky(vec2 uv)');
+      expect(result).toContain('float _dbg_sky(vec2 uv)');
       expect(result).toContain('float _dbgReturn = uv.y');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('float result = sky(uv)');
+      expect(result).toContain('float result = _dbg_sky(uv)');
       expect(result).toContain('fragColor = vec4(vec3(result), 1.0)');
     }
   });
@@ -169,10 +178,11 @@ float sky(vec2 uv) {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec2 foldX(vec2 p)');
+      expect(result).toContain('vec2 _dbg_foldX(vec2 p)');
       expect(result).toContain('p.x = abs(p.x)');
       expect(result).toContain('return p;');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec2 result = foldX(uv)');
+      expect(result).toContain('vec2 result = _dbg_foldX(uv)');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
   });
@@ -192,9 +202,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec2 foldX(vec2 p)');
+      expect(result).toContain('vec2 _dbg_foldX(vec2 p)');
       expect(result).toContain('p.x = abs(p.x)');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec2 result = foldX(uv)');
+      expect(result).toContain('vec2 result = _dbg_foldX(uv)');
       expect(result).not.toContain('foldX(p)');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
@@ -210,12 +221,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     expect(result).not.toBeNull();
     if (result) {
-      expect(result).toContain('vec2 dTree(vec2 p)');
-      expect(result).not.toContain('float dTree(vec2 p)');
+      expect(result).toContain('float dTree(vec2 p)');
+      expect(result).toContain('vec2 _dbg_dTree(vec2 p)');
       expect(result).toContain('vec2 size = vec2(0.1, 0.5)');
       expect(result).toContain('return size;');
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec2 result = dTree(uv)');
+      expect(result).toContain('vec2 result = _dbg_dTree(uv)');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
   });

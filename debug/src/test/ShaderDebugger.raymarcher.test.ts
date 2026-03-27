@@ -148,6 +148,10 @@ describe('Raymarcher shader - modifyShaderForDebugging', () => {
     const line = findLine('p = abs(p  )-b + 0.2');
     const result = ShaderDebugger.modifyShaderForDebugging(SHADER, line, lines[line]);
     expectHelperDebug(result, 'p');
+    expect(result).toContain('float sdBoxFrame( vec3 p, vec3 b, float e ) {');
+    expect(result).toContain('vec3 _dbg_sdBoxFrame( vec3 p, vec3 b, float e ) {');
+    expect(result).toContain('return min(sdBoxFrame(fract(p) - 0.5, vec3(0.5), 0.02), sdBox(fract(p) - 0.5, 0.1));');
+    expect(result).toContain('vec3 result = _dbg_sdBoxFrame(vec3(0.5), vec3(0.5), 0.5);');
   });
 
   it('should debug vec3 q declaration in sdBoxFrame', () => {
@@ -602,7 +606,7 @@ describe('Raymarcher shader - _dbgReturn capture shader', () => {
     // Function body should have _dbgReturn assignment (converted from return)
     expect(result).toContain('_dbgReturn');
     // Wrapper mainImage captures via 'result' variable
-    expect(result).toContain('float result = sdBox');
+    expect(result).toContain('float result = _dbg_sdBox');
     expect(result).toContain('fragColor = vec4(result, 0.0, 0.0, 0.0);');
   });
 
@@ -613,7 +617,7 @@ describe('Raymarcher shader - _dbgReturn capture shader', () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain('_dbgReturn');
-    expect(result).toContain('vec4 result = rayMarch');
+    expect(result).toContain('vec4 result = _dbg_rayMarch');
     expect(result).toContain('fragColor = result;');
   });
 
@@ -624,7 +628,7 @@ describe('Raymarcher shader - _dbgReturn capture shader', () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain('_dbgReturn');
-    expect(result).toContain('vec3 result = calcDirection');
+    expect(result).toContain('vec3 result = _dbg_calcDirection');
     expect(result).toContain('fragColor = vec4(result, 0.0);');
   });
 

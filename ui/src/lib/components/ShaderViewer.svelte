@@ -189,6 +189,8 @@
   // Reactive: notify variable capture manager when relevant state changes.
   $: if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
     notifyVariableCaptureManager();
+  } else if (initialized && variableCaptureManager && !varInspectorEnabled) {
+    variableCaptureManager.stop();
   }
 
   // Shared MenuBar props — two instances exist in different DOM positions for dockview layout

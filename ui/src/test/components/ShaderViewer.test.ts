@@ -298,6 +298,9 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
       mockVCMFactory._lastNotifyParams = params;
       mockVCMFactory._notifyCalls.push(params);
     }
+    stop() {
+      mockVCMFactory._lastNotifyParams = null;
+    }
     dispose() {
       mockVCMFactory.reset(); 
     }
