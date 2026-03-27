@@ -49,6 +49,12 @@ export class ShaderProvider {
 
     // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
+      const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
+      if (ownerShaderPath && ownerShaderPath !== shaderPath) {
+        this.logger.debug(`Sending non-mainImage buffer/common file ${shaderPath} with owner shader context ${ownerShaderPath}`);
+        await this.sendBufferLikeShaderToWebview(shaderPath, code, ownerShaderPath, editor, options);
+        return;
+      }
       const errorMsg: ErrorMessage = {
         type: "error",
         payload: ["Missing mainImage function"],
@@ -129,6 +135,12 @@ export class ShaderProvider {
 
       // Ignore GLSL files that do not contain mainImage
       if (!code.includes("mainImage")) {
+        const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
+        if (ownerShaderPath && ownerShaderPath !== shaderPath) {
+          this.logger.debug(`Sending non-mainImage path ${shaderPath} with owner shader context ${ownerShaderPath}`);
+          await this.sendBufferLikeShaderFromPath(shaderPath, code, ownerShaderPath, options);
+          return;
+        }
         const errorMsg: ErrorMessage = {
           type: "error",
           payload: ["Missing mainImage function"],
@@ -369,13 +381,90 @@ export class ShaderProvider {
     }
 
     for (const [passName, pass] of Object.entries(config.passes)) {
-      if (passName === 'Image') continue;
+      if (passName === 'Image') {
+        continue;
+      }
       if (pass && typeof pass === 'object' && 'path' in pass && pass.path && typeof pass.path === 'string') {
         bufferPathMap[passName] = PathResolver.resolvePath(shaderPath, pass.path);
       }
     }
 
     return bufferPathMap;
+  }
+
+  private resolveOwningShaderPath(filePath: string): string | null {
+    for (const shaderPath of this.activeShaders) {
+      const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
+      const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
+      const matchedPath = Object.entries(bufferPathMap).find(([passName, candidatePath]) => {
+        if (passName === 'Image') {
+          return false;
+        }
+        return candidatePath === filePath;
+      });
+      if (matchedPath) {
+        return shaderPath;
+      }
+    }
+
+    return null;
+  }
+
+  private async sendBufferLikeShaderToWebview(
+    filePath: string,
+    code: string,
+    _ownerShaderPath: string,
+    editor: vscode.TextEditor,
+    options?: { forceCleanup?: boolean },
+  ): Promise<void> {
+    const line = editor.selection.active.line;
+    const message = this.buildBufferLikeShaderMessage(
+      filePath,
+      code,
+      options,
+      this.getDebugModeEnabled()
+        ? {
+          line,
+          character: editor.selection.active.character,
+          lineContent: editor.document.lineAt(line).text,
+          filePath,
+        }
+        : undefined,
+    );
+
+    this.messenger.send(message);
+  }
+
+  private async sendBufferLikeShaderFromPath(
+    filePath: string,
+    code: string,
+    _ownerShaderPath: string,
+    options?: { forceCleanup?: boolean },
+  ): Promise<void> {
+    const message = this.buildBufferLikeShaderMessage(
+      filePath,
+      code,
+      options,
+    );
+
+    this.messenger.send(message);
+  }
+
+  private buildBufferLikeShaderMessage(
+    filePath: string,
+    code: string,
+    options?: { forceCleanup?: boolean },
+    cursorPosition?: ShaderSourceMessage["cursorPosition"],
+  ): ShaderSourceMessage {
+    return {
+      type: "shaderSource",
+      code,
+      config: null,
+      path: filePath,
+      buffers: {},
+      forceCleanup: true,
+      cursorPosition,
+    };
   }
 
 }

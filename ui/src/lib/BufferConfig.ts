@@ -39,7 +39,9 @@ export class BufferConfig {
    * Remove an input channel
    */
   removeInputChannel(channel: string): void {
-    if (!this.config.inputs) return;
+    if (!this.config.inputs) {
+      return;
+    }
 
     const newInputs = { ...this.config.inputs };
     delete newInputs[channel];
@@ -73,12 +75,20 @@ export class BufferConfig {
    * Rename an input channel key
    */
   renameInputChannel(oldName: string, newName: string): void {
-    if (!this.config.inputs || oldName === newName) return;
-    if (!newName || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) return;
-    if (this.config.inputs[newName]) return; // name already taken
+    if (!this.config.inputs || oldName === newName) {
+      return;
+    }
+    if (!newName || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
+      return;
+    }
+    if (this.config.inputs[newName]) {
+      return;
+    } // name already taken
 
     const input = this.config.inputs[oldName];
-    if (!input) return;
+    if (!input) {
+      return;
+    }
 
     const newInputs: Record<string, ConfigInput> = {};
     for (const [key, value] of Object.entries(this.config.inputs)) {

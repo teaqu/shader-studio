@@ -4,6 +4,7 @@ import type {
   ErrorMessage,
   LogMessage,
 } from "@shader-studio/types";
+import { BufferPathResolver } from "./BufferPathResolver";
 
 /**
  * Handles updating a buffer and recompiling the shader pipeline.
@@ -11,6 +12,7 @@ import type {
 export class BufferUpdater {
   private renderEngine: RenderingEngine;
   private transport: Transport;
+  private resolver: BufferPathResolver;
 
   constructor(
     renderEngine: RenderingEngine,
@@ -18,6 +20,7 @@ export class BufferUpdater {
   ) {
     this.renderEngine = renderEngine;
     this.transport = transport;
+    this.resolver = new BufferPathResolver(renderEngine);
   }
 
   public updateBuffer(
@@ -32,12 +35,12 @@ export class BufferUpdater {
     }
 
     // Check if this buffer exists in current shader
-    if (!this.bufferFileExistsInCurrentShader(path)) {
+    if (!this.resolver.bufferFileExistsInCurrentShader(path)) {
       return;
     }
 
     // Find the actual buffer name that corresponds to this file path
-    const actualBufferName = this.getBufferNameForFilePath(path);
+    const actualBufferName = this.resolver.getBufferNameForFilePath(path);
     if (!actualBufferName) {
       return;
     }
@@ -100,79 +103,5 @@ export class BufferUpdater {
     // Remove extension
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
     return nameWithoutExt || null; // Return null if empty string after removing extension
-  }
-
-  private bufferFileExistsInCurrentShader(filePath: string): boolean {
-    // Get current passes from the rendering engine
-    const passes = this.renderEngine.getPasses();
-    
-    // Check if any buffer pass has a matching file path
-    return passes.some((pass: any) => {
-      if (pass.name === "Image") {
-        return false;
-      }
-      
-      // Get the buffer file path from the shader config
-      const bufferConfig = this.getBufferConfigForPass(pass.name);
-      if (!bufferConfig || !bufferConfig.path) {
-        return false;
-      }
-      
-      // Normalize both paths for comparison (handle different path separators)
-      const normalizedIncomingPath = filePath.replace(/\\/g, '/');
-      const normalizedConfigPath = bufferConfig.path.replace(/\\/g, '/');
-      
-      // Check if the file paths match (either exact or just filename)
-      return normalizedIncomingPath === normalizedConfigPath ||
-             normalizedIncomingPath.endsWith('/' + normalizedConfigPath.split('/').pop()) ||
-             normalizedConfigPath.endsWith('/' + normalizedIncomingPath.split('/').pop());
-    });
-  }
-
-  private getBufferNameForFilePath(filePath: string): string | null {
-    // Get current passes from the rendering engine
-    const passes = this.renderEngine.getPasses();
-    
-    // Find the buffer pass that has a matching file path
-    for (const pass of passes) {
-      if (pass.name === "Image") {
-        continue;
-      }
-      
-      // Get the buffer file path from the shader config
-      const bufferConfig = this.getBufferConfigForPass(pass.name);
-      if (!bufferConfig || !bufferConfig.path) {
-        continue;
-      }
-      
-      // Normalize both paths for comparison
-      const normalizedIncomingPath = filePath.replace(/\\/g, '/');
-      const normalizedConfigPath = bufferConfig.path.replace(/\\/g, '/');
-      
-      // Check if the file paths match
-      if (normalizedIncomingPath === normalizedConfigPath ||
-          normalizedIncomingPath.endsWith('/' + normalizedConfigPath.split('/').pop()) ||
-          normalizedConfigPath.endsWith('/' + normalizedIncomingPath.split('/').pop())) {
-        return pass.name; // Return the actual buffer name (e.g., "BufferA")
-      }
-    }
-    
-    return null;
-  }
-
-  private getBufferConfigForPass(bufferName: string): { path?: string } | null {
-    // Get the current shader config from the rendering engine
-    const config = this.renderEngine.getCurrentConfig();
-    if (!config || !config.passes) {
-      return null;
-    }
-    
-    // Get the buffer pass config for the specified buffer name
-    const bufferPass = config.passes[bufferName];
-    if (!bufferPass || typeof bufferPass !== 'object' || !('path' in bufferPass)) {
-      return null;
-    }
-    
-    return bufferPass as { path?: string };
   }
 }

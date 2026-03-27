@@ -16,9 +16,13 @@ suite("GlslToJsTranspiler", () => {
     fs.writeFileSync(testFile, testShader, "utf8");
   });
   teardown(() => {
-    if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
+    if (fs.existsSync(testFile)) {
+      fs.unlinkSync(testFile);
+    }
     const outFile = testFile.replace(/\.(glsl|frag|vert)$/i, ".transpiled.js");
-    if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
+    if (fs.existsSync(outFile)) {
+      fs.unlinkSync(outFile);
+    }
   });
 
   test("transpiles GLSL to JS and writes file", () => {

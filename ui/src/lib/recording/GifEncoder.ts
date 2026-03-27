@@ -100,13 +100,19 @@ export class GifEncoderWrapper {
   }
 
   addFrame(imageData: ImageData): void {
-    if (this.cancelled) return;
+    if (this.cancelled) {
+      return;
+    }
     this.frames.push(new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength));
   }
 
   async finish(): Promise<Uint8Array> {
-    if (this.cancelled) throw new Error("Recording cancelled");
-    if (this.frames.length < 2) throw new Error("At least 2 frames required");
+    if (this.cancelled) {
+      throw new Error("Recording cancelled");
+    }
+    if (this.frames.length < 2) {
+      throw new Error("At least 2 frames required");
+    }
 
     // Concatenate frames into single buffer
     const totalLength = this.frames.reduce((acc, f) => acc + f.length, 0);

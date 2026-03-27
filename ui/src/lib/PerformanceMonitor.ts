@@ -24,7 +24,9 @@ export class PerformanceMonitor {
   }
 
   public start(): void {
-    if (this.running) return;
+    if (this.running) {
+      return;
+    }
     this.running = true;
     this.tick();
   }
@@ -43,13 +45,17 @@ export class PerformanceMonitor {
   }
 
   private tick = (): void => {
-    if (!this.running) return;
+    if (!this.running) {
+      return;
+    }
     this.poll();
     this.rafId = requestAnimationFrame(this.tick);
   };
 
   private poll(): void {
-    if (!this.stateCallback) return;
+    if (!this.stateCallback) {
+      return;
+    }
 
     const history = this.renderingEngine.getFrameTimeHistory();
     const currentFPS = this.renderingEngine.getCurrentFPS();
@@ -60,8 +66,12 @@ export class PerformanceMonitor {
     if (history.length > 0) {
       for (const t of history) {
         avg += t;
-        if (t < min) min = t;
-        if (t > max) max = t;
+        if (t < min) {
+          min = t;
+        }
+        if (t > max) {
+          max = t;
+        }
       }
       avg /= history.length;
     } else {

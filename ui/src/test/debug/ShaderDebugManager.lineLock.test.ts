@@ -55,7 +55,9 @@ describe('ShaderDebugManager - Line Lock', () => {
 
   it('should fire state callback when line lock changes', () => {
     let lastState = manager.getState();
-    manager.setStateCallback((state) => { lastState = state; });
+    manager.setStateCallback((state) => {
+      lastState = state; 
+    });
 
     manager.toggleLineLock();
     expect(lastState.isLineLocked).toBe(true);
@@ -73,7 +75,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(0.0);
 }`;
 
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - 0.5;', '/path/shader.glsl');
     manager.setCustomParameter(0, 'vec2(0.3, 0.7)');
 
@@ -96,7 +98,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(0.0);
 }`;
 
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - 0.5;', '/path/shader.glsl');
     manager.setCustomParameter(0, 'vec2(0.3, 0.7)');
 

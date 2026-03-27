@@ -49,46 +49,92 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     togglePause() {}
     stopRenderLoop() {}
     startRenderLoop() {}
-    getCurrentFPS() { return 60.0; }
-    getUniforms() { return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }; }
-    getTimeManager() { return mockTimeManager; }
+    getCurrentFPS() {
+      return 60.0; 
+    }
+    getUniforms() {
+      return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }; 
+    }
+    getTimeManager() {
+      return mockTimeManager; 
+    }
     dispose() {}
-    readPixel() { return { r: 255, g: 128, b: 64, a: 255 }; }
+    readPixel() {
+      return { r: 255, g: 128, b: 64, a: 255 }; 
+    }
     render() {}
-    updateBufferAndRecompile() { return Promise.resolve({ success: true }); }
+    updateBufferAndRecompile() {
+      return Promise.resolve({ success: true }); 
+    }
     cleanup() {}
-    compileShaderPipeline() { return Promise.resolve({ success: true }); }
-    getPasses() { return []; }
-    setInputEnabled(...args: any[]) { return mockSetInputEnabled(...args); }
+    compileShaderPipeline() {
+      return Promise.resolve({ success: true }); 
+    }
+    getPasses() {
+      return []; 
+    }
+    setInputEnabled(...args: any[]) {
+      return mockSetInputEnabled(...args); 
+    }
     setGlobalVolume() {}
-    resumeAudioContext() { return Promise.resolve(); }
+    resumeAudioContext() {
+      return Promise.resolve(); 
+    }
     resumeAllAudio() {}
     controlAudio() {}
     seekAudio() {}
     updateAudioLoopRegion() {}
     controlVideo() {}
-    getAudioState() { return null; }
-    getVideoState() { return null; }
-    getAudioFFTData() { return null; }
-    getFrameTimeHistory() { return []; }
-    getFrameTimeCount() { return 0; }
+    getAudioState() {
+      return null; 
+    }
+    getVideoState() {
+      return null; 
+    }
+    getAudioFFTData() {
+      return null; 
+    }
+    getFrameTimeHistory() {
+      return []; 
+    }
+    getFrameTimeCount() {
+      return 0; 
+    }
     createVariableCapturer() {
       return {
         setCustomUniforms() {},
         setCompileContext() {},
         clearLastError() {},
-        getLastError() { return null; },
-        issueCaptureAtPixel() { return 0; },
-        issueCaptureGrid() { return 0; },
-        collectResults() { return []; },
+        getLastError() {
+          return null; 
+        },
+        issueCaptureAtPixel() {
+          return 0; 
+        },
+        issueCaptureGrid() {
+          return 0; 
+        },
+        collectResults() {
+          return []; 
+        },
         dispose() {},
       };
     }
-    getVariableCaptureCompileContext() { return { commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] }; }
-    getCaptureUniforms() { return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] }; }
-    getCustomUniformDeclarations() { return ''; }
-    getCurrentCustomUniforms() { return []; }
-    getCustomUniformInfo() { return []; }
+    getVariableCaptureCompileContext() {
+      return { commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] }; 
+    }
+    getCaptureUniforms() {
+      return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] }; 
+    }
+    getCustomUniformDeclarations() {
+      return ''; 
+    }
+    getCurrentCustomUniforms() {
+      return []; 
+    }
+    getCustomUniformInfo() {
+      return []; 
+    }
     setCustomUniformValues() {}
     updateCustomUniformValues() {}
   };
@@ -128,6 +174,16 @@ vi.mock('../../lib/ShaderStudio', () => {
     }
 
     async handleShaderMessage(event: any): Promise<{ running: boolean }> {
+      if (event?.data?.type === 'shaderSource' && this._shaderDebugManager) {
+        this._shaderDebugManager.setShaderContext(
+          event.data.config ?? null,
+          event.data.path ?? null,
+          event.data.buffers ?? {},
+        );
+        if (typeof event.data.code === 'string') {
+          this._shaderDebugManager.setImageShaderCode(event.data.code);
+        }
+      }
       return { running: true };
     }
 
@@ -203,14 +259,22 @@ const { mockVCMFactory } = vi.hoisted(() => {
   const mockVCMFactory = {
     _callback: null as ((vars: any[]) => void) | null,
     _sampleSettingsCallback: null as (() => void) | null,
+    _lastNotifyParams: null as any,
+    _notifyCalls: [] as any[],
     sampleSize: 32,
     refreshMode: 'polling',
     pollingMs: 500,
-    inject(vars: any[]) { this._callback?.(vars); },
-    emitSampleSettings() { this._sampleSettingsCallback?.(); },
+    inject(vars: any[]) {
+      this._callback?.(vars); 
+    },
+    emitSampleSettings() {
+      this._sampleSettingsCallback?.(); 
+    },
     reset() {
       this._callback = null;
       this._sampleSettingsCallback = null;
+      this._lastNotifyParams = null;
+      this._notifyCalls = [];
       this.sampleSize = 32;
       this.refreshMode = 'polling';
       this.pollingMs = 500;
@@ -224,10 +288,19 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
     constructor(_engine: any, cb: (vars: any[]) => void) {
       mockVCMFactory._callback = cb;
     }
-    get sampleSize() { return mockVCMFactory.sampleSize; }
-    setSampleSettingsCallback(cb: () => void) { mockVCMFactory._sampleSettingsCallback = cb; }
-    notifyStateChange() {}
-    dispose() { mockVCMFactory.reset(); }
+    get sampleSize() {
+      return mockVCMFactory.sampleSize; 
+    }
+    setSampleSettingsCallback(cb: () => void) {
+      mockVCMFactory._sampleSettingsCallback = cb; 
+    }
+    notifyStateChange(params: any) {
+      mockVCMFactory._lastNotifyParams = params;
+      mockVCMFactory._notifyCalls.push(params);
+    }
+    dispose() {
+      mockVCMFactory.reset(); 
+    }
     changeSampleSize(size: number) {
       mockVCMFactory.sampleSize = size;
       mockVCMFactory.emitSampleSettings();
@@ -241,12 +314,27 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
       mockVCMFactory.emitSampleSettings();
     }
     setHistogramExpanded() {}
-    getActiveRefreshMode() { return mockVCMFactory.refreshMode; }
-    getActivePollingMs() { return mockVCMFactory.pollingMs; }
-    get gridRefreshMode() { return mockVCMFactory.refreshMode; }
-    get gridPollingMs() { return mockVCMFactory.pollingMs; }
-    get pixelRefreshMode() { return mockVCMFactory.refreshMode; }
-    get pixelPollingMs() { return mockVCMFactory.pollingMs; }
+    setLoadingStateCallback(_cb: any) {}
+    setErrorCallback(_cb: any) {}
+    setInputBindings(_config: any) {}
+    getActiveRefreshMode() {
+      return mockVCMFactory.refreshMode; 
+    }
+    getActivePollingMs() {
+      return mockVCMFactory.pollingMs; 
+    }
+    get gridRefreshMode() {
+      return mockVCMFactory.refreshMode; 
+    }
+    get gridPollingMs() {
+      return mockVCMFactory.pollingMs; 
+    }
+    get pixelRefreshMode() {
+      return mockVCMFactory.refreshMode; 
+    }
+    get pixelPollingMs() {
+      return mockVCMFactory.pollingMs; 
+    }
   },
 }));
 
@@ -320,6 +408,23 @@ describe('ShaderViewer', () => {
     await tick();
   }
 
+  async function sendMessage(data: any) {
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+    await messageHandler({ data });
+    await tick();
+  }
+
+  async function enableDebugAndVariableInspector() {
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+
+    const variableInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    await fireEvent.pointerDown(variableInspectorButton);
+    await tick();
+  }
+
   function getCtrlButton(container: HTMLElement, text: string): HTMLElement | undefined {
     return Array.from(container.querySelectorAll('.ctrl-btn')).find(
       (b) => b.textContent?.trim() === text,
@@ -357,6 +462,67 @@ describe('ShaderViewer', () => {
 
     expect(getCtrlButton(container, '64')).toHaveClass('active');
     expect(getCtrlButton(container, '32')).not.toHaveClass('active');
+  });
+
+  it('should send buffer code to variable capture when cursor moves into a buffer mainImage', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    await tick();
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float imageVar = 1.0; o = vec4(imageVar); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {},
+          BufferA: {
+            path: 'bufferA.glsl',
+            inputs: {
+              iChannel0: { type: 'texture', path: 'noise.png' },
+            },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+      bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+      buffers: {
+        BufferA: 'void mainImage(out vec4 o, vec2 uv) { float bufferVar = 2.0; o = vec4(bufferVar); }',
+      },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float imageVar = 1.0; o = vec4(imageVar); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+
+    expect(mockVCMFactory._lastNotifyParams?.code).toContain('imageVar');
+    expect(mockVCMFactory._lastNotifyParams?.code).not.toContain('bufferVar');
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float bufferVar = 2.0; o = vec4(bufferVar); }',
+        filePath: '/test/bufferA.glsl',
+      },
+    });
+
+    expect(mockVCMFactory._lastNotifyParams?.code).toContain('bufferVar');
+    expect(mockVCMFactory._lastNotifyParams?.code).not.toContain('imageVar');
+    expect(mockVCMFactory._lastNotifyParams?.inputConfig).toEqual({
+      iChannel0: { type: 'texture', path: 'noise.png' },
+    });
   });
 
   it('should show a no active shader state when no shader is loaded', async () => {
@@ -3874,7 +4040,9 @@ describe('ShaderViewer', () => {
 
       // Verify store reflects closed state
       let storeState: any;
-      performancePanelStore.subscribe((s) => { storeState = s; })();
+      performancePanelStore.subscribe((s) => {
+        storeState = s; 
+      })();
       expect(storeState.isVisible).toBe(false);
     });
   });
@@ -3909,7 +4077,9 @@ describe('ShaderViewer', () => {
       await tick();
       const scriptTabLabel = Array.from(container.querySelectorAll('.tab-label'))
         .find(el => el.textContent?.trim() === 'Script');
-      if (scriptTabLabel) { fireEvent.click(scriptTabLabel); }
+      if (scriptTabLabel) {
+        fireEvent.click(scriptTabLabel); 
+      }
       await tick();
 
       // Restore after setup so other tests are unaffected
@@ -3958,7 +4128,9 @@ describe('ShaderViewer', () => {
 
       // Enable fps column
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-      if (checkbox) { fireEvent.click(checkbox); await tick(); }
+      if (checkbox) {
+        fireEvent.click(checkbox); await tick(); 
+      }
 
       // Send some updates to build per-uniform timestamps
       for (let i = 0; i < 4; i++) {
@@ -4027,7 +4199,9 @@ describe('ShaderViewer', () => {
 
       // Enable fps display
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-      if (checkbox) { fireEvent.click(checkbox); await tick(); }
+      if (checkbox) {
+        fireEvent.click(checkbox); await tick(); 
+      }
 
       // Send 4 updates for uFast only, spread within 1s window
       for (let i = 0; i < 4; i++) {
@@ -4051,10 +4225,16 @@ describe('ShaderViewer', () => {
       uniformRows.forEach(row => {
         const nameEl = row.querySelector('.uniform-name');
         const fpsEl = row.querySelector('.uniform-fps');
-        if (!nameEl || !fpsEl) { return; }
+        if (!nameEl || !fpsEl) {
+          return; 
+        }
         const fps = parseInt(fpsEl.textContent ?? '0');
-        if (nameEl.textContent?.includes('uFast')) { fastFps = fps; }
-        if (nameEl.textContent?.includes('uStatic')) { staticFps = fps; }
+        if (nameEl.textContent?.includes('uFast')) {
+          fastFps = fps; 
+        }
+        if (nameEl.textContent?.includes('uStatic')) {
+          staticFps = fps; 
+        }
       });
       expect(fastFps).toBeGreaterThan(0);
       expect(staticFps).toBe(0);

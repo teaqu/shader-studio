@@ -43,7 +43,9 @@ export class PanelManager {
       () => {
         const cols = new Set<vscode.ViewColumn>();
         for (const p of this.panels) {
-          if (p.viewColumn !== undefined) { cols.add(p.viewColumn); }
+          if (p.viewColumn !== undefined) {
+            cols.add(p.viewColumn); 
+          }
         }
         return cols;
       },

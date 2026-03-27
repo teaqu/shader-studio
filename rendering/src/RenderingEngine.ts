@@ -14,12 +14,14 @@ import { FPSCalculator } from "./util/FPSCalculator";
 import { ConfigValidator } from "./util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
 import type { ShaderConfig } from "@shader-studio/types";
+import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult } from "./models";
 import { CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "./capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "./capture/VariableCapturer";
 import { assignInputSlots } from "./util/InputSlotAssigner";
 import type { ChannelSamplerType } from "./ShaderCompiler";
+import type { PiTexture } from "./types/piRenderer";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -355,26 +357,35 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public createVariableCapturer(): VariableCapturer {
     const gl = this.glCanvas!.getContext('webgl2')!;
-    return new VariableCapturer(gl, this.shaderCompiler, this.getVariableCaptureCompileContext());
+    return new VariableCapturer(
+      gl,
+      this.shaderCompiler,
+      this.getVariableCaptureCompileContext(),
+      (inputConfig) => this.getVariableCaptureTextureBindings(inputConfig),
+    );
   }
 
   public getVariableCaptureCompileContext(code?: string): CaptureCompileContext {
     const passes = this.shaderPipeline.getPasses();
-    const commonCode = passes.find(pass => pass.name === "common")?.shaderSrc || '';
+    const commonPass = passes.find(pass => pass.name === "common");
+    const commonPassCode = commonPass?.shaderSrc ?? '';
+    // When capturing the common pass itself, avoid injecting common code again
+    // into the temporary capture shader or GLSL symbols will be defined twice.
+    const isCapturingCommonPass = !!(code && commonPass && commonPass.shaderSrc === code);
 
     const targetPass = (code
       ? passes.find(pass => pass.name !== "common" && pass.shaderSrc === code)
       : undefined) || passes.find(pass => pass.name === "Image") || passes.find(pass => pass.name !== "common");
 
     if (!targetPass) {
-      return { commonCode };
+      return { commonCode: isCapturingCommonPass ? '' : commonPassCode };
     }
 
     const slotAssignments = assignInputSlots(targetPass.inputs || {});
     const channelTypes: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
 
     return {
-      commonCode,
+      commonCode: isCapturingCommonPass ? '' : commonPassCode,
       slotAssignments,
       channelTypes,
     };
@@ -397,6 +408,42 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public renderForCapture(): void {
     this.frameRenderer.renderForCapture();
+  }
+
+  private getVariableCaptureTextureBindings(inputConfig: Record<string, ConfigInput>): (PiTexture | null)[] {
+    const slotAssignments = assignInputSlots(inputConfig);
+    const channelCount = Math.max(4, slotAssignments.length);
+    const defaultTexture = this.resourceManager.getDefaultTexture();
+    const passBuffers = this.bufferManager.getPassBuffers();
+    const textureBindings: (PiTexture | null)[] = new Array(channelCount).fill(defaultTexture);
+
+    for (const { slot, key } of slotAssignments) {
+      const input = inputConfig[key];
+      if (!input) {
+        textureBindings[slot] = defaultTexture;
+        continue;
+      }
+
+      if (input.type === 'texture' && input.path) {
+        const imageCache = this.resourceManager.getImageTextureCache();
+        textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
+      } else if (input.type === 'keyboard') {
+        this.resourceManager.updateKeyboardTexture(
+          this.keyboardManager.getKeyHeld(),
+          this.keyboardManager.getKeyPressed(),
+          this.keyboardManager.getKeyToggled(),
+        );
+        textureBindings[slot] = this.resourceManager.getKeyboardTexture() || defaultTexture;
+      } else if (input.type === 'buffer') {
+        textureBindings[slot] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
+      } else if (input.type === 'video' && input.path) {
+        textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
+      } else if (input.type === 'audio' && input.path) {
+        textureBindings[slot] = this.resourceManager.getAudioTexture(input.resolved_path || input.path) || this.resourceManager.getAudioTexture(input.path) || defaultTexture;
+      }
+    }
+
+    return textureBindings;
   }
 
   public getCustomUniformInfo(): { name: string; type: string }[] {

@@ -22,8 +22,10 @@ export default [{
             format: ["camelCase", "PascalCase"],
         }],
 
+        "brace-style": ["warn", "1tbs", { allowSingleLine: false }],
         curly: "warn",
         eqeqeq: "warn",
+        indent: ["warn", 2, { SwitchCase: 1 }],
         "no-throw-literal": "warn",
         semi: "warn",
     },

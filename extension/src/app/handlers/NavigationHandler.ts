@@ -12,9 +12,13 @@ export class NavigationHandler {
 
   async handleNavigateToBuffer(payload: { bufferPath: string; shaderPath: string }): Promise<void> {
     const enabled = vscode.workspace.getConfiguration('shader-studio').get('navigateOnBufferSwitch', true);
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
-    if (!payload.bufferPath || !fs.existsSync(payload.bufferPath)) return;
+    if (!payload.bufferPath || !fs.existsSync(payload.bufferPath)) {
+      return;
+    }
 
     const viewColumn = this.resolveTargetColumn(payload.shaderPath);
     const uri = vscode.Uri.file(payload.bufferPath);
@@ -24,7 +28,9 @@ export class NavigationHandler {
   async handleGoToLine(payload: { line: number; filePath: string }): Promise<void> {
     try {
       const { line, filePath } = payload;
-      if (!filePath) return;
+      if (!filePath) {
+        return;
+      }
 
       const uri = vscode.Uri.file(filePath);
       const doc = await vscode.workspace.openTextDocument(uri);
@@ -42,7 +48,9 @@ export class NavigationHandler {
     const tabGroups = vscode.window.tabGroups.all;
 
     for (const group of tabGroups) {
-      if (panelColumns.has(group.viewColumn)) continue;
+      if (panelColumns.has(group.viewColumn)) {
+        continue;
+      }
       for (const tab of group.tabs) {
         if (tab.input && typeof tab.input === 'object' && 'uri' in tab.input) {
           const tabUri = (tab.input as { uri: vscode.Uri }).uri;

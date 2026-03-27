@@ -13,7 +13,9 @@ function getNow(): number {
 function readClaims(): WebLayoutClaims {
   try {
     const raw = localStorage.getItem(WEB_SLOT_CLAIMS_KEY);
-    if (!raw) return {};
+    if (!raw) {
+      return {};
+    }
     return JSON.parse(raw) as WebLayoutClaims;
   } catch {
     return {};
@@ -35,7 +37,9 @@ function pruneStaleClaims(claims: WebLayoutClaims, now = getNow()): WebLayoutCla
 }
 
 export function getInjectedLayoutSlot(): string | null {
-  if (typeof document === "undefined") return null;
+  if (typeof document === "undefined") {
+    return null;
+  }
   return document
     .querySelector('meta[name="shader-studio-layout-slot"]')
     ?.getAttribute("content") ?? null;
@@ -69,10 +73,14 @@ export function allocateWebLayoutSlot(): string {
 }
 
 export function releaseWebLayoutSlot(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") {
+    return;
+  }
 
   const slot = sessionStorage.getItem(WEB_SLOT_SESSION_KEY);
-  if (!slot) return;
+  if (!slot) {
+    return;
+  }
 
   const claims = readClaims();
   delete claims[slot];

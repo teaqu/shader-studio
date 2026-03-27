@@ -667,14 +667,14 @@ describe('ChannelConfigModal', () => {
       });
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
-      const webviewUri = 'https://file%2B.vscode-resource.vscode-cdn.net/Users/calum/test.jpg';
+      const webviewUri = 'https://file%2B.vscode-resource.vscode-cdn.net/mock/user/test.jpg';
       await fireEvent.input(pathInput, { target: { value: webviewUri } });
 
       expect(mockOnSave).toHaveBeenCalled();
       const savedInput = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1][1];
       expect(savedInput.type).toBe('texture');
       expect(savedInput.path).not.toContain('vscode-resource');
-      expect(savedInput.path).toContain('/Users/calum/test.jpg');
+      expect(savedInput.path).toContain('/mock/user/test.jpg');
     });
 
     it('should preserve normal paths without modification', async () => {
@@ -1601,7 +1601,7 @@ describe('ChannelConfigModal', () => {
         await fireEvent.mouseUp(window);
 
         const savedInput = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1]?.[1];
-        if (savedInput && savedInput.startTime != null && savedInput.endTime != null) {
+        if (savedInput && savedInput.startTime !== null && savedInput.startTime !== undefined && savedInput.endTime !== null && savedInput.endTime !== undefined) {
           expect(savedInput.startTime).toBeLessThanOrEqual(savedInput.endTime);
         }
       }
@@ -1639,7 +1639,7 @@ describe('ChannelConfigModal', () => {
         await fireEvent.mouseUp(window);
 
         const savedInput = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1]?.[1];
-        if (savedInput && savedInput.startTime != null && savedInput.endTime != null) {
+        if (savedInput && savedInput.startTime !== null && savedInput.startTime !== undefined && savedInput.endTime !== null && savedInput.endTime !== undefined) {
           expect(savedInput.endTime).toBeGreaterThanOrEqual(savedInput.startTime);
         }
       }
@@ -2322,7 +2322,7 @@ describe('ChannelConfigModal', () => {
         if (mockOnSave.mock.calls.length > 0) {
           const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
           const saved = lastCall[1];
-          if (saved.startTime != null && saved.endTime != null) {
+          if (saved.startTime !== null && saved.startTime !== undefined && saved.endTime !== null && saved.endTime !== undefined) {
             expect(saved.startTime).toBeLessThanOrEqual(saved.endTime);
           }
         }
@@ -2364,7 +2364,7 @@ describe('ChannelConfigModal', () => {
         if (mockOnSave.mock.calls.length > 0) {
           const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
           const saved = lastCall[1];
-          if (saved.startTime != null && saved.endTime != null) {
+          if (saved.startTime !== null && saved.startTime !== undefined && saved.endTime !== null && saved.endTime !== undefined) {
             expect(saved.endTime).toBeGreaterThanOrEqual(saved.startTime);
           }
         }
@@ -2451,7 +2451,7 @@ describe('ChannelConfigModal', () => {
         if (mockOnSave.mock.calls.length > 0) {
           const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
           const saved = lastCall[1];
-          if (saved.startTime != null && saved.endTime != null) {
+          if (saved.startTime !== null && saved.startTime !== undefined && saved.endTime !== null && saved.endTime !== undefined) {
             expect(saved.startTime).toBeLessThanOrEqual(saved.endTime);
           }
         }
@@ -2473,14 +2473,14 @@ describe('ChannelConfigModal', () => {
 
       // Change path to a vscode-resource URI — extractOriginalPath is called internally
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
-      const webviewUri = 'https://file%2B.vscode-resource.vscode-cdn.net/Users/calum/music/song.mp3';
+      const webviewUri = 'https://file%2B.vscode-resource.vscode-cdn.net/mock/user/music/song.mp3';
       await fireEvent.input(pathInput, { target: { value: webviewUri } });
 
       expect(mockOnSave).toHaveBeenCalled();
       const lastCall = mockOnSave.mock.calls[mockOnSave.mock.calls.length - 1];
       const savedInput = lastCall[1];
       expect(savedInput.path).not.toContain('vscode-resource');
-      expect(savedInput.path).toContain('/Users/calum/music/song.mp3');
+      expect(savedInput.path).toContain('/mock/user/music/song.mp3');
     });
 
     it('should return plain path unchanged', async () => {
@@ -2514,7 +2514,7 @@ describe('ChannelConfigModal', () => {
       });
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
-      const encodedUri = 'https://file%2B.vscode-resource.vscode-cdn.net/Users/calum/my%20music/song%20file.mp3';
+      const encodedUri = 'https://file%2B.vscode-resource.vscode-cdn.net/mock/user/my%20music/song%20file.mp3';
       await fireEvent.input(pathInput, { target: { value: encodedUri } });
 
       expect(mockOnSave).toHaveBeenCalled();

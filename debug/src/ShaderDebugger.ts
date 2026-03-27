@@ -86,7 +86,7 @@ export class ShaderDebugger {
       result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge);
     } else {
       console.log('[ShaderDebug] Path: one-liner wrapper');
-      result = CodeGenerator.wrapOneLinerForDebugging(lineContent, varInfo, normalizeMode, stepEdge);
+      result = CodeGenerator.wrapOneLinerForDebugging(actualLineContent, varInfo, normalizeMode, stepEdge);
     }
 
     console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);

@@ -24,8 +24,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     manager.toggleEnabled();
   });
 
-  it('should cache code via setOriginalCode', () => {
-    manager.setOriginalCode(shader);
+  it('should cache code via setImageShaderCode', () => {
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
 
     const state = manager.getState();
@@ -41,7 +41,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   });
 
   it('should extract function context with correct name, return type, and params', () => {
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
 
     const ctx = manager.getState().functionContext!;
@@ -56,7 +56,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   });
 
   it('should set isFunction false for mainImage', () => {
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(10, '  vec2 uv = fragCoord / iResolution.xy;', '/path/shader.glsl');
 
     const ctx = manager.getState().functionContext!;
@@ -65,7 +65,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   });
 
   it('should preserve custom parameters when cursor moves within same function', () => {
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
     manager.setCustomParameter(0, 'vec2(1.0)');
 
@@ -77,7 +77,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   });
 
   it('should clear custom parameters when switching to a different function', () => {
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
     manager.setCustomParameter(0, 'vec2(1.0)');
     manager.setLoopMaxIterations(0, 10);
@@ -91,7 +91,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   });
 
   it('should update function context when switching between non-mainImage functions', () => {
-    manager.setOriginalCode(shader);
+    manager.setImageShaderCode(shader);
 
     manager.updateDebugLine(1, '  float d = length(p) - r;', '/path/shader.glsl');
     expect(manager.getState().functionContext!.functionName).toBe('sdf');
@@ -117,7 +117,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(0.0);
 }`;
 
-    manager.setOriginalCode(shaderWithLoop);
+    manager.setImageShaderCode(shaderWithLoop);
     manager.updateDebugLine(3, '    d += 0.01;', '/path/shader.glsl');
 
     const ctx = manager.getState().functionContext!;

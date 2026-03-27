@@ -76,7 +76,9 @@ export class PixelInspectorManager {
   }
 
   public handleCanvasClick(): void {
-    if (!this.state.isActive) return;
+    if (!this.state.isActive) {
+      return;
+    }
 
     // Toggle lock state
     this.state.isLocked = !this.state.isLocked;
@@ -125,7 +127,9 @@ export class PixelInspectorManager {
   }
 
   private readPixelAtPosition(canvasX: number, canvasY: number): void {
-    if (!this.glCanvas || !this.renderingEngine) return;
+    if (!this.glCanvas || !this.renderingEngine) {
+      return;
+    }
 
     const pixel = this.renderingEngine.readPixel(
       Math.floor(canvasX),

@@ -7,7 +7,9 @@ export class LayoutStateStore {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async save(layoutSlot: string | null, state: unknown): Promise<void> {
-    if (!layoutSlot) return;
+    if (!layoutSlot) {
+      return;
+    }
 
     const layouts = this.context.workspaceState.get<Record<string, unknown>>(LayoutStateStore.LAYOUTS_KEY, {});
     const nextLayouts = { ...layouts };
@@ -22,7 +24,9 @@ export class LayoutStateStore {
   }
 
   load(layoutSlot: string | null): unknown {
-    if (!layoutSlot) return null;
+    if (!layoutSlot) {
+      return null;
+    }
 
     const layouts = this.context.workspaceState.get<Record<string, unknown>>(LayoutStateStore.LAYOUTS_KEY, {});
     if (layoutSlot in layouts) {

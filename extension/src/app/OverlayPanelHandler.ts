@@ -59,7 +59,9 @@ export class OverlayPanelHandler {
   ): Promise<void> {
     try {
       const { bufferName, shaderPath: mainShaderPath } = payload;
-      if (!mainShaderPath || !bufferName) return;
+      if (!mainShaderPath || !bufferName) {
+        return;
+      }
 
       // Load the config to find the buffer's relative path
       const configPath = mainShaderPath.replace(/\.(glsl|frag)$/, '.sha.json');

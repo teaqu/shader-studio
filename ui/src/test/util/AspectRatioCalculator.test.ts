@@ -19,14 +19,20 @@ vi.mock('../../lib/stores/aspectRatioStore', () => ({
 vi.mock('../../lib/stores/resolutionStore', () => ({
   parseDimension: (value: string, referenceSize: number) => {
     const trimmed = value.trim();
-    if (!trimmed) return undefined;
+    if (!trimmed) {
+      return undefined;
+    }
     if (trimmed.endsWith('%')) {
       const pct = parseFloat(trimmed);
-      if (isNaN(pct) || pct <= 0) return undefined;
+      if (isNaN(pct) || pct <= 0) {
+        return undefined;
+      }
       return Math.round(referenceSize * pct / 100);
     }
     const num = parseFloat(trimmed.replace(/px$/i, ''));
-    if (isNaN(num) || num <= 0) return undefined;
+    if (isNaN(num) || num <= 0) {
+      return undefined;
+    }
     return Math.round(num);
   },
 }));

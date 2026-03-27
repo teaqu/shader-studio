@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EditorOverlayManager } from '../lib/EditorOverlayManager';
+import type { ShaderSourceMessage } from '@shader-studio/types';
 
 describe('EditorOverlayManager', () => {
   beforeEach(() => {
@@ -32,9 +33,10 @@ describe('EditorOverlayManager', () => {
           path: '/test/shader.glsl',
           code: 'old code',
           config: null,
+          buffers: {},
           pathMap: {},
         },
-      })),
+      } as MessageEvent<ShaderSourceMessage>)),
       handleShaderMessage: vi.fn(),
     };
 

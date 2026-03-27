@@ -18,8 +18,10 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/svelte": "^5.2.8",
     "@testing-library/user-event": "^14.5.2",
+    "eslint-plugin-svelte": "^2.46.1",
     "svelte": "^5.28.1",
-    "svelte-check": "^4.0.8"
+    "svelte-check": "^4.0.8",
+    "svelte-eslint-parser": "^0.43.0"
   },
   "dependencies": {
     "@shader-studio/glsl-debug": "*",

@@ -39,8 +39,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       expect(result).toContain('return q;');
       expect(result).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)');
       expect(result).toContain('vec2 result = sdCutHollowSphere(vec3(0.5), 0.5, 0.5, 0.5)');
-      expect(result).not.toContain('sdCutHollowSphere(-p,');
-      expect(result).not.toContain('jt');
+      expect(result).toContain('vec2 result = sdCutHollowSphere(-p, 0.7, 0.0 + jt * 0.05, 0.01);');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
   });
@@ -88,8 +87,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('float result = sphere(vec3(0.5), 0.5)');
-      expect(result).not.toContain('sphere(p, 1.0)');
-      expect(result).not.toContain('sphere(p + vec3(1.0), 2.0)');
+      expect(result).toContain('return sphere(p, 1.0);');
+      expect(result).toContain('return sphere(p + vec3(1.0), 2.0);');
     }
   });
 });

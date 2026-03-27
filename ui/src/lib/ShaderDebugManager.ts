@@ -1,6 +1,14 @@
 import type { ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
+import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
+
+export interface DebugTarget {
+  passName: string;
+  code: string;
+  config: ShaderConfig | null;
+  inputConfig?: Record<string, ConfigInput>;
+}
 
 export class ShaderDebugManager {
   private state: ShaderDebugState = {
@@ -18,6 +26,7 @@ export class ShaderDebugManager {
     debugError: null,
     isVariableInspectorEnabled: false,
     capturedVariables: [],
+    activeBufferName: 'Image',
   };
 
   private stateCallback: ((state: ShaderDebugState) => void) | null = null;
@@ -25,9 +34,82 @@ export class ShaderDebugManager {
   private onCaptureStateChanged: (() => void) | null = null;
   private customParameters: Map<number, string> = new Map();
   private loopMaxIterations: Map<number, number> = new Map();
-  private lastOriginalCode: string | null = null;
+  private imageShaderCode: string | null = null;
   private lockedFilePath: string | null = null;
   private lastFunctionName: string | null = null;
+
+  private imagePassPath: string | null = null;
+  private bufferPathMap: Record<string, string> = {}; // bufferName → filePath
+  private bufferCodes: Record<string, string> = {};
+
+  public setShaderContext(
+    config: ShaderConfig | null,
+    imagePath: string | null,
+    buffers: Record<string, string>,
+  ): void {
+    this.bufferCodes = buffers;
+    this.bufferPathMap = {};
+    const passes = config?.passes ?? {};
+    for (const [name, pass] of Object.entries(passes)) {
+      if (pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string') {
+        this.bufferPathMap[name] = pass.path;
+      }
+    }
+    this.imagePassPath = imagePath && this.isBufferPath(imagePath) ? null : imagePath;
+  }
+
+  public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
+    const passName = this.state.activeBufferName;
+    const code = passName === 'Image'
+      ? imageCode
+      : this.bufferCodes[passName] ?? imageCode;
+    const passConfig = config?.passes[passName];
+    const inputConfig = passConfig && 'inputs' in passConfig ? passConfig.inputs : undefined;
+
+    if (!config || passName === 'Image' || passName === 'common') {
+      return { passName, code, config, inputConfig };
+    }
+
+    if (!passConfig || !('inputs' in passConfig)) {
+      return { passName, code, config, inputConfig };
+    }
+
+    return {
+      passName,
+      code,
+      config: {
+        ...config,
+        passes: {
+          ...config.passes,
+          Image: { ...config.passes.Image, inputs: passConfig.inputs },
+        },
+      },
+      inputConfig,
+    };
+  }
+
+  private resolveActiveBuffer(filePath: string | null): string {
+    if (!filePath) {
+      return 'Image';
+    }
+    if (this.imagePassPath && filePath === this.imagePassPath) {
+      return 'Image';
+    }
+    for (const [name, path] of Object.entries(this.bufferPathMap)) {
+      if (filePath === path || filePath.endsWith('/' + path) || path.endsWith('/' + filePath.split('/').pop())) {
+        return name;
+      }
+    }
+    return 'Image';
+  }
+
+  private isBufferPath(filePath: string): boolean {
+    return Object.values(this.bufferPathMap).some((path) =>
+      filePath === path ||
+      filePath.endsWith('/' + path) ||
+      path.endsWith('/' + filePath.split('/').pop()),
+    );
+  }
 
   public setStateCallback(callback: (state: ShaderDebugState) => void): void {
     this.stateCallback = callback;
@@ -67,17 +149,19 @@ export class ShaderDebugManager {
     this.state.lineContent = lineContent;
     this.state.filePath = filePath;
     this.state.debugError = null;
+    this.state.activeBufferName = this.resolveActiveBuffer(filePath);
     this.updateActiveState();
     this.updateFunctionContext();
     this.notifyStateChange();
+    this.onCaptureStateChanged?.();
   }
 
   public getState(): ShaderDebugState {
     return { ...this.state };
   }
 
-  public setOriginalCode(code: string): void {
-    this.lastOriginalCode = code;
+  public setImageShaderCode(code: string): void {
+    this.imageShaderCode = code;
   }
 
   public setCustomParameter(index: number, value: string | null): void {
@@ -204,15 +288,22 @@ export class ShaderDebugManager {
   }
 
   private updateFunctionContext(): void {
-    if (!this.lastOriginalCode || this.state.currentLine === null) {
+    const codeToAnalyse = this.getDebugTarget(this.imageShaderCode ?? '', null).code;
+    if (!codeToAnalyse || this.state.currentLine === null) {
       this.state.functionContext = null;
       return;
     }
 
-    const context = ShaderDebugger.extractFunctionContext(
-      this.lastOriginalCode,
-      this.state.currentLine,
-    );
+    let context: ReturnType<typeof ShaderDebugger.extractFunctionContext> | null = null;
+    try {
+      context = ShaderDebugger.extractFunctionContext(
+        codeToAnalyse,
+        this.state.currentLine,
+      );
+    } catch {
+      this.state.functionContext = null;
+      return;
+    }
 
     // Clear custom params when switching functions
     const newFunctionName = context?.functionName ?? null;

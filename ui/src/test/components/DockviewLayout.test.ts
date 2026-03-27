@@ -128,7 +128,7 @@ describe('DockviewLayout', () => {
     vi.mocked(layoutStore.load).mockReturnValue(null);
   });
 
-function renderLayout(props: Record<string, any> = {}) {
+  function renderLayout(props: Record<string, any> = {}) {
     return render(DockviewLayout, {
       props: {
         mountPreview: () => {},
@@ -1045,7 +1045,9 @@ function renderLayout(props: Record<string, any> = {}) {
       const ref: { resetLayout: (() => void) | null } = { resetLayout: null };
       render(DockviewLayout, {
         props: rerenderProps({ showDebugPanel: true }),
-        events: { ready: (e: any) => { ref.resetLayout = e.detail.resetLayout; } },
+        events: { ready: (e: any) => {
+          ref.resetLayout = e.detail.resetLayout; 
+        } },
       });
       await tick();
 

@@ -959,9 +959,13 @@ describe('FrameTimesPanel Component', () => {
     // visibleAvg is tested indirectly through the component,
     // but we verify the algorithm directly here.
     function visibleAvg(values: number[]): number {
-      if (values.length === 0) return 0;
+      if (values.length === 0) {
+        return 0;
+      }
       let sum = 0;
-      for (const v of values) sum += v;
+      for (const v of values) {
+        sum += v;
+      }
       return sum / values.length;
     }
 
@@ -1061,7 +1065,9 @@ describe('FrameTimesPanel Component', () => {
         let bestDist = Infinity;
         for (const hz of common) {
           const dist = Math.abs(rawHz - hz);
-          if (dist < bestDist) { bestDist = dist; best = hz; }
+          if (dist < bestDist) {
+            bestDist = dist; best = hz; 
+          }
         }
         return best;
       }
@@ -1080,13 +1086,17 @@ describe('FrameTimesPanel Component', () => {
     // Groups aligned to absolute frame indices via frameCount.
     // Completed groups are stable even when raw history is a sliding window.
     function downsampleHistory(raw: number[], downsample: number, frameCount: number): number[] {
-      if (downsample <= 1) return raw;
+      if (downsample <= 1) {
+        return raw;
+      }
       const result: number[] = [];
       const firstAbsIdx = frameCount - raw.length;
       const skip = (downsample - (firstAbsIdx % downsample)) % downsample;
       for (let i = skip; i + downsample <= raw.length; i += downsample) {
         let sum = 0;
-        for (let j = i; j < i + downsample; j++) sum += raw[j];
+        for (let j = i; j < i + downsample; j++) {
+          sum += raw[j];
+        }
         result.push(sum / downsample);
       }
       return result;
@@ -1205,13 +1215,17 @@ describe('FrameTimesPanel Component', () => {
       // Without it (old method), groups are anchored to array index 0,
       // so when the sliding window shifts, all group values change.
       function oldDownsample(raw: number[], downsample: number): number[] {
-        if (downsample <= 1) return raw;
+        if (downsample <= 1) {
+          return raw;
+        }
         const result: number[] = [];
         const fullGroups = Math.floor(raw.length / downsample);
         for (let g = 0; g < fullGroups; g++) {
           let sum = 0;
           const base = g * downsample;
-          for (let j = base; j < base + downsample; j++) sum += raw[j];
+          for (let j = base; j < base + downsample; j++) {
+            sum += raw[j];
+          }
           result.push(sum / downsample);
         }
         return result;
@@ -1247,7 +1261,9 @@ describe('FrameTimesPanel Component', () => {
         // Build up to full window, then slide 10 more frames
         for (let frame = 0; frame < MAX + 10; frame++) {
           allFrames.push(frame);
-          if (allFrames.length > MAX) allFrames = allFrames.slice(-MAX);
+          if (allFrames.length > MAX) {
+            allFrames = allFrames.slice(-MAX);
+          }
 
           const fc = frame + 1;
           const result = downsampleHistory([...allFrames], d, fc);
@@ -1280,13 +1296,17 @@ describe('FrameTimesPanel Component', () => {
   // ─── Visible slice logic ───────────────────────────────────────
   describe('Visible slice logic', () => {
     function downsampleHistory(raw: number[], downsample: number, frameCount: number): number[] {
-      if (downsample <= 1) return raw;
+      if (downsample <= 1) {
+        return raw;
+      }
       const result: number[] = [];
       const firstAbsIdx = frameCount - raw.length;
       const skip = (downsample - (firstAbsIdx % downsample)) % downsample;
       for (let i = skip; i + downsample <= raw.length; i += downsample) {
         let sum = 0;
-        for (let j = i; j < i + downsample; j++) sum += raw[j];
+        for (let j = i; j < i + downsample; j++) {
+          sum += raw[j];
+        }
         result.push(sum / downsample);
       }
       return result;
@@ -1393,7 +1413,9 @@ describe('FrameTimesPanel Component', () => {
       function pickTickInterval(totalTimeSec: number): number {
         const tickIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
         for (const t of tickIntervals) {
-          if (totalTimeSec / t <= 8) return t;
+          if (totalTimeSec / t <= 8) {
+            return t;
+          }
         }
         return 60;
       }
