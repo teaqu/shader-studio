@@ -129,6 +129,35 @@ describe('CodeGenerator - Custom Parameters', () => {
       expect(result).toContain('sdf(vec2(0.5, 0.5))');
       expect(result).not.toContain('vec2 uv = fragCoord / iResolution.xy');
     });
+
+    it('should append the debug clone after later helper definitions needed by the target line', () => {
+      const lines = [
+        'float b(vec3 p);',
+        'float a(vec3 p) {',
+        '  float d = b(p);',
+        '  return d;',
+        '}',
+        'float b(vec3 p) {',
+        '  return length(p);',
+        '}',
+        'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+        '  fragColor = vec4(0.0);',
+        '}',
+      ];
+      const functionInfo: FunctionInfo = { name: 'a', start: 1, end: 4 };
+      const varInfo: VarInfo = { name: 'd', type: 'float' };
+
+      const result = CodeGenerator.wrapFunctionForDebugging(
+        lines, functionInfo, 2, varInfo, [], new Map()
+      );
+
+      expect(result).toContain('float a(vec3 p) {');
+      expect(result).toContain('float b(vec3 p) {');
+      expect(result).toContain('float _dbg_a(vec3 p) {');
+      expect(result.indexOf('float b(vec3 p) {')).toBeLessThan(result.indexOf('float _dbg_a(vec3 p) {'));
+      expect(result.indexOf('float a(vec3 p) {')).toBeLessThan(result.indexOf('float _dbg_a(vec3 p) {'));
+      expect(result).toContain('float result = _dbg_a(vec3(0.5));');
+    });
   });
 
   describe('wrapFunctionForDebugging with loopMaxIterations', () => {

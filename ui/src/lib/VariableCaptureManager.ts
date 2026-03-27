@@ -269,8 +269,19 @@ export class VariableCaptureManager {
 
   dispose(): void {
     this.disposed = true;
+    this.stop();
+  }
+
+  stop(): void {
+    this.dirty = false;
     this.loopRunning = false;
+    this.collecting = false;
+    this.lastParams = null;
+    this.pendingResults = [];
+    this.expectedCount = 0;
+    this.emptyCollectFrames = 0;
     this.emitLoadingState(false);
+    this.emitErrorState(null);
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
@@ -440,10 +451,21 @@ export class VariableCaptureManager {
     }
 
     if (issued === 0) {
-      this.emitErrorState('Failed to capture variables');
+      const captureError = this.capturer.getLastError();
+      this.clearPollTimeout();
+      this.lastParams = null;
+      this.emitErrorState(captureError ? `Failed to capture variables:\n${captureError}` : 'Failed to capture variables');
       this.finishCollection([]);
       return;
     }
+
+    const partialCaptureError = this.capturer.getLastError();
+    if (partialCaptureError) {
+      this.clearPollTimeout();
+      this.lastParams = null;
+      this.emitErrorState(`Failed to capture some variables:\n${partialCaptureError}`);
+    }
+
     this.expectedCount = issued;
     this.collecting = true;
     this.emitLoadingState(true);

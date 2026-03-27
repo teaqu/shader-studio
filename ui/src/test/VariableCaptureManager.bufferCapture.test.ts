@@ -64,6 +64,7 @@ describe('VariableCaptureManager — buffer capture', () => {
       issueCaptureGrid: vi.fn().mockReturnValue(1),
       issueCaptureAtPixel: vi.fn().mockReturnValue(1),
       collectResults: vi.fn().mockReturnValue([]),
+      getLastError: vi.fn().mockReturnValue(null),
       clearLastError: vi.fn(),
       dispose: vi.fn(),
     };

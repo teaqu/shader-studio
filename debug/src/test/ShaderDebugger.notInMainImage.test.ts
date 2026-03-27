@@ -35,10 +35,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec2 sdCutHollowSphere( vec3 p, float r, float h, float t )');
+      expect(result).toContain('vec2 _dbg_sdCutHollowSphere( vec3 p, float r, float h, float t )');
       expect(result).toContain('vec2 q = vec2( length(p.xz), p.y )');
       expect(result).toContain('return q;');
       expect(result).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)');
-      expect(result).toContain('vec2 result = sdCutHollowSphere(vec3(0.5), 0.5, 0.5, 0.5)');
+      expect(result).toContain('vec2 result = _dbg_sdCutHollowSphere(vec3(0.5), 0.5, 0.5, 0.5)');
       expect(result).toContain('vec2 result = sdCutHollowSphere(-p, 0.7, 0.0 + jt * 0.05, 0.01);');
       expect(result).toContain('fragColor = vec4(result, 0.0, 1.0)');
     }
@@ -60,7 +61,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).not.toBeNull();
     if (result) {
       expect(result).toContain('vec2 uv = fragCoord / iResolution.xy');
-      expect(result).toContain('vec2 result = sdCircle(uv, 0.5)');
+      expect(result).toContain('vec2 _dbg_sdCircle(vec2 p, float r)');
+      expect(result).toContain('vec2 result = _dbg_sdCircle(uv, 0.5)');
     }
   });
 
@@ -86,7 +88,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     expect(result).not.toBeNull();
     if (result) {
-      expect(result).toContain('float result = sphere(vec3(0.5), 0.5)');
+      expect(result).toContain('float _dbg_sphere(vec3 p, float r)');
+      expect(result).toContain('float result = _dbg_sphere(vec3(0.5), 0.5)');
       expect(result).toContain('return sphere(p, 1.0);');
       expect(result).toContain('return sphere(p + vec3(1.0), 2.0);');
     }

@@ -171,7 +171,7 @@ describe('Brace-on-next-line - generateCaptureShader for _dbgReturn', () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain('_dbgReturn');
-    expect(result).toContain('float result = sdBoxFrame');
+    expect(result).toContain('float result = _dbg_sdBoxFrame');
   });
 
   it('should generate capture for _dbgReturn on sdBox return', () => {
@@ -181,7 +181,7 @@ describe('Brace-on-next-line - generateCaptureShader for _dbgReturn', () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain('_dbgReturn');
-    expect(result).toContain('float result = sdBox');
+    expect(result).toContain('float result = _dbg_sdBox');
   });
 
   it('should generate capture for regular var p on sdBoxFrame return', () => {
@@ -190,9 +190,8 @@ describe('Brace-on-next-line - generateCaptureShader for _dbgReturn', () => {
       SHADER_BRACE_NEXT_LINE, line, 'p', 'vec3', new Map(), new Map(), false
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('vec3 result = sdBoxFrame');
-    // Should NOT contain the original return (which would cause type mismatch)
-    expect(result).not.toMatch(/return min\(min\(/);
+    expect(result).toContain('vec3 result = _dbg_sdBoxFrame');
+    expect(result).toContain('return p;');
   });
 
   it('should generate capture for regular var q on sdBoxFrame return', () => {
@@ -201,9 +200,8 @@ describe('Brace-on-next-line - generateCaptureShader for _dbgReturn', () => {
       SHADER_BRACE_NEXT_LINE, line, 'q', 'vec3', new Map(), new Map(), false
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('vec3 result = sdBoxFrame');
-    // Should NOT contain the original return
-    expect(result).not.toMatch(/return min\(min\(/);
+    expect(result).toContain('vec3 result = _dbg_sdBoxFrame');
+    expect(result).toContain('return q;');
   });
 });
 
@@ -224,10 +222,9 @@ describe('Brace-on-next-line - ALL vars capturable on return lines', () => {
         SHADER_BRACE_NEXT_LINE, line, v.varName, v.varType, new Map(), new Map(), false
       );
       expect(shader, `capture shader for '${v.varName}' should not be null`).not.toBeNull();
-      // Should not contain the original return (would cause type mismatch for non-_dbgReturn)
       if (v.varName !== '_dbgReturn') {
-        expect(shader, `capture shader for '${v.varName}' should not contain original return`)
-          .not.toMatch(/return length\(max\(q/);
+        expect(shader, `capture shader for '${v.varName}' should return the captured value from the clone`)
+          .toContain(`return ${v.varName};`);
       }
     }
   });
@@ -249,10 +246,9 @@ describe('Brace-on-next-line - ALL vars capturable on return lines', () => {
         SHADER_BRACE_NEXT_LINE, line, v.varName, v.varType, new Map(), new Map(), false
       );
       expect(shader, `capture shader for '${v.varName}' should not be null`).not.toBeNull();
-      // For non-_dbgReturn, the original multi-line return should be stripped
       if (v.varName !== '_dbgReturn') {
-        expect(shader, `capture for '${v.varName}' should not contain partial return`)
-          .not.toMatch(/return min\(min\(/);
+        expect(shader, `capture for '${v.varName}' should return the captured value from the clone`)
+          .toContain(`return ${v.varName};`);
       }
     }
   });

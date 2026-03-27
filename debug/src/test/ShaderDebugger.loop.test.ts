@@ -282,8 +282,8 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     if (result) {
       expect(result).toContain('vec2 foldX(vec2 p)');
       expect(result).toContain('float sdBox( vec2 p, vec2 b )');
-      expect(result).toContain('vec2 dTree(vec2 p)');
-      expect(result).not.toContain('float dTree(vec2 p)');
+      expect(result).toContain('float dTree(vec2 p)');
+      expect(result).toContain('vec2 _dbg_dTree(vec2 p)');
       // Loop is preserved with full body
       expect(result).toContain('for (int i = 0; i < 4; i++)');
       expect(result).toContain('vec2 q = foldX(p)');

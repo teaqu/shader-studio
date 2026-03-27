@@ -435,7 +435,7 @@ describe("CodeGenerator", () => {
       expect(result).toContain("return d;");
       expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord)");
       // Should call sdf with default params
-      expect(result).toContain("sdf(uv)");
+      expect(result).toContain("_dbg_sdf(uv)");
     });
 
     it("should call helper functions with qualified parameters", () => {
@@ -450,7 +450,7 @@ describe("CodeGenerator", () => {
       const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 2, varInfo);
 
       expect(result).toContain("vec2 uv = fragCoord / iResolution.xy;");
-      expect(result).toContain("vec3 result = getPixel(uv, 0.5);");
+      expect(result).toContain("vec3 result = _dbg_getPixel(uv, 0.5);");
     });
 
     it("should pass temp variables for out parameters in helper function calls", () => {
@@ -465,7 +465,7 @@ describe("CodeGenerator", () => {
       const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 2, varInfo);
 
       expect(result).toContain("vec3 _dbgArg2 = vec3(0.5);");
-      expect(result).toContain("float result = heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
+      expect(result).toContain("float result = _dbg_heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
     });
 
     it("should generate a full default call for helpers with multi-line signatures", () => {
@@ -482,7 +482,7 @@ describe("CodeGenerator", () => {
 
       const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 4, varInfo);
 
-      expect(result).toContain("vec2 result = bezier(uv, uv, uv, uv, uv, uv, 0.5);");
+      expect(result).toContain("vec2 result = _dbg_bezier(uv, uv, uv, uv, uv, uv, 0.5);");
     });
 
     it("should capture non-return vars on return lines while stripping earlier returns", () => {

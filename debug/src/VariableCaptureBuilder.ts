@@ -238,6 +238,7 @@ export class VariableCaptureBuilder {
     customParameters: Map<number, string>,
   ): string {
     const captureVarName = '_dbgCaptured';
+    const debugFunctionName = `_dbg_${functionInfo.name}`;
     const mainImageRange = (() => {
       let start = -1;
       for (let i = 0; i < lines.length; i++) {
@@ -267,6 +268,7 @@ export class VariableCaptureBuilder {
       ? lines.slice(afterTargetStart, mainImageRange.start)
       : lines.slice(afterTargetStart);
     const afterMainImage = mainImageRange ? lines.slice(mainImageRange.end + 1) : [];
+    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
 
     let truncationEnd: number;
     if (containingLoops.length > 0) {
@@ -291,10 +293,12 @@ export class VariableCaptureBuilder {
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
-      if (i === functionInfo.start && !useCaptureSideChannel) {
-        line = line.replace(
-          /^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\s+\w+\s*\()/,
-          `${varInfo.type}$2`
+      if (i === functionInfo.start) {
+        line = VariableCaptureBuilder.renameFunctionSignature(
+          line,
+          functionInfo.name!,
+          debugFunctionName,
+          useCaptureSideChannel ? undefined : varInfo.type,
         );
       }
 
@@ -370,17 +374,19 @@ export class VariableCaptureBuilder {
     const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, captureTarget);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
     const callLine = useCaptureSideChannel
-      ? `${setupCode}  ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`
-      : `${setupCode}  ${varInfo.type} result = ${functionInfo.name!}(${args.join(', ')});\n${captureOutput}`;
+      ? `${setupCode}  ${debugFunctionName}(${args.join(', ')});\n${captureOutput}`
+      : `${setupCode}  ${varInfo.type} result = ${debugFunctionName}(${args.join(', ')});\n${captureOutput}`;
 
     const wrapper = [];
     wrapper.push(...beforeTarget);
+    wrapper.push(...originalTarget);
+    wrapper.push(...afterTargetBeforeMainImage);
+    wrapper.push(...afterMainImage);
+    wrapper.push('');
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
     }
     wrapper.push(...result);
-    wrapper.push(...afterTargetBeforeMainImage);
-    wrapper.push(...afterMainImage);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     wrapper.push(callLine);
@@ -434,6 +440,26 @@ export class VariableCaptureBuilder {
       }
     }
     return lines.join('\n');
+  }
+
+  private static renameFunctionSignature(
+    line: string,
+    originalName: string,
+    newName: string,
+    newReturnType?: string,
+  ): string {
+    // Only rename the cloned debug helper signature. The original helper must stay
+    // untouched so any preserved callers still bind to the original symbol.
+    const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const signaturePattern = new RegExp(
+      `^(\\s*)(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\\s+)${escapedName}(\\s*\\()`
+    );
+
+    return line.replace(
+      signaturePattern,
+      (_match, indent, returnType, spacing, openParen) =>
+        `${indent}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
+    );
   }
 
   private static findMainImageStart(lines: string[]): number {

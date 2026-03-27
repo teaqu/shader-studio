@@ -218,6 +218,26 @@ describe('VariableCaptureManager', () => {
       expect(rafCallbacks).toHaveLength(1);
     });
 
+    it('stop cancels pending work and disposes the capturer', () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
+      mockIssueCaptureGrid.mockReturnValue(1);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      flushRAF();
+
+      expect(mockCreateVariableCapturer).toHaveBeenCalledOnce();
+
+      manager.stop();
+
+      expect(mockCapturerDispose).toHaveBeenCalledOnce();
+
+      manager.notifyStateChange(BASE_PARAMS);
+      flushRAF();
+
+      expect(mockCreateVariableCapturer).toHaveBeenCalledTimes(2);
+    });
+
     it('second notifyStateChange while loop is running does not schedule a second RAF', () => {
       manager.notifyStateChange(BASE_PARAMS);
       manager.notifyStateChange(BASE_PARAMS);
@@ -641,6 +661,7 @@ describe('VariableCaptureManager', () => {
     });
 
     it('surfaces capture compile errors when no shaders issue successfully', () => {
+      const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
       (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(0);
@@ -655,11 +676,40 @@ describe('VariableCaptureManager', () => {
         getLastError: vi.fn().mockReturnValue('Shader compile failed: missing saturate'),
       });
 
-      manager.notifyStateChange(BASE_PARAMS);
+      manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
       flushRAF();
 
-      expect(onError).toHaveBeenCalledWith('Failed to capture variables');
+      expect(onError).toHaveBeenCalledWith('Failed to capture variables:\nShader compile failed: missing saturate');
       expect(onUpdate).toHaveBeenCalledWith([]);
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('stops polling after a partial capture compile failure', () => {
+      const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
+      mockIssueCaptureGrid.mockReturnValue(1);
+      mockCollectResults
+        .mockReturnValueOnce([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight) }])
+        .mockReturnValue([]);
+      mockCreateVariableCapturer.mockReturnValue({
+        issueCaptureAtPixel: mockIssueCaptureAtPixel,
+        issueCaptureGrid: mockIssueCaptureGrid,
+        collectResults: mockCollectResults,
+        dispose: mockCapturerDispose,
+        setCustomUniforms: vi.fn(),
+        setCompileContext: vi.fn(),
+        clearLastError: vi.fn(),
+        getLastError: vi.fn().mockReturnValue('Shader compile failed: dimension mismatch'),
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
+      flushRAF();
+      flushRAF();
+
+      expect(onError).toHaveBeenCalledWith('Failed to capture some variables:\nShader compile failed: dimension mismatch');
+      expect(onUpdate).toHaveBeenCalledOnce();
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
     });
 
     it('createVariableCapturer called only once (cached)', () => {
