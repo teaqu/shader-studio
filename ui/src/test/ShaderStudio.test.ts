@@ -96,9 +96,12 @@ describe('ShaderStudio', () => {
 
       expect(result).toBe(true);
       expect(mockRenderingEngine.initialize).toHaveBeenCalledWith(mockCanvas, true);
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      expect(mockTransport.postMessage).toHaveBeenNthCalledWith(1, {
         type: 'debug',
         payload: ['Svelte with piLibs initialized']
+      });
+      expect(mockTransport.postMessage).toHaveBeenNthCalledWith(2, {
+        type: 'refresh'
       });
     });
 

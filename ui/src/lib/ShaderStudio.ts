@@ -41,6 +41,7 @@ export class ShaderStudio {
         payload: ["Svelte with piLibs initialized"],
       };
       this.transport.postMessage(debugMessage);
+      this.transport.postMessage({ type: "refresh" });
 
       return true;
     } catch (err) {

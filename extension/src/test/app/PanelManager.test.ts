@@ -174,6 +174,32 @@ suite('PanelManager Test Suite', () => {
     assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
   });
 
+  test('createPanel sends the active shader to the webview immediately when an editor exists', () => {
+    const mockWebviewPanel = createMockWebviewPanel();
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({
+      all: [{ tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One }]
+    });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+      { uri: vscode.Uri.file('/mock/workspace') }
+    ]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+    const mockEditor = {
+      document: {
+        uri: vscode.Uri.file('/mock/workspace/shader.glsl'),
+      },
+    } as vscode.TextEditor;
+
+    (panelManager as any).glslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+    panelManager.createPanel();
+
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderToWebview as sinon.SinonStub);
+    sinon.assert.calledWithExactly(mockShaderProvider.sendShaderToWebview as sinon.SinonStub, mockEditor);
+  });
+
   test('createPanel uses empty tab group when available and locking is disabled', () => {
     // Given
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({
