@@ -131,10 +131,7 @@ export class PanelManager {
     this.setupWebviewHtml(panel, layoutSlot);
 
     if (editor) {
-      setTimeout(
-        () => this.shaderProvider.sendShaderToWebview(editor),
-        200,
-      );
+      void this.shaderProvider.sendShaderToWebview(editor);
     }
 
     // Handle messages from webview
