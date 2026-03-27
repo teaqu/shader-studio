@@ -12,6 +12,10 @@ export interface VarInfo {
   type: string;
 }
 
+export interface ScopedVarInfo extends VarInfo {
+  declarationLine: number;
+}
+
 type StatementKind =
   | 'empty'
   | 'controlFlow'
@@ -238,6 +242,50 @@ export class GlslParser {
     }
 
     return varLines;
+  }
+
+  static getGlobalVariables(lines: string[]): ScopedVarInfo[] {
+    const document = GlslParser.getDocument(lines);
+    const globals: ScopedVarInfo[] = [];
+
+    for (let i = 0; i < document.effectiveLines.length; i++) {
+      if (GlslParser.isInsideFunction(document.functions, i)) {
+        continue;
+      }
+
+      for (const declaration of GlslParser.extractDeclarationsFromLine(document.effectiveLines[i])) {
+        globals.push({
+          ...declaration,
+          declarationLine: i,
+        });
+      }
+    }
+
+    return globals;
+  }
+
+  static getUsedGlobalVariables(lines: string[], functionInfo: FunctionInfo): ScopedVarInfo[] {
+    const globals = GlslParser.getGlobalVariables(lines);
+    if (!functionInfo.name || functionInfo.start < 0) {
+      return globals;
+    }
+
+    const localNames = new Set(
+      GlslParser.buildVariableTypeMap(lines, functionInfo.end, functionInfo).keys(),
+    );
+    const usedIdentifiers = new Set<string>();
+
+    for (let i = functionInfo.start; i <= functionInfo.end && i < lines.length; i++) {
+      for (const token of GlslParser.tokenize(GlslParser.stripLineComments(lines[i]))) {
+        if (token.type === 'identifier') {
+          usedIdentifiers.add(token.value);
+        }
+      }
+    }
+
+    return globals.filter((globalVar) =>
+      usedIdentifiers.has(globalVar.name) && !localNames.has(globalVar.name),
+    );
   }
 
   static detectVariableAndType(
@@ -480,6 +528,10 @@ export class GlslParser {
     }
 
     return processedLine;
+  }
+
+  private static isInsideFunction(functions: ParsedFunctionInfo[], line: number): boolean {
+    return functions.some((fn) => line >= fn.start && line <= fn.end);
   }
 
   private static getVisibleScopes(document: ParsedDocument, functionInfo: FunctionInfo, upToLine: number): ShaderScope[] {

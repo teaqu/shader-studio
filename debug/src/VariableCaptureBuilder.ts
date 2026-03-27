@@ -30,7 +30,16 @@ export class VariableCaptureBuilder {
     }
 
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
-    if (!functionInfo.name) return [];
+    if (!functionInfo.name) {
+      return GlslParser.getGlobalVariables(lines)
+        .filter((globalVar) => CAPTURABLE_TYPES.has(globalVar.type))
+        .slice(0, 15)
+        .map((globalVar) => ({
+          varName: globalVar.name,
+          varType: globalVar.type,
+          declarationLine: globalVar.declarationLine,
+        }));
+    }
 
     // If on closing brace of function, treat as last line of body
     if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
@@ -39,6 +48,9 @@ export class VariableCaptureBuilder {
 
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
     const varLineMap = GlslParser.buildVariableLineMap(lines, resolvedLine, functionInfo, varTypes);
+    const globalVars = functionInfo.name
+      ? GlslParser.getUsedGlobalVariables(lines, functionInfo)
+      : GlslParser.getGlobalVariables(lines);
 
     // In mainImage, defer fragColor to append at the end of the list
     const isMainImage = functionInfo.name === 'mainImage';
@@ -56,6 +68,18 @@ export class VariableCaptureBuilder {
         result.push({ varName, varType, declarationLine: varLineMap.get(varName) ?? functionInfo.start });
         if (result.length >= 15) break;
       }
+    }
+
+    for (const globalVar of globalVars) {
+      if (!CAPTURABLE_TYPES.has(globalVar.type) || varTypes.has(globalVar.name)) {
+        continue;
+      }
+      result.push({
+        varName: globalVar.name,
+        varType: globalVar.type,
+        declarationLine: globalVar.declarationLine,
+      });
+      if (result.length >= 15) break;
     }
 
     // If the debug line is a return statement, add a synthetic _dbgReturn variable
@@ -113,16 +137,25 @@ export class VariableCaptureBuilder {
     }
 
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
-    if (!functionInfo.name) return null;
+    let varTypes = new Map<string, string>();
+    let isGlobalVar = false;
 
-    // If on closing brace of function, treat as last line of body
-    if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
-      resolvedLine = functionInfo.end - 1;
+    if (functionInfo.name) {
+      // If on closing brace of function, treat as last line of body
+      if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
+        resolvedLine = functionInfo.end - 1;
+      }
+
+      // Validate var is actually in scope (_dbgReturn is synthetic, always allowed)
+      varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
+      const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
+      isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
+      if (varName !== '_dbgReturn' && !varTypes.has(varName) && !isGlobalVar) return null;
+    } else {
+      const globalVars = GlslParser.getGlobalVariables(lines);
+      isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
+      if (!isGlobalVar) return null;
     }
-
-    // Validate var is actually in scope (_dbgReturn is synthetic, always allowed)
-    const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
-    if (varName !== '_dbgReturn' && !varTypes.has(varName)) return null;
 
     const varInfo = { name: varName, type: varType };
 
@@ -152,9 +185,7 @@ export class VariableCaptureBuilder {
         customParameters,
       );
     } else {
-      // One-liner fallback
-      const lineContent = lines[resolvedLine] || '';
-      result = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  ${lineContent.trim()}\n${CodeGenerator.generateCaptureOutputForVar(varType, varName)}\n}`;
+      result = VariableCaptureBuilder.wrapGlobalScopeForCapture(lines, varInfo);
     }
 
     // Inject coord override: pixel mode uses uniform, grid mode scales gl_FragCoord
@@ -165,6 +196,32 @@ export class VariableCaptureBuilder {
     }
 
     return result;
+  }
+
+  private static wrapGlobalScopeForCapture(
+    lines: string[],
+    varInfo: import('./GlslParser').VarInfo,
+  ): string {
+    const mainImageStart = VariableCaptureBuilder.findMainImageStart(lines);
+    const mainImageEnd = mainImageStart >= 0
+      ? VariableCaptureBuilder.findFunctionEnd(lines, mainImageStart)
+      : -1;
+
+    const preservedLines = mainImageStart >= 0 && mainImageEnd >= mainImageStart
+      ? [
+        ...lines.slice(0, mainImageStart),
+        ...lines.slice(mainImageEnd + 1),
+      ]
+      : [...lines];
+
+    const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, varInfo.name);
+    return [
+      ...preservedLines,
+      '',
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+      captureOutput,
+      '}',
+    ].join('\n');
   }
 
   /**

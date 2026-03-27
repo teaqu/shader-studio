@@ -105,6 +105,34 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(0.0);
 }`;
 
+const withGlobals = `vec3 tint = vec3(1.0, 0.0, 0.0);
+float exposure = 1.5;
+
+float shade(vec2 uv) {
+  float local = exposure * uv.x;
+  return local;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec3 col = tint * uv.x;
+  fragColor = vec4(col, 1.0);
+}`;
+
+const withShadowedGlobal = `float exposure = 1.5;
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  float exposure = 0.5;
+  fragColor = vec4(exposure);
+}`;
+
+const commonGlobalsOnly = `vec3 red = vec3(1.0, 0.0, 0.0);
+float exposure = 1.5;
+
+vec3 helper(vec2 uv) {
+  return red * uv.x * exposure;
+}`;
+
 describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
   it("should return all capturable vars in mainImage", () => {
     const vars = VariableCaptureBuilder.getAllInScopeVariables(simpleMainImage, 3);
@@ -181,6 +209,37 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     const dbgReturn = vars.find(v => v.varName === "_dbgReturn");
     expect(dbgReturn?.varType).toBe("vec2");
   });
+
+  it("should include referenced global variables when inside a helper function", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withGlobals, 4);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("local");
+    expect(names).toContain("exposure");
+    expect(names).not.toContain("tint");
+  });
+
+  it("should include referenced global variables when inside mainImage", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withGlobals, 10);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("uv");
+    expect(names).toContain("col");
+    expect(names).toContain("tint");
+    expect(names).not.toContain("exposure");
+  });
+
+  it("should include all global variables when the cursor is in global scope", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withGlobals, 0);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("tint");
+    expect(names).toContain("exposure");
+  });
+
+  it("should prefer local variables over shadowed globals", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withShadowedGlobal, 3);
+    const exposureVars = vars.filter(v => v.varName === "exposure");
+    expect(exposureVars).toHaveLength(1);
+    expect(exposureVars[0].declarationLine).toBe(3);
+  });
 });
 
 describe("VariableCaptureBuilder.generateCaptureShader", () => {
@@ -214,6 +273,37 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
       simpleMainImage, 2, "nonExistentVar", "float", new Map(), new Map(), false
     );
     expect(result).toBeNull();
+  });
+
+  it("should generate capture shader for a referenced global variable", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      withGlobals, 10, "tint", "vec3", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec3 tint = vec3(1.0, 0.0, 0.0);");
+    expect(result).toContain("fragColor = vec4(tint, 0.0);");
+  });
+
+  it("should generate capture shader for a global variable outside any function", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      withGlobals, 0, "tint", "vec3", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec3 tint = vec3(1.0, 0.0, 0.0);");
+    expect(result).toContain("float exposure = 1.5;");
+    expect(result).toContain("float shade(vec2 uv) {");
+    expect(result).toContain("fragColor = vec4(tint, 0.0);");
+  });
+
+  it("should generate capture shader for common-style global code without mainImage", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      commonGlobalsOnly, 0, "red", "vec3", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec3 red = vec3(1.0, 0.0, 0.0);");
+    expect(result).toContain("vec3 helper(vec2 uv) {");
+    expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord) {");
+    expect(result).toContain("fragColor = vec4(red, 0.0);");
   });
 
   it("should handle loop-scoped var with shadow variable", () => {
