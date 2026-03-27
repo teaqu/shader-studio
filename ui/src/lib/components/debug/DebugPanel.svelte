@@ -1,6 +1,7 @@
+<svelte:options runes={true} />
+
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import type { ShaderDebugState, DebugFunctionContext, DebugLoopInfo } from "../../types/ShaderDebugState";
+  import type { ShaderDebugState, DebugLoopInfo } from "../../types/ShaderDebugState";
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
 
@@ -11,77 +12,99 @@
 
   import VariablesSection from "./VariablesSection.svelte";
 
-  export let debugState: ShaderDebugState;
-  export let getUniforms: () => PassUniforms | null = () => null;
-  export let isInspectorEnabled: boolean = false;
-  export let isInspectorActive: boolean = false;
-  export let isInspectorLocked: boolean = false;
-  export let shaderDebugManager: ShaderDebugManager | undefined = undefined;
-  export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
-  export let onToggleInspectorEnabled: () => void = () => {};
-  export let onToggleInlineRendering: () => void = () => {};
-  export let onExpandVarHistogram: (varName: string) => void = () => {};
-  export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
-  export let sampleSize: number = 32;
-  export let refreshMode: RefreshMode = 'polling';
-  export let pollingMs: number = 500;
-  export let hasPixelSelected: boolean = false;
-  export let customUniformValues: Record<string, number | number[] | boolean> = {};
-  export let isVariableCaptureLoading: boolean = false;
-  export let variableCaptureError: string | null = null;
+  type DebugPanelProps = {
+    debugState?: ShaderDebugState;
+    getUniforms?: () => PassUniforms | null;
+    uniforms?: PassUniforms | null;
+    isInspectorEnabled?: boolean;
+    isInspectorActive?: boolean;
+    isInspectorLocked?: boolean;
+    shaderDebugManager?: ShaderDebugManager;
+    variableCaptureManager?: VariableCaptureManager;
+    onToggleInspectorEnabled?: () => void;
+    onToggleInlineRendering?: () => void;
+    onExpandVarHistogram?: (varName: string) => void;
+    onVarClick?: (varName: string, declarationLine: number) => void;
+    sampleSize?: number;
+    refreshMode?: RefreshMode;
+    pollingMs?: number;
+    hasPixelSelected?: boolean;
+    customUniformValues?: Record<string, number | number[] | boolean>;
+    isVariableCaptureLoading?: boolean;
+    variableCaptureError?: string | null;
+  };
 
-  let uniforms: PassUniforms | null = null;
-  let uniformsHandle: number | null = null;
-  let isLineTooltipTriggerHovered = false;
-  let isLineTooltipHovered = false;
-  let isLineTooltipHoverArmed = false;
+  let {
+    debugState = undefined,
+    getUniforms = () => null,
+    uniforms = null,
+    isInspectorEnabled = false,
+    isInspectorActive = false,
+    isInspectorLocked = false,
+    shaderDebugManager = undefined,
+    variableCaptureManager = undefined,
+    onToggleInspectorEnabled = () => {},
+    onToggleInlineRendering = () => {},
+    onExpandVarHistogram = () => {},
+    onVarClick = () => {},
+    sampleSize = 32,
+    refreshMode = 'polling',
+    pollingMs = 500,
+    hasPixelSelected = false,
+    customUniformValues = {},
+    isVariableCaptureLoading = false,
+    variableCaptureError = null,
+  }: DebugPanelProps = $props();
+
+  let liveUniforms = $state<PassUniforms | null>(null);
+  let uniformsHandle = $state<number | null>(null);
+  let isLineTooltipTriggerHovered = $state(false);
+  let isLineTooltipHovered = $state(false);
+  let isLineTooltipHoverArmed = $state(false);
   const activeHeaderPointers = new Set<number>();
 
-  $: ctx = debugState.functionContext;
-  $: isInlineOn = debugState.isInlineRenderingEnabled;
-  $: isLineLocked = debugState.isLineLocked;
-  $: lineNum = debugState.currentLine !== null ? debugState.currentLine + 1 : null;
-  $: isInFunction = ctx !== null && ctx.isFunction;
-  $: isMainImage = ctx !== null && !ctx.isFunction;
-  $: hasVariable = debugState.lineContent !== null && debugState.isActive;
-  $: normalizeMode = debugState.normalizeMode;
-  $: isStepEnabled = debugState.isStepEnabled;
-  $: stepEdge = debugState.stepEdge;
-  $: debugError = debugState.debugError;
-  $: lineTooltipText = debugError || (debugState.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''));
-  $: showParams = isInlineOn && isInFunction && ctx !== null;
-  $: showLoops = isInlineOn && ctx !== null && ctx.loops.length > 0;
-  $: hasContentAboveUniforms = (showParams && ctx && ctx.parameters.length > 0) || showLoops;
-  $: isVarInspectorOn = debugState.isVariableInspectorEnabled;
-  $: capturedVariables = debugState.capturedVariables;
+  const ctx = $derived(debugState?.functionContext);
+  const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
+  const isLineLocked = $derived(debugState?.isLineLocked);
+  const lineNum = $derived(debugState?.currentLine != null ? debugState.currentLine + 1 : null);
+  const isInFunction = $derived(ctx !== null && ctx !== undefined && ctx.isFunction);
+  const hasVariable = $derived(debugState?.lineContent != null && debugState?.isActive);
+  const normalizeMode = $derived(debugState?.normalizeMode);
+  const isStepEnabled = $derived(debugState?.isStepEnabled);
+  const stepEdge = $derived(debugState?.stepEdge);
+  const debugError = $derived(debugState?.debugError);
+  const lineTooltipText = $derived(
+    debugError || (debugState?.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''))
+  );
+  const showParams = $derived(isInlineOn && isInFunction && ctx !== null);
+  const showLoops = $derived(isInlineOn && ctx !== null && ctx !== undefined && ctx.loops.length > 0);
+  const hasContentAboveUniforms = $derived((showParams && ctx && ctx.parameters.length > 0) || showLoops);
+  const isVarInspectorOn = $derived(debugState?.isVariableInspectorEnabled);
+  const capturedVariables = $derived(debugState?.capturedVariables);
+  const customUniformEntries = $derived(Object.entries(customUniformValues));
+  const isLineTooltipVisible = $derived(
+    isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered)
+  );
+  const displayedUniforms = $derived(uniforms ?? liveUniforms);
 
-  // Explicit reactive derivations for VariablesSection passthrough props.
-  // In Svelte 5 legacy mode, creating derived signals from props ensures
-  // the child component sees updates even during rapid parent re-renders.
-  $: vsRefreshMode = refreshMode;
-  $: vsPollingMs = pollingMs;
-  $: vsHasPixelSelected = hasPixelSelected;
-  $: vsSampleSize = sampleSize;
-
-  $: normalizeTooltip = normalizeMode === 'off'
+  const normalizeTooltip = $derived(normalizeMode === 'off'
     ? "Normalize: OFF\nRaw shader output values"
     : normalizeMode === 'soft'
     ? "Normalize: SOFT\nSigned normalization\nzero = gray (0.5)\nnegative < 0.5, positive > 0.5"
-    : "Normalize: ABS\nAbsolute value normalization\nzero = black\nlarger magnitudes brighter";
+    : "Normalize: ABS\nAbsolute value normalization\nzero = black\nlarger magnitudes brighter");
 
-  onMount(() => {
+  $effect(() => {
     const updateUniforms = () => {
-      uniforms = getUniforms();
+      liveUniforms = getUniforms();
       uniformsHandle = requestAnimationFrame(updateUniforms);
     };
     uniformsHandle = requestAnimationFrame(updateUniforms);
-  });
-
-  onDestroy(() => {
-    if (uniformsHandle !== null) {
-      cancelAnimationFrame(uniformsHandle);
-    }
-    activeHeaderPointers.clear();
+    return () => {
+      if (uniformsHandle !== null) {
+        cancelAnimationFrame(uniformsHandle);
+      }
+      activeHeaderPointers.clear();
+    };
   });
 
   function handleLoopIterInput(loop: DebugLoopInfo, event: Event) {
@@ -146,10 +169,6 @@
     activateHeaderControl(action);
   }
 
-  $: customUniformEntries = Object.entries(customUniformValues);
-  $: isLineTooltipVisible =
-    isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered);
-
   function handleLineTooltipTriggerEnter() {
     isLineTooltipHoverArmed = true;
     isLineTooltipTriggerHovered = true;
@@ -201,8 +220,8 @@
 </script>
 
 <svelte:window
-  on:pointerup={handleHeaderControlPointerEnd}
-  on:pointercancel={handleHeaderControlPointerEnd}
+  onpointerup={handleHeaderControlPointerEnd}
+  onpointercancel={handleHeaderControlPointerEnd}
 />
 
 <div class="debug-panel">
@@ -210,22 +229,22 @@
     <button
       class="header-btn has-tooltip"
       class:active={isInspectorEnabled}
-      class:disabled={!debugState.isEnabled}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInspectorEnabled)}
-      on:keydown={(event) => handleHeaderControlKeydown(event, onToggleInspectorEnabled)}
-      on:click|preventDefault|stopPropagation={() => {}}
-      disabled={!debugState.isEnabled}
+      class:disabled={!debugState?.isEnabled}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInspectorEnabled)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, onToggleInspectorEnabled)}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      disabled={!debugState?.isEnabled}
       aria-label="Toggle inspector"
-      data-tooltip="Pixel Inspector{!debugState.isEnabled ? ' (enable debug first)' : ''}"
+      data-tooltip="Pixel Inspector{!debugState?.isEnabled ? ' (enable debug first)' : ''}"
     >
       <i class="codicon codicon-inspect"></i>
     </button>
     <button
       class="header-btn has-tooltip"
       class:active={isInlineOn}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInlineRendering)}
-      on:keydown={(event) => handleHeaderControlKeydown(event, onToggleInlineRendering)}
-      on:click|preventDefault|stopPropagation={() => {}}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInlineRendering)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, onToggleInlineRendering)}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
@@ -234,9 +253,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isLineLocked}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleLineLock())}
-      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleLineLock())}
-      on:click|preventDefault|stopPropagation={() => {}}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleLineLock())}
+      onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleLineLock())}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle line lock"
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
     >
@@ -249,9 +268,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={normalizeMode !== 'off'}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.cycleNormalizeMode())}
-      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.cycleNormalizeMode())}
-      on:click|preventDefault|stopPropagation={() => {}}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.cycleNormalizeMode())}
+      onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.cycleNormalizeMode())}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
     >
@@ -263,9 +282,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isStepEnabled}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleStep())}
-      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleStep())}
-      on:click|preventDefault|stopPropagation={() => {}}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleStep())}
+      onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleStep())}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
     >
@@ -278,7 +297,7 @@
         min="0"
         max="1"
         value={stepEdge}
-        on:input={handleStepEdgeInput}
+        oninput={handleStepEdgeInput}
         use:dragScrub={{ step: 0.05, onInput: (v) => shaderDebugManager?.setStepEdge(v) }}
         class="step-edge-input"
         aria-label="Step edge threshold"
@@ -287,9 +306,9 @@
     <button
       class="header-btn has-tooltip"
       class:active={isVarInspectorOn}
-      on:pointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleVariableInspector())}
-      on:keydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleVariableInspector())}
-      on:click|preventDefault|stopPropagation={() => {}}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleVariableInspector())}
+      onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleVariableInspector())}
+      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
@@ -300,26 +319,29 @@
         <span
           class="header-info"
           class:error={debugError}
-          class:has-line-content={!debugError && debugState.lineContent}
+          class:has-line-content={!debugError && debugState?.lineContent}
           data-tooltip={lineTooltipText}
           role="presentation"
-          on:mouseenter={handleLineTooltipTriggerEnter}
-          on:mouseleave={handleLineTooltipTriggerLeave}
+          onmouseenter={handleLineTooltipTriggerEnter}
+          onmouseleave={handleLineTooltipTriggerLeave}
         >L{lineNum}</span>
         <div
           class="line-tooltip"
           class:visible={isLineTooltipVisible}
           class:error={debugError}
-          class:has-line-content={!debugError && debugState.lineContent}
+          class:has-line-content={!debugError && debugState?.lineContent}
           role="presentation"
-          on:mouseenter={handleLineTooltipEnter}
-          on:mouseleave={handleLineTooltipLeave}
+          onmouseenter={handleLineTooltipEnter}
+          onmouseleave={handleLineTooltipLeave}
         >{lineTooltipText}</div>
       </span>
     {/if}
     {#if isInlineOn && ctx}
       <span class="header-info fn-name">{ctx.functionName}</span>
       <span class="header-info fn-type">{ctx.returnType}</span>
+    {/if}
+    {#if debugState?.isEnabled && debugState?.activeBufferName && debugState.activeBufferName !== 'Image'}
+      <span class="buffer-badge">{debugState.activeBufferName}</span>
     {/if}
   </div>
 
@@ -337,7 +359,7 @@
             <button
               class="section-reset"
               type="button"
-              on:click={() => shaderDebugManager?.resetCustomParameters()}
+              onclick={() => shaderDebugManager?.resetCustomParameters()}
               aria-label="Reset parameters"
             >
               Reset
@@ -368,7 +390,7 @@
                 step="1"
                 placeholder="max"
                 value={loop.maxIter ?? ''}
-                on:input={(e) => handleLoopIterInput(loop, e)}
+                oninput={(e) => handleLoopIterInput(loop, e)}
                 use:dragScrub={{ step: 1, onInput: (v) => { const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null); } }}
                 class="loop-input"
                 aria-label="Max iterations for loop at line {loop.lineNumber + 1}"
@@ -389,10 +411,10 @@
         onExpandToggle={onExpandVarHistogram}
         {onVarClick}
         {variableCaptureManager}
-        sampleSize={vsSampleSize}
-        refreshMode={vsRefreshMode}
-        pollingMs={vsPollingMs}
-        hasPixelSelected={vsHasPixelSelected}
+        {sampleSize}
+        {refreshMode}
+        {pollingMs}
+        {hasPixelSelected}
       />
     {:else}
       <div class="section var-hint-section">
@@ -402,15 +424,15 @@
 
     <div class="section uniforms-section" class:has-border={hasContentAboveUniforms || isVarInspectorOn}>
       <div class="section-label">Uniforms</div>
-      {#if uniforms}
-        <div class="uniform-row"><span class="uniform-name">iTime</span><span class="uniform-value">{formatTime(uniforms.time)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iResolution</span><span class="uniform-value">{formatVec(uniforms.res)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iMouse</span><span class="uniform-value">{formatVec(uniforms.mouse)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iFrame</span><span class="uniform-value">{uniforms.frame}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iTimeDelta</span><span class="uniform-value">{uniforms.timeDelta.toFixed(4)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{uniforms.frameRate.toFixed(1)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(uniforms.date)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{uniforms.sampleRate}</span></div>
+      {#if displayedUniforms}
+        <div class="uniform-row"><span class="uniform-name">iTime</span><span class="uniform-value">{formatTime(displayedUniforms.time)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iResolution</span><span class="uniform-value">{formatVec(displayedUniforms.res)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iMouse</span><span class="uniform-value">{formatVec(displayedUniforms.mouse)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iFrame</span><span class="uniform-value">{displayedUniforms.frame}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iTimeDelta</span><span class="uniform-value">{displayedUniforms.timeDelta.toFixed(4)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{displayedUniforms.frameRate.toFixed(1)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(displayedUniforms.date)}</span></div>
+        <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{displayedUniforms.sampleRate}</span></div>
         {#each customUniformEntries as [name, value], i}
           <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
         {/each}

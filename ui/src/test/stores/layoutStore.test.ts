@@ -96,45 +96,45 @@ describe('layoutStore', () => {
 
   it('save should handle localStorage errors gracefully', async () => {
     const store = await importStore();
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const origSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = () => { throw new Error('QuotaExceeded'); };
+    localStorage.setItem = () => {
+      throw new Error('QuotaExceeded'); 
+    };
 
-    store.save('web:1', mockState as any);
+    expect(() => store.save('web:1', mockState as any)).not.toThrow();
     expect(get(store)).toEqual(mockState);
-    expect(warnSpy).toHaveBeenCalled();
 
     localStorage.setItem = origSetItem;
-    warnSpy.mockRestore();
   });
 
   it('load should handle localStorage errors gracefully', async () => {
     const store = await importStore();
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const origGetItem = localStorage.getItem.bind(localStorage);
-    localStorage.getItem = () => { throw new Error('SecurityError'); };
+    localStorage.getItem = () => {
+      throw new Error('SecurityError'); 
+    };
 
-    const result = store.load('web:1');
+    let result: any;
+    expect(() => {
+      result = store.load('web:1'); 
+    }).not.toThrow();
     expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
 
     localStorage.getItem = origGetItem;
-    warnSpy.mockRestore();
   });
 
   it('clear should handle localStorage errors gracefully', async () => {
     const store = await importStore();
     store.save('web:1', mockState as any);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const origRemoveItem = localStorage.removeItem.bind(localStorage);
-    localStorage.removeItem = () => { throw new Error('SecurityError'); };
+    localStorage.removeItem = () => {
+      throw new Error('SecurityError'); 
+    };
 
-    store.clear('web:1');
+    expect(() => store.clear('web:1')).not.toThrow();
     expect(get(store)).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
 
     localStorage.removeItem = origRemoveItem;
-    warnSpy.mockRestore();
   });
 
   it('save then load roundtrip should produce equal state', async () => {

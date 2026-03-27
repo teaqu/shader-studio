@@ -534,7 +534,7 @@ describe('MusicTab', () => {
         const calls = props.onUpdateTempInput.mock.calls;
         if (calls.length > 0) {
           const lastInput = calls[calls.length - 1][0] as any;
-          if (lastInput.startTime != null && lastInput.endTime != null) {
+          if (lastInput.startTime !== null && lastInput.startTime !== undefined && lastInput.endTime !== null && lastInput.endTime !== undefined) {
             expect(lastInput.startTime).toBeLessThanOrEqual(lastInput.endTime);
           }
         }
@@ -562,7 +562,7 @@ describe('MusicTab', () => {
         const calls = props.onUpdateTempInput.mock.calls;
         if (calls.length > 0) {
           const lastInput = calls[calls.length - 1][0] as any;
-          if (lastInput.startTime != null && lastInput.endTime != null) {
+          if (lastInput.startTime !== null && lastInput.startTime !== undefined && lastInput.endTime !== null && lastInput.endTime !== undefined) {
             expect(lastInput.endTime).toBeGreaterThanOrEqual(lastInput.startTime);
           }
         }

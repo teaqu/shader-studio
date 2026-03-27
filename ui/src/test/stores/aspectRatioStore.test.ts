@@ -39,7 +39,9 @@ describe('aspectRatioStore', () => {
     expect(get(store).mode).toBe('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig('4:3');
@@ -54,7 +56,9 @@ describe('aspectRatioStore', () => {
     store.setFromConfig('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig('1:1');
@@ -68,7 +72,9 @@ describe('aspectRatioStore', () => {
     store.setFromConfig('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig('invalid' as any);
@@ -82,7 +88,9 @@ describe('aspectRatioStore', () => {
     store.setFromConfig('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig(undefined);

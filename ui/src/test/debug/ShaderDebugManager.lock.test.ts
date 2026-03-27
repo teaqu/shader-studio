@@ -10,6 +10,8 @@ const mockRenderEngine = {
   startRenderLoop: vi.fn(),
   compileShaderPipeline: vi.fn(() => ({ success: true })),
   cleanup: vi.fn(),
+  getCurrentConfig: vi.fn().mockReturnValue(null),
+  getPasses: vi.fn().mockReturnValue([]),
 } as any;
 
 const mockTransport = {

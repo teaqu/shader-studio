@@ -63,8 +63,11 @@ export class ShaderRecorder {
       return new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error("Failed to capture screenshot"));
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error("Failed to capture screenshot"));
+            }
           },
           type,
           config.format === "jpeg" ? 0.95 : undefined,
@@ -157,7 +160,9 @@ export class ShaderRecorder {
     const gl = canvas.getContext("webgl2")!;
 
     for (let i = 0; i < totalFrames; i++) {
-      if (this.cancelled) throw new Error("Recording cancelled");
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
 
       const time = config.startTime + i * dt;
       tm.setTime(time);
@@ -183,7 +188,9 @@ export class ShaderRecorder {
       recordingStore.updateProgress(i + 1, totalFrames);
 
       // Yield every 4 frames to keep UI responsive
-      if (i % 4 === 0) await new Promise((r) => setTimeout(r, 0));
+      if (i % 4 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
 
     // gifski encodes all frames in one WASM call — this is the slow part
@@ -217,7 +224,9 @@ export class ShaderRecorder {
     const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
 
     for (let i = 0; i < totalFrames; i++) {
-      if (this.cancelled) throw new Error("Recording cancelled");
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
 
       const time = config.startTime + i * dt;
       tm.setTime(time);

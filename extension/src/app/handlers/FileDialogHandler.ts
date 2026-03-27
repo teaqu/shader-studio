@@ -38,9 +38,9 @@ export class FileDialogHandler {
       const shaderDir = payload.shaderPath
         ? path.dirname(payload.shaderPath)
         : (() => {
-            const e = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
-            return e ? path.dirname(e.document.uri.fsPath) : null;
-          })();
+          const e = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+          return e ? path.dirname(e.document.uri.fsPath) : null;
+        })();
       const isScript = payload.fileType === 'script';
       const filters = fileTypeToFilters(payload.fileType);
       const result = await vscode.window.showOpenDialog({
@@ -49,10 +49,14 @@ export class FileDialogHandler {
         canSelectMany: false,
         title: 'Select file',
       });
-      if (!result || result.length === 0) { return; }
+      if (!result || result.length === 0) {
+        return; 
+      }
       const selectedPath = result[0].fsPath;
       const outputPath = this.resolveOutputPath(selectedPath, shaderDir);
-      if (isScript && selectedPath.endsWith('.ts')) { writeWorkspaceTypeDefs(this.extensionPath, true); }
+      if (isScript && selectedPath.endsWith('.ts')) {
+        writeWorkspaceTypeDefs(this.extensionPath, true); 
+      }
       respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
     } catch (error) {
       this.logger.error(`Failed to select file: ${error}`);
@@ -67,9 +71,9 @@ export class FileDialogHandler {
       const shaderDir = payload.shaderPath
         ? path.dirname(payload.shaderPath)
         : (() => {
-            const e = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
-            return e ? path.dirname(e.document.uri.fsPath) : null;
-          })();
+          const e = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+          return e ? path.dirname(e.document.uri.fsPath) : null;
+        })();
       const isScript = payload.fileType === 'script';
       const filters: { [name: string]: string[] } = isScript
         ? { 'Script files': ['ts', 'js'] }
@@ -84,7 +88,9 @@ export class FileDialogHandler {
         filters,
         title: 'Create file',
       });
-      if (!result) return;
+      if (!result) {
+        return;
+      }
       const filePath = result.fsPath;
       const outputPath = this.resolveOutputPath(filePath, shaderDir);
       if (!fs.existsSync(filePath)) {
@@ -103,7 +109,9 @@ export class FileDialogHandler {
       } else {
         this.logger.info(`File already exists: ${filePath}`);
       }
-      if (isScript && filePath.endsWith('.ts')) writeWorkspaceTypeDefs(this.extensionPath, true);
+      if (isScript && filePath.endsWith('.ts')) {
+        writeWorkspaceTypeDefs(this.extensionPath, true);
+      }
       respondFn({ type: 'fileSelected', payload: { path: outputPath, requestId: payload.requestId } });
     } catch (error) {
       this.logger.error(`Failed to create file: ${error}`);

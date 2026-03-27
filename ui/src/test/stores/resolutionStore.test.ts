@@ -206,7 +206,9 @@ describe('resolutionStore', () => {
     store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     // subscribe fires once immediately
     callCount = 0;
 
@@ -221,7 +223,9 @@ describe('resolutionStore', () => {
     // Initial state: savedToConfig = false (global defaults)
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig(undefined);
@@ -236,7 +240,9 @@ describe('resolutionStore', () => {
     store.setFromConfig({ scale: 1 });
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig({ scale: 2 });
@@ -251,7 +257,9 @@ describe('resolutionStore', () => {
     expect(get(store).savedToConfig).toBe(true);
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig(undefined);
@@ -265,7 +273,9 @@ describe('resolutionStore', () => {
     // Start with global defaults (savedToConfig = false)
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig({ scale: 1 });
@@ -279,7 +289,9 @@ describe('resolutionStore', () => {
     store.setFromConfig({ scale: 1, customWidth: '512', customHeight: '512' });
 
     let callCount = 0;
-    const unsub = store.subscribe(() => { callCount++; });
+    const unsub = store.subscribe(() => {
+      callCount++; 
+    });
     callCount = 0;
 
     store.setFromConfig({ scale: 1, customWidth: '1024', customHeight: '512' });

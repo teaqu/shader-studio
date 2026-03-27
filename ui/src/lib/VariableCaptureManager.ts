@@ -2,6 +2,7 @@ import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngi
 import type { VariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
+import type { ConfigInput } from '@shader-studio/types';
 
 const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
 const MAX_EMPTY_COLLECTION_FRAMES = 120;
@@ -100,6 +101,7 @@ function computeColorFrequencies(
 
 interface CaptureParams {
   code: string;
+  inputConfig?: Record<string, ConfigInput>;
   debugLine: number | null;
   pixelX: number | null;
   pixelY: number | null;
@@ -154,7 +156,7 @@ export class VariableCaptureManager {
   private varDeclarationLines: Map<string, number> = new Map();
   private lastGridWidth = 32;
   private lastGridHeight = 32;
-  private pollTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pollTimeout: number | null = null;
   private _sampleSize = 32;
   private _gridRefreshMode: RefreshMode = 'polling';
   private _gridPollingMs = 500;
@@ -169,11 +171,32 @@ export class VariableCaptureManager {
     private onUpdate: (vars: CapturedVariable[]) => void,
   ) {}
 
-  get sampleSize(): number { return this._sampleSize; }
-  get gridRefreshMode(): RefreshMode { return this._gridRefreshMode; }
-  get gridPollingMs(): number { return this._gridPollingMs; }
-  get pixelRefreshMode(): RefreshMode { return this._pixelRefreshMode; }
-  get pixelPollingMs(): number { return this._pixelPollingMs; }
+  private setPollTimeout(callback: () => void, ms: number): number {
+    return window.setTimeout(callback, ms);
+  }
+
+  private clearPollTimeout(): void {
+    if (this.pollTimeout !== null) {
+      window.clearTimeout(this.pollTimeout);
+      this.pollTimeout = null;
+    }
+  }
+
+  get sampleSize(): number {
+    return this._sampleSize; 
+  }
+  get gridRefreshMode(): RefreshMode {
+    return this._gridRefreshMode; 
+  }
+  get gridPollingMs(): number {
+    return this._gridPollingMs; 
+  }
+  get pixelRefreshMode(): RefreshMode {
+    return this._pixelRefreshMode; 
+  }
+  get pixelPollingMs(): number {
+    return this._pixelPollingMs; 
+  }
 
   setSampleSettingsCallback(callback: () => void): void {
     this.onSampleSettingsChanged = callback;
@@ -224,12 +247,11 @@ export class VariableCaptureManager {
   notifyStateChange(params: CaptureParams): void {
     this.lastParams = params;
     // Cancel any stale poll timeout so old intervals don't conflict with new params
-    if (this.pollTimeout !== null) {
-      clearTimeout(this.pollTimeout);
-      this.pollTimeout = null;
-    }
+    this.clearPollTimeout();
     // Paused: store params but don't issue captures
-    if (params.refreshMode === 'pause') { return; }
+    if (params.refreshMode === 'pause') {
+      return; 
+    }
     this.dirty = true;
     if (!this.loopRunning && !this.disposed) {
       this.loopRunning = true;
@@ -253,10 +275,7 @@ export class VariableCaptureManager {
       cancelAnimationFrame(this.rafHandle);
       this.rafHandle = null;
     }
-    if (this.pollTimeout !== null) {
-      clearTimeout(this.pollTimeout);
-      this.pollTimeout = null;
-    }
+    this.clearPollTimeout();
     if (this.capturer) {
       this.capturer.dispose();
       this.capturer = null;
@@ -264,7 +283,9 @@ export class VariableCaptureManager {
   }
 
   private captureLoop(_timestamp: number): void {
-    if (this.disposed) { this.loopRunning = false; return; }
+    if (this.disposed) {
+      this.loopRunning = false; return; 
+    }
     this.rafHandle = null;
 
     // Always try to collect pending results first
@@ -299,7 +320,7 @@ export class VariableCaptureManager {
       this.loopRunning = false;
       // Schedule next poll if polling mode with ms > 0
       if (mode === 'polling' && this.lastParams && this.lastParams.pollingMs > 0) {
-        this.pollTimeout = setTimeout(() => {
+        this.pollTimeout = this.setPollTimeout(() => {
           this.pollTimeout = null;
           if (!this.disposed && this.lastParams) {
             this.dirty = true;
@@ -329,7 +350,14 @@ export class VariableCaptureManager {
 
     const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
 
-    const vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
+    let vars: Array<{ varName: string; varType: string; declarationLine: number }>;
+    try {
+      vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
+    } catch {
+      this.emitErrorState('Failed to analyse variables for capture');
+      this.finishCollection([]);
+      return;
+    }
 
     // Append custom uniforms (declared in compiler header, not in user code)
     const customUniforms = this.renderingEngine.getCustomUniformInfo();
@@ -387,6 +415,9 @@ export class VariableCaptureManager {
     const customDecl = this.renderingEngine.getCustomUniformDeclarations();
     const customValues = this.renderingEngine.getCurrentCustomUniforms();
     this.capturer.setCustomUniforms(customDecl, customValues);
+    if (params.inputConfig) {
+      this.capturer.setInputBindings(params.inputConfig);
+    }
 
     this.pendingResults = [];
     this.declaredOrder = captures.map(c => c.varName);

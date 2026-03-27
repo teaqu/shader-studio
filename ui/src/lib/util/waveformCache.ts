@@ -7,17 +7,23 @@ export async function getWaveformPeaks(
 ): Promise<Float32Array | null> {
   const key = numPoints ? `${url}:${numPoints}` : url;
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const inflight = pending.get(key);
-  if (inflight) return inflight;
+  if (inflight) {
+    return inflight;
+  }
 
   const promise = generatePeaks(url, numPoints);
   pending.set(key, promise);
 
   try {
     const result = await promise;
-    if (result) cache.set(key, result);
+    if (result) {
+      cache.set(key, result);
+    }
     return result;
   } finally {
     pending.delete(key);
@@ -30,7 +36,9 @@ async function generatePeaks(
 ): Promise<Float32Array | null> {
   try {
     const response = await fetch(url);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
 
     const arrayBuffer = await response.arrayBuffer();
     const audioCtx = new OfflineAudioContext(1, 1, 44100);
@@ -51,10 +59,14 @@ async function generatePeaks(
       let max = 0;
       for (let j = start; j < end; j++) {
         const abs = Math.abs(channelData[j]);
-        if (abs > max) max = abs;
+        if (abs > max) {
+          max = abs;
+        }
       }
       peaks[i] = max;
-      if (max > globalMax) globalMax = max;
+      if (max > globalMax) {
+        globalMax = max;
+      }
     }
 
     // Normalize 0..1

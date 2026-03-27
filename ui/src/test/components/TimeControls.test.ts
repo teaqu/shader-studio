@@ -388,7 +388,7 @@ describe('TimeControls Component', () => {
       expect(timeButton).not.toBeDisabled();
     });
 
-});
+  });
 
   describe('Integration', () => {
     it('should initialize with values from timeManager', async () => {

@@ -188,19 +188,7 @@
 
   // Reactive: notify variable capture manager when relevant state changes.
   $: if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
-    variableCaptureManager.notifyStateChange({
-      code: currentShaderCode,
-      debugLine: debugCurrentLine,
-      pixelX: capturePixelX,
-      pixelY: capturePixelY,
-      canvasWidth,
-      canvasHeight,
-      loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
-      customParams: shaderDebugManager.getCustomParameters(),
-      sampleSize: variableCaptureManager.sampleSize,
-      refreshMode: variableCaptureManager.getActiveRefreshMode(hasPixelCapture),
-      pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
-    });
+    notifyVariableCaptureManager();
   }
 
   // Shared MenuBar props — two instances exist in different DOM positions for dockview layout
@@ -294,7 +282,9 @@
       // Evict stale per-uniform timestamps
       for (const name of Object.keys(uniformTimestamps)) {
         const ts = uniformTimestamps[name];
-        while (ts.length > 0 && ts[0] < cutoff) ts.shift();
+        while (ts.length > 0 && ts[0] < cutoff) {
+          ts.shift();
+        }
         uniformActualFps[name] = ts.length;
       }
       uniformActualFps = { ...uniformActualFps };
@@ -308,7 +298,9 @@
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     canvasWidth = Math.round(data.width);
     canvasHeight = Math.round(data.height);
     renderingEngine.handleCanvasResize(data.width, data.height);
@@ -319,12 +311,16 @@
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
-    if (!pixelInspectorManager || !initialized) return;
+    if (!pixelInspectorManager || !initialized) {
+      return;
+    }
     pixelInspectorManager.handleMouseMove(event);
   }
 
   function handleReset() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     audioStore.setMuted(false);
     // Reset script time origin so custom uniform iTime matches shader iTime
     transport.postMessage({ type: 'resetScriptTime' });
@@ -343,12 +339,16 @@
   }
 
   function handleRefresh() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     shaderStudio.handleRefresh();
   }
 
   function handleConfig() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     const lastEvent = shaderStudio.getLastShaderEvent();
     const path = lastEvent?.data?.path;
     if (!path) {
@@ -362,7 +362,9 @@
   }
 
   function handleScriptPollingFpsChange(fps: number) {
-    if (!currentConfig || !shaderPath) return;
+    if (!currentConfig || !shaderPath) {
+      return;
+    }
     const updatedConfig = { ...currentConfig, scriptMaxPollingFps: fps };
     currentConfig = updatedConfig;
     const text = JSON.stringify(updatedConfig, null, 2);
@@ -379,12 +381,16 @@
   }
 
   function handleTogglePause() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     renderingEngine.togglePause();
   }
 
   function handleToggleLock() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     shaderStudio.handleToggleLock();
     isLocked = shaderStudio.getIsLocked();
   }
@@ -394,27 +400,37 @@
   }
 
   function handleFpsLimitChange(limit: number) {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     renderingEngine.setFPSLimit(limit);
   }
 
   function handleToggleInspectorEnabled() {
-    if (!initialized || !debugPanelVisible) return;
+    if (!initialized || !debugPanelVisible) {
+      return;
+    }
     debugPanelStore.setPixelInspectorEnabled(!persistedPixelInspectorEnabled);
   }
 
   function handleToggleInlineRendering() {
-    if (!initialized || !debugPanelVisible) return;
+    if (!initialized || !debugPanelVisible) {
+      return;
+    }
     debugPanelStore.setInlineRenderingEnabled(!persistedInlineRenderingEnabled);
   }
 
   function handleToggleDebugEnabled() {
-    if (!initialized || !hasShader) return;
+    if (!initialized || !hasShader) {
+      return;
+    }
     debugPanelStore.toggle();
   }
 
   function handleToggleConfigPanel() {
-    if (!hasShader) return;
+    if (!hasShader) {
+      return;
+    }
     configPanelStore.toggle();
   }
 
@@ -488,17 +504,23 @@
   }
 
   function handleFork() {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
   }
 
   function handleScreenshot(config: { format: "png" | "jpeg"; time?: number; width: number; height: number }) {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     recordingManager.screenshot(config);
   }
 
   function handleRecord(config: any) {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     recordingManager.record(config);
   }
 
@@ -507,7 +529,9 @@
   }
 
   function handleExtensionCommand(command: string) {
-    if (!initialized) return;
+    if (!initialized) {
+      return;
+    }
     transport.postMessage({ type: 'extensionCommand', payload: { command } });
   }
 
@@ -516,12 +540,16 @@
   }
 
   async function handleManualCompile() {
-    if (!initialized || compileMode !== 'manual') return;
+    if (!initialized || compileMode !== 'manual') {
+      return;
+    }
     handleExtensionCommand('manualCompile');
   }
 
   function handleExpandVarHistogram(varName: string) {
-    if (!variableCaptureManager) return;
+    if (!variableCaptureManager) {
+      return;
+    }
     const vars = debugState.capturedVariables;
     const v = vars.find(c => c.varName === varName);
     const isExpanded = v?.histogram !== null || v?.channelHistograms !== null || v?.colorFrequencies !== null;
@@ -530,7 +558,9 @@
   }
 
   function handleVarClick(_varName: string, declarationLine: number) {
-    if (!debugState.filePath) return;
+    if (!debugState.filePath) {
+      return;
+    }
     transport.postMessage({
       type: 'goToLine',
       payload: { line: declarationLine, filePath: debugState.filePath },
@@ -538,11 +568,17 @@
   }
 
   function notifyVariableCaptureManager() {
-    if (!variableCaptureManager || !shaderDebugManager) return;
+    if (!variableCaptureManager || !shaderDebugManager) {
+      return;
+    }
     const state = shaderDebugManager.getState();
-    if (!state.isVariableInspectorEnabled) return;
+    if (!state.isVariableInspectorEnabled) {
+      return;
+    }
+    const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     variableCaptureManager.notifyStateChange({
-      code: currentShaderCode,
+      code: debugTarget.code,
+      inputConfig: debugTarget.inputConfig,
       debugLine: state.currentLine,
       pixelX: capturePixelX,
       pixelY: capturePixelY,
@@ -557,7 +593,9 @@
   }
 
   function getUniforms() {
-    if (!initialized || !shaderStudio) return null;
+    if (!initialized || !shaderStudio) {
+      return null;
+    }
     return renderingEngine.getUniforms();
   }
 
@@ -589,10 +627,10 @@
       uniformActualFps = {};
       scriptInfo = currentConfig?.script
         ? {
-            filename: currentConfig.script,
-            uniforms: [],
-            fileExists: !event.data.scriptBundleError?.includes('not found'),
-          }
+          filename: currentConfig.script,
+          uniforms: [],
+          fileExists: !event.data.scriptBundleError?.includes('not found'),
+        }
         : null;
       editorOverlayManager?.setShaderSource(currentShaderCode, shaderPath);
       editorOverlayManager?.setConfig(currentConfig);
@@ -617,7 +655,9 @@
       renderingEngine = new RenderingEngine();
 
       shaderDebugManager = new ShaderDebugManager();
-      shaderDebugManager.setStateCallback((s) => { debugState = s; });
+      shaderDebugManager.setStateCallback((s) => {
+        debugState = s; 
+      });
       shaderDebugManager.setVariableInspectorEnabled(persistedVariableInspectorEnabled);
       shaderDebugManager.setInlineRenderingEnabled(persistedInlineRenderingEnabled);
 
@@ -642,7 +682,9 @@
       // triggering applyGlobalAudioState() which needs a fully initialized engine.
       audioVideoController = new AudioVideoController(
         () => shaderStudio,
-        (vol, mut) => { audioVolume = vol; audioMuted = mut; },
+        (vol, mut) => {
+          audioVolume = vol; audioMuted = mut; 
+        },
       );
 
       recordingManager = new RecordingManager(
@@ -661,10 +703,14 @@
             transport.postMessage({ type: "saveFile", payload: { data: base64, defaultName, filters } });
           });
         },
-        (rec) => { isRecording = rec; },
+        (rec) => {
+          isRecording = rec; 
+        },
       );
 
-      pixelInspectorManager = new PixelInspectorManager((s) => { inspectorState = s; });
+      pixelInspectorManager = new PixelInspectorManager((s) => {
+        inspectorState = s; 
+      });
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
       debugInspectorEnabled = persistedPixelInspectorEnabled;
       pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled && debugState.isEnabled);
@@ -713,16 +759,28 @@
 
   // Callback objects for managers — defined as getters to close over Svelte state
   const messageRouterCallbacks: MessageRouterCallbacks = {
-    onError: (errs) => { errors = errs; },
-    onMessageError: (msg) => { addError(msg); },
-    onFileContents: (path, code) => { editorOverlayManager?.handleFileContents(path, code); },
+    onError: (errs) => {
+      errors = errs; 
+    },
+    onMessageError: (msg) => {
+      addError(msg); 
+    },
+    onFileContents: (path, code) => {
+      editorOverlayManager?.handleFileContents(path, code); 
+    },
     onShaderSource: handleShaderSource,
     onToggleEditorOverlay: () => {
-      if (!hasShader) return;
+      if (!hasShader) {
+        return;
+      }
       editorOverlayStore.toggle();
     },
-    onResetLayout: () => { handleResetLayout(); },
-    onManualCompile: () => { void handleManualCompile(); },
+    onResetLayout: () => {
+      handleResetLayout(); 
+    },
+    onManualCompile: () => {
+      void handleManualCompile(); 
+    },
     onCompilationResult: (result) => {
       if (result) {
         errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
@@ -734,7 +792,9 @@
         }
       }
     },
-    onLockStateChanged: (locked) => { isLocked = locked; },
+    onLockStateChanged: (locked) => {
+      isLocked = locked; 
+    },
     onCustomUniformValues: (values) => {
       if (renderingEngine) {
         renderingEngine.updateCustomUniformValues(values);
@@ -769,12 +829,22 @@
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
     },
-    onShaderCodeChanged: (code) => { currentShaderCode = code; },
-    onErrors: (errs) => { errors = errs; },
-    onClearErrors: () => { errors = []; },
-    onStartRenderLoop: () => { renderingEngine.startRenderLoop(); },
+    onShaderCodeChanged: (code) => {
+      currentShaderCode = code; 
+    },
+    onErrors: (errs) => {
+      errors = errs; 
+    },
+    onClearErrors: () => {
+      errors = []; 
+    },
+    onStartRenderLoop: () => {
+      renderingEngine.startRenderLoop(); 
+    },
     getLastShaderEvent: () => shaderStudio.getLastShaderEvent(),
-    handleShaderMessage: (event) => { messageRouter!.handleMessage(event); },
+    handleShaderMessage: (event) => {
+      messageRouter!.handleMessage(event); 
+    },
   };
 
   function addError(message: string) {
@@ -791,11 +861,15 @@
   let previewAlone = true;
 
   function handleResetLayout() {
-    if (resetLayoutFn) resetLayoutFn();
+    if (resetLayoutFn) {
+      resetLayoutFn();
+    }
   }
 
   function handleShowPreview() {
-    if (showPreviewFn) showPreviewFn();
+    if (showPreviewFn) {
+      showPreviewFn();
+    }
   }
 
   function handleDockviewReady(event: CustomEvent<{ resetLayout: () => void; showPreview: () => void }>) {
@@ -828,8 +902,14 @@
   function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
     return (container) => {
       const el = getEl();
-      if (el) container.appendChild(el);
-      return () => { if (el?.parentNode === container) container.removeChild(el); };
+      if (el) {
+        container.appendChild(el);
+      }
+      return () => {
+        if (el?.parentNode === container) {
+          container.removeChild(el);
+        } 
+      };
     };
   }
 
@@ -842,14 +922,30 @@
     if (transport?.getType() === 'websocket') {
       releaseWebLayoutSlot();
     }
-    if (recordingManager) recordingManager.dispose();
-    if (performanceMonitor) performanceMonitor.dispose();
-    if (audioVideoController) audioVideoController.dispose();
-    if (editorOverlayManager) editorOverlayManager.dispose();
-    if (variableCaptureManager) variableCaptureManager.dispose();
-    if (pixelInspectorManager) pixelInspectorManager.dispose();
-    if (renderingEngine) renderingEngine.dispose();
-    if (transport) transport.dispose();
+    if (recordingManager) {
+      recordingManager.dispose();
+    }
+    if (performanceMonitor) {
+      performanceMonitor.dispose();
+    }
+    if (audioVideoController) {
+      audioVideoController.dispose();
+    }
+    if (editorOverlayManager) {
+      editorOverlayManager.dispose();
+    }
+    if (variableCaptureManager) {
+      variableCaptureManager.dispose();
+    }
+    if (pixelInspectorManager) {
+      pixelInspectorManager.dispose();
+    }
+    if (renderingEngine) {
+      renderingEngine.dispose();
+    }
+    if (transport) {
+      transport.dispose();
+    }
   });
 </script>
 

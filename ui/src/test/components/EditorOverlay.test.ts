@@ -24,7 +24,9 @@ async function getLatestMockEditor() {
   const monaco = await import('monaco-editor');
   const createMock = vi.mocked(monaco.editor.create);
   const calls = createMock.mock.results;
-  if (calls.length === 0) return null;
+  if (calls.length === 0) {
+    return null;
+  }
   return calls[calls.length - 1].value as any;
 }
 
@@ -53,9 +55,15 @@ function createMockEditorWithCallbacks() {
     addCommand: vi.fn(() => 'cmd'),
     executeEdits: vi.fn(),
     hasTextFocus: vi.fn(() => false),
-    onDidChangeModelContent: vi.fn((cb: any) => { contentChangeCallback = cb; }),
-    onDidScrollChange: vi.fn((cb: any) => { scrollChangeCallback = cb; }),
-    onKeyDown: vi.fn((cb: any) => { keyDownCallback = cb; }),
+    onDidChangeModelContent: vi.fn((cb: any) => {
+      contentChangeCallback = cb; 
+    }),
+    onDidScrollChange: vi.fn((cb: any) => {
+      scrollChangeCallback = cb; 
+    }),
+    onKeyDown: vi.fn((cb: any) => {
+      keyDownCallback = cb; 
+    }),
     getOption: vi.fn(() => 0),
     getModel: vi.fn(() => model),
     deltaDecorations: vi.fn(() => []),
@@ -410,7 +418,9 @@ describe('EditorOverlay', () => {
       const { initVimMode } = await import('monaco-vim');
       vi.mocked(initVimMode).mockReturnValue({
         on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
-          if (event === 'vim-mode-change') onModeChange = cb;
+          if (event === 'vim-mode-change') {
+            onModeChange = cb;
+          }
         }),
         dispose: disposeFn,
       } as any);
@@ -495,7 +505,9 @@ describe('EditorOverlay', () => {
       const { initVimMode } = await import('monaco-vim');
       vi.mocked(initVimMode).mockReturnValue({
         on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
-          if (event === 'vim-mode-change') onModeChange = cb;
+          if (event === 'vim-mode-change') {
+            onModeChange = cb;
+          }
         }),
         dispose: vi.fn(),
         constructor: { keyMap: { vim: { call: vi.fn() } }, signal: vi.fn() },
@@ -527,7 +539,9 @@ describe('EditorOverlay', () => {
       const { initVimMode } = await import('monaco-vim');
       vi.mocked(initVimMode).mockReturnValue({
         on: vi.fn((event: string, cb: (payload: { mode?: string }) => void) => {
-          if (event === 'vim-mode-change') onModeChange = cb;
+          if (event === 'vim-mode-change') {
+            onModeChange = cb;
+          }
         }),
         dispose: vi.fn(),
         state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },

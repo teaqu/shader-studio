@@ -38,7 +38,9 @@ export class MessageRouter {
   }
 
   async handleMessage(event: MessageEvent): Promise<void> {
-    if (!this.initialized) return;
+    if (!this.initialized) {
+      return;
+    }
 
     try {
       const { type } = event.data;

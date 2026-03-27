@@ -407,11 +407,12 @@ suite('ConfigEditorProvider Test Suite', () => {
     const provider = new ConfigEditorProvider(mockContext, mockShaderProvider);
 
     const configPath = '/mock/path/shader.sha.json';
+    const downloadDir = '/mock/user/Downloads';
     const configJson = {
       passes: {
         Image: {
           inputs: {
-            iChannel0: { type: 'texture', path: '/Users/calum/Downloads/texture.png' },
+            iChannel0: { type: 'texture', path: `${downloadDir}/texture.png` },
           },
         },
       },
@@ -438,8 +439,8 @@ suite('ConfigEditorProvider Test Suite', () => {
     const roots = webviewPanel.webview.options.localResourceRoots || [];
     const fsPaths = roots.map((r: vscode.Uri) => r.fsPath);
     assert.ok(
-      fsPaths.some((p: string) => p === '/Users/calum/Downloads'),
-      `Expected /Users/calum/Downloads in localResourceRoots, got: ${fsPaths.join(', ')}`
+      fsPaths.some((p: string) => p === downloadDir),
+      `Expected ${downloadDir} in localResourceRoots, got: ${fsPaths.join(', ')}`
     );
   });
 });

@@ -104,7 +104,9 @@ export class ScriptEvaluator {
           continue;
         }
         const type = this.inferType(value);
-        if (!type) continue;
+        if (!type) {
+          continue;
+        }
 
         this.inferredTypes[name] = type;
         declLines.push(`uniform ${type} ${name};`);
@@ -144,7 +146,9 @@ export class ScriptEvaluator {
    * Change the polling interval without resetting the shader time or reloading the script.
    */
   public updatePollingRate(intervalMs: number): void {
-    if (intervalMs === this.currentIntervalMs) return;
+    if (intervalMs === this.currentIntervalMs) {
+      return;
+    }
     this.currentIntervalMs = intervalMs;
 
     // If currently polling, restart the loop with the new interval
@@ -173,7 +177,9 @@ export class ScriptEvaluator {
     let nextTickAt = Date.now() + intervalMs;
 
     const tick = () => {
-      if (!this.pollTimer) return;
+      if (!this.pollTimer) {
+        return;
+      }
 
       const allValues = this.evaluate(this.startTime);
       const changed = this.getChangedValues(allValues);
@@ -229,7 +235,9 @@ export class ScriptEvaluator {
   }
 
   private evaluate(startTime: number): CustomUniformValue[] {
-    if (!this.uniformsFn) return [];
+    if (!this.uniformsFn) {
+      return [];
+    }
 
     const now = Date.now();
     const elapsed = (now - startTime) / 1000;
@@ -243,22 +251,28 @@ export class ScriptEvaluator {
       iResolution: [800, 600, 800 / 600],
       iMouse: [0, 0, 0, 0],
       iDate: [date.getFullYear(), date.getMonth(), date.getDate(),
-              date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds()],
+        date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds()],
       iChannelTime: [0, 0, 0, 0],
       iSampleRate: 44100,
     };
 
     try {
       const result = this.uniformsFn(ctx);
-      if (!result || typeof result !== 'object') return this.getZeroValues();
+      if (!result || typeof result !== 'object') {
+        return this.getZeroValues();
+      }
 
       const values: CustomUniformValue[] = [];
       for (const [name, expectedType] of Object.entries(this.inferredTypes)) {
         const value = result[name];
-        if (value === undefined) continue;
+        if (value === undefined) {
+          continue;
+        }
 
         const actualType = this.inferType(value);
-        if (actualType !== expectedType) continue;
+        if (actualType !== expectedType) {
+          continue;
+        }
 
         values.push({ name, type: expectedType, value });
       }
@@ -285,7 +299,9 @@ export class ScriptEvaluator {
   }
 
   private getChangedValues(newValues: CustomUniformValue[]): CustomUniformValue[] {
-    if (this.lastValues.length === 0) return newValues;
+    if (this.lastValues.length === 0) {
+      return newValues;
+    }
     const changed: CustomUniformValue[] = [];
     for (const a of newValues) {
       const b = this.lastValues.find(v => v.name === a.name);
@@ -296,9 +312,13 @@ export class ScriptEvaluator {
       if (Array.isArray(a.value) && Array.isArray(b.value)) {
         let diff = false;
         for (let j = 0; j < a.value.length; j++) {
-          if (a.value[j] !== (b.value as number[])[j]) { diff = true; break; }
+          if (a.value[j] !== (b.value as number[])[j]) {
+            diff = true; break; 
+          }
         }
-        if (diff) changed.push(a);
+        if (diff) {
+          changed.push(a);
+        }
       } else if (a.value !== b.value) {
         changed.push(a);
       }
@@ -307,8 +327,12 @@ export class ScriptEvaluator {
   }
 
   private inferType(value: any): string | null {
-    if (typeof value === 'number') return 'float';
-    if (typeof value === 'boolean') return 'bool';
+    if (typeof value === 'number') {
+      return 'float';
+    }
+    if (typeof value === 'boolean') {
+      return 'bool';
+    }
     if (Array.isArray(value)) {
       switch (value.length) {
         case 2: return 'vec2';

@@ -1,6 +1,9 @@
 import type { ShaderCompiler, ChannelSamplerType } from '../ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
+import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
+import type { ConfigInput } from '@shader-studio/types';
+import { bindTextures } from '../util/TextureBinder';
 
 export interface CaptureUniforms {
   time: number;
@@ -58,6 +61,7 @@ export class VariableCapturer {
   // Custom uniform state for capture shaders
   private customUniformDeclarations = '';
   private customUniforms: CaptureCustomUniform[] = [];
+  private inputBindings: (PiTexture | null)[] = [];
   private compileContext: CaptureCompileContext = {};
   private lastError: string | null = null;
 
@@ -65,6 +69,7 @@ export class VariableCapturer {
     private gl: WebGL2RenderingContext,
     private shaderCompiler: ShaderCompiler,
     compileContext: CaptureCompileContext = {},
+    private resolveInputBindings?: (inputConfig: Record<string, ConfigInput>) => (PiTexture | null)[],
   ) {
     this.compileContext = compileContext;
     this.initQuad();
@@ -103,6 +108,10 @@ export class VariableCapturer {
     }
     this.customUniformDeclarations = declarations;
     this.customUniforms = uniforms;
+  }
+
+  setInputBindings(inputConfig: Record<string, ConfigInput>): void {
+    this.inputBindings = this.resolveInputBindings?.(inputConfig) ?? [];
   }
 
   clearLastError(): void {
@@ -446,6 +455,16 @@ export class VariableCapturer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, width, height);
     gl.useProgram(program);
+
+    if (this.inputBindings.length > 0) {
+      bindTextures(gl, this.inputBindings);
+      for (let i = 0; i < this.inputBindings.length; i++) {
+        const loc = gl.getUniformLocation(program, `iChannel${i}`);
+        if (loc !== null) {
+          gl.uniform1i(loc, i);
+        }
+      }
+    }
 
     // Set uniforms
     gl.uniform3fv(gl.getUniformLocation(program, 'iResolution'), [canvasWidth, canvasHeight, 1.0]);

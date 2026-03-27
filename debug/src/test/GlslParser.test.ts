@@ -138,6 +138,21 @@ describe("GlslParser", () => {
       expect(result.start).toBe(0);
       expect(result.end).toBe(7);
     });
+
+    it("should not throw when the cursor line is beyond the source length", () => {
+      const lines = [
+        "float sdf(vec2 p, float r) {",
+        "  return length(p) - r;",
+        "}",
+      ];
+
+      expect(() => GlslParser.findEnclosingFunction(lines, 8)).not.toThrow();
+      expect(GlslParser.findEnclosingFunction(lines, 8)).toEqual({
+        name: null,
+        start: -1,
+        end: -1,
+      });
+    });
   });
 
   describe("buildVariableTypeMap", () => {

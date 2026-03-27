@@ -597,7 +597,10 @@ export class GlslParser {
     return GlslParser.stripLineComments(line).trim().replace(/\s+/g, ' ');
   }
 
-  private static stripLineComments(line: string): string {
+  private static stripLineComments(line: string | undefined | null): string {
+    if (!line) {
+      return '';
+    }
     const commentIndex = line.indexOf('//');
     return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
   }

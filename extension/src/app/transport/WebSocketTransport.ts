@@ -170,12 +170,18 @@ export class WebSocketTransport implements MessageTransport {
 
     for (const passName of Object.keys(config.passes)) {
       const pass = config.passes[passName];
-      if (!pass?.inputs) continue;
+      if (!pass?.inputs) {
+        continue;
+      }
 
       for (const key of Object.keys(pass.inputs)) {
         const input = pass.inputs[key];
-        if (!input?.path) continue;
-        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio') continue;
+        if (!input?.path) {
+          continue;
+        }
+        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio') {
+          continue;
+        }
 
         // Resolve to absolute path
         let absolutePath: string;

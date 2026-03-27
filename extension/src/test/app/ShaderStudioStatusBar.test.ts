@@ -4,167 +4,167 @@ import * as vscode from 'vscode';
 import { ShaderStudioStatusBar } from '../../app/ShaderStudioStatusBar';
 
 suite('ShaderStudioStatusBar Test Suite', () => {
-    let sandbox: sinon.SinonSandbox;
-    let mockContext: any;
-    let mockStatusBarItem: any;
-    let statusBar: ShaderStudioStatusBar;
+  let sandbox: sinon.SinonSandbox;
+  let mockContext: any;
+  let mockStatusBarItem: any;
+  let statusBar: ShaderStudioStatusBar;
 
-    setup(() => {
-        sandbox = sinon.createSandbox();
+  setup(() => {
+    sandbox = sinon.createSandbox();
 
-        mockContext = {
-            subscriptions: []
-        } as any;
+    mockContext = {
+      subscriptions: []
+    } as any;
 
-        mockStatusBarItem = {
-            show: sandbox.stub(),
-            hide: sandbox.stub(),
-            dispose: sandbox.stub(),
-            text: '',
-            tooltip: '',
-            command: ''
-        };
+    mockStatusBarItem = {
+      show: sandbox.stub(),
+      hide: sandbox.stub(),
+      dispose: sandbox.stub(),
+      text: '',
+      tooltip: '',
+      command: ''
+    };
 
-        sandbox.stub(vscode.window, 'createStatusBarItem').returns(mockStatusBarItem as any);
-        sandbox.stub(vscode.window, 'showQuickPick').resolves(undefined as any);
-        sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined as any);
-    });
+    sandbox.stub(vscode.window, 'createStatusBarItem').returns(mockStatusBarItem as any);
+    sandbox.stub(vscode.window, 'showQuickPick').resolves(undefined as any);
+    sandbox.stub(vscode.commands, 'executeCommand').resolves(undefined as any);
+  });
 
-    teardown(() => {
-        sandbox.restore();
-    });
+  teardown(() => {
+    sandbox.restore();
+  });
 
-    test('constructor should create and show status bar item and register in context', () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('constructor should create and show status bar item and register in context', () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        assert.ok((vscode.window.createStatusBarItem as sinon.SinonStub).calledOnce);
-        assert.ok(mockStatusBarItem.show.calledOnce);
-        assert.strictEqual(mockContext.subscriptions.indexOf(mockStatusBarItem) >= 0, true);
-    });
+    assert.ok((vscode.window.createStatusBarItem as sinon.SinonStub).calledOnce);
+    assert.ok(mockStatusBarItem.show.calledOnce);
+    assert.strictEqual(mockContext.subscriptions.indexOf(mockStatusBarItem) >= 0, true);
+  });
 
-    test('updateServerStatus should update text and tooltip for stopped and running states', () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('updateServerStatus should update text and tooltip for stopped and running states', () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        // Stopped state (default)
-        statusBar.updateServerStatus(false);
-        assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon)');
-        assert.strictEqual(mockStatusBarItem.tooltip, 'Shader Studio - Click for options');
+    // Stopped state (default)
+    statusBar.updateServerStatus(false);
+    assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon)');
+    assert.strictEqual(mockStatusBarItem.tooltip, 'Shader Studio - Click for options');
 
-        // Running state with port
-        statusBar.updateServerStatus(true, 1234);
-        assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon-running)');
-        assert.ok(mockStatusBarItem.tooltip.includes('Server Running'));
-        assert.ok(mockStatusBarItem.tooltip.includes('1234'));
-    });
+    // Running state with port
+    statusBar.updateServerStatus(true, 1234);
+    assert.strictEqual(mockStatusBarItem.text, '$(shader-studio-icon-running)');
+    assert.ok(mockStatusBarItem.tooltip.includes('Server Running'));
+    assert.ok(mockStatusBarItem.tooltip.includes('1234'));
+  });
 
-    test('showShaderStudioMenu should execute start command when selected (not running)', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute start command when selected (not running)', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(play-circle) Start Web Server', description: 'Start the Shader Studio web server', action: 'start-server' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(play-circle) Start Web Server', description: 'Start the Shader Studio web server', action: 'start-server' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledOnce);
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.startWebServer'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledOnce);
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.startWebServer'));
+  });
 
-    test('showShaderStudioMenu should execute open in browser when running', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
-        statusBar.updateServerStatus(true, 3000);
+  test('showShaderStudioMenu should execute open in browser when running', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
+    statusBar.updateServerStatus(true, 3000);
 
-        const choice = { label: '$(globe) Open in Browser', description: 'Open Shader Studio in external browser', action: 'open-browser' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(globe) Open in Browser', description: 'Open Shader Studio in external browser', action: 'open-browser' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openInBrowser'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openInBrowser'));
+  });
 
-    test('showShaderStudioMenu should execute stop command when running', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
-        statusBar.updateServerStatus(true, 3000);
+  test('showShaderStudioMenu should execute stop command when running', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
+    statusBar.updateServerStatus(true, 3000);
 
-        const choice = { label: '$(stop-circle) Stop Web Server', description: 'Stop the Shader Studio web server', action: 'stop-server' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(stop-circle) Stop Web Server', description: 'Stop the Shader Studio web server', action: 'stop-server' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.stopWebServer'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.stopWebServer'));
+  });
 
-    test('showShaderStudioMenu should execute copy-url when running', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
-        statusBar.updateServerStatus(true, 3000);
+  test('showShaderStudioMenu should execute copy-url when running', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
+    statusBar.updateServerStatus(true, 3000);
 
-        const choice = { label: '$(copy) Copy URL', description: 'Copy server URL to clipboard', action: 'copy-url' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(copy) Copy URL', description: 'Copy server URL to clipboard', action: 'copy-url' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.copyServerUrl'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.copyServerUrl'));
+  });
 
-    test('showShaderStudioMenu should execute show-panel', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute show-panel', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(window) Open Panel', description: 'Show the Shader Studio panel', action: 'show-panel' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(window) Open Panel', description: 'Show the Shader Studio panel', action: 'show-panel' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.view'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.view'));
+  });
 
-    test('showShaderStudioMenu should execute show-window', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute show-window', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(multiple-windows) Open Window', description: 'Open Shader Studio in a new window', action: 'show-window' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(multiple-windows) Open Window', description: 'Open Shader Studio in a new window', action: 'show-window' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.viewInNewWindow'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.viewInNewWindow'));
+  });
 
-    test('showShaderStudioMenu should execute new-shader', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute new-shader', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(new-file) New Shader', description: 'Create a new shadertoy.glsl file', action: 'new-shader' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(new-file) New Shader', description: 'Create a new shadertoy.glsl file', action: 'new-shader' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.newShader'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.newShader'));
+  });
 
-    test('showShaderStudioMenu should execute open-shader-explorer', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute open-shader-explorer', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(library) Shader Explorer', description: 'Open the Shader Explorer', action: 'open-shader-explorer' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(library) Shader Explorer', description: 'Open the Shader Explorer', action: 'open-shader-explorer' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openShaderExplorer'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openShaderExplorer'));
+  });
 
-    test('showShaderStudioMenu should execute open-settings', async () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('showShaderStudioMenu should execute open-settings', async () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        const choice = { label: '$(gear) Settings', description: 'Open Shader Studio settings', action: 'open-settings' } as any;
-        (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
+    const choice = { label: '$(gear) Settings', description: 'Open Shader Studio settings', action: 'open-settings' } as any;
+    (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
-        await statusBar.showShaderStudioMenu();
+    await statusBar.showShaderStudioMenu();
 
-        assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openSettings'));
-    });
+    assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.openSettings'));
+  });
 
-    test('dispose should call dispose on status bar item', () => {
-        statusBar = new ShaderStudioStatusBar(mockContext);
+  test('dispose should call dispose on status bar item', () => {
+    statusBar = new ShaderStudioStatusBar(mockContext);
 
-        statusBar.dispose();
+    statusBar.dispose();
 
-        assert.ok(mockStatusBarItem.dispose.calledOnce);
-    });
+    assert.ok(mockStatusBarItem.dispose.calledOnce);
+  });
 });

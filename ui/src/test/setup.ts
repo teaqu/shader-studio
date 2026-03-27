@@ -17,7 +17,9 @@
             delete store[key];
           },
           clear() {
-            for (const k of Object.keys(store)) delete store[k];
+            for (const k of Object.keys(store)) {
+              delete store[k];
+            }
           }
         };
       }

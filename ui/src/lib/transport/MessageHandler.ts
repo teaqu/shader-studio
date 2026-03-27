@@ -10,6 +10,7 @@ import type {
   WarningMessage
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
+import { BufferPathResolver } from '../util/BufferPathResolver';
 import { ShaderDebugManager } from '../ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from '../ShaderProcessor';
 
@@ -18,6 +19,7 @@ export class MessageHandler {
   private shaderLocker: ShaderLocker;
   private transport: Transport;
   private bufferUpdater: BufferUpdater;
+  private bufferPathResolver: BufferPathResolver;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
   private shaderDebugManager: ShaderDebugManager;
@@ -33,6 +35,7 @@ export class MessageHandler {
     this.renderEngine = renderEngine;
     this.shaderLocker = shaderLocker;
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
+    this.bufferPathResolver = new BufferPathResolver(renderEngine);
     this.shaderDebugManager = shaderDebugManager;
 
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
@@ -61,13 +64,17 @@ export class MessageHandler {
       if (cursorPosition) {
         const { line, lineContent, filePath } = cursorPosition;
 
-        // If shader is locked, only debug lines from the locked shader
-        if (!this.shaderLocker.isLocked() || this.shaderLocker.getLockedShaderPath() === filePath) {
+        // If shader is locked, accept cursors from the locked file and its buffer files
+        if (!this.shaderLocker.isLocked()
+            || this.shaderLocker.getLockedShaderPath() === filePath
+            || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)) {
           this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
         }
       }
 
       if (this.shaderLocker.isLocked()) {
+        const currentBufferName =
+          path && this.bufferPathResolver.getBufferNameForFilePath(path);
         const lockedPath = this.shaderLocker.getLockedShaderPath();
 
         if (lockedPath === undefined || lockedPath !== path) {
@@ -77,12 +84,18 @@ export class MessageHandler {
           }
 
           // Check if this is a common buffer file update
-          if (this.isCommonBufferFile(path)) {
+          if (currentBufferName === 'common') {
+            this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
             // For common buffer files, we need special handling since they don't have mainImage
             return await this.handleCommonBufferUpdate(path, buffers, code);
           }
 
-          const bufferUpdateResult = this.bufferUpdater.updateBuffer(path, buffers, code);
+          if (!currentBufferName) {
+            return undefined;
+          }
+
+          this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
+          this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
           return undefined;
         }
@@ -107,37 +120,11 @@ export class MessageHandler {
     return Object.keys(buffers).length > 0 || !!code;
   }
 
-  private isCommonBufferFile(filePath: string): boolean {
-    // Check if the file path indicates this is a common buffer file
-    const filename = filePath.split(/[\\/]/).pop();
-
-    if (!filename) {
-      return false;
-    }
-
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
-    const isCommon = nameWithoutExt.toLowerCase() === 'common';
-
-    // Also check if the path contains 'common' as a fallback
-    const pathContainsCommon = filePath.toLowerCase().includes('common');
-
-    return isCommon || pathContainsCommon;
-  }
-
-  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, code: string): Promise<CompilationResult> {
-    // For common buffer updates when shader is locked, we need to refresh the locked shader
-    // to pick up the new common buffer content, not update the common buffer directly
-    const lockedPath = this.shaderLocker.getLockedShaderPath();
-    if (lockedPath) {
-      // Request a refresh of the locked shader to pick up the new common buffer content
-      this.refresh(lockedPath);
-      return { success: true };
-    }
-
-    // If no locked shader, delegate to shader processor
-    const result = await this.shaderProcessor.processCommonBufferUpdate(code);
-    this.handleCompilationResult(result);
-    return result;
+  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, _code: string): Promise<CompilationResult> {
+    // Common updates are only valid while locked; refresh the locked main shader
+    // so the pipeline picks up the updated common content.
+    this.refresh(this.shaderLocker.getLockedShaderPath());
+    return { success: true };
   }
 
   private async processMainShaderCompilation(
@@ -145,6 +132,12 @@ export class MessageHandler {
     event: MessageEvent
   ): Promise<CompilationResult> {
     this.lastEvent = event;
+
+    this.shaderDebugManager.setShaderContext(
+      message.config ?? null,
+      message.path,
+      message.buffers ?? {},
+    );
 
     // Delegate to shader processor
     const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false, this.audioOptions);
@@ -167,6 +160,35 @@ export class MessageHandler {
       // Send all errors in a single message
       this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
     }
+  }
+
+  private syncStoredShaderContextForBufferUpdate(
+    bufferName: string | null,
+    code: string,
+  ): void {
+    if (!bufferName || !this.lastEvent) {
+      return;
+    }
+
+    const lastMessage = this.lastEvent.data as ShaderSourceMessage;
+    const nextMessage: ShaderSourceMessage = {
+      ...lastMessage,
+      buffers: {
+        ...(lastMessage.buffers ?? {}),
+        [bufferName]: code,
+      },
+    };
+
+    this.lastEvent = {
+      ...this.lastEvent,
+      data: nextMessage,
+    } as MessageEvent;
+
+    this.shaderDebugManager.setShaderContext(
+      nextMessage.config ?? null,
+      nextMessage.path,
+      nextMessage.buffers ?? {},
+    );
   }
 
   private sendErrorMessage(errors: string[]): void {
@@ -239,11 +261,10 @@ export class MessageHandler {
   public handleCursorPositionMessage(message: CursorPositionMessage): void {
     const { line, lineContent, filePath } = message.payload;
 
-    // If shader is locked, only debug lines from the locked shader
+    // If shader is locked, accept cursors from the locked file and its buffer files
     if (this.shaderLocker.isLocked()) {
       const lockedPath = this.shaderLocker.getLockedShaderPath();
-      if (lockedPath && filePath !== lockedPath) {
-        // Cursor is in a different file than the locked shader - ignore
+      if (lockedPath && filePath !== lockedPath && !this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)) {
         return;
       }
     }
@@ -251,7 +272,7 @@ export class MessageHandler {
     this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
 
     // If debug mode is active, recompile shader
-    if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getOriginalShaderCode() && this.lastEvent) {
+    if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getImageShaderCode() && this.lastEvent) {
       this.debugCompile();
     }
   }
@@ -261,7 +282,7 @@ export class MessageHandler {
   }
 
   private async debugCompile(): Promise<CompilationResult | undefined> {
-    if (!this.shaderProcessor.getOriginalShaderCode() || !this.lastEvent) {
+    if (!this.shaderProcessor.getImageShaderCode() || !this.lastEvent) {
       return undefined;
     }
 

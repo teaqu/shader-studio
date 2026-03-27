@@ -37,8 +37,12 @@ export class GlslToJsTranspiler {
 
     // Emit JS variable declarations for uniforms
     function jsUniformInit(type: string, name: string) {
-      if (name === 'iResolution') return `let iResolution = [960, 540, 1];`;
-      if (name === 'iChannelResolution') return `let iChannelResolution = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];`;
+      if (name === 'iResolution') {
+        return `let iResolution = [960, 540, 1];`;
+      }
+      if (name === 'iChannelResolution') {
+        return `let iChannelResolution = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];`;
+      }
       switch(type) {
         case 'vec3': return `let ${name} = [0,0,0];`;
         case 'vec4': return `let ${name} = [0,0,0,0];`;

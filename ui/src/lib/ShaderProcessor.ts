@@ -1,6 +1,6 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
-import type { ShaderSourceMessage } from "@shader-studio/types";
+import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
@@ -11,7 +11,7 @@ export interface CompilationResult {
 export class ShaderProcessor {
   private renderEngine: RenderingEngine;
   private shaderDebugManager: ShaderDebugManager;
-  private originalShaderCode: string | null = null;
+  private imageShaderCode: string | null = null;
   private isProcessing = false;
 
   constructor(
@@ -26,8 +26,8 @@ export class ShaderProcessor {
     return this.isProcessing;
   }
 
-  public getOriginalShaderCode(): string | null {
-    return this.originalShaderCode;
+  public getImageShaderCode(): string | null {
+    return this.imageShaderCode;
   }
 
   public async processMainShaderCompilation(
@@ -39,20 +39,22 @@ export class ShaderProcessor {
     const scriptBundleError = message.scriptBundleError;
 
     this.isProcessing = true;
-    this.originalShaderCode = code;
-    this.shaderDebugManager.setOriginalCode(code);
+    this.imageShaderCode = code;
+    this.shaderDebugManager.setImageShaderCode(code);
 
     if (forceCleanup) {
       this.renderEngine.cleanup();
     }
 
     try {
-      const codeToCompile = this.getDebugCodeToCompile(code);
+      const debugState = this.shaderDebugManager.getState();
+      const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(code, config ?? null);
+      const buffersToCompile = this.getCompileBuffers(buffers, debugState.activeBufferName, codeToCompile, code);
       const result = await this.renderEngine.compileShaderPipeline(
         codeToCompile,
-        config,
+        configToCompile,
         path,
-        buffers,
+        buffersToCompile,
         audioOptions,
         message.customUniformDeclarations,
         message.customUniformInfo,
@@ -99,29 +101,34 @@ export class ShaderProcessor {
     }
   }
 
-  private getDebugCodeToCompile(originalCode: string): string {
+  private getDebugCompileArgs(
+    imageShaderCode: string,
+    config: ShaderConfig | null,
+  ): { code: string; config: ShaderConfig | null } {
     const debugState = this.shaderDebugManager.getState();
+    const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
+    const sourceCode = debugTarget.code;
+    const debugConfig = debugTarget.config;
 
     if (debugState.isActive && debugState.currentLine !== null) {
       const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
-        originalCode,
+        sourceCode,
         debugState.currentLine,
       );
-
       if (modifiedCode) {
-        return modifiedCode;
+        return { code: modifiedCode, config: debugConfig };
       }
     }
 
     // Fallback: apply full-shader post-processing (normalize/step without a specific line)
     if (debugState.isEnabled) {
-      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(originalCode);
+      const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode);
       if (postProcessed) {
-        return postProcessed;
+        return { code: postProcessed, config: debugConfig };
       }
     }
 
-    return originalCode;
+    return { code: imageShaderCode, config };
   }
 
   private async compile(
@@ -155,6 +162,20 @@ export class ShaderProcessor {
     };
   }
 
+  private getCompileBuffers(
+    buffers: Record<string, string>,
+    activeBufferName: string,
+    codeToCompile: string,
+    imageShaderCode: string,
+  ): Record<string, string> {
+    if (activeBufferName !== 'common' || codeToCompile === imageShaderCode || !('common' in buffers)) {
+      return buffers;
+    }
+
+    const { common: _common, ...rest } = buffers;
+    return rest;
+  }
+
   public async processCommonBufferUpdate(code: string): Promise<CompilationResult> {
     try {
       const result = await this.renderEngine.updateBufferAndRecompile('common', code);
@@ -178,32 +199,37 @@ export class ShaderProcessor {
   }
 
   public async debugCompile(message: ShaderSourceMessage): Promise<CompilationResult> {
-    if (!this.originalShaderCode) {
+    if (!this.imageShaderCode) {
       return { success: true };
     }
 
     const { config, path, buffers } = message;
-    const debugState = this.shaderDebugManager.getState();
-
-    // Get debug-modified code (debug mode is guaranteed to be active)
-    const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
-      this.originalShaderCode,
-      debugState.currentLine!,
-    );
 
     // Pass custom uniform declarations through debug recompilations
     const cuDecl = message.customUniformDeclarations;
     const cuInfo = message.customUniformInfo;
 
+    const debugState = this.shaderDebugManager.getState();
+    const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(
+      this.imageShaderCode,
+      config ?? null,
+    );
+    const buffersToCompile = this.getCompileBuffers(
+      buffers,
+      debugState.activeBufferName,
+      codeToCompile,
+      this.imageShaderCode,
+    );
+
     // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(modifiedCode || this.originalShaderCode, config, path, buffers, cuDecl, cuInfo);
+    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
 
     // If failed and modified code was used, try original
-    if (!result.success && modifiedCode) {
+    if (!result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
-      result = await this.compile(this.originalShaderCode, config, path, buffers, cuDecl, cuInfo);
+      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo);
     }
 
     // Start render loop if compilation succeeded

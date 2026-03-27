@@ -152,7 +152,9 @@ describe('VariableCaptureManager', () => {
   function flushRAF(n = 1) {
     for (let i = 0; i < n; i++) {
       const cbs = rafCallbacks.splice(0);
-      for (const cb of cbs) cb(performance.now());
+      for (const cb of cbs) {
+        cb(performance.now());
+      }
     }
   }
 
@@ -993,8 +995,29 @@ describe('VariableCaptureManager', () => {
   // ----------------------------------------------------------------
 
   describe('Poll interval', () => {
+    let scheduledTimeouts: Array<{ id: number; callback: () => void; delay: number }>;
+    let nextTimeoutId: number;
+
+    function fireNextTimeout() {
+      const next = scheduledTimeouts.shift();
+      next?.callback();
+    }
+
     beforeEach(() => {
-      vi.useFakeTimers();
+      scheduledTimeouts = [];
+      nextTimeoutId = 1;
+      vi.spyOn(window, 'setTimeout').mockImplementation(((
+        callback: TimerHandler,
+        delay?: number,
+      ): number => {
+        const wrapped: () => void = typeof callback === 'function' ? callback as () => void : () => {};
+        const id = nextTimeoutId++;
+        scheduledTimeouts.push({ id, callback: wrapped, delay: delay ?? 0 });
+        return id;
+      }) as unknown as typeof window.setTimeout);
+      vi.spyOn(window, 'clearTimeout').mockImplementation(((timeoutId: number | undefined): void => {
+        scheduledTimeouts = scheduledTimeouts.filter(({ id }) => id !== timeoutId);
+      }) as unknown as typeof window.clearTimeout);
       (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
       (VariableCaptureBuilder.generateCaptureShader as any).mockReturnValue('shader');
       mockIssueCaptureGrid.mockReturnValue(1);
@@ -1004,28 +1027,25 @@ describe('VariableCaptureManager', () => {
     });
 
     afterEach(() => {
-      vi.useRealTimers();
+      scheduledTimeouts = [];
     });
 
     it('manual mode: no setTimeout scheduled after capture completes', () => {
-      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'manual' as const });
       flushRAF(); // issue
       flushRAF(); // collect → done
 
-      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      expect(scheduledTimeouts).toHaveLength(0);
       expect(rafCallbacks).toHaveLength(0); // loop stopped
     });
 
     it('polling mode: setTimeout scheduled after capture completes', () => {
-      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 1000 });
       flushRAF(); // issue
       flushRAF(); // collect → done → schedule poll
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+      expect(scheduledTimeouts).toHaveLength(1);
+      expect(scheduledTimeouts[0].delay).toBe(1000);
     });
 
     it('polling mode: capture re-issues after timeout fires', () => {
@@ -1034,8 +1054,7 @@ describe('VariableCaptureManager', () => {
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
-      // Advance timer to trigger poll
-      vi.advanceTimersByTime(1000);
+      fireNextTimeout();
 
       // A new RAF should have been requested
       expect(rafCallbacks).toHaveLength(1);
@@ -1044,24 +1063,19 @@ describe('VariableCaptureManager', () => {
     });
 
     it('dispose clears pending poll timeout', () => {
-      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll
 
+      expect(scheduledTimeouts).toHaveLength(1);
       manager.dispose();
 
-      expect(clearTimeoutSpy).toHaveBeenCalled();
-      // Timer should not fire after dispose
-      vi.advanceTimersByTime(3000);
+      expect(scheduledTimeouts).toHaveLength(0);
       expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(1); // no second issue
     });
 
     it('notifyStateChange cancels stale poll timeout before scheduling new one', () => {
-      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
@@ -1070,12 +1084,10 @@ describe('VariableCaptureManager', () => {
       // New state change arrives before timeout fires — old timeout should be cancelled
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 1000 });
 
-      expect(clearTimeoutSpy).toHaveBeenCalled();
+      expect(scheduledTimeouts).toHaveLength(0);
     });
 
     it('switching from polling to manual cancels pending poll timeout', () => {
-      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
@@ -1084,9 +1096,7 @@ describe('VariableCaptureManager', () => {
       // Switch to manual — should cancel the poll timeout
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'manual' as const });
 
-      expect(clearTimeoutSpy).toHaveBeenCalled();
-      // Advancing time should NOT trigger another capture
-      vi.advanceTimersByTime(3000);
+      expect(scheduledTimeouts).toHaveLength(0);
       expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(1);
     });
 
@@ -1098,13 +1108,11 @@ describe('VariableCaptureManager', () => {
 
       // Switch to pause — should cancel poll and NOT issue new capture
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'pause' as const });
-      vi.advanceTimersByTime(3000);
+      expect(scheduledTimeouts).toHaveLength(0);
       expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(1); // only the first capture
     });
 
     it('changing pollingMs mid-poll uses new interval', () => {
-      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 2000 });
       flushRAF(); // issue
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
@@ -1116,9 +1124,8 @@ describe('VariableCaptureManager', () => {
       mockCollectResults.mockReturnValue([{ varName: 'x', varType: 'float', rgba: makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5) }]);
       flushRAF(); // collect → done → schedule poll at 500ms
 
-      // Check the most recent setTimeout uses 500ms
-      const lastCall = setTimeoutSpy.mock.calls[setTimeoutSpy.mock.calls.length - 1];
-      expect(lastCall[1]).toBe(500);
+      expect(scheduledTimeouts).toHaveLength(1);
+      expect(scheduledTimeouts[0].delay).toBe(500);
     });
   });
 

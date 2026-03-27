@@ -280,6 +280,44 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("getVariableCaptureCompileContext", () => {
+    it("does not include commonCode when the active capture code is the common pass itself", () => {
+      const mockPipeline = {
+        getPasses: vi.fn(() => [
+          { name: 'common', shaderSrc: 'vec3 dddd = vec3(1.0);' },
+          { name: 'Image', shaderSrc: 'void mainImage() {}', inputs: {} },
+        ]),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      const result = renderingEngine.getVariableCaptureCompileContext('vec3 dddd = vec3(1.0);');
+
+      expect(result.commonCode).toBe('');
+      expect(result.slotAssignments).toEqual([]);
+      expect(result.channelTypes).toEqual(['2D', '2D', '2D', '2D']);
+    });
+
+    it("includes commonCode when capturing a non-common pass", () => {
+      const mockPipeline = {
+        getPasses: vi.fn(() => [
+          { name: 'common', shaderSrc: 'vec3 dddd = vec3(1.0);' },
+          { name: 'Image', shaderSrc: 'void mainImage() {}', inputs: {} },
+        ]),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      const result = renderingEngine.getVariableCaptureCompileContext('void mainImage() {}');
+
+      expect(result.commonCode).toBe('vec3 dddd = vec3(1.0);');
+    });
+  });
+
   describe("FPS limiting", () => {
     it("should delegate setFPSLimit to FrameRenderer", () => {
       renderingEngine.setFPSLimit(30);

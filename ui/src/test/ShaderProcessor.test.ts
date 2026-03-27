@@ -18,6 +18,7 @@ describe('ShaderProcessor', () => {
         currentLine: null,
         lineContent: null,
         filePath: null,
+        activeBufferName: 'Image',
       }),
       modifyShaderForDebugging: vi.fn(),
       applyFullShaderPostProcessing: vi.fn().mockReturnValue(null),
@@ -25,7 +26,13 @@ describe('ShaderProcessor', () => {
       updateDebugLine: vi.fn(),
       toggleEnabled: vi.fn(),
       setStateCallback: vi.fn(),
-      setOriginalCode: vi.fn(),
+      setImageShaderCode: vi.fn(),
+      getDebugTarget: vi.fn().mockImplementation((code: string, config: unknown) => ({
+        passName: 'Image',
+        code,
+        config,
+      })),
+      setShaderContext: vi.fn(),
     } as any;
 
     // Mock RenderingEngine
@@ -86,9 +93,9 @@ describe('ShaderProcessor', () => {
     });
   });
 
-  describe('getOriginalShaderCode', () => {
+  describe('getImageShaderCode', () => {
     it('should return null initially', () => {
-      expect(shaderProcessor.getOriginalShaderCode()).toBeNull();
+      expect(shaderProcessor.getImageShaderCode()).toBeNull();
     });
 
     it('should return shader code after processing', async () => {
@@ -103,7 +110,7 @@ describe('ShaderProcessor', () => {
 
       await shaderProcessor.processMainShaderCompilation(message, false);
 
-      expect(shaderProcessor.getOriginalShaderCode()).toBe(shaderCode);
+      expect(shaderProcessor.getImageShaderCode()).toBe(shaderCode);
     });
   });
 
@@ -312,7 +319,7 @@ describe('ShaderProcessor', () => {
     });
 
     it('should compile with debug mode when active', async () => {
-      const originalCode = 'void mainImage() {}';
+      const imageShaderCode = 'void mainImage() {}';
       const modifiedCode = 'void mainImage() { /* debug */ }';
 
       (mockShaderDebugManager.getState as any).mockReturnValue({
@@ -321,12 +328,13 @@ describe('ShaderProcessor', () => {
         currentLine: 5,
         lineContent: 'some code',
         filePath: 'test.glsl',
+        activeBufferName: 'Image',
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
 
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
-        code: originalCode,
+        code: imageShaderCode,
         config: {},
         path: 'test.glsl',
         buffers: {},
@@ -334,7 +342,7 @@ describe('ShaderProcessor', () => {
 
       await shaderProcessor.processMainShaderCompilation(message, false);
 
-      expect(mockShaderDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(originalCode, 5);
+      expect(mockShaderDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(imageShaderCode, 5);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         modifiedCode,
         message.config,
@@ -347,7 +355,7 @@ describe('ShaderProcessor', () => {
     });
 
     it('should fallback to original code if debug compilation fails', async () => {
-      const originalCode = 'void mainImage() {}';
+      const imageShaderCode = 'void mainImage() {}';
       const modifiedCode = 'void mainImage() { /* debug */ }';
 
       (mockShaderDebugManager.getState as any).mockReturnValue({
@@ -356,6 +364,7 @@ describe('ShaderProcessor', () => {
         currentLine: 5,
         lineContent: 'some code',
         filePath: 'test.glsl',
+        activeBufferName: 'Image',
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
 
@@ -366,7 +375,7 @@ describe('ShaderProcessor', () => {
 
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
-        code: originalCode,
+        code: imageShaderCode,
         config: {},
         path: 'test.glsl',
         buffers: {},
@@ -376,7 +385,7 @@ describe('ShaderProcessor', () => {
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, originalCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
       expect(result.success).toBe(true);
     });
 
@@ -459,12 +468,12 @@ describe('ShaderProcessor', () => {
     });
 
     it('should compile with original code when debug mode is inactive', async () => {
-      const originalCode = 'void mainImage() {}';
+      const imageShaderCode = 'void mainImage() {}';
 
       // First compile to set original code
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
-        code: originalCode,
+        code: imageShaderCode,
         config: {},
         path: 'test.glsl',
         buffers: {},
@@ -482,12 +491,13 @@ describe('ShaderProcessor', () => {
         currentLine: null,
         lineContent: null,
         filePath: null,
+        activeBufferName: 'Image',
       });
 
       const result = await shaderProcessor.debugCompile(message);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
-        originalCode,
+        imageShaderCode,
         message.config,
         message.path,
         message.buffers,
@@ -499,13 +509,13 @@ describe('ShaderProcessor', () => {
     });
 
     it('should compile with modified code when debug mode is active', async () => {
-      const originalCode = 'void mainImage() {}';
+      const imageShaderCode = 'void mainImage() {}';
       const modifiedCode = 'void mainImage() { /* debug */ }';
 
       // First compile to set original code
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
-        code: originalCode,
+        code: imageShaderCode,
         config: {},
         path: 'test.glsl',
         buffers: {},
@@ -523,12 +533,13 @@ describe('ShaderProcessor', () => {
         currentLine: 10,
         lineContent: 'debug line',
         filePath: 'test.glsl',
+        activeBufferName: 'Image',
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
 
       const result = await shaderProcessor.debugCompile(message);
 
-      expect(mockShaderDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(originalCode, 10);
+      expect(mockShaderDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(imageShaderCode, 10);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         modifiedCode,
         message.config,
@@ -542,12 +553,12 @@ describe('ShaderProcessor', () => {
     });
 
     it('should fallback to original code if modification fails', async () => {
-      const originalCode = 'void mainImage() {}';
+      const imageShaderCode = 'void mainImage() {}';
 
       // First compile to set original code
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
-        code: originalCode,
+        code: imageShaderCode,
         config: {},
         path: 'test.glsl',
         buffers: {},
@@ -565,13 +576,14 @@ describe('ShaderProcessor', () => {
         currentLine: 10,
         lineContent: 'debug line',
         filePath: 'test.glsl',
+        activeBufferName: 'Image',
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(null);
 
       const result = await shaderProcessor.debugCompile(message);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
-        originalCode,
+        imageShaderCode,
         message.config,
         message.path,
         message.buffers,

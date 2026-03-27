@@ -853,7 +853,9 @@ suite('Shader Studio Test Suite', () => {
 
     teardown(() => {
       for (const t of createdTransports) {
-        try { t.close(); } catch {}
+        try {
+          t.close(); 
+        } catch {}
       }
       createdTransports.length = 0;
     });

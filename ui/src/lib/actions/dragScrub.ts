@@ -36,7 +36,9 @@ export function dragScrub(node: HTMLInputElement, options: DragScrubOptions) {
   }
 
   function onMouseMove(e: MouseEvent) {
-    if (!dragging) return;
+    if (!dragging) {
+      return;
+    }
 
     const dx = e.clientX - startX;
     const pixelsPerStep = 4;

@@ -187,7 +187,9 @@ describe('MenuBar', () => {
       await tick();
 
       let state: any;
-      const unsubscribe = resolutionStore.subscribe((value) => { state = value; });
+      const unsubscribe = resolutionStore.subscribe((value) => {
+        state = value; 
+      });
       unsubscribe();
       expect(state.forceBlackBackground).toBe(true);
     });

@@ -1517,7 +1517,9 @@ describe('MenuBar Component', () => {
 
       // The errors should be displayed in the tooltip
       const errorTooltip = screen.getByText((content, element) => {
-        if (!element) return false;
+        if (!element) {
+          return false;
+        }
         return element.classList.contains('error-tooltip') &&
                content.includes('Error 1') &&
                content.includes('Error 2');
@@ -1765,7 +1767,7 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Refresh shader')).not.toBeDisabled();
     });
 
-});
+  });
 
   describe('Extension Command Menu Items', () => {
     it('should call onExtensionCommand with newShader', async () => {

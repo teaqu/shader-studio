@@ -25,4 +25,5 @@ export interface ShaderDebugState {
   debugError: string | null;         // error message when debug line can't be processed
   isVariableInspectorEnabled: boolean;  // variable inspector toggle
   capturedVariables: CapturedVariable[];  // latest captured variable values
+  activeBufferName: string;  // 'Image' | 'BufferA' | 'BufferB' | 'common' etc.
 }

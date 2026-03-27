@@ -15,8 +15,12 @@ vi.mock('codejar', () => ({
       onUpdateCb?.(code);
     });
     return {
-      updateCode: (code: string) => { el.textContent = code; highlight(el); },
-      onUpdate: (cb: (code: string) => void) => { onUpdateCb = cb; },
+      updateCode: (code: string) => {
+        el.textContent = code; highlight(el); 
+      },
+      onUpdate: (cb: (code: string) => void) => {
+        onUpdateCb = cb; 
+      },
       toString: () => el.textContent || '',
       destroy: () => {},
     };
