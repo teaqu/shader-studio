@@ -846,6 +846,23 @@ export class CodeGenerator {
     return wrapper.join('\n');
   }
 
+  static wrapGlobalScopeForDebugging(
+    lines: string[],
+    varInfo: VarInfo,
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
+  ): string {
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
+
+    return [
+      ...preservedSource,
+      '',
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+      CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge),
+      '}',
+    ].join('\n');
+  }
+
   private static splitSourceForHelperWrapper(
     lines: string[],
   ): string[] {

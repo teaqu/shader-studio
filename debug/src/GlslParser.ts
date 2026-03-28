@@ -170,6 +170,9 @@ export class GlslParser {
 
     if (!functionInfo.name || functionInfo.start < 0) {
       for (let i = 0; i <= upToLine && i < document.effectiveLines.length; i++) {
+        if (GlslParser.isInsideFunction(document.functions, i)) {
+          continue;
+        }
         for (const declaration of GlslParser.extractDeclarationsFromLine(document.effectiveLines[i])) {
           varTypes.set(declaration.name, declaration.type);
         }
@@ -228,6 +231,10 @@ export class GlslParser {
     const scanStart = functionInfo.start >= 0 ? functionInfo.start : 0;
 
     for (let i = scanStart; i <= upToLine && i < document.effectiveLines.length; i++) {
+      if (!functionInfo.name && GlslParser.isInsideFunction(document.functions, i)) {
+        continue;
+      }
+
       const line = document.effectiveLines[i];
 
       for (const declaration of GlslParser.extractDeclarationsFromLine(line)) {
