@@ -120,6 +120,7 @@
   let persistedVariableInspectorEnabled = false;
   let persistedInlineRenderingEnabled = true;
   let persistedPixelInspectorEnabled = true;
+  let debugPanelPrefsRestored = false;
 
   // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
   let editorOverlayVisible = false;
@@ -611,6 +612,7 @@
         debugPanelStore.restoreFromStorage();
         performancePanelStore.restoreFromStorage();
         editorOverlayStore.restoreFromStorage();
+        debugPanelPrefsRestored = true;
       }
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
@@ -737,8 +739,10 @@
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
       shaderDebugManager.setStateCallback((s) => {
         debugState = s;
-        debugPanelStore.setVariableInspectorEnabled(s.isVariableInspectorEnabled);
-        debugPanelStore.setInlineRenderingEnabled(s.isInlineRenderingEnabled);
+        if (debugPanelPrefsRestored) {
+          debugPanelStore.setVariableInspectorEnabled(s.isVariableInspectorEnabled);
+          debugPanelStore.setInlineRenderingEnabled(s.isInlineRenderingEnabled);
+        }
       });
 
       // Initialize performance monitor

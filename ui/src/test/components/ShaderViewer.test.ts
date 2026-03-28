@@ -967,6 +967,32 @@ describe('ShaderViewer', () => {
     expect(inspectorButton2.classList.contains('active')).toBe(true);
   });
 
+  it('should restore persisted variable inspector state when a shader loads', async () => {
+    localStorage.setItem(
+      'shader-studio-debug-panel-state:vscode:1',
+      JSON.stringify({
+        isVisible: false,
+        isVariableInspectorEnabled: true,
+        isInlineRenderingEnabled: true,
+        isPixelInspectorEnabled: true,
+      }),
+    );
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    await loadShader();
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+    await tick();
+
+    const varInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    expect(varInspectorButton.classList.contains('active')).toBe(true);
+  });
+
   it('should update config when not locked', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
