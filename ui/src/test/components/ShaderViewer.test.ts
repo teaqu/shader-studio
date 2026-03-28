@@ -351,6 +351,12 @@ describe('ShaderViewer', () => {
     return value;
   }
 
+  async function waitForEditorOverlay(container: HTMLElement): Promise<void> {
+    await vi.waitFor(() => {
+      expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockVCMFactory.reset();
@@ -1100,7 +1106,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Editor overlay should now be visible
-    expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+    await waitForEditorOverlay(container);
   });
 
   it('should handle fileContents message without crashing', async () => {
@@ -1161,7 +1167,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Editor overlay should appear
-    expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+    await waitForEditorOverlay(container);
   });
 
   it('should send requestFileContents when shaderSource sets up the path context', async () => {
@@ -1429,7 +1435,7 @@ describe('ShaderViewer', () => {
     await messageHandler({ data: { type: 'toggleEditorOverlay' } });
     await tick();
 
-    expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+    await waitForEditorOverlay(container);
   });
 
   it('should track shaderPath from shaderSource messages', async () => {
@@ -1820,7 +1826,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Editor overlay should be visible
-    expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+    await waitForEditorOverlay(container);
   });
 
   describe('handleVolumeChange', () => {
@@ -2466,7 +2472,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Should not crash
-      expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+      await waitForEditorOverlay(container);
     });
 
     it('should request file contents for non-Image buffer', async () => {
@@ -2927,7 +2933,7 @@ describe('ShaderViewer', () => {
       await fireEvent.click(editorButton);
       await tick();
 
-      expect(container.querySelector('.editor-wrapper')).toBeTruthy();
+      await waitForEditorOverlay(container);
 
       // Toggle again to hide
       await fireEvent.click(editorButton);

@@ -7,9 +7,9 @@
   import MenuBar from "./MenuBar.svelte";
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
+  import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
-  import EditorOverlay from "./EditorOverlay.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import { ShaderLocker } from "../ShaderLocker";

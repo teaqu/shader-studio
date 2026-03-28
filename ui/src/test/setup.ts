@@ -31,9 +31,7 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
 
-// Mock monaco-editor — the static import in EditorOverlay.svelte would crash
-// jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
-vi.mock('monaco-editor', () => ({
+const monacoMock = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
   KeyMod: { Shift: 1024 },
   KeyCode: { KeyA: 31, KeyI: 39, KeyO: 45 },
@@ -88,7 +86,12 @@ vi.mock('monaco-editor', () => ({
     setMonarchTokensProvider: vi.fn(),
     getLanguages: vi.fn(() => []),
   },
-}));
+};
+
+// Mock Monaco editor entrypoints — the static import in EditorOverlay.svelte would
+// crash jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
+vi.mock('monaco-editor', () => monacoMock);
+vi.mock('monaco-editor/esm/vs/editor/editor.api', () => monacoMock);
 
 // Mock @shader-studio/monaco — delegates to mocked monaco-editor above
 vi.mock('@shader-studio/monaco', () => ({
