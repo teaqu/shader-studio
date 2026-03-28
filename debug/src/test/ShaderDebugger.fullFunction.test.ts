@@ -42,6 +42,29 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).toBeNull();
   });
 
+  it('should debug the final mainImage output when cursor is on the mainImage signature line', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 0, 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    expect(result).not.toBeNull();
+    expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0);');
+  });
+
+  it('should debug the final mainImage output when cursor is on the opening brace line', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 1, '{');
+    expect(result).not.toBeNull();
+    expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0);');
+  });
+
   it('should return null for void function with no variable on line', () => {
     const shader = `void setup(vec2 p) {
   float x = length(p);

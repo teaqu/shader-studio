@@ -40,13 +40,26 @@ export class ShaderDebugger {
       console.log('[ShaderDebug] Resolved closing brace to line:', debugLine);
     }
 
+    if (this.isFunctionEntryLine(lines, debugLine, functionInfo)) {
+      if (functionInfo.name === 'mainImage') {
+        const lastBodyLine = this.findLastMeaningfulBodyLine(lines, functionInfo);
+        if (lastBodyLine >= 0) {
+          debugLine = lastBodyLine;
+          lineContent = lines[debugLine] || '';
+          console.log('[ShaderDebug] Resolved mainImage entry line to body line:', debugLine);
+        }
+      } else {
+        console.log('[ShaderDebug] Function entry line detected; falling back to function result debug');
+      }
+    }
+
     const varTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
 
     // Extract function return type if we're in a function
     let functionReturnType: string | undefined;
     if (functionInfo.name && functionInfo.start >= 0) {
       const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
-      const returnTypeMatch = funcLine.match(/^\s*(void|float|vec2|vec3|vec4|mat2|mat3|mat4)\s+\w+\s*\(/);
+      const returnTypeMatch = funcLine.match(/^\s*([A-Za-z_]\w*)\s+\w+\s*\(/);
       if (returnTypeMatch) {
         functionReturnType = returnTypeMatch[1];
       }
@@ -91,6 +104,38 @@ export class ShaderDebugger {
 
     console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
     return result;
+  }
+
+  private static isFunctionEntryLine(lines: string[], lineNumber: number, functionInfo: { start: number; end: number; name: string | null }): boolean {
+    if (!functionInfo.name || functionInfo.start < 0) {
+      return false;
+    }
+
+    if (lineNumber === functionInfo.start) {
+      return true;
+    }
+
+    for (let i = functionInfo.start + 1; i < functionInfo.end; i++) {
+      const trimmed = lines[i]?.replace(/\/\/.*$/, '').trim() ?? '';
+      if (trimmed === '') {
+        continue;
+      }
+      return i === lineNumber && trimmed === '{';
+    }
+
+    return false;
+  }
+
+  private static findLastMeaningfulBodyLine(lines: string[], functionInfo: { start: number; end: number }): number {
+    for (let i = functionInfo.end - 1; i > functionInfo.start; i--) {
+      const trimmed = lines[i]?.replace(/\/\/.*$/, '').trim() ?? '';
+      if (trimmed === '' || trimmed === '{' || trimmed === '}') {
+        continue;
+      }
+      return i;
+    }
+
+    return -1;
   }
 
   /**

@@ -23,6 +23,7 @@ function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugS
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    debugNotice: null,
     isVariableInspectorEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
@@ -516,18 +517,18 @@ describe('DebugPanel', () => {
     expect(tooltip).not.toMatch(/^L\d/);
   });
 
-  it('error tooltip takes priority over line content', () => {
+  it('notice tooltip takes priority over line content without error styling', () => {
     const { container } = render(DebugPanel, {
       debugState: makeDebugState({
         lineContent: 'float d = length(p) - r;',
-        debugError: 'No debuggable variable on this line',
+        debugNotice: 'No debuggable variable on this line',
       }),
       getUniforms: mockGetUniforms,
     });
 
     const lineInfo = container.querySelector('.header-info');
     expect(lineInfo?.getAttribute('data-tooltip')).toBe('No debuggable variable on this line');
-    expect(lineInfo?.classList.contains('error')).toBe(true);
+    expect(lineInfo?.classList.contains('error')).toBe(false);
   });
 
   it('line number has error class when debugError is set', () => {

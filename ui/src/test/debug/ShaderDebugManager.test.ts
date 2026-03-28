@@ -187,6 +187,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
       const result = manager.modifyShaderForDebugging(shader, 2);
       expect(result).toBeNull();
+      const state = manager.getState();
+      expect(state.debugError).toBeNull();
+      expect(state.debugNotice).toBe('No debuggable variable on this line');
     });
 
     it('should return null when inline rendering is disabled and no post-processing', () => {
