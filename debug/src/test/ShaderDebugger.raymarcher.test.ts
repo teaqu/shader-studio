@@ -189,12 +189,10 @@ describe('Raymarcher shader - modifyShaderForDebugging', () => {
   });
 
   // --- getDist ---
-  it('should handle comment-only line in getDist (full function fallback)', () => {
+  it('should return null for comment-only line in getDist when there is no earlier debuggable line', () => {
     const line = findLine('//  made e bigger for visibility');
     const result = ShaderDebugger.modifyShaderForDebugging(SHADER, line, lines[line]);
-    // No variable on this line, but getDist returns float → full function execution
-    expect(result).not.toBeNull();
-    expect(result).toContain('getDist');
+    expect(result).toBeNull();
   });
 
   it('should debug return inside if-block in getDist', () => {
@@ -779,12 +777,13 @@ describe('Raymarcher shader - lines that should return null', () => {
     expect(ShaderDebugger.modifyShaderForDebugging(SHADER, 2, lines[2])).toBeNull();
   });
 
-  it('should return null for empty lines in mainImage', () => {
+  it('should walk upward from empty lines in mainImage', () => {
     // Find an empty line inside mainImage
     const emptyLine = findLine('vec2 uv = (gl_FragCoord') + 1;
     if (lines[emptyLine].trim() === '') {
       const result = ShaderDebugger.modifyShaderForDebugging(SHADER, emptyLine, lines[emptyLine]);
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result).toContain('vec2 uv = (gl_FragCoord.xy * 2.0 - iResolution.xy) / iResolution.y;');
     }
   });
 });

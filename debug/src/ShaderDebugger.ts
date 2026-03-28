@@ -40,7 +40,9 @@ export class ShaderDebugger {
       console.log('[ShaderDebug] Resolved closing brace to line:', debugLine);
     }
 
-    if (this.isFunctionEntryLine(lines, debugLine, functionInfo)) {
+    const isFunctionEntryLine = this.isFunctionEntryLine(lines, debugLine, functionInfo);
+
+    if (isFunctionEntryLine) {
       if (functionInfo.name === 'mainImage') {
         const lastBodyLine = this.findLastMeaningfulBodyLine(lines, functionInfo);
         if (lastBodyLine >= 0) {
@@ -77,11 +79,51 @@ export class ShaderDebugger {
     }
 
     if (!varInfo) {
-      // Fourth code path: non-mainImage function with no variable → run full function
-      if (functionInfo.name && functionInfo.name !== 'mainImage' && functionReturnType && functionReturnType !== 'void') {
-        console.log('[ShaderDebug] Path: full function execution (no variable on line)');
-        return CodeGenerator.wrapFullFunctionForDebugging(lines, functionInfo, functionReturnType, loopMaxIterations, customParameters, normalizeMode, stepEdge);
+      if (isFunctionEntryLine && functionInfo.name && functionInfo.name !== 'mainImage') {
+        if (functionReturnType && functionReturnType !== 'void') {
+          console.log('[ShaderDebug] Path: full function execution (no variable on line)');
+          return CodeGenerator.wrapFullFunctionForDebugging(
+            lines,
+            functionInfo,
+            functionReturnType,
+            loopMaxIterations,
+            customParameters,
+            normalizeMode,
+            stepEdge,
+          );
+        }
+
+        console.log('[ShaderDebug] ❌ Void function entry line has no debuggable return value');
+        return null;
       }
+
+      if (GlslParser.shouldSurfaceCompileErrorForLine(actualLineContent, lines, debugLine)) {
+        console.log('[ShaderDebug] Selected line has invalid syntax; preserving original shader to surface compile error');
+        return originalCode;
+      }
+
+      const shouldClimb = GlslParser.shouldClimbForNearestDebuggableLine(actualLineContent, lines, debugLine);
+      const fallbackLine = shouldClimb
+        ? this.findNearestDebuggableLineAbove(lines, debugLine, functionInfo, functionReturnType)
+        : null;
+      if (fallbackLine !== null) {
+        debugLine = fallbackLine;
+        lineContent = lines[debugLine] || '';
+        console.log('[ShaderDebug] Resolved to nearest debuggable line above:', debugLine);
+
+        const fallbackVarTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
+        const fallbackLineContent = lines[debugLine] || '';
+        varInfo = GlslParser.detectVariableAndType(fallbackLineContent, fallbackVarTypes, functionReturnType, lines, debugLine);
+
+        if (varInfo && varInfo.name === '_dbgCall') {
+          const trimmed = fallbackLineContent.trim().replace(/;$/, '');
+          lines[debugLine] = fallbackLineContent.replace(trimmed, `${varInfo.type} _dbgCall = ${trimmed}`);
+          varInfo = { name: '_dbgCall', type: varInfo.type };
+        }
+      }
+    }
+
+    if (!varInfo) {
       console.log('[ShaderDebug] ❌ Could not detect variable/type');
       return null;
     }
@@ -136,6 +178,42 @@ export class ShaderDebugger {
     }
 
     return -1;
+  }
+
+  private static findNearestDebuggableLineAbove(
+    lines: string[],
+    debugLine: number,
+    functionInfo: { start: number; end: number; name: string | null },
+    functionReturnType?: string,
+  ): number | null {
+    const startLine = functionInfo.start >= 0 ? functionInfo.start : 0;
+
+    for (let candidate = debugLine - 1; candidate >= startLine; candidate--) {
+      if (candidate === functionInfo.start) {
+        continue;
+      }
+
+      const stripped = (lines[candidate] || '').replace(/\/\/.*$/, '').trim();
+      if (stripped === '' || stripped === '{' || stripped === '}') {
+        continue;
+      }
+
+      const candidateVarTypes = GlslParser.buildVariableTypeMap(lines, candidate, functionInfo);
+      const candidateVarInfo = GlslParser.detectVariableAndType(
+        lines[candidate] || '',
+        candidateVarTypes,
+        functionReturnType,
+        lines,
+        candidate,
+        false,
+      );
+
+      if (candidateVarInfo) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   /**

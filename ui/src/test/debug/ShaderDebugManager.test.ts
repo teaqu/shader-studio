@@ -192,6 +192,37 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       expect(state.debugNotice).toBe('No debuggable variable on this line');
     });
 
+    it('should pass blank lines through to the debugger so they can walk upward', () => {
+      const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+      manager.toggleEnabled();
+      manager.updateDebugLine(2, '', 'test.glsl');
+
+      const result = manager.modifyShaderForDebugging(shader, 2);
+      expect(result).not.toBeNull();
+      expect(result).toContain('vec2 uv = fragCoord / iResolution.xy;');
+      expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0); // Debug: visualize vec2 (RG channels)');
+    });
+
+    it('should preserve invalid syntax lines so compile errors are surfaced instead of showing a notice', () => {
+      const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  if (
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+      manager.toggleEnabled();
+      manager.updateDebugLine(2, '  if (', 'test.glsl');
+
+      const result = manager.modifyShaderForDebugging(shader, 2);
+      expect(result).toBe(shader);
+      const state = manager.getState();
+      expect(state.debugNotice).toBeNull();
+      expect(state.debugError).toBeNull();
+    });
+
     it('should return null when inline rendering is disabled and no post-processing', () => {
       const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;

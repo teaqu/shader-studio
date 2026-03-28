@@ -57,7 +57,33 @@ describe('ShaderDebugger - Variable Declarations', () => {
 }`;
 
     const result = ShaderDebugger.modifyShaderForDebugging(shader, 3, '    if (x == 0.5) {');
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result).toContain('float x = 0.5;');
+    expect(result).toContain('fragColor = vec4(vec3(x), 1.0)');
+  });
+
+  it('should not climb upward on malformed declarations', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 color = ;
+    fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '    vec3 color = ;');
+    expect(result).not.toBeNull();
+    expect(result).toContain('vec3 color = ;');
+    expect(result).not.toContain('fragColor = vec4(uv, 0.0, 1.0); // Debug: visualize vec2 (RG channels)');
+  });
+
+  it('should preserve invalid control-flow syntax instead of climbing upward', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    if (
+    fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '    if (');
+    expect(result).toBe(shader);
   });
 
   it('should handle multiple assignments to same variable', () => {

@@ -42,6 +42,38 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(result).toBeNull();
   });
 
+  it('should walk upward from a blank line in mainImage to the previous debuggable line', () => {
+    const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+
+  fragColor = vec4(uv, 0.0, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '');
+    expect(result).not.toBeNull();
+    expect(result).toContain('vec2 uv = fragCoord / iResolution.xy;');
+    expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0); // Debug: visualize vec2 (RG channels)');
+  });
+
+  it('should walk upward from a comment line in a helper function instead of debugging the whole function', () => {
+    const shader = `float sdf(vec2 p) {
+  float d = length(p) - 0.5;
+  // inspect previous
+  d = abs(d);
+  return d;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  fragColor = vec4(0.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '  // inspect previous');
+    expect(result).not.toBeNull();
+    expect(result).toContain('float _dbg_sdf(vec2 p)');
+    expect(result).toContain('return d;');
+    expect(result).toContain('float _dbg_sdf(vec2 p) {\n  float d = length(p) - 0.5;\n  return d;');
+  });
+
   it('should debug the final mainImage output when cursor is on the mainImage signature line', () => {
     const shader = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
