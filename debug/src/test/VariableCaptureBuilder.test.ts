@@ -105,6 +105,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(0.0);
 }`;
 
+const helperWithStructParam = `const int POINT_COUNT = 8;
+struct CtrlPts
+{
+    vec2 p[POINT_COUNT];
+};
+vec2 PointArray(int i, CtrlPts ctrlPts)
+{
+    if(i==0 || i==POINT_COUNT  ) return ctrlPts.p[0];
+    return ctrlPts.p[1];
+}`;
+
 const withGlobals = `vec3 tint = vec3(1.0, 0.0, 0.0);
 float exposure = 1.5;
 
@@ -412,5 +423,26 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).toContain("float saturateLater(float x) {");
     expect(result).toContain("return clamp(x, 0.0, 1.0);");
     expect(result).toContain("cloudHeight = saturateLater(p.y);");
+  });
+
+  it("should generate helper capture shaders for functions with user-defined struct parameters", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperWithStructParam, 7, "_dbgReturn", "vec2", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2 _dbg_PointArray(int i, CtrlPts ctrlPts)");
+    expect(result).toContain("CtrlPts _dbgArg1;");
+    expect(result).toContain("vec2 result = _dbg_PointArray(1, _dbgArg1);");
+  });
+
+  it("should strip all original returns when capturing an int parameter in a multi-return helper", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperWithStructParam, 7, "i", "int", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result).toContain("int _dbg_PointArray(int i, CtrlPts ctrlPts)");
+    expect(result).toContain("int result = _dbg_PointArray(1, _dbgArg1);");
+    expect(result).toContain("if(i==0 || i==POINT_COUNT  ) ; // Debug: stripped return");
+    expect(result).toContain("return i;");
   });
 });

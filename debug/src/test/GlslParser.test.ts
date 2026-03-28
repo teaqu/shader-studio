@@ -234,6 +234,24 @@ describe("GlslParser", () => {
       expect(varTypes.get("tex")).toBe("sampler2D");
       expect(varTypes.get("uv")).toBe("vec2");
     });
+
+    it("should include local variables declared with user-defined struct types", () => {
+      const lines = [
+        "const int POINT_COUNT = 8;",
+        "struct CtrlPts {",
+        "  vec2 p[POINT_COUNT];",
+        "};",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  CtrlPts ctrlPts;",
+        "  ctrlPts.p[0] = vec2(0.10, 0.25);",
+        "  fragColor = vec4(ctrlPts.p[0], 0.0, 1.0);",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 6);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 6, functionInfo);
+
+      expect(varTypes.get("ctrlPts")).toBe("CtrlPts");
+    });
   });
 
   describe("global variable analysis", () => {
@@ -295,6 +313,12 @@ describe("GlslParser", () => {
       const varTypes = new Map([["uv", "vec2"]]);
       const result = GlslParser.detectVariableAndType("  uv.x *= aspect;", varTypes);
       expect(result).toEqual({ name: "uv", type: "vec2" });
+    });
+
+    it("should detect indexed struct-member assignments as assignments to the root variable", () => {
+      const varTypes = new Map([["ctrlPts", "CtrlPts"]]);
+      const result = GlslParser.detectVariableAndType("  ctrlPts.p[0] = vec2(0.10, 0.25);", varTypes);
+      expect(result).toEqual({ name: "ctrlPts.p[0]", type: "vec2" });
     });
 
     it("should detect return statements with function return type", () => {

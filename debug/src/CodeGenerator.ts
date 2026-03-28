@@ -2,7 +2,7 @@ import { GlslParser } from './GlslParser';
 import type { FunctionInfo, VarInfo } from './GlslParser';
 
 export class CodeGenerator {
-  private static defaultParameterValue(type: string): string {
+  private static defaultParameterValue(type: string): string | null {
     switch (type) {
       case 'vec2': return 'uv';
       case 'vec3': return 'vec3(0.5)';
@@ -14,7 +14,7 @@ export class CodeGenerator {
       case 'mat3': return 'mat3(1.0)';
       case 'mat4': return 'mat4(1.0)';
       case 'sampler2D': return 'iChannel0';
-      default: return '0.0';
+      default: return null;
     }
   }
 
@@ -91,6 +91,12 @@ export class CodeGenerator {
       switch (varType) {
         case 'float':
           line = `  fragColor = vec4(vec3(${varName}), 1.0); // Debug: visualize float as grayscale`;
+          break;
+        case 'int':
+          line = `  fragColor = vec4(vec3(float(${varName})), 1.0); // Debug: visualize int as grayscale`;
+          break;
+        case 'bool':
+          line = `  fragColor = vec4(vec3(${varName} ? 1.0 : 0.0), 1.0); // Debug: visualize bool as grayscale`;
           break;
         case 'vec2':
           line = `  fragColor = vec4(${varName}, 0.0, 1.0); // Debug: visualize vec2 (RG channels)`;
@@ -311,30 +317,38 @@ export class CodeGenerator {
     const paramPairs = paramsStr.split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
-      const match = pair.match(/^\s*(?:(in|out|inout)\s+)?(vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)\s*$/);
+      const match = pair.match(/^\s*(?:(?:const|highp|mediump|lowp)\s+)*(?:(in|out|inout)\s+)?(?:(?:const|highp|mediump|lowp)\s+)*([A-Za-z_]\w*)\s+(\w+)\s*$/);
 
       if (match) {
         const qualifier = match[1];
         const type = match[2];
         const defaultValue = CodeGenerator.defaultParameterValue(type);
+        const tempName = `_dbgArg${args.length}`;
+        const needsTemp = qualifier === 'out' || qualifier === 'inout' || defaultValue === null;
 
         switch (type) {
           case 'vec2':
             if (!setup.some(s => s.includes('vec2 uv'))) {
               setup.push('  vec2 uv = fragCoord / iResolution.xy;');
             }
-            if (qualifier === 'out' || qualifier === 'inout') {
-              const tempName = `_dbgArg${args.length}`;
-              setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+            if (needsTemp) {
+              if (defaultValue === null) {
+                setup.push(`  ${type} ${tempName};`);
+              } else {
+                setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+              }
               args.push(tempName);
             } else {
               args.push(defaultValue);
             }
             break;
           default: {
-            if (qualifier === 'out' || qualifier === 'inout') {
-              const tempName = `_dbgArg${args.length}`;
-              setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+            if (needsTemp) {
+              if (defaultValue === null) {
+                setup.push(`  ${type} ${tempName};`);
+              } else {
+                setup.push(`  ${type} ${tempName} = ${defaultValue};`);
+              }
               args.push(tempName);
             } else {
               args.push(defaultValue);
@@ -543,6 +557,38 @@ export class CodeGenerator {
     return ranges;
   }
 
+  static stripReturnStatements(lines: string[]): string[] {
+    if (lines.length === 0) {
+      return [];
+    }
+
+    const inlineReturnPattern = /\breturn\b[^;]*;/;
+    const returnRangeMap = new Map(
+      CodeGenerator.findReturnRanges(lines, 0, lines.length - 1).map(range => [range.start, range])
+    );
+    const result: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const inlineMatchIndex = lines[i].search(/\breturn\b/);
+      if (inlineMatchIndex > 0 && inlineReturnPattern.test(lines[i])) {
+        result.push(lines[i].replace(inlineReturnPattern, '; // Debug: stripped return'));
+        continue;
+      }
+
+      const returnRange = returnRangeMap.get(i);
+      if (!returnRange) {
+        result.push(lines[i]);
+        continue;
+      }
+
+      const indent = lines[i].match(/^\s*/)?.[0] || '  ';
+      result.push(`${indent}// Debug: stripped return`);
+      i = returnRange.end;
+    }
+
+    return result;
+  }
+
   static wrapFunctionForDebugging(
     lines: string[],
     functionInfo: FunctionInfo,
@@ -618,6 +664,12 @@ export class CodeGenerator {
       }
 
       functionLines.push(line);
+    }
+
+    if (!useCaptureSideChannel && varInfo.name !== '_dbgReturn') {
+      // If the debug clone now returns a different type than the original helper,
+      // strip any residual source returns before appending the debug return.
+      functionLines.splice(0, functionLines.length, ...CodeGenerator.stripReturnStatements(functionLines));
     }
 
     // Insert shadow variable if inside a loop
@@ -869,7 +921,7 @@ export class CodeGenerator {
     // untouched so any existing callers in preserved shader source keep working.
     const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const signaturePattern = new RegExp(
-      `^(\\s*)(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\\s+)${escapedName}(\\s*\\()`
+      `^(\\s*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`
     );
 
     return line.replace(

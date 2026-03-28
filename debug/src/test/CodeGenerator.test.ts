@@ -394,6 +394,16 @@ describe("CodeGenerator", () => {
       expect(result.setup).toContain("  float _dbgArg3 = 0.5;");
     });
 
+    it("should allocate a temp for user-defined parameter types", () => {
+      const lines = [
+        "vec2 PointArray(int i, CtrlPts ctrlPts) {",
+      ];
+      const functionInfo: FunctionInfo = { name: "PointArray", start: 0, end: 2 };
+      const result = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+      expect(result.args).toBe("1, _dbgArg1");
+      expect(result.setup).toContain("  CtrlPts _dbgArg1;");
+    });
+
     it("should return empty for no-param functions", () => {
       const lines = ["float fn() {"];
       const functionInfo: FunctionInfo = { name: "fn", start: 0, end: 2 };

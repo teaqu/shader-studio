@@ -333,6 +333,10 @@ export class VariableCaptureBuilder {
       functionLines.push(line);
     }
 
+    if (!useCaptureSideChannel && varInfo.name !== '_dbgReturn') {
+      functionLines.splice(0, functionLines.length, ...CodeGenerator.stripReturnStatements(functionLines));
+    }
+
     const debugLineIndexInFunc = debugLine - functionInfo.start;
     const loopsRelativeToFunc = containingLoops.map(l => ({
       lineNumber: l.lineNumber - functionInfo.start,
@@ -452,7 +456,7 @@ export class VariableCaptureBuilder {
     // untouched so any preserved callers still bind to the original symbol.
     const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const signaturePattern = new RegExp(
-      `^(\\s*)(void|float|vec2|vec3|vec4|mat2|mat3|mat4)(\\s+)${escapedName}(\\s*\\()`
+      `^(\\s*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`
     );
 
     return line.replace(
