@@ -602,8 +602,7 @@ export class CodeGenerator {
   ): string {
     const captureVarName = '_dbgCaptured';
     const debugFunctionName = `_dbg_${functionInfo.name}`;
-    const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
-    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
 
     // Determine truncation end: outermost loop endLine or debug line
     let truncationEnd: number;
@@ -701,10 +700,7 @@ export class CodeGenerator {
     }
 
     const wrapper = [];
-    wrapper.push(...sourceSegments.beforeTarget);
-    wrapper.push(...originalTarget);
-    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
-    wrapper.push(...sourceSegments.afterMainImage);
+    wrapper.push(...preservedSource);
     wrapper.push('');
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
@@ -735,9 +731,8 @@ export class CodeGenerator {
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
   ): string {
-    const sourceSegments = CodeGenerator.splitSourceForHelperWrapper(lines, functionInfo);
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
     const debugFunctionName = `_dbg_${functionInfo.name}`;
-    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
 
     // The full function body, unmodified
     const functionLines: string[] = [];
@@ -757,10 +752,7 @@ export class CodeGenerator {
 
     // Build the wrapper
     const wrapper: string[] = [];
-    wrapper.push(...sourceSegments.beforeTarget);
-    wrapper.push(...originalTarget);
-    wrapper.push(...sourceSegments.afterTargetBeforeMainImage);
-    wrapper.push(...sourceSegments.afterMainImage);
+    wrapper.push(...preservedSource);
     wrapper.push('');
     wrapper.push(...cappedLines);
     wrapper.push('');
@@ -856,25 +848,16 @@ export class CodeGenerator {
 
   private static splitSourceForHelperWrapper(
     lines: string[],
-    functionInfo: FunctionInfo,
-  ): { beforeTarget: string[]; afterTargetBeforeMainImage: string[]; afterMainImage: string[] } {
+  ): string[] {
     const mainImageRange = CodeGenerator.findMainImageRange(lines);
-    const beforeTarget = lines.slice(0, functionInfo.start);
-    const afterTargetStart = functionInfo.end + 1;
-
     if (mainImageRange === null) {
-      return {
-        beforeTarget,
-        afterTargetBeforeMainImage: lines.slice(afterTargetStart),
-        afterMainImage: [],
-      };
+      return [...lines];
     }
 
-    return {
-      beforeTarget,
-      afterTargetBeforeMainImage: lines.slice(afterTargetStart, mainImageRange.start),
-      afterMainImage: lines.slice(mainImageRange.end + 1),
-    };
+    return [
+      ...lines.slice(0, mainImageRange.start),
+      ...lines.slice(mainImageRange.end + 1),
+    ];
   }
 
   private static findMainImageRange(lines: string[]): { start: number; end: number } | null {

@@ -478,6 +478,27 @@ describe("CodeGenerator", () => {
       expect(result).toContain("float result = _dbg_heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
     });
 
+    it("should not duplicate a helper or mainImage when the helper is declared after mainImage", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  fragColor = vec4(uv, 0.0, 1.0);",
+        "}",
+        "",
+        "float test() {",
+        "  return 0.0;",
+        "}",
+      ];
+      const functionInfo: FunctionInfo = { name: "test", start: 5, end: 7 };
+      const varInfo: VarInfo = { name: "_dbgReturn", type: "float" };
+
+      const result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, 6, varInfo);
+
+      expect(result.match(/void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{/g)?.length).toBe(1);
+      expect(result.match(/float test\(\) \{/g)?.length).toBe(1);
+      expect(result.match(/float _dbg_test\(\) \{/g)?.length).toBe(1);
+    });
+
     it("should generate a full default call for helpers with multi-line signatures", () => {
       const lines = [
         "vec2 bezier( vec2 p,",

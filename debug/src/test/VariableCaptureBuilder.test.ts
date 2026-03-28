@@ -116,6 +116,15 @@ vec2 PointArray(int i, CtrlPts ctrlPts)
     return ctrlPts.p[1];
 }`;
 
+const helperAfterMainImage = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  fragColor = vec4(uv, 0.0, 1.0);
+}
+
+float test() {
+  return 0.0;
+}`;
+
 const withGlobals = `vec3 tint = vec3(1.0, 0.0, 0.0);
 float exposure = 1.5;
 
@@ -444,5 +453,15 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     expect(result).toContain("int result = _dbg_PointArray(1, _dbgArg1);");
     expect(result).toContain("if(i==0 || i==POINT_COUNT  ) ; // Debug: stripped return");
     expect(result).toContain("return i;");
+  });
+
+  it("should not duplicate helper or mainImage when capturing a helper declared after mainImage", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      helperAfterMainImage, 6, "_dbgReturn", "float", new Map(), new Map(), false
+    );
+    expect(result).not.toBeNull();
+    expect(result!.match(/void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{/g)?.length).toBe(1);
+    expect(result!.match(/float test\(\) \{/g)?.length).toBe(1);
+    expect(result!.match(/float _dbg_test\(\) \{/g)?.length).toBe(1);
   });
 });
