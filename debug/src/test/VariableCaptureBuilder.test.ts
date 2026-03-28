@@ -125,6 +125,12 @@ float test() {
   return 0.0;
 }`;
 
+const mainImageUsingBuiltinFragCoord = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  vec3 col = vec3(uv, 0.0);
+  fragColor = vec4(col, 1.0);
+}`;
+
 const withGlobals = `vec3 tint = vec3(1.0, 0.0, 0.0);
 float exposure = 1.5;
 
@@ -306,7 +312,29 @@ describe("VariableCaptureBuilder.generateCaptureShader", () => {
     );
     expect(result).not.toBeNull();
     expect(result).toContain("uniform vec2 _dbgCaptureCoord;");
-    expect(result).toContain("fragCoord = _dbgCaptureCoord;");
+    expect(result).toContain("vec2 _dbgRemappedFragCoord = _dbgCaptureCoord;");
+    expect(result).toContain("fragCoord = _dbgRemappedFragCoord;");
+  });
+
+  it("should remap direct gl_FragCoord usage in pixel capture shaders", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      mainImageUsingBuiltinFragCoord, 2, "col", "vec3", new Map(), new Map(), true
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2 uv = _dbgGlFragCoord.xy / iResolution.xy;");
+    expect(result).toContain("vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);");
+  });
+
+  it("should remap direct gl_FragCoord usage in grid capture shaders", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      mainImageUsingBuiltinFragCoord, 2, "col", "vec3", new Map(), new Map(), false, 43, 24
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("vec2 uv = _dbgGlFragCoord.xy / iResolution.xy;");
+    expect(result).toContain("vec2 _dbgRemappedFragCoord = gl_FragCoord.xy / vec2(43.0, 24.0) * iResolution.xy;");
+    expect(result).toContain("vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);");
   });
 
   it("should return null for unknown varName not in scope", () => {

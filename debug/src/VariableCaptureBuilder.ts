@@ -403,7 +403,7 @@ export class VariableCaptureBuilder {
    * `vec2 fragCoord = _dbgCaptureCoord;` at the start of mainImage body.
    */
   private static injectCaptureCoord(code: string): string {
-    const lines = code.split('\n');
+    const lines = VariableCaptureBuilder.remapBuiltinFragCoord(code).split('\n');
 
     // Prepend uniform declaration before the first line
     const uniformDecl = 'uniform vec2 _dbgCaptureCoord;';
@@ -414,7 +414,13 @@ export class VariableCaptureBuilder {
         // Find the opening brace
         for (let j = i; j < lines.length && j < i + 5; j++) {
           if (lines[j].includes('{')) {
-            lines.splice(j + 1, 0, '  fragCoord = _dbgCaptureCoord;');
+            lines.splice(
+              j + 1,
+              0,
+              '  vec2 _dbgRemappedFragCoord = _dbgCaptureCoord;',
+              '  fragCoord = _dbgRemappedFragCoord;',
+              '  vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);',
+            );
             break;
           }
         }
@@ -430,12 +436,18 @@ export class VariableCaptureBuilder {
    * at the start of mainImage body so the grid samples cover the full canvas with correct aspect ratio.
    */
   private static injectGridCoord(code: string, gridWidth: number, gridHeight: number): string {
-    const lines = code.split('\n');
+    const lines = VariableCaptureBuilder.remapBuiltinFragCoord(code).split('\n');
     for (let i = 0; i < lines.length; i++) {
       if (/void\s+mainImage\s*\(/.test(lines[i])) {
         for (let j = i; j < lines.length && j < i + 5; j++) {
           if (lines[j].replace(/\/\/.*$/, '').includes('{')) {
-            lines.splice(j + 1, 0, `  fragCoord = gl_FragCoord.xy / vec2(${gridWidth}.0, ${gridHeight}.0) * iResolution.xy;`);
+            lines.splice(
+              j + 1,
+              0,
+              `  vec2 _dbgRemappedFragCoord = gl_FragCoord.xy / vec2(${gridWidth}.0, ${gridHeight}.0) * iResolution.xy;`,
+              '  fragCoord = _dbgRemappedFragCoord;',
+              '  vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);',
+            );
             break;
           }
         }
@@ -443,6 +455,10 @@ export class VariableCaptureBuilder {
       }
     }
     return lines.join('\n');
+  }
+
+  private static remapBuiltinFragCoord(code: string): string {
+    return code.replace(/\bgl_FragCoord\b/g, '_dbgGlFragCoord');
   }
 
   private static renameFunctionSignature(
