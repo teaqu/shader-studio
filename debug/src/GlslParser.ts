@@ -392,6 +392,83 @@ export class GlslParser {
     return null;
   }
 
+  static shouldClimbForNearestDebuggableLine(
+    lineContent: string,
+    lines?: string[],
+    lineIndex?: number,
+  ): boolean {
+    const statement = GlslParser.getStatementInfo(lineContent, lines, lineIndex);
+
+    if (statement.kind === 'empty' || statement.kind === 'controlFlow') {
+      return true;
+    }
+
+    if (statement.trimmed === '{' || statement.trimmed === '}') {
+      return true;
+    }
+
+    if (statement.kind === 'call' && statement.callName && lines) {
+      return GlslParser.findFunctionReturnType(lines, statement.callName) === 'void';
+    }
+
+    return false;
+  }
+
+  static shouldSurfaceCompileErrorForLine(
+    lineContent: string,
+    lines?: string[],
+    lineIndex?: number,
+  ): boolean {
+    const statement = GlslParser.getStatementInfo(lineContent, lines, lineIndex);
+
+    if (statement.kind === 'empty') {
+      return false;
+    }
+
+    if (statement.kind === 'controlFlow') {
+      return !GlslParser.isStandaloneControlFlowHeader(statement.trimmed);
+    }
+
+    if (statement.trimmed === '{' || statement.trimmed === '}') {
+      return false;
+    }
+
+    const tokens = GlslParser.tokenize(statement.trimmed);
+    if (tokens.length === 0) {
+      return false;
+    }
+
+    if (GlslParser.hasUnbalancedGrouping(tokens)) {
+      return true;
+    }
+
+    const assignmentIndex = GlslParser.findTopLevelAssignmentOperatorIndex(tokens);
+    if (assignmentIndex > 0) {
+      const rhsTokens = tokens.slice(assignmentIndex + 1).filter((token) => token.value !== ';');
+      if (rhsTokens.length === 0) {
+        return true;
+      }
+    }
+
+    if (
+      tokens[0]?.type === 'keyword' &&
+      CONTROL_FLOW_KEYWORDS.has(tokens[0].value) &&
+      !GlslParser.isStandaloneControlFlowHeader(statement.trimmed)
+    ) {
+      return true;
+    }
+
+    if (
+      tokens[0]?.type === 'identifier' &&
+      tokens[1]?.value === '(' &&
+      !GlslParser.isStandaloneFunctionCallTokens(tokens)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   static findFunctionReturnType(lines: string[], funcName: string): string | null {
     const document = GlslParser.getDocument(lines);
     const fn = document.functions.find(candidate => candidate.name === funcName);
@@ -1009,9 +1086,8 @@ export class GlslParser {
     }
 
     if (
-      tokens.length >= 2 &&
+      GlslParser.isStandaloneFunctionCallTokens(tokens) &&
       tokens[0].type === 'identifier' &&
-      tokens[1].value === '(' &&
       !GLSL_TYPES.has(tokens[0].value)
     ) {
       return {
@@ -1050,6 +1126,64 @@ export class GlslParser {
       name: nameToken.value,
       type: typeToken.value,
     };
+  }
+
+  private static isStandaloneFunctionCallTokens(tokens: Token[]): boolean {
+    if (tokens.length < 4) {
+      return false;
+    }
+
+    if (tokens[0].type !== 'identifier' || tokens[1].value !== '(' || tokens[tokens.length - 1].value !== ';') {
+      return false;
+    }
+
+    let parenDepth = 0;
+    let closeParenIndex = -1;
+    for (let i = 1; i < tokens.length; i++) {
+      const value = tokens[i].value;
+      if (value === '(') {
+        parenDepth++;
+      } else if (value === ')') {
+        parenDepth--;
+        if (parenDepth === 0) {
+          closeParenIndex = i;
+          break;
+        }
+        if (parenDepth < 0) {
+          return false;
+        }
+      }
+    }
+
+    return closeParenIndex === tokens.length - 2;
+  }
+
+  private static hasUnbalancedGrouping(tokens: Token[]): boolean {
+    const openToClose = new Map([
+      ['(', ')'],
+      ['[', ']'],
+      ['{', '}'],
+    ]);
+    const closingTokens = new Set([')', ']', '}']);
+    const stack: string[] = [];
+
+    for (const token of tokens) {
+      if (openToClose.has(token.value)) {
+        stack.push(token.value);
+        continue;
+      }
+
+      if (!closingTokens.has(token.value)) {
+        continue;
+      }
+
+      const open = stack.pop();
+      if (!open || openToClose.get(open) !== token.value) {
+        return true;
+      }
+    }
+
+    return stack.length > 0;
   }
 
   private static extractAssignedRootIdentifier(lhsTokens: Token[]): { name: string; member: boolean } | null {

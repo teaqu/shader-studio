@@ -74,7 +74,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     const result = ShaderDebugger.modifyShaderForDebugging(shader, 5, '    doNothing();');
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result).toContain('vec2 uv = fragCoord / iResolution.xy;');
+    expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0)');
+  });
+
+  it('should not climb upward on malformed function-call syntax', () => {
+    const shader = `vec3 red() {
+    return vec3(1.0, 0.0, 0.0);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    red(
+    fragColor = vec4(0.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForDebugging(shader, 6, '    red(');
+    expect(result).toBe(shader);
   });
 
   it('should not confuse if/for/while with function calls', () => {
@@ -87,7 +104,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     const result = ShaderDebugger.modifyShaderForDebugging(shader, 2, '    if (uv.x > 0.5) {');
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result).toContain('vec2 uv = fragCoord / iResolution.xy;');
+    expect(result).toContain('fragColor = vec4(uv, 0.0, 1.0)');
   });
 
   it('should debug function call in a helper function', () => {

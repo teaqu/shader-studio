@@ -365,7 +365,7 @@ export class ShaderDebugManager {
     originalCode: string,
     debugLine: number,
   ): string | null {
-    if (!this.state.isActive || !this.state.lineContent) {
+    if (!this.state.isActive || this.state.lineContent === null) {
       return null;
     }
 
