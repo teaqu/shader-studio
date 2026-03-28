@@ -23,6 +23,7 @@ export interface ShaderDebugState {
   isStepEnabled: boolean;            // independent toggle: binary threshold post-processing
   stepEdge: number;                  // threshold value for step (default 0.5)
   debugError: string | null;         // error message when debug line can't be processed
+  debugNotice?: string | null;       // informational message for valid but non-debuggable lines
   isVariableInspectorEnabled: boolean;  // variable inspector toggle
   capturedVariables: CapturedVariable[];  // latest captured variable values
   activeBufferName: string;  // 'Image' | 'BufferA' | 'BufferB' | 'common' etc.

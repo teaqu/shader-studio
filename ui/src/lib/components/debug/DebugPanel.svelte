@@ -73,8 +73,9 @@
   const isStepEnabled = $derived(debugState?.isStepEnabled);
   const stepEdge = $derived(debugState?.stepEdge);
   const debugError = $derived(debugState?.debugError);
+  const debugNotice = $derived(debugState?.debugNotice);
   const lineTooltipText = $derived(
-    debugError || (debugState?.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''))
+    debugError || debugNotice || (debugState?.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''))
   );
   const showParams = $derived(isInlineOn && isInFunction && ctx !== null);
   const showLoops = $derived(isInlineOn && ctx !== null && ctx !== undefined && ctx.loops.length > 0);
@@ -319,7 +320,7 @@
         <span
           class="header-info"
           class:error={debugError}
-          class:has-line-content={!debugError && debugState?.lineContent}
+          class:has-line-content={!debugError && !debugNotice && debugState?.lineContent}
           data-tooltip={lineTooltipText}
           role="presentation"
           onmouseenter={handleLineTooltipTriggerEnter}
@@ -329,7 +330,7 @@
           class="line-tooltip"
           class:visible={isLineTooltipVisible}
           class:error={debugError}
-          class:has-line-content={!debugError && debugState?.lineContent}
+          class:has-line-content={!debugError && !debugNotice && debugState?.lineContent}
           role="presentation"
           onmouseenter={handleLineTooltipEnter}
           onmouseleave={handleLineTooltipLeave}

@@ -24,6 +24,7 @@ export class ShaderDebugManager {
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    debugNotice: null,
     isVariableInspectorEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
@@ -149,6 +150,7 @@ export class ShaderDebugManager {
     this.state.lineContent = lineContent;
     this.state.filePath = filePath;
     this.state.debugError = null;
+    this.state.debugNotice = null;
     this.state.activeBufferName = this.resolveActiveBuffer(filePath);
     this.updateActiveState();
     this.updateFunctionContext();
@@ -252,6 +254,9 @@ export class ShaderDebugManager {
 
   public setDebugError(error: string | null): void {
     this.state.debugError = error;
+    if (error) {
+      this.state.debugNotice = null;
+    }
     this.notifyStateChange();
   }
 
@@ -379,11 +384,13 @@ export class ShaderDebugManager {
     );
 
     if (result === null) {
-      this.state.debugError = 'No debuggable variable on this line';
+      this.state.debugError = null;
+      this.state.debugNotice = 'No debuggable variable on this line';
       this.state.capturedVariables = [];
       this.notifyStateChange();
     } else {
       this.state.debugError = null;
+      this.state.debugNotice = null;
     }
 
     return result;
