@@ -140,8 +140,8 @@ export class ShaderDebugger {
       const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
       result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge);
     } else {
-      console.log('[ShaderDebug] Path: one-liner wrapper');
-      result = CodeGenerator.wrapOneLinerForDebugging(actualLineContent, varInfo, normalizeMode, stepEdge);
+      console.log('[ShaderDebug] Path: global scope wrapper');
+      result = CodeGenerator.wrapGlobalScopeForDebugging(lines, varInfo, normalizeMode, stepEdge);
     }
 
     console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
@@ -189,6 +189,13 @@ export class ShaderDebugger {
     const startLine = functionInfo.start >= 0 ? functionInfo.start : 0;
 
     for (let candidate = debugLine - 1; candidate >= startLine; candidate--) {
+      if (!functionInfo.name) {
+        const candidateFunction = GlslParser.findEnclosingFunction(lines, candidate);
+        if (candidateFunction.name) {
+          continue;
+        }
+      }
+
       if (candidate === functionInfo.start) {
         continue;
       }

@@ -37,4 +37,52 @@ describe("ShaderDebugger common helper functions", () => {
     expect(result).toContain("fragColor = vec4(red, 1.0)");
     expect(result).not.toContain("vec3 stale = vec3(0.4);");
   });
+
+  it("preserves earlier global dependencies when debugging a later global declaration", () => {
+    const commonCode = [
+      "#ifdef COLOUR_SCATTERING",
+      "const vec3 sigmaS = vec3(0.5, 1.0, 1.0);",
+      "#else",
+      "const vec3 sigmaS = vec3(1.0);",
+      "#endif",
+      "const vec3 sigmaA = vec3(0.0);",
+      "const vec3 sigmaE = max(sigmaS + sigmaA, vec3(1e-6));",
+    ].join("\n");
+
+    const result = ShaderDebugger.modifyShaderForDebugging(
+      commonCode,
+      6,
+      "const vec3 sigmaE = max(sigmaS + sigmaA, vec3(1e-6));",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("#ifdef COLOUR_SCATTERING");
+    expect(result).toContain("const vec3 sigmaS = vec3(0.5, 1.0, 1.0);");
+    expect(result).toContain("const vec3 sigmaE = max(sigmaS + sigmaA, vec3(1e-6));");
+    expect(result).toContain("fragColor = vec4(sigmaE, 1.0)");
+  });
+
+  it("does not climb from a global comment line into a neighboring function body", () => {
+    const commonCode = [
+      "float globalA = 1.0;",
+      "",
+      "float helper(float value) {",
+      "  float localValue = value * 2.0;",
+      "  return localValue;",
+      "}",
+      "",
+      "// top-level note",
+    ].join("\n");
+
+    const result = ShaderDebugger.modifyShaderForDebugging(
+      commonCode,
+      6,
+      "// top-level note",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("float globalA = 1.0;");
+    expect(result).toContain("fragColor = vec4(vec3(globalA), 1.0)");
+    expect(result).not.toContain("fragColor = vec4(vec3(localValue), 1.0)");
+  });
 });

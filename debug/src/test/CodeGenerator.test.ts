@@ -423,6 +423,33 @@ describe("CodeGenerator", () => {
     });
   });
 
+  describe("wrapGlobalScopeForDebugging", () => {
+    it("should preserve global preprocessor-backed declarations before appending mainImage", () => {
+      const lines = [
+        "#ifdef COLOUR_SCATTERING",
+        "const vec3 sigmaS = vec3(0.5, 1.0, 1.0);",
+        "#else",
+        "const vec3 sigmaS = vec3(1.0);",
+        "#endif",
+        "const vec3 sigmaA = vec3(0.0);",
+        "const vec3 sigmaE = max(sigmaS + sigmaA, vec3(1e-6));",
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(0.0);",
+        "}",
+      ];
+      const varInfo: VarInfo = { name: "sigmaE", type: "vec3" };
+
+      const result = CodeGenerator.wrapGlobalScopeForDebugging(lines, varInfo);
+
+      expect(result).toContain("#ifdef COLOUR_SCATTERING");
+      expect(result).toContain("const vec3 sigmaS = vec3(0.5, 1.0, 1.0);");
+      expect(result).toContain("const vec3 sigmaE = max(sigmaS + sigmaA, vec3(1e-6));");
+      expect(result).toContain("fragColor = vec4(sigmaE, 1.0)");
+      expect(result.match(/void mainImage\(out vec4 fragColor, in vec2 fragCoord\)/g)).toHaveLength(1);
+    });
+  });
+
   describe("wrapFunctionForDebugging", () => {
     it("should create a wrapper mainImage that calls the function", () => {
       const lines = [

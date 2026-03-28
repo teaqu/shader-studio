@@ -287,6 +287,17 @@ describe("GlslParser", () => {
       ]);
     });
 
+    it("should not include function-local declarations when building a global-scope type map", () => {
+      const functionInfo = GlslParser.findEnclosingFunction(shader, 2);
+      const varTypes = GlslParser.buildVariableTypeMap(shader, 10, functionInfo);
+
+      expect(varTypes.get("red")).toBe("vec3");
+      expect(varTypes.get("exposure")).toBe("float");
+      expect(varTypes.has("local")).toBe(false);
+      expect(varTypes.has("fragColor")).toBe(false);
+      expect(varTypes.has("fragCoord")).toBe(false);
+    });
+
     it("should return only globals used by a helper function", () => {
       const functionInfo = GlslParser.findEnclosingFunction(shader, 4);
       expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([
