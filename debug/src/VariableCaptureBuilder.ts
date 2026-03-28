@@ -239,36 +239,38 @@ export class VariableCaptureBuilder {
   ): string {
     const captureVarName = '_dbgCaptured';
     const debugFunctionName = `_dbg_${functionInfo.name}`;
-    const mainImageRange = (() => {
-      let start = -1;
-      for (let i = 0; i < lines.length; i++) {
-        if (/void\s+mainImage\s*\(/.test(lines[i])) {
-          start = i;
-          break;
+    const preservedSource = (() => {
+      const mainImageRange = (() => {
+        let start = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (/void\s+mainImage\s*\(/.test(lines[i])) {
+            start = i;
+            break;
+          }
         }
+        if (start === -1) return null;
+        let braceDepth = 0;
+        let started = false;
+        for (let i = start; i < lines.length; i++) {
+          const stripped = lines[i].replace(/\/\/.*$/, '');
+          for (const char of stripped) {
+            if (char === '{') { braceDepth++; started = true; }
+            if (char === '}') { braceDepth--; }
+          }
+          if (started && braceDepth === 0) {
+            return { start, end: i };
+          }
+        }
+        return null;
+      })();
+      if (mainImageRange === null) {
+        return [...lines];
       }
-      if (start === -1) return null;
-      let braceDepth = 0;
-      let started = false;
-      for (let i = start; i < lines.length; i++) {
-        const stripped = lines[i].replace(/\/\/.*$/, '');
-        for (const char of stripped) {
-          if (char === '{') { braceDepth++; started = true; }
-          if (char === '}') { braceDepth--; }
-        }
-        if (started && braceDepth === 0) {
-          return { start, end: i };
-        }
-      }
-      return null;
+      return [
+        ...lines.slice(0, mainImageRange.start),
+        ...lines.slice(mainImageRange.end + 1),
+      ];
     })();
-    const beforeTarget = lines.slice(0, functionInfo.start);
-    const afterTargetStart = functionInfo.end + 1;
-    const afterTargetBeforeMainImage = mainImageRange
-      ? lines.slice(afterTargetStart, mainImageRange.start)
-      : lines.slice(afterTargetStart);
-    const afterMainImage = mainImageRange ? lines.slice(mainImageRange.end + 1) : [];
-    const originalTarget = lines.slice(functionInfo.start, functionInfo.end + 1);
 
     let truncationEnd: number;
     if (containingLoops.length > 0) {
@@ -382,10 +384,7 @@ export class VariableCaptureBuilder {
       : `${setupCode}  ${varInfo.type} result = ${debugFunctionName}(${args.join(', ')});\n${captureOutput}`;
 
     const wrapper = [];
-    wrapper.push(...beforeTarget);
-    wrapper.push(...originalTarget);
-    wrapper.push(...afterTargetBeforeMainImage);
-    wrapper.push(...afterMainImage);
+    wrapper.push(...preservedSource);
     wrapper.push('');
     if (useCaptureSideChannel) {
       wrapper.push(`${varInfo.type} ${captureVarName};`);
