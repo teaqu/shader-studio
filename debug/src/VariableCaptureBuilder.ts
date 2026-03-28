@@ -31,7 +31,7 @@ export class VariableCaptureBuilder {
 
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
     if (!functionInfo.name) {
-      return GlslParser.getGlobalVariables(lines)
+      return GlslParser.getGlobalVariables(lines, resolvedLine)
         .filter((globalVar) => CAPTURABLE_TYPES.has(globalVar.type))
         .slice(0, 15)
         .map((globalVar) => ({
@@ -152,7 +152,7 @@ export class VariableCaptureBuilder {
       isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
       if (varName !== '_dbgReturn' && !varTypes.has(varName) && !isGlobalVar) return null;
     } else {
-      const globalVars = GlslParser.getGlobalVariables(lines);
+      const globalVars = GlslParser.getGlobalVariables(lines, resolvedLine);
       isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
       if (!isGlobalVar) return null;
     }
