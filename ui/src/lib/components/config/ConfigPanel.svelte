@@ -22,7 +22,6 @@
   export let customUniformValues: Record<string, number | number[] | boolean> = {};
   export let actualPollFps: number = 0;
   export let uniformActualFps: Record<string, number> = {};
-  export let onScriptPollingFpsChange: ((fps: number) => void) | undefined = undefined;
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
@@ -103,6 +102,25 @@
     if (!configManager) return;
     configManager.setScript(newPath);
     config = configManager.getConfig();
+  }
+
+  function handleScriptPollingFpsChange(fps: number) {
+    if (!config || !shaderPath) {
+      return;
+    }
+
+    const updatedConfig = { ...config, scriptMaxPollingFps: fps };
+    config = updatedConfig;
+    const text = JSON.stringify(updatedConfig, null, 2);
+
+    transport.postMessage({
+      type: 'updateConfig',
+      payload: { config: updatedConfig, text, shaderPath, skipRefresh: true },
+    });
+    transport.postMessage({
+      type: 'updateScriptPollingRate',
+      payload: { fps },
+    });
   }
 
   function removeBuffer(bufferName: string) {
@@ -234,7 +252,7 @@
           {uniformActualFps}
           pollingFps={config?.scriptMaxPollingFps ?? 30}
           actualFps={actualPollFps}
-          onPollingFpsChange={onScriptPollingFpsChange}
+          onPollingFpsChange={handleScriptPollingFpsChange}
           onPathChange={handleScriptPathChange}
           suggestedPath={configManager?.generateScriptPath() || ''}
           fileExists={scriptInfo ? scriptInfo.fileExists !== false : false}

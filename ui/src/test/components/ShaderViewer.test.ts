@@ -999,6 +999,79 @@ describe('ShaderViewer', () => {
     expect(varInspectorButton.classList.contains('active')).toBe(true);
   });
 
+  it('should persist variable inspector enabled state across remounts', async () => {
+    const first = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    await loadShader();
+
+    debugPanelStore.setVisible(true);
+    await tick();
+    await tick();
+
+    const varInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    if (!varInspectorButton.classList.contains('active')) {
+      await fireEvent.pointerDown(varInspectorButton);
+      await fireEvent.pointerUp(window);
+      await tick();
+      await tick();
+    }
+    expect(varInspectorButton.classList.contains('active')).toBe(true);
+    expect(
+      localStorage.getItem('shader-studio-debug-panel-state:vscode:1'),
+    ).toContain('"isVariableInspectorEnabled":true');
+
+    first.unmount();
+    vi.clearAllMocks();
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    await loadShader();
+
+    debugPanelStore.setVisible(true);
+    await tick();
+    await tick();
+
+    const varInspectorButtonAfterRemount = screen.getByLabelText('Toggle variable inspector');
+    expect(varInspectorButtonAfterRemount.classList.contains('active')).toBe(true);
+  });
+
+  it('should persist variable inspector disabled state across remounts', async () => {
+    const first = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    await loadShader();
+
+    debugPanelStore.setVisible(true);
+    await tick();
+    await tick();
+
+    const varInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    if (varInspectorButton.classList.contains('active')) {
+      await fireEvent.pointerDown(varInspectorButton);
+      await fireEvent.pointerUp(window);
+      await tick();
+      await tick();
+    }
+    expect(varInspectorButton.classList.contains('active')).toBe(false);
+
+    first.unmount();
+    vi.clearAllMocks();
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    await loadShader();
+
+    debugPanelStore.setVisible(true);
+    await tick();
+    await tick();
+
+    const varInspectorButtonAfterRemount = screen.getByLabelText('Toggle variable inspector');
+    expect(varInspectorButtonAfterRemount.classList.contains('active')).toBe(false);
+  });
+
   it('should update config when not locked', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

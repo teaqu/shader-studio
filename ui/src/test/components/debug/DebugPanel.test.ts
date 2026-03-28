@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, fireEvent, screen } from '@testing-library/svelte';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
 import type { ShaderDebugState, DebugFunctionContext } from '../../../lib/types/ShaderDebugState';
@@ -8,6 +8,7 @@ import type { PassUniforms } from '../../../../../rendering/src/models/PassUnifo
 import type { RefreshMode } from '../../../lib/VariableCaptureManager';
 import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
+import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -69,6 +70,8 @@ function createMockShaderDebugManager() {
     setCustomParameter: vi.fn(),
     resetCustomParameters: vi.fn(),
     setLoopMaxIterations: vi.fn(),
+    setInlineRenderingEnabled: vi.fn(),
+    setVariableInspectorEnabled: vi.fn(),
     toggleLineLock: vi.fn(),
     toggleInlineRendering: vi.fn(),
     cycleNormalizeMode: vi.fn(),
@@ -83,6 +86,9 @@ function createMockVariableCaptureManager() {
     changeSampleSize: vi.fn(),
     changeRefreshMode: vi.fn(),
     changePollingMs: vi.fn(),
+    setLoadingStateCallback: vi.fn(),
+    setErrorCallback: vi.fn(),
+    setSampleSettingsCallback: vi.fn(),
     sampleSize: 32,
     getActiveRefreshMode: vi.fn().mockReturnValue('polling'),
     getActivePollingMs: vi.fn().mockReturnValue(500),
@@ -90,6 +96,12 @@ function createMockVariableCaptureManager() {
 }
 
 describe('DebugPanel', () => {
+  beforeEach(() => {
+    debugPanelStore.setLayoutSlot('test');
+    debugPanelStore.setInlineRenderingEnabled(true);
+    debugPanelStore.setVariableInspectorEnabled(false);
+  });
+
   it('renders header with inspector and inline rendering buttons', () => {
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
@@ -319,18 +331,22 @@ describe('DebugPanel', () => {
   });
 
   it('inline rendering toggle button present and clickable', async () => {
-    const onToggleInlineRendering = vi.fn();
     const { container } = render(DebugPanel, {
       debugState: makeDebugState(),
       getUniforms: mockGetUniforms,
-      onToggleInlineRendering,
     });
 
     const inlineBtn = container.querySelector('[aria-label="Toggle inline rendering"]') as HTMLElement;
     expect(inlineBtn).toBeTruthy();
 
     await fireEvent.pointerDown(inlineBtn);
-    expect(onToggleInlineRendering).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    let currentState = false;
+    const unsubscribe = debugPanelStore.subscribe((state) => {
+      currentState = state.isInlineRenderingEnabled;
+    });
+    unsubscribe();
+    expect(currentState).toBe(false);
   });
 
   it('inspector toggle button present and clickable', async () => {
@@ -666,17 +682,21 @@ describe('DebugPanel', () => {
       expect(varBtn).toBeTruthy();
     });
 
-    it('variable inspector button calls toggleVariableInspector on manager', async () => {
-      const mockDebugManager = createMockShaderDebugManager();
+    it('variable inspector button updates persisted store state', async () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState(),
         getUniforms: mockGetUniforms,
-        shaderDebugManager: mockDebugManager,
       });
 
       const varBtn = container.querySelector('[aria-label="Toggle variable inspector"]') as HTMLElement;
       await fireEvent.pointerDown(varBtn);
-      expect(mockDebugManager.toggleVariableInspector).toHaveBeenCalledOnce();
+      await Promise.resolve();
+      let currentState = false;
+      const unsubscribe = debugPanelStore.subscribe((state) => {
+        currentState = state.isVariableInspectorEnabled;
+      });
+      unsubscribe();
+      expect(currentState).toBe(true);
     });
 
     it('variable inspector button shows active state when enabled', () => {

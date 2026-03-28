@@ -28,8 +28,6 @@
   import { editorOverlayStore } from "../stores/editorOverlayStore";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
-  import { PerformanceMonitor } from "../PerformanceMonitor";
-  import type { PerformanceData } from "../PerformanceMonitor";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { ShaderConfig } from "@shader-studio/types";
   import { allocateWebLayoutSlot, getInjectedLayoutSlot, releaseWebLayoutSlot } from "../util/layoutSlot";
@@ -68,7 +66,6 @@
     : allocateWebLayoutSlot();
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
-  let debugInspectorEnabled = true;
   let shaderDebugManager: ShaderDebugManager | undefined;
   let variableCaptureManager: VariableCaptureManager | undefined;
   let audioVideoController: AudioVideoController | undefined;
@@ -101,7 +98,6 @@
   let recordingManager: RecordingManager;
 
   // Config panel state
-  let configPanelVisible = false;
   let currentConfig: ShaderConfig | null = null;
   let pathMap: Record<string, string> = {};
   let bufferPathMap: Record<string, string> = {};
@@ -116,12 +112,6 @@
   let uniformActualFps: Record<string, number> = {};
 
   // Debug panel state
-  let debugPanelVisible = true;
-  let persistedVariableInspectorEnabled = false;
-  let persistedInlineRenderingEnabled = true;
-  let persistedPixelInspectorEnabled = true;
-  let debugPanelPrefsRestored = false;
-
   // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
   let editorOverlayVisible = false;
   let editorVimMode = false;
@@ -132,26 +122,15 @@
   let editorBufferNames: string[] = ["Image"];
 
   // Performance panel state
-  let performancePanelVisible = false;
-  let performanceMonitor: PerformanceMonitor | undefined;
-  let performanceData: PerformanceData | null = null;
-  let compileMode: CompileMode = "hot";
   let lastSentCompileMode: CompileMode | null = null;
-  let debugSampleSize = 32;
-  let debugRefreshMode: import('../VariableCaptureManager').RefreshMode = 'polling';
-  let debugPollingMs = 500;
   let lastSentDebugEnabled: boolean | null = null;
-  let isVariableCaptureLoading = false;
-  let variableCaptureError: string | null = null;
 
-  $: showDebugPanel = debugPanelVisible;
-
-  $: if (initialized && compileMode !== lastSentCompileMode) {
+  $: if (initialized && $compileModeStore.mode !== lastSentCompileMode) {
     transport.postMessage({
       type: 'setCompileMode',
-      payload: { mode: compileMode },
+      payload: { mode: $compileModeStore.mode },
     });
-    lastSentCompileMode = compileMode;
+    lastSentCompileMode = $compileModeStore.mode;
   }
 
   // Extract specific debug state fields so that capturedVariables changes
@@ -168,20 +147,6 @@
 
   // Derive whether we're currently in pixel capture mode
   $: hasPixelCapture = (inspectorActive || inspectorLocked) && (inspectorCanvasX !== null);
-
-  // Active refresh/polling from VariableCaptureManager
-  $: activeRefreshMode = variableCaptureManager
-    ? variableCaptureManager.getActiveRefreshMode(hasPixelCapture)
-    : 'polling';
-  $: activePollingMs = variableCaptureManager
-    ? variableCaptureManager.getActivePollingMs(hasPixelCapture)
-    : 500;
-  $: if (variableCaptureManager) {
-    hasPixelCapture;
-    debugSampleSize = variableCaptureManager.sampleSize;
-    debugRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelCapture);
-    debugPollingMs = variableCaptureManager.getActivePollingMs(hasPixelCapture);
-  }
 
   // Stable pixel coordinates for the capture reactive block
   $: capturePixelX = hasPixelCapture ? inspectorCanvasX : null;
@@ -213,9 +178,9 @@
     isDebugEnabled: debugState.isEnabled,
     onToggleDebugEnabled: handleToggleDebugEnabled,
     debugState,
-    isConfigPanelVisible: configPanelVisible,
+    isConfigPanelVisible: $configPanelStore.isVisible,
     onToggleConfigPanel: handleToggleConfigPanel,
-    isPerformancePanelVisible: performancePanelVisible,
+    isPerformancePanelVisible: $performancePanelStore.isVisible,
     onTogglePerformancePanel: handleTogglePerformancePanel,
     isEditorOverlayVisible: editorOverlayVisible,
     onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
@@ -234,7 +199,7 @@
     onRecord: handleRecord,
     onCancel: handleCancelRecording,
     isRecording,
-    compileMode,
+    compileMode: $compileModeStore.mode,
     onSetCompileMode: handleSetCompileMode,
     onManualCompile: handleManualCompile,
   };
@@ -247,25 +212,14 @@
     editorOverlayStore.setLayoutSlot(layoutSlot);
 
     const unsubConfig = configPanelStore.subscribe((state) => {
-      configPanelVisible = state.isVisible;
-    });
-    const unsubDebug = debugPanelStore.subscribe((state) => {
-      debugPanelVisible = state.isVisible;
-      persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
-      persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
-      persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
+      void state;
     });
     const unsubPerf = performancePanelStore.subscribe((state) => {
-      performancePanelVisible = state.isVisible;
-    });
-    const unsubCompileMode = compileModeStore.subscribe((state) => {
-      compileMode = state.mode;
+      void state;
     });
     return () => {
       unsubConfig();
-      unsubDebug();
       unsubPerf();
-      unsubCompileMode();
     };
   });
 
@@ -364,25 +318,6 @@
     });
   }
 
-  function handleScriptPollingFpsChange(fps: number) {
-    if (!currentConfig || !shaderPath) {
-      return;
-    }
-    const updatedConfig = { ...currentConfig, scriptMaxPollingFps: fps };
-    currentConfig = updatedConfig;
-    const text = JSON.stringify(updatedConfig, null, 2);
-    // Save config to disk (skip shader refresh)
-    transport.postMessage({
-      type: 'updateConfig',
-      payload: { config: updatedConfig, text, shaderPath, skipRefresh: true },
-    });
-    // Update the live polling rate without restarting the shader
-    transport.postMessage({
-      type: 'updateScriptPollingRate',
-      payload: { fps },
-    });
-  }
-
   function handleTogglePause() {
     if (!initialized) {
       return;
@@ -409,20 +344,6 @@
     renderingEngine.setFPSLimit(limit);
   }
 
-  function handleToggleInspectorEnabled() {
-    if (!initialized || !debugPanelVisible) {
-      return;
-    }
-    debugPanelStore.setPixelInspectorEnabled(!persistedPixelInspectorEnabled);
-  }
-
-  function handleToggleInlineRendering() {
-    if (!initialized || !debugPanelVisible) {
-      return;
-    }
-    debugPanelStore.setInlineRenderingEnabled(!persistedInlineRenderingEnabled);
-  }
-
   function handleToggleDebugEnabled() {
     if (!initialized || !hasShader) {
       return;
@@ -445,65 +366,42 @@
     performancePanelStore.setVisible(false);
   }
 
-  // Start/stop performance monitor based on panel visibility
-  $: if (performanceMonitor) {
-    if (performancePanelVisible) {
-      performanceMonitor.start();
-    } else {
-      performanceMonitor.stop();
-    }
-  }
-
   $: if (initialized && renderingEngine) {
     renderingEngine.setInputEnabled(!editorOverlayVisible);
   }
 
   $: if (initialized && shaderDebugManager && pixelInspectorManager && hasShader) {
     const currentEnabled = shaderDebugManager.getState().isEnabled;
-    if (currentEnabled !== debugPanelVisible) {
+    if (currentEnabled !== $debugPanelStore.isVisible) {
       shaderDebugManager.toggleEnabled();
       transport.postMessage({
         type: 'debugModeState',
-        payload: { enabled: debugPanelVisible }
+        payload: { enabled: $debugPanelStore.isVisible }
       });
-      lastSentDebugEnabled = debugPanelVisible;
+      lastSentDebugEnabled = $debugPanelStore.isVisible;
 
-      if (debugPanelVisible) {
-        pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled);
+      if ($debugPanelStore.isVisible) {
+        pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled);
       } else {
-        debugInspectorEnabled = pixelInspectorManager.getState().isEnabled;
         pixelInspectorManager.setEnabled(false);
       }
 
       shaderStudio.triggerDebugRecompile();
-    } else if (lastSentDebugEnabled !== debugPanelVisible) {
+    } else if (lastSentDebugEnabled !== $debugPanelStore.isVisible) {
       transport.postMessage({
         type: 'debugModeState',
-        payload: { enabled: debugPanelVisible }
+        payload: { enabled: $debugPanelStore.isVisible }
       });
-      lastSentDebugEnabled = debugPanelVisible;
-    }
-  }
-
-  $: if (shaderDebugManager) {
-    const currentInlineEnabled = shaderDebugManager.getState().isInlineRenderingEnabled;
-    if (currentInlineEnabled !== persistedInlineRenderingEnabled) {
-      shaderDebugManager.setInlineRenderingEnabled(persistedInlineRenderingEnabled);
-    }
-
-    const currentVariableInspectorEnabled = shaderDebugManager.getState().isVariableInspectorEnabled;
-    if (currentVariableInspectorEnabled !== persistedVariableInspectorEnabled) {
-      shaderDebugManager.setVariableInspectorEnabled(persistedVariableInspectorEnabled);
+      lastSentDebugEnabled = $debugPanelStore.isVisible;
     }
   }
 
   $: if (pixelInspectorManager) {
-    const desiredInspectorEnabled = persistedPixelInspectorEnabled && debugPanelVisible;
+    const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible;
     const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
     if (currentInspectorEnabled !== desiredInspectorEnabled) {
       pixelInspectorManager.setEnabled(desiredInspectorEnabled);
     }
-    debugInspectorEnabled = desiredInspectorEnabled;
   }
 
   function handleFork() {
@@ -543,7 +441,7 @@
   }
 
   async function handleManualCompile() {
-    if (!initialized || compileMode !== 'manual') {
+    if (!initialized || $compileModeStore.mode !== 'manual') {
       return;
     }
     handleExtensionCommand('manualCompile');
@@ -612,7 +510,6 @@
         debugPanelStore.restoreFromStorage();
         performancePanelStore.restoreFromStorage();
         editorOverlayStore.restoreFromStorage();
-        debugPanelPrefsRestored = true;
       }
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
@@ -662,8 +559,6 @@
       shaderDebugManager.setStateCallback((s) => {
         debugState = s; 
       });
-      shaderDebugManager.setVariableInspectorEnabled(persistedVariableInspectorEnabled);
-      shaderDebugManager.setInlineRenderingEnabled(persistedInlineRenderingEnabled);
 
       shaderStudio = new ShaderStudio(transport, shaderLocker, renderingEngine, shaderDebugManager);
 
@@ -716,39 +611,16 @@
         inspectorState = s; 
       });
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
-      debugInspectorEnabled = persistedPixelInspectorEnabled;
-      pixelInspectorManager.setEnabled(persistedPixelInspectorEnabled && debugState.isEnabled);
+      pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
-      });
-      variableCaptureManager.setLoadingStateCallback((isLoading) => {
-        isVariableCaptureLoading = isLoading;
-      });
-      variableCaptureManager.setErrorCallback((error) => {
-        variableCaptureError = error;
-      });
-      variableCaptureManager.setSampleSettingsCallback(() => {
-        debugSampleSize = variableCaptureManager?.sampleSize ?? 32;
-        debugRefreshMode = variableCaptureManager?.getActiveRefreshMode(hasPixelCapture) ?? 'polling';
-        debugPollingMs = variableCaptureManager?.getActivePollingMs(hasPixelCapture) ?? 500;
-        notifyVariableCaptureManager();
       });
 
       shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
       shaderDebugManager.setStateCallback((s) => {
         debugState = s;
-        if (debugPanelPrefsRestored) {
-          debugPanelStore.setVariableInspectorEnabled(s.isVariableInspectorEnabled);
-          debugPanelStore.setInlineRenderingEnabled(s.isInlineRenderingEnabled);
-        }
-      });
-
-      // Initialize performance monitor
-      performanceMonitor = new PerformanceMonitor(renderingEngine);
-      performanceMonitor.setStateCallback((data) => {
-        performanceData = data;
       });
 
       renderingEngine.togglePause();
@@ -931,9 +803,6 @@
     if (recordingManager) {
       recordingManager.dispose();
     }
-    if (performanceMonitor) {
-      performanceMonitor.dispose();
-    }
     if (audioVideoController) {
       audioVideoController.dispose();
     }
@@ -975,7 +844,7 @@
         shaderPath={editorFilePath}
         {transport}
         onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
-        {compileMode}
+        compileMode={$compileModeStore.mode}
         vimMode={editorVimMode}
         bufferNames={editorBufferNames}
         activeBufferName={editorBufferName}
@@ -997,29 +866,23 @@
         isInspectorEnabled={inspectorEnabled}
         isInspectorActive={inspectorActive}
         isInspectorLocked={inspectorLocked}
-        onToggleInspectorEnabled={handleToggleInspectorEnabled}
-        onToggleInlineRendering={handleToggleInlineRendering}
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
-        sampleSize={debugSampleSize}
-        refreshMode={debugRefreshMode}
-        pollingMs={debugPollingMs}
         hasPixelSelected={hasPixelCapture}
-        isVariableCaptureLoading={isVariableCaptureLoading}
-        variableCaptureError={variableCaptureError}
+        onCaptureSettingsChanged={notifyVariableCaptureManager}
         {customUniformValues}
       />
     {/if}
   </div>
   <div class="dockview-panel-source" bind:this={configEl}>
-    {#if configPanelVisible}
+    {#if $configPanelStore.isVisible}
       <ConfigPanel
         config={currentConfig}
         {pathMap}
         {bufferPathMap}
         {transport}
         {shaderPath}
-        isVisible={configPanelVisible}
+        isVisible={$configPanelStore.isVisible}
         onFileSelect={(name) => editorOverlayManager?.handleConfigFileSelect(name, shaderPath)}
         selectedBuffer={editorBufferName}
         isLocked={isLocked}
@@ -1029,13 +892,12 @@
         {customUniformValues}
         {actualPollFps}
         {uniformActualFps}
-        onScriptPollingFpsChange={handleScriptPollingFpsChange}
       />
     {/if}
   </div>
   <div class="dockview-panel-source" bind:this={performanceEl}>
-    {#if performancePanelVisible}
-      <FrameTimesPanel data={performanceData} />
+    {#if $performancePanelStore.isVisible}
+      <FrameTimesPanel {renderingEngine} active={$performancePanelStore.isVisible} />
     {/if}
   </div>
 
@@ -1044,9 +906,9 @@
     {mountDebug}
     {mountConfig}
     {mountPerformance}
-    {showDebugPanel}
-    showConfigPanel={configPanelVisible}
-    showPerformancePanel={performancePanelVisible}
+    showDebugPanel={$debugPanelStore.isVisible}
+    showConfigPanel={$configPanelStore.isVisible}
+    showPerformancePanel={$performancePanelStore.isVisible}
     {transport}
     {layoutSlot}
     on:ready={handleDockviewReady}
