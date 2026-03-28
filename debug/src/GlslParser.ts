@@ -34,6 +34,8 @@ interface StatementInfo {
   kind: StatementKind;
   declaredVar?: VarInfo;
   assignedVarName?: string;
+  assignedExpression?: string;
+  assignedValueType?: string;
   callName?: string;
 }
 
@@ -350,6 +352,19 @@ export class GlslParser {
             );
           }
           if (varType) {
+            if (
+              statement.kind === 'memberAssignment' &&
+              !GLSL_TYPES.has(varType) &&
+              statement.assignedExpression &&
+              statement.assignedValueType
+            ) {
+              if (log) {
+                console.log(
+                  `[ShaderDebug] ✓ Matched ${kindLabel} expression: ${statement.assignedExpression} (${statement.assignedValueType})`
+                );
+              }
+              return { name: statement.assignedExpression, type: statement.assignedValueType };
+            }
             if (log) {
               console.log(`[ShaderDebug] ✓ Matched ${kindLabel}: ${statement.assignedVarName} (${varType})`);
             }
@@ -876,17 +891,9 @@ export class GlslParser {
     }
 
     const lhsTokens = tokens.slice(0, assignmentIndex);
-    if (lhsTokens.length === 1 && lhsTokens[0].type === 'identifier') {
-      return { name: lhsTokens[0].value, member: false };
-    }
-
-    if (
-      lhsTokens.length >= 3 &&
-      lhsTokens[0].type === 'identifier' &&
-      lhsTokens[1].value === '.' &&
-      lhsTokens.slice(2).every(token => token.type === 'identifier')
-    ) {
-      return { name: lhsTokens[0].value, member: true };
+    const assignedVar = GlslParser.extractAssignedRootIdentifier(lhsTokens);
+    if (assignedVar) {
+      return assignedVar;
     }
 
     return null;
@@ -988,24 +995,15 @@ export class GlslParser {
     const assignmentIndex = GlslParser.findTopLevelAssignmentOperatorIndex(tokens);
     if (assignmentIndex > 0) {
       const lhsTokens = tokens.slice(0, assignmentIndex);
-      if (lhsTokens.length === 1 && lhsTokens[0].type === 'identifier') {
+      const assignedVar = GlslParser.extractAssignedRootIdentifier(lhsTokens);
+      if (assignedVar) {
+        const rhsTokens = tokens.slice(assignmentIndex + 1);
         return {
           ...base,
-          kind: 'assignment',
-          assignedVarName: lhsTokens[0].value,
-        };
-      }
-
-      if (
-        lhsTokens.length >= 3 &&
-        lhsTokens[0].type === 'identifier' &&
-        lhsTokens[1].value === '.' &&
-        lhsTokens.slice(2).every(token => token.type === 'identifier')
-      ) {
-        return {
-          ...base,
-          kind: 'memberAssignment',
-          assignedVarName: lhsTokens[0].value,
+          kind: assignedVar.member ? 'memberAssignment' : 'assignment',
+          assignedVarName: assignedVar.name,
+          assignedExpression: GlslParser.tokensToExpression(lhsTokens),
+          assignedValueType: GlslParser.inferExpressionType(rhsTokens),
         };
       }
     }
@@ -1038,7 +1036,8 @@ export class GlslParser {
       return null;
     }
 
-    if (!GLSL_TYPES.has(typeToken.value) || nameToken.type !== 'identifier') {
+    const isTypeToken = typeToken.type === 'identifier' || typeToken.type === 'keyword';
+    if (!isTypeToken || nameToken.type !== 'identifier') {
       return null;
     }
 
@@ -1051,6 +1050,66 @@ export class GlslParser {
       name: nameToken.value,
       type: typeToken.value,
     };
+  }
+
+  private static extractAssignedRootIdentifier(lhsTokens: Token[]): { name: string; member: boolean } | null {
+    if (lhsTokens.length === 1 && lhsTokens[0].type === 'identifier') {
+      return { name: lhsTokens[0].value, member: false };
+    }
+
+    if (lhsTokens.length === 0 || lhsTokens[0].type !== 'identifier') {
+      return null;
+    }
+
+    let index = 1;
+    let sawAccessor = false;
+    while (index < lhsTokens.length) {
+      const token = lhsTokens[index];
+      if (token.value === '.') {
+        if (index + 1 >= lhsTokens.length || lhsTokens[index + 1].type !== 'identifier') {
+          return null;
+        }
+        sawAccessor = true;
+        index += 2;
+        continue;
+      }
+
+      if (token.value === '[') {
+        sawAccessor = true;
+        let depth = 1;
+        index++;
+        while (index < lhsTokens.length && depth > 0) {
+          if (lhsTokens[index].value === '[') depth++;
+          if (lhsTokens[index].value === ']') depth--;
+          index++;
+        }
+        if (depth !== 0) {
+          return null;
+        }
+        continue;
+      }
+
+      return null;
+    }
+
+    return sawAccessor ? { name: lhsTokens[0].value, member: true } : null;
+  }
+
+  private static tokensToExpression(tokens: Token[]): string {
+    return tokens.map(token => token.value).join('');
+  }
+
+  private static inferExpressionType(tokens: Token[]): string | undefined {
+    if (tokens.length === 0) {
+      return undefined;
+    }
+
+    const first = tokens[0];
+    if ((first.type === 'identifier' || first.type === 'keyword') && GLSL_TYPES.has(first.value)) {
+      return first.value;
+    }
+
+    return undefined;
   }
 
   private static findTopLevelAssignmentOperatorIndex(tokens: Token[]): number {
