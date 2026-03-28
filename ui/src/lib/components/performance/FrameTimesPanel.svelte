@@ -1,10 +1,14 @@
 <script lang="ts">
-  import { afterUpdate, onMount } from "svelte";
-  import type { PerformanceData } from "../../PerformanceMonitor";
+  import { afterUpdate, onDestroy, onMount } from "svelte";
+  import { PerformanceMonitor, type PerformanceData } from "../../PerformanceMonitor";
+  import type { RenderingEngine } from "../../../../../rendering/src/types/RenderingEngine";
 
   export let data: PerformanceData | null = null;
+  export let renderingEngine: RenderingEngine | null = null;
+  export let active: boolean = true;
 
   let graphCanvas: HTMLCanvasElement;
+  let performanceMonitor: PerformanceMonitor | null = null;
   let visibleSamples = 180;
   let showFPS = false;
   let downsample = 1;
@@ -833,6 +837,27 @@
 
   onMount(() => {
     detectScreenHz();
+    if (renderingEngine) {
+      performanceMonitor = new PerformanceMonitor(renderingEngine);
+      performanceMonitor.setStateCallback((nextData) => {
+        data = nextData;
+      });
+      if (active) {
+        performanceMonitor.start();
+      }
+    }
+  });
+
+  $: if (performanceMonitor) {
+    if (active) {
+      performanceMonitor.start();
+    } else {
+      performanceMonitor.stop();
+    }
+  }
+
+  onDestroy(() => {
+    performanceMonitor?.dispose();
   });
 
   function handleKeyDown(e: KeyboardEvent) {

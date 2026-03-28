@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { ShaderDebugState, DebugLoopInfo } from "../../types/ShaderDebugState";
   import type { PassUniforms } from "../../../../../rendering/src/models/PassUniforms";
   import ParameterEditor from "./ParameterEditor.svelte";
@@ -8,6 +9,7 @@
   import type { ShaderDebugManager } from "../../ShaderDebugManager";
   import type { VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
+  import { debugPanelStore } from "../../stores/debugPanelStore";
 
 
   import VariablesSection from "./VariablesSection.svelte";
@@ -32,6 +34,7 @@
     customUniformValues?: Record<string, number | number[] | boolean>;
     isVariableCaptureLoading?: boolean;
     variableCaptureError?: string | null;
+    onCaptureSettingsChanged?: () => void;
   };
 
   let {
@@ -47,13 +50,14 @@
     onToggleInlineRendering = () => {},
     onExpandVarHistogram = () => {},
     onVarClick = () => {},
-    sampleSize = 32,
-    refreshMode = 'polling',
-    pollingMs = 500,
+    sampleSize: sampleSizeOverride = undefined,
+    refreshMode: refreshModeOverride = undefined,
+    pollingMs: pollingMsOverride = undefined,
     hasPixelSelected = false,
     customUniformValues = {},
-    isVariableCaptureLoading = false,
-    variableCaptureError = null,
+    isVariableCaptureLoading: variableCaptureLoadingOverride = undefined,
+    variableCaptureError: variableCaptureErrorOverride = undefined,
+    onCaptureSettingsChanged = () => {},
   }: DebugPanelProps = $props();
 
   let liveUniforms = $state<PassUniforms | null>(null);
@@ -62,6 +66,19 @@
   let isLineTooltipHovered = $state(false);
   let isLineTooltipHoverArmed = $state(false);
   const activeHeaderPointers = new Set<number>();
+  let persistedVariableInspectorEnabled = $state(false);
+  let persistedInlineRenderingEnabled = $state(true);
+  let persistedPixelInspectorEnabled = $state(true);
+  let debugPanelPrefsRestored = $state(false);
+  let lastAppliedPersistedVariableInspectorEnabled = $state<boolean | null>(null);
+  let lastAppliedPersistedInlineRenderingEnabled = $state<boolean | null>(null);
+  let lastObservedDebugStateVariableInspectorEnabled = $state<boolean | null>(null);
+  let lastObservedDebugStateInlineRenderingEnabled = $state<boolean | null>(null);
+  let internalSampleSize = $state(32);
+  let internalRefreshMode = $state<RefreshMode>('polling');
+  let internalPollingMs = $state(500);
+  let internalVariableCaptureLoading = $state(false);
+  let internalVariableCaptureError = $state<string | null>(null);
 
   const ctx = $derived(debugState?.functionContext);
   const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
@@ -87,6 +104,17 @@
     isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered)
   );
   const displayedUniforms = $derived(uniforms ?? liveUniforms);
+  const sampleSize = $derived(
+    sampleSizeOverride ?? internalSampleSize
+  );
+  const refreshMode = $derived(
+    refreshModeOverride ?? internalRefreshMode
+  );
+  const pollingMs = $derived(
+    pollingMsOverride ?? internalPollingMs
+  );
+  const variableCaptureLoading = $derived(variableCaptureLoadingOverride ?? internalVariableCaptureLoading);
+  const variableCaptureError = $derived(variableCaptureErrorOverride ?? internalVariableCaptureError);
 
   const normalizeTooltip = $derived(normalizeMode === 'off'
     ? "Normalize: OFF\nRaw shader output values"
@@ -106,6 +134,87 @@
       }
       activeHeaderPointers.clear();
     };
+  });
+
+  onMount(() => {
+    const unsubscribe = debugPanelStore.subscribe((state) => {
+      persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
+      persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
+      persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
+      debugPanelPrefsRestored = true;
+    });
+
+    return unsubscribe;
+  });
+
+  onMount(() => {
+    if (!variableCaptureManager) {
+      return;
+    }
+
+    internalSampleSize = variableCaptureManager.sampleSize;
+    internalRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelSelected);
+    internalPollingMs = variableCaptureManager.getActivePollingMs(hasPixelSelected);
+    variableCaptureManager.setLoadingStateCallback((isLoading) => {
+      internalVariableCaptureLoading = isLoading;
+    });
+    variableCaptureManager.setErrorCallback((error) => {
+      internalVariableCaptureError = error;
+    });
+    variableCaptureManager.setSampleSettingsCallback(() => {
+      internalSampleSize = variableCaptureManager.sampleSize;
+      internalRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelSelected);
+      internalPollingMs = variableCaptureManager.getActivePollingMs(hasPixelSelected);
+      onCaptureSettingsChanged();
+    });
+  });
+
+  $effect(() => {
+    if (!shaderDebugManager || !debugPanelPrefsRestored) {
+      return;
+    }
+
+    if (lastAppliedPersistedInlineRenderingEnabled !== persistedInlineRenderingEnabled) {
+      lastAppliedPersistedInlineRenderingEnabled = persistedInlineRenderingEnabled;
+      shaderDebugManager.setInlineRenderingEnabled?.(persistedInlineRenderingEnabled);
+    }
+
+    if (lastAppliedPersistedVariableInspectorEnabled !== persistedVariableInspectorEnabled) {
+      lastAppliedPersistedVariableInspectorEnabled = persistedVariableInspectorEnabled;
+      shaderDebugManager.setVariableInspectorEnabled?.(persistedVariableInspectorEnabled);
+    }
+  });
+
+  $effect(() => {
+    if (!debugPanelPrefsRestored || !debugState) {
+      return;
+    }
+
+    if (lastObservedDebugStateVariableInspectorEnabled !== debugState.isVariableInspectorEnabled) {
+      lastObservedDebugStateVariableInspectorEnabled = debugState.isVariableInspectorEnabled;
+    } else {
+      return;
+    }
+
+    if (persistedVariableInspectorEnabled !== debugState.isVariableInspectorEnabled) {
+      debugPanelStore.setVariableInspectorEnabled(debugState.isVariableInspectorEnabled);
+    }
+  });
+
+  $effect(() => {
+    if (!debugPanelPrefsRestored || !debugState) {
+      return;
+    }
+
+    if (lastObservedDebugStateInlineRenderingEnabled !== debugState.isInlineRenderingEnabled) {
+      lastObservedDebugStateInlineRenderingEnabled = debugState.isInlineRenderingEnabled;
+    } else {
+      return;
+    }
+
+    if (persistedInlineRenderingEnabled !== debugState.isInlineRenderingEnabled) {
+      debugPanelStore.setInlineRenderingEnabled(debugState.isInlineRenderingEnabled);
+    }
   });
 
   function handleLoopIterInput(loop: DebugLoopInfo, event: Event) {
@@ -146,6 +255,23 @@
 
   function activateHeaderControl(action: () => void) {
     action();
+  }
+
+  function handleToggleInlineRendering() {
+    debugPanelStore.setInlineRenderingEnabled(!persistedInlineRenderingEnabled);
+    onToggleInlineRendering();
+  }
+
+  function handleToggleInspectorEnabled() {
+    if (!debugState?.isEnabled) {
+      return;
+    }
+    debugPanelStore.setPixelInspectorEnabled(!persistedPixelInspectorEnabled);
+    onToggleInspectorEnabled();
+  }
+
+  function handleToggleVariableInspector() {
+    debugPanelStore.setVariableInspectorEnabled(!persistedVariableInspectorEnabled);
   }
 
   function handleHeaderControlPointerDown(event: PointerEvent, action: () => void) {
@@ -231,8 +357,8 @@
       class="header-btn has-tooltip"
       class:active={isInspectorEnabled}
       class:disabled={!debugState?.isEnabled}
-      onpointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInspectorEnabled)}
-      onkeydown={(event) => handleHeaderControlKeydown(event, onToggleInspectorEnabled)}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInspectorEnabled)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInspectorEnabled)}
       onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       disabled={!debugState?.isEnabled}
       aria-label="Toggle inspector"
@@ -243,8 +369,8 @@
     <button
       class="header-btn has-tooltip"
       class:active={isInlineOn}
-      onpointerdown={(event) => handleHeaderControlPointerDown(event, onToggleInlineRendering)}
-      onkeydown={(event) => handleHeaderControlKeydown(event, onToggleInlineRendering)}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInlineRendering)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInlineRendering)}
       onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
@@ -307,8 +433,8 @@
     <button
       class="header-btn has-tooltip"
       class:active={isVarInspectorOn}
-      onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleVariableInspector())}
-      onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleVariableInspector())}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleVariableInspector)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleVariableInspector)}
       onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
@@ -407,7 +533,7 @@
       <VariablesSection
         {capturedVariables}
         isPixelMode={isInspectorActive || isInspectorLocked}
-        isLoading={isVariableCaptureLoading}
+        isLoading={variableCaptureLoading}
         captureError={variableCaptureError}
         onExpandToggle={onExpandVarHistogram}
         {onVarClick}
