@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
-  import * as monaco from "monaco-editor";
+  import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl } from "@shader-studio/monaco";
 
