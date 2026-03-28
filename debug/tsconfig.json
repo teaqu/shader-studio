@@ -4,6 +4,8 @@
     "module": "ES2020",
     "lib": ["ES2020"],
     "declaration": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,

@@ -2,6 +2,8 @@
 	"compilerOptions": {
 		"module": "Node16",
 		"target": "ES2022",
+		"incremental": true,
+		"tsBuildInfoFile": "./out/.tsbuildinfo",
 		"outDir": "out",
 		"lib": [
 			"ES2022"
