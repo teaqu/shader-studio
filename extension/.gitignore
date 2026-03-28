@@ -7,5 +7,6 @@ snippet-library-dist
 node_modules
 vendor
 glsl-deps
+.smart-build/
 .vscode-test/
 *.vsix

@@ -9,6 +9,7 @@
     "src"
   ],
   "scripts": {
+    "build": "node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); fs.writeFileSync('dist/.turbo-stamp','');\"",
     "test": "vitest run"
   },
   "devDependencies": {

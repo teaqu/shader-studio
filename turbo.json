@@ -1,0 +1,39 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "package.json",
+    "package-lock.json",
+    "turbo.json",
+    "tsconfig.json"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!out/**",
+        "!.turbo/**",
+        "!coverage/**",
+        "!node_modules/.vite/**"
+      ],
+      "outputs": ["dist/**", "out/**"]
+    },
+    "build:code": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!out/**",
+        "!.turbo/**",
+        "!coverage/**",
+        "!node_modules/.vite/**"
+      ],
+      "outputs": ["dist/extension.js", "out/**"]
+    },
+    "copy-to-extension": {
+      "dependsOn": ["build"],
+      "cache": false
+    }
+  }
+}
