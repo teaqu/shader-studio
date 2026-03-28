@@ -246,11 +246,14 @@ export class GlslParser {
     return varLines;
   }
 
-  static getGlobalVariables(lines: string[]): ScopedVarInfo[] {
+  static getGlobalVariables(lines: string[], upToLine?: number): ScopedVarInfo[] {
     const document = GlslParser.getDocument(lines);
     const globals: ScopedVarInfo[] = [];
+    const maxLine = upToLine === undefined
+      ? document.effectiveLines.length - 1
+      : Math.min(upToLine, document.effectiveLines.length - 1);
 
-    for (let i = 0; i < document.effectiveLines.length; i++) {
+    for (let i = 0; i <= maxLine; i++) {
       if (GlslParser.isInsideFunction(document.functions, i)) {
         continue;
       }

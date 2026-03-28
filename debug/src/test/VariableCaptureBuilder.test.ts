@@ -251,6 +251,13 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     const vars = VariableCaptureBuilder.getAllInScopeVariables(withGlobals, 0);
     const names = vars.map(v => v.varName);
     expect(names).toContain("tint");
+    expect(names).not.toContain("exposure");
+  });
+
+  it("should include later globals only after their declaration line in global scope", () => {
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withGlobals, 1);
+    const names = vars.map(v => v.varName);
+    expect(names).toContain("tint");
     expect(names).toContain("exposure");
   });
 
@@ -259,6 +266,20 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     const exposureVars = vars.filter(v => v.varName === "exposure");
     expect(exposureVars).toHaveLength(1);
     expect(exposureVars[0].declarationLine).toBe(3);
+  });
+
+  it("should reject capture of globals declared after the selected global line", () => {
+    const result = VariableCaptureBuilder.generateCaptureShader(
+      withGlobals,
+      0,
+      "exposure",
+      "float",
+      new Map(),
+      new Map(),
+      false,
+    );
+
+    expect(result).toBeNull();
   });
 });
 

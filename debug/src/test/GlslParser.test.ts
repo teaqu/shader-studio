@@ -277,6 +277,16 @@ describe("GlslParser", () => {
       ]);
     });
 
+    it("should only extract globals declared up to the requested global line", () => {
+      expect(GlslParser.getGlobalVariables(shader, 0)).toEqual([
+        { name: "red", type: "vec3", declarationLine: 0 },
+      ]);
+      expect(GlslParser.getGlobalVariables(shader, 1)).toEqual([
+        { name: "red", type: "vec3", declarationLine: 0 },
+        { name: "exposure", type: "float", declarationLine: 1 },
+      ]);
+    });
+
     it("should return only globals used by a helper function", () => {
       const functionInfo = GlslParser.findEnclosingFunction(shader, 4);
       expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([
