@@ -2,6 +2,8 @@
 
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders. See https://www.shadertoy.com for more information on the format and to see some cool shaders.
 
+Docs: https://teaqu.github.io/shader-studio/
+
 ![screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/screenshot.png)
 ![shader explorer screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/shader-explorer.png)
 

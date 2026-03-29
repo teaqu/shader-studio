@@ -10,6 +10,8 @@ Install through VS Code extensions. Search for "Shader Studio".
 
 [Visual Studio Code Market Shader Studio](https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio)
 
+Docs: https://teaqu.github.io/shader-studio/
+
 ## Project Structure
 
 - `/extension/` - VS Code extension
@@ -29,6 +31,8 @@ npm run build
 See the Extension's [README](/extension/README.md).
 
 ## Docs
+
+https://teaqu.github.io/shader-studio/
 
 Docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).
 
