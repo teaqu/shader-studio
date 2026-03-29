@@ -358,6 +358,14 @@ suite('WebServer Test Suite', () => {
       assert.strictEqual(requestFile('codicon.ttf'), 'font/ttf');
     });
 
+    test('serves asset files when the request includes a query string', () => {
+      const mockRequest = { url: '/assets/codicon.ttf?cache-bust=123', method: 'GET' } as any;
+      mockHttpServer.emit('request', mockRequest, mockResponse);
+
+      const headers = mockResponse.writeHead.lastCall.args[1] as any;
+      assert.strictEqual(headers['Content-Type'], 'font/ttf');
+    });
+
     test('serves .woff with font/woff content type', () => {
       assert.strictEqual(requestFile('font.woff'), 'font/woff');
     });

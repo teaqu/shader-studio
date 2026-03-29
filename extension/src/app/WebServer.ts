@@ -95,9 +95,10 @@ export class WebServer {
         return;
       }
 
+      const requestPath = this.getRequestPath(req.url);
       let filePath = path.join(
         uiDistPath,
-        req.url === "/" ? "index.html" : req.url || "",
+        requestPath === "/" ? "index.html" : requestPath,
       );
 
       const resolvedPath = path.resolve(filePath);
@@ -170,6 +171,18 @@ export class WebServer {
     this.httpServer.on("error", (error) => {
       this.logger.error(`HTTP server error: ${error}`);
     });
+  }
+
+  private getRequestPath(url: string | undefined): string {
+    if (!url) {
+      return "/";
+    }
+
+    try {
+      return new URL(url, "http://localhost").pathname;
+    } catch {
+      return url.split("?")[0] || "/";
+    }
   }
 
   private handleTextureRequest(
