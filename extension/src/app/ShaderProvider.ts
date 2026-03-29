@@ -47,51 +47,18 @@ export class ShaderProvider {
     // after the file has been created.
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    // For regular shaders, check for mainImage function
     if (!code.includes("mainImage")) {
-      const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
-      if (ownerShaderPath && ownerShaderPath !== shaderPath) {
-        this.logger.debug(`Sending non-mainImage buffer/common file ${shaderPath} with owner shader context ${ownerShaderPath}`);
-        await this.sendBufferLikeShaderToWebview(shaderPath, code, ownerShaderPath, editor, options);
+      const bufferContext = this.resolveStandaloneBufferContext(shaderPath);
+      if (bufferContext.shouldHandle) {
+        this.logger.debug(`Sending non-mainImage buffer/common file ${shaderPath} with owner shader context ${bufferContext.ownerShaderPath}`);
+        await this.sendBufferLikeShaderToWebview(shaderPath, code, bufferContext.ownerShaderPath, editor, options);
         return;
       }
-      const errorMsg: ErrorMessage = {
-        type: "error",
-        payload: ["Missing mainImage function"],
-      };
-      this.messenger.send(errorMsg);
+      this.sendMissingMainImageError();
       return;
     }
 
-    // Collect buffer contents
-    const buffers: Record<string, string> = {};
-
-    // Load and process config
-    const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
-
-    // Always update the shader - no change detection
-    this.logger.debug(`Sending shader update for ${shaderPath}`);
-    this.logger.debug(
-      `Sending ${Object.keys(buffers).length} buffer(s)`,
-    );
-
-    // Build path map for resource URIs
-    const pathMap = this.buildPathMap(config, shaderPath);
-    const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
-
-    const message: ShaderSourceMessage = {
-      type: "shaderSource",
-      code,
-      config,
-      path: shaderPath,
-      buffers,
-      forceCleanup: options?.forceCleanup,
-      pathMap,
-      bufferPathMap,
-    };
-
-    // Bundle script if configured
-    await this.bundleScript(config, shaderPath, message);
+    const message = await this.createShaderSourceMessage(shaderPath, code, options);
 
     // Only include cursor position if debug mode is enabled
     if (this.getDebugModeEnabled()) {
@@ -108,7 +75,7 @@ export class ShaderProvider {
     }
 
     this.messenger.send(message);
-    this.startScriptPolling(config);
+    this.startScriptPolling(message.config);
     this.logger.debug("Shader message sent to webview");
 
     // Track this shader as active
@@ -133,54 +100,21 @@ export class ShaderProvider {
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
-      // Ignore GLSL files that do not contain mainImage
       if (!code.includes("mainImage")) {
-        const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
-        if (ownerShaderPath && ownerShaderPath !== shaderPath) {
-          this.logger.debug(`Sending non-mainImage path ${shaderPath} with owner shader context ${ownerShaderPath}`);
-          await this.sendBufferLikeShaderFromPath(shaderPath, code, ownerShaderPath, options);
+        const bufferContext = this.resolveStandaloneBufferContext(shaderPath);
+        if (bufferContext.shouldHandle) {
+          this.logger.debug(`Sending non-mainImage path ${shaderPath} with owner shader context ${bufferContext.ownerShaderPath}`);
+          await this.sendBufferLikeShaderFromPath(shaderPath, code, bufferContext.ownerShaderPath, options);
           return;
         }
-        const errorMsg: ErrorMessage = {
-          type: "error",
-          payload: ["Missing mainImage function"],
-        };
-        this.messenger.send(errorMsg);
+        this.sendMissingMainImageError();
         return;
       }
 
-      // Collect buffer contents
-      const buffers: Record<string, string> = {};
-
-      // Load and process config
-      const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
-
-      // Always update the shader - no change detection
-      this.logger.debug(`Sending shader update for ${shaderPath}`);
-      this.logger.debug(
-        `Sending ${Object.keys(buffers).length} buffer(s)`,
-      );
-
-      // Build path map for resource URIs
-      const pathMap = this.buildPathMap(config, shaderPath);
-      const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
-
-      const message: ShaderSourceMessage = {
-        type: "shaderSource",
-        code,
-        config,
-        path: shaderPath,
-        buffers,
-        forceCleanup: options?.forceCleanup,
-        pathMap,
-        bufferPathMap,
-      };
-
-      // Bundle script if configured
-      await this.bundleScript(config, shaderPath, message);
+      const message = await this.createShaderSourceMessage(shaderPath, code, options);
 
       this.messenger.send(message);
-      this.startScriptPolling(config);
+      this.startScriptPolling(message.config);
       this.logger.debug("Shader message sent to webview");
     } catch {
       return;
@@ -248,6 +182,52 @@ export class ShaderProvider {
       return null;
     }
     return PathResolver.resolvePath(shaderPath, config.script);
+  }
+
+  private async createShaderSourceMessage(
+    shaderPath: string,
+    code: string,
+    options?: { forceCleanup?: boolean },
+  ): Promise<ShaderSourceMessage> {
+    const buffers: Record<string, string> = {};
+    const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+
+    this.logger.debug(`Sending shader update for ${shaderPath}`);
+    this.logger.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
+
+    const pathMap = this.buildPathMap(config, shaderPath);
+    const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
+
+    const message: ShaderSourceMessage = {
+      type: "shaderSource",
+      code,
+      config,
+      path: shaderPath,
+      buffers,
+      forceCleanup: options?.forceCleanup,
+      pathMap,
+      bufferPathMap,
+    };
+
+    await this.bundleScript(config, shaderPath, message);
+    return message;
+  }
+
+  private resolveStandaloneBufferContext(shaderPath: string): { shouldHandle: boolean; ownerShaderPath: string | null } {
+    const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
+    if (!this.shouldTreatAsStandaloneBufferSource(shaderPath, ownerShaderPath)) {
+      return { shouldHandle: false, ownerShaderPath: null };
+    }
+
+    return { shouldHandle: true, ownerShaderPath };
+  }
+
+  private sendMissingMainImageError(): void {
+    const errorMsg: ErrorMessage = {
+      type: "error",
+      payload: ["Missing mainImage function"],
+    };
+    this.messenger.send(errorMsg);
   }
 
   private async bundleScript(
@@ -410,10 +390,23 @@ export class ShaderProvider {
     return null;
   }
 
+  private shouldTreatAsStandaloneBufferSource(filePath: string, ownerShaderPath: string | null): boolean {
+    if (ownerShaderPath && ownerShaderPath !== filePath) {
+      return true;
+    }
+
+    return this.isCommonBufferFile(filePath);
+  }
+
+  private isCommonBufferFile(filePath: string): boolean {
+    const baseName = path.basename(filePath).toLowerCase();
+    return baseName === "common.glsl" || baseName.includes(".common.");
+  }
+
   private async sendBufferLikeShaderToWebview(
     filePath: string,
     code: string,
-    _ownerShaderPath: string,
+    _ownerShaderPath: string | null,
     editor: vscode.TextEditor,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
@@ -438,7 +431,7 @@ export class ShaderProvider {
   private async sendBufferLikeShaderFromPath(
     filePath: string,
     code: string,
-    _ownerShaderPath: string,
+    _ownerShaderPath: string | null,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
     const message = this.buildBufferLikeShaderMessage(

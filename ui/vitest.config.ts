@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [svelte({ hot: !process.env.VITEST })],
@@ -21,6 +22,15 @@ export default defineConfig({
     }
   },
   resolve: {
-    conditions: process.env.VITEST ? ['browser'] : undefined,
+    alias: [
+      {
+        find: /^svelte\/store$/,
+        replacement: fileURLToPath(new URL('./src/test/svelte-store-shim.ts', import.meta.url)),
+      },
+      {
+        find: /^svelte$/,
+        replacement: fileURLToPath(new URL('../node_modules/svelte/src/index-client.js', import.meta.url)),
+      },
+    ],
   }
 });

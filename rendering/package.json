@@ -9,7 +9,7 @@
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.browser.config.ts"
+    "test:e2e": "vitest run --config vitest.browser.config.mts"
   },
   "files": [
     "dist"

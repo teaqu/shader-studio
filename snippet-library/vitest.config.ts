@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
     plugins: [
@@ -19,6 +20,11 @@ export default defineConfig({
         poolOptions: { vmThreads: { maxThreads: 4 } },
     },
     resolve: {
-        conditions: process.env.VITEST ? ['browser'] : undefined,
+        alias: [
+            {
+                find: /^svelte$/,
+                replacement: fileURLToPath(new URL('../node_modules/svelte/src/index-client.js', import.meta.url)),
+            },
+        ],
     },
 });
