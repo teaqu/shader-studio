@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block announce %}
+  {% if config.extra.announcement %}
+    <div class="shader-docs-banner">
+      <div class="md-grid md-typeset">
+        {{ config.extra.announcement }}
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const banner = document.querySelector(".shader-docs-banner");
+      const header = document.querySelector(".md-header");
+
+      if (!banner || !header || banner.dataset.moved === "true") {
+        return;
+      }
+
+      header.insertAdjacentElement("afterend", banner);
+      banner.dataset.moved = "true";
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Screenshot placeholder</title>
+  <desc id="desc">Replace this placeholder with a real screenshot.</desc>
+  <rect width="1280" height="720" fill="#f3f4f6" />
+  <rect x="40" y="40" width="1200" height="640" fill="#e5e7eb" stroke="#9ca3af" stroke-width="4" stroke-dasharray="16 12" />
+  <text x="640" y="340" text-anchor="middle" fill="#374151" font-family="Arial, sans-serif" font-size="44">Screenshot Placeholder</text>
+  <text x="640" y="390" text-anchor="middle" fill="#6b7280" font-family="Arial, sans-serif" font-size="28">Replace with real UI capture</text>
+</svg>

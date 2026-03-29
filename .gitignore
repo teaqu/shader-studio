@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.venv/
 
 # Build artifacts
 dist/
@@ -9,6 +10,7 @@ config-ui-dist/
 utils-dist/
 .turbo/
 extension/.smart-build/
+site/
 
 # Coverage reports
 coverage/
@@ -18,7 +20,9 @@ coverage/
 !.vscode/tasks.json
 !.vscode/launch.json
 .history/
-.github
+.github/*
+!.github/workflows/
+!.github/workflows/docs.yml
 
 # Logs
 logs
@@ -28,6 +32,8 @@ npm-debug.log*
 # Temporary files
 *.tmp
 *.temp
+__pycache__/
+*.pyc
 
 # OS
 .DS_Store

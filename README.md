@@ -27,3 +27,12 @@ npm run build
 
 # Usage
 See the Extension's [README](/extension/README.md).
+
+## User Docs Website
+
+User-facing docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).
+
+- Local build: `mkdocs build`
+- Local preview: `mkdocs serve`
+
+GitHub Pages deployment workflow is at `.github/workflows/docs.yml`.

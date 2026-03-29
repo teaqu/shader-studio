@@ -1,0 +1,93 @@
+site_name: Shader Studio Docs
+site_description: User guide for the Shader Studio VS Code extension
+site_url: https://teaqu.github.io/shader-studio/
+repo_url: https://github.com/teaqu/shader-studio
+repo_name: teaqu/shader-studio
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+  logo: assets/shader-studio-icon.png
+  favicon: assets/shader-studio-icon.png
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - https://unpkg.com/@vscode/codicons@0.0.36/dist/codicon.css
+  - assets/stylesheets/home.css
+
+extra:
+  announcement: Docs are a work in progress for version 1.0. Many features described here are not yet in the latest release. You can build Shader Studio from <code>main</code> to try them now.
+
+extra_javascript:
+  - assets/javascripts/external-links.js
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+
+nav:
+  - Getting Started:
+      - Overview: index.md
+      - Quick Start: quick-start.md
+      - Interface Tour: interface-tour.md
+      - Debug A Shader: workflows/debug-shaders.md
+  - Features:
+      - Configure Buffers And Inputs: features/config-buffers.md
+      - Time And Playback Controls: features/time-controls.md
+      - Editor Overlay: features/editor-overlay.md
+      - Compile Modes: features/compile-modes.md
+      - Recording: features/recording.md
+      - Open In Browser: features/web-server.md
+      - Shader Explorer: features/shader-explorer.md
+      - Snippet Library: features/snippet-library.md
+      - Performance Monitor: features/performance.md
+  - Debugging:
+      - Overview: debugging/index.md
+      - Inline Rendering: debugging/inline-rendering.md
+      - Variable Inspector: debugging/variable-inspector.md
+      - Normalization And Step: debugging/normalization.md
+      - Parameter Editing: debugging/parameters.md
+      - Loop Control: debugging/loops.md
+  - Help:
+      - Troubleshooting: help/troubleshooting.md
+      - FAQ: help/faq.md
+      - Shadertoy Compatibility: help/shadertoy-compatibility.md
+      - Config File Format: help/config-file.md
+      - Settings: help/settings.md
+      - Keyboard Shortcuts: help/keyboard-shortcuts.md
