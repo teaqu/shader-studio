@@ -35,6 +35,42 @@ describe('ShaderCanvas Component', () => {
 
       focusSpy.mockRestore();
     });
+
+    it('should focus the canvas on pixel inspector click', async () => {
+      const { container } = render(ShaderCanvas, {
+        props: {
+          ...defaultProps,
+          isInspectorActive: true,
+        },
+      });
+
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const focusSpy = vi.spyOn(canvas, 'focus');
+
+      await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+
+      expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('should focus the canvas on pixel inspector drag start', async () => {
+      const { container } = render(ShaderCanvas, {
+        props: {
+          ...defaultProps,
+          isInspectorActive: true,
+        },
+      });
+
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const focusSpy = vi.spyOn(canvas, 'focus');
+
+      await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      await fireEvent.click(canvasContainer, { clientX: 150, clientY: 150 });
+
+      expect(focusSpy).toHaveBeenCalledOnce();
+    });
   });
 
   describe('background override', () => {

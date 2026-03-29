@@ -81,6 +81,9 @@
   function handleMouseDown(event: MouseEvent) {
     mouseDownPosition = { x: event.clientX, y: event.clientY };
     if (isInspectorActive) {
+      glCanvas?.focus();
+    }
+    if (isInspectorActive) {
       event.stopPropagation();
       event.preventDefault();
     }
