@@ -2,6 +2,8 @@
 
 A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
 
+Docs: https://teaqu.github.io/shader-studio/
+
 ![screenshot](assets/screenshot.png)
 ![shader explorer screenshot](assets/shader-explorer.png)
 
@@ -9,14 +11,6 @@ A GLSL fragment shader viewer for VS Code with hot reloading, designed specifica
 Install through VS Code extensions. Search for "Shader Studio".
 
 [Visual Studio Code Market Shader Studio](https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio)
-
-Docs: https://teaqu.github.io/shader-studio/
-
-## Project Structure
-
-- `/extension/` - VS Code extension
-- `/ui/` - User interface including shader rendering components
-- `/config-ui/` - UI for editing json config
 
 ## Development
 
@@ -26,9 +20,6 @@ Docs: https://teaqu.github.io/shader-studio/
 cd extension
 npm run build
 ```
-
-# Usage
-See the Extension's [README](/extension/README.md).
 
 ## Docs
 
