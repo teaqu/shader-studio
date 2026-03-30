@@ -45,15 +45,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 The preview toolbar gives quick access to all features:
 
-- <i class="codicon codicon-play"></i> / <i class="codicon codicon-debug-pause"></i> **Play/Pause** — freeze or resume animation
-- **Time** — scrub, loop, and control playback speed
+![Shader Studio toolbar](assets/images/toolbar.png)
+
+- <i class="codicon codicon-debug-restart"></i> **Reset** — restart the shader and reset time-dependent state
+- <i class="codicon codicon-play"></i> / <i class="codicon codicon-debug-pause"></i> [**Play/Pause**](features/time-controls.md) — freeze or resume animation
+- [**Time**](features/time-controls.md) — scrub, loop, and control playback speed
 - **FPS** — click to set frame rate limit or open the performance monitor
 - **Resolution** — click to change scale, aspect ratio, zoom, or set a custom resolution
-- <i class="codicon codicon-bug"></i> **Debug** — enable line-by-line visual debugging
-- <i class="codicon codicon-code"></i> **Editor** — toggle inline code editing overlay
-- <i class="codicon codicon-gear"></i> **Config** — set up buffers, inputs, and uniforms
-- <i class="codicon codicon-device-camera"></i> **Record** — take a screenshot or record video/GIF
-- <i class="codicon codicon-menu"></i> **Menu** — access shader explorer, snippets, compile mode, browser preview, and settings
+- <i class="codicon codicon-bug"></i> [**Debug**](workflows/debug-shaders.md) — enable line-by-line visual debugging
+- <i class="codicon codicon-code"></i> [**Editor**](features/editor-overlay.md) — toggle inline code editing overlay
+- <i class="codicon codicon-gear"></i> [**Config**](features/config-buffers.md) — set up buffers, inputs, and uniforms
+- <i class="codicon codicon-device-camera"></i> [**Record**](features/recording.md) — take a screenshot or record video/GIF
+- <i class="codicon codicon-menu"></i> **Menu** — access more options like shader explorer, snippet library, compile modes, browser preview, and settings
 
 See [Interface Tour](interface-tour.md) for a full breakdown.
 
