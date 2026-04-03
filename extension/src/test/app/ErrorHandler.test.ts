@@ -7,6 +7,7 @@ suite('ErrorHandler Test Suite', () => {
   let mockOutputChannel: vscode.LogOutputChannel;
   let mockDiagnosticCollection: vscode.DiagnosticCollection;
   let errorHandler: ErrorHandler;
+  let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
 
   setup(() => {
     // Mock output channel
@@ -54,6 +55,17 @@ suite('ErrorHandler Test Suite', () => {
     Object.defineProperty(vscode.window, 'activeTextEditor', {
       value: mockEditor,
       writable: true
+    });
+
+    textDocumentChangeListener = undefined;
+    const onDidChangeTextDocumentStub = ((listener: (event: vscode.TextDocumentChangeEvent) => void) => {
+      textDocumentChangeListener = listener;
+      return { dispose: () => { } };
+    }) as typeof vscode.workspace.onDidChangeTextDocument;
+    Object.defineProperty(vscode.workspace, 'onDidChangeTextDocument', {
+      value: onDidChangeTextDocumentStub,
+      configurable: true,
+      writable: true,
     });
 
     errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
@@ -242,5 +254,90 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.ok(diagnosticSet, 'Should create diagnostic for general error');
     assert.ok(errorCalled, 'Should log error to output channel');
+  });
+
+  test('should target the configured shader when no GLSL editor is focused', () => {
+    const shaderUri = vscode.Uri.file('/test/config-shader.glsl');
+    const otherEditor = {
+      document: {
+        languageId: 'plaintext',
+        lineCount: 5,
+        uri: vscode.Uri.file('/test/readme.txt'),
+        lineAt: (lineNumber: number) => ({
+          range: new vscode.Range(lineNumber, 0, lineNumber, 0)
+        })
+      }
+    } as any;
+
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: otherEditor,
+      writable: true
+    });
+
+    let diagnosticUri: vscode.Uri | undefined;
+    mockDiagnosticCollection.set = ((uriOrEntries: vscode.Uri | readonly [vscode.Uri, readonly vscode.Diagnostic[] | undefined][], _diagnostics?: readonly vscode.Diagnostic[] | undefined) => {
+      if (uriOrEntries instanceof vscode.Uri) {
+        diagnosticUri = uriOrEntries;
+        return;
+      }
+      diagnosticUri = uriOrEntries[0]?.[0];
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: shaderUri.fsPath,
+    });
+
+    errorHandler.handlePersistentError({
+      type: 'error',
+      payload: ['Texture file not found: /path/to/missing.jpg']
+    });
+
+    assert.ok(diagnosticUri, 'Should set a diagnostic URI');
+    assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
+  });
+
+  test('should target the last changed GLSL document when focus is elsewhere', () => {
+    const shaderUri = vscode.Uri.file('/test/overlay-shader.glsl');
+    const otherEditor = {
+      document: {
+        languageId: 'plaintext',
+        lineCount: 5,
+        uri: vscode.Uri.file('/test/readme.txt'),
+        lineAt: (lineNumber: number) => ({
+          range: new vscode.Range(lineNumber, 0, lineNumber, 0)
+        })
+      }
+    } as any;
+
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: otherEditor,
+      writable: true
+    });
+
+    let diagnosticUri: vscode.Uri | undefined;
+    mockDiagnosticCollection.set = ((uriOrEntries: vscode.Uri | readonly [vscode.Uri, readonly vscode.Diagnostic[] | undefined][], _diagnostics?: readonly vscode.Diagnostic[] | undefined) => {
+      if (uriOrEntries instanceof vscode.Uri) {
+        diagnosticUri = uriOrEntries;
+        return;
+      }
+      diagnosticUri = uriOrEntries[0]?.[0];
+    }) as typeof mockDiagnosticCollection.set;
+
+    textDocumentChangeListener?.({
+      document: {
+        languageId: 'glsl',
+        fileName: shaderUri.fsPath,
+        uri: shaderUri,
+      },
+    } as vscode.TextDocumentChangeEvent);
+
+    errorHandler.handlePersistentError({
+      type: 'error',
+      payload: ['General shader compilation failed']
+    });
+
+    assert.ok(diagnosticUri, 'Should set a diagnostic URI');
+    assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
   });
 });

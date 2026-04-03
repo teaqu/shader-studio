@@ -76,8 +76,8 @@
             <span class:dimmed={isDimmed(variable.value[0])}>{fmt(variable.value[0])}</span>
           {:else if variable.value}
             <span class="vec-value"
-              >({#each variable.value as v, i
-                }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.value.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+            >({#each variable.value as v, i
+            }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.value.length - 1}<span class="sep">, </span>{/if}{/each})</span>
           {/if}
         </span>
 
@@ -112,8 +112,8 @@
                 <span class:dimmed={isDimmed(variable.channelStats[0].mean)}>{fmt(variable.channelStats[0].mean)}</span>
               {:else}
                 <span class="vec-value"
-                  >({#each variable.channelStats as s, i
-                    }<span class:dimmed={isDimmed(s.mean)}>{fmt(s.mean)}</span>{#if i < variable.channelStats.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+                >({#each variable.channelStats as s, i
+                }<span class:dimmed={isDimmed(s.mean)}>{fmt(s.mean)}</span>{#if i < variable.channelStats.length - 1}<span class="sep">, </span>{/if}{/each})</span>
               {/if}
             {:else}
               <!-- Varying: means + expand -->
@@ -122,8 +122,8 @@
                 <span class:dimmed={isDimmed(variable.channelMeans[0])}>{fmt(variable.channelMeans[0])}</span>
               {:else}
                 <span class="vec-value"
-                  >({#each variable.channelMeans as v, i
-                    }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+                >({#each variable.channelMeans as v, i
+                }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})</span>
               {/if}
               <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle channel view"><i class="codicon codicon-chevron-down"></i></button>
             {/if}

@@ -64,8 +64,8 @@
     const target = event.target as HTMLElement;
     // Don't close if clicking on time menu container or menu bar buttons
     if (showTimeMenu &&
-        !target.closest(".time-menu-container") &&
-        !target.closest(".menu-bar button")) {
+      !target.closest(".time-menu-container") &&
+      !target.closest(".menu-bar button")) {
       showTimeMenu = false;
     }
   }
@@ -171,7 +171,9 @@
               class:active={timeSpeed === 0.25}
               on:click={() => {
                 timeSpeed = 0.25;
-                if (timeManager) timeManager.setSpeed(0.25);
+                if (timeManager) {
+                  timeManager.setSpeed(0.25);
+                }
               }}
             >
               0.25×
@@ -181,7 +183,9 @@
               class:active={timeSpeed === 0.5}
               on:click={() => {
                 timeSpeed = 0.5;
-                if (timeManager) timeManager.setSpeed(0.5);
+                if (timeManager) {
+                  timeManager.setSpeed(0.5);
+                }
               }}
             >
               0.5×
@@ -191,7 +195,9 @@
               class:active={timeSpeed === 1.0}
               on:click={() => {
                 timeSpeed = 1.0;
-                if (timeManager) timeManager.setSpeed(1.0);
+                if (timeManager) {
+                  timeManager.setSpeed(1.0);
+                }
               }}
             >
               1×
@@ -201,7 +207,9 @@
               class:active={timeSpeed === 2.0}
               on:click={() => {
                 timeSpeed = 2.0;
-                if (timeManager) timeManager.setSpeed(2.0);
+                if (timeManager) {
+                  timeManager.setSpeed(2.0);
+                }
               }}
             >
               2×
@@ -211,7 +219,9 @@
               class:active={timeSpeed === 4.0}
               on:click={() => {
                 timeSpeed = 4.0;
-                if (timeManager) timeManager.setSpeed(4.0);
+                if (timeManager) {
+                  timeManager.setSpeed(4.0);
+                }
               }}
             >
               4×

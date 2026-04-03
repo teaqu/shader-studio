@@ -17,7 +17,9 @@
 
   // Recording store subscription
   let recordingState: RecordingState = { isRecording: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, format: null, error: null, previewCanvas: null };
-  const unsubRecording = recordingStore.subscribe((s) => { recordingState = s; });
+  const unsubRecording = recordingStore.subscribe((s) => {
+    recordingState = s; 
+  });
   $: recordingPercent = Math.round(recordingState.progress * 100);
 
   // Elapsed time ticker for finalization
@@ -57,8 +59,12 @@
     rafId = requestAnimationFrame(draw);
 
     return {
-      update(newSource: HTMLCanvasElement) { source = newSource; },
-      destroy() { cancelAnimationFrame(rafId); },
+      update(newSource: HTMLCanvasElement) {
+        source = newSource; 
+      },
+      destroy() {
+        cancelAnimationFrame(rafId); 
+      },
     };
   }
 </script>

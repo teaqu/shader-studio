@@ -327,6 +327,17 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
+      vscode.commands.registerCommand("shader-studio.saveCurrentShader", async () => {
+        this.logger.info("shader-studio.saveCurrentShader command executed");
+        const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+        if (!editor) {
+          return;
+        }
+        await editor.document.save();
+      }),
+    );
+
+    this.context.subscriptions.push(
       vscode.commands.registerCommand("shader-studio.setCompileMode", (mode: CompileMode) => {
         this.logger.info(`shader-studio.setCompileMode command executed: ${mode}`);
         this.compileController.setMode(mode);
@@ -356,10 +367,7 @@ export class ShaderStudio {
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
-      this.compileController.handleTextDocumentChange(
-        vscode.window.activeTextEditor,
-        event,
-      );
+      this.compileController.handleTextDocumentChange(event);
     });
 
     vscode.workspace.onDidSaveTextDocument((document) => {
@@ -442,7 +450,7 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
-      this.shaderProvider.sendShaderToWebview(activeEditor, { forceCleanup: true });
+      this.shaderProvider.sendShaderFromEditor(activeEditor, { forceCleanup: true });
     } else {
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
       if (lastViewedFile) {

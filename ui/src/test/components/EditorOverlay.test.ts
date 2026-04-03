@@ -219,6 +219,188 @@ describe('EditorOverlay', () => {
     });
   });
 
+  describe('persistence timing', () => {
+    it('should persist overlay edits quickly in hot mode', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('void mainImage() {}');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, compileMode: 'hot' },
+      });
+
+      const onChange = getContentChangeCallback();
+      expect(onChange).toBeTruthy();
+      onChange?.();
+
+      vi.advanceTimersByTime(14);
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'updateShaderSource',
+        payload: {
+          code: 'void mainImage() {}',
+          path: '/test.glsl',
+        },
+      });
+    });
+
+    it('should persist overlay edits quickly in manual mode too', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('void mainImage() {}');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, compileMode: 'manual' },
+      });
+
+      const onChange = getContentChangeCallback();
+      onChange?.();
+
+      vi.advanceTimersByTime(15);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'updateShaderSource',
+        payload: {
+          code: 'void mainImage() {}',
+          path: '/test.glsl',
+        },
+      });
+    });
+
+    it('should persist overlay edits quickly in save mode too', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('void mainImage() {}');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, compileMode: 'save' },
+      });
+
+      const onChange = getContentChangeCallback();
+      onChange?.();
+
+      vi.advanceTimersByTime(15);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'updateShaderSource',
+        payload: {
+          code: 'void mainImage() {}',
+          path: '/test.glsl',
+        },
+      });
+    });
+
+    it('should not trigger visual recompilation callback outside hot mode', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      const onCodeChange = vi.fn();
+      mockEditor.getValue.mockReturnValue('void mainImage() {}');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, compileMode: 'manual', onCodeChange },
+      });
+
+      const onChange = getContentChangeCallback();
+      onChange?.();
+
+      vi.advanceTimersByTime(100);
+      expect(onCodeChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('save shortcut', () => {
+    it('should send saveCurrentShader when cmd/ctrl+s is pressed', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, { props: defaultProps });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 's',
+          metaKey: true,
+          ctrlKey: false,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(stopPropagation).toHaveBeenCalled();
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'extensionCommand',
+        payload: { command: 'saveCurrentShader' },
+      });
+    });
+
+    it('should send saveCurrentShader when ctrl+s is pressed', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, { props: defaultProps });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 's',
+          metaKey: false,
+          ctrlKey: true,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(stopPropagation).toHaveBeenCalled();
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'extensionCommand',
+        payload: { command: 'saveCurrentShader' },
+      });
+    });
+
+    it('should not send saveCurrentShader for plain s keypress', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, { props: defaultProps });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 's',
+          metaKey: false,
+          ctrlKey: false,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(stopPropagation).not.toHaveBeenCalled();
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
+        type: 'extensionCommand',
+        payload: { command: 'saveCurrentShader' },
+      });
+    });
+  });
+
   // Test group: Vim mode
   describe('vim mode', () => {
     it('should enable vim mode when vimMode prop is true on creation', async () => {

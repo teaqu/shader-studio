@@ -134,7 +134,11 @@
     <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 128} on:click={() => selectGifColors(128)}>128</button>
     <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 256} on:click={() => selectGifColors(256)}>256</button>
     <div class="recording-custom-fps" class:active={!!gifCustomColors}>
-      <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomColors} placeholder="2-256" min="2" max="256" step="1" on:change={() => { if (gifCustomColors) { const v = Math.max(2, Math.min(256, parseInt(gifCustomColors) || 256)); gifCustomColors = String(v); } }} />
+      <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomColors} placeholder="2-256" min="2" max="256" step="1" on:change={() => {
+        if (gifCustomColors) {
+          const v = Math.max(2, Math.min(256, parseInt(gifCustomColors) || 256)); gifCustomColors = String(v); 
+        } 
+      }} />
     </div>
   </div>
 </div>
@@ -152,7 +156,11 @@
     <button class="resolution-option menu-title" class:active={!gifCustomQuality && gifQuality === 80} on:click={() => selectGifQuality(80)}>80</button>
     <button class="resolution-option menu-title" class:active={!gifCustomQuality && gifQuality === 100} on:click={() => selectGifQuality(100)}>100</button>
     <div class="recording-custom-fps" class:active={!!gifCustomQuality}>
-      <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomQuality} placeholder="1-100" min="1" max="100" step="1" on:change={() => { if (gifCustomQuality) { const v = Math.max(1, Math.min(100, parseInt(gifCustomQuality) || 100)); gifCustomQuality = String(v); } }} />
+      <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomQuality} placeholder="1-100" min="1" max="100" step="1" on:change={() => {
+        if (gifCustomQuality) {
+          const v = Math.max(1, Math.min(100, parseInt(gifCustomQuality) || 100)); gifCustomQuality = String(v); 
+        } 
+      }} />
     </div>
   </div>
 </div>

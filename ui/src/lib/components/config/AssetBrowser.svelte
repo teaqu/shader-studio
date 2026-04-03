@@ -20,7 +20,9 @@
   let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
 
   $: filteredFiles = files.filter((file) => {
-    if (!searchQuery) return true;
+    if (!searchQuery) {
+      return true;
+    }
     const query = searchQuery.toLowerCase();
     return (
       file.name.toLowerCase().includes(query) ||
@@ -97,7 +99,9 @@
   }
 
   function isSelected(file: WorkspaceFileInfo): boolean {
-    if (!selectedPath) return false;
+    if (!selectedPath) {
+      return false;
+    }
     return (
       selectedPath === file.name ||
       selectedPath === file.workspacePath ||
@@ -107,20 +111,28 @@
 
   function getFileType(name: string): 'image' | 'video' | 'audio' {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
-    if (VIDEO_EXTENSIONS.includes(ext)) return 'video';
-    if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
+    if (VIDEO_EXTENSIONS.includes(ext)) {
+      return 'video';
+    }
+    if (AUDIO_EXTENSIONS.includes(ext)) {
+      return 'audio';
+    }
     return 'image';
   }
 
   function drawWaveform(canvas: HTMLCanvasElement, peaks: Float32Array) {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
     const n = peaks.length;
-    if (n === 0) return;
+    if (n === 0) {
+      return;
+    }
     const centerY = h / 2;
     const amplitude = centerY * 0.85;
 
@@ -180,15 +192,21 @@
   }
 
   function nextPage() {
-    if (currentPage < totalPages) currentPage++;
+    if (currentPage < totalPages) {
+      currentPage++;
+    }
   }
 
   function prevPage() {
-    if (currentPage > 1) currentPage--;
+    if (currentPage > 1) {
+      currentPage--;
+    }
   }
 
   function goToPage(page: number) {
-    if (page >= 1 && page <= totalPages) currentPage = page;
+    if (page >= 1 && page <= totalPages) {
+      currentPage = page;
+    }
   }
 
   onMount(() => {
@@ -247,7 +265,9 @@
                     muted
                     loop
                     on:mouseenter={(e) => e.currentTarget.play()}
-                    on:mouseleave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                    on:mouseleave={(e) => {
+                      e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
+                    }}
                   ></video>
                 {:else if getFileType(file.name) === 'audio'}
                   <div class="audio-waveform-thumbnail">
@@ -294,7 +314,9 @@
                     muted
                     loop
                     on:mouseenter={(e) => e.currentTarget.play()}
-                    on:mouseleave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                    on:mouseleave={(e) => {
+                      e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
+                    }}
                   ></video>
                 {:else if getFileType(file.name) === 'audio'}
                   <div class="audio-waveform-thumbnail">

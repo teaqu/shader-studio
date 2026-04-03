@@ -36,17 +36,27 @@
     vec4: vec4Presets,
     sampler2D: ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'],
   };
-  function presetLabel(p: Preset): string { return typeof p === 'string' ? p : p.label; }
-  function presetValue(p: Preset): string { return typeof p === 'string' ? p : p.value; }
+  function presetLabel(p: Preset): string {
+    return typeof p === 'string' ? p : p.label; 
+  }
+  function presetValue(p: Preset): string {
+    return typeof p === 'string' ? p : p.value; 
+  }
 
   function normalizeExpression(type: string, value: string): string {
     const trimmed = value.trim();
-    if (!trimmed) return trimmed;
+    if (!trimmed) {
+      return trimmed;
+    }
 
     if (type === 'vec2' || type === 'vec3' || type === 'vec4') {
       const ctorMatch = trimmed.match(/^\s*vec[234]\s*\(/);
-      if (ctorMatch) return trimmed;
-      if (trimmed.includes(',')) return `${type}(${trimmed})`;
+      if (ctorMatch) {
+        return trimmed;
+      }
+      if (trimmed.includes(',')) {
+        return `${type}(${trimmed})`;
+      }
     }
 
     return trimmed;
@@ -64,18 +74,30 @@
     const tokenPattern = /(\b(?:vec[234]|float|int|bool|true|false)\b|\b(?:sin|cos|tan|fract|mix|clamp|min|max|normalize|length|dot|pow|smoothstep|step)\b(?=\s*\()|\bi(?:Time|TimeDelta|Frame|Mouse|Resolution|Channel[0-3])\b|-?\b\d*\.?\d+(?:e[+-]?\d+)?\b)/g;
 
     return escaped.replace(tokenPattern, (token) => {
-      if (/^-?\d/.test(token)) return `<span class="expr-number">${token}</span>`;
-      if (/^(true|false|bool)$/.test(token)) return `<span class="expr-keyword">${token}</span>`;
-      if (/^(vec[234]|float|int)$/.test(token)) return `<span class="expr-type">${token}</span>`;
-      if (/^i(?:Time|TimeDelta|Frame|Mouse|Resolution|Channel[0-3])$/.test(token)) return `<span class="expr-uniform">${token}</span>`;
+      if (/^-?\d/.test(token)) {
+        return `<span class="expr-number">${token}</span>`;
+      }
+      if (/^(true|false|bool)$/.test(token)) {
+        return `<span class="expr-keyword">${token}</span>`;
+      }
+      if (/^(vec[234]|float|int)$/.test(token)) {
+        return `<span class="expr-type">${token}</span>`;
+      }
+      if (/^i(?:Time|TimeDelta|Frame|Mouse|Resolution|Channel[0-3])$/.test(token)) {
+        return `<span class="expr-uniform">${token}</span>`;
+      }
       return `<span class="expr-fn">${token}</span>`;
     });
   }
 
   function parseNumericValue(value: string): number | null {
     const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (!/^-?\d*\.?\d+(e[+-]?\d+)?$/i.test(trimmed)) return null;
+    if (!trimmed) {
+      return null;
+    }
+    if (!/^-?\d*\.?\d+(e[+-]?\d+)?$/i.test(trimmed)) {
+      return null;
+    }
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -83,13 +105,19 @@
   function parseVectorComponents(type: string, value: string): number[] | null {
     const trimmed = normalizeExpression(type, value);
     const ctor = trimmed.match(/^vec[234]\((.*)\)$/);
-    if (!ctor) return null;
+    if (!ctor) {
+      return null;
+    }
 
     const parts = ctor[1].split(',').map(part => part.trim()).filter(Boolean);
-    if (parts.length !== componentCount) return null;
+    if (parts.length !== componentCount) {
+      return null;
+    }
 
     const values = parts.map(parseNumericValue);
-    if (values.some(v => v === null)) return null;
+    if (values.some(v => v === null)) {
+      return null;
+    }
     return values as number[];
   }
 
@@ -109,16 +137,22 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') e.preventDefault();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
   }
 
   function handleBlur() {
     const normalized = normalizeExpression(param.type, expression);
-    if (normalized !== expression) emit(normalized);
+    if (normalized !== expression) {
+      emit(normalized);
+    }
   }
 
   onMount(() => {
-    if (!jarEl) return;
+    if (!jarEl) {
+      return;
+    }
     jar = CodeJar(jarEl, (el) => {
       el.innerHTML = highlightExpression(el.textContent ?? '');
     });

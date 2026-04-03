@@ -16,8 +16,12 @@
   let hoveredBin: number | null = null;
 
   function formatNum(n: number): string {
-    if (Math.abs(n) >= 1000) return n.toFixed(0);
-    if (Math.abs(n) >= 10) return n.toFixed(1);
+    if (Math.abs(n) >= 1000) {
+      return n.toFixed(0);
+    }
+    if (Math.abs(n) >= 10) {
+      return n.toFixed(1);
+    }
     return n.toFixed(3);
   }
 

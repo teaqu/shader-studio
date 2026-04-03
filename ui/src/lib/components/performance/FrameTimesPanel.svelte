@@ -37,7 +37,9 @@
   let hzDetectionDone = false;
 
   function detectScreenHz() {
-    if (hzDetectionDone) return;
+    if (hzDetectionDone) {
+      return;
+    }
     let timestamps: number[] = [];
     const measure = (t: number) => {
       timestamps.push(t);
@@ -57,7 +59,9 @@
         let bestDist = Infinity;
         for (const hz of common) {
           const dist = Math.abs(rawHz - hz);
-          if (dist < bestDist) { bestDist = dist; best = hz; }
+          if (dist < bestDist) {
+            bestDist = dist; best = hz; 
+          }
         }
         detectedHz = best;
       }
@@ -70,7 +74,11 @@
 
   function arrayMax(arr: number[]): number {
     let m = arr[0];
-    for (let i = 1; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+    for (let i = 1; i < arr.length; i++) {
+      if (arr[i] > m) {
+        m = arr[i];
+      }
+    }
     return m;
   }
 
@@ -80,20 +88,29 @@
       // Ctrl+scroll: vertical zoom
       if (e.deltaY < 0) {
         const idx = YZOOM_STEPS.indexOf(yZoom);
-        if (idx >= 0 && idx < YZOOM_STEPS.length - 1) yZoom = YZOOM_STEPS[idx + 1];
-        else if (idx < 0) yZoom = YZOOM_STEPS[1] ?? 2;
+        if (idx >= 0 && idx < YZOOM_STEPS.length - 1) {
+          yZoom = YZOOM_STEPS[idx + 1];
+        } else if (idx < 0) {
+          yZoom = YZOOM_STEPS[1] ?? 2;
+        }
       } else {
         const idx = YZOOM_STEPS.indexOf(yZoom);
-        if (idx > 0) yZoom = YZOOM_STEPS[idx - 1];
+        if (idx > 0) {
+          yZoom = YZOOM_STEPS[idx - 1];
+        }
       }
       adjustYOffsetForZoom();
     } else {
       // Normal scroll: change visible time range
       const idx = SAMPLE_STEPS.indexOf(visibleSamples);
       if (e.deltaY > 0) {
-        if (idx < SAMPLE_STEPS.length - 1) visibleSamples = SAMPLE_STEPS[idx + 1];
+        if (idx < SAMPLE_STEPS.length - 1) {
+          visibleSamples = SAMPLE_STEPS[idx + 1];
+        }
       } else {
-        if (idx > 0) visibleSamples = SAMPLE_STEPS[idx - 1];
+        if (idx > 0) {
+          visibleSamples = SAMPLE_STEPS[idx - 1];
+        }
       }
     }
     clampXOffset();
@@ -122,7 +139,9 @@
   }
 
   function handleMouseMove(e: MouseEvent) {
-    if (!dragging || !graphCanvas) return;
+    if (!dragging || !graphCanvas) {
+      return;
+    }
     const rect = graphCanvas.getBoundingClientRect();
     const graphH = rect.height - 32;
     const graphW = rect.width - 8;
@@ -165,13 +184,19 @@
   }
 
   function redrawGraph() {
-    if (!graphCanvas) return;
+    if (!graphCanvas) {
+      return;
+    }
     const activeData = graphPaused ? frozenData : data;
-    if (activeData?.frameTimeHistory) drawGraph(graphCanvas, activeData);
+    if (activeData?.frameTimeHistory) {
+      drawGraph(graphCanvas, activeData);
+    }
   }
 
   function handleGraphMouseMove(e: MouseEvent) {
-    if (!graphCanvas || dragging) return;
+    if (!graphCanvas || dragging) {
+      return;
+    }
     const rect = graphCanvas.getBoundingClientRect();
     hoverX = e.clientX - rect.left;
     redrawGraph();
@@ -214,11 +239,16 @@
     e.stopPropagation();
     if (e.deltaY < 0) {
       const idx = YZOOM_STEPS.indexOf(yZoom);
-      if (idx >= 0 && idx < YZOOM_STEPS.length - 1) yZoom = YZOOM_STEPS[idx + 1];
-      else if (idx < 0) yZoom = YZOOM_STEPS[1] ?? 2;
+      if (idx >= 0 && idx < YZOOM_STEPS.length - 1) {
+        yZoom = YZOOM_STEPS[idx + 1];
+      } else if (idx < 0) {
+        yZoom = YZOOM_STEPS[1] ?? 2;
+      }
     } else {
       const idx = YZOOM_STEPS.indexOf(yZoom);
-      if (idx > 0) yZoom = YZOOM_STEPS[idx - 1];
+      if (idx > 0) {
+        yZoom = YZOOM_STEPS[idx - 1];
+      }
     }
     adjustYOffsetForZoom();
   }
@@ -228,7 +258,9 @@
     const history = activeData?.frameTimeHistory ?? [];
     const fc = activeData?.frameTimeCount ?? history.length;
     const rawVisible = getRawVisibleSlice(history, fc);
-    if (rawVisible.length === 0) { yOffset = 0; return; }
+    if (rawVisible.length === 0) {
+      yOffset = 0; return; 
+    }
 
     if (showFPS) {
       const fpsVals = rawVisible.map(ms => ms > 0 ? 1000 / ms : 0);
@@ -258,8 +290,12 @@
   /** Format visible time window as a human-readable label */
   function computeTimeWindowLabel(samples: number): string {
     const sec = samples / 60;
-    if (sec < 1) return `${Math.round(sec * 1000)}ms`;
-    if (sec >= 60) return `${(sec / 60).toFixed(0)}m`;
+    if (sec < 1) {
+      return `${Math.round(sec * 1000)}ms`;
+    }
+    if (sec >= 60) {
+      return `${(sec / 60).toFixed(0)}m`;
+    }
     return sec === Math.floor(sec) ? `${sec.toFixed(0)}s` : `${sec.toFixed(1)}s`;
   }
 
@@ -280,9 +316,13 @@
     e.stopPropagation();
     const idx = SAMPLE_STEPS.indexOf(visibleSamples);
     if (e.deltaY > 0) {
-      if (idx < SAMPLE_STEPS.length - 1) visibleSamples = SAMPLE_STEPS[idx + 1];
+      if (idx < SAMPLE_STEPS.length - 1) {
+        visibleSamples = SAMPLE_STEPS[idx + 1];
+      }
     } else {
-      if (idx > 0) visibleSamples = SAMPLE_STEPS[idx - 1];
+      if (idx > 0) {
+        visibleSamples = SAMPLE_STEPS[idx - 1];
+      }
     }
     clampXOffset();
   }
@@ -294,7 +334,9 @@
   }
 
   function downsampleHistory(raw: number[], frameCount: number): number[] {
-    if (downsample <= 1) return raw;
+    if (downsample <= 1) {
+      return raw;
+    }
     const result: number[] = [];
     // Align groups to absolute frame numbers so completed groups are stable
     // even when the raw history is a sliding window (shift + push).
@@ -302,7 +344,9 @@
     const skip = (downsample - (firstAbsIdx % downsample)) % downsample;
     for (let i = skip; i + downsample <= raw.length; i += downsample) {
       let sum = 0;
-      for (let j = i; j < i + downsample; j++) sum += raw[j];
+      for (let j = i; j < i + downsample; j++) {
+        sum += raw[j];
+      }
       result.push(sum / downsample);
     }
     return result;
@@ -319,7 +363,9 @@
   }
 
   function generateStarField(w: number, h: number) {
-    if (starFieldGenerated) return;
+    if (starFieldGenerated) {
+      return;
+    }
     starField = [];
     for (let i = 0; i < 120; i++) {
       starField.push({
@@ -400,13 +446,17 @@
 
   function drawGraph(canvas: HTMLCanvasElement, activeData: PerformanceData) {
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     const fullHistory = activeData.frameTimeHistory;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
@@ -449,14 +499,20 @@
   }
 
   function visibleAvg(values: number[]): number {
-    if (values.length === 0) return 0;
+    if (values.length === 0) {
+      return 0;
+    }
     let sum = 0;
-    for (const v of values) sum += v;
+    for (const v of values) {
+      sum += v;
+    }
     return sum / values.length;
   }
 
   function computeYOffset(avg: number, maxScale: number): number {
-    if (!centered) return yOffset;
+    if (!centered) {
+      return yOffset;
+    }
     return 0.5 * maxScale - avg;
   }
 
@@ -497,13 +553,17 @@
     // Draw labels inside the graph area, with safe margin from canvas bottom
     const labelY = pad.top + graphH - 15;
 
-    if (history.length < 2) { ctx.restore(); return; }
+    if (history.length < 2) {
+      ctx.restore(); return; 
+    }
 
     // Use the nominal time window (visibleSamples / 60fps) for stable tick spacing.
     // Computing from actual frame times causes ticks to flash as values fluctuate.
     const totalTimeSec = visibleSamples / 60;
 
-    if (totalTimeSec < 0.05) { ctx.restore(); return; }
+    if (totalTimeSec < 0.05) {
+      ctx.restore(); return; 
+    }
 
     // Pick a tick interval that gives roughly 3-8 ticks
     const tickIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
@@ -533,7 +593,9 @@
     // Time labels
     for (let sec = tickInterval; sec <= totalTimeSec + 0.001; sec += tickInterval) {
       const x = timeToX(sec);
-      if (x < pad.left + 10 || x > rightX - 30) continue;
+      if (x < pad.left + 10 || x > rightX - 30) {
+        continue;
+      }
 
       // Vertical tick line
       ctx.strokeStyle = fgDim;
@@ -562,7 +624,9 @@
     graphW: number, graphH: number,
     fg: string,
   ) {
-    if (hoverX < 0 || history.length < 2) return;
+    if (hoverX < 0 || history.length < 2) {
+      return;
+    }
 
     const rightX = pad.left + graphW;
     const step = graphW / (visibleSamples - 1) * downsample;
@@ -570,10 +634,14 @@
 
     // Find the closest data point to hoverX
     const idx = Math.round((hoverX - startX) / step);
-    if (idx < 0 || idx >= history.length) return;
+    if (idx < 0 || idx >= history.length) {
+      return;
+    }
 
     const snappedX = startX + idx * step;
-    if (snappedX < pad.left || snappedX > rightX) return;
+    if (snappedX < pad.left || snappedX > rightX) {
+      return;
+    }
 
     const msValue = history[idx];
 
@@ -637,7 +705,9 @@
     const textW = ctx.measureText(fullLabel).width + 8;
     // Position tooltip: prefer right of cursor, flip if near right edge
     let tooltipX = snappedX + 6;
-    if (tooltipX + textW > rightX) tooltipX = snappedX - textW - 2;
+    if (tooltipX + textW > rightX) {
+      tooltipX = snappedX - textW - 2;
+    }
 
     const tooltipY = pad.top + 14;
     ctx.fillStyle = fg + "18";
@@ -685,7 +755,9 @@
     ctx.font = "11px monospace";
     for (const ref of refs) {
       const y = toY(ref.value);
-      if (y < pad.top - 1 || y > pad.top + graphH + 1) continue;
+      if (y < pad.top - 1 || y > pad.top + graphH + 1) {
+        continue;
+      }
       ctx.strokeStyle = ref.color + "40";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 4]);
@@ -727,7 +799,9 @@
     const refs = getMsRefs().map(r => ({ value: r.ms, label: r.label, color: r.color }));
     drawRefLines(ctx, refs, toY, pad, graphW, graphH);
 
-    if (history.length < 2) return;
+    if (history.length < 2) {
+      return;
+    }
 
     // Avg line
     const avgY = toY(avg);
@@ -784,7 +858,9 @@
     const refs = getFpsRefs().map(r => ({ value: r.fps, label: r.label, color: r.color }));
     drawRefLines(ctx, refs, toY, pad, graphW, graphH);
 
-    if (fpsHistory.length < 2) return;
+    if (fpsHistory.length < 2) {
+      return;
+    }
 
     // Avg line
     const avgY = toY(avgFps);
@@ -816,7 +892,9 @@
     pad: { top: number; left: number }, graphW: number,
     toY: (v: number) => number,
   ) {
-    if (values.length < 2) return;
+    if (values.length < 2) {
+      return;
+    }
     // Each downsampled point represents `downsample` raw frames,
     // so space them `downsample` times wider than a single raw frame step.
     const step = graphW / (visibleSamples - 1) * downsample;
@@ -828,8 +906,11 @@
     for (let i = 0; i < values.length; i++) {
       const x = startX + i * step;
       const y = toY(values[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
     }
     ctx.strokeStyle = "#4ec9b0";
     ctx.stroke();
@@ -869,7 +950,9 @@
   }
 
   afterUpdate(() => {
-    if (!graphCanvas) return;
+    if (!graphCanvas) {
+      return;
+    }
     const activeData = graphPaused ? frozenData : data;
     if (activeData?.frameTimeHistory) {
       drawGraph(graphCanvas, activeData);
@@ -886,32 +969,44 @@
         <button
           class="toggle-btn"
           class:active={!showFPS}
-          on:click={() => { showFPS = false; adjustYOffsetForZoom(); }}
+          on:click={() => {
+            showFPS = false; adjustYOffsetForZoom(); 
+          }}
           title="Show frame time in milliseconds"
         >ms</button>
         <button
           class="toggle-btn"
           class:active={showFPS}
-          on:click={() => { showFPS = true; adjustYOffsetForZoom(); }}
+          on:click={() => {
+            showFPS = true; adjustYOffsetForZoom(); 
+          }}
           title="Show frames per second"
         >fps</button>
         <button
           class="toggle-btn pause-btn"
           class:active={graphPaused}
-          on:click={() => { toggleGraphPause(); adjustYOffsetForZoom(); }}
+          on:click={() => {
+            toggleGraphPause(); adjustYOffsetForZoom(); 
+          }}
           title={graphPaused ? "Resume graph" : "Pause graph"}
         >{#if graphPaused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}</button>
         <button
           class="toggle-btn"
           class:active={centered}
-          on:click={() => { centered = !centered; if (centered) yOffset = 0; adjustYOffsetForZoom(); }}
+          on:click={() => {
+            centered = !centered; if (centered) {
+              yOffset = 0;
+            } adjustYOffsetForZoom(); 
+          }}
           title="Center line on visible average"
           aria-label="Center line on visible average"
         ><i class="codicon codicon-screen-normal"></i></button>
         <button
           class="toggle-btn"
           class:active={visibleSamples !== 180}
-          on:click={() => { cycleHZoom(); adjustYOffsetForZoom(); }}
+          on:click={() => {
+            cycleHZoom(); adjustYOffsetForZoom(); 
+          }}
           on:wheel={handleHZoomWheel}
           title="Horizontal zoom (time window) — click to cycle, scroll to adjust"
         ><i class="codicon codicon-arrow-both"></i> {timeWindowLabel}</button>
@@ -931,7 +1026,9 @@
           <button
             class="toggle-btn"
             class:active={downsample === d}
-            on:click={() => { downsample = d; adjustYOffsetForZoom(); }}
+            on:click={() => {
+              downsample = d; adjustYOffsetForZoom(); 
+            }}
             title="Downsample {downsampleLabel(d)}"
           >{downsampleLabel(d)}</button>
         {/each}

@@ -255,7 +255,7 @@
   }
 
   function handleToggleSaveToConfig() {
-    // No-op: save-to-config not yet wired up
+  // No-op: save-to-config not yet wired up
   }
 
   function handleResetResolution() {
@@ -301,7 +301,7 @@
     const nextTarget = event.relatedTarget as Node | null;
     const enteredTooltip =
       nextTarget instanceof Node &&
-      (nextTarget as HTMLElement).closest?.('.error-tooltip');
+        (nextTarget as HTMLElement).closest?.('.error-tooltip');
     if (!isPauseTooltipHovered && !enteredTooltip) {
       isPauseTooltipHoverArmed = false;
     }
@@ -316,7 +316,7 @@
     const nextTarget = event.relatedTarget as Node | null;
     const returnedToTrigger =
       nextTarget instanceof Node &&
-      (nextTarget as HTMLElement).closest?.('.pause-button-container button');
+        (nextTarget as HTMLElement).closest?.('.pause-button-container button');
     if (!returnedToTrigger) {
       isPauseTooltipHoverArmed = false;
     }
@@ -444,7 +444,9 @@
           <button
             class="resolution-option menu-title"
             class:active={isPerformancePanelVisible}
-            on:click={() => { onTogglePerformancePanel(); showFPSMenu = false; }}
+            on:click={() => {
+              onTogglePerformancePanel(); showFPSMenu = false; 
+            }}
           >
             <i class="codicon codicon-graph-line"></i> Frame Times
           </button>
@@ -554,7 +556,9 @@
           <div class="resolution-section">
             <div class="zoom-header">
               <h4>Zoom</h4>
-              <button class="reset-resolution-btn" on:click={() => { zoomLevel = 1.0; onZoomChange(1.0); }}>
+              <button class="reset-resolution-btn" on:click={() => {
+                zoomLevel = 1.0; onZoomChange(1.0); 
+              }}>
                 Reset
               </button>
             </div>
@@ -641,7 +645,9 @@
           {#if !previewVisible}
             <button
               class="options-menu-item"
-              on:click={() => { onShowPreview(); showOptionsMenu = false; }}
+              on:click={() => {
+                onShowPreview(); showOptionsMenu = false; 
+              }}
               aria-label="Show preview"
             >
               <i class="codicon codicon-play"></i>
@@ -650,7 +656,9 @@
           {/if}
           <button
             class="options-menu-item show-lock"
-            on:click={() => { handleToggleLock(); showOptionsMenu = false; }}
+            on:click={() => {
+              handleToggleLock(); showOptionsMenu = false; 
+            }}
             aria-label="Toggle lock"
             class:active={isLocked}
             disabled={!hasShader}
@@ -664,7 +672,9 @@
           </button>
           <button
             class="options-menu-item show-record"
-            on:click={() => { showOptionsMenu = false; handleRecordingClick(); }}
+            on:click={() => {
+              showOptionsMenu = false; handleRecordingClick(); 
+            }}
             aria-label="Export recording"
             class:active={recordingMenuOpen}
             disabled={!hasShader}
@@ -674,7 +684,9 @@
           </button>
           <button
             class="options-menu-item show-config"
-            on:click={() => { onToggleConfigPanel(); showOptionsMenu = false; }}
+            on:click={() => {
+              onToggleConfigPanel(); showOptionsMenu = false; 
+            }}
             aria-label="Toggle config panel"
             class:active={isConfigPanelVisible}
             disabled={!hasShader}
@@ -684,7 +696,9 @@
           </button>
           <button
             class="options-menu-item show-editor"
-            on:click={() => { onToggleEditorOverlay(); showOptionsMenu = false; }}
+            on:click={() => {
+              onToggleEditorOverlay(); showOptionsMenu = false; 
+            }}
             aria-label="Toggle editor overlay"
             class:active={isEditorOverlayVisible}
             disabled={!hasShader}
@@ -695,7 +709,9 @@
           {#if isEditorOverlayVisible}
             <button
               class="options-menu-item options-submenu-item"
-              on:click={() => { onToggleVimMode(); }}
+              on:click={() => {
+                onToggleVimMode(); 
+              }}
               aria-label="Toggle vim mode"
               class:active={isVimModeEnabled}
             >
@@ -704,7 +720,9 @@
           {/if}
           <button
             class="options-menu-item show-debug"
-            on:click={() => { onToggleDebugEnabled(); showOptionsMenu = false; }}
+            on:click={() => {
+              onToggleDebugEnabled(); showOptionsMenu = false; 
+            }}
             aria-label="Toggle debug mode"
             class:active={isDebugEnabled}
             disabled={!hasShader}
@@ -714,7 +732,9 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => { onResetLayout(); showOptionsMenu = false; }}
+            on:click={() => {
+              onResetLayout(); showOptionsMenu = false; 
+            }}
             aria-label="Reset layout"
             disabled={!hasShader}
           >
@@ -757,7 +777,9 @@
           {/if}
           <button
             class="options-menu-item"
-            on:click={() => { onFork(); showOptionsMenu = false; }}
+            on:click={() => {
+              onFork(); showOptionsMenu = false; 
+            }}
             aria-label="Fork shader"
             disabled={!hasShader}
           >
@@ -766,7 +788,9 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => { onExtensionCommand('newShader'); showOptionsMenu = false; }}
+            on:click={() => {
+              onExtensionCommand('newShader'); showOptionsMenu = false; 
+            }}
             aria-label="New shader"
           >
             <i class="codicon codicon-new-file"></i>
@@ -774,7 +798,9 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => { onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; }}
+            on:click={() => {
+              onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; 
+            }}
             aria-label="Shader explorer"
           >
             <i class="codicon codicon-book"></i>
@@ -782,7 +808,9 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => { onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; }}
+            on:click={() => {
+              onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; 
+            }}
             aria-label="Snippet library"
           >
             <i class="codicon codicon-library"></i>
@@ -840,7 +868,9 @@
             <span class="volume-label">{Math.round(audioVolume * 100)}%</span>
             <button
               class="mute-icon-btn"
-              on:click|stopPropagation={() => { onToggleMute(); }}
+              on:click|stopPropagation={() => {
+                onToggleMute(); 
+              }}
               aria-label="Toggle mute"
               class:muted={audioMuted}
             >

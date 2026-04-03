@@ -53,7 +53,9 @@
   }
 
   function persistState(activeLayout: SerializedDockview | null) {
-    if (!layoutSlot) return;
+    if (!layoutSlot) {
+      return;
+    }
     const state = getPersistedState(activeLayout);
     layoutStore.save(layoutSlot, state);
     if (transport) {
@@ -72,7 +74,9 @@
   }
 
   function checkPreviewAlone() {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     const panel = api.getPanel("preview");
     const alone = panel ? panel.api.group.panels.length === 1 : false;
     if (alone !== lastPreviewAlone) {
@@ -97,7 +101,9 @@
   }
 
   function cancelActiveDrag() {
-    if (!internalDragActive) return;
+    if (!internalDragActive) {
+      return;
+    }
     internalDragActive = false;
     setDragActive(false);
   }
@@ -130,12 +136,16 @@
   function handleDragEnd() {
     // Some environments can emit dragend while the pointer is still down
     // (e.g. after leaving and re-entering the webview). Ignore that case.
-    if (pointerDown) return;
+    if (pointerDown) {
+      return;
+    }
     cancelActiveDrag();
   }
 
   function handleContainerDragLeave(e: DragEvent) {
-    if (!internalDragActive) return;
+    if (!internalDragActive) {
+      return;
+    }
     const nextTarget = e.relatedTarget as Node | null;
     // If drag leaves the dockview container entirely, treat as canceled.
     if (!nextTarget || !containerEl.contains(nextTarget)) {
@@ -144,14 +154,16 @@
   }
 
   function handleDocumentDragLeave(e: DragEvent) {
-    if (!internalDragActive) return;
+    if (!internalDragActive) {
+      return;
+    }
     // If cursor leaves the webview/window bounds, treat it as a canceled drag.
     // Docking cannot resume until a new drag gesture starts.
     const outsideWindow =
       e.clientX <= 0 ||
-      e.clientY <= 0 ||
-      e.clientX >= window.innerWidth ||
-      e.clientY >= window.innerHeight;
+        e.clientY <= 0 ||
+        e.clientX >= window.innerWidth ||
+        e.clientY >= window.innerHeight;
 
     if (outsideWindow) {
       cancelActiveDrag();
@@ -204,7 +216,9 @@
         return;
       }
       // Don't collapse if still near the top edge
-      if (topEdgeActive) return;
+      if (topEdgeActive) {
+        return;
+      }
       cancelReveal();
       clearTimeout(sashHoverTimer);
       sashHoverTimer = setTimeout(() => {
@@ -286,7 +300,9 @@
   }
 
   function createDefaultLayout() {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
 
     // Add the preview panel first — it takes up most of the space
     api.addPanel({
@@ -312,27 +328,41 @@
   // Returns true if the snapshot context matched and fromJSON was called to restore.
   // Context matches when the currently-open panels == snapshot panels minus the panel being added.
   function tryRestoreFromSnapshot(panelId: string): boolean {
-    if (!api) return false;
+    if (!api) {
+      return false;
+    }
     const snapshot = panelSnapshots.get(panelId);
-    if (!snapshot) return false;
+    if (!snapshot) {
+      return false;
+    }
 
     const snapshotPanelIds = new Set(Object.keys(snapshot.panels ?? {}));
-    if (!snapshotPanelIds.has(panelId)) return false;
+    if (!snapshotPanelIds.has(panelId)) {
+      return false;
+    }
 
     const currentIds = new Set(api.panels.map((p) => p.id));
     const snapshotOtherIds = new Set(snapshotPanelIds);
     snapshotOtherIds.delete(panelId);
 
-    if (snapshotOtherIds.size !== currentIds.size) return false;
-    if (![...snapshotOtherIds].every((id) => currentIds.has(id))) return false;
+    if (snapshotOtherIds.size !== currentIds.size) {
+      return false;
+    }
+    if (![...snapshotOtherIds].every((id) => currentIds.has(id))) {
+      return false;
+    }
 
     restoreFromData(snapshot);
     return true;
   }
 
   function addDebugPanel() {
-    if (!api || api.getPanel("debug")) return;
-    if (tryRestoreFromSnapshot("debug")) return;
+    if (!api || api.getPanel("debug")) {
+      return;
+    }
+    if (tryRestoreFromSnapshot("debug")) {
+      return;
+    }
 
     api.addPanel({
       id: "debug",
@@ -344,7 +374,9 @@
   }
 
   function removeDebugPanel() {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     const panel = api.getPanel("debug");
     if (panel) {
       panelSnapshots.set("debug", api.toJSON());
@@ -355,8 +387,12 @@
   }
 
   function addConfigPanel() {
-    if (!api || api.getPanel("config")) return;
-    if (tryRestoreFromSnapshot("config")) return;
+    if (!api || api.getPanel("config")) {
+      return;
+    }
+    if (tryRestoreFromSnapshot("config")) {
+      return;
+    }
 
     api.addPanel({
       id: "config",
@@ -368,7 +404,9 @@
   }
 
   function removeConfigPanel() {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     const panel = api.getPanel("config");
     if (panel) {
       panelSnapshots.set("config", api.toJSON());
@@ -379,8 +417,12 @@
   }
 
   function addPerformancePanel() {
-    if (!api || api.getPanel("performance")) return;
-    if (tryRestoreFromSnapshot("performance")) return;
+    if (!api || api.getPanel("performance")) {
+      return;
+    }
+    if (tryRestoreFromSnapshot("performance")) {
+      return;
+    }
 
     api.addPanel({
       id: "performance",
@@ -392,7 +434,9 @@
   }
 
   function removePerformancePanel() {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     const panel = api.getPanel("performance");
     if (panel) {
       panelSnapshots.set("performance", api.toJSON());
@@ -403,7 +447,9 @@
   }
 
   function showPreview() {
-    if (!api || api.getPanel("preview")) return;
+    if (!api || api.getPanel("preview")) {
+      return;
+    }
     api.addPanel({
       id: "preview",
       component: "preview",
@@ -414,7 +460,9 @@
   }
 
   function resetLayout() {
-    if (!api || !layoutSlot) return;
+    if (!api || !layoutSlot) {
+      return;
+    }
     panelSnapshots.clear();
     layoutStore.clear(layoutSlot);
     if (transport) {
@@ -425,19 +473,25 @@
   }
 
   function saveLayout() {
-    if (!api || !layoutSlot) return;
+    if (!api || !layoutSlot) {
+      return;
+    }
     const serialized = api.toJSON();
     console.log("[DockviewLayout] saveLayout called, groups:", Array.isArray(serialized?.grid?.root?.data) ? serialized.grid.root.data.length : "unknown");
     persistState(serialized);
   }
 
   function scheduleLayoutSave() {
-    if (saveTimeout) clearTimeout(saveTimeout);
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
     saveTimeout = setTimeout(saveLayout, 500);
   }
 
   function restoreFromData(data: SerializedDockview) {
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     try {
       console.log("[DockviewLayout] restoreFromData called, panels:", JSON.stringify(data?.panels ?? {}));
       programmaticRemoval = true;
@@ -466,17 +520,23 @@
   }
 
   function requestInitialLayoutIfReady() {
-    if (!api || layoutReady || !layoutSlot) return;
+    if (!api || layoutReady || !layoutSlot) {
+      return;
+    }
 
     if (transport) {
-      if (requestedLayoutSlot === layoutSlot) return;
+      if (requestedLayoutSlot === layoutSlot) {
+        return;
+      }
       console.log("[DockviewLayout] sending requestLayout for slot", layoutSlot);
       transport.postMessage({ type: "requestLayout", payload: { layoutSlot } });
       requestedLayoutSlot = layoutSlot;
       return;
     }
 
-    if (restoredLayoutSlot === layoutSlot) return;
+    if (restoredLayoutSlot === layoutSlot) {
+      return;
+    }
     const savedState = layoutStore.load(layoutSlot);
     if (savedState) {
       restoreFromState(savedState);

@@ -65,7 +65,7 @@ suite('ConfigEditorProvider Test Suite', () => {
     sandbox.stub(fs, 'existsSync').callsFake((p: any) => p === expectedShaderPath);
 
     const mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
     } as any;
 
@@ -91,8 +91,8 @@ suite('ConfigEditorProvider Test Suite', () => {
 
     await clock.tickAsync(200);
 
-    sinon.assert.calledOnce(mockShaderProvider.sendShaderToWebview);
-    sinon.assert.calledWith(mockShaderProvider.sendShaderToWebview, shaderEditor);
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor);
+    sinon.assert.calledWith(mockShaderProvider.sendShaderFromEditor, shaderEditor);
     sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
     sinon.assert.notCalled(executeCommandStub);
   });
@@ -114,7 +114,7 @@ suite('ConfigEditorProvider Test Suite', () => {
     sandbox.stub(fs, 'existsSync').callsFake((p: any) => p === expectedShaderPath);
 
     const mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
     } as any;
 
@@ -138,8 +138,8 @@ suite('ConfigEditorProvider Test Suite', () => {
 
     await clock.tickAsync(200);
 
-    sinon.assert.calledOnce(mockShaderProvider.sendShaderToWebview);
-    sinon.assert.calledWith(mockShaderProvider.sendShaderToWebview, shaderEditor, { forceCleanup: true });
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor);
+    sinon.assert.calledWith(mockShaderProvider.sendShaderFromEditor, shaderEditor, { forceCleanup: true });
   });
 
   test('should refresh shader by path when config changes and shader editor is not visible', async () => {
@@ -154,7 +154,7 @@ suite('ConfigEditorProvider Test Suite', () => {
     const configPath = '/mock/path/shader.sha.json';
 
     const mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
     } as any;
 
@@ -181,7 +181,7 @@ suite('ConfigEditorProvider Test Suite', () => {
 
     await clock.tickAsync(200);
 
-    sinon.assert.notCalled(mockShaderProvider.sendShaderToWebview);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
     sinon.assert.calledWith(mockShaderProvider.sendShaderFromPath, expectedShaderPath);
   });
 
@@ -197,7 +197,7 @@ suite('ConfigEditorProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(false);
 
       const mockShaderProvider = {
-        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromEditor: sandbox.stub(),
         sendShaderFromPath: sandbox.stub().resolves(),
       } as any;
 
@@ -251,7 +251,7 @@ suite('ConfigEditorProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(false);
 
       const mockShaderProvider = {
-        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromEditor: sandbox.stub(),
         sendShaderFromPath: sandbox.stub().resolves(),
       } as any;
 
@@ -306,7 +306,7 @@ suite('ConfigEditorProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(false);
 
       const mockShaderProvider = {
-        sendShaderToWebview: sandbox.stub(),
+        sendShaderFromEditor: sandbox.stub(),
         sendShaderFromPath: sandbox.stub().resolves(),
       } as any;
 
@@ -358,7 +358,7 @@ suite('ConfigEditorProvider Test Suite', () => {
     const configPath = '/mock/path/shader.sha.json';
 
     const mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
     } as any;
 
@@ -400,7 +400,7 @@ suite('ConfigEditorProvider Test Suite', () => {
     sandbox.stub(fs, 'existsSync').returns(false);
 
     const mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
     } as any;
 

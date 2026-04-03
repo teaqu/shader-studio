@@ -30,23 +30,23 @@ export class OverlayPanelHandler {
       if (openDoc) {
         // Apply edit via WorkspaceEdit to update the open document
         this.logger.debug(`Found open document, applying WorkspaceEdit`);
+        const currentCode = openDoc.getText();
+        if (currentCode === code) {
+          return;
+        }
+
+        const replacement = this.getMinimalReplacement(openDoc, currentCode, code);
         const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(
-          openDoc.positionAt(0),
-          openDoc.positionAt(openDoc.getText().length)
-        );
-        edit.replace(uri, fullRange, code);
+        edit.replace(uri, replacement.range, replacement.text);
         const applied = await vscode.workspace.applyEdit(edit);
         this.logger.debug(`WorkspaceEdit applied: ${applied}`);
-        if (applied) {
-          await openDoc.save();
-          this.logger.debug(`Document saved`);
-        }
       } else {
         // File not open — write directly to disk
-        // The UI handles recompilation directly, so no need to trigger a shader refresh
+        // Without an open TextDocument, VS Code won't emit a change event for us.
+        // Refresh from disk so overlay edits still take effect.
         this.logger.debug(`No open document, writing directly to file`);
         fs.writeFileSync(filePath, code, 'utf-8');
+        await vscode.commands.executeCommand('shader-studio.refreshSpecificShaderByPath', filePath);
       }
     } catch (error) {
       this.logger.error(`Failed to update shader source: ${error}`);
@@ -107,5 +107,39 @@ export class OverlayPanelHandler {
     } catch (error) {
       this.logger.error(`Failed to read file contents: ${error}`);
     }
+  }
+
+  private getMinimalReplacement(
+    document: vscode.TextDocument,
+    currentCode: string,
+    nextCode: string,
+  ): { range: vscode.Range; text: string } {
+    let prefixLength = 0;
+    const maxPrefixLength = Math.min(currentCode.length, nextCode.length);
+    while (
+      prefixLength < maxPrefixLength
+      && currentCode.charCodeAt(prefixLength) === nextCode.charCodeAt(prefixLength)
+    ) {
+      prefixLength++;
+    }
+
+    let currentSuffixLength = currentCode.length;
+    let nextSuffixLength = nextCode.length;
+    while (
+      currentSuffixLength > prefixLength
+      && nextSuffixLength > prefixLength
+      && currentCode.charCodeAt(currentSuffixLength - 1) === nextCode.charCodeAt(nextSuffixLength - 1)
+    ) {
+      currentSuffixLength--;
+      nextSuffixLength--;
+    }
+
+    return {
+      range: new vscode.Range(
+        document.positionAt(prefixLength),
+        document.positionAt(currentSuffixLength),
+      ),
+      text: nextCode.slice(prefixLength, nextSuffixLength),
+    };
   }
 }

@@ -52,7 +52,7 @@
       bufferConfig.updateInputChannel(channelName, input);
     }
     config = bufferConfig.getConfig();
-    // Don't close modal - let user make multiple changes
+  // Don't close modal - let user make multiple changes
   }
 
   function handleModalRemove(channelName: string) {
@@ -74,7 +74,9 @@
   }
 
   function handleSortChannels() {
-    if (!config.inputs) return;
+    if (!config.inputs) {
+      return;
+    }
     const sorted: Record<string, ConfigInput> = {};
     Object.keys(config.inputs)
       .sort((a, b) => a.localeCompare(b))
@@ -95,11 +97,15 @@
   // Show configured channels, pad with empty iChannel slots up to 4 total
   $: channelNames = (() => {
     const configKeys = Object.keys(config.inputs || {});
-    if (configKeys.length >= 4) return configKeys;
+    if (configKeys.length >= 4) {
+      return configKeys;
+    }
     const pad: string[] = [];
     for (let i = 0; pad.length < 4 - configKeys.length && i < 16; i++) {
       const name = `iChannel${i}`;
-      if (!configKeys.includes(name)) pad.push(name);
+      if (!configKeys.includes(name)) {
+        pad.push(name);
+      }
     }
     return [...configKeys, ...pad];
   })();
@@ -113,79 +119,81 @@
   <div class="buffer-details">
     {#if !isImagePass}
       <div class="config-item">
-          <PathInput
-            value={currentPath}
-            onPathChange={(v) => { currentPath = v; bufferConfig.updatePath(v); config = bufferConfig.getConfig(); }}
-            hasError={!validation.isValid}
-            note="Relative, absolute, or @ for workspace root"
-            placeholder={suggestedPath || (bufferName === 'common' ? 'e.g., ./common.glsl' : 'e.g., ./buffer.glsl')}
-            {fileType}
-            {shaderPath}
-            {suggestedPath}
-            {postMessage}
-            {onMessage}
-          />
+        <PathInput
+          value={currentPath}
+          onPathChange={(v) => {
+            currentPath = v; bufferConfig.updatePath(v); config = bufferConfig.getConfig(); 
+          }}
+          hasError={!validation.isValid}
+          note="Relative, absolute, or @ for workspace root"
+          placeholder={suggestedPath || (bufferName === 'common' ? 'e.g., ./common.glsl' : 'e.g., ./buffer.glsl')}
+          {fileType}
+          {shaderPath}
+          {suggestedPath}
+          {postMessage}
+          {onMessage}
+        />
 
-          {#if !validation.isValid}
-            <div class="validation-errors">
-              {#each validation.errors as error}
-                <p class="error-message">{error}</p>
-              {/each}
-            </div>
-          {/if}
+        {#if !validation.isValid}
+          <div class="validation-errors">
+            {#each validation.errors as error}
+              <p class="error-message">{error}</p>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
     {#if bufferName !== "common"}
-    <div class="config-item">
-      {#if Object.keys(config.inputs || {}).length > 1}
-        <div class="channels-toolbar">
-          <button
-            class="sort-btn"
-            on:click={handleSortChannels}
-            title="Sort channels alphabetically"
-          >
-            <i class="codicon codicon-sort-precedence"></i>
-            Sort A-Z
-          </button>
-        </div>
-      {/if}
-      <div class="channels-grid">
-        {#each channelNames as channelName}
-          {@const input =
-            config.inputs?.[channelName]}
-          <div
-            class="channel-box {input ? 'configured' : 'empty'}"
-            on:click={() => openChannelModal(channelName)}
-            on:keydown={(e) => e.key === 'Enter' && openChannelModal(channelName)}
-            role="button"
-            tabindex="0"
-          >
-            <ChannelPreview channelInput={input} {getWebviewUri} {audioVideoController} {globalMuted} />
-
-            <div class="channel-footer">
-              <h4 class="channel-name">{channelName}</h4>
-            </div>
-          </div>
-        {/each}
-        {#if channelNames.length < 16}
-          <div
-            class="channel-box empty add-channel"
-            on:click={handleAddChannel}
-            on:keydown={(e) => e.key === 'Enter' && handleAddChannel()}
-            role="button"
-            tabindex="0"
-          >
-            <div class="add-channel-content">
-              <span class="add-icon">+</span>
-            </div>
-            <div class="channel-footer">
-              <h4 class="channel-name">Add Channel</h4>
-            </div>
+      <div class="config-item">
+        {#if Object.keys(config.inputs || {}).length > 1}
+          <div class="channels-toolbar">
+            <button
+              class="sort-btn"
+              on:click={handleSortChannels}
+              title="Sort channels alphabetically"
+            >
+              <i class="codicon codicon-sort-precedence"></i>
+              Sort A-Z
+            </button>
           </div>
         {/if}
+        <div class="channels-grid">
+          {#each channelNames as channelName}
+            {@const input =
+              config.inputs?.[channelName]}
+            <div
+              class="channel-box {input ? 'configured' : 'empty'}"
+              on:click={() => openChannelModal(channelName)}
+              on:keydown={(e) => e.key === 'Enter' && openChannelModal(channelName)}
+              role="button"
+              tabindex="0"
+            >
+              <ChannelPreview channelInput={input} {getWebviewUri} {audioVideoController} {globalMuted} />
+
+              <div class="channel-footer">
+                <h4 class="channel-name">{channelName}</h4>
+              </div>
+            </div>
+          {/each}
+          {#if channelNames.length < 16}
+            <div
+              class="channel-box empty add-channel"
+              on:click={handleAddChannel}
+              on:keydown={(e) => e.key === 'Enter' && handleAddChannel()}
+              role="button"
+              tabindex="0"
+            >
+              <div class="add-channel-content">
+                <span class="add-icon">+</span>
+              </div>
+              <div class="channel-footer">
+                <h4 class="channel-name">Add Channel</h4>
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
     {/if}
   </div>
 </div>

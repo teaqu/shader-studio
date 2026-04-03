@@ -14,13 +14,19 @@
   }
 
   function fmt(n: number): string {
-    if (Math.abs(n) >= 1000) return n.toFixed(0);
-    if (Math.abs(n) >= 10) return n.toFixed(1);
+    if (Math.abs(n) >= 1000) {
+      return n.toFixed(0);
+    }
+    if (Math.abs(n) >= 10) {
+      return n.toFixed(1);
+    }
     return n.toFixed(3);
   }
 
   function pct(count: number): string {
-    if (total === 0) return '0%';
+    if (total === 0) {
+      return '0%';
+    }
     return (count / total * 100).toFixed(1) + '%';
   }
 </script>

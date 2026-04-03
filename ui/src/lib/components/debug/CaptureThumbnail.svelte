@@ -19,15 +19,21 @@
   $: canExpand = gridWidth > displayWidth || gridHeight > displayHeight;
 
   function draw() {
-    if (!canvas || !mounted || gridWidth < 1 || gridHeight < 1) return;
+    if (!canvas || !mounted || gridWidth < 1 || gridHeight < 1) {
+      return;
+    }
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     canvas.width = gridWidth;
     canvas.height = gridHeight;
     ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);
   }
 
-  onMount(() => { mounted = true; draw(); });
+  onMount(() => {
+    mounted = true; draw(); 
+  });
   $: pixels, gridWidth, gridHeight, draw();
 </script>
 
@@ -60,14 +66,20 @@
   function drawExpanded(node: HTMLCanvasElement, params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
     render(node, params);
     return {
-      update(params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) { render(node, params); }
+      update(params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
+        render(node, params); 
+      }
     };
   }
 
   function render(canvas: HTMLCanvasElement, { pixels, gridWidth, gridHeight }: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
-    if (gridWidth < 1 || gridHeight < 1) return;
+    if (gridWidth < 1 || gridHeight < 1) {
+      return;
+    }
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     canvas.width = gridWidth;
     canvas.height = gridHeight;
     ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);

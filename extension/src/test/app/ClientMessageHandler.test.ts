@@ -37,7 +37,7 @@ suite('ClientMessageHandler Test Suite', () => {
     } as any;
 
     mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
       sendShaderFromPath: sandbox.stub().resolves(),
       updateScriptPollingRate: sandbox.stub(),
       resetScriptTime: sandbox.stub(),

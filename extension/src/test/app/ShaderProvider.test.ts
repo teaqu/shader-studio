@@ -58,7 +58,7 @@ suite('ShaderProvider Test Suite', () => {
   });
 
 
-  suite('sendShaderToWebview', () => {
+  suite('sendShaderFromEditor', () => {
 
     test('should clear persistent errors before processing', async () => {
       const shaderPath = '/path/to/shader.glsl';
@@ -77,7 +77,7 @@ suite('ShaderProvider Test Suite', () => {
 
       const clearPersistentErrorsStub = mockMessenger.getErrorHandler().clearPersistentErrors;
 
-      await provider.sendShaderToWebview(mockEditor as any);
+      await provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(clearPersistentErrorsStub);
     });
@@ -109,7 +109,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderToWebview(mockEditor as any);
+      await provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
@@ -145,7 +145,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderToWebview(mockEditor as any, { forceCleanup: true });
+      await provider.sendShaderFromEditor(mockEditor as any, { forceCleanup: true });
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
@@ -180,7 +180,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderToWebview(mockEditor as any);
+      await provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
@@ -216,7 +216,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderToWebview(mockEditor as any);
+      await provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
@@ -256,7 +256,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await providerWithDebug.sendShaderToWebview(mockEditor as any);
+      await providerWithDebug.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.called(sendSpy);
       const message = sendSpy.lastCall.args[0];
@@ -300,7 +300,7 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await providerWithDebug.sendShaderToWebview(mockEditor as any);
+      await providerWithDebug.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.called(sendSpy);
       const message = sendSpy.lastCall.args[0];
@@ -319,7 +319,7 @@ suite('ShaderProvider Test Suite', () => {
         }
       };
 
-      provider.sendShaderToWebview(mockEditor as any);
+      provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledWith(sendSpy, {
@@ -328,32 +328,23 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
-    test('should send common buffer editor as a standalone file instead of rerouting to the owner shader', async () => {
+    test('should send error for standalone common editor files without mainImage', async () => {
       const shaderPath = '/path/to/shader.common.glsl';
-      const ownerShaderPath = '/path/to/shader.glsl';
       const mockEditor = {
         document: {
           getText: sandbox.stub().returns('float helper() { return 1.0; }'),
-          lineAt: sandbox.stub().returns({ text: 'float helper() { return 1.0; }' }),
           uri: { fsPath: shaderPath },
           languageId: 'glsl'
         },
-        selection: { active: { line: 0, character: 0 } },
       };
-      (provider as any).activeShaders.add(ownerShaderPath);
 
-      await provider.sendShaderToWebview(mockEditor as any);
+      await provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.calledOnce(sendSpy);
-      const message = sendSpy.firstCall.args[0];
-      assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.path, shaderPath);
-      assert.strictEqual(message.code, 'float helper() { return 1.0; }');
-      assert.strictEqual(message.config, null);
-      assert.deepStrictEqual(message.buffers, {});
-      assert.strictEqual(message.bufferPathMap, undefined);
-      assert.strictEqual(message.pathMap, undefined);
-      assert.strictEqual(message.forceCleanup, true);
+      sinon.assert.calledWith(sendSpy, {
+        type: 'error',
+        payload: ['Missing mainImage function']
+      });
     });
 
     test('should not show VS Code warning for GLSL files without mainImage', () => {
@@ -369,7 +360,7 @@ suite('ShaderProvider Test Suite', () => {
 
       const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
 
-      provider.sendShaderToWebview(mockEditor as any);
+      provider.sendShaderFromEditor(mockEditor as any);
 
       sinon.assert.notCalled(showWarningStub);
     });
@@ -521,29 +512,21 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
-    test('should send common buffer path as a standalone file instead of rerouting to the owner shader', async () => {
+    test('should send error for standalone common paths without mainImage', async () => {
       const shaderPath = '/path/to/shader.common.glsl';
-      const ownerShaderPath = '/path/to/shader.glsl';
       const fs = require('fs');
 
       sandbox.stub(fs, 'existsSync').returns(true);
       sandbox.stub(fs, 'readFileSync')
         .withArgs(shaderPath, 'utf-8').returns('float helper() { return 1.0; }');
 
-      (provider as any).activeShaders.add(ownerShaderPath);
-
       await provider.sendShaderFromPath(shaderPath);
 
       sinon.assert.calledOnce(sendSpy);
-      const message = sendSpy.firstCall.args[0];
-      assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.path, shaderPath);
-      assert.strictEqual(message.code, 'float helper() { return 1.0; }');
-      assert.strictEqual(message.config, null);
-      assert.deepStrictEqual(message.buffers, {});
-      assert.strictEqual(message.bufferPathMap, undefined);
-      assert.strictEqual(message.pathMap, undefined);
-      assert.strictEqual(message.forceCleanup, true);
+      sinon.assert.calledWith(sendSpy, {
+        type: 'error',
+        payload: ['Missing mainImage function']
+      });
     });
 
     test('should not show VS Code warning for files without mainImage', async () => {
@@ -558,6 +541,113 @@ suite('ShaderProvider Test Suite', () => {
       await provider.sendShaderFromPath(shaderPath);
 
       sinon.assert.notCalled(showWarningStub);
+    });
+  });
+
+  suite('sendShaderFromDocument', () => {
+    test('should clear persistent errors before processing', async () => {
+      const document = {
+        getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
+        uri: vscode.Uri.file('/path/to/shader.glsl'),
+        languageId: 'glsl',
+      } as any;
+      loadAndProcessConfigStub.returns(null);
+
+      const clearPersistentErrorsStub = mockMessenger.getErrorHandler().clearPersistentErrors;
+
+      await provider.sendShaderFromDocument(document);
+
+      sinon.assert.calledOnce(clearPersistentErrorsStub);
+    });
+
+    test('should send regular shader messages from an in-memory GLSL document', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const document = {
+        getText: sandbox.stub().returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}'),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+      } as any;
+
+      loadAndProcessConfigStub.returns({
+        version: '1.0',
+        passes: { Image: {} },
+      });
+
+      await provider.sendShaderFromDocument(document, { forceCleanup: true });
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSource');
+      assert.strictEqual(message.path, shaderPath);
+      assert.strictEqual(message.code, 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      assert.strictEqual(message.forceCleanup, true);
+    });
+
+    test('should include cursor position from the matching visible editor when debug mode is enabled', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const lineText = '  vec2 uv = fragCoord / iResolution.xy;';
+      const providerWithDebug = new ShaderProvider(mockMessenger, () => true);
+      const document = {
+        getText: sandbox.stub().returns('void mainImage() {}'),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+      } as any;
+
+      sandbox.stub(vscode.window, 'visibleTextEditors').value([{
+        document: {
+          uri: vscode.Uri.file(shaderPath),
+          lineAt: sandbox.stub().withArgs(3).returns({ text: lineText }),
+        },
+        selection: {
+          active: { line: 3, character: 12 },
+        },
+      } as any]);
+
+      loadAndProcessConfigStub.returns({
+        version: '1.0',
+        passes: { Image: {} },
+      });
+
+      await providerWithDebug.sendShaderFromDocument(document);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.deepStrictEqual(message.cursorPosition, {
+        line: 3,
+        character: 12,
+        lineContent: lineText,
+        filePath: shaderPath,
+      });
+    });
+
+    test('should send error for standalone common documents without mainImage', async () => {
+      const shaderPath = '/path/to/shader.common.glsl';
+      const document = {
+        getText: sandbox.stub().returns('float helper() { return 1.0; }'),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+      } as any;
+
+      await provider.sendShaderFromDocument(document);
+
+      sinon.assert.calledOnce(sendSpy);
+      sinon.assert.calledWith(sendSpy, {
+        type: 'error',
+        payload: ['Missing mainImage function']
+      });
+    });
+
+    test('should ignore non-GLSL documents', async () => {
+      const document = {
+        getText: sandbox.stub().returns('console.log("hi")'),
+        uri: vscode.Uri.file('/path/to/file.txt'),
+        languageId: 'plaintext',
+        fileName: '/path/to/file.txt',
+      } as any;
+
+      await provider.sendShaderFromDocument(document);
+
+      sinon.assert.notCalled(sendSpy);
     });
   });
 });

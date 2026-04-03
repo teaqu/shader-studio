@@ -46,13 +46,28 @@ suite('OverlayPanelHandler Test Suite', () => {
 
       // Then
       assert.ok(applyEditStub.calledOnce, 'applyEdit should be called once');
-      assert.ok(mockDoc.save.calledOnce, 'document should be saved after edit applied');
+      assert.ok(mockDoc.save.notCalled, 'open document should not be force-saved after edit applied');
+    });
+
+    test('should avoid applying an edit when the open document already matches', async () => {
+      const mockDoc = {
+        uri: vscode.Uri.file('/path/to/shader.glsl'),
+        getText: sandbox.stub().returns('same code'),
+        positionAt: sandbox.stub().callsFake((offset: number) => new vscode.Position(0, offset)),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDoc]);
+      const applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleUpdateShaderSource({ code: 'same code', path: '/path/to/shader.glsl' });
+
+      assert.ok(applyEditStub.notCalled, 'applyEdit should not be called when there is no diff');
     });
 
     test('should write to file when document is not open', async () => {
       // Given
       const fs = require('fs');
       const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
       sandbox.stub(vscode.workspace, 'textDocuments').value([]);
 
       // When
@@ -63,6 +78,22 @@ suite('OverlayPanelHandler Test Suite', () => {
       assert.strictEqual(writeFileSyncStub.firstCall.args[0], '/path/to/shader.glsl');
       assert.strictEqual(writeFileSyncStub.firstCall.args[1], 'new shader code');
       assert.strictEqual(writeFileSyncStub.firstCall.args[2], 'utf-8');
+      assert.ok(executeCommandStub.calledOnceWith('shader-studio.refreshSpecificShaderByPath', '/path/to/shader.glsl'));
+    });
+
+    test('should not refresh via command when document is already open', async () => {
+      const mockDoc = {
+        uri: vscode.Uri.file('/path/to/shader.glsl'),
+        getText: sandbox.stub().returns('old shader code'),
+        positionAt: sandbox.stub().callsFake((offset: number) => new vscode.Position(0, offset)),
+      };
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDoc]);
+      sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleUpdateShaderSource({ code: 'new shader code', path: '/path/to/shader.glsl' });
+
+      assert.ok(executeCommandStub.notCalled);
     });
 
     test('should return early when path is missing', async () => {
@@ -101,6 +132,38 @@ suite('OverlayPanelHandler Test Suite', () => {
 
       // When / Then - should not throw
       await handler.handleUpdateShaderSource({ code: 'new shader code', path: '/path/to/shader.glsl' });
+    });
+  });
+
+  suite('getMinimalReplacement', () => {
+    test('returns only the changed span for a small inline edit', () => {
+      const mockDoc = {
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      } as any;
+
+      const result = (handler as any).getMinimalReplacement(
+        mockDoc,
+        'abcdef',
+        'abZdef',
+      );
+
+      assert.deepStrictEqual(result.range, new vscode.Range(0, 2, 0, 3));
+      assert.strictEqual(result.text, 'Z');
+    });
+
+    test('returns the appended text for an insertion at the end', () => {
+      const mockDoc = {
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      } as any;
+
+      const result = (handler as any).getMinimalReplacement(
+        mockDoc,
+        'abc',
+        'abcdef',
+      );
+
+      assert.deepStrictEqual(result.range, new vscode.Range(0, 3, 0, 3));
+      assert.strictEqual(result.text, 'def');
     });
   });
 

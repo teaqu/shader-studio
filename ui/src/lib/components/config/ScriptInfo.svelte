@@ -18,10 +18,18 @@
   let showUniformFps = false;
 
   function formatValue(val: number | number[] | boolean | undefined): string {
-    if (val === undefined) return '—';
-    if (typeof val === 'boolean') return val ? 'true' : 'false';
-    if (typeof val === 'number') return val.toFixed(3);
-    if (Array.isArray(val)) return val.map(v => v.toFixed(2)).join(', ');
+    if (val === undefined) {
+      return '—';
+    }
+    if (typeof val === 'boolean') {
+      return val ? 'true' : 'false';
+    }
+    if (typeof val === 'number') {
+      return val.toFixed(3);
+    }
+    if (Array.isArray(val)) {
+      return val.map(v => v.toFixed(2)).join(', ');
+    }
     return String(val);
   }
 

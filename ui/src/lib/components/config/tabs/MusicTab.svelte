@@ -28,7 +28,9 @@
 
   /** Resolve the effective audio path for engine commands (prefers resolved webview URI) */
   function getEffectiveAudioPath(): string {
-    if (!tempInput || tempInput.type !== 'audio' || !tempInput.path) return '';
+    if (!tempInput || tempInput.type !== 'audio' || !tempInput.path) {
+      return '';
+    }
     return (tempInput as any).resolved_path
       || (getWebviewUri ? getWebviewUri(tempInput.path) : null)
       || lastSelectedResolvedUri
@@ -43,7 +45,7 @@
         onUpdateTempInput({ ...rest } as ConfigInput);
       } else {
         const endTime = (tempInput as any).endTime;
-        const clamped = endTime != null ? Math.min(Math.max(0, num), endTime) : Math.max(0, num);
+        const clamped = endTime !== null && endTime !== undefined ? Math.min(Math.max(0, num), endTime) : Math.max(0, num);
         onUpdateTempInput({ ...tempInput, startTime: clamped });
       }
       if (save) {
@@ -148,7 +150,9 @@
     getWaveformPeaks(audioUri, 350).then(async peaks => {
       waveformPeaks = peaks;
       await tick();
-      if (peaks && waveformCanvas) drawWaveformTimeline();
+      if (peaks && waveformCanvas) {
+        drawWaveformTimeline();
+      }
     });
   } else {
     waveformPeaks = null;
@@ -161,23 +165,29 @@
   $: audioDuration = audioState?.duration || 0;
   $: audioCurrentTime = audioState?.currentTime || 0;
 
-  $: startPercent = tempInput?.type === 'audio' && tempInput.startTime != null && audioDuration > 0
+  $: startPercent = tempInput?.type === 'audio' && tempInput.startTime !== null && tempInput.startTime !== undefined && audioDuration > 0
     ? Math.min((tempInput.startTime / audioDuration) * 100, 100) : 0;
-  $: endPercent = tempInput?.type === 'audio' && tempInput.endTime != null && audioDuration > 0
+  $: endPercent = tempInput?.type === 'audio' && tempInput.endTime !== null && tempInput.endTime !== undefined && audioDuration > 0
     ? Math.min((tempInput.endTime / audioDuration) * 100, 100) : 100;
   $: cursorPercent = audioDuration > 0
     ? Math.min((audioCurrentTime / audioDuration) * 100, 100) : 0;
 
   function drawWaveformTimeline() {
-    if (!waveformCanvas || !waveformPeaks) return;
+    if (!waveformCanvas || !waveformPeaks) {
+      return;
+    }
     const ctx = waveformCanvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     const w = waveformCanvas.width;
     const h = waveformCanvas.height;
     ctx.clearRect(0, 0, w, h);
 
     const n = waveformPeaks.length;
-    if (n === 0) return;
+    if (n === 0) {
+      return;
+    }
     const centerY = h / 2;
     const amplitude = centerY * 0.85;
 
@@ -209,7 +219,9 @@
   }
 
   function getTimeFromMouseEvent(event: MouseEvent): number {
-    if (!waveformContainer || audioDuration <= 0) return 0;
+    if (!waveformContainer || audioDuration <= 0) {
+      return 0;
+    }
     const rect = waveformContainer.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     return Math.round(percent * audioDuration * 10) / 10;
@@ -224,7 +236,9 @@
   }
 
   function handleDragMove(event: MouseEvent) {
-    if (!dragging) return;
+    if (!dragging) {
+      return;
+    }
     const time = getTimeFromMouseEvent(event);
     if (dragging === 'start') {
       updateStartTime(time.toString(), false);
@@ -244,8 +258,12 @@
   }
 
   function handleWaveformMouseDown(event: MouseEvent) {
-    if (dragging) return;
-    if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) return;
+    if (dragging) {
+      return;
+    }
+    if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) {
+      return;
+    }
     event.preventDefault();
     seekDragging = true;
     const time = getTimeFromMouseEvent(event);
@@ -255,8 +273,12 @@
   }
 
   function handleSeekDragMove(event: MouseEvent) {
-    if (!seekDragging) return;
-    if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) return;
+    if (!seekDragging) {
+      return;
+    }
+    if (!waveformContainer || !audioDuration || !onAudioControl || tempInput?.type !== 'audio' || !tempInput.path) {
+      return;
+    }
     const time = getTimeFromMouseEvent(event);
     onAudioControl(getEffectiveAudioPath(), `seek:${time}`);
   }
@@ -337,9 +359,9 @@
     </div>
     <!-- Time labels -->
     <div class="waveform-times">
-      <span class="waveform-time-label">{tempInput.startTime != null ? formatTime(tempInput.startTime) : '0:00'}</span>
+      <span class="waveform-time-label">{tempInput.startTime !== null && tempInput.startTime !== undefined ? formatTime(tempInput.startTime) : '0:00'}</span>
       <span class="waveform-time-label">{audioDuration > 0 ? formatTime(audioCurrentTime) : ''}</span>
-      <span class="waveform-time-label">{tempInput.endTime != null ? formatTime(tempInput.endTime) : (audioDuration > 0 ? formatTime(audioDuration) : '')}</span>
+      <span class="waveform-time-label">{tempInput.endTime !== null && tempInput.endTime !== undefined ? formatTime(tempInput.endTime) : (audioDuration > 0 ? formatTime(audioDuration) : '')}</span>
     </div>
   </div>
 {/if}

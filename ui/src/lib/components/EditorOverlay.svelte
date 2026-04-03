@@ -30,9 +30,12 @@
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+  const PERSIST_DELAY_MS = 15;
 
   function focusMonacoTextInput() {
-    if (!containerEl) return;
+    if (!containerEl) {
+      return;
+    }
     const input = (containerEl.querySelector("textarea.inputarea")
       || containerEl.querySelector(".monaco-editor textarea")
       || containerEl.querySelector("textarea")) as HTMLTextAreaElement | null;
@@ -41,7 +44,9 @@
 
   function syncVimStatus(mode?: string) {
     vimCurrentMode = mode ?? "normal";
-    if (!statusBarEl) return;
+    if (!statusBarEl) {
+      return;
+    }
 
     switch (mode) {
       case "insert":
@@ -63,7 +68,9 @@
   }
 
   function syncCursorForMode(mode?: string) {
-    if (!editor) return;
+    if (!editor) {
+      return;
+    }
 
     if (mode === "insert" || mode === "replace") {
       editor.updateOptions({
@@ -83,8 +90,20 @@
     focusMonacoTextInput();
   }
 
+  function handleOverlaySave() {
+    if (!transport || !shaderPath) {
+      return;
+    }
+    transport.postMessage({
+      type: "extensionCommand",
+      payload: { command: "saveCurrentShader" },
+    });
+  }
+
   function editorHasFocus(): boolean {
-    if (!editor) return false;
+    if (!editor) {
+      return false;
+    }
     return editor.hasTextFocus();
   }
 
@@ -103,25 +122,35 @@
   function switchToNamedBuffer(name: string) {
     // Try exact match first, then case-insensitive prefix match
     const exact = bufferNames.find(b => b === name);
-    if (exact) { onBufferSwitch(exact); return; }
+    if (exact) {
+      onBufferSwitch(exact); return; 
+    }
     const lower = name.toLowerCase();
     const match = bufferNames.find(b => b.toLowerCase().startsWith(lower));
-    if (match) onBufferSwitch(match);
+    if (match) {
+      onBufferSwitch(match);
+    }
   }
 
   let vimCommandsRegistered = false;
 
   function registerVimCommands() {
-    if (vimCommandsRegistered) return;
+    if (vimCommandsRegistered) {
+      return;
+    }
     try {
       const vim = (VimMode as any).Vim;
-      if (!vim?.defineEx) return;
+      if (!vim?.defineEx) {
+        return;
+      }
 
       vim.defineEx('bnext', 'bn', () => switchToNextBuffer());
       vim.defineEx('bprev', 'bp', () => switchToPrevBuffer());
       vim.defineEx('buffer', 'b', (_cm: any, params: any) => {
         const name = params?.args?.[0];
-        if (name) switchToNamedBuffer(name);
+        if (name) {
+          switchToNamedBuffer(name);
+        }
       });
       vim.defineEx('lnext', 'lne', () => {
         editor?.getAction('editor.action.marker.next')?.run();
@@ -155,7 +184,9 @@
   }
 
   function enableVim() {
-    if (!editor || vimModeInstance) return;
+    if (!editor || vimModeInstance) {
+      return;
+    }
     registerVimCommands();
     vimModeInstance = initVimMode(editor as any, statusBarEl ?? null);
     vimModeInstance.on?.("vim-mode-change", ({ mode }: { mode?: string }) => {
@@ -185,11 +216,15 @@
   }
 
   function fallbackEnterInsertMode(key: string) {
-    if (!editor || !vimModeInstance?.state?.vim) return;
+    if (!editor || !vimModeInstance?.state?.vim) {
+      return;
+    }
 
     const position = editor.getPosition();
     const model = editor.getModel();
-    if (!position || !model) return;
+    if (!position || !model) {
+      return;
+    }
 
     const lineNumber = position.lineNumber;
     const lineContent = model.getLineContent(lineNumber);
@@ -237,19 +272,27 @@
   }
 
   function updateBlankLineDecorations() {
-    if (!editor || !containerEl) return;
+    if (!editor || !containerEl) {
+      return;
+    }
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) {
+      return;
+    }
     const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
     const padding = editor.getOption(monaco.editor.EditorOption.padding);
     const topPad = padding?.top ?? 0;
     requestAnimationFrame(() => {
-      if (!containerEl) return;
+      if (!containerEl) {
+        return;
+      }
       const viewLines = containerEl.querySelectorAll('.view-lines .view-line');
       viewLines.forEach((el) => {
         const htmlEl = el as HTMLElement;
         const top = parseFloat(htmlEl.style.top);
-        if (isNaN(top)) return;
+        if (isNaN(top)) {
+          return;
+        }
         const lineNum = Math.round((top - topPad) / lineHeight) + 1;
         const isBlank = lineNum >= 1 && lineNum <= model!.getLineCount()
           && model!.getLineContent(lineNum).trim() === '';
@@ -259,7 +302,9 @@
   }
 
   function createEditor() {
-    if (!containerEl || editor) return;
+    if (!containerEl || editor) {
+      return;
+    }
 
     setupMonacoGlsl(monaco as any);
 
@@ -312,6 +357,15 @@
 
     editor.onKeyDown?.((event: any) => {
       const browserKey = event.browserEvent?.key;
+      const metaKey = !!event.browserEvent?.metaKey;
+      const ctrlKey = !!event.browserEvent?.ctrlKey;
+
+      if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
+        event.browserEvent?.preventDefault?.();
+        event.browserEvent?.stopPropagation?.();
+        handleOverlaySave();
+        return;
+      }
 
       if (
         browserKey
@@ -329,21 +383,29 @@
     containerEl.addEventListener("mousedown", handleContainerMouseDown, true);
 
     editor.onDidChangeModelContent(() => {
-      if (!editor) return;
+      if (!editor) {
+        return;
+      }
       updateBlankLineDecorations();
       const code = editor.getValue();
-      if (code === undefined || !shaderPath) return;
+      if (code === undefined || !shaderPath) {
+        return;
+      }
 
       if (compileMode === "hot") {
         // Fast recompile for immediate visual feedback
-        if (recompileTimer) clearTimeout(recompileTimer);
+        if (recompileTimer) {
+          clearTimeout(recompileTimer);
+        }
         recompileTimer = setTimeout(() => {
           onCodeChange(code);
         }, 30);
       }
 
-      // Slower debounce for file persistence to extension
-      if (persistTimer) clearTimeout(persistTimer);
+      // Keep the tracked TextDocument almost in sync with the overlay in every compile mode.
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
       persistTimer = setTimeout(() => {
         if (transport && shaderPath) {
           lastSentCode = code;
@@ -355,7 +417,7 @@
             },
           });
         }
-      }, 500);
+      }, PERSIST_DELAY_MS);
     });
 
     lastShaderPath = shaderPath;
@@ -432,9 +494,13 @@
   }
 
   function updateErrorMarkers(errs: string[]) {
-    if (!editor) return;
+    if (!editor) {
+      return;
+    }
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) {
+      return;
+    }
 
     // Parse errors for the active buffer, extract line numbers
     const bufferPrefix = activeBufferName === "Image" ? "Image" : activeBufferName;

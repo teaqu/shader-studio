@@ -42,7 +42,7 @@
       transport,
       (updatedConfig) => {
         console.log("Config updated in component:", updatedConfig);
-        // Update will be handled by parent via transport messages
+      // Update will be handled by parent via transport messages
       }
     );
   });
@@ -83,14 +83,18 @@
   }
 
   function addScript() {
-    if (!configManager) return;
+    if (!configManager) {
+      return;
+    }
     configManager.setScript("");
     config = configManager.getConfig();
     switchTab("Script");
   }
 
   function removeScript() {
-    if (!configManager) return;
+    if (!configManager) {
+      return;
+    }
     if (activeTab === "Script") {
       activeTab = "Image";
     }
@@ -99,7 +103,9 @@
   }
 
   function handleScriptPathChange(newPath: string) {
-    if (!configManager) return;
+    if (!configManager) {
+      return;
+    }
     configManager.setScript(newPath);
     config = configManager.getConfig();
   }
@@ -151,7 +157,9 @@
     const tabs = ["Image"];
     if (config?.passes) {
       for (const name of Object.keys(config.passes)) {
-        if (name === "Image") continue;
+        if (name === "Image") {
+          continue;
+        }
         tabs.push(name === "common" ? "Common" : name);
       }
     }
@@ -170,7 +178,9 @@
   }
 
   function handleTabDblClick(tabName: string) {
-    if (!isLocked) return;
+    if (!isLocked) {
+      return;
+    }
     const actualName = getActualBufferName(tabName);
     const bufferPath = bufferPathMap[actualName];
     if (bufferPath) {

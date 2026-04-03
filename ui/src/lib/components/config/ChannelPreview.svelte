@@ -88,7 +88,9 @@
       videoElement.pause();
     } else if (!videoState.paused && videoElement.paused) {
       const p = videoElement.play();
-      if (p && p.catch) p.catch(() => {});
+      if (p && p.catch) {
+        p.catch(() => {});
+      }
     }
     // Sync currentTime if drifted more than 1 second
     if (Math.abs(videoElement.currentTime - videoState.currentTime) > 1) {
@@ -97,7 +99,9 @@
   }
 
   function formatVideoTime(seconds: number): string {
-    if (!isFinite(seconds) || seconds < 0) return '0:00';
+    if (!isFinite(seconds) || seconds < 0) {
+      return '0:00';
+    }
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
@@ -182,13 +186,19 @@
 
   function startFFTAnimation() {
     stopFFTAnimation(); // Prevent overlapping animation loops
-    if (!fftCanvas || !getAudioFFT || !channelInput || !isAudioType(channelInput.type)) return;
+    if (!fftCanvas || !getAudioFFT || !channelInput || !isAudioType(channelInput.type)) {
+      return;
+    }
 
     const ctx = fftCanvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     const draw = () => {
-      if (!fftCanvas || !ctx || !getAudioFFT || !channelInput) return;
+      if (!fftCanvas || !ctx || !getAudioFFT || !channelInput) {
+        return;
+      }
 
       const type = channelInput.type;
       const path = 'path' in channelInput ? (channelInput as any).resolved_path || (channelInput as any).path : undefined;

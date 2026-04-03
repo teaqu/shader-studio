@@ -133,7 +133,7 @@ export class ConfigEditorProvider implements vscode.CustomTextEditorProvider {
       );
 
       if (visibleShaderEditor) {
-        this.shaderProcessor.sendShaderToWebview(visibleShaderEditor, { forceCleanup: true });
+        this.shaderProcessor.sendShaderFromEditor(visibleShaderEditor, { forceCleanup: true });
       } else {
         this.shaderProcessor.sendShaderFromPath(shaderPath, { forceCleanup: true });
       }

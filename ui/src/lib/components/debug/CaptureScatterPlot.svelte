@@ -16,9 +16,13 @@
   let mounted = false;
 
   function draw() {
-    if (!canvas || !mounted) return;
+    if (!canvas || !mounted) {
+      return;
+    }
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     ctx.clearRect(0, 0, W, H);
 
@@ -59,12 +63,18 @@
     }
   }
 
-  onMount(() => { mounted = true; draw(); });
+  onMount(() => {
+    mounted = true; draw(); 
+  });
   $: xData, yData, xMin, xMax, yMin, yMax, draw();
 
   function fmt(n: number): string {
-    if (Math.abs(n) >= 1000) return n.toFixed(0);
-    if (Math.abs(n) >= 10) return n.toFixed(1);
+    if (Math.abs(n) >= 1000) {
+      return n.toFixed(0);
+    }
+    if (Math.abs(n) >= 10) {
+      return n.toFixed(1);
+    }
     return n.toFixed(3);
   }
 </script>

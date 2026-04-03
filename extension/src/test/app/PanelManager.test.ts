@@ -48,7 +48,7 @@ suite('PanelManager Test Suite', () => {
     } as any;
 
     mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub(),
+      sendShaderFromEditor: sandbox.stub(),
     } as any;
 
     const mockGlslFileTracker = {
@@ -196,8 +196,8 @@ suite('PanelManager Test Suite', () => {
 
     panelManager.createPanel();
 
-    sinon.assert.calledOnce(mockShaderProvider.sendShaderToWebview as sinon.SinonStub);
-    sinon.assert.calledWithExactly(mockShaderProvider.sendShaderToWebview as sinon.SinonStub, mockEditor);
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub);
+    sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub, mockEditor);
   });
 
   test('createPanel uses empty tab group when available and locking is disabled', () => {

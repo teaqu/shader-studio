@@ -83,9 +83,9 @@
   const ctx = $derived(debugState?.functionContext);
   const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
   const isLineLocked = $derived(debugState?.isLineLocked);
-  const lineNum = $derived(debugState?.currentLine != null ? debugState.currentLine + 1 : null);
+  const lineNum = $derived(debugState?.currentLine !== null && debugState?.currentLine !== undefined ? debugState.currentLine + 1 : null);
   const isInFunction = $derived(ctx !== null && ctx !== undefined && ctx.isFunction);
-  const hasVariable = $derived(debugState?.lineContent != null && debugState?.isActive);
+  const hasVariable = $derived(debugState?.lineContent !== null && debugState?.lineContent !== undefined && debugState?.isActive);
   const normalizeMode = $derived(debugState?.normalizeMode);
   const isStepEnabled = $derived(debugState?.isStepEnabled);
   const stepEdge = $derived(debugState?.stepEdge);
@@ -241,15 +241,25 @@
   }
 
   function formatVec(v: number[] | Float32Array | null): string {
-    if (!v) return '—';
+    if (!v) {
+      return '—';
+    }
     return Array.from(v).map(n => n.toFixed(1)).join(', ');
   }
 
   function formatCustomValue(val: number | number[] | boolean | undefined): string {
-    if (val === undefined) return '—';
-    if (typeof val === 'boolean') return val ? 'true' : 'false';
-    if (typeof val === 'number') return val.toFixed(3);
-    if (Array.isArray(val)) return val.map(v => v.toFixed(2)).join(', ');
+    if (val === undefined) {
+      return '—';
+    }
+    if (typeof val === 'boolean') {
+      return val ? 'true' : 'false';
+    }
+    if (typeof val === 'number') {
+      return val.toFixed(3);
+    }
+    if (Array.isArray(val)) {
+      return val.map(v => v.toFixed(2)).join(', ');
+    }
     return String(val);
   }
 
@@ -277,8 +287,12 @@
   function handleHeaderControlPointerDown(event: PointerEvent, action: () => void) {
     const isPrimaryPress = event.isPrimary ?? true;
     const isMainButton = event.button ?? 0;
-    if (!isPrimaryPress || isMainButton !== 0) return;
-    if (activeHeaderPointers.has(event.pointerId)) return;
+    if (!isPrimaryPress || isMainButton !== 0) {
+      return;
+    }
+    if (activeHeaderPointers.has(event.pointerId)) {
+      return;
+    }
 
     activeHeaderPointers.add(event.pointerId);
     event.preventDefault();
@@ -291,7 +305,9 @@
   }
 
   function handleHeaderControlKeydown(event: KeyboardEvent, action: () => void) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
     event.preventDefault();
     activateHeaderControl(action);
   }
@@ -306,7 +322,7 @@
     const nextTarget = event.relatedTarget as Node | null;
     const enteredTooltip =
       nextTarget instanceof Node &&
-      (nextTarget as HTMLElement).closest?.('.line-tooltip');
+        (nextTarget as HTMLElement).closest?.('.line-tooltip');
     if (!isLineTooltipHovered && !enteredTooltip) {
       isLineTooltipHoverArmed = false;
     }
@@ -321,7 +337,7 @@
     const nextTarget = event.relatedTarget as Node | null;
     const returnedToTrigger =
       nextTarget instanceof Node &&
-      (nextTarget as HTMLElement).closest?.('.header-info');
+        (nextTarget as HTMLElement).closest?.('.header-info');
     if (!returnedToTrigger) {
       isLineTooltipHoverArmed = false;
     }
@@ -339,8 +355,12 @@
     const tokenPattern = /(\b(?:for|while|if|return)\b|\b(?:int|float|bool|vec[234])\b|-?\b\d+\b)/g;
 
     return escaped.replace(tokenPattern, (token) => {
-      if (/^(for|while|if|return)$/.test(token)) return `<span class="loop-keyword">${token}</span>`;
-      if (/^(int|float|bool|vec[234])$/.test(token)) return `<span class="loop-type">${token}</span>`;
+      if (/^(for|while|if|return)$/.test(token)) {
+        return `<span class="loop-keyword">${token}</span>`;
+      }
+      if (/^(int|float|bool|vec[234])$/.test(token)) {
+        return `<span class="loop-type">${token}</span>`;
+      }
       return `<span class="loop-number">${token}</span>`;
     });
   }
@@ -359,7 +379,9 @@
       class:disabled={!debugState?.isEnabled}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInspectorEnabled)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInspectorEnabled)}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       disabled={!debugState?.isEnabled}
       aria-label="Toggle inspector"
       data-tooltip="Pixel Inspector{!debugState?.isEnabled ? ' (enable debug first)' : ''}"
@@ -371,7 +393,9 @@
       class:active={isInlineOn}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInlineRendering)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInlineRendering)}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
     >
@@ -382,7 +406,9 @@
       class:active={isLineLocked}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleLineLock())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleLineLock())}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       aria-label="Toggle line lock"
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
     >
@@ -397,7 +423,9 @@
       class:active={normalizeMode !== 'off'}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.cycleNormalizeMode())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.cycleNormalizeMode())}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
     >
@@ -411,7 +439,9 @@
       class:active={isStepEnabled}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleStep())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleStep())}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
     >
@@ -435,7 +465,9 @@
       class:active={isVarInspectorOn}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleVariableInspector)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleVariableInspector)}
-      onclick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
@@ -518,7 +550,9 @@
                 placeholder="max"
                 value={loop.maxIter ?? ''}
                 oninput={(e) => handleLoopIterInput(loop, e)}
-                use:dragScrub={{ step: 1, onInput: (v) => { const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null); } }}
+                use:dragScrub={{ step: 1, onInput: (v) => {
+                  const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null); 
+                } }}
                 class="loop-input"
                 aria-label="Max iterations for loop at line {loop.lineNumber + 1}"
               />

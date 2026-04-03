@@ -77,7 +77,11 @@
       <button
         class="ctrl-btn has-input"
         class:active={refreshMode === 'polling'}
-        on:click={() => { if (refreshMode !== 'polling') changeRefreshMode('polling'); }}
+        on:click={() => {
+          if (refreshMode !== 'polling') {
+            changeRefreshMode('polling');
+          } 
+        }}
         title="Auto-recapture every {pollingMs}ms"
       >
         <input

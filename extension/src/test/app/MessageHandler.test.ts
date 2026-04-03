@@ -197,7 +197,16 @@ suite('MessageHandler Test Suite', () => {
       document: mockDocument
     } as any;
 
-    const activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    const shaderSourceEvent: ShaderSourceMessage = {
+      type: 'shaderSource',
+      code: 'test code',
+      config: { passes: {} },
+      path: '/test/shader.glsl',
+      buffers: {}
+    };
+    messageHandler.handleMessage(shaderSourceEvent);
 
     // Test video loading error
     const videoErrorEvent: ErrorMessage = {
@@ -213,7 +222,7 @@ suite('MessageHandler Test Suite', () => {
     // Verify diagnostic was set at line 1 (first line of document)
     sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
     const setCall = (mockDiagnosticCollection.set as any).getCall(0);
-    assert.strictEqual(setCall.args[0], mockDocument.uri);
+    assert.strictEqual(setCall.args[0].fsPath, mockDocument.uri.fsPath);
     assert.strictEqual(setCall.args[1][0].message, 'Shader compilation error: Error: Failed to load video texture from video.webm: Failed to load video from URL: video.webm - Unknown error');
     assert.strictEqual(setCall.args[1][0].severity, vscode.DiagnosticSeverity.Error);
     assert.deepStrictEqual(setCall.args[1][0].range, new vscode.Range(0, 0, 0, 0));
@@ -233,7 +242,16 @@ suite('MessageHandler Test Suite', () => {
       document: mockDocument
     } as any;
 
-    const activeTextEditorStub = sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+    const shaderSourceEvent: ShaderSourceMessage = {
+      type: 'shaderSource',
+      code: 'test code',
+      config: { passes: {} },
+      path: '/test/shader.glsl',
+      buffers: {}
+    };
+    messageHandler.handleMessage(shaderSourceEvent);
 
     // Test different types of non-line-number errors
     const testCases = [

@@ -8,6 +8,7 @@ export class ErrorHandler {
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
+  private lastChangedGlslUri: vscode.Uri | null = null;
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
@@ -36,8 +37,8 @@ export class ErrorHandler {
     // produce fresh errors. Don't clear on editor switch — errors on other
     // files (e.g. common buffer) must remain visible.
     this.textChangeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
-      const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor && event.document === activeEditor.document && activeEditor.document.languageId === 'glsl') {
+      if (this.isGlslDocument(event.document)) {
+        this.lastChangedGlslUri = event.document.uri;
         this.clearPersistentErrors();
       }
     });
@@ -100,10 +101,7 @@ export class ErrorHandler {
 
         // Fallback to active editor if we can't determine the target file
         if (!targetUri) {
-          const editor = vscode.window.activeTextEditor;
-          if (editor && editor.document.languageId === "glsl") {
-            targetUri = editor.document.uri;
-          }
+          targetUri = this.getDefaultTargetUri();
         }
 
         if (targetUri) {
@@ -132,23 +130,20 @@ export class ErrorHandler {
         }
       } else {
         // All non-line-number errors: show at line 1
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-          const document = editor.document;
-          if (document.lineCount > 0) {
-            const range = document.lineAt(0).range;
-            const diagnostic = new vscode.Diagnostic(
-              range,
-              errorText,
-              vscode.DiagnosticSeverity.Error,
-            );
+        const targetInfo = this.getTargetDocumentInfo();
+        if (targetInfo && targetInfo.lineCount > 0) {
+          const range = targetInfo.lineAt(0).range;
+          const diagnostic = new vscode.Diagnostic(
+            range,
+            errorText,
+            vscode.DiagnosticSeverity.Error,
+          );
 
-            const key = document.uri.fsPath;
-            if (!diagnosticsMap.has(key)) {
-              diagnosticsMap.set(key, { uri: document.uri, diagnostics: [] });
-            }
-            diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
+          const key = targetInfo.uri.fsPath;
+          if (!diagnosticsMap.has(key)) {
+            diagnosticsMap.set(key, { uri: targetInfo.uri, diagnostics: [] });
           }
+          diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
         }
       }
     }
@@ -228,25 +223,19 @@ export class ErrorHandler {
   }
 
   private createPersistentDiagnostic(errorText: string, messageType?: string): { diagnostic: vscode.Diagnostic; uri: vscode.Uri } | null {
-    // For persistent errors, always show in the active shader file at line 1
-    const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.languageId === "glsl") {
-      const document = editor.document;
-      if (document.lineCount > 0) {
-        const range = document.lineAt(0).range; // Line 1 (0-indexed as 0)
+    const targetInfo = this.getTargetDocumentInfo();
+    if (targetInfo && targetInfo.lineCount > 0) {
+      const range = targetInfo.lineAt(0).range;
+      const severity = messageType === 'warning'
+        ? vscode.DiagnosticSeverity.Warning
+        : vscode.DiagnosticSeverity.Error;
 
-        // Use warning severity if message type is 'warning', otherwise error
-        const severity = messageType === 'warning'
-          ? vscode.DiagnosticSeverity.Warning
-          : vscode.DiagnosticSeverity.Error;
-
-        const diagnostic = new vscode.Diagnostic(
-          range,
-          errorText,
-          severity,
-        );
-        return { diagnostic, uri: document.uri };
-      }
+      const diagnostic = new vscode.Diagnostic(
+        range,
+        errorText,
+        severity,
+      );
+      return { diagnostic, uri: targetInfo.uri };
     }
     return null;
   }
@@ -258,6 +247,56 @@ export class ErrorHandler {
         this.recentErrors.delete(errorText);
       }
     }
+  }
+
+  private getDefaultTargetUri(): vscode.Uri | null {
+    if (this.lastChangedGlslUri) {
+      return this.lastChangedGlslUri;
+    }
+
+    if (this.currentShaderConfig?.shaderPath) {
+      return vscode.Uri.file(this.currentShaderConfig.shaderPath);
+    }
+
+    const activeDocument = vscode.window.activeTextEditor?.document;
+    if (activeDocument && this.isGlslDocument(activeDocument)) {
+      return activeDocument.uri;
+    }
+
+    if (activeDocument?.uri) {
+      return activeDocument.uri;
+    }
+
+    return null;
+  }
+
+  private getTargetDocumentInfo(): vscode.TextDocument | { uri: vscode.Uri; lineCount: number; lineAt: (line: number) => { range: vscode.Range } } | null {
+    const targetUri = this.getDefaultTargetUri();
+    if (!targetUri) {
+      return null;
+    }
+
+    const openDocument = vscode.workspace.textDocuments.find(
+      (doc) => doc.uri.fsPath === targetUri.fsPath,
+    );
+    if (openDocument) {
+      return openDocument;
+    }
+
+    return {
+      uri: targetUri,
+      lineCount: 1,
+      lineAt: (line: number) => ({
+        range: new vscode.Range(line, 0, line, 0),
+      }),
+    };
+  }
+
+  private isGlslDocument(document: vscode.TextDocument): boolean {
+    return document.languageId === 'glsl'
+      || document.languageId === 'frag'
+      || document.fileName.endsWith('.glsl')
+      || document.fileName.endsWith('.frag');
   }
 
   private normalizeErrorMessage(errorText: string): string {

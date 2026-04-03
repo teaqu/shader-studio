@@ -19,7 +19,7 @@ suite('WebSocketTransport Test Suite', () => {
     sandbox = sinon.createSandbox();
 
     mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub()
+      sendShaderFromEditor: sandbox.stub()
     };
 
     mockGlslFileTracker = {
@@ -394,7 +394,7 @@ suite('WebSocketTransport port binding', () => {
   const net = require('net');
   const transports: WebSocketTransport[] = [];
 
-  const mockShaderProvider = { sendShaderToWebview: () => {} } as any;
+  const mockShaderProvider = { sendShaderFromEditor: () => {} } as any;
   const mockGlslFileTracker = { getActiveOrLastViewedGLSLEditor: () => null } as any;
   const mockContext = { extensionPath: '/mock/extension', workspaceState: { get: () => null, update: () => Promise.resolve() }, subscriptions: [] } as any;
 

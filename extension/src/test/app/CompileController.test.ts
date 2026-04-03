@@ -10,6 +10,7 @@ suite('CompileController Test Suite', () => {
   let mockShaderProvider: any;
   let mockMessenger: any;
   let controller: CompileController;
+  let openTextDocuments: vscode.TextDocument[];
 
   function createMockGLSLEditor(filePath: string = '/mock/path/shader.glsl'): vscode.TextEditor {
     return {
@@ -32,6 +33,8 @@ suite('CompileController Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
+    openTextDocuments = [];
+    sandbox.stub(vscode.workspace, 'textDocuments').get(() => openTextDocuments);
 
     mockContext = {
       globalState: {
@@ -44,10 +47,12 @@ suite('CompileController Test Suite', () => {
       isGlslEditor: sandbox.stub().returns(false),
       setLastViewedGlslFile: sandbox.stub(),
       getLastViewedGlslFile: sandbox.stub().returns(null),
+      getActiveOrLastViewedGLSLEditor: sandbox.stub().returns(null),
     };
 
     mockShaderProvider = {
-      sendShaderToWebview: sandbox.stub().resolves(),
+      sendShaderFromEditor: sandbox.stub().resolves(),
+      sendShaderFromDocument: sandbox.stub().resolves(),
       sendShaderFromPath: sandbox.stub().resolves(),
       sendShaderWithScriptContent: sandbox.stub().resolves(),
       getActiveConfig: sandbox.stub().returns(null),
@@ -91,7 +96,7 @@ suite('CompileController Test Suite', () => {
     controller.handleActiveEditorChange(editor);
 
     assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/shader.glsl'));
-    assert.ok(mockShaderProvider.sendShaderToWebview.calledOnceWith(editor));
+    assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(editor));
   });
 
   test('handleActiveEditorChange does not compile when returning to same shader in save mode', () => {
@@ -101,10 +106,10 @@ suite('CompileController Test Suite', () => {
     controller.setMode('save');
 
     controller.handleActiveEditorChange(editor);
-    mockShaderProvider.sendShaderToWebview.resetHistory();
+    mockShaderProvider.sendShaderFromEditor.resetHistory();
     controller.handleActiveEditorChange(editor);
 
-    sinon.assert.notCalled(mockShaderProvider.sendShaderToWebview);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
   });
 
   test('handleTextDocumentSave recompiles visible GLSL document in save mode', () => {
@@ -116,7 +121,7 @@ suite('CompileController Test Suite', () => {
 
     controller.handleTextDocumentSave(document, [editor]);
 
-    assert.ok(mockShaderProvider.sendShaderToWebview.calledOnceWith(editor));
+    assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(editor));
   });
 
   test('manualCompileCurrentShader falls back to last viewed shader path', async () => {
@@ -126,6 +131,57 @@ suite('CompileController Test Suite', () => {
     await controller.manualCompileCurrentShader(undefined);
 
     assert.ok(mockShaderProvider.sendShaderFromPath.calledOnceWith('/mock/path/last-viewed.glsl'));
+  });
+
+  test('manualCompileCurrentShader uses the last viewed open GLSL document before reading from disk', async () => {
+    const openDocument = {
+      fileName: '/mock/path/last-viewed.glsl',
+      languageId: 'glsl',
+      uri: vscode.Uri.file('/mock/path/last-viewed.glsl'),
+      getText: sandbox.stub().returns('// unsaved shader'),
+    } as any;
+    openTextDocuments = [openDocument];
+    mockGlslFileTracker.getLastViewedGlslFile.returns('/mock/path/last-viewed.glsl');
+    controller.setMode('manual');
+
+    await controller.manualCompileCurrentShader(undefined);
+
+    assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(openDocument));
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
+  });
+
+  test('manualCompileCurrentShader uses the last viewed GLSL editor when focus is elsewhere', async () => {
+    const trackedEditor = createMockGLSLEditor('/mock/path/tracked.glsl');
+    mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(trackedEditor);
+    mockGlslFileTracker.isGlslEditor.withArgs(trackedEditor).returns(true);
+    controller.setMode('manual');
+
+    await controller.manualCompileCurrentShader(undefined);
+
+    assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(trackedEditor));
+  });
+
+  test('manualCompileCurrentShader prefers the active GLSL editor over the last viewed editor', async () => {
+    const activeEditor = createMockGLSLEditor('/mock/path/active.glsl');
+    const trackedEditor = createMockGLSLEditor('/mock/path/tracked.glsl');
+    mockGlslFileTracker.isGlslEditor.withArgs(activeEditor).returns(true);
+    mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(trackedEditor);
+    controller.setMode('manual');
+
+    await controller.manualCompileCurrentShader(activeEditor);
+
+    assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(activeEditor));
+    assert.ok(mockShaderProvider.sendShaderFromEditor.neverCalledWith(trackedEditor));
+  });
+
+  test('manualCompileCurrentShader falls back to shader path when tracked editor is unavailable', async () => {
+    mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(null);
+    mockGlslFileTracker.getLastViewedGlslFile.returns('/mock/path/fallback.glsl');
+    controller.setMode('manual');
+
+    await controller.manualCompileCurrentShader(undefined);
+
+    assert.ok(mockShaderProvider.sendShaderFromPath.calledOnceWith('/mock/path/fallback.glsl'));
   });
 
   test('manualCompileCurrentShader sends error when no shader is available', async () => {
@@ -157,7 +213,6 @@ suite('CompileController Test Suite', () => {
     controller.setMode('hot');
 
     controller.handleTextDocumentChange(
-      activeEditor,
       { document: scriptDocument } as vscode.TextDocumentChangeEvent,
     );
 
@@ -167,5 +222,24 @@ suite('CompileController Test Suite', () => {
         '// script contents',
       ),
     );
+  });
+
+  test('handleTextDocumentChange recompiles GLSL document in hot mode without relying on active editor focus', () => {
+    const document = {
+      fileName: '/mock/path/shader.glsl',
+      languageId: 'glsl',
+      uri: vscode.Uri.file('/mock/path/shader.glsl'),
+      getText: sandbox.stub().returns('// shader'),
+    } as any;
+
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('hot');
+
+    controller.handleTextDocumentChange(
+      { document } as vscode.TextDocumentChangeEvent,
+    );
+
+    assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/shader.glsl'));
+    assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(document));
   });
 });

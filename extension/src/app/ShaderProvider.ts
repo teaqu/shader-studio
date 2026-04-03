@@ -27,7 +27,7 @@ export class ShaderProvider {
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
   }
 
-  public async sendShaderToWebview(
+  public async sendShaderFromEditor(
     editor: vscode.TextEditor,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
@@ -47,39 +47,27 @@ export class ShaderProvider {
     // after the file has been created.
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    if (!code.includes("mainImage")) {
-      const bufferContext = this.resolveStandaloneBufferContext(shaderPath);
-      if (bufferContext.shouldHandle) {
-        this.logger.debug(`Sending non-mainImage buffer/common file ${shaderPath} with owner shader context ${bufferContext.ownerShaderPath}`);
-        await this.sendBufferLikeShaderToWebview(shaderPath, code, bufferContext.ownerShaderPath, editor, options);
-        return;
-      }
-      this.sendMissingMainImageError();
+    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      this.sendNonMainImageShaderFromEditor(shaderPath, code, editor, options)
+    ))) {
       return;
     }
 
-    const message = await this.createShaderSourceMessage(shaderPath, code, options);
-
-    // Only include cursor position if debug mode is enabled
-    if (this.getDebugModeEnabled()) {
-      const line = editor.selection.active.line;
-      const character = editor.selection.active.character;
-      const lineContent = editor.document.lineAt(line).text;
-
-      message.cursorPosition = {
-        line,
-        character,
-        lineContent,
-        filePath: shaderPath,
-      };
-    }
-
-    this.messenger.send(message);
-    this.startScriptPolling(message.config);
-    this.logger.debug("Shader message sent to webview");
-
-    // Track this shader as active
-    this.activeShaders.add(shaderPath);
+    const line = editor.selection.active.line;
+    await this.sendMainImageShader(
+      shaderPath,
+      code,
+      options,
+      this.getDebugModeEnabled()
+        ? {
+          line,
+          character: editor.selection.active.character,
+          lineContent: editor.document.lineAt(line).text,
+          filePath: shaderPath,
+        }
+        : undefined,
+      true,
+    );
   }
 
   public async sendShaderFromPath(
@@ -100,25 +88,55 @@ export class ShaderProvider {
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
-      if (!code.includes("mainImage")) {
-        const bufferContext = this.resolveStandaloneBufferContext(shaderPath);
-        if (bufferContext.shouldHandle) {
-          this.logger.debug(`Sending non-mainImage path ${shaderPath} with owner shader context ${bufferContext.ownerShaderPath}`);
-          await this.sendBufferLikeShaderFromPath(shaderPath, code, bufferContext.ownerShaderPath, options);
-          return;
-        }
-        this.sendMissingMainImageError();
+      if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+        this.sendNonMainImageShaderFromPath(shaderPath, code, options)
+      ))) {
         return;
       }
 
-      const message = await this.createShaderSourceMessage(shaderPath, code, options);
-
-      this.messenger.send(message);
-      this.startScriptPolling(message.config);
-      this.logger.debug("Shader message sent to webview");
+      await this.sendMainImageShader(shaderPath, code, options, undefined, false);
     } catch {
       return;
     }
+  }
+
+  // Uses the current in-memory TextDocument content, including unsaved edits.
+  public async sendShaderFromDocument(
+    document: vscode.TextDocument,
+    options?: { forceCleanup?: boolean },
+  ): Promise<void> {
+    if (!this.messenger || !isGlslDocument(document)) {
+      return;
+    }
+
+    const shaderPath = document.uri.fsPath;
+    const code = document.getText();
+
+    this.messenger.getErrorHandler().clearPersistentErrors();
+
+    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      this.sendNonMainImageShaderFromDocument(shaderPath, code, document, options)
+    ))) {
+      return;
+    }
+
+    let cursorPosition: ShaderSourceMessage["cursorPosition"];
+    if (this.getDebugModeEnabled()) {
+      const matchingEditor = vscode.window.visibleTextEditors.find(
+        (editor) => editor.document.uri.fsPath === shaderPath,
+      );
+      if (matchingEditor) {
+        const line = matchingEditor.selection.active.line;
+        cursorPosition = {
+          line,
+          character: matchingEditor.selection.active.character,
+          lineContent: matchingEditor.document.lineAt(line).text,
+          filePath: shaderPath,
+        };
+      }
+    }
+
+    await this.sendMainImageShader(shaderPath, code, options, cursorPosition, true);
   }
 
   /**
@@ -182,52 +200,6 @@ export class ShaderProvider {
       return null;
     }
     return PathResolver.resolvePath(shaderPath, config.script);
-  }
-
-  private async createShaderSourceMessage(
-    shaderPath: string,
-    code: string,
-    options?: { forceCleanup?: boolean },
-  ): Promise<ShaderSourceMessage> {
-    const buffers: Record<string, string> = {};
-    const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
-
-    this.logger.debug(`Sending shader update for ${shaderPath}`);
-    this.logger.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
-
-    const pathMap = this.buildPathMap(config, shaderPath);
-    const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
-
-    const message: ShaderSourceMessage = {
-      type: "shaderSource",
-      code,
-      config,
-      path: shaderPath,
-      buffers,
-      forceCleanup: options?.forceCleanup,
-      pathMap,
-      bufferPathMap,
-    };
-
-    await this.bundleScript(config, shaderPath, message);
-    return message;
-  }
-
-  private resolveStandaloneBufferContext(shaderPath: string): { shouldHandle: boolean; ownerShaderPath: string | null } {
-    const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
-    if (!this.shouldTreatAsStandaloneBufferSource(shaderPath, ownerShaderPath)) {
-      return { shouldHandle: false, ownerShaderPath: null };
-    }
-
-    return { shouldHandle: true, ownerShaderPath };
-  }
-
-  private sendMissingMainImageError(): void {
-    const errorMsg: ErrorMessage = {
-      type: "error",
-      payload: ["Missing mainImage function"],
-    };
-    this.messenger.send(errorMsg);
   }
 
   private async bundleScript(
@@ -390,28 +362,73 @@ export class ShaderProvider {
     return null;
   }
 
-  private shouldTreatAsStandaloneBufferSource(filePath: string, ownerShaderPath: string | null): boolean {
-    if (ownerShaderPath && ownerShaderPath !== filePath) {
+  private async trySendNonMainImageShader(
+    shaderPath: string,
+    code: string,
+    sendOwnedShader: () => Promise<void>,
+  ): Promise<boolean> {
+    if (code.includes("mainImage")) {
+      return false;
+    }
+
+    const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
+    if (ownerShaderPath && ownerShaderPath !== shaderPath) {
+      this.logger.debug(`Sending non-mainImage source ${shaderPath} with owner shader context ${ownerShaderPath}`);
+      await sendOwnedShader();
       return true;
     }
 
-    return this.isCommonBufferFile(filePath);
+    const errorMsg: ErrorMessage = {
+      type: "error",
+      payload: ["Missing mainImage function"],
+    };
+    this.messenger.send(errorMsg);
+    return true;
   }
 
-  private isCommonBufferFile(filePath: string): boolean {
-    const baseName = path.basename(filePath).toLowerCase();
-    return baseName === "common.glsl" || baseName.includes(".common.");
+  private async sendMainImageShader(
+    shaderPath: string,
+    code: string,
+    options?: { forceCleanup?: boolean },
+    cursorPosition?: ShaderSourceMessage["cursorPosition"],
+    trackActiveShader: boolean = false,
+  ): Promise<void> {
+    const buffers: Record<string, string> = {};
+    const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+
+    this.logger.debug(`Sending shader update for ${shaderPath}`);
+    this.logger.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
+
+    const message: ShaderSourceMessage = {
+      type: "shaderSource",
+      code,
+      config,
+      path: shaderPath,
+      buffers,
+      forceCleanup: options?.forceCleanup,
+      pathMap: this.buildPathMap(config, shaderPath),
+      bufferPathMap: this.buildBufferPathMap(config, shaderPath),
+      cursorPosition,
+    };
+
+    await this.bundleScript(config, shaderPath, message);
+    this.messenger.send(message);
+    this.startScriptPolling(config);
+    this.logger.debug("Shader message sent to webview");
+
+    if (trackActiveShader) {
+      this.activeShaders.add(shaderPath);
+    }
   }
 
-  private async sendBufferLikeShaderToWebview(
+  private async sendNonMainImageShaderFromEditor(
     filePath: string,
     code: string,
-    _ownerShaderPath: string | null,
     editor: vscode.TextEditor,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
     const line = editor.selection.active.line;
-    const message = this.buildBufferLikeShaderMessage(
+    const message = this.buildNonMainImageShaderMessage(
       filePath,
       code,
       options,
@@ -428,13 +445,12 @@ export class ShaderProvider {
     this.messenger.send(message);
   }
 
-  private async sendBufferLikeShaderFromPath(
+  private async sendNonMainImageShaderFromPath(
     filePath: string,
     code: string,
-    _ownerShaderPath: string | null,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
-    const message = this.buildBufferLikeShaderMessage(
+    const message = this.buildNonMainImageShaderMessage(
       filePath,
       code,
       options,
@@ -443,7 +459,41 @@ export class ShaderProvider {
     this.messenger.send(message);
   }
 
-  private buildBufferLikeShaderMessage(
+  // Uses the current in-memory TextDocument content, including unsaved edits.
+  private async sendNonMainImageShaderFromDocument(
+    filePath: string,
+    code: string,
+    document: vscode.TextDocument,
+    options?: { forceCleanup?: boolean },
+  ): Promise<void> {
+    let cursorPosition: ShaderSourceMessage["cursorPosition"];
+
+    if (this.getDebugModeEnabled()) {
+      const matchingEditor = vscode.window.visibleTextEditors.find(
+        (editor) => editor.document.uri.fsPath === document.uri.fsPath,
+      );
+      if (matchingEditor) {
+        const line = matchingEditor.selection.active.line;
+        cursorPosition = {
+          line,
+          character: matchingEditor.selection.active.character,
+          lineContent: matchingEditor.document.lineAt(line).text,
+          filePath,
+        };
+      }
+    }
+
+    const message = this.buildNonMainImageShaderMessage(
+      filePath,
+      code,
+      options,
+      cursorPosition,
+    );
+
+    this.messenger.send(message);
+  }
+
+  private buildNonMainImageShaderMessage(
     filePath: string,
     code: string,
     options?: { forceCleanup?: boolean },

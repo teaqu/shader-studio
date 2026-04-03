@@ -188,8 +188,12 @@
       const preserveTimes = tempInput.type === "audio" && !isPathChange;
       const updated: any = { ...rest, path: cleanPath };
       if (preserveTimes) {
-        if (startTime != null) updated.startTime = startTime;
-        if (endTime != null) updated.endTime = endTime;
+        if (startTime !== null && startTime !== undefined) {
+          updated.startTime = startTime;
+        }
+        if (endTime !== null && endTime !== undefined) {
+          updated.endTime = endTime;
+        }
       }
       tempInput = updated as ConfigInput;
       autoSave();
@@ -336,7 +340,9 @@
           <MiscTab
             {tempInput}
             {getWebviewUri}
-            onSelect={(input) => { tempInput = input; autoSave(); }}
+            onSelect={(input) => {
+              tempInput = input; autoSave(); 
+            }}
           />
 
         {:else if activeTab === "Textures"}
@@ -393,7 +399,9 @@
             {lastSelectedResolvedUri}
             onAssetSelect={handleAssetSelect}
             onUpdatePath={updatePath}
-            onUpdateTempInput={(input) => { tempInput = input; }}
+            onUpdateTempInput={(input) => {
+              tempInput = input; 
+            }}
             onAutoSave={autoSave}
             {audioVideoController}
           />

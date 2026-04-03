@@ -53,17 +53,12 @@ export class CompileController {
   }
 
   public handleTextDocumentChange(
-    activeEditor: vscode.TextEditor | undefined,
     event: vscode.TextDocumentChangeEvent,
   ): void {
-    if (!activeEditor) {
-      return;
-    }
-
-    if (this.glslFileTracker.isGlslEditor(activeEditor)) {
-      this.glslFileTracker.setLastViewedGlslFile(activeEditor.document.uri.fsPath);
+    if (isGlslDocument(event.document)) {
+      this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
       if (this.compileMode === "hot") {
-        this.performShaderUpdate(activeEditor);
+        this.performShaderDocumentUpdate(event.document);
       }
       return;
     }
@@ -107,23 +102,35 @@ export class CompileController {
       return;
     }
 
-    if (activeEditor && this.glslFileTracker.isGlslEditor(activeEditor)) {
-      this.glslFileTracker.setLastViewedGlslFile(activeEditor.document.uri.fsPath);
-      await this.shaderProvider.sendShaderToWebview(activeEditor);
+    const targetEditor = activeEditor && this.glslFileTracker.isGlslEditor(activeEditor)
+      ? activeEditor
+      : this.glslFileTracker.getActiveOrLastViewedGLSLEditor() ?? undefined;
+
+    if (targetEditor && this.glslFileTracker.isGlslEditor(targetEditor)) {
+      this.glslFileTracker.setLastViewedGlslFile(targetEditor.document.uri.fsPath);
+      await this.shaderProvider.sendShaderFromEditor(targetEditor);
       return;
     }
 
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
-    if (lastViewedFile) {
-      await this.shaderProvider.sendShaderFromPath(lastViewedFile);
+    if (!lastViewedFile) {
+      const errorMsg: ErrorMessage = {
+        type: "error",
+        payload: ["No GLSL file to compile. Open a .glsl file first."],
+      };
+      this.messenger.send(errorMsg);
       return;
     }
 
-    const errorMsg: ErrorMessage = {
-      type: "error",
-      payload: ["No GLSL file to compile. Open a .glsl file first."],
-    };
-    this.messenger.send(errorMsg);
+    const openDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.fsPath === lastViewedFile && isGlslDocument(document),
+    );
+    if (openDocument) {
+      await this.shaderProvider.sendShaderFromDocument(openDocument);
+      return;
+    }
+
+    await this.shaderProvider.sendShaderFromPath(lastViewedFile);
   }
 
   private getStoredCompileMode(): CompileMode {
@@ -133,7 +140,13 @@ export class CompileController {
 
   private performShaderUpdate(editor: vscode.TextEditor): void {
     if (this.messenger.hasActiveClients()) {
-      void this.shaderProvider.sendShaderToWebview(editor);
+      void this.shaderProvider.sendShaderFromEditor(editor);
+    }
+  }
+
+  private performShaderDocumentUpdate(document: vscode.TextDocument): void {
+    if (this.messenger.hasActiveClients()) {
+      void this.shaderProvider.sendShaderFromDocument(document);
     }
   }
 

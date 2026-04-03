@@ -16,7 +16,9 @@
 
   let pathInputFocused = false;
   let localPath = value;
-  $: if (!pathInputFocused) localPath = value;
+  $: if (!pathInputFocused) {
+    localPath = value;
+  }
 
   function handlePathInput(e: Event) {
     localPath = (e.target as HTMLInputElement).value;
@@ -42,14 +44,18 @@
       if (value) {
         suppressCreate = true;
         clearTimeout(suppressTimer);
-        suppressTimer = setTimeout(() => { suppressCreate = false; }, 400);
+        suppressTimer = setTimeout(() => {
+          suppressCreate = false; 
+        }, 400);
       } else {
         suppressCreate = false;
       }
     }
   }
 
-  $: if (fileExists) { suppressCreate = false; clearTimeout(suppressTimer); }
+  $: if (fileExists) {
+    suppressCreate = false; clearTimeout(suppressTimer); 
+  }
 
   onDestroy(() => clearTimeout(suppressTimer));
 
@@ -93,7 +99,9 @@
       value={localPath}
       on:input={handlePathInput}
       on:focus={() => pathInputFocused = true}
-      on:blur={() => { pathInputFocused = false; handlePathCommit(); }}
+      on:blur={() => {
+        pathInputFocused = false; handlePathCommit(); 
+      }}
       class="config-input"
       class:error={hasError}
       {placeholder}

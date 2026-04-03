@@ -105,7 +105,7 @@ suite('Shader Studio Test Suite', () => {
     } as any);
 
     shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
-    sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderToWebview');
+    sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromEditor');
   });
 
   teardown(() => {
@@ -541,7 +541,7 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { forceCleanup: true });
   });
 
-  test('refreshCurrentShader should call sendShaderToWebview with forceCleanup when active GLSL editor exists', async () => {
+  test('refreshCurrentShader should call sendShaderFromEditor with forceCleanup when active GLSL editor exists', async () => {
     const mockEditor = createMockGLSLEditor();
 
     // Mock active editor is a GLSL editor
@@ -604,6 +604,76 @@ suite('Shader Studio Test Suite', () => {
     manualCompileCall.args[1]();
 
     sinon.assert.notCalled(sendShaderSpy);
+  });
+
+  test('manualCompile command should compile the tracked shader when VS Code focus is not on a GLSL editor', () => {
+    shaderStudio['compileController'].setMode('manual');
+    const trackedEditor = createMockGLSLEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([trackedEditor]);
+    shaderStudio['glslFileTracker']?.setLastViewedGlslFile?.('/mock/path/shader.glsl');
+
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const manualCompileCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.manualCompile'
+    );
+
+    assert.ok(manualCompileCall, 'manualCompile command should be registered');
+
+    manualCompileCall.args[1]();
+
+    sinon.assert.calledOnce(sendShaderSpy);
+    sinon.assert.calledWith(sendShaderSpy, trackedEditor);
+  });
+
+  test('saveCurrentShader command should save the tracked GLSL editor when VS Code focus is elsewhere', async () => {
+    const trackedEditor = createMockGLSLEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([trackedEditor]);
+    shaderStudio['glslFileTracker']?.setLastViewedGlslFile?.('/mock/path/shader.glsl');
+
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const saveShaderCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.saveCurrentShader'
+    );
+
+    assert.ok(saveShaderCall, 'saveCurrentShader command should be registered');
+
+    await saveShaderCall.args[1]();
+
+    sinon.assert.calledOnce((trackedEditor.document as any).save);
+  });
+
+  test('saveCurrentShader command should no-op when there is no tracked GLSL editor', async () => {
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+
+    const registerCommandStub = vscode.commands.registerCommand as any;
+    const saveShaderCall = registerCommandStub.getCalls().find((call: any) =>
+      call.args[0] === 'shader-studio.saveCurrentShader'
+    );
+
+    assert.ok(saveShaderCall, 'saveCurrentShader command should be registered');
+
+    await saveShaderCall.args[1]();
+
+    sinon.assert.notCalled(sendShaderSpy);
+  });
+
+  test('text document changes should be forwarded to the compile controller using the change event document', () => {
+    const handleTextDocumentChangeSpy = sandbox.spy(shaderStudio['compileController'], 'handleTextDocumentChange');
+    const event = {
+      document: {
+        languageId: 'glsl',
+        fileName: '/mock/path/shader.glsl',
+        uri: vscode.Uri.file('/mock/path/shader.glsl'),
+      },
+    } as vscode.TextDocumentChangeEvent;
+
+    textDocumentChangeListener?.(event);
+
+    sinon.assert.calledOnce(handleTextDocumentChangeSpy);
+    sinon.assert.calledWithExactly(handleTextDocumentChangeSpy, event);
   });
 
   suite('sendCursorPosition debounce tests', () => {
