@@ -47,6 +47,7 @@ export class ErrorHandler {
   public clearPersistentErrors(): void {
     // Clear all persistent errors when editor changes or a fresh shader load begins
     this.persistentErrors.clear();
+    this.recentErrors.clear();
     this.diagnosticCollection.clear();
   }
 

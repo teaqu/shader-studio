@@ -10,7 +10,6 @@ suite('CompileController Test Suite', () => {
   let mockShaderProvider: any;
   let mockMessenger: any;
   let controller: CompileController;
-  let openTextDocuments: vscode.TextDocument[];
 
   function createMockGLSLEditor(filePath: string = '/mock/path/shader.glsl'): vscode.TextEditor {
     return {
@@ -33,8 +32,6 @@ suite('CompileController Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    openTextDocuments = [];
-    sandbox.stub(vscode.workspace, 'textDocuments').get(() => openTextDocuments);
 
     mockContext = {
       globalState: {
@@ -131,23 +128,6 @@ suite('CompileController Test Suite', () => {
     await controller.manualCompileCurrentShader(undefined);
 
     assert.ok(mockShaderProvider.sendShaderFromPath.calledOnceWith('/mock/path/last-viewed.glsl'));
-  });
-
-  test('manualCompileCurrentShader uses the last viewed open GLSL document before reading from disk', async () => {
-    const openDocument = {
-      fileName: '/mock/path/last-viewed.glsl',
-      languageId: 'glsl',
-      uri: vscode.Uri.file('/mock/path/last-viewed.glsl'),
-      getText: sandbox.stub().returns('// unsaved shader'),
-    } as any;
-    openTextDocuments = [openDocument];
-    mockGlslFileTracker.getLastViewedGlslFile.returns('/mock/path/last-viewed.glsl');
-    controller.setMode('manual');
-
-    await controller.manualCompileCurrentShader(undefined);
-
-    assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(openDocument));
-    sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
   });
 
   test('manualCompileCurrentShader uses the last viewed GLSL editor when focus is elsewhere', async () => {

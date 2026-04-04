@@ -95,6 +95,24 @@ suite('ErrorHandler Test Suite', () => {
     assert.equal(errorCallCount, 1, 'Second identical error should be debounced');
   });
 
+  test('should allow identical errors again after clearPersistentErrors resets a fresh compile', () => {
+    const message: ErrorMessage = {
+      type: 'error',
+      payload: ['Duplicate error message']
+    };
+
+    let errorCallCount = 0;
+    mockOutputChannel.error = () => {
+      errorCallCount++;
+    };
+
+    errorHandler.handleError(message);
+    errorHandler.clearPersistentErrors();
+    errorHandler.handleError(message);
+
+    assert.equal(errorCallCount, 2, 'Fresh compile clears should not suppress the next identical error');
+  });
+
   test('should normalize file path errors for debouncing', () => {
     const message1: ErrorMessage = {
       type: 'error',

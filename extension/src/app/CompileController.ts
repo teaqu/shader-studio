@@ -113,24 +113,16 @@ export class CompileController {
     }
 
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
-    if (!lastViewedFile) {
-      const errorMsg: ErrorMessage = {
-        type: "error",
-        payload: ["No GLSL file to compile. Open a .glsl file first."],
-      };
-      this.messenger.send(errorMsg);
+    if (lastViewedFile) {
+      await this.shaderProvider.sendShaderFromPath(lastViewedFile);
       return;
     }
 
-    const openDocument = vscode.workspace.textDocuments.find(
-      (document) => document.uri.fsPath === lastViewedFile && isGlslDocument(document),
-    );
-    if (openDocument) {
-      await this.shaderProvider.sendShaderFromDocument(openDocument);
-      return;
-    }
-
-    await this.shaderProvider.sendShaderFromPath(lastViewedFile);
+    const errorMsg: ErrorMessage = {
+      type: "error",
+      payload: ["No GLSL file to compile. Open a .glsl file first."],
+    };
+    this.messenger.send(errorMsg);
   }
 
   private getStoredCompileMode(): CompileMode {
