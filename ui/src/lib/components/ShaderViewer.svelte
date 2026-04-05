@@ -333,6 +333,11 @@
     isLocked = shaderStudio.getIsLocked();
   }
 
+  function handleOverlayBufferSelect(name: string) {
+    const targetName = isLocked ? name : 'Image';
+    editorOverlayManager?.handleConfigFileSelect(targetName, shaderPath);
+  }
+
   function handleZoomChange(zoom: number) {
     zoomLevel = zoom;
   }
@@ -848,7 +853,7 @@
         vimMode={editorVimMode}
         bufferNames={editorBufferNames}
         activeBufferName={editorBufferName}
-        onBufferSwitch={(name) => editorOverlayManager?.handleConfigFileSelect(name, shaderPath)}
+        onBufferSwitch={handleOverlayBufferSelect}
         {errors}
       />
     {/if}
@@ -883,7 +888,7 @@
         {transport}
         {shaderPath}
         isVisible={$configPanelStore.isVisible}
-        onFileSelect={(name) => editorOverlayManager?.handleConfigFileSelect(name, shaderPath)}
+        onFileSelect={handleOverlayBufferSelect}
         selectedBuffer={editorBufferName}
         isLocked={isLocked}
         {audioVideoController}

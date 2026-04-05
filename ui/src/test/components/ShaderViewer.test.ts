@@ -3944,7 +3944,7 @@ describe('ShaderViewer', () => {
   });
 
   describe('handleConfigFileSelect via config panel', () => {
-    it('should request file contents when switching to non-Image buffer tab in config panel', async () => {
+    it('keeps the overlay on the main shader when a buffer tab is selected while unlocked', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -3979,7 +3979,51 @@ describe('ShaderViewer', () => {
         await fireEvent.click(commonTab);
         await tick();
 
-        // Should send requestFileContents for the common buffer
+        expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
+          type: 'requestFileContents',
+          payload: expect.objectContaining({
+            bufferName: 'common',
+          }),
+        });
+      }
+    });
+
+    it('loads buffer contents into the overlay when a buffer tab is selected while locked', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {}, common: {} } },
+          pathMap: { Image: '/test/shader.glsl' },
+          bufferPathMap: { common: '/test/common.glsl' },
+        },
+      });
+      await tick();
+
+      const lockButton = screen.getByLabelText('Toggle lock');
+      await fireEvent.click(lockButton);
+      await tick();
+
+      configPanelStore.setVisible(true);
+      await tick();
+      await tick();
+
+      vi.clearAllMocks();
+
+      const tabButtons = container.querySelectorAll('.tab-button');
+      const commonTab = Array.from(tabButtons).find(b => b.textContent?.includes('Common'));
+      if (commonTab) {
+        await fireEvent.click(commonTab);
+        await tick();
+
         expect(mockTransport.postMessage).toHaveBeenCalledWith({
           type: 'requestFileContents',
           payload: expect.objectContaining({
