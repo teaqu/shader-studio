@@ -3965,6 +3965,10 @@ describe('ShaderViewer', () => {
       });
       await tick();
 
+      editorOverlayStore.setVisible(true);
+      await tick();
+      await tick();
+
       // Open config panel
       configPanelStore.setVisible(true);
       await tick();
@@ -3979,6 +3983,7 @@ describe('ShaderViewer', () => {
         await fireEvent.click(commonTab);
         await tick();
 
+        expect(commonTab.classList.contains('active')).toBe(true);
         expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
           type: 'requestFileContents',
           payload: expect.objectContaining({

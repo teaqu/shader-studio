@@ -120,6 +120,7 @@
   let editorFilePath: string = "";
   let editorFileCode: string = "";
   let editorBufferNames: string[] = ["Image"];
+  let configSelectedBuffer: string = "Image";
 
   // Performance panel state
   let lastSentCompileMode: CompileMode | null = null;
@@ -334,8 +335,13 @@
   }
 
   function handleOverlayBufferSelect(name: string) {
-    const targetName = isLocked ? name : 'Image';
-    editorOverlayManager?.handleConfigFileSelect(targetName, shaderPath);
+    configSelectedBuffer = name;
+
+    if (!isLocked && name !== 'Image') {
+      return;
+    }
+
+    editorOverlayManager?.handleConfigFileSelect(name, shaderPath);
   }
 
   function handleZoomChange(zoom: number) {
@@ -531,6 +537,7 @@
       customUniformValues = {};
       uniformTimestamps = {};
       uniformActualFps = {};
+      configSelectedBuffer = 'Image';
       scriptInfo = currentConfig?.script
         ? {
           filename: currentConfig.script,
@@ -711,6 +718,9 @@
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
+      if (isLocked) {
+        configSelectedBuffer = state.bufferName;
+      }
     },
     onShaderCodeChanged: (code) => {
       currentShaderCode = code; 
@@ -889,7 +899,7 @@
         {shaderPath}
         isVisible={$configPanelStore.isVisible}
         onFileSelect={handleOverlayBufferSelect}
-        selectedBuffer={editorBufferName}
+        selectedBuffer={configSelectedBuffer}
         isLocked={isLocked}
         {audioVideoController}
         globalMuted={audioMuted}
