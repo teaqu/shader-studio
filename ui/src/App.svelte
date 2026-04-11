@@ -3,7 +3,7 @@
   import ShaderViewer from "./lib/components/ShaderViewer.svelte";
   import { currentTheme, applyTheme } from "./lib/stores/themeStore";
 
-  function handleAppInitialized(data: { shaderStudio: any }) {
+  function handleAppInitialized() {
     console.log("Shader Studio UI initialized successfully");
   }
 

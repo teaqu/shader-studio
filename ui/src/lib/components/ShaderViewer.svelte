@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
   import { get } from "svelte/store";
-  import { ShaderStudio } from "../ShaderStudio";
+  import { ShaderPipeline } from "../ShaderPipeline";
+  import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
@@ -13,7 +14,6 @@
   import DebugPanel from "./debug/DebugPanel.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
-  import { ShaderLocker } from "../ShaderLocker";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import type { PixelInspectorState } from "../types/PixelInspectorState";
@@ -21,7 +21,7 @@
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
   import { AudioVideoController } from "../AudioVideoController";
-  import { MessageRouter, type MessageRouterCallbacks } from "../MessageRouter";
+  import type { CompilationResult } from "../ShaderProcessor";
   import { EditorOverlayManager, type EditorOverlayCallbacks } from "../EditorOverlayManager";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
@@ -35,9 +35,7 @@
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
 
-  export let onInitialized: (data: {
-    shaderStudio: ShaderStudio;
-  }) => void = () => {};
+  export let onInitialized: () => void = () => {};
 
   // Core state
   let glCanvas: HTMLCanvasElement;
@@ -62,7 +60,8 @@
   };
 
   // Managers and controllers
-  let shaderStudio: ShaderStudio;
+  let pipeline: ShaderPipeline;
+  let shaderLocker: ShaderLocker;
   let renderingEngine: RenderingEngine;
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
@@ -73,7 +72,8 @@
   let shaderDebugManager: ShaderDebugManager | undefined;
   let variableCaptureManager: VariableCaptureManager | undefined;
   let audioVideoController: AudioVideoController | undefined;
-  let messageRouter: MessageRouter | undefined;
+  let pendingMessages: MessageEvent[] = [];
+  let routerInitialized = false;
   let editorOverlayManager: EditorOverlayManager | undefined;
 
   let debugState: ShaderDebugState = {
@@ -257,7 +257,7 @@
   // FPS polling
   onMount(() => {
     const fpsInterval = setInterval(() => {
-      if (initialized && shaderStudio) {
+      if (initialized) {
         currentFPS = renderingEngine.getCurrentFPS();
       }
       // Evict stale poll timestamps so actualPollFps decays to 0 when messages stop
@@ -305,24 +305,21 @@
     pixelInspectorManager.handleMouseMove(event);
   }
 
-  function handleReset() {
+  async function handleReset() {
     if (!initialized) {
       return;
     }
     audioStore.setMuted(false);
     // Reset script time origin so custom uniform iTime matches shader iTime
     transport.postMessage({ type: 'resetScriptTime' });
-    shaderStudio.handleReset(async () => {
-      const lastEvent = shaderStudio!.getLastShaderEvent();
+    await pipeline.reset(async () => {
+      const lastEvent = pipeline.getLastEvent();
       if (lastEvent) {
-        await messageRouter!.handleMessage(lastEvent);
+        await handleMessage(lastEvent);
       }
-      const engine = shaderStudio?.getRenderingEngine();
-      if (engine) {
-        await engine.resumeAudioContext();
-        engine.resumeAllAudio();
-        engine.setGlobalVolume(linearToPerceptualVolume(audioVideoController!.volume), false);
-      }
+      await renderingEngine.resumeAudioContext();
+      renderingEngine.resumeAllAudio();
+      renderingEngine.setGlobalVolume(linearToPerceptualVolume(audioVideoController!.volume), false);
     });
   }
 
@@ -330,14 +327,18 @@
     if (!initialized) {
       return;
     }
-    shaderStudio.handleRefresh();
+    if (shaderLocker.isLocked()) {
+      pipeline.refresh(shaderLocker.getLockedShaderPath() || undefined);
+    } else {
+      pipeline.refresh();
+    }
   }
 
   function handleConfig() {
     if (!initialized) {
       return;
     }
-    const lastEvent = shaderStudio.getLastShaderEvent();
+    const lastEvent = pipeline.getLastEvent();
     const path = lastEvent?.data?.path;
     if (!path) {
       transport.postMessage({ type: 'generateConfig', payload: {} });
@@ -360,8 +361,9 @@
     if (!initialized) {
       return;
     }
-    shaderStudio.handleToggleLock();
-    isLocked = shaderStudio.getIsLocked();
+    const currentShaderPath = pipeline.getLastEvent()?.data?.path;
+    shaderLocker.toggleLock(currentShaderPath);
+    isLocked = shaderLocker.isLocked();
   }
 
   function handleOverlayBufferSelect(name: string) {
@@ -427,7 +429,7 @@
         pixelInspectorManager.setEnabled(false);
       }
 
-      shaderStudio.triggerDebugRecompile();
+      pipeline.triggerDebugRecompile();
     } else if (lastSentDebugEnabled !== $debugPanelStore.isVisible) {
       transport.postMessage({
         type: 'debugModeState',
@@ -523,7 +525,7 @@
         return;
       }
 
-      shaderStudio?.triggerDebugRecompile();
+      pipeline?.triggerDebugRecompile();
       if (debugState.isVariableInspectorEnabled) {
         notifyVariableCaptureManager();
       }
@@ -559,15 +561,15 @@
   }
 
   function getUniforms() {
-    if (!initialized || !shaderStudio) {
+    if (!initialized) {
       return null;
     }
     return renderingEngine.getUniforms();
   }
 
   function handleShaderSource(event: MessageEvent) {
-    const locked = shaderStudio.getIsLocked();
-    const lockedPath = shaderStudio.getLockedShaderPath();
+    const locked = shaderLocker.isLocked();
+    const lockedPath = shaderLocker.getLockedShaderPath();
     if (!locked || lockedPath === event.data.path) {
       const isFirstShader = !hasShader && event.data.path;
       if (isFirstShader) {
@@ -624,49 +626,121 @@
     }
   }
 
+  async function handleMessage(event: MessageEvent): Promise<void> {
+    const { type } = event.data;
+
+    if (type === 'error') {
+      const payload = event.data.payload;
+      errors = Array.isArray(payload) ? payload : [payload];
+      return;
+    }
+
+    if (type === 'fileContents') {
+      editorOverlayManager?.handleFileContents(event.data.payload.path || '', event.data.payload.code || '');
+      return;
+    }
+
+    if (type === 'customUniformValues') {
+      const values: { name: string; type: string; value: number | number[] | boolean }[] = event.data.payload.values;
+      if (renderingEngine) {
+        renderingEngine.updateCustomUniformValues(values);
+      }
+      const now = performance.now();
+      for (const v of values) {
+        customUniformValues[v.name] = v.value;
+        const ts = uniformTimestamps[v.name] ?? [];
+        ts.push(now);
+        uniformTimestamps[v.name] = ts;
+      }
+      customUniformValues = { ...customUniformValues };
+      pollTimestamps.push(now);
+      const cutoff = now - 1000;
+      while (pollTimestamps.length > 0 && pollTimestamps[0] < cutoff) {
+        pollTimestamps.shift();
+      }
+      actualPollFps = pollTimestamps.length;
+      return;
+    }
+
+    if (type === 'shaderSource') {
+      handleShaderSource(event);
+      try {
+        const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
+        if (result) {
+          errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+          if (result.success && scriptInfo) {
+            scriptInfo = { ...scriptInfo, uniforms: renderingEngine.getCustomUniformInfo() };
+          }
+        }
+        isLocked = shaderLocker.isLocked();
+      } catch (err) {
+        addError(`Shader message handling failed: ${err}`);
+      }
+      return;
+    }
+
+    if (type === 'cursorPosition') {
+      pipeline?.handleCursorPositionMessage(event.data);
+      return;
+    }
+
+    if (type === 'toggleEditorOverlay') {
+      if (hasShader) editorOverlayStore.toggle();
+      return;
+    }
+
+    if (type === 'resetLayout') {
+      handleResetLayout();
+      return;
+    }
+
+    if (type === 'manualCompile') {
+      void handleManualCompile();
+      return;
+    }
+  }
+
   async function initializeApp() {
     try {
       transport.onMessage(async (event: MessageEvent) => {
-        if (initialized) {
-          await messageRouter!.handleMessage(event);
-          if (event.data.type === 'cursorPosition' && shaderStudio) {
-            const handler = (shaderStudio as any).messageHandler;
-            handler?.handleCursorPositionMessage(event.data);
-          }
+        if (routerInitialized) {
+          await handleMessage(event);
         } else {
-          messageRouter?.bufferMessage(event);
+          pendingMessages.push(event);
         }
       });
 
-      const shaderLocker = new ShaderLocker();
+      shaderLocker = new ShaderLocker();
       renderingEngine = new RenderingEngine();
 
       shaderDebugManager = new ShaderDebugManager();
       shaderDebugManager.setStateCallback((s) => {
-        debugState = s; 
+        debugState = s;
       });
 
-      shaderStudio = new ShaderStudio(transport, shaderLocker, renderingEngine, shaderDebugManager);
+      try {
+        renderingEngine.initialize(glCanvas, true);
+      } catch (err) {
+        transport.postMessage({ type: 'error', payload: ['❌ Renderer initialization failed:', String(err)] });
+        addError("Failed to initialize renderer");
+        return;
+      }
 
-      messageRouter = new MessageRouter(() => shaderStudio, messageRouterCallbacks);
+      pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager);
+      transport.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
+      transport.postMessage({ type: 'refresh' });
 
       editorOverlayManager = new EditorOverlayManager(
         transport, () => renderingEngine, editorOverlayCallbacks,
       );
 
-      const success = await shaderStudio.initialize(glCanvas);
-      if (!success) {
-        addError("Failed to initialize ShaderStudio");
-        return;
-      }
-
       timeManager = renderingEngine.getTimeManager();
 
-      // AudioVideoController must be created after shaderStudio.initialize()
+      // AudioVideoController must be created after the engine is initialized
       // because it subscribes to audioStore which fires immediately,
       // triggering applyGlobalAudioState() which needs a fully initialized engine.
       audioVideoController = new AudioVideoController(
-        () => shaderStudio,
+        () => renderingEngine,
         (vol, mut) => {
           audioVolume = vol; audioMuted = mut; 
         },
@@ -674,7 +748,7 @@
 
       recordingManager = new RecordingManager(
         () => {
-          const lastEvent = shaderStudio.getLastShaderEvent();
+          const lastEvent = pipeline.getLastEvent();
           return {
             code: currentShaderCode,
             config: currentConfig,
@@ -703,7 +777,7 @@
         shaderDebugManager?.setCapturedVariables(vars);
       });
 
-      shaderDebugManager.setRecompileCallback(() => shaderStudio.triggerDebugRecompile());
+      shaderDebugManager.setRecompileCallback(() => pipeline.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
       shaderDebugManager.setStateCallback((s) => {
         debugState = s;
@@ -712,77 +786,17 @@
       renderingEngine.togglePause();
 
       initialized = true;
-      messageRouter.markInitialized();
-      messageRouter.replayPendingMessages();
+      routerInitialized = true;
+      for (const msg of pendingMessages) {
+        await handleMessage(msg);
+      }
+      pendingMessages = [];
 
-      onInitialized({ shaderStudio });
+      onInitialized();
     } catch (err) {
       addError(`Initialization failed: ${err}`);
     }
   }
-
-  // Callback objects for managers — defined as getters to close over Svelte state
-  const messageRouterCallbacks: MessageRouterCallbacks = {
-    onError: (errs) => {
-      errors = errs; 
-    },
-    onMessageError: (msg) => {
-      addError(msg); 
-    },
-    onFileContents: (path, code) => {
-      editorOverlayManager?.handleFileContents(path, code); 
-    },
-    onShaderSource: handleShaderSource,
-    onToggleEditorOverlay: () => {
-      if (!hasShader) {
-        return;
-      }
-      editorOverlayStore.toggle();
-    },
-    onResetLayout: () => {
-      handleResetLayout(); 
-    },
-    onManualCompile: () => {
-      void handleManualCompile(); 
-    },
-    onCompilationResult: (result) => {
-      if (result) {
-        errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
-        if (result.success && scriptInfo) {
-          scriptInfo = {
-            ...scriptInfo,
-            uniforms: renderingEngine.getCustomUniformInfo(),
-          };
-        }
-      }
-    },
-    onLockStateChanged: (locked) => {
-      isLocked = locked; 
-    },
-    onCustomUniformValues: (values) => {
-      if (renderingEngine) {
-        renderingEngine.updateCustomUniformValues(values);
-      }
-      // Merge changed values (not full replace)
-      const now = performance.now();
-      for (const v of values) {
-        customUniformValues[v.name] = v.value;
-        // Per-uniform fps tracking
-        const ts = uniformTimestamps[v.name] ?? [];
-        ts.push(now);
-        uniformTimestamps[v.name] = ts;
-      }
-      customUniformValues = { ...customUniformValues };
-
-      // Global poll rate tracking
-      pollTimestamps.push(now);
-      const cutoff = now - 1000;
-      while (pollTimestamps.length > 0 && pollTimestamps[0] < cutoff) {
-        pollTimestamps.shift();
-      }
-      actualPollFps = pollTimestamps.length;
-    },
-  };
 
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
@@ -808,9 +822,9 @@
     onStartRenderLoop: () => {
       renderingEngine.startRenderLoop(); 
     },
-    getLastShaderEvent: () => shaderStudio.getLastShaderEvent(),
+    getLastShaderEvent: () => pipeline.getLastEvent(),
     handleShaderMessage: (event) => {
-      messageRouter!.handleMessage(event); 
+      void handleMessage(event);
     },
   };
 
@@ -883,7 +897,7 @@
     aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
     editorOverlayManager?.setConfig(updatedConfig);
     shaderDebugManager?.setShaderContext(updatedConfig, shaderPath, bufferPathMap);
-    shaderStudio?.updateCurrentConfig(updatedConfig);
+    pipeline?.updateCurrentConfig(updatedConfig);
     await tick();
   }
 

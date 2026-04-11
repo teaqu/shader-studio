@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
-import { MessageHandler } from '../../lib/transport/MessageHandler';
+import { ShaderPipeline as MessageHandler } from '../../lib/ShaderPipeline';
 import { ShaderLocker } from '../../lib/ShaderLocker';
 import type { CursorPositionMessage } from '@shader-studio/types';
 

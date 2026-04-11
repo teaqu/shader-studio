@@ -1,4 +1,4 @@
-import type { ShaderStudio } from './ShaderStudio';
+import type { RenderingEngine } from '../../../rendering/src/types';
 import { audioStore, linearToPerceptualVolume, type AudioState } from './stores/audioStore';
 
 export class AudioVideoController {
@@ -8,7 +8,7 @@ export class AudioVideoController {
   private onStateChanged: ((volume: number, muted: boolean) => void) | null = null;
 
   constructor(
-    private getShaderStudio: () => ShaderStudio | undefined,
+    private getEngine: () => RenderingEngine | undefined,
     onStateChanged?: (volume: number, muted: boolean) => void,
   ) {
     this.onStateChanged = onStateChanged ?? null;
@@ -29,7 +29,7 @@ export class AudioVideoController {
   }
 
   videoControl(path: string, action: string): void {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     if (!engine) {
       return;
     }
@@ -48,12 +48,12 @@ export class AudioVideoController {
   }
 
   getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     return engine ? engine.getVideoState(path) : null;
   }
 
   audioControl(path: string, action: string): void {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     if (!engine) {
       return;
     }
@@ -90,12 +90,12 @@ export class AudioVideoController {
   }
 
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     return engine ? engine.getAudioState(path) : null;
   }
 
   getAudioFFT(type: string, path?: string): Uint8Array | null {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     return engine ? engine.getAudioFFTData(type, path) : null;
   }
 
@@ -108,7 +108,7 @@ export class AudioVideoController {
   }
 
   private applyGlobalAudioState(): void {
-    const engine = this.getShaderStudio()?.getRenderingEngine();
+    const engine = this.getEngine();
     if (engine) {
       engine.setGlobalVolume(linearToPerceptualVolume(this.audioVolume), this.audioMuted);
     }

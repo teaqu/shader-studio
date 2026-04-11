@@ -1,6 +1,6 @@
-import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
-import type { ShaderLocker } from "../ShaderLocker";
-import type { Transport } from "./MessageTransport";
+import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
+import type { ShaderLocker } from "./ShaderLocker";
+import type { Transport } from "./transport/MessageTransport";
 import type {
   CursorPositionMessage,
   ErrorMessage,
@@ -9,13 +9,13 @@ import type {
   ShaderSourceMessage,
   WarningMessage,
 } from "@shader-studio/types";
-import { BufferUpdater } from '../util/BufferUpdater';
-import { BufferPathResolver } from '../util/BufferPathResolver';
-import { ShaderDebugManager } from '../ShaderDebugManager';
-import { ShaderProcessor, type CompilationResult } from '../ShaderProcessor';
+import { BufferUpdater } from './util/BufferUpdater';
+import { BufferPathResolver } from './util/BufferPathResolver';
+import { ShaderDebugManager } from './ShaderDebugManager';
+import { ShaderProcessor, type CompilationResult } from './ShaderProcessor';
 import type { ShaderConfig } from "@shader-studio/types";
 
-export class MessageHandler {
+export class ShaderPipeline {
   private renderEngine: RenderingEngine;
   private shaderLocker: ShaderLocker;
   private transport: Transport;

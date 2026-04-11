@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MessageHandler } from "../../lib/transport/MessageHandler";
+import { ShaderPipeline as MessageHandler } from "../../lib/ShaderPipeline";
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import type { Transport } from "../../lib/transport/MessageTransport";
 import type { ShaderLocker } from "../../lib/ShaderLocker";

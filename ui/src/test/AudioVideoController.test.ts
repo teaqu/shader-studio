@@ -14,14 +14,8 @@ describe('AudioVideoController', () => {
   });
 
   it('should not crash when engine methods are unavailable', () => {
-    // Simulate a ShaderStudio that exists but whose getRenderingEngine returns
-    // an object without fully initialized internals.
-    const mockStudio = {
-      getRenderingEngine: () => undefined,
-    } as any;
-
     expect(() => {
-      const controller = new AudioVideoController(() => mockStudio);
+      const controller = new AudioVideoController(() => undefined);
       controller.dispose();
     }).not.toThrow();
   });
