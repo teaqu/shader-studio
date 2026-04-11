@@ -449,56 +449,39 @@ describe('MenuBar Component', () => {
       await fireEvent.click(resolutionButton);
 
       expect(screen.getByText('Custom Resolution')).toBeInTheDocument();
-      const inputs = screen.getAllByPlaceholderText('px or %');
+      const inputs = screen.getAllByRole('spinbutton');
       expect(inputs).toHaveLength(2);
     });
 
-    it('should enable Apply button only when both custom inputs are filled', async () => {
+    it('should update resolution store only when both custom inputs are filled', async () => {
       render(MenuBar, { props: defaultProps });
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
-      const applyButton = screen.getByRole('button', { name: 'Apply' });
-      expect(applyButton).toBeDisabled();
-
-      const inputs = screen.getAllByPlaceholderText('px or %');
+      const inputs = screen.getAllByRole('spinbutton');
       await fireEvent.input(inputs[0], { target: { value: '1920' } });
-      await fireEvent.input(inputs[1], { target: { value: '1080' } });
-
-      expect(applyButton).not.toBeDisabled();
-    });
-
-    it('should ignore percentage values when Apply is clicked', async () => {
-      render(MenuBar, { props: defaultProps });
-
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      const inputs = screen.getAllByPlaceholderText('px or %');
-      await fireEvent.input(inputs[0], { target: { value: '50%' } });
-      await fireEvent.input(inputs[1], { target: { value: '50%' } });
-
-      const applyButton = screen.getByRole('button', { name: 'Apply' });
-      await fireEvent.click(applyButton);
 
       const { get } = await import('svelte/store');
-      const state = get(resolutionStore);
+      let state = get(resolutionStore);
       expect(state.customWidth).toBeUndefined();
       expect(state.customHeight).toBeUndefined();
+
+      await fireEvent.input(inputs[1], { target: { value: '1080' } });
+
+      state = get(resolutionStore);
+      expect(state.customWidth).toBe('1920');
+      expect(state.customHeight).toBe('1080');
     });
 
-    it('should update resolution store with px values when Apply is clicked', async () => {
+    it('should update resolution store when both custom inputs are filled', async () => {
       render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
-      const inputs = screen.getAllByPlaceholderText('px or %');
+      const inputs = screen.getAllByRole('spinbutton');
       await fireEvent.input(inputs[0], { target: { value: '1920' } });
       await fireEvent.input(inputs[1], { target: { value: '1080' } });
-
-      const applyButton = screen.getByRole('button', { name: 'Apply' });
-      await fireEvent.click(applyButton);
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
@@ -532,7 +515,7 @@ describe('MenuBar Component', () => {
       expect(state.customHeight).toBeUndefined();
     });
 
-    it('should disable scale buttons when custom resolution is active', async () => {
+    it('should keep scale buttons enabled when custom resolution is active', async () => {
       resolutionStore.setCustomResolution('512', '512');
       render(MenuBar, { props: defaultProps });
 
@@ -540,7 +523,7 @@ describe('MenuBar Component', () => {
       await fireEvent.click(resolutionButton);
 
       const scaleButton = screen.getByRole('button', { name: '1x' });
-      expect(scaleButton).toBeDisabled();
+      expect(scaleButton).not.toBeDisabled();
     });
 
     it('should disable aspect ratio buttons when custom resolution is active', async () => {
@@ -634,7 +617,7 @@ describe('MenuBar Component', () => {
       expect(state.customHeight).toBeUndefined();
     });
 
-    it('should NOT uncheck save to shader config when reset is clicked', async () => {
+    it('should reset source back to session when reset is clicked', async () => {
       resolutionStore.setSource('config');
       resolutionStore.setScale(4);
 
@@ -648,7 +631,7 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
-      expect(state.source).toBe('config');
+      expect(state.source).toBe('session');
     });
 
     it('should reset aspect ratio to fill when resolution reset is clicked', async () => {
@@ -668,51 +651,17 @@ describe('MenuBar Component', () => {
     });
   });
 
-  describe('Zoom Reset', () => {
-    it('should show reset button next to zoom header', async () => {
+  describe('Zoom Controls', () => {
+    it('should show zoom slider without a dedicated reset button', async () => {
       render(MenuBar, { props: defaultProps });
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-
-      // There should be two Reset buttons: one for resolution, one for zoom
-      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
-      expect(resetButtons.length).toBe(2);
-    });
-
-    it('should call onZoomChange with 1.0 when zoom reset is clicked', async () => {
-      const onZoomChange = vi.fn();
-      render(MenuBar, { props: { ...defaultProps, onZoomChange } });
-
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      // First change zoom to something else
-      const zoomSlider = screen.getByDisplayValue('1');
-      await fireEvent.input(zoomSlider, { target: { value: '2.5' } });
-      onZoomChange.mockClear();
-
-      // Click zoom reset (second Reset button)
-      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
-      await fireEvent.click(resetButtons[1]);
-
-      expect(onZoomChange).toHaveBeenCalledWith(1.0);
-    });
-
-    it('should reset zoom slider value to 1.0', async () => {
-      render(MenuBar, { props: defaultProps });
-
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      // Change zoom
-      const zoomSlider = screen.getByDisplayValue('1') as HTMLInputElement;
-      await fireEvent.input(zoomSlider, { target: { value: '2.5' } });
-
-      // Click zoom reset
-      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
-      await fireEvent.click(resetButtons[1]);
 
       expect(screen.getByText('Zoom: 1.0x')).toBeInTheDocument();
+      expect(screen.getByRole('slider')).toBeInTheDocument();
+
+      const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
+      expect(resetButtons).toHaveLength(1);
     });
   });
 
