@@ -33,7 +33,6 @@ export class ShaderProcessor {
   public async processMainShaderCompilation(
     message: ShaderSourceMessage,
     forceCleanup: boolean = false,
-    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
@@ -55,7 +54,6 @@ export class ShaderProcessor {
         configToCompile,
         path,
         buffersToCompile,
-        audioOptions,
         message.customUniformDeclarations,
         message.customUniformInfo,
       );

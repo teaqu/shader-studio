@@ -18,7 +18,6 @@ describe('AudioVideoController', () => {
     // an object without fully initialized internals.
     const mockStudio = {
       getRenderingEngine: () => undefined,
-      setAudioOptions: vi.fn(),
     } as any;
 
     expect(() => {

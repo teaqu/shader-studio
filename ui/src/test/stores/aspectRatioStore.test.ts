@@ -12,9 +12,11 @@ describe('aspectRatioStore', () => {
     return mod.aspectRatioStore;
   }
 
-  it('should have default mode 16:9', async () => {
+  it('should have default mode 16:9 and savedToConfig false', async () => {
     const store = await importStore();
-    expect(get(store).mode).toBe('16:9');
+    const state = get(store);
+    expect(state.mode).toBe('16:9');
+    expect(state.source).toBe('session');
   });
 
   it('should load mode from localStorage', async () => {
@@ -31,20 +33,32 @@ describe('aspectRatioStore', () => {
     expect(stored.mode).toBe('1:1');
   });
 
-  // --- setFromConfig no-op guard ---
+  it('setMode should set savedToConfig to false', async () => {
+    const store = await importStore();
+    store.setFromConfig('4:3');
+    expect(get(store).source).toBe('config');
+    store.setMode('1:1');
+    expect(get(store).source).toBe('session');
+  });
+
+  // --- setFromConfig ---
+
+  it('setFromConfig should set mode and savedToConfig true', async () => {
+    const store = await importStore();
+    store.setFromConfig('4:3');
+    const state = get(store);
+    expect(state.mode).toBe('4:3');
+    expect(state.source).toBe('config');
+  });
 
   it('setFromConfig should not notify subscribers when called with same mode', async () => {
     const store = await importStore();
     store.setFromConfig('4:3');
-    expect(get(store).mode).toBe('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => {
-      callCount++; 
-    });
+    const unsub = store.subscribe(() => { callCount++; });
     callCount = 0;
 
-    store.setFromConfig('4:3');
     store.setFromConfig('4:3');
     store.setFromConfig('4:3');
     expect(callCount).toBe(0);
@@ -56,9 +70,7 @@ describe('aspectRatioStore', () => {
     store.setFromConfig('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => {
-      callCount++; 
-    });
+    const unsub = store.subscribe(() => { callCount++; });
     callCount = 0;
 
     store.setFromConfig('1:1');
@@ -72,9 +84,7 @@ describe('aspectRatioStore', () => {
     store.setFromConfig('4:3');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => {
-      callCount++; 
-    });
+    const unsub = store.subscribe(() => { callCount++; });
     callCount = 0;
 
     store.setFromConfig('invalid' as any);
@@ -83,19 +93,59 @@ describe('aspectRatioStore', () => {
     unsub();
   });
 
-  it('setFromConfig should ignore undefined', async () => {
+  // --- setFromConfig(undefined) resets to default when savedToConfig was true ---
+
+  it('setFromConfig(undefined) should reset to default when previously set from config', async () => {
     const store = await importStore();
     store.setFromConfig('4:3');
+    expect(get(store).source).toBe('config');
 
     let callCount = 0;
-    const unsub = store.subscribe(() => {
-      callCount++; 
-    });
+    const unsub = store.subscribe(() => { callCount++; });
     callCount = 0;
 
     store.setFromConfig(undefined);
+    expect(callCount).toBe(1);
+    expect(get(store).mode).toBe('16:9');
+    expect(get(store).source).toBe('session');
+    unsub();
+  });
+
+  it('setFromConfig(undefined) should restore localStorage value when resetting', async () => {
+    localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify({ mode: 'fill' }));
+    const store = await importStore();
+    store.setFromConfig('4:3');
+
+    store.setFromConfig(undefined);
+    expect(get(store).mode).toBe('fill');
+    expect(get(store).source).toBe('session');
+  });
+
+  it('setFromConfig(undefined) should be no-op when already at global defaults', async () => {
+    const store = await importStore();
+    // savedToConfig is false by default
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig(undefined);
+    store.setFromConfig(undefined);
+    store.setFromConfig(undefined);
     expect(callCount).toBe(0);
-    expect(get(store).mode).toBe('4:3');
+    unsub();
+  });
+
+  it('setFromConfig should notify when switching from global defaults to config', async () => {
+    const store = await importStore();
+
+    let callCount = 0;
+    const unsub = store.subscribe(() => { callCount++; });
+    callCount = 0;
+
+    store.setFromConfig('4:3');
+    expect(callCount).toBe(1);
+    expect(get(store).source).toBe('config');
     unsub();
   });
 
@@ -129,6 +179,14 @@ describe('aspectRatioStore', () => {
     store.reset();
     const stored = JSON.parse(localStorage.getItem('shader-studio-aspect-ratio')!);
     expect(stored.mode).toBe('16:9');
+  });
+
+  it('reset should set savedToConfig to false', async () => {
+    const store = await importStore();
+    store.setFromConfig('4:3');
+    expect(get(store).source).toBe('config');
+    store.reset();
+    expect(get(store).source).toBe('session');
   });
 });
 
@@ -168,4 +226,3 @@ describe('getAspectRatio', () => {
     expect(getAspectRatio('unknown' as any)).toBeCloseTo(16 / 9);
   });
 });
-

@@ -126,6 +126,12 @@ describe('computeGridDimensions', () => {
     expect(a.gridWidth).toBe(b.gridWidth);
     expect(a.gridHeight).toBe(b.gridHeight);
   });
+
+  it('caps grid dimensions to the render resolution', () => {
+    const { gridWidth, gridHeight } = computeGridDimensions(128, 64, 32);
+    expect(gridWidth).toBeLessThanOrEqual(64);
+    expect(gridHeight).toBeLessThanOrEqual(32);
+  });
 });
 
 // ------------------------------------------------------------------
@@ -490,6 +496,15 @@ describe('VariableCaptureManager', () => {
       const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
       expect(gridWidth).toBeGreaterThanOrEqual(1);
       expect(gridHeight).toBeGreaterThanOrEqual(1);
+    });
+
+    it('does not sample more grid pixels than the render resolution', () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, canvasWidth: 64, canvasHeight: 32, sampleSize: 128 });
+      flushRAF();
+
+      const [, , gridWidth, gridHeight] = mockIssueCaptureGrid.mock.calls[0];
+      expect(gridWidth).toBeLessThanOrEqual(64);
+      expect(gridHeight).toBeLessThanOrEqual(32);
     });
 
     it('grid dimensions match between issueCaptureGrid and generateCaptureShader', () => {

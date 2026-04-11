@@ -17,17 +17,13 @@ vi.mock('../../lib/stores/aspectRatioStore', () => ({
 
 // Mock the resolution store
 vi.mock('../../lib/stores/resolutionStore', () => ({
-  parseDimension: (value: string, referenceSize: number) => {
+  parseDimension: (value: string, _referenceSize: number) => {
     const trimmed = value.trim();
     if (!trimmed) {
       return undefined;
     }
-    if (trimmed.endsWith('%')) {
-      const pct = parseFloat(trimmed);
-      if (isNaN(pct) || pct <= 0) {
-        return undefined;
-      }
-      return Math.round(referenceSize * pct / 100);
+    if (!/^\d+(\.\d+)?(px)?$/i.test(trimmed)) {
+      return undefined;
     }
     const num = parseFloat(trimmed.replace(/px$/i, ''));
     if (isNaN(num) || num <= 0) {
@@ -222,48 +218,14 @@ describe('AspectRatioCalculator', () => {
       expect(result3x.renderHeight).toBe(result1x.renderHeight);
     });
 
-    it('should ignore resolution scale when custom resolution is set', () => {
+    it('should apply resolution scale when custom resolution is set', () => {
       container = createMockContainer(800, 600);
       const calc = new AspectRatioCalculator(container);
 
       const result = calc.calculate('fill', 4, 1, '256', '256');
 
-      expect(result.renderWidth).toBe(256);
-      expect(result.renderHeight).toBe(256);
-    });
-  });
-
-  describe('custom resolution with percentage values', () => {
-    it('should resolve percentage of native container size', () => {
-      container = createMockContainer(800, 600);
-      Object.defineProperty(window, 'devicePixelRatio', { value: 2, writable: true, configurable: true });
-      const calc = new AspectRatioCalculator(container);
-      const result = calc.calculate('fill', 1, 1, '50%', '50%');
-
-      // Native = container * devicePixelRatio: 1600x1200
-      // 50% of 1600 = 800, 50% of 1200 = 600
-      expect(result.renderWidth).toBe(800);
-      expect(result.renderHeight).toBe(600);
-    });
-
-    it('should resolve 100% to full native resolution', () => {
-      container = createMockContainer(800, 600);
-      Object.defineProperty(window, 'devicePixelRatio', { value: 1, writable: true, configurable: true });
-      const calc = new AspectRatioCalculator(container);
-      const result = calc.calculate('fill', 1, 1, '100%', '100%');
-
-      expect(result.renderWidth).toBe(800);
-      expect(result.renderHeight).toBe(600);
-    });
-
-    it('should allow percentage greater than 100', () => {
-      container = createMockContainer(800, 600);
-      Object.defineProperty(window, 'devicePixelRatio', { value: 1, writable: true, configurable: true });
-      const calc = new AspectRatioCalculator(container);
-      const result = calc.calculate('fill', 1, 1, '200%', '200%');
-
-      expect(result.renderWidth).toBe(1600);
-      expect(result.renderHeight).toBe(1200);
+      expect(result.renderWidth).toBe(1024);
+      expect(result.renderHeight).toBe(1024);
     });
   });
 
@@ -297,6 +259,17 @@ describe('AspectRatioCalculator', () => {
       const resultStandard = calc.calculate('fill', 1, 1);
 
       expect(resultCustom.renderWidth).toBe(resultStandard.renderWidth);
+    });
+
+    it('should fall back if custom values use percentages', () => {
+      container = createMockContainer(800, 600);
+      const calc = new AspectRatioCalculator(container);
+
+      const resultCustom = calc.calculate('fill', 1, 1, '50%', '50%');
+      const resultStandard = calc.calculate('fill', 1, 1);
+
+      expect(resultCustom.renderWidth).toBe(resultStandard.renderWidth);
+      expect(resultCustom.renderHeight).toBe(resultStandard.renderHeight);
     });
 
     it('should fall back if custom values are zero', () => {

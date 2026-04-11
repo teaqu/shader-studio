@@ -7,12 +7,13 @@ import type {
   LogMessage,
   RefreshMessage,
   ShaderSourceMessage,
-  WarningMessage
+  WarningMessage,
 } from "@shader-studio/types";
 import { BufferUpdater } from '../util/BufferUpdater';
 import { BufferPathResolver } from '../util/BufferPathResolver';
 import { ShaderDebugManager } from '../ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from '../ShaderProcessor';
+import type { ShaderConfig } from "@shader-studio/types";
 
 export class MessageHandler {
   private renderEngine: RenderingEngine;
@@ -20,16 +21,15 @@ export class MessageHandler {
   private transport: Transport;
   private bufferUpdater: BufferUpdater;
   private bufferPathResolver: BufferPathResolver;
+  private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
-  private shaderDebugManager: ShaderDebugManager;
-  private audioOptions: { muted?: boolean; volume?: number } | undefined;
 
   constructor(
     transport: Transport,
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
-    shaderDebugManager: ShaderDebugManager
+    shaderDebugManager: ShaderDebugManager,
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
@@ -37,16 +37,7 @@ export class MessageHandler {
     this.bufferUpdater = new BufferUpdater(renderEngine, transport);
     this.bufferPathResolver = new BufferPathResolver(renderEngine);
     this.shaderDebugManager = shaderDebugManager;
-
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
-  }
-
-  public getLastEvent(): MessageEvent | null {
-    return this.lastEvent;
-  }
-
-  public setAudioOptions(options: { muted?: boolean; volume?: number }): void {
-    this.audioOptions = options;
   }
 
   public async handleShaderMessage(
@@ -139,27 +130,31 @@ export class MessageHandler {
       message.buffers ?? {},
     );
 
-    // Delegate to shader processor
-    const result = await this.shaderProcessor.processMainShaderCompilation(message, message.forceCleanup || false, this.audioOptions);
+    const result = await this.shaderProcessor.processMainShaderCompilation(
+      message,
+      message.forceCleanup || false,
+    );
     this.handleCompilationResult(result);
     return result;
   }
 
   private handleCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+    this.reportCompilationResult(result);
+  }
+
+  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
     if (result.success) {
-      // Send warnings first if any
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
           this.sendWarningMessage(warning);
         }
       }
 
-      // Then send success
-      this.sendSuccessMessages();
-    } else {
-      // Send all errors in a single message
-      this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
+      this.sendSuccessMessage();
+      return;
     }
+
+    this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
   }
 
   private syncStoredShaderContextForBufferUpdate(
@@ -207,8 +202,7 @@ export class MessageHandler {
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessages(): void {
-    // Send success log message - this will clear previous errors
+  private sendSuccessMessage(): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
@@ -273,12 +267,39 @@ export class MessageHandler {
 
     // If debug mode is active, recompile shader
     if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getImageShaderCode() && this.lastEvent) {
-      this.debugCompile();
+      void this.debugCompile();
     }
   }
 
+  public getLastEvent(): MessageEvent | null {
+    return this.lastEvent;
+  }
+
+  public updateCurrentConfig(config: ShaderConfig): void {
+    if (!this.lastEvent) {
+      return;
+    }
+
+    const lastMessage = this.lastEvent.data as ShaderSourceMessage;
+    const nextMessage: ShaderSourceMessage = {
+      ...lastMessage,
+      config,
+    };
+
+    this.lastEvent = {
+      ...this.lastEvent,
+      data: nextMessage,
+    } as MessageEvent;
+
+    this.shaderDebugManager.setShaderContext(
+      config,
+      nextMessage.path,
+      nextMessage.buffers ?? {},
+    );
+  }
+
   public triggerDebugRecompile(): void {
-    this.debugCompile();
+    void this.debugCompile();
   }
 
   private async debugCompile(): Promise<CompilationResult | undefined> {

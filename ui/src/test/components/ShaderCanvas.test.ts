@@ -73,6 +73,14 @@ describe('ShaderCanvas Component', () => {
     });
   });
 
+  describe('image-rendering', () => {
+    it('should set image-rendering: pixelated on the canvas element', () => {
+      const { container } = render(ShaderCanvas, { props: defaultProps });
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      expect(canvas.style.imageRendering).toBe('pixelated');
+    });
+  });
+
   describe('background override', () => {
     it('should apply a black canvas background when forced in the resolution store', async () => {
       resolutionStore.setForceBlackBackground(true);

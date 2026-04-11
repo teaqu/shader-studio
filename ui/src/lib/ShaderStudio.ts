@@ -3,6 +3,7 @@ import { ShaderLocker } from "./ShaderLocker";
 import { MessageHandler } from "./transport/MessageHandler";
 import type { Transport } from "./transport/MessageTransport";
 import type { ErrorMessage, DebugMessage } from "@shader-studio/types";
+import type { ShaderConfig } from "@shader-studio/types";
 import { ShaderDebugManager } from "./ShaderDebugManager";
 import type { CompilationResult } from "./ShaderProcessor";
 
@@ -33,7 +34,7 @@ export class ShaderStudio {
         this.transport,
         this.renderingEngine,
         this.shaderLocker,
-        this.shaderDebugManager
+        this.shaderDebugManager,
       );
 
       const debugMessage: DebugMessage = {
@@ -108,9 +109,9 @@ export class ShaderStudio {
     }
   }
 
-  setAudioOptions(options: { muted?: boolean; volume?: number }): void {
+  updateCurrentConfig(config: ShaderConfig): void {
     if (this.messageHandler) {
-      this.messageHandler.setAudioOptions(options);
+      this.messageHandler.updateCurrentConfig(config);
     }
   }
 }

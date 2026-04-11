@@ -55,10 +55,12 @@ export interface ResolutionSettings {
     customHeight?: number | string; // must be set with customWidth
 }
 
-// Buffer pass resolution: just fixed WxH
+// Buffer pass resolution: fixed WxH OR scale multiplier on Image resolution
+// Exactly one of (width+height) or scale should be set.
 export interface BufferResolution {
-    width: number;
-    height: number;
+    width?: number;
+    height?: number;
+    scale?: number;  // multiplier on Image resolution (0.25, 0.5, 1, 2, 4)
 }
 
 export interface ImagePass {

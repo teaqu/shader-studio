@@ -221,7 +221,6 @@ describe("RenderingEngine", () => {
         testConfig,
         'test.glsl',
         { BufferA: 'updated buffer content' }, // updated buffers
-        undefined, // audioOptions
       ]);
     });
 
@@ -662,19 +661,17 @@ describe("RenderingEngine", () => {
       expect(mockResourceManager.resumeAllAudio).not.toHaveBeenCalled();
     });
 
-    it("should pass audioOptions to shaderPipeline.compileShaderPipeline", async () => {
+    it("should compile without threading audio options into shaderPipeline.compileShaderPipeline", async () => {
       mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
       mockTimeManager.isPaused.mockReturnValue(false);
 
-      const audioOptions = { muted: true, volume: 0.5 };
-      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {}, audioOptions);
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
 
       expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledWith(
         "void mainImage() {}",
         null,
         "test.glsl",
         {},
-        audioOptions,
       );
     });
   });
@@ -1053,6 +1050,7 @@ describe("RenderingEngine", () => {
   describe("setGlobalVolume", () => {
     it("should only mute audio when muted, not touch video state", () => {
       const mockResourceMgr = {
+        setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
         unmuteAllAudio: vi.fn(),
         muteAllVideos: vi.fn(),
@@ -1064,6 +1062,7 @@ describe("RenderingEngine", () => {
 
       renderingEngine.setGlobalVolume(0.8, true);
 
+      expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: true });
       expect(mockResourceMgr.muteAllAudio).toHaveBeenCalled();
       expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
       expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();
@@ -1071,6 +1070,7 @@ describe("RenderingEngine", () => {
 
     it("should only unmute audio when unmuted, not touch video state", () => {
       const mockResourceMgr = {
+        setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
         unmuteAllAudio: vi.fn(),
         muteAllVideos: vi.fn(),
@@ -1082,6 +1082,7 @@ describe("RenderingEngine", () => {
 
       renderingEngine.setGlobalVolume(0.8, false);
 
+      expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: false });
       expect(mockResourceMgr.unmuteAllAudio).toHaveBeenCalledWith(0.8);
       expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
       expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();

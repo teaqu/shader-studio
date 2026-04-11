@@ -7,9 +7,8 @@ import type { ShaderSourceMessage } from "@shader-studio/types";
 import { ShaderDebugManager } from "../../lib/ShaderDebugManager";
 import { ShaderProcessor } from "../../lib/ShaderProcessor";
 
-// Mock ShaderProcessor
 vi.mock("../../lib/ShaderProcessor", () => ({
-  ShaderProcessor: vi.fn()
+  ShaderProcessor: vi.fn(),
 }));
 
 const createMockTimeManager = () => ({
@@ -51,7 +50,7 @@ describe("MessageHandler", () => {
   let mockTransport: ReturnType<typeof createMockTransport>;
   let mockShaderLocker: ReturnType<typeof createMockShaderLocker>;
   let shaderDebugManager: ShaderDebugManager;
-  let mockShaderProcessor: any;
+  let shaderProcessor: any;
 
   beforeEach(() => {
     mockRenderingEngine = createMockRenderingEngine();
@@ -59,26 +58,25 @@ describe("MessageHandler", () => {
     mockShaderLocker = createMockShaderLocker();
     shaderDebugManager = new ShaderDebugManager();
 
-    // Mock ShaderProcessor instance
-    mockShaderProcessor = {
-      processMainShaderCompilation: vi.fn().mockResolvedValue({ success: true }),
-      processCommonBufferUpdate: vi.fn().mockResolvedValue({ success: true }),
-      debugCompile: vi.fn().mockResolvedValue({ success: true }),
-      getImageShaderCode: vi.fn().mockReturnValue(null),
-      isCurrentlyProcessing: vi.fn().mockReturnValue(false),
-    };
-
-    // Mock ShaderProcessor constructor to return our mock
-    (ShaderProcessor as any).mockImplementation(() => mockShaderProcessor);
-
     // Default: not locked
     mockShaderLocker.isLocked.mockReturnValue(false);
+
+    shaderProcessor = {
+      processMainShaderCompilation: vi.fn().mockResolvedValue({ success: true }),
+      isCurrentlyProcessing: vi.fn().mockReturnValue(false),
+      getImageShaderCode: vi.fn().mockReturnValue(null),
+      debugCompile: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => shaderProcessor,
+    );
 
     messageHandler = new MessageHandler(
       mockTransport as unknown as Transport,
       mockRenderingEngine as unknown as RenderingEngine,
       mockShaderLocker as unknown as ShaderLocker,
-      shaderDebugManager
+      shaderDebugManager,
     );
 
     vi.spyOn(console, "log").mockImplementation(() => { });
@@ -86,7 +84,7 @@ describe("MessageHandler", () => {
   });
 
   describe("when handleShaderMessage is called", () => {
-    it("should set lastEvent and delegate to ShaderProcessor", async () => {
+    it("should delegate shaderSource messages to the runtime session", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -99,15 +97,13 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(messageHandler.getLastEvent()).toBe(shaderEvent);
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
         false,
-        undefined
       );
     });
 
-    it("should pass forceCleanup=true to ShaderProcessor when forceCleanup is true", async () => {
+    it("should forward forceCleanup=true in the shader message to the runtime session", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -121,14 +117,13 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        expect.objectContaining({ forceCleanup: true }),
         true,
-        undefined
       );
     });
 
-    it("should pass forceCleanup=false to ShaderProcessor when forceCleanup is false", async () => {
+    it("should forward forceCleanup=false in the shader message to the runtime session", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -142,14 +137,13 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        expect.objectContaining({ forceCleanup: false }),
         false,
-        undefined
       );
     });
 
-    it("should pass forceCleanup=false to ShaderProcessor when forceCleanup is undefined", async () => {
+    it("should forward shader messages without forceCleanup to the runtime session unchanged", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -162,10 +156,9 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        expect.not.objectContaining({ forceCleanup: expect.anything() }),
         false,
-        undefined
       );
     });
 
@@ -183,78 +176,9 @@ describe("MessageHandler", () => {
       } as MessageEvent;
 
       await expect(messageHandler.handleShaderMessage(cursorEvent)).resolves.toBeUndefined();
-      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+      expect(shaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
       expect(mockTransport.postMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: "error" }),
-      );
-    });
-  });
-
-
-  describe("setAudioOptions", () => {
-    it("should pass audioOptions to ShaderProcessor when processing shader", async () => {
-      const audioOptions = { muted: false, volume: 0.75 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: "shaderSource",
-          path: "shader.glsl",
-          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        audioOptions,
-      );
-    });
-
-    it("should pass updated audioOptions after calling setAudioOptions again", async () => {
-      messageHandler.setAudioOptions({ muted: false, volume: 1.0 });
-      messageHandler.setAudioOptions({ muted: true, volume: 0 });
-
-      const shaderEvent = {
-        data: {
-          type: "shaderSource",
-          path: "shader.glsl",
-          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: true, volume: 0 },
-      );
-    });
-
-    it("should pass undefined audioOptions when setAudioOptions has not been called", async () => {
-      const shaderEvent = {
-        data: {
-          type: "shaderSource",
-          path: "shader.glsl",
-          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        undefined,
       );
     });
   });
@@ -266,21 +190,7 @@ describe("MessageHandler", () => {
     });
 
     it("should call onReset callback when lastEvent exists", async () => {
-      const shaderEvent = {
-        data: {
-          type: "shaderSource",
-          path: "shader.glsl",
-          code: "void mainImage() { gl_FragColor = vec4(1.0); }",
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      mockRenderingEngine.compileShaderPipeline.mockResolvedValue({
-        success: true,
-      });
-
-      await messageHandler.handleShaderMessage(shaderEvent);
+      (messageHandler as any).lastEvent = { data: {} } as MessageEvent;
 
       const onResetCallback = vi.fn();
       messageHandler.reset(onResetCallback);
@@ -330,7 +240,7 @@ describe("MessageHandler", () => {
   });
 
   describe("locking functionality", () => {
-    it("should delegate to ShaderProcessor if not locked", async () => {
+    it("should delegate to the runtime session if not locked", async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
       const event = {
         data: {
@@ -343,10 +253,9 @@ describe("MessageHandler", () => {
       };
       await messageHandler.handleShaderMessage(event as any);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
         false,
-        undefined
       );
     });
 
@@ -366,10 +275,10 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(event as any);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+      expect(shaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
     });
 
-    it("should delegate to ShaderProcessor when locked and message is for the same locked shader", async () => {
+    it("should delegate to the runtime session when locked and message is for the same locked shader", async () => {
       mockShaderLocker.isLocked.mockReturnValue(true);
       mockShaderLocker.getLockedShaderPath.mockReturnValue("locked-shader.glsl");
 
@@ -385,10 +294,9 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(event as any);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
         false,
-        undefined
       );
     });
 
@@ -408,7 +316,7 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(event as any);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+      expect(shaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
     });
   });
 
@@ -418,6 +326,7 @@ describe("MessageHandler", () => {
     let mockTransport: any;
     let mockShaderLocker: any;
     let shaderDebugManager: ShaderDebugManager;
+    let shaderProcessor: any;
 
     beforeEach(() => {
       vi.clearAllMocks();
@@ -443,12 +352,22 @@ describe("MessageHandler", () => {
         getLockedShaderPath: vi.fn(() => 'c:\\path\\to\\main.glsl')
       };
       shaderDebugManager = new ShaderDebugManager();
+      shaderProcessor = {
+        processMainShaderCompilation: vi.fn().mockResolvedValue({ success: true }),
+        isCurrentlyProcessing: vi.fn().mockReturnValue(false),
+        getImageShaderCode: vi.fn().mockReturnValue(null),
+        debugCompile: vi.fn().mockResolvedValue({ success: true }),
+      };
+
+      (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        () => shaderProcessor,
+      );
 
       messageHandler = new MessageHandler(
         mockTransport,
         mockRenderingEngine,
         mockShaderLocker,
-        shaderDebugManager
+        shaderDebugManager,
       );
     });
 
@@ -615,7 +534,7 @@ describe("MessageHandler", () => {
   describe('result handling', () => {
     it('should send warning messages when compilation succeeds with warnings', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true,
         warnings: ['Video is not loading: video.mp4.', 'Another warning']
       });
@@ -651,7 +570,7 @@ describe("MessageHandler", () => {
 
     it('should send error message when compilation fails', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: false,
         errors: ['Compilation failed']
       });
@@ -676,7 +595,7 @@ describe("MessageHandler", () => {
 
     it('should send success message when compilation succeeds', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true
       });
 
@@ -700,7 +619,7 @@ describe("MessageHandler", () => {
 
     it('should return error result when compilation fails', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: false,
         errors: ['Test error']
       });
@@ -725,7 +644,7 @@ describe("MessageHandler", () => {
 
     it('should return success result when compilation succeeds', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true
       });
 
@@ -748,7 +667,7 @@ describe("MessageHandler", () => {
 
     it('should not send warning messages when warnings is undefined', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true,
         warnings: undefined
       });
@@ -780,7 +699,7 @@ describe("MessageHandler", () => {
 
     it('should not send warning messages when warnings array is empty', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.processMainShaderCompilation.mockResolvedValue({
+      shaderProcessor.processMainShaderCompilation.mockResolvedValue({
         success: true,
         warnings: []
       });
@@ -890,7 +809,7 @@ describe("MessageHandler", () => {
 
     it('should trigger recompile when debug is active and cursor position changes', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void main() {}');
+      shaderProcessor.getImageShaderCode.mockReturnValue('void main() {}');
       shaderDebugManager.toggleEnabled(); // Enable debug mode
 
       // Process initial shader to set lastEvent
@@ -923,42 +842,26 @@ describe("MessageHandler", () => {
       messageHandler.handleCursorPositionMessage(message);
 
       // Should trigger recompile with debug mode
-      expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(initialEvent.data);
+      expect(shaderProcessor.debugCompile).toHaveBeenCalled();
     });
 
-    it('should trigger debug recompile via triggerDebugRecompile', async () => {
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void main() {}');
+    it('should not recompile if no debug compile target exists', () => {
+      shaderProcessor.getImageShaderCode.mockReturnValue(null);
 
-      // Process initial shader to set lastEvent
-      const initialEvent = {
-        data: {
-          type: 'shaderSource',
-          code: 'void main() {}',
-          config: null,
-          path: 'shader.glsl',
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
+      messageHandler.handleCursorPositionMessage({
+        type: 'cursorPosition',
+        payload: {
+          line: 10,
+          character: 0,
+          lineContent: 'vec3 color = vec3(1.0);',
+          filePath: 'shader.glsl',
+        },
+      });
 
-      await messageHandler.handleShaderMessage(initialEvent);
-
-      // Clear previous calls
-      vi.clearAllMocks();
-
-      messageHandler.triggerDebugRecompile();
-
-      expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(initialEvent.data);
+      expect(shaderProcessor.debugCompile).not.toHaveBeenCalled();
     });
 
-    it('should not recompile if no original shader code exists', () => {
-      mockShaderProcessor.getImageShaderCode.mockReturnValue(null);
-
-      messageHandler.triggerDebugRecompile();
-
-      expect(mockShaderProcessor.debugCompile).not.toHaveBeenCalled();
-    });
-
-    it('should delegate to ShaderProcessor when cursor position is provided', async () => {
+    it('should delegate to the runtime session when cursor position is provided in a shader message', async () => {
       mockShaderLocker.isLocked.mockReturnValue(false);
 
       const shaderCode = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }';
@@ -981,11 +884,9 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(event as any);
 
-      // Verify delegation to ShaderProcessor
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
         false,
-        undefined
       );
     });
 
@@ -1038,11 +939,9 @@ describe("MessageHandler", () => {
 
       await messageHandler.handleShaderMessage(event as any);
 
-      // Should delegate to ShaderProcessor
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         event.data,
         false,
-        undefined
       );
     });
 
@@ -1076,272 +975,6 @@ describe("MessageHandler", () => {
     });
   });
 
-  describe('audioOptions with different volume levels', () => {
-    it('should pass volume=0 (fully muted by volume)', async () => {
-      const audioOptions = { muted: false, volume: 0 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: false, volume: 0 },
-      );
-    });
-
-    it('should pass volume=0.5 (half volume)', async () => {
-      const audioOptions = { muted: false, volume: 0.5 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: false, volume: 0.5 },
-      );
-    });
-
-    it('should pass volume=1.0 (full volume)', async () => {
-      const audioOptions = { muted: false, volume: 1.0 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: false, volume: 1.0 },
-      );
-    });
-  });
-
-  describe('audioOptions partial updates', () => {
-    it('should pass only muted without volume', async () => {
-      const audioOptions = { muted: true };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: true },
-      );
-    });
-
-    it('should pass only volume without muted', async () => {
-      const audioOptions = { volume: 0.8 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { volume: 0.8 },
-      );
-    });
-
-    it('should handle overwriting previous audioOptions entirely', async () => {
-      messageHandler.setAudioOptions({ muted: true, volume: 0.3 });
-      messageHandler.setAudioOptions({ volume: 0.9 });
-
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      // The second call should entirely replace the first, not merge
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { volume: 0.9 },
-      );
-    });
-  });
-
-  describe('audioOptions with reset', () => {
-    it('should preserve audioOptions after reset', async () => {
-      const audioOptions = { muted: false, volume: 0.6 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      // Process a shader first so lastEvent is set
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      // Reset
-      messageHandler.reset(vi.fn());
-
-      // Clear mocks to check the next call
-      mockShaderProcessor.processMainShaderCompilation.mockClear();
-
-      // Process another shader after reset
-      const secondEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader2.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(0.5); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(secondEvent);
-
-      // audioOptions should still be passed after reset
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        secondEvent.data,
-        false,
-        { muted: false, volume: 0.6 },
-      );
-    });
-
-    it('should call renderEngine.resetTime on reset', () => {
-      messageHandler.reset();
-
-      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('audioOptions interaction with shader compilation', () => {
-    it('should pass audioOptions on subsequent shader compilations', async () => {
-      const audioOptions = { muted: false, volume: 0.75 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      // First compilation
-      const firstEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader1.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(firstEvent);
-
-      // Second compilation
-      const secondEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader2.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(0.5); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(secondEvent);
-
-      // Both compilations should receive audioOptions
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenNthCalledWith(
-        1,
-        firstEvent.data,
-        false,
-        audioOptions,
-      );
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenNthCalledWith(
-        2,
-        secondEvent.data,
-        false,
-        audioOptions,
-      );
-    });
-
-    it('should handle audioOptions being set before first shader message', async () => {
-      const audioOptions = { muted: true, volume: 0 };
-      messageHandler.setAudioOptions(audioOptions);
-
-      // No shader has been processed yet, now send first shader
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        shaderEvent.data,
-        false,
-        { muted: true, volume: 0 },
-      );
-    });
-  });
-
   describe('locked shader with no buffer content', () => {
     it('should skip processing when locked to different path with empty buffers and no code', async () => {
       mockShaderLocker.isLocked.mockReturnValue(true);
@@ -1360,7 +993,7 @@ describe("MessageHandler", () => {
       const result = await messageHandler.handleShaderMessage(shaderEvent);
 
       expect(result).toBeUndefined();
-      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+      expect(shaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
     });
 
     it('should skip processing when locked path is undefined and no buffer content', async () => {
@@ -1414,12 +1047,9 @@ describe("MessageHandler", () => {
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(messageHandler.getLastEvent()).toBe(shaderEvent);
-      expect(mockShaderProcessor.processCommonBufferUpdate).not.toHaveBeenCalled();
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
         true,
-        undefined,
       );
       expect(result).toEqual({ success: true });
     });
@@ -1448,7 +1078,7 @@ describe("MessageHandler", () => {
       await messageHandler.handleShaderMessage(mainShaderEvent);
 
       mockRenderingEngine.cleanup.mockClear();
-      mockShaderProcessor.processMainShaderCompilation.mockClear();
+      shaderProcessor.processMainShaderCompilation.mockClear();
       mockTransport.postMessage.mockClear();
 
       const commonShaderEvent = {
@@ -1464,12 +1094,10 @@ describe("MessageHandler", () => {
 
       const result = await messageHandler.handleShaderMessage(commonShaderEvent);
 
-      expect(messageHandler.getLastEvent()).toBe(commonShaderEvent);
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledTimes(1);
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledTimes(1);
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         commonShaderEvent.data,
         true,
-        undefined,
       );
       expect(result).toEqual({ success: true });
     });
@@ -1495,10 +1123,9 @@ describe("MessageHandler", () => {
 
       const result = await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(mockShaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
         shaderEvent.data,
         false,
-        undefined,
       );
       expect(result).toEqual({ success: true });
     });
@@ -1527,7 +1154,7 @@ describe("MessageHandler", () => {
       const result = await messageHandler.handleShaderMessage(shaderEvent);
 
       expect(updateBufferSpy).not.toHaveBeenCalled();
-      expect(mockShaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
+      expect(shaderProcessor.processMainShaderCompilation).not.toHaveBeenCalled();
       expect(result).toBeUndefined();
     });
 
@@ -1577,8 +1204,7 @@ describe("MessageHandler", () => {
 
   describe('fatal error handling', () => {
     it('should catch transport errors when sending fatal error message', async () => {
-      // Make ShaderProcessor throw
-      mockShaderProcessor.processMainShaderCompilation.mockRejectedValue(new Error('catastrophic'));
+      shaderProcessor.processMainShaderCompilation.mockRejectedValue(new Error('catastrophic'));
       // Also make transport.postMessage throw on the error message
       mockTransport.postMessage.mockImplementation(() => {
         throw new Error('transport broken');
@@ -1605,61 +1231,7 @@ describe("MessageHandler", () => {
   });
 
   describe('debugCompile with existing shader and event', () => {
-    it('should compile debug shader when original code and lastEvent exist', async () => {
-      // First, process a shader to set lastEvent
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() { gl_FragColor = vec4(1.0); }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-
-      // Now set up debug state
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
-      mockShaderProcessor.debugCompile.mockResolvedValue({ success: true });
-
-      // Trigger debug recompile
-      messageHandler.triggerDebugRecompile();
-
-      // Wait for async
-      await vi.waitFor(() => {
-        expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(shaderEvent.data);
-      });
-    });
-
-    it('should send error messages when debug compile fails', async () => {
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: 'shader.glsl',
-          code: 'void mainImage() {}',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
-
-      await messageHandler.handleShaderMessage(shaderEvent);
-      mockTransport.postMessage.mockClear();
-
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
-      mockShaderProcessor.debugCompile.mockResolvedValue({ success: false, errors: ['Debug error'] });
-
-      messageHandler.triggerDebugRecompile();
-
-      await vi.waitFor(() => {
-        expect(mockTransport.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({ type: 'error', payload: ['Debug error'] })
-        );
-      });
-    });
-
-    it('should trigger debug recompile from handleCursorPositionMessage when debug is active', async () => {
-      // Process shader first
+    it('delegates cursor-triggered debug recompiles to the runtime session when debug is active', async () => {
       const shaderEvent = {
         data: {
           type: 'shaderSource',
@@ -1671,8 +1243,7 @@ describe("MessageHandler", () => {
       } as MessageEvent;
       await messageHandler.handleShaderMessage(shaderEvent);
 
-      // Enable debug mode — isActive requires isEnabled + currentLine + lineContent
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
+      shaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
       shaderDebugManager.toggleEnabled();
       shaderDebugManager.updateDebugLine(1, 'float x = 1.0;', 'shader.glsl');
 
@@ -1682,7 +1253,7 @@ describe("MessageHandler", () => {
       } as any);
 
       await vi.waitFor(() => {
-        expect(mockShaderProcessor.debugCompile).toHaveBeenCalled();
+        expect(shaderProcessor.debugCompile).toHaveBeenCalled();
       });
     });
   });

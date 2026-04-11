@@ -43,14 +43,11 @@ export class AspectRatioCalculator {
           customAspect,
         );
 
-        const visualWidth = baseWidth * zoomLevel;
-        const visualHeight = baseHeight * zoomLevel;
-
         return {
-          visualWidth,
-          visualHeight,
-          renderWidth: resolvedW,
-          renderHeight: resolvedH,
+          visualWidth: baseWidth * zoomLevel,
+          visualHeight: baseHeight * zoomLevel,
+          renderWidth: Math.round(resolvedW * resolutionScale),
+          renderHeight: Math.round(resolvedH * resolutionScale),
         };
       }
     }

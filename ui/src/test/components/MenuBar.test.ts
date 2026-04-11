@@ -172,6 +172,80 @@ describe('MenuBar', () => {
   });
 
   describe('resolution menu', () => {
+    it('should use number inputs for custom resolution width and height', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      const inputs = document.querySelectorAll('input.custom-res-input');
+      expect(inputs).toHaveLength(2);
+      inputs.forEach((input) => {
+        expect((input as HTMLInputElement).type).toBe('number');
+      });
+    });
+
+    it('should apply custom resolution automatically when both inputs have values', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      const [widthInput, heightInput] = Array.from(document.querySelectorAll('input.custom-res-input')) as HTMLInputElement[];
+      await fireEvent.input(widthInput, { target: { valueAsNumber: 320 } });
+      await fireEvent.input(heightInput, { target: { valueAsNumber: 240 } });
+      await tick();
+
+      let state: any;
+      const unsubscribe = resolutionStore.subscribe((v) => { state = v; });
+      unsubscribe();
+      expect(state.customWidth).toBe('320');
+      expect(state.customHeight).toBe('240');
+
+      resolutionStore.clearCustomResolution();
+    });
+
+    it('should not have an Apply button', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      expect(screen.queryByText('Apply')).toBeNull();
+    });
+
+    it('should preserve custom resolution when resolution scale is changed', async () => {
+      render(MenuBar, { props: defaultProps });
+      await tick();
+
+      resolutionStore.setCustomResolution('320', '240');
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      const scaleButton = screen.getByText('2x');
+      await fireEvent.click(scaleButton);
+      await tick();
+
+      let state: any;
+      const unsubscribe = resolutionStore.subscribe((v) => { state = v; });
+      unsubscribe();
+      expect(state.customWidth).toBe('320');
+      expect(state.customHeight).toBe('240');
+      expect(state.scale).toBe(2);
+
+      resolutionStore.clearCustomResolution();
+      resolutionStore.setScale(1);
+    });
+
     it('should toggle black canvas background from the resolution menu', async () => {
       render(MenuBar, { props: defaultProps });
       await tick();

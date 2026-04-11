@@ -22,6 +22,7 @@
   export let customUniformValues: Record<string, number | number[] | boolean> = {};
   export let actualPollFps: number = 0;
   export let uniformActualFps: Record<string, number> = {};
+  export let onConfigChange: (config: ShaderConfig) => void = () => {};
 
   let configManager: ConfigManager;
   let activeTab: string = "Image";
@@ -42,7 +43,8 @@
       transport,
       (updatedConfig) => {
         console.log("Config updated in component:", updatedConfig);
-      // Update will be handled by parent via transport messages
+        config = updatedConfig;
+        onConfigChange(updatedConfig);
       }
     );
   });
@@ -70,6 +72,9 @@
     const success = configManager?.addCommonBuffer();
     if (success) {
       config = configManager.getConfig();
+      if (config) {
+        onConfigChange(config);
+      }
       switchTab("Common");
     }
   }
@@ -78,6 +83,9 @@
     const bufferName = configManager?.addBuffer();
     if (bufferName) {
       config = configManager.getConfig();
+      if (config) {
+        onConfigChange(config);
+      }
       switchTab(bufferName);
     }
   }
@@ -88,6 +96,9 @@
     }
     configManager.setScript("");
     config = configManager.getConfig();
+    if (config) {
+      onConfigChange(config);
+    }
     switchTab("Script");
   }
 
@@ -100,6 +111,9 @@
     }
     configManager.removeScript();
     config = configManager.getConfig();
+    if (config) {
+      onConfigChange(config);
+    }
   }
 
   function handleScriptPathChange(newPath: string) {

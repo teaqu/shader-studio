@@ -71,7 +71,6 @@ export class ShaderPipeline {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
-    audioOptions?: { muted?: boolean; volume?: number },
   ): Promise<CompilationResult> {
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
     const nextPasses = this.buildPasses(code, config, buffers);
@@ -101,7 +100,7 @@ export class ShaderPipeline {
     );
 
     const compileWarnings = compilation.warnings || [];
-    const resourceWarnings = await this.updateResources(audioOptions);
+    const resourceWarnings = await this.updateResources();
     const warnings = [...compileWarnings, ...resourceWarnings];
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
@@ -303,7 +302,7 @@ export class ShaderPipeline {
     this.passSlotAssignments = {};
   }
 
-  private async updateResources(audioOptions?: { muted?: boolean; volume?: number }): Promise<string[]> {
+  private async updateResources(): Promise<string[]> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
@@ -329,7 +328,6 @@ export class ShaderPipeline {
         } else if (input?.type === "audio" && input.path) {
           try {
             const audioLoadOptions = {
-              ...audioOptions,
               startTime: input.startTime,
               endTime: input.endTime,
             };

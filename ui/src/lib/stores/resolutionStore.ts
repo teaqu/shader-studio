@@ -1,34 +1,33 @@
 import { writable } from 'svelte/store';
 import type { ResolutionSettings } from '@shader-studio/types';
 
+export type ResolutionSource = 'session' | 'config';
+
 export interface ResolutionState {
     scale: number;           // 0.25, 0.5, 1, 2, 4
-    customWidth?: string;    // "512" (px) or "50%" (percentage)
+    customWidth?: string;    // "512" or "512px"
     customHeight?: string;
     forceBlackBackground: boolean;
-    savedToConfig: boolean;  // whether these settings are pinned to the shader config
+    source: ResolutionSource;
 }
 
 const STORAGE_KEY = 'shader-studio-resolution';
 const OLD_QUALITY_KEY = 'shader-studio-quality';
+const SESSION_SOURCE: ResolutionSource = 'session';
+const CONFIG_SOURCE: ResolutionSource = 'config';
 
 /**
- * Parse a dimension string like "512", "512px", or "50%".
- * Returns resolved pixel value given a reference size (for %).
+ * Parse a dimension string like "512" or "512px".
  * Returns undefined if invalid.
  */
-export function parseDimension(value: string, referenceSize: number): number | undefined {
+export function parseDimension(value: string, _referenceSize: number): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) {
     return undefined;
   }
 
-  if (trimmed.endsWith('%')) {
-    const pct = parseFloat(trimmed);
-    if (isNaN(pct) || pct <= 0) {
-      return undefined;
-    }
-    return Math.round(referenceSize * pct / 100);
+  if (!/^\d+(\.\d+)?(px)?$/i.test(trimmed)) {
+    return undefined;
   }
 
   // Strip optional "px" suffix
@@ -39,8 +38,20 @@ export function parseDimension(value: string, referenceSize: number): number | u
   return Math.round(num);
 }
 
+function normalizeStoredDimension(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const normalized = parseDimension(String(value), 0);
+  return normalized !== undefined ? String(value).trim() : undefined;
+}
+
 function loadInitialState(): ResolutionState {
-  const defaultState: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
+  const defaultState: ResolutionState = {
+    scale: 1,
+    forceBlackBackground: false,
+    source: SESSION_SOURCE,
+  };
 
   if (typeof window === 'undefined') {
     return defaultState;
@@ -52,7 +63,15 @@ function loadInitialState(): ResolutionState {
     try {
       const parsed = JSON.parse(stored);
       if (parsed && typeof parsed.scale === 'number') {
-        return { ...defaultState, ...parsed, savedToConfig: false };
+        const customWidth = normalizeStoredDimension(parsed.customWidth);
+        const customHeight = normalizeStoredDimension(parsed.customHeight);
+        return {
+          ...defaultState,
+          ...parsed,
+          customWidth,
+          customHeight,
+          source: SESSION_SOURCE,
+        };
       }
     } catch (e) {
       console.warn('Failed to parse stored resolution setting');
@@ -107,6 +126,11 @@ const createResolutionStore = () => {
     current = s; 
   });
 
+  const commit = (next: ResolutionState) => {
+    current = next;
+    set(next);
+  };
+
   return {
     subscribe,
     setScale: (scale: number) => {
@@ -114,12 +138,9 @@ const createResolutionStore = () => {
         const newState: ResolutionState = {
           ...state,
           scale,
-          customWidth: undefined,
-          customHeight: undefined,
+          source: SESSION_SOURCE,
         };
-        if (!newState.savedToConfig) {
-          persistGlobal(newState); 
-        }
+        persistGlobal(newState);
         return newState;
       });
     },
@@ -129,10 +150,9 @@ const createResolutionStore = () => {
           ...state,
           customWidth: width,
           customHeight: height,
+          source: SESSION_SOURCE,
         };
-        if (!newState.savedToConfig) {
-          persistGlobal(newState); 
-        }
+        persistGlobal(newState); 
         return newState;
       });
     },
@@ -142,10 +162,9 @@ const createResolutionStore = () => {
           ...state,
           customWidth: undefined,
           customHeight: undefined,
+          source: SESSION_SOURCE,
         };
-        if (!newState.savedToConfig) {
-          persistGlobal(newState); 
-        }
+        persistGlobal(newState); 
         return newState;
       });
     },
@@ -153,27 +172,28 @@ const createResolutionStore = () => {
       if (settings) {
         const next: ResolutionState = {
           scale: settings.scale ?? 1,
-          customWidth: settings.customWidth !== undefined ? String(settings.customWidth) : undefined,
-          customHeight: settings.customHeight !== undefined ? String(settings.customHeight) : undefined,
+          customWidth: normalizeStoredDimension(settings.customWidth),
+          customHeight: normalizeStoredDimension(settings.customHeight),
           forceBlackBackground: current.forceBlackBackground,
-          savedToConfig: true,
+          source: CONFIG_SOURCE,
         };
         // Skip if store already matches
         if (current.scale === next.scale && current.customWidth === next.customWidth &&
-                    current.customHeight === next.customHeight && current.savedToConfig) {
+                    current.customHeight === next.customHeight && current.source === CONFIG_SOURCE) {
           return;
         }
-        set(next);
+        commit(next);
       } else {
         // No config — fall back to global defaults (skip if already there)
-        if (!current.savedToConfig) {
+        if (current.source !== CONFIG_SOURCE) {
           return; 
         }
-        set({ ...loadInitialState(), savedToConfig: false });
+        const next = loadInitialState();
+        commit(next);
       }
     },
-    setSavedToConfig: (saved: boolean) => {
-      update(state => ({ ...state, savedToConfig: saved }));
+    setSource: (source: ResolutionSource) => {
+      update(state => ({ ...state, source }));
     },
     setForceBlackBackground: (forceBlackBackground: boolean) => {
       update(state => {
@@ -181,7 +201,7 @@ const createResolutionStore = () => {
           ...state,
           forceBlackBackground,
         };
-        if (!newState.savedToConfig) {
+        if (newState.source === SESSION_SOURCE) {
           persistGlobal(newState);
         }
         return newState;
@@ -192,11 +212,9 @@ const createResolutionStore = () => {
         const newState: ResolutionState = {
           scale: 1,
           forceBlackBackground: false,
-          savedToConfig: state.savedToConfig,
+          source: SESSION_SOURCE,
         };
-        if (!newState.savedToConfig) {
-          persistGlobal(newState);
-        }
+        persistGlobal(newState);
         return newState;
       });
     },

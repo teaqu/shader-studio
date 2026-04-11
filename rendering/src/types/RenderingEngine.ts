@@ -11,7 +11,6 @@ export interface RenderingEngine {
     config: ShaderConfig | null,
     path: string,
     buffers?: Record<string, string>,
-    audioOptions?: { muted?: boolean; volume?: number },
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined>;

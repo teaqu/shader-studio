@@ -126,7 +126,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
-    audioOptions?: { muted?: boolean; volume?: number },
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined> {
@@ -164,7 +163,6 @@ export class RenderingEngine implements RenderingEngineInterface {
       config,
       path,
       buffers,
-      audioOptions,
     );
 
     if (result.success) {
@@ -273,6 +271,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public setGlobalVolume(volume: number, muted: boolean): void {
+    this.resourceManager.setAudioDefaults({ volume, muted });
     if (muted) {
       this.resourceManager.muteAllAudio();
     } else {

@@ -1494,7 +1494,7 @@ describe("ShaderPipeline", () => {
             expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("/full/path/music.mp3", 1.0, undefined);
         });
 
-        it("should pass audioOptions (muted/volume) to loadAudioSource", async () => {
+        it("should pass audio input timing options to loadAudioSource", async () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const config = {
                 passes: {
@@ -1506,18 +1506,15 @@ describe("ShaderPipeline", () => {
                 }
             };
 
-            const audioOptions = { muted: true, volume: 0.5 };
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {}, audioOptions);
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
             expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
-                muted: true,
-                volume: 0.5,
                 startTime: undefined,
                 endTime: undefined,
             });
         });
 
-        it("should merge audioOptions with startTime/endTime from input config", async () => {
+        it("should pass startTime/endTime from input config", async () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const config = {
                 passes: {
@@ -1529,12 +1526,9 @@ describe("ShaderPipeline", () => {
                 }
             };
 
-            const audioOptions = { muted: false, volume: 0.8 };
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {}, audioOptions);
+            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
             expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
-                muted: false,
-                volume: 0.8,
                 startTime: 2.0,
                 endTime: 10.0,
             });

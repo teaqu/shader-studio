@@ -86,10 +86,10 @@
   let showThemeButton = false;
   let showFullscreenButton = false;
   let currentAspectRatio: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
+  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, source: 'session' };
   let showResolutionMenu = false;
-  let customWidthInput = "";
-  let customHeightInput = "";
+  let customWidthInput: number | null = null;
+  let customHeightInput: number | null = null;
   let showFPSMenu = false;
   let showOptionsMenu = false;
   let recordingButton: RecordingButton;
@@ -145,8 +145,8 @@
     const unsubscribeResolution = resolutionStore.subscribe((state) => {
       currentResolution = state;
       if (state.customWidth !== undefined && state.customHeight !== undefined) {
-        customWidthInput = String(state.customWidth);
-        customHeightInput = String(state.customHeight);
+        customWidthInput = Number(state.customWidth) || null;
+        customHeightInput = Number(state.customHeight) || null;
       }
     });
 
@@ -240,27 +240,22 @@
     resolutionStore.setScale(scale);
   }
 
-  function handleApplyCustomResolution() {
-    const wTrimmed = customWidthInput.trim();
-    const hTrimmed = customHeightInput.trim();
-    if (wTrimmed && hTrimmed) {
-      resolutionStore.setCustomResolution(wTrimmed, hTrimmed);
+  function handleCustomResolutionInput() {
+    if (customWidthInput && customHeightInput) {
+      resolutionStore.setCustomResolution(String(customWidthInput), String(customHeightInput));
     }
   }
 
-  function handleClearCustomResolution() {
-    customWidthInput = "";
-    customHeightInput = "";
+  function handleClearCustomResolution(event: MouseEvent) {
+    event.stopPropagation();
+    customWidthInput = null;
+    customHeightInput = null;
     resolutionStore.clearCustomResolution();
   }
 
-  function handleToggleSaveToConfig() {
-  // No-op: save-to-config not yet wired up
-  }
-
   function handleResetResolution() {
-    customWidthInput = "";
-    customHeightInput = "";
+    customWidthInput = null;
+    customHeightInput = null;
     resolutionStore.reset();
     aspectRatioStore.setMode("auto");
   }
@@ -466,13 +461,15 @@
         {@const hasCustom = currentResolution.customWidth !== undefined && currentResolution.customHeight !== undefined}
         <div class="resolution-menu">
           <div class="resolution-section">
-            <h4>Resolution Scale</h4>
+            <div class="resolution-section-header">
+              <h4>Resolution Scale</h4>
+              <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
+            </div>
             <div class="scale-buttons">
               {#each [0.25, 0.5, 1, 2, 4] as scale}
                 <button
                   class="resolution-option menu-title"
-                  class:active={!hasCustom && currentResolution.scale === scale}
-                  disabled={hasCustom}
+                  class:active={currentResolution.scale === scale}
                   on:click={() => handleResolutionScaleSelect(scale)}
                 >
                   {scale}x
@@ -485,25 +482,24 @@
             <h4>Custom Resolution</h4>
             <div class="custom-resolution-row">
               <input
-                type="text"
+                type="number"
                 class="custom-res-input"
-                placeholder="px or %"
+                placeholder="W"
+                min="1"
+                step="1"
                 bind:value={customWidthInput}
+                on:input={handleCustomResolutionInput}
               />
               <span class="custom-res-separator">&times;</span>
               <input
-                type="text"
+                type="number"
                 class="custom-res-input"
-                placeholder="px or %"
+                placeholder="H"
+                min="1"
+                step="1"
                 bind:value={customHeightInput}
+                on:input={handleCustomResolutionInput}
               />
-              <button
-                class="custom-res-btn"
-                on:click={handleApplyCustomResolution}
-                disabled={!customWidthInput || !customHeightInput}
-              >
-                Apply
-              </button>
               {#if hasCustom}
                 <button
                   class="custom-res-btn clear-btn"
@@ -526,42 +522,8 @@
             </div>
           </div>
 
-          <div class="resolution-section save-to-config-section">
-            <label class="save-to-config-label">
-              <input
-                type="checkbox"
-                checked={currentResolution.savedToConfig}
-                on:change={handleToggleSaveToConfig}
-              />
-              Save to shader config
-            </label>
-            <button class="reset-resolution-btn" on:click={handleResetResolution}>
-              Reset
-            </button>
-          </div>
-
           <div class="resolution-section">
-            <label class="save-to-config-label">
-              <input
-                type="checkbox"
-                checked={currentResolution.forceBlackBackground}
-                on:change={handleForceBlackBackgroundChange}
-              />
-              Black canvas background
-            </label>
-          </div>
-
-          <div class="resolution-separator"></div>
-
-          <div class="resolution-section">
-            <div class="zoom-header">
-              <h4>Zoom</h4>
-              <button class="reset-resolution-btn" on:click={() => {
-                zoomLevel = 1.0; onZoomChange(1.0); 
-              }}>
-                Reset
-              </button>
-            </div>
+            <h4>Zoom</h4>
             <div class="zoom-control">
               <label for="zoom-slider">Zoom: {zoomLevel.toFixed(1)}x</label>
               <input
@@ -575,6 +537,17 @@
                 class="zoom-slider"
               />
             </div>
+          </div>
+
+          <div class="resolution-section save-to-config-section">
+            <label class="save-to-config-label">
+              <input
+                type="checkbox"
+                checked={currentResolution.forceBlackBackground}
+                on:change={handleForceBlackBackgroundChange}
+              />
+              Black canvas background
+            </label>
           </div>
         </div>
       {/if}

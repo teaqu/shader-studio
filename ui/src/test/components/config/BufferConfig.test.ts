@@ -837,4 +837,145 @@ describe('BufferConfig', () => {
       expect(container.querySelector('.channels-grid')).toBeTruthy();
     });
   });
+
+  describe('Custom resolution inputs (Image pass)', () => {
+    const baseImageProps = {
+      bufferName: 'Image',
+      onUpdate: vi.fn(),
+      getWebviewUri: vi.fn(),
+      postMessage: vi.fn(),
+      isImagePass: true,
+    };
+
+    it('should use number inputs for custom width and height', () => {
+      const config: ImagePass = { inputs: {} };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+
+      const inputs = container.querySelectorAll('input.dim-input');
+      expect(inputs.length).toBeGreaterThanOrEqual(2);
+      inputs.forEach((input) => {
+        expect((input as HTMLInputElement).type).toBe('number');
+      });
+    });
+
+    it('should auto-apply custom resolution on input without a separate Apply button', async () => {
+      const onUpdate = vi.fn();
+      const config: ImagePass = { inputs: {} };
+      const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
+
+      const [widthInput, heightInput] = Array.from(container.querySelectorAll('input.dim-input')) as HTMLInputElement[];
+      await fireEvent.input(widthInput, { target: { valueAsNumber: 512 } });
+      await fireEvent.input(heightInput, { target: { valueAsNumber: 256 } });
+      await tick();
+
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
+      const updatedConfig = lastCall?.[1] as ImagePass;
+      expect(updatedConfig?.resolution?.customWidth).toBe('512');
+      expect(updatedConfig?.resolution?.customHeight).toBe('256');
+    });
+
+    it('should preserve scale when custom resolution is set', async () => {
+      const onUpdate = vi.fn();
+      const config: ImagePass = { inputs: {}, resolution: { scale: 2 } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
+
+      const [widthInput, heightInput] = Array.from(container.querySelectorAll('input.dim-input')) as HTMLInputElement[];
+      await fireEvent.input(widthInput, { target: { valueAsNumber: 320 } });
+      await fireEvent.input(heightInput, { target: { valueAsNumber: 240 } });
+      await tick();
+
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
+      const updatedConfig = lastCall?.[1] as ImagePass;
+      expect(updatedConfig?.resolution?.customWidth).toBe('320');
+      expect(updatedConfig?.resolution?.customHeight).toBe('240');
+      expect(updatedConfig?.resolution?.scale).toBe(2);
+    });
+
+    it('should preserve custom resolution when scale is changed', async () => {
+      const onUpdate = vi.fn();
+      const config: ImagePass = { inputs: {}, resolution: { customWidth: '320', customHeight: '240' } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
+      await tick();
+
+      const scaleBtn = Array.from(container.querySelectorAll('button.preset-btn')).find(b => b.textContent?.trim() === '2x') as HTMLButtonElement;
+      await fireEvent.click(scaleBtn);
+      await tick();
+
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
+      const updatedConfig = lastCall?.[1] as ImagePass;
+      expect(updatedConfig?.resolution?.scale).toBe(2);
+      expect(updatedConfig?.resolution?.customWidth).toBe('320');
+      expect(updatedConfig?.resolution?.customHeight).toBe('240');
+    });
+
+    it('should show Clear button when custom resolution is active', async () => {
+      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+      await tick();
+
+      expect(container.querySelector('.clear-custom-btn')).toBeTruthy();
+    });
+
+    it('should not show Clear button when no custom resolution', () => {
+      const config: ImagePass = { inputs: {} };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+
+      expect(container.querySelector('.clear-custom-btn')).toBeNull();
+    });
+
+    it('should populate inputs from existing config custom resolution', async () => {
+      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+      await tick();
+
+      const [widthInput, heightInput] = Array.from(container.querySelectorAll('input.dim-input')) as HTMLInputElement[];
+      expect((widthInput as HTMLInputElement).value).toBe('800');
+      expect((heightInput as HTMLInputElement).value).toBe('600');
+    });
+
+    it('should disable aspect ratio buttons when custom resolution is active', async () => {
+      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+      await tick();
+
+      const aspectButtons = Array.from(container.querySelectorAll('button.preset-btn')).filter(
+        (b) => ['16:9', '4:3', '1:1', 'fill', 'auto'].includes(b.textContent?.trim() ?? '')
+      ) as HTMLButtonElement[];
+
+      expect(aspectButtons.length).toBe(5);
+      aspectButtons.forEach((btn) => {
+        expect(btn.disabled).toBe(true);
+      });
+    });
+
+    it('should enable aspect ratio buttons when no custom resolution is set', () => {
+      const config: ImagePass = { inputs: {} };
+      const { container } = render(BufferConfig, { ...baseImageProps, config });
+
+      const aspectButtons = Array.from(container.querySelectorAll('button.preset-btn')).filter(
+        (b) => ['16:9', '4:3', '1:1', 'fill', 'auto'].includes(b.textContent?.trim() ?? '')
+      ) as HTMLButtonElement[];
+
+      expect(aspectButtons.length).toBe(5);
+      aspectButtons.forEach((btn) => {
+        expect(btn.disabled).toBe(false);
+      });
+    });
+
+    it('should not call onUpdate when disabled aspect button is clicked', async () => {
+      const onUpdate = vi.fn();
+      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
+      await tick();
+
+      const aspectBtn = Array.from(container.querySelectorAll('button.preset-btn')).find(
+        (b) => b.textContent?.trim() === '16:9'
+      ) as HTMLButtonElement;
+
+      await fireEvent.click(aspectBtn);
+      await tick();
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+  });
 });

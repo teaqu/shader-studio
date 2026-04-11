@@ -8,6 +8,9 @@ import { debugPanelStore } from '../../lib/stores/debugPanelStore';
 import { editorOverlayStore } from '../../lib/stores/editorOverlayStore';
 import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
+import { resolutionStore } from '../../lib/stores/resolutionStore';
+import { aspectRatioStore } from '../../lib/stores/aspectRatioStore';
+import { get } from 'svelte/store';
 
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -17,7 +20,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport, mockSetInputEnabled } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -36,16 +39,21 @@ const { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport
     getType: () => 'vscode' as const,
     isConnected: () => true
   };
-  const mockSetAudioOptions = vi.fn();
+  const mockSetGlobalVolume = vi.fn();
   const mockSetInputEnabled = vi.fn();
+  const mockTriggerDebugRecompile = vi.fn();
+  const mockUpdateCurrentConfig = vi.fn();
   const mockCreateTransport = vi.fn(() => mockTransport);
-  return { mockTimeManager, mockTransport, mockSetAudioOptions, mockCreateTransport, mockSetInputEnabled };
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig };
 });
 
 vi.mock('../../../../rendering/src/RenderingEngine', () => {
   const MockRenderingEngine = class {
+    private _canvas = { width: 800, height: 600 };
     initialize() {}
-    handleCanvasResize() {}
+    handleCanvasResize(width: number, height: number) {
+      this._canvas = { width: Math.round(width), height: Math.round(height) };
+    }
     togglePause() {}
     stopRenderLoop() {}
     startRenderLoop() {}
@@ -76,7 +84,9 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     setInputEnabled(...args: any[]) {
       return mockSetInputEnabled(...args); 
     }
-    setGlobalVolume() {}
+    setGlobalVolume(...args: any[]) {
+      return mockSetGlobalVolume(...args);
+    }
     resumeAudioContext() {
       return Promise.resolve(); 
     }
@@ -134,6 +144,9 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
     }
     getCustomUniformInfo() {
       return []; 
+    }
+    getCanvas() {
+      return this._canvas; 
     }
     setCustomUniformValues() {}
     updateCustomUniformValues() {}
@@ -225,7 +238,7 @@ vi.mock('../../lib/ShaderStudio', () => {
       return {
         readPixel: vi.fn().mockReturnValue({ r: 255, g: 128, b: 64, a: 255 }),
         render: vi.fn(),
-        setGlobalVolume: vi.fn(),
+        setGlobalVolume: mockSetGlobalVolume,
         resumeAudioContext: vi.fn().mockResolvedValue(undefined),
         resumeAllAudio: vi.fn(),
         controlAudio: vi.fn(),
@@ -239,10 +252,20 @@ vi.mock('../../lib/ShaderStudio', () => {
     }
 
     triggerDebugRecompile(): void {
-      // Mock implementation
+      mockTriggerDebugRecompile();
     }
 
-    setAudioOptions = mockSetAudioOptions;
+    updateCurrentConfig(config: any): void {
+      mockUpdateCurrentConfig(config);
+      if (this._shaderDebugManager) {
+        this._shaderDebugManager.setShaderContext(
+          config ?? null,
+          '/test/shader.glsl',
+          {},
+        );
+      }
+    }
+
   };
 
   return {
@@ -361,6 +384,8 @@ describe('ShaderViewer', () => {
     vi.clearAllMocks();
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
+    resolutionStore.reset();
+    aspectRatioStore.reset();
     configPanelStore.setVisible(false);
     debugPanelStore.setVisible(false);
     debugPanelStore.setVariableInspectorEnabled(false);
@@ -531,6 +556,478 @@ describe('ShaderViewer', () => {
     expect(mockVCMFactory._lastNotifyParams?.code).not.toContain('imageVar');
     expect(mockVCMFactory._lastNotifyParams?.inputConfig).toEqual({
       iChannel0: { type: 'texture', path: 'noise.png' },
+    });
+  });
+
+  it('should apply Image Config Resolution to the session stores on shader load', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 2, aspectRatio: '4:3' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    const res = get(resolutionStore);
+    expect(res.scale).toBe(2);
+    expect(res.source).toBe('config');
+
+    const ar = get(aspectRatioStore);
+    expect(ar.mode).toBe('4:3');
+    expect(ar.source).toBe('config');
+  });
+
+  it('should reset stores to defaults when shader has no resolution config', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    // First load a shader with resolution config
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { version: '1', passes: { Image: { resolution: { scale: 2, aspectRatio: '4:3' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    expect(get(resolutionStore).source).toBe('config');
+    expect(get(aspectRatioStore).source).toBe('config');
+
+    // Then load a shader without resolution config
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/other.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/other.glsl' },
+    });
+
+    expect(get(resolutionStore).source).toBe('session');
+    expect(get(aspectRatioStore).source).toBe('session');
+  });
+
+  it('should preserve Session Resolution overrides on same-shader shaderSource updates', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    resolutionStore.setCustomResolution('1', '1');
+    aspectRatioStore.setMode('1:1');
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    const res = get(resolutionStore);
+    expect(res.customWidth).toBe('1');
+    expect(res.customHeight).toBe('1');
+    expect(res.source).toBe('session');
+
+    const ar = get(aspectRatioStore);
+    expect(ar.mode).toBe('1:1');
+    expect(ar.source).toBe('session');
+  });
+
+  it('should preserve a manual 1x1 Session Resolution override after same-shader updates when the shader started with Image Config Resolution', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    expect(get(resolutionStore).source).toBe('config');
+
+    resolutionStore.setCustomResolution('1', '1');
+    expect(get(resolutionStore).source).toBe('session');
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    const res = get(resolutionStore);
+    expect(res.customWidth).toBe('1');
+    expect(res.customHeight).toBe('1');
+    expect(res.source).toBe('session');
+  });
+
+  it('should send scaled variable capture bounds after a manual 1x1 override', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    resolutionStore.setCustomResolution('1', '1');
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+
+    expect(mockVCMFactory._lastNotifyParams?.canvasWidth).toBe(4);
+    expect(mockVCMFactory._lastNotifyParams?.canvasHeight).toBe(4);
+  });
+
+  it('should sync the Session Resolution stores when the Image Config Resolution is changed in the config panel', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 1, aspectRatio: 'fill' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    configPanelStore.setVisible(true);
+    await tick();
+
+    const customInputs = Array.from(container.querySelectorAll('.config-panel .dim-input')) as HTMLInputElement[];
+    expect(customInputs).toHaveLength(2);
+
+    await fireEvent.input(customInputs[0], { target: { value: '64' } });
+    await fireEvent.input(customInputs[1], { target: { value: '32' } });
+    await tick();
+
+    const resolutionState = get(resolutionStore);
+    expect(resolutionState.customWidth).toBe('64');
+    expect(resolutionState.customHeight).toBe('32');
+    expect(resolutionState.source).toBe('config');
+
+    const aspectState = get(aspectRatioStore);
+    expect(aspectState.source).toBe('config');
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    expect(resolutionButton.textContent).toContain('64');
+    expect(resolutionButton.textContent).toContain('32');
+  });
+
+  it('should update Session Resolution popup values from Image Config Resolution changes without relying on a direct debug refresh call', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 1, aspectRatio: 'fill' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    mockTriggerDebugRecompile.mockClear();
+
+    configPanelStore.setVisible(true);
+    await tick();
+
+    const customInputs = Array.from(container.querySelectorAll('.config-panel .dim-input')) as HTMLInputElement[];
+    expect(customInputs).toHaveLength(2);
+
+    await fireEvent.input(customInputs[0], { target: { value: '64' } });
+    await fireEvent.input(customInputs[1], { target: { value: '32' } });
+    await tick();
+
+    expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    expect(resolutionButton.textContent).toContain('64');
+    expect(resolutionButton.textContent).toContain('32');
+
+    await fireEvent.click(resolutionButton);
+
+    const popupInputs = Array.from(document.querySelectorAll('.resolution-menu .custom-res-input')) as HTMLInputElement[];
+    expect(popupInputs).toHaveLength(2);
+    expect(popupInputs[0]?.value).toBe('64');
+    expect(popupInputs[1]?.value).toBe('32');
+  });
+
+  it('should recompile debug output and refresh variable capture from the Live Render Resolution after Image Config Resolution changes', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 1, aspectRatio: 'fill' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+    mockTriggerDebugRecompile.mockClear();
+
+    configPanelStore.setVisible(true);
+    await tick();
+
+    const customInputs = Array.from(container.querySelectorAll('.config-panel .dim-input')) as HTMLInputElement[];
+    expect(customInputs).toHaveLength(2);
+
+    await fireEvent.input(customInputs[0], { target: { value: '64' } });
+    await fireEvent.input(customInputs[1], { target: { value: '32' } });
+    await tick();
+
+    expect(mockTriggerDebugRecompile).toHaveBeenCalled();
+
+    const resolutionState = get(resolutionStore);
+    expect(resolutionState.customWidth).toBe('64');
+    expect(resolutionState.customHeight).toBe('32');
+    expect(resolutionState.source).toBe('config');
+
+    expect(mockVCMFactory._lastNotifyParams?.canvasWidth).toBe(64);
+    expect(mockVCMFactory._lastNotifyParams?.canvasHeight).toBe(32);
+  });
+
+  it('should immediately refresh inline rendering and variable capture when custom resolution changes in the resolution popup', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: { version: '1', passes: { Image: { resolution: { scale: 1, aspectRatio: 'fill' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+    mockTriggerDebugRecompile.mockClear();
+    mockVCMFactory._notifyCalls = [];
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    const [widthInput, heightInput] = Array.from(
+      document.querySelectorAll('input.custom-res-input'),
+    ) as HTMLInputElement[];
+
+    await fireEvent.input(widthInput, { target: { valueAsNumber: 1 } });
+    await fireEvent.input(heightInput, { target: { valueAsNumber: 1 } });
+
+    await vi.waitFor(() => {
+      expect(mockTriggerDebugRecompile).toHaveBeenCalled();
+      expect(mockVCMFactory._lastNotifyParams?.canvasWidth).toBe(1);
+      expect(mockVCMFactory._lastNotifyParams?.canvasHeight).toBe(1);
+    });
+  });
+
+  it('should immediately refresh inline rendering and variable capture when scale changes in the resolution popup', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: { version: '1', passes: { Image: { resolution: { scale: 1, aspectRatio: 'fill' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+    mockTriggerDebugRecompile.mockClear();
+    const notifyCountBefore = mockVCMFactory._notifyCalls.length;
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    await fireEvent.click(screen.getByText('2x'));
+
+    await vi.waitFor(() => {
+      expect(mockTriggerDebugRecompile).toHaveBeenCalled();
+      expect(mockVCMFactory._notifyCalls.length).toBeGreaterThan(notifyCountBefore);
+    });
+  });
+
+  it('should apply resolution scale to custom resolution in live debug capture', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: { version: '1', passes: { Image: { resolution: { scale: 1, aspectRatio: 'fill' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+    mockTriggerDebugRecompile.mockClear();
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    const [widthInput, heightInput] = Array.from(
+      document.querySelectorAll('input.custom-res-input'),
+    ) as HTMLInputElement[];
+
+    await fireEvent.input(widthInput, { target: { valueAsNumber: 64 } });
+    await fireEvent.input(heightInput, { target: { valueAsNumber: 32 } });
+    await tick();
+
+    await fireEvent.click(screen.getByText('2x'));
+
+    await vi.waitFor(() => {
+      expect(mockTriggerDebugRecompile).toHaveBeenCalled();
+      expect(mockVCMFactory._lastNotifyParams?.canvasWidth).toBe(128);
+      expect(mockVCMFactory._lastNotifyParams?.canvasHeight).toBe(64);
+    });
+  });
+
+  it('should immediately refresh inline rendering and variable capture when aspect ratio changes in the resolution popup', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+      config: { version: '1', passes: { Image: { resolution: { scale: 1, aspectRatio: 'fill' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float x = 1.0; o = vec4(x); }',
+        filePath: '/test/shader.glsl',
+      },
+    });
+
+    await enableDebugAndVariableInspector();
+    mockTriggerDebugRecompile.mockClear();
+    const notifyCountBefore = mockVCMFactory._notifyCalls.length;
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    await fireEvent.click(screen.getByText('1:1'));
+
+    await vi.waitFor(() => {
+      expect(mockTriggerDebugRecompile).toHaveBeenCalled();
+      expect(mockVCMFactory._notifyCalls.length).toBeGreaterThan(notifyCountBefore);
     });
   });
 
@@ -2259,16 +2756,17 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Clear previous calls from initialization
-      mockSetAudioOptions.mockClear();
+      mockSetGlobalVolume.mockClear();
 
       // Change muted state via store
       audioStore.setMuted(true);
       await tick();
 
       // applyGlobalAudioState is called via the audioStore subscription
-      // which calls shaderStudio.setAudioOptions
-      expect(mockSetAudioOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ muted: true })
+      // which updates the rendering engine global audio state
+      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
+        expect.any(Number),
+        true,
       );
     });
 
@@ -2285,21 +2783,22 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Clear previous calls from initialization
-      mockSetAudioOptions.mockClear();
+      mockSetGlobalVolume.mockClear();
 
       // Change volume via store
       audioStore.setVolume(0.5);
       await tick();
 
       // applyGlobalAudioState is called via the audioStore subscription
-      // which calls shaderStudio.setAudioOptions with a perceptual volume
-      expect(mockSetAudioOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ volume: expect.any(Number) })
+      // which uses perceptual volume when updating the rendering engine
+      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Boolean),
       );
 
       // Verify the volume is the perceptual value (0.5^3 = 0.125)
-      const call = mockSetAudioOptions.mock.calls[0][0];
-      expect(call.volume).toBeCloseTo(0.125, 3);
+      const call = mockSetGlobalVolume.mock.calls[0];
+      expect(call[0]).toBeCloseTo(0.125, 3);
     });
   });
 
@@ -2312,14 +2811,15 @@ describe('ShaderViewer', () => {
       await loadShader();
       await tick();
 
-      mockSetAudioOptions.mockClear();
+      mockSetGlobalVolume.mockClear();
 
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
       await tick();
 
-      expect(mockSetAudioOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ muted: false })
+      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
+        expect.any(Number),
+        false,
       );
     });
 
@@ -2328,12 +2828,12 @@ describe('ShaderViewer', () => {
       await tick();
       await tick();
 
-      mockSetAudioOptions.mockClear();
+      mockSetGlobalVolume.mockClear();
       await loadShader();
       await tick();
 
-      const calls = mockSetAudioOptions.mock.calls;
-      const anyUnmuted = calls.some((c: any) => c[0]?.muted === false);
+      const calls = mockSetGlobalVolume.mock.calls;
+      const anyUnmuted = calls.some((c: any) => c[1] === false);
       expect(anyUnmuted).toBe(false);
     });
   });
@@ -3611,7 +4111,7 @@ describe('ShaderViewer', () => {
   });
 
   describe('applyGlobalAudioState', () => {
-    it('should set global volume on rendering engine and sync audio options', async () => {
+    it('should set global volume on rendering engine using perceptual volume', async () => {
       let studioInstance: any;
       const onInitialized = vi.fn((data: any) => {
         studioInstance = data.shaderStudio;
@@ -3623,17 +4123,17 @@ describe('ShaderViewer', () => {
       await loadShader();
       await tick();
 
-      mockSetAudioOptions.mockClear();
+      mockSetGlobalVolume.mockClear();
 
       // Trigger applyGlobalAudioState by changing audio store
       audioStore.setVolume(0.75);
       await tick();
 
-      // setAudioOptions should have been called with the perceptual volume
-      expect(mockSetAudioOptions).toHaveBeenCalled();
-      const call = mockSetAudioOptions.mock.calls[0][0];
-      expect(call).toHaveProperty('volume');
-      expect(call).toHaveProperty('muted');
+      // setGlobalVolume should have been called with the perceptual volume
+      expect(mockSetGlobalVolume).toHaveBeenCalled();
+      const call = mockSetGlobalVolume.mock.calls[0];
+      expect(call[0]).toBeCloseTo(0.75 ** 3, 3);
+      expect(typeof call[1]).toBe('boolean');
     });
   });
 

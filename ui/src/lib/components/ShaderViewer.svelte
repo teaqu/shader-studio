@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
+  import { get } from "svelte/store";
   import { ShaderStudio } from "../ShaderStudio";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
@@ -31,6 +32,8 @@
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { ShaderConfig } from "@shader-studio/types";
   import { allocateWebLayoutSlot, getInjectedLayoutSlot, releaseWebLayoutSlot } from "../util/layoutSlot";
+  import { resolutionStore } from "../stores/resolutionStore";
+  import { aspectRatioStore } from "../stores/aspectRatioStore";
 
   export let onInitialized: (data: {
     shaderStudio: ShaderStudio;
@@ -46,6 +49,7 @@
   let canvasWidth = 0;
   let canvasHeight = 0;
   let zoomLevel = 1.0;
+  let sessionResolutionRefreshScheduled = false;
   let inspectorState: PixelInspectorState = {
     isEnabled: false,
     isActive: false,
@@ -224,6 +228,32 @@
     };
   });
 
+  onMount(() => {
+    let seenResolutionState = false;
+    let seenAspectRatioState = false;
+
+    const unsubscribeResolution = resolutionStore.subscribe(() => {
+      if (!seenResolutionState) {
+        seenResolutionState = true;
+        return;
+      }
+      scheduleDebugRefresh();
+    });
+
+    const unsubscribeAspectRatio = aspectRatioStore.subscribe(() => {
+      if (!seenAspectRatioState) {
+        seenAspectRatioState = true;
+        return;
+      }
+      scheduleDebugRefresh();
+    });
+
+    return () => {
+      unsubscribeResolution();
+      unsubscribeAspectRatio();
+    };
+  });
+
   // FPS polling
   onMount(() => {
     const fpsInterval = setInterval(() => {
@@ -256,11 +286,11 @@
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
+    canvasWidth = Math.round(data.width);
+    canvasHeight = Math.round(data.height);
     if (!initialized) {
       return;
     }
-    canvasWidth = Math.round(data.width);
-    canvasHeight = Math.round(data.height);
     renderingEngine.handleCanvasResize(data.width, data.height);
   }
 
@@ -479,6 +509,27 @@
     });
   }
 
+  function scheduleDebugRefresh() {
+    if (sessionResolutionRefreshScheduled || !initialized || !hasShader || !debugState.isEnabled) {
+      return;
+    }
+
+    sessionResolutionRefreshScheduled = true;
+    void (async () => {
+      await tick();
+      sessionResolutionRefreshScheduled = false;
+
+      if (!initialized || !hasShader || !debugState.isEnabled) {
+        return;
+      }
+
+      shaderStudio?.triggerDebugRecompile();
+      if (debugState.isVariableInspectorEnabled) {
+        notifyVariableCaptureManager();
+      }
+    })();
+  }
+
   function notifyVariableCaptureManager() {
     if (!variableCaptureManager || !shaderDebugManager) {
       return;
@@ -487,6 +538,9 @@
     if (!state.isVariableInspectorEnabled) {
       return;
     }
+    const engineCanvas = renderingEngine?.getCanvas?.();
+    const effectiveCanvasWidth = engineCanvas?.width ?? canvasWidth;
+    const effectiveCanvasHeight = engineCanvas?.height ?? canvasHeight;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
@@ -494,8 +548,8 @@
       debugLine: state.currentLine,
       pixelX: capturePixelX,
       pixelY: capturePixelY,
-      canvasWidth,
-      canvasHeight,
+      canvasWidth: effectiveCanvasWidth,
+      canvasHeight: effectiveCanvasHeight,
       loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
       customParams: shaderDebugManager.getCustomParameters(),
       sampleSize: variableCaptureManager.sampleSize,
@@ -522,10 +576,28 @@
         performancePanelStore.restoreFromStorage();
         editorOverlayStore.restoreFromStorage();
       }
+      const prevShaderPath = shaderPath;
+      const nextShaderPath = event.data.path || "";
+      const isSameShader = nextShaderPath !== "" && nextShaderPath === prevShaderPath;
       currentConfig = event.data.config || null;
+      const imageResolution = currentConfig?.passes?.Image?.resolution;
+      const currentResolutionState = get(resolutionStore);
+      const currentAspectRatioState = get(aspectRatioStore);
+
+      if (!isSameShader) {
+        resolutionStore.setFromConfig(imageResolution);
+        aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
+      } else {
+        if (currentResolutionState.source === 'config') {
+          resolutionStore.setFromConfig(imageResolution);
+        }
+        if (currentAspectRatioState.source === 'config') {
+          aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
+        }
+      }
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
-      shaderPath = event.data.path || "";
+      shaderPath = nextShaderPath;
       hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
       if (!hasShader) {
@@ -537,7 +609,9 @@
       customUniformValues = {};
       uniformTimestamps = {};
       uniformActualFps = {};
-      configSelectedBuffer = 'Image';
+      if (shaderPath !== prevShaderPath) {
+        configSelectedBuffer = 'Image';
+      }
       scriptInfo = currentConfig?.script
         ? {
           filename: currentConfig.script,
@@ -759,6 +833,21 @@
     }
   }
 
+  function handleResetResolution() {
+    if (!currentConfig || !shaderPath) return;
+    const { resolution: _, ...imageRest } = currentConfig.passes.Image;
+    const updatedConfig = {
+      ...currentConfig,
+      passes: { ...currentConfig.passes, Image: imageRest },
+    };
+    const cleanText = JSON.stringify(updatedConfig, (key, value) =>
+      key === 'resolved_path' ? undefined : value, 2);
+    transport.postMessage({
+      type: 'updateConfig',
+      payload: { config: updatedConfig, text: cleanText, shaderPath },
+    });
+  }
+
   function handleShowPreview() {
     if (showPreviewFn) {
       showPreviewFn();
@@ -784,6 +873,18 @@
 
   function handleConfigClosed() {
     configPanelStore.setVisible(false);
+  }
+
+  async function handleConfigPanelConfigChange(updatedConfig: ShaderConfig) {
+    currentConfig = updatedConfig;
+    // Config Resolution changes become the current Session Resolution here.
+    const imageResolution = updatedConfig.passes?.Image?.resolution;
+    resolutionStore.setFromConfig(imageResolution);
+    aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
+    editorOverlayManager?.setConfig(updatedConfig);
+    shaderDebugManager?.setShaderContext(updatedConfig, shaderPath, bufferPathMap);
+    shaderStudio?.updateCurrentConfig(updatedConfig);
+    await tick();
   }
 
   // DOM teleport refs
@@ -907,6 +1008,7 @@
         {customUniformValues}
         {actualPollFps}
         {uniformActualFps}
+        onConfigChange={handleConfigPanelConfigChange}
       />
     {/if}
   </div>

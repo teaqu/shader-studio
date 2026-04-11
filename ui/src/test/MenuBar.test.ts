@@ -468,7 +468,7 @@ describe('MenuBar Component', () => {
       expect(applyButton).not.toBeDisabled();
     });
 
-    it('should update resolution store with percentage values when Apply is clicked', async () => {
+    it('should ignore percentage values when Apply is clicked', async () => {
       render(MenuBar, { props: defaultProps });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -483,8 +483,8 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
-      expect(state.customWidth).toBe('50%');
-      expect(state.customHeight).toBe('50%');
+      expect(state.customWidth).toBeUndefined();
+      expect(state.customHeight).toBeUndefined();
     });
 
     it('should update resolution store with px values when Apply is clicked', async () => {
@@ -554,35 +554,6 @@ describe('MenuBar Component', () => {
       expect(aspectButton).toBeDisabled();
     });
 
-    it('should show Save to shader config checkbox', async () => {
-      render(MenuBar, { props: defaultProps });
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      expect(screen.getByText('Save to shader config')).toBeInTheDocument();
-    });
-
-    it('should have a Save to shader config checkbox', async () => {
-      render(MenuBar, { props: defaultProps });
-
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      const checkbox = screen.getByText('Save to shader config').closest('label')!.querySelector('input')!;
-      expect(checkbox).toBeInTheDocument();
-    });
-
-    it('should show checked checkbox when savedToConfig is true', async () => {
-      resolutionStore.setSavedToConfig(true);
-      render(MenuBar, { props: defaultProps });
-
-      const resolutionButton = screen.getByLabelText('Change resolution settings');
-      await fireEvent.click(resolutionButton);
-
-      const checkbox = screen.getByText('Save to shader config').closest('label')!.querySelector('input')!;
-      expect(checkbox.checked).toBe(true);
-    });
-
     it('should show all scale options', async () => {
       render(MenuBar, { props: defaultProps });
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -636,7 +607,6 @@ describe('MenuBar Component', () => {
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
-      // The resolution reset is the first Reset button (in save-to-config section)
       const resetButtons = screen.getAllByRole('button', { name: 'Reset' });
       await fireEvent.click(resetButtons[0]);
 
@@ -665,7 +635,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should NOT uncheck save to shader config when reset is clicked', async () => {
-      resolutionStore.setSavedToConfig(true);
+      resolutionStore.setSource('config');
       resolutionStore.setScale(4);
 
       render(MenuBar, { props: { ...defaultProps } });
@@ -678,7 +648,7 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
-      expect(state.savedToConfig).toBe(true);
+      expect(state.source).toBe('config');
     });
 
     it('should reset aspect ratio to fill when resolution reset is clicked', async () => {

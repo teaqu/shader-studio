@@ -17,6 +17,7 @@ export class ResourceManager {
   private readonly cubemapTextureManager: CubemapTextureManager;
   private readonly audioTextureManager: AudioTextureManager;
   private readonly keyboardInput: ShaderKeyboardInput;
+  private audioDefaults: { muted?: boolean; volume?: number } = {};
 
   constructor(
     private readonly renderer: PiRenderer,
@@ -107,7 +108,14 @@ export class ResourceManager {
 
   // Audio methods
   public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<PiTexture> {
-    return this.audioTextureManager.loadAudioSource(path, options);
+    return this.audioTextureManager.loadAudioSource(path, {
+      ...this.audioDefaults,
+      ...options,
+    });
+  }
+
+  public setAudioDefaults(options: { muted?: boolean; volume?: number }): void {
+    this.audioDefaults = options;
   }
 
   public async resumeAudioContext(): Promise<void> {

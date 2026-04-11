@@ -112,10 +112,6 @@ export class AudioVideoController {
     if (engine) {
       engine.setGlobalVolume(linearToPerceptualVolume(this.audioVolume), this.audioMuted);
     }
-    const studio = this.getShaderStudio();
-    if (studio) {
-      studio.setAudioOptions({ muted: this.audioMuted, volume: linearToPerceptualVolume(this.audioVolume) });
-    }
   }
 
   dispose(): void {

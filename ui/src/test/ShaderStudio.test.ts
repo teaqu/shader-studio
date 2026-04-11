@@ -242,7 +242,6 @@ describe('ShaderStudio', () => {
         }
       } as MessageEvent;
 
-      // Mock the message handler method
       vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
         getLastEvent: vi.fn().mockReturnValue(mockEvent)
       });
@@ -253,7 +252,6 @@ describe('ShaderStudio', () => {
     });
 
     it('should toggle lock without shader path when no last event', () => {
-      // Mock the message handler method
       vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
         getLastEvent: vi.fn().mockReturnValue(null)
       });
@@ -280,7 +278,7 @@ describe('ShaderStudio', () => {
       await shaderStudio.initialize(mockCanvas);
     });
 
-    it('should return last event from message handler', () => {
+    it('should return last event from runtime session', () => {
       const mockEvent = {
         data: {
           type: 'shaderSource',
@@ -291,7 +289,6 @@ describe('ShaderStudio', () => {
         }
       } as MessageEvent;
 
-      // Mock the message handler method
       vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
         getLastEvent: vi.fn().mockReturnValue(mockEvent)
       });
@@ -307,6 +304,36 @@ describe('ShaderStudio', () => {
       const result = shaderStudio.getRenderingEngine();
 
       expect(result).toBe(mockRenderingEngine);
+    });
+  });
+
+  describe('message handler delegation', () => {
+    beforeEach(async () => {
+      await shaderStudio.initialize(mockCanvas);
+    });
+
+    it('should delegate updateCurrentConfig to the message handler', () => {
+      const updateCurrentConfig = vi.fn();
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        updateCurrentConfig,
+      });
+
+      shaderStudio.updateCurrentConfig({ version: '1', passes: { Image: {} } } as any);
+
+      expect(updateCurrentConfig).toHaveBeenCalledWith({ version: '1', passes: { Image: {} } });
+    });
+
+    it('should trigger a debug recompile via the message handler', async () => {
+      const triggerDebugRecompile = vi.fn();
+      vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
+        triggerDebugRecompile,
+      });
+
+      shaderStudio.triggerDebugRecompile();
+
+      await vi.waitFor(() => {
+        expect(triggerDebugRecompile).toHaveBeenCalled();
+      });
     });
   });
 
@@ -358,10 +385,9 @@ describe('ShaderStudio', () => {
         }
       } as MessageEvent;
 
-      // Mock message handler
       vi.spyOn(shaderStudio as any, 'messageHandler', 'get').mockReturnValue({
         getLastEvent: vi.fn().mockReturnValue(mockEvent),
-        refresh: vi.fn()
+        refresh: vi.fn(),
       });
 
       // Toggle lock on

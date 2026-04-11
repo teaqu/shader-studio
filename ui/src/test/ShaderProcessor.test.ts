@@ -134,7 +134,6 @@ describe('ShaderProcessor', () => {
         message.buffers,
         undefined,
         undefined,
-        undefined,
       );
       expect(mockRenderEngine.startRenderLoop).toHaveBeenCalled();
       expect(result.success).toBe(true);
@@ -205,7 +204,7 @@ describe('ShaderProcessor', () => {
       expect(mockResetTime).not.toHaveBeenCalled();
     });
 
-    it('should pass audioOptions to compileShaderPipeline', async () => {
+    it('should pass only compile inputs to compileShaderPipeline', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
@@ -214,22 +213,20 @@ describe('ShaderProcessor', () => {
         buffers: {},
       };
 
-      const audioOptions = { muted: false, volume: 0.8 };
-      const result = await shaderProcessor.processMainShaderCompilation(message, false, audioOptions);
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
         message.code,
         message.config,
         message.path,
         message.buffers,
-        audioOptions,
         undefined,
         undefined,
       );
       expect(result.success).toBe(true);
     });
 
-    it('should pass undefined audioOptions when not provided', async () => {
+    it('should pass undefined custom uniform args when not provided', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
@@ -245,30 +242,6 @@ describe('ShaderProcessor', () => {
         message.config,
         message.path,
         message.buffers,
-        undefined,
-        undefined,
-        undefined,
-      );
-    });
-
-    it('should pass audioOptions with muted=true', async () => {
-      const message: ShaderSourceMessage = {
-        type: 'shaderSource',
-        code: 'void mainImage() {}',
-        config: {},
-        path: 'test.glsl',
-        buffers: {},
-      };
-
-      const audioOptions = { muted: true, volume: 0 };
-      await shaderProcessor.processMainShaderCompilation(message, false, audioOptions);
-
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
-        message.code,
-        message.config,
-        message.path,
-        message.buffers,
-        { muted: true, volume: 0 },
         undefined,
         undefined,
       );
@@ -350,7 +323,6 @@ describe('ShaderProcessor', () => {
         message.buffers,
         undefined,
         undefined,
-        undefined,
       );
     });
 
@@ -384,7 +356,7 @@ describe('ShaderProcessor', () => {
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
       expect(result.success).toBe(true);
     });

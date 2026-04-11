@@ -169,6 +169,8 @@ canvas {
   display: block;
   background-color: black;
   outline: none;
+  image-rendering: pixelated;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .menu-bar {
@@ -434,6 +436,17 @@ canvas {
 
 .resolution-section:last-child {
   margin-bottom: 0;
+}
+
+.resolution-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.resolution-section-header h4 {
+  margin: 0;
 }
 
 .resolution-section h4 {

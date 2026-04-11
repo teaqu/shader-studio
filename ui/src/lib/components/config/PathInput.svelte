@@ -113,9 +113,11 @@
       {#if showCreate}
         <button class="create-file-btn" on:click={handleCreate}>Create</button>
       {/if}
+      {#if note}
+        <span class="input-note">{note}</span>
+      {/if}
     </div>
-  {/if}
-  {#if note}
+  {:else if note}
     <span class="input-note">{note}</span>
   {/if}
 </div>
@@ -160,6 +162,7 @@
 
   .input-actions {
     display: flex;
+    align-items: center;
     gap: 6px;
     margin-top: 4px;
   }
@@ -184,10 +187,8 @@
   }
 
   .input-note {
-    display: block;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--vscode-descriptionForeground, #888);
     font-style: italic;
-    margin-top: 10px;
   }
 </style>

@@ -19,7 +19,7 @@
 
   let glCanvas: HTMLCanvasElement;
   let currentAspectMode: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, savedToConfig: false };
+  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, source: 'session' };
   let aspectRatioCalculator: AspectRatioCalculator;
   let resizeCanvasToFitAspectRatio: () => void;
 
@@ -57,6 +57,8 @@
       currentResolution = state;
       resizeCanvasToFitAspectRatio();
     });
+
+    glCanvas.style.imageRendering = 'pixelated';
 
     resizeCanvasToFitAspectRatio();
     setupInputHandling();
@@ -127,5 +129,10 @@
 <style>
   .canvas-container.force-black-background {
     background: #000;
+  }
+
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: -webkit-optimize-contrast;
   }
 </style>

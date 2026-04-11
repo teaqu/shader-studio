@@ -136,7 +136,23 @@ export function computeGridDimensions(
   const gridHeight = Math.max(1, Math.round(Math.sqrt(totalPixels / aspect)));
   const gridWidth = Math.max(1, Math.round(gridHeight * aspect));
 
-  return { gridWidth, gridHeight };
+  const maxGridWidth = Math.max(1, Math.floor(canvasWidth));
+  const maxGridHeight = Math.max(1, Math.floor(canvasHeight));
+
+  if (gridWidth <= maxGridWidth && gridHeight <= maxGridHeight) {
+    return { gridWidth, gridHeight };
+  }
+
+  const scale = Math.min(
+    maxGridWidth / gridWidth,
+    maxGridHeight / gridHeight,
+    1,
+  );
+
+  return {
+    gridWidth: Math.max(1, Math.floor(gridWidth * scale)),
+    gridHeight: Math.max(1, Math.floor(gridHeight * scale)),
+  };
 }
 
 export class VariableCaptureManager {

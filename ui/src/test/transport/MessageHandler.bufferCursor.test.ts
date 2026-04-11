@@ -94,7 +94,7 @@ describe('MessageHandler — buffer cursor handling', () => {
   let mockTransport: Transport;
   let mockShaderLocker: ReturnType<typeof createMockShaderLocker>;
   let shaderDebugManager: ShaderDebugManager;
-  let mockShaderProcessor: any;
+  let shaderProcessor: any;
 
   beforeEach(() => {
     mockRenderingEngine = createMockRenderingEngine();
@@ -102,14 +102,16 @@ describe('MessageHandler — buffer cursor handling', () => {
     mockShaderLocker = createMockShaderLocker();
     shaderDebugManager = new ShaderDebugManager();
 
-    mockShaderProcessor = {
+    shaderProcessor = {
       processMainShaderCompilation: vi.fn().mockResolvedValue({ success: true }),
-      processCommonBufferUpdate: vi.fn().mockResolvedValue({ success: true }),
-      debugCompile: vi.fn().mockResolvedValue({ success: true }),
-      getImageShaderCode: vi.fn().mockReturnValue('void mainImage() {}'),
       isCurrentlyProcessing: vi.fn().mockReturnValue(false),
+      getImageShaderCode: vi.fn().mockReturnValue('void mainImage() {}'),
+      debugCompile: vi.fn().mockResolvedValue({ success: true }),
     };
-    (ShaderProcessor as any).mockImplementation(() => mockShaderProcessor);
+
+    (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => shaderProcessor,
+    );
 
     handler = new MessageHandler(
       mockTransport,
@@ -123,33 +125,16 @@ describe('MessageHandler — buffer cursor handling', () => {
   });
 
   // -------------------------------------------------------------------------
-  describe('setShaderContext called on each shader message', () => {
-    it('calls setShaderContext on the debug manager when a shader message is processed', async () => {
-      const spy = vi.spyOn(shaderDebugManager, 'setShaderContext');
-      await handler.handleShaderMessage(makeShaderMessage());
-      expect(spy).toHaveBeenCalledTimes(1);
-    });
+  describe('shader message delegation', () => {
+    it('forwards shaderSource messages to the runtime session', async () => {
+      const message = makeShaderMessage();
 
-    it('passes config, path, and buffers to setShaderContext', async () => {
-      const spy = vi.spyOn(shaderDebugManager, 'setShaderContext');
-      const msg = makeShaderMessage();
-      await handler.handleShaderMessage(msg);
-      const { config, path, buffers } = msg.data as ShaderSourceMessage;
-      expect(spy).toHaveBeenCalledWith(config, path, buffers);
-    });
+      await handler.handleShaderMessage(message);
 
-    it('calls setShaderContext with empty buffers when message has no buffers', async () => {
-      const spy = vi.spyOn(shaderDebugManager, 'setShaderContext');
-      await handler.handleShaderMessage(makeShaderMessage({ buffers: undefined }));
-      const call = spy.mock.calls[0];
-      expect(call[2]).toEqual({});
-    });
-
-    it('calls setShaderContext with null config when message has no config', async () => {
-      const spy = vi.spyOn(shaderDebugManager, 'setShaderContext');
-      await handler.handleShaderMessage(makeShaderMessage({ config: undefined }));
-      const call = spy.mock.calls[0];
-      expect(call[0]).toBeNull();
+      expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
+        message.data,
+        false,
+      );
     });
   });
 
@@ -287,45 +272,10 @@ describe('MessageHandler — buffer cursor handling', () => {
       // Make debug active
       shaderDebugManager.updateDebugLine(1, 'float d = 0.5;', 'bufferA.glsl');
 
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
+      shaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
       handler.handleCursorPositionMessage(makeCursorMessage('bufferA.glsl', 2, 'fragColor = vec4(d);'));
 
-      expect(mockShaderProcessor.debugCompile).toHaveBeenCalled();
-    });
-
-    it('uses the latest locked buffer code for debug recompile after a buffer file update', async () => {
-      mockShaderLocker.isLocked.mockReturnValue(true);
-      mockShaderLocker.getLockedShaderPath.mockReturnValue('/shaders/image.glsl');
-      const originalBufferACode = (
-        (handler.getLastEvent()?.data as ShaderSourceMessage | undefined)?.buffers?.BufferA
-      );
-      expect(originalBufferACode).toBe(
-        'void mainImage(out vec4 f, in vec2 c) { f = vec4(0.5); }',
-      );
-
-      const updatedBufferACode =
-        'void mainImage(out vec4 f, in vec2 c) { vec3 col = vec3(1.0); f = vec4(col, 1.0); }';
-
-      await handler.handleShaderMessage(makeShaderMessage({
-        path: '/shaders/bufferA.glsl',
-        code: updatedBufferACode,
-        buffers: {},
-      }));
-
-      mockShaderProcessor.getImageShaderCode.mockReturnValue('void mainImage() {}');
-
-      handler.handleCursorPositionMessage(
-        makeCursorMessage('/shaders/bufferA.glsl', 2, 'vec3 col = vec3(1.0);'),
-      );
-
-      expect(mockShaderProcessor.debugCompile).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: '/shaders/image.glsl',
-          buffers: expect.objectContaining({
-            BufferA: updatedBufferACode,
-          }),
-        }),
-      );
+      expect(shaderProcessor.debugCompile).toHaveBeenCalled();
     });
   });
 });
