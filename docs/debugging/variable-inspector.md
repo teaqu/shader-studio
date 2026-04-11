@@ -54,11 +54,19 @@ Samples the variable across a grid of points spanning the full canvas. Each grid
 
 The size buttons appear in the Variables section header. The active size is highlighted.
 
+The requested grid size is capped to the **Live Render Resolution**. This matters most when the preview is very small:
+
+- if the canvas is effectively `1 × 1`, the inspector samples at most `1 × 1`
+- if custom resolution is active, the cap uses that live custom resolution after scale has been applied
+- Session Resolution changes and Image Config Resolution changes both update this cap immediately
+
 ### Pixel Mode
 
 Captures variable values at a **single pixel** under the cursor. The capture coordinate is sent as a uniform (`_dbgCaptureCoord`) and renders a 1x1 framebuffer at that position.
 
 The Y coordinate is flipped (`captureY = canvasHeight - pixelY - 1`) to match the OpenGL coordinate system where Y=0 is at the bottom.
+
+Pixel and grid captures both use the same live session canvas dimensions as inline rendering.
 
 ## Refresh Modes
 
@@ -140,3 +148,4 @@ Expanded view shows:
 - Only expand variables you need histograms for — histograms are computed lazily on expand
 - Use **pixel mode** when you only care about values at a specific point
 - Use **pause** to freeze captures while you analyze results
+- If captures look unexpectedly coarse or oversized, check the live resolution shown in the toolbar, because the inspector follows that effective render size exactly

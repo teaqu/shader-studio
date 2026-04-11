@@ -106,3 +106,7 @@ When inline rendering is **off** but normalization or step is enabled, the post-
 | Normalization & Step | Remap value ranges and apply binary thresholds | [Normalization & Step](normalization.md) |
 | Parameter Editing | Control how helper function parameters are populated | [Parameter Editing](parameters.md) |
 | Loop Control | Cap loop iterations to debug expensive shaders | [Loop Control](loops.md) |
+
+## Next
+
+- [Inline Rendering](inline-rendering.md) — visualize any variable line-by-line as color output

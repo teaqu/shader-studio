@@ -1,0 +1,4 @@
+mkdocs>=1.6.0
+mkdocs-material>=9.0.0
+# click>=8.3.0 breaks mkdocs serve livereload (https://github.com/mkdocs/mkdocs/issues/4019)
+click==8.2.1

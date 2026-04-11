@@ -27,6 +27,14 @@ https://teaqu.github.io/shader-studio/
 
 Docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).
 
+Install dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r docs/requirements.txt
+```
+
 - Local build: `mkdocs build`
 - Local preview: `mkdocs serve`
 

@@ -65,11 +65,14 @@ nav:
   - Getting Started:
       - Overview: index.md
       - Quick Start: quick-start.md
-      - Interface Tour: interface-tour.md
-      - Debug A Shader: workflows/debug-shaders.md
   - Features:
       - Configure Buffers And Inputs: features/config-buffers.md
       - Time And Playback Controls: features/time-controls.md
+      - Options Menu: features/menu.md
+      - FPS: features/fps.md
+      - Resolution: features/resolution.md
+      - Panel Layout: features/panel-layout.md
+      - Locking: features/locking.md
       - Editor Overlay: features/editor-overlay.md
       - Compile Modes: features/compile-modes.md
       - Recording: features/recording.md

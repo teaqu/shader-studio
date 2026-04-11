@@ -32,7 +32,7 @@
 ### Resolution Controls
 
 - Scale presets (0.25x, 0.5x, 1x, 2x, 4x) replacing the previous HD/SD toggle
-- Custom resolution: enter pixel dimensions or percentages (e.g. `1920` or `50%`)
+- Custom resolution: enter pixel dimensions
 - Save resolution to `.sha.json` config so it persists with the shader
 - Force black background option
 - Buffer passes support independent fixed-size resolutions in the config

@@ -56,25 +56,25 @@ The preview toolbar gives quick access to all features:
 - <i class="codicon codicon-code"></i> [**Editor**](features/editor-overlay.md) — toggle inline code editing overlay
 - <i class="codicon codicon-gear"></i> [**Config**](features/config-buffers.md) — set up buffers, inputs, and uniforms
 - <i class="codicon codicon-device-camera"></i> [**Record**](features/recording.md) — take a screenshot or record video/GIF
+- <i class="codicon codicon-lock"></i> **Lock** — keep the preview pinned to the current shader while you navigate other files
 - <i class="codicon codicon-menu"></i> **Menu** — access more options like shader explorer, snippet library, compile modes, browser preview, and settings
 
-See [Interface Tour](interface-tour.md) for a full breakdown.
+## Step 4: Setup Channels and Buffers
 
-## Add Channels and Buffers
+Click the <i class="codicon codicon-gear"></i> **Config** button in the toolbar to set up buffer passes, input channels, and uniforms for your shader. Configuration is stored in a `.sha.json` file (e.g. `myshader.glsl` → `myshader.sha.json`) that's generated automatically when needed.
 
-Click the **Config** button in the toolbar to set up buffer passes, input channels, and uniforms for your shader. Configuration is stored in a `.sha.json` file that's generated automatically when needed.
+![Config panel with iChannel0 texture](assets/images/config.png)
+_Example: a texture assigned to `iChannel0`, available in the shader as `sampler2D iChannel0`._
 
 See [Configure Buffers and Inputs](features/config-buffers.md) for the full guide.
 
-## Locking a Shader
+### Keep the Shader Active While Editing Buffers
 
-When working with multi-buffer shaders, opening a buffer file will switch the preview to that buffer. Use the <i class="codicon codicon-lock"></i> **Lock** button in the toolbar to keep the preview pinned to a specific shader — it will stay locked even as you navigate between buffer files to edit them.
+Locking is an **important** feature when working with multi-buffer shaders. Opening a buffer file will switch the preview to that buffer — use the <i class="codicon codicon-lock"></i> **Lock** button to keep the preview pinned to a specific shader while you navigate between buffer files to edit them.
 
-## Tips
-
-- If nothing renders, check that your shader has the `mainImage` signature above — it's required.
-- If you see errors, check the tooltip near the play/pause button for the compilation error message.
+See [Locking](features/locking.md) for more info.
 
 ## Next
 
-[Interface Tour](interface-tour.md) — learn the preview controls before moving into shader workflows.
+- [Setup Channels and Buffers](features/config-buffers.md) — configure buffer passes, inputs, and uniforms
+- [Debugging Overview](debugging/index.md) — learn how to use debug mode to visualize shader variables

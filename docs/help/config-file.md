@@ -200,7 +200,7 @@ Pin a resolution to the config so it applies whenever the shader is opened:
 }
 ```
 
-Custom pixel or percentage dimensions:
+Custom pixel dimensions:
 
 ```json
 "resolution": {
@@ -209,14 +209,17 @@ Custom pixel or percentage dimensions:
 }
 ```
 
-Or as percentages of the canvas:
+Custom dimensions are the base size. `scale` still applies if you set both:
 
 ```json
 "resolution": {
-  "customWidth": "50%",
-  "customHeight": "50%"
+  "scale": 2,
+  "customWidth": 320,
+  "customHeight": 180
 }
 ```
+
+This renders at `640 × 360`.
 
 Buffer passes use a simpler fixed-size resolution:
 
