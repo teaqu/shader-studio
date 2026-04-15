@@ -11,10 +11,49 @@ vi.mock('../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: vi.fn().mockReturnValue(false)
 }));
 
+/** Create a minimal mock ResolutionSessionController for tests. */
+function createMockResCtrl() {
+  return {
+    menuVM: {
+      syncWithConfig: true,
+      targetKind: 'image' as const,
+      targetLabel: 'Image',
+      bufferResolutionState: { mode: 'none' as const, width: '', height: '', scale: 1 },
+    },
+    setSyncWithConfig: vi.fn(),
+    setAspectRatio: vi.fn((mode: string) => aspectRatioStore.setMode(mode as any)),
+    setImageScale: vi.fn((scale: number) => resolutionStore.setScale(scale)),
+    setBufferScale: vi.fn(),
+    setImageCustomResolution: (width?: string, height?: string) => {
+      if (width && height) {
+        resolutionStore.setCustomResolution(width, height);
+      } else {
+        resolutionStore.clearCustomResolution();
+      }
+    },
+    resetCurrentTarget: () => {
+      resolutionStore.reset();
+      aspectRatioStore.setMode('auto');
+    },
+    setBufferResolutionMode: vi.fn(),
+    setBufferFixedResolution: vi.fn(),
+    getCurrentTarget: () => ({ kind: 'image' as const }),
+  };
+}
+
+
 describe('MenuBar Component', () => {
   let mockTimeManager: any;
   let mockCanvas: HTMLCanvasElement;
   let defaultProps: any;
+  let mockResCtrl: ReturnType<typeof createMockResCtrl>;
+
+  function renderMenuBar(options: { props?: any } = {}) {
+    return render(MenuBar, {
+      props: options.props ?? defaultProps,
+      context: new Map([['resolution', mockResCtrl]]),
+    });
+  }
 
   beforeEach(() => {
     mockTimeManager = {
@@ -68,6 +107,7 @@ describe('MenuBar Component', () => {
 
     // Reset all mocks
     vi.clearAllMocks();
+    mockResCtrl = createMockResCtrl();
 
     // Reset stores to default values
     currentTheme.set('light');
@@ -81,7 +121,7 @@ describe('MenuBar Component', () => {
 
   describe('Basic Rendering', () => {
     it('should render the menu bar with basic controls', () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       expect(screen.getByLabelText('Reset shader')).toBeInTheDocument();
       expect(screen.getByLabelText('Toggle pause')).toBeInTheDocument();
@@ -90,14 +130,14 @@ describe('MenuBar Component', () => {
     });
 
     it('should display FPS and canvas dimensions', () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       expect(screen.getByLabelText('Change FPS limit')).toHaveTextContent('60');
       expect(screen.getByText('800 × 600')).toBeInTheDocument();
     });
 
     it('should display current time when timeManager is provided', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           timeManager: mockTimeManager
@@ -110,14 +150,14 @@ describe('MenuBar Component', () => {
 
   describe('Lock State', () => {
     it('should show unlock icon when not locked', () => {
-      render(MenuBar, { props: { ...defaultProps, isLocked: false } });
+      renderMenuBar({ props: { ...defaultProps, isLocked: false } });
       
       const lockButton = screen.getByLabelText('Toggle lock');
       expect(lockButton).toBeInTheDocument();
     });
 
     it('should show lock icon when locked', () => {
-      render(MenuBar, { props: { ...defaultProps, isLocked: true } });
+      renderMenuBar({ props: { ...defaultProps, isLocked: true } });
       
       const lockButton = screen.getByLabelText('Toggle lock');
       expect(lockButton).toBeInTheDocument();
@@ -125,7 +165,7 @@ describe('MenuBar Component', () => {
 
     it('should call onToggleLock when lock button is clicked', async () => {
       const onToggleLock = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onToggleLock 
@@ -142,7 +182,7 @@ describe('MenuBar Component', () => {
   describe('Pause/Play Toggle', () => {
     it('should show play icon when paused', () => {
       mockTimeManager.isPaused.mockReturnValue(true);
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           timeManager: mockTimeManager 
@@ -155,7 +195,7 @@ describe('MenuBar Component', () => {
 
     it('should show pause icon when playing', () => {
       mockTimeManager.isPaused.mockReturnValue(false);
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           timeManager: mockTimeManager 
@@ -168,7 +208,7 @@ describe('MenuBar Component', () => {
 
     it('should call onTogglePause when pause button is clicked', async () => {
       const onTogglePause = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onTogglePause 
@@ -185,7 +225,7 @@ describe('MenuBar Component', () => {
   describe('Reset Button', () => {
     it('should call onReset when reset button is clicked', async () => {
       const onReset = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onReset 
@@ -201,7 +241,7 @@ describe('MenuBar Component', () => {
 
   describe('Options Menu', () => {
     it('should show options menu when three-dots button is clicked', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -210,7 +250,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should hide options menu when clicking outside', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -226,7 +266,7 @@ describe('MenuBar Component', () => {
 
     it('should call onRefresh when refresh button is clicked', async () => {
       const onRefresh = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onRefresh 
@@ -246,7 +286,7 @@ describe('MenuBar Component', () => {
 
     it('should keep menu open when refresh is clicked', async () => {
       const onRefresh = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onRefresh 
@@ -268,7 +308,7 @@ describe('MenuBar Component', () => {
 
   describe('Theme Toggle', () => {
     it('should show theme toggle button in non-VSCode environment', () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -279,7 +319,7 @@ describe('MenuBar Component', () => {
 
     it('should show "Dark Mode" text when in light theme', async () => {
       currentTheme.set('light');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -290,7 +330,7 @@ describe('MenuBar Component', () => {
 
     it('should show "Light Mode" text when in dark theme', async () => {
       currentTheme.set('dark');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -300,7 +340,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should keep menu open when theme is toggled', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -317,7 +357,7 @@ describe('MenuBar Component', () => {
 
   describe('Fullscreen Toggle', () => {
     it('should show fullscreen button in non-VSCode environment', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -333,7 +373,7 @@ describe('MenuBar Component', () => {
       canvasParent.requestFullscreen = requestFullscreenMock;
       canvasParent.appendChild(mockCanvas);
 
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           canvasElement: mockCanvas
@@ -354,7 +394,7 @@ describe('MenuBar Component', () => {
 
   describe('Resolution Menu', () => {
     it('should show resolution menu when resolution button is clicked', async () => {
-      const { container } = render(MenuBar, { props: defaultProps });
+      const { container } = renderMenuBar();
       
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -366,7 +406,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should close options menu when resolution menu is opened', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu first
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -384,7 +424,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should update resolution store when scale option is selected', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
         }
@@ -403,29 +443,23 @@ describe('MenuBar Component', () => {
       expect(state.scale).toBe(0.5);
     });
 
-    it('should call onAspectRatioChange when aspect ratio is selected', async () => {
-      const onAspectRatioChange = vi.fn();
-      render(MenuBar, { 
-        props: { 
-          ...defaultProps, 
-          onAspectRatioChange 
-        } 
-      });
-      
+    it('should call resCtrl.setAspectRatio when aspect ratio is selected', async () => {
+      renderMenuBar();
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       // Click 4:3 aspect ratio
       const aspectButton = screen.getByRole('button', { name: '4:3' });
       await fireEvent.click(aspectButton);
-      
-      expect(onAspectRatioChange).toHaveBeenCalledWith('4:3');
+
+      expect(mockResCtrl.setAspectRatio).toHaveBeenCalledWith('4:3');
     });
 
     it('should call onZoomChange when zoom slider is moved', async () => {
       const onZoomChange = vi.fn();
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           onZoomChange 
@@ -444,7 +478,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show custom resolution inputs', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -454,7 +488,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should update resolution store only when both custom inputs are filled', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -474,7 +508,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should update resolution store when both custom inputs are filled', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -491,7 +525,7 @@ describe('MenuBar Component', () => {
 
     it('should show Clear button when custom resolution is active', async () => {
       resolutionStore.setCustomResolution('512', '512');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -501,7 +535,7 @@ describe('MenuBar Component', () => {
 
     it('should clear custom resolution in store when Clear is clicked', async () => {
       resolutionStore.setCustomResolution('512', '512');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -517,7 +551,7 @@ describe('MenuBar Component', () => {
 
     it('should keep scale buttons enabled when custom resolution is active', async () => {
       resolutionStore.setCustomResolution('512', '512');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -528,7 +562,7 @@ describe('MenuBar Component', () => {
 
     it('should disable aspect ratio buttons when custom resolution is active', async () => {
       resolutionStore.setCustomResolution('512', '512');
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -538,7 +572,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show all scale options', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -550,7 +584,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show all aspect ratio options', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -563,7 +597,7 @@ describe('MenuBar Component', () => {
 
     it('should highlight active scale', async () => {
       resolutionStore.setScale(2);
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -575,7 +609,7 @@ describe('MenuBar Component', () => {
 
   describe('Resolution Reset', () => {
     it('should show reset button in resolution menu', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -585,7 +619,7 @@ describe('MenuBar Component', () => {
 
     it('should reset resolution store when resolution reset is clicked', async () => {
       resolutionStore.setScale(4);
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -602,7 +636,7 @@ describe('MenuBar Component', () => {
       resolutionStore.setScale(4);
       resolutionStore.setCustomResolution('1920', '1080');
 
-      render(MenuBar, { props: { ...defaultProps } });
+      renderMenuBar({ props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -621,7 +655,7 @@ describe('MenuBar Component', () => {
       resolutionStore.setSource('config');
       resolutionStore.setScale(4);
 
-      render(MenuBar, { props: { ...defaultProps } });
+      renderMenuBar({ props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -637,7 +671,7 @@ describe('MenuBar Component', () => {
     it('should reset aspect ratio to fill when resolution reset is clicked', async () => {
       aspectRatioStore.setMode('4:3');
 
-      render(MenuBar, { props: { ...defaultProps } });
+      renderMenuBar({ props: { ...defaultProps } });
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -653,7 +687,7 @@ describe('MenuBar Component', () => {
 
   describe('Zoom Controls', () => {
     it('should show zoom slider without a dedicated reset button', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
@@ -667,7 +701,7 @@ describe('MenuBar Component', () => {
 
   describe('FPS Menu', () => {
     it('should show FPS menu when FPS button is clicked', async () => {
-      const { container } = render(MenuBar, { props: defaultProps });
+      const { container } = renderMenuBar();
 
       const fpsButton = screen.getByLabelText('Change FPS limit');
       await fireEvent.click(fpsButton);
@@ -681,7 +715,7 @@ describe('MenuBar Component', () => {
 
     it('should call onFpsLimitChange when limit is selected', async () => {
       const onFpsLimitChange = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           onFpsLimitChange,
@@ -700,7 +734,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should close FPS menu when clicking outside', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const fpsButton = screen.getByLabelText('Change FPS limit');
       await fireEvent.click(fpsButton);
@@ -711,7 +745,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show Frame Times button in FPS menu', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isPerformancePanelVisible: false,
@@ -727,7 +761,7 @@ describe('MenuBar Component', () => {
 
     it('should call onTogglePerformancePanel when Frame Times is clicked', async () => {
       const onTogglePerformancePanel = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isPerformancePanelVisible: false,
@@ -743,7 +777,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should close FPS menu after clicking Frame Times', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isPerformancePanelVisible: false,
@@ -759,7 +793,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show Frame Times button as active when performance panel is visible', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isPerformancePanelVisible: true,
@@ -775,7 +809,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show Frame Times button as inactive when performance panel is not visible', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isPerformancePanelVisible: false,
@@ -793,7 +827,7 @@ describe('MenuBar Component', () => {
 
   describe('Menu Interactions', () => {
     it('should close resolution menu when clicking outside', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -807,7 +841,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should close options menu when resolution menu is opened', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -822,7 +856,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should close resolution menu when options menu is opened', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -843,7 +877,7 @@ describe('MenuBar Component', () => {
       const { isVSCodeEnvironment } = await import('../lib/transport/TransportFactory');
       vi.mocked(isVSCodeEnvironment).mockReturnValue(true);
       
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -860,7 +894,7 @@ describe('MenuBar Component', () => {
   describe('Lock/Refresh Functionality', () => {
     it('should call onRefresh when unlocking (transitioning from locked to unlocked)', async () => {
       // Start with locked state
-      const { rerender } = render(MenuBar, { 
+      const { rerender } = renderMenuBar({ 
         props: { ...defaultProps, isLocked: true } 
       });
 
@@ -877,7 +911,7 @@ describe('MenuBar Component', () => {
 
     it('should NOT call onRefresh when locking (transitioning from unlocked to locked)', async () => {
       // Start with unlocked state
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { ...defaultProps, isLocked: false } 
       });
 
@@ -893,7 +927,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should call onRefresh and close options menu when refresh button is clicked', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       // First open the options menu
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -912,7 +946,7 @@ describe('MenuBar Component', () => {
 
     it('should handle multiple lock/unlock cycles correctly', async () => {
       // Start unlocked
-      const { rerender } = render(MenuBar, { 
+      const { rerender } = renderMenuBar({ 
         props: { ...defaultProps, isLocked: false } 
       });
 
@@ -942,7 +976,7 @@ describe('MenuBar Component', () => {
 
     it('should maintain correct behavior regardless of initial lock state', async () => {
       // Test starting from locked state
-      const { unmount } = render(MenuBar, { 
+      const { unmount } = renderMenuBar({ 
         props: { ...defaultProps, isLocked: true } 
       });
 
@@ -958,7 +992,7 @@ describe('MenuBar Component', () => {
       // Reset mocks and test starting from unlocked state
       vi.clearAllMocks();
       
-      const { unmount: unmount2 } = render(MenuBar, { 
+      const { unmount: unmount2 } = renderMenuBar({ 
         props: { ...defaultProps, isLocked: false } 
       });
 
@@ -975,7 +1009,7 @@ describe('MenuBar Component', () => {
   describe('Config Panel Button', () => {
     it('should call onToggleConfigPanel when config panel button is clicked and hasShader', async () => {
       const onToggleConfigPanel = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: true,
@@ -990,7 +1024,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should be disabled when hasShader is false', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: false,
@@ -1002,7 +1036,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show active state when config panel is visible', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: true,
@@ -1015,7 +1049,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should not show active state when config panel is hidden', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isConfigPanelVisible: false
@@ -1029,7 +1063,7 @@ describe('MenuBar Component', () => {
 
   describe('Debug Button Disabled State', () => {
     it('should be disabled when hasShader is false', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: false,
@@ -1041,7 +1075,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should be enabled when hasShader is true', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: true,
@@ -1053,7 +1087,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should disable debug and config in options menu when hasShader is false', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           hasShader: false,
@@ -1073,7 +1107,7 @@ describe('MenuBar Component', () => {
 
   describe('Editor Overlay in Options Menu', () => {
     it('should show Editor option in options menu', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1083,7 +1117,7 @@ describe('MenuBar Component', () => {
 
     it('should call onToggleEditorOverlay from main toolbar button', async () => {
       const onToggleEditorOverlay = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           onToggleEditorOverlay
@@ -1098,7 +1132,7 @@ describe('MenuBar Component', () => {
 
     it('should call onToggleEditorOverlay from options menu', async () => {
       const onToggleEditorOverlay = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           onToggleEditorOverlay
@@ -1116,7 +1150,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show active state on editor button when overlay is visible', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isEditorOverlayVisible: true
@@ -1130,7 +1164,7 @@ describe('MenuBar Component', () => {
 
   describe('Vim Mode Toggle', () => {
     it('should show vim mode toggle in options menu when editor is visible', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isEditorOverlayVisible: true
@@ -1144,7 +1178,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should not show vim mode toggle when editor is hidden', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isEditorOverlayVisible: false
@@ -1159,7 +1193,7 @@ describe('MenuBar Component', () => {
 
     it('should call onToggleVimMode when vim mode toggle is clicked', async () => {
       const onToggleVimMode = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isEditorOverlayVisible: true,
@@ -1177,7 +1211,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show active state on vim mode toggle when enabled', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           isEditorOverlayVisible: true,
@@ -1195,7 +1229,7 @@ describe('MenuBar Component', () => {
 
   describe('Fork Button', () => {
     it('should render fork option in options menu', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1205,7 +1239,7 @@ describe('MenuBar Component', () => {
 
     it('should call onFork when fork option is clicked', async () => {
       const onFork = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           onFork
@@ -1222,7 +1256,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show fork option in options menu', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1232,7 +1266,7 @@ describe('MenuBar Component', () => {
 
     it('should call onFork from options menu and close menu', async () => {
       const onFork = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           onFork
@@ -1253,7 +1287,7 @@ describe('MenuBar Component', () => {
 
   describe('Time Manager Edge Cases', () => {
     it('should handle null timeManager gracefully', async () => {
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           timeManager: null 
@@ -1280,7 +1314,7 @@ describe('MenuBar Component', () => {
         setTime: vi.fn()
       };
 
-      render(MenuBar, { 
+      renderMenuBar({ 
         props: { 
           ...defaultProps, 
           timeManager: mockTimeManagerWithValues 
@@ -1298,7 +1332,7 @@ describe('MenuBar Component', () => {
       const requestFullscreenMock = vi.fn();
       document.documentElement.requestFullscreen = requestFullscreenMock;
 
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           canvasElement: null
@@ -1325,7 +1359,7 @@ describe('MenuBar Component', () => {
       mockParent.requestFullscreen = requestFullscreenMock;
       mockParent.appendChild(canvasWithoutContainer);
 
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           canvasElement: canvasWithoutContainer
@@ -1353,7 +1387,7 @@ describe('MenuBar Component', () => {
       container.requestFullscreen = requestFullscreenMock;
       container.appendChild(canvas);
 
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           canvasElement: canvas
@@ -1377,7 +1411,7 @@ describe('MenuBar Component', () => {
 
   describe('Error Tooltip Display', () => {
     it('should not show error class on pause button when no errors', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: []
@@ -1389,7 +1423,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should show error class on pause button when errors exist', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Shader compilation failed', 'Line 42: syntax error']
@@ -1401,7 +1435,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should display error tooltip when errors exist', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Shader compilation failed']
@@ -1414,7 +1448,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should not display error tooltip when no errors', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: []
@@ -1427,7 +1461,7 @@ describe('MenuBar Component', () => {
 
     it('should display multiple errors joined by newline', () => {
       const errors = ['Error 1: Compilation failed', 'Error 2: Syntax error'];
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors
@@ -1447,7 +1481,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should update error display when errors prop changes', async () => {
-      const { rerender } = render(MenuBar, {
+      const { rerender } = renderMenuBar({
         props: {
           ...defaultProps,
           errors: []
@@ -1469,7 +1503,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should remove error display when errors are cleared', async () => {
-      const { rerender } = render(MenuBar, {
+      const { rerender } = renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Some error']
@@ -1492,7 +1526,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should wrap pause button in container for tooltip positioning', () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Test error']
@@ -1506,7 +1540,7 @@ describe('MenuBar Component', () => {
 
     it('should still call onTogglePause when pause button with error is clicked', async () => {
       const onTogglePause = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Error message'],
@@ -1521,7 +1555,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should not show the pause error tooltip when hovered directly without first hovering the pause button', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Error message']
@@ -1536,7 +1570,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should keep the pause error tooltip visible when moving from the pause button onto the tooltip', async () => {
-      render(MenuBar, {
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Error message']
@@ -1560,86 +1594,86 @@ describe('MenuBar Component', () => {
 
   describe('No Shader Disabled State', () => {
     it('should disable reset button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Reset shader')).toBeDisabled();
     });
 
     it('should enable reset button when hasShader is true', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       expect(screen.getByLabelText('Reset shader')).not.toBeDisabled();
     });
 
     it('should disable play/pause button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Toggle pause')).toBeDisabled();
     });
 
     it('should enable play/pause button when hasShader is true', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       expect(screen.getByLabelText('Toggle pause')).not.toBeDisabled();
     });
 
     it('should disable time button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Time settings')).toBeDisabled();
     });
 
     it('should enable time button when hasShader is true', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       expect(screen.getByLabelText('Time settings')).not.toBeDisabled();
     });
 
     it('should disable FPS limit button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Change FPS limit')).toBeDisabled();
     });
 
     it('should disable resolution button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Change resolution settings')).toBeDisabled();
     });
 
     it('should disable editor overlay button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Toggle editor overlay')).toBeDisabled();
     });
 
     it('should enable editor overlay button when hasShader is true', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       expect(screen.getByLabelText('Toggle editor overlay')).not.toBeDisabled();
     });
 
     it('should disable fork option when hasShader is false', async () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
       expect(screen.getByLabelText('Fork shader')).toBeDisabled();
     });
 
     it('should enable fork option when hasShader is true', async () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
       expect(screen.getByLabelText('Fork shader')).not.toBeDisabled();
     });
 
     it('should disable lock button when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Toggle lock')).toBeDisabled();
     });
 
     it('should enable lock button when hasShader is true', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
       expect(screen.getByLabelText('Toggle lock')).not.toBeDisabled();
     });
 
     it('should keep options menu button enabled when hasShader is false', () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
       expect(screen.getByLabelText('Open options menu')).not.toBeDisabled();
     });
 
     it('should disable shader-affecting options menu items when hasShader is false', async () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1658,7 +1692,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should keep New Shader, Shader Explorer, and Snippet Library enabled when hasShader is false', async () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: false } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: false } });
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1669,7 +1703,7 @@ describe('MenuBar Component', () => {
     });
 
     it('should enable shader-affecting options menu items when hasShader is true', async () => {
-      render(MenuBar, { props: { ...defaultProps, hasShader: true } });
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
@@ -1691,7 +1725,7 @@ describe('MenuBar Component', () => {
   describe('Extension Command Menu Items', () => {
     it('should call onExtensionCommand with newShader', async () => {
       const onExtensionCommand = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: { ...defaultProps, onExtensionCommand }
       });
 
@@ -1706,7 +1740,7 @@ describe('MenuBar Component', () => {
 
     it('should call onExtensionCommand with openShaderExplorer', async () => {
       const onExtensionCommand = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: { ...defaultProps, onExtensionCommand }
       });
 
@@ -1721,7 +1755,7 @@ describe('MenuBar Component', () => {
 
     it('should call onExtensionCommand with openSnippetLibrary', async () => {
       const onExtensionCommand = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: { ...defaultProps, onExtensionCommand }
       });
 
@@ -1736,7 +1770,7 @@ describe('MenuBar Component', () => {
 
     it('should close options menu after clicking extension command', async () => {
       const onExtensionCommand = vi.fn();
-      render(MenuBar, {
+      renderMenuBar({
         props: { ...defaultProps, onExtensionCommand }
       });
 

@@ -611,7 +611,21 @@ describe('ShaderViewer', () => {
 
     expect(get(resolutionStore).source).toBe('config');
 
-    resolutionStore.setCustomResolution('1', '1');
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    const syncToggle = screen.getByLabelText('Sync With Config') as HTMLInputElement;
+    await fireEvent.click(syncToggle);
+    await tick();
+
+    const [widthInput, heightInput] = Array.from(
+      document.querySelectorAll('input.custom-res-input'),
+    ) as HTMLInputElement[];
+    await fireEvent.input(widthInput, { target: { valueAsNumber: 1 } });
+    await fireEvent.input(heightInput, { target: { valueAsNumber: 1 } });
+    await tick();
+
     expect(get(resolutionStore).source).toBe('session');
 
     await sendMessage({
@@ -654,7 +668,20 @@ describe('ShaderViewer', () => {
       pathMap: { Image: '/test/shader.glsl' },
     });
 
-    resolutionStore.setCustomResolution('1', '1');
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    const syncToggle = screen.getByLabelText('Sync With Config') as HTMLInputElement;
+    await fireEvent.click(syncToggle);
+    await tick();
+
+    const [widthInput, heightInput] = Array.from(
+      document.querySelectorAll('input.custom-res-input'),
+    ) as HTMLInputElement[];
+    await fireEvent.input(widthInput, { target: { valueAsNumber: 1 } });
+    await fireEvent.input(heightInput, { target: { valueAsNumber: 1 } });
+    await tick();
 
     await sendMessage({
       type: 'cursorPosition',
@@ -970,6 +997,121 @@ describe('ShaderViewer', () => {
       expect(mockTriggerDebugRecompile).toHaveBeenCalled();
       expect(mockVCMFactory._notifyCalls.length).toBeGreaterThan(notifyCountBefore);
     });
+  });
+
+  it('should keep resolution target on Image when a config tab is selected', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '/test/bufferA.glsl', inputs: {}, resolution: { scale: 2 } },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl', BufferA: '/test/bufferA.glsl' },
+    });
+
+    configPanelStore.setVisible(true);
+    await tick();
+
+    await fireEvent.click(screen.getByText('BufferA'));
+    await tick();
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    expect(screen.getByText('Target: Image')).toBeInTheDocument();
+    expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
+    expect(screen.queryByText('Buffer Resolution')).not.toBeInTheDocument();
+  });
+
+  it('should restore Image resolution UI after leaving a debug buffer target', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/image.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { float imageVar = 1.0; o = vec4(imageVar); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: { inputs: {}, resolution: { scale: 2, aspectRatio: '4:3' } },
+          BufferA: { path: '/test/bufferA.glsl', inputs: {}, resolution: { scale: 0.5 } },
+        },
+      },
+      pathMap: { Image: '/test/image.glsl', BufferA: '/test/bufferA.glsl' },
+      bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+      buffers: {
+        BufferA: 'void mainImage(out vec4 o, vec2 uv) { float bufferVar = 2.0; o = vec4(bufferVar); }',
+      },
+    });
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    expect(screen.getByText('Target: Image')).toBeInTheDocument();
+    expect(get(resolutionStore).scale).toBe(2);
+    expect(get(aspectRatioStore).mode).toBe('4:3');
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float bufferVar = 2.0; o = vec4(bufferVar); }',
+        filePath: '/test/bufferA.glsl',
+      },
+    });
+
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    expect(screen.getByText('Target: BufferA')).toBeInTheDocument();
+    expect(screen.getByText('Buffer Resolution')).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByText('Fixed px'));
+    await tick();
+
+    const widthInput = screen.getByPlaceholderText('Width') as HTMLInputElement;
+    const heightInput = screen.getByPlaceholderText('Height') as HTMLInputElement;
+    await fireEvent.input(widthInput, { target: { value: '1' } });
+    await fireEvent.input(heightInput, { target: { value: '1' } });
+    await tick();
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: {
+        line: 0,
+        lineContent: 'void mainImage(out vec4 o, vec2 uv) { float imageVar = 1.0; o = vec4(imageVar); }',
+        filePath: '/test/image.glsl',
+      },
+    });
+    await tick();
+
+    if (!screen.queryByText('Target: Image')) {
+      await fireEvent.click(resolutionButton);
+      await tick();
+    }
+
+    expect(screen.getByText('Target: Image')).toBeInTheDocument();
+    expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
+    expect(screen.queryByText('Buffer Resolution')).not.toBeInTheDocument();
+    expect(get(resolutionStore).scale).toBe(2);
+    expect(get(resolutionStore).customWidth).toBeUndefined();
+    expect(get(resolutionStore).customHeight).toBeUndefined();
+    expect(get(aspectRatioStore).mode).toBe('4:3');
   });
 
   it('should show a no active shader state when no shader is loaded', async () => {

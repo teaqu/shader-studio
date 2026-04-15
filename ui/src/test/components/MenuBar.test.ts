@@ -9,7 +9,32 @@ vi.mock('../../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: () => false
 }));
 
-
+/** Create a minimal mock ResolutionSessionController for tests. */
+function createMockResCtrl() {
+  return {
+    menuVM: {
+      syncWithConfig: true,
+      targetKind: 'image' as const,
+      targetLabel: 'Image',
+      bufferResolutionState: { mode: 'none' as const, width: '', height: '', scale: 1 },
+    },
+    setSyncWithConfig: vi.fn(),
+    setAspectRatio: vi.fn(),
+    setImageScale: (scale: number) => resolutionStore.setScale(scale),
+    setBufferScale: vi.fn(),
+    setImageCustomResolution: (width?: string, height?: string) => {
+      if (width && height) {
+        resolutionStore.setCustomResolution(width, height);
+      } else {
+        resolutionStore.clearCustomResolution();
+      }
+    },
+    resetCurrentTarget: () => resolutionStore.reset(),
+    setBufferResolutionMode: vi.fn(),
+    setBufferFixedResolution: vi.fn(),
+    getCurrentTarget: () => ({ kind: 'image' as const }),
+  };
+}
 
 describe('MenuBar', () => {
   const mockTimeManager = {
@@ -24,6 +49,8 @@ describe('MenuBar', () => {
     setTime: vi.fn(),
   };
 
+  let mockResCtrl: ReturnType<typeof createMockResCtrl>;
+
   const defaultProps = {
     timeManager: mockTimeManager,
     currentFPS: 60,
@@ -36,7 +63,6 @@ describe('MenuBar', () => {
     onRefresh: vi.fn(),
     onTogglePause: vi.fn(),
     onToggleLock: vi.fn(),
-    onAspectRatioChange: vi.fn(),
     onZoomChange: vi.fn(),
     onFpsLimitChange: vi.fn(),
     onConfig: vi.fn(),
@@ -74,13 +100,21 @@ describe('MenuBar', () => {
     } as any,
   };
 
+  function renderMenuBar(props: any = defaultProps) {
+    return render(MenuBar, {
+      props,
+      context: new Map([['resolution', mockResCtrl]]),
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResCtrl = createMockResCtrl();
   });
 
   describe('volume slider', () => {
     it('should render volume slider in options menu and dispatch volume changes', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       // Open options menu
@@ -101,7 +135,7 @@ describe('MenuBar', () => {
     });
 
     it('should display volume percentage label', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       // Open options menu
@@ -117,7 +151,7 @@ describe('MenuBar', () => {
 
   describe('mute button', () => {
     it('should render mute button and dispatch mute toggle', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       // Open options menu
@@ -137,7 +171,7 @@ describe('MenuBar', () => {
     });
 
     it('should show muted appearance when audioMuted is true', async () => {
-      render(MenuBar, { props: { ...defaultProps, audioMuted: true } });
+      renderMenuBar({ ...defaultProps, audioMuted: true });
       await tick();
 
       // Open options menu
@@ -154,7 +188,7 @@ describe('MenuBar', () => {
     });
 
     it('should show unmuted appearance when audioMuted is false', async () => {
-      render(MenuBar, { props: { ...defaultProps, audioMuted: false } });
+      renderMenuBar({ ...defaultProps, audioMuted: false });
       await tick();
 
       // Open options menu
@@ -173,7 +207,7 @@ describe('MenuBar', () => {
 
   describe('resolution menu', () => {
     it('should use number inputs for custom resolution width and height', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -188,7 +222,7 @@ describe('MenuBar', () => {
     });
 
     it('should apply custom resolution automatically when both inputs have values', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -210,7 +244,7 @@ describe('MenuBar', () => {
     });
 
     it('should not have an Apply button', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -221,7 +255,7 @@ describe('MenuBar', () => {
     });
 
     it('should preserve custom resolution when resolution scale is changed', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       resolutionStore.setCustomResolution('320', '240');
@@ -247,7 +281,7 @@ describe('MenuBar', () => {
     });
 
     it('should toggle black canvas background from the resolution menu', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       const resolutionButton = screen.getByLabelText('Change resolution settings');
@@ -262,7 +296,7 @@ describe('MenuBar', () => {
 
       let state: any;
       const unsubscribe = resolutionStore.subscribe((value) => {
-        state = value; 
+        state = value;
       });
       unsubscribe();
       expect(state.forceBlackBackground).toBe(true);
@@ -271,7 +305,7 @@ describe('MenuBar', () => {
 
   describe('compile mode', () => {
     it('sets hot/save/manual compile mode from the inline selector', async () => {
-      render(MenuBar, { props: defaultProps });
+      renderMenuBar();
       await tick();
 
       const optionsButton = screen.getByLabelText('Open options menu');
@@ -292,7 +326,7 @@ describe('MenuBar', () => {
     });
 
     it('shows manual compile action only in the options menu for manual mode', async () => {
-      render(MenuBar, { props: { ...defaultProps, compileMode: 'manual' as const } });
+      renderMenuBar({ ...defaultProps, compileMode: 'manual' as const });
       await tick();
 
       const optionsButton = screen.getByLabelText('Open options menu');

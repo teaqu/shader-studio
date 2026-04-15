@@ -302,6 +302,13 @@ export class ShaderPipeline {
     void this.debugCompile();
   }
 
+  public recompileCurrentShader(): void {
+    if (!this.lastEvent) {
+      return;
+    }
+    void this.handleShaderMessage(this.lastEvent);
+  }
+
   private async debugCompile(): Promise<CompilationResult | undefined> {
     if (!this.shaderProcessor.getImageShaderCode() || !this.lastEvent) {
       return undefined;

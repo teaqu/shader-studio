@@ -1,5 +1,6 @@
+<svelte:options runes={true} />
 <script lang="ts">
-  import { onMount, onDestroy, tick } from "svelte";
+  import { onMount, onDestroy, tick, setContext } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
   import { ShaderLocker } from "../ShaderLocker";
@@ -30,25 +31,26 @@
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
-  import type { ShaderConfig } from "@shader-studio/types";
+  import type { AspectRatioMode, ShaderConfig } from "@shader-studio/types";
   import { allocateWebLayoutSlot, getInjectedLayoutSlot, releaseWebLayoutSlot } from "../util/layoutSlot";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
+  import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
 
-  export let onInitialized: () => void = () => {};
+  let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
 
   // Core state
   let glCanvas: HTMLCanvasElement;
-  let initialized = false;
-  let isLocked = false;
-  let hasShader = false;
-  let errors: string[] = [];
-  let currentFPS = 0;
-  let canvasWidth = 0;
-  let canvasHeight = 0;
-  let zoomLevel = 1.0;
+  let initialized = $state(false);
+  let isLocked = $state(false);
+  let hasShader = $state(false);
+  let errors = $state<string[]>([]);
+  let currentFPS = $state(0);
+  let canvasWidth = $state(0);
+  let canvasHeight = $state(0);
+  let zoomLevel = $state(1.0);
   let sessionResolutionRefreshScheduled = false;
-  let inspectorState: PixelInspectorState = {
+  let inspectorState = $state<PixelInspectorState>({
     isEnabled: false,
     isActive: false,
     isLocked: false,
@@ -57,7 +59,7 @@
     pixelRGB: null,
     fragCoord: null,
     canvasPosition: null,
-  };
+  });
 
   // Managers and controllers
   let pipeline: ShaderPipeline;
@@ -76,7 +78,7 @@
   let routerInitialized = false;
   let editorOverlayManager: EditorOverlayManager | undefined;
 
-  let debugState: ShaderDebugState = {
+  let debugState = $state<ShaderDebugState>({
     isEnabled: false,
     currentLine: null,
     lineContent: null,
@@ -91,81 +93,112 @@
     debugError: null,
     isVariableInspectorEnabled: false,
     capturedVariables: [],
-  };
+  });
 
   // Audio state (mirrored from AudioVideoController for Svelte reactivity)
-  let audioVolume = 1.0;
-  let audioMuted = true;
+  let audioVolume = $state(1.0);
+  let audioMuted = $state(true);
 
   // Recording
-  let isRecording = false;
+  let isRecording = $state(false);
   let recordingManager: RecordingManager;
 
   // Config panel state
-  let currentConfig: ShaderConfig | null = null;
-  let pathMap: Record<string, string> = {};
-  let bufferPathMap: Record<string, string> = {};
-  let shaderPath: string = "";
+  let currentConfig = $state<ShaderConfig | null>(null);
+  let pathMap = $state<Record<string, string>>({});
+  let bufferPathMap = $state<Record<string, string>>({});
+  let shaderPath = $state('');
 
   // Script info for config panel
-  let scriptInfo: { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null = null;
-  let customUniformValues: Record<string, number | number[] | boolean> = {};
-  let actualPollFps = 0;
+  let scriptInfo = $state<{ filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null>(null);
+  let customUniformValues = $state<Record<string, number | number[] | boolean>>({});
+  let actualPollFps = $state(0);
   let pollTimestamps: number[] = [];
-  let uniformTimestamps: Record<string, number[]> = {};
-  let uniformActualFps: Record<string, number> = {};
+  let uniformTimestamps = $state<Record<string, number[]>>({});
+  let uniformActualFps = $state<Record<string, number>>({});
 
-  // Debug panel state
   // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
-  let editorOverlayVisible = false;
-  let editorVimMode = false;
-  let currentShaderCode: string = "";
-  let editorBufferName: string = "Image";
-  let editorFilePath: string = "";
-  let editorFileCode: string = "";
-  let editorBufferNames: string[] = ["Image"];
-  let configSelectedBuffer: string = "Image";
+  let editorOverlayVisible = $state(false);
+  let editorVimMode = $state(false);
+  let currentShaderCode = $state('');
+  let editorBufferName = $state('Image');
+  let editorFilePath = $state('');
+  let editorFileCode = $state('');
+  let editorBufferNames = $state<string[]>(['Image']);
+  let configSelectedBuffer = $state('Image');
+
+  // Resolution controller — created at component level so setContext works synchronously
+  const resolutionController = new ResolutionSessionController({
+    get currentConfig() {
+      return currentConfig; 
+    },
+    get debugState() {
+      return debugState; 
+    },
+    setCurrentConfig: (config) => {
+      currentConfig = config; 
+    },
+    resolutionStore,
+    aspectRatioStore,
+    getShaderPath: () => shaderPath,
+    getBufferPathMap: () => bufferPathMap,
+    getCurrentAspectRatioMode: () => get(aspectRatioStore).mode,
+    isInitialized: () => initialized,
+    hasShader: () => hasShader,
+    updatePipelineConfig: (config) => pipeline?.updateCurrentConfig(config),
+    recompileCurrentShader: () => {
+      pipeline?.recompileCurrentShader?.();
+    },
+    setShaderContext: (config, sp, bpm) => shaderDebugManager?.setShaderContext(config, sp, bpm),
+    setEditorConfig: (config) => editorOverlayManager?.setConfig(config),
+    postConfigUpdate: (payload) => transport.postMessage({ type: 'updateConfig', payload }),
+  });
+
+  setContext('resolution', resolutionController);
 
   // Performance panel state
-  let lastSentCompileMode: CompileMode | null = null;
-  let lastSentDebugEnabled: boolean | null = null;
+  let lastSentCompileMode = $state<CompileMode | null>(null);
+  let lastSentDebugEnabled = $state<boolean | null>(null);
 
-  $: if (initialized && $compileModeStore.mode !== lastSentCompileMode) {
-    transport.postMessage({
-      type: 'setCompileMode',
-      payload: { mode: $compileModeStore.mode },
-    });
-    lastSentCompileMode = $compileModeStore.mode;
-  }
+  $effect(() => {
+    if (initialized && $compileModeStore.mode !== lastSentCompileMode) {
+      transport.postMessage({
+        type: 'setCompileMode',
+        payload: { mode: $compileModeStore.mode },
+      });
+      lastSentCompileMode = $compileModeStore.mode;
+    }
+  });
 
   // Extract specific debug state fields so that capturedVariables changes
   // don't re-trigger the capture loop (Svelte tracks the whole object reference).
-  $: varInspectorEnabled = debugState.isVariableInspectorEnabled;
-  $: debugCurrentLine = debugState.currentLine;
+  const varInspectorEnabled = $derived(debugState.isVariableInspectorEnabled);
 
   // Extract inspectorState fields as stable primitives.
-  $: inspectorEnabled = inspectorState.isEnabled;
-  $: inspectorActive = inspectorState.isActive;
-  $: inspectorLocked = inspectorState.isLocked;
-  $: inspectorCanvasX = inspectorState.canvasPosition?.x ?? null;
-  $: inspectorCanvasY = inspectorState.canvasPosition?.y ?? null;
+  const inspectorEnabled = $derived(inspectorState.isEnabled);
+  const inspectorActive = $derived(inspectorState.isActive);
+  const inspectorLocked = $derived(inspectorState.isLocked);
+  const inspectorCanvasX = $derived(inspectorState.canvasPosition?.x ?? null);
+  const inspectorCanvasY = $derived(inspectorState.canvasPosition?.y ?? null);
 
   // Derive whether we're currently in pixel capture mode
-  $: hasPixelCapture = (inspectorActive || inspectorLocked) && (inspectorCanvasX !== null);
+  const hasPixelCapture = $derived((inspectorActive || inspectorLocked) && (inspectorCanvasX !== null));
 
   // Stable pixel coordinates for the capture reactive block
-  $: capturePixelX = hasPixelCapture ? inspectorCanvasX : null;
-  $: capturePixelY = hasPixelCapture ? inspectorCanvasY : null;
+  const capturePixelX = $derived(hasPixelCapture ? inspectorCanvasX : null);
+  const capturePixelY = $derived(hasPixelCapture ? inspectorCanvasY : null);
 
   // Reactive: notify variable capture manager when relevant state changes.
-  $: if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
-    notifyVariableCaptureManager();
-  } else if (initialized && variableCaptureManager && !varInspectorEnabled) {
-    variableCaptureManager.stop();
-  }
+  $effect(() => {
+    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
+      notifyVariableCaptureManager();
+    } else if (initialized && variableCaptureManager && !varInspectorEnabled) {
+      variableCaptureManager.stop();
+    }
+  });
 
   // Shared MenuBar props — two instances exist in different DOM positions for dockview layout
-  $: menuBarProps = {
+  const menuBarProps = $derived.by(() => ({
     timeManager,
     currentFPS,
     canvasWidth,
@@ -207,7 +240,7 @@
     compileMode: $compileModeStore.mode,
     onSetCompileMode: handleSetCompileMode,
     onManualCompile: handleManualCompile,
-  };
+  }));
 
   // Subscribe to config/debug panel stores
   onMount(() => {
@@ -409,43 +442,49 @@
     performancePanelStore.setVisible(false);
   }
 
-  $: if (initialized && renderingEngine) {
-    renderingEngine.setInputEnabled(!editorOverlayVisible);
-  }
+  $effect(() => {
+    if (initialized && renderingEngine) {
+      renderingEngine.setInputEnabled(!editorOverlayVisible);
+    }
+  });
 
-  $: if (initialized && shaderDebugManager && pixelInspectorManager && hasShader) {
-    const currentEnabled = shaderDebugManager.getState().isEnabled;
-    if (currentEnabled !== $debugPanelStore.isVisible) {
-      shaderDebugManager.toggleEnabled();
-      transport.postMessage({
-        type: 'debugModeState',
-        payload: { enabled: $debugPanelStore.isVisible }
-      });
-      lastSentDebugEnabled = $debugPanelStore.isVisible;
+  $effect(() => {
+    if (initialized && shaderDebugManager && pixelInspectorManager && hasShader) {
+      const currentEnabled = shaderDebugManager.getState().isEnabled;
+      if (currentEnabled !== $debugPanelStore.isVisible) {
+        shaderDebugManager.toggleEnabled();
+        transport.postMessage({
+          type: 'debugModeState',
+          payload: { enabled: $debugPanelStore.isVisible }
+        });
+        lastSentDebugEnabled = $debugPanelStore.isVisible;
 
-      if ($debugPanelStore.isVisible) {
-        pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled);
-      } else {
-        pixelInspectorManager.setEnabled(false);
+        if ($debugPanelStore.isVisible) {
+          pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled);
+        } else {
+          pixelInspectorManager.setEnabled(false);
+        }
+
+        pipeline.triggerDebugRecompile();
+      } else if (lastSentDebugEnabled !== $debugPanelStore.isVisible) {
+        transport.postMessage({
+          type: 'debugModeState',
+          payload: { enabled: $debugPanelStore.isVisible }
+        });
+        lastSentDebugEnabled = $debugPanelStore.isVisible;
       }
-
-      pipeline.triggerDebugRecompile();
-    } else if (lastSentDebugEnabled !== $debugPanelStore.isVisible) {
-      transport.postMessage({
-        type: 'debugModeState',
-        payload: { enabled: $debugPanelStore.isVisible }
-      });
-      lastSentDebugEnabled = $debugPanelStore.isVisible;
     }
-  }
+  });
 
-  $: if (pixelInspectorManager) {
-    const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible;
-    const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
-    if (currentInspectorEnabled !== desiredInspectorEnabled) {
-      pixelInspectorManager.setEnabled(desiredInspectorEnabled);
+  $effect(() => {
+    if (pixelInspectorManager) {
+      const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible;
+      const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
+      if (currentInspectorEnabled !== desiredInspectorEnabled) {
+        pixelInspectorManager.setEnabled(desiredInspectorEnabled);
+      }
     }
-  }
+  });
 
   function handleFork() {
     if (!initialized) {
@@ -582,21 +621,6 @@
       const nextShaderPath = event.data.path || "";
       const isSameShader = nextShaderPath !== "" && nextShaderPath === prevShaderPath;
       currentConfig = event.data.config || null;
-      const imageResolution = currentConfig?.passes?.Image?.resolution;
-      const currentResolutionState = get(resolutionStore);
-      const currentAspectRatioState = get(aspectRatioStore);
-
-      if (!isSameShader) {
-        resolutionStore.setFromConfig(imageResolution);
-        aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
-      } else {
-        if (currentResolutionState.source === 'config') {
-          resolutionStore.setFromConfig(imageResolution);
-        }
-        if (currentAspectRatioState.source === 'config') {
-          aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
-        }
-      }
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
       shaderPath = nextShaderPath;
@@ -623,6 +647,7 @@
         : null;
       editorOverlayManager?.setShaderSource(currentShaderCode, shaderPath);
       editorOverlayManager?.setConfig(currentConfig);
+      resolutionController.handleShaderLoaded(currentConfig, isSameShader);
     }
   }
 
@@ -685,7 +710,9 @@
     }
 
     if (type === 'toggleEditorOverlay') {
-      if (hasShader) editorOverlayStore.toggle();
+      if (hasShader) {
+        editorOverlayStore.toggle();
+      }
       return;
     }
 
@@ -835,31 +862,29 @@
     }
   }
 
+  $effect(() => {
+    if (!initialized || !hasShader) {
+      return;
+    }
+    // Access these to track them:
+    debugState.isEnabled;
+    debugState.isActive;
+    debugState.isInlineRenderingEnabled;
+    (debugState as any).activeBufferName;
+    currentConfig;
+    resolutionController.handleDebugStateChanged();
+  });
+
   // Dockview functions
   let resetLayoutFn: (() => void) | null = null;
   let showPreviewFn: (() => void) | null = null;
-  let previewVisible = true;
-  let previewAlone = true;
+  let previewVisible = $state(true);
+  let previewAlone = $state(true);
 
   function handleResetLayout() {
     if (resetLayoutFn) {
       resetLayoutFn();
     }
-  }
-
-  function handleResetResolution() {
-    if (!currentConfig || !shaderPath) return;
-    const { resolution: _, ...imageRest } = currentConfig.passes.Image;
-    const updatedConfig = {
-      ...currentConfig,
-      passes: { ...currentConfig.passes, Image: imageRest },
-    };
-    const cleanText = JSON.stringify(updatedConfig, (key, value) =>
-      key === 'resolved_path' ? undefined : value, 2);
-    transport.postMessage({
-      type: 'updateConfig',
-      payload: { config: updatedConfig, text: cleanText, shaderPath },
-    });
   }
 
   function handleShowPreview() {
@@ -890,14 +915,7 @@
   }
 
   async function handleConfigPanelConfigChange(updatedConfig: ShaderConfig) {
-    currentConfig = updatedConfig;
-    // Config Resolution changes become the current Session Resolution here.
-    const imageResolution = updatedConfig.passes?.Image?.resolution;
-    resolutionStore.setFromConfig(imageResolution);
-    aspectRatioStore.setFromConfig(imageResolution?.aspectRatio);
-    editorOverlayManager?.setConfig(updatedConfig);
-    shaderDebugManager?.setShaderContext(updatedConfig, shaderPath, bufferPathMap);
-    pipeline?.updateCurrentConfig(updatedConfig);
+    resolutionController.handleConfigUpdated(updatedConfig);
     await tick();
   }
 
@@ -954,7 +972,7 @@
   });
 </script>
 
-<div class="main-container" role="application" on:mousemove={handleCanvasMouseMove}>
+<div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
     <ShaderCanvas
       {zoomLevel}

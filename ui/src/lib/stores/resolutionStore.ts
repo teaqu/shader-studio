@@ -116,6 +116,20 @@ function persistGlobal(state: ResolutionState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
 }
 
+function createStateFromSettings(
+  settings: Partial<ResolutionSettings> | undefined,
+  forceBlackBackground: boolean,
+  source: ResolutionSource,
+): ResolutionState {
+  return {
+    scale: settings?.scale ?? 1,
+    customWidth: normalizeStoredDimension(settings?.customWidth),
+    customHeight: normalizeStoredDimension(settings?.customHeight),
+    forceBlackBackground,
+    source,
+  };
+}
+
 const createResolutionStore = () => {
   const initial = loadInitialState();
   const { subscribe, set, update } = writable<ResolutionState>(initial);
@@ -170,13 +184,11 @@ const createResolutionStore = () => {
     },
     setFromConfig: (settings?: ResolutionSettings) => {
       if (settings) {
-        const next: ResolutionState = {
-          scale: settings.scale ?? 1,
-          customWidth: normalizeStoredDimension(settings.customWidth),
-          customHeight: normalizeStoredDimension(settings.customHeight),
-          forceBlackBackground: current.forceBlackBackground,
-          source: CONFIG_SOURCE,
-        };
+        const next = createStateFromSettings(
+          settings,
+          current.forceBlackBackground,
+          CONFIG_SOURCE,
+        );
         // Skip if store already matches
         if (current.scale === next.scale && current.customWidth === next.customWidth &&
                     current.customHeight === next.customHeight && current.source === CONFIG_SOURCE) {
@@ -191,6 +203,18 @@ const createResolutionStore = () => {
         const next = loadInitialState();
         commit(next);
       }
+    },
+    setSessionSettings: (settings?: Partial<ResolutionSettings>) => {
+      const next = createStateFromSettings(
+        settings,
+        current.forceBlackBackground,
+        SESSION_SOURCE,
+      );
+      if (current.scale === next.scale && current.customWidth === next.customWidth &&
+                  current.customHeight === next.customHeight && current.source === SESSION_SOURCE) {
+        return;
+      }
+      commit(next);
     },
     setSource: (source: ResolutionSource) => {
       update(state => ({ ...state, source }));

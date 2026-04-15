@@ -1,5 +1,6 @@
+<svelte:options runes={true} />
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, getContext } from "svelte";
   import { currentTheme, toggleTheme } from "../stores/themeStore";
   import {
     aspectRatioStore,
@@ -12,48 +13,112 @@
   import RecordingButton from "./recording/RecordingButton.svelte";
   import type { OnScreenshot, OnRecord } from "../recording/types";
   import type { CompileMode } from "../stores/compileModeStore";
+  import type { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
+
+  type BufferResolutionMenuState = {
+    mode: "none" | "fixed" | "scale";
+    width: string;
+    height: string;
+    scale: number;
+  }
 
 
 
 
 
 
-  export let timeManager: any;
-  export let currentFPS: number;
-  export let canvasWidth: number = 0;
-  export let canvasHeight: number = 0;
-  export let isLocked: boolean = false;
-  export let canvasElement: HTMLCanvasElement | null = null;
-  export let errors: string[] = [];
-
-  export let onReset: () => void = () => {};
-  export let onRefresh: () => void = () => {};
-  export let onTogglePause: () => void = () => {};
-  export let onToggleLock: () => void = () => {};
-  export let onAspectRatioChange: (mode: AspectRatioMode) => void = () => {};
-  export let onZoomChange: (zoom: number) => void = () => {};
-  export let onFpsLimitChange: (limit: number) => void = () => {};
-  export let onConfig: () => void = () => {};
-  export let isDebugEnabled: boolean = false;
-  export let onToggleDebugEnabled: () => void = () => {};
-  export let debugState: ShaderDebugState | null = null;
-  export let isConfigPanelVisible: boolean = false;
-  export let onToggleConfigPanel: () => void = () => {};
-  export let isEditorOverlayVisible: boolean = false;
-  export let onToggleEditorOverlay: () => void = () => {};
-  export let isVimModeEnabled: boolean = false;
-  export let onToggleVimMode: () => void = () => {};
-  export let onFork: () => void = () => {};
-  export let onExtensionCommand: (command: string) => void = () => {};
   import type { AudioVideoController } from "../AudioVideoController";
-  export let audioVolume: number = 1.0;
-  export let audioMuted: boolean = true;
-  export let audioVideoController: AudioVideoController | undefined = undefined;
-  export let isPerformancePanelVisible: boolean = false;
-  export let onTogglePerformancePanel: () => void = () => {};
-  export let compileMode: CompileMode = "hot";
-  export let onSetCompileMode: (mode: CompileMode) => void = () => {};
-  export let onManualCompile: () => void = () => {};
+
+  type MenuBarProps = {
+    timeManager: any;
+    currentFPS: number;
+    canvasWidth?: number;
+    canvasHeight?: number;
+    isLocked?: boolean;
+    canvasElement?: HTMLCanvasElement | null;
+    errors?: string[];
+    onReset?: () => void;
+    onRefresh?: () => void;
+    onTogglePause?: () => void;
+    onToggleLock?: () => void;
+    onZoomChange?: (zoom: number) => void;
+    onFpsLimitChange?: (limit: number) => void;
+    onConfig?: () => void;
+    isDebugEnabled?: boolean;
+    onToggleDebugEnabled?: () => void;
+    debugState?: ShaderDebugState | null;
+    isConfigPanelVisible?: boolean;
+    onToggleConfigPanel?: () => void;
+    isEditorOverlayVisible?: boolean;
+    onToggleEditorOverlay?: () => void;
+    isVimModeEnabled?: boolean;
+    onToggleVimMode?: () => void;
+    onFork?: () => void;
+    onExtensionCommand?: (command: string) => void;
+    audioVolume?: number;
+    audioMuted?: boolean;
+    audioVideoController?: AudioVideoController | undefined;
+    isPerformancePanelVisible?: boolean;
+    onTogglePerformancePanel?: () => void;
+    compileMode?: CompileMode;
+    onSetCompileMode?: (mode: CompileMode) => void;
+    onManualCompile?: () => void;
+    hasShader?: boolean;
+    onResetLayout?: () => void;
+    previewVisible?: boolean;
+    onShowPreview?: () => void;
+    onScreenshot?: OnScreenshot;
+    onRecord?: OnRecord;
+    onCancel?: () => void;
+    isRecording?: boolean;
+  };
+
+  let {
+    timeManager,
+    currentFPS,
+    canvasWidth = 0,
+    canvasHeight = 0,
+    isLocked = false,
+    canvasElement = null,
+    errors = [],
+    onReset = () => {},
+    onRefresh = () => {},
+    onTogglePause = () => {},
+    onToggleLock: onToggleLockProp = () => {},
+    onZoomChange = () => {},
+    onFpsLimitChange = () => {},
+    onConfig = () => {},
+    isDebugEnabled = false,
+    onToggleDebugEnabled = () => {},
+    debugState = null,
+    isConfigPanelVisible = false,
+    onToggleConfigPanel = () => {},
+    isEditorOverlayVisible = false,
+    onToggleEditorOverlay = () => {},
+    isVimModeEnabled = false,
+    onToggleVimMode = () => {},
+    onFork = () => {},
+    onExtensionCommand = () => {},
+    audioVolume = 1.0,
+    audioMuted = true,
+    audioVideoController = undefined,
+    isPerformancePanelVisible = false,
+    onTogglePerformancePanel = () => {},
+    compileMode = 'hot' as CompileMode,
+    onSetCompileMode = () => {},
+    onManualCompile = () => {},
+    hasShader = false,
+    onResetLayout = () => {},
+    previewVisible = true,
+    onShowPreview = () => {},
+    onScreenshot = () => {},
+    onRecord = () => {},
+    onCancel = () => {},
+    isRecording = false,
+  }: MenuBarProps = $props();
+
+  // Resolution state from context
+  const resCtrl = getContext<ResolutionSessionController>('resolution');
 
   function onVolumeChange(volume: number) {
     audioVideoController?.setVolume(volume);
@@ -62,43 +127,35 @@
   function onToggleMute() {
     audioVideoController?.toggleMute();
   }
-  export let hasShader: boolean = false;
-  export let onResetLayout: () => void = () => {};
-  export let previewVisible: boolean = true;
-  export let onShowPreview: () => void = () => {};
-  export let onScreenshot: OnScreenshot = () => {};
-  export let onRecord: OnRecord = () => {};
-  export let onCancel: () => void = () => {};
-  export let isRecording: boolean = false;
 
 
 
 
 
 
-  $: hasErrors = errors.length > 0;
-  $: errorMessage = hasErrors ? errors.join('\n') : '';
+  const hasErrors = $derived(errors.length > 0);
+  const errorMessage = $derived(hasErrors ? errors.join('\n') : '');
 
-  let currentTime = 0.0;
+  let currentTime = $state(0.0);
   let timeUpdateHandle: number | null = null;
-  let isPaused = false;
-  let theme: "light" | "dark" = "light";
-  let showThemeButton = false;
-  let showFullscreenButton = false;
-  let currentAspectRatio: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, source: 'session' };
-  let showResolutionMenu = false;
-  let customWidthInput: number | null = null;
-  let customHeightInput: number | null = null;
-  let showFPSMenu = false;
-  let showOptionsMenu = false;
-  let recordingButton: RecordingButton;
-  let recordingMenuOpen = false;
-  let zoomLevel = 1.0;
-  let currentFPSLimit = 0;
-  let isPauseTooltipTriggerHovered = false;
-  let isPauseTooltipHovered = false;
-  let isPauseTooltipHoverArmed = false;
+  let isPaused = $state(false);
+  let theme = $state<"light" | "dark">("light");
+  let showThemeButton = $state(false);
+  let showFullscreenButton = $state(false);
+  let currentAspectRatio = $state<AspectRatioMode>("16:9");
+  let currentResolution = $state<ResolutionState>({ scale: 1, forceBlackBackground: false, source: 'session' });
+  let showResolutionMenu = $state(false);
+  let customWidthInput = $state<number | null>(null);
+  let customHeightInput = $state<number | null>(null);
+  let showFPSMenu = $state(false);
+  let showOptionsMenu = $state(false);
+  let recordingButton = $state<RecordingButton>(undefined as any);
+  let recordingMenuOpen = $state(false);
+  let zoomLevel = $state(1.0);
+  let currentFPSLimit = $state(0);
+  let isPauseTooltipTriggerHovered = $state(false);
+  let isPauseTooltipHovered = $state(false);
+  let isPauseTooltipHoverArmed = $state(false);
 
   const compileModeIcons: Record<CompileMode, string> = {
     hot: "flame",
@@ -112,8 +169,9 @@
     manual: "Manual compile mode",
   };
 
-  $: isPauseTooltipVisible =
-    isPauseTooltipTriggerHovered || (isPauseTooltipHoverArmed && isPauseTooltipHovered);
+  const isPauseTooltipVisible = $derived(
+    isPauseTooltipTriggerHovered || (isPauseTooltipHoverArmed && isPauseTooltipHovered)
+  );
 
   onMount(() => {
     if (timeManager) {
@@ -232,17 +290,20 @@
   }
 
   function handleAspectRatioSelect(mode: AspectRatioMode) {
-    aspectRatioStore.setMode(mode);
-    onAspectRatioChange(mode);
+    resCtrl.setAspectRatio(mode);
   }
 
   function handleResolutionScaleSelect(scale: number) {
-    resolutionStore.setScale(scale);
+    if (resCtrl.menuVM.targetKind === 'image') {
+      resCtrl.setImageScale(scale);
+    } else {
+      resCtrl.setBufferScale(scale);
+    }
   }
 
   function handleCustomResolutionInput() {
     if (customWidthInput && customHeightInput) {
-      resolutionStore.setCustomResolution(String(customWidthInput), String(customHeightInput));
+      resCtrl.setImageCustomResolution(String(customWidthInput), String(customHeightInput));
     }
   }
 
@@ -250,14 +311,13 @@
     event.stopPropagation();
     customWidthInput = null;
     customHeightInput = null;
-    resolutionStore.clearCustomResolution();
+    resCtrl.setImageCustomResolution(undefined, undefined);
   }
 
   function handleResetResolution() {
     customWidthInput = null;
     customHeightInput = null;
-    resolutionStore.reset();
-    aspectRatioStore.setMode("auto");
+    resCtrl.resetCurrentTarget();
   }
 
   function handleZoomChange(event: Event) {
@@ -271,10 +331,25 @@
     resolutionStore.setForceBlackBackground(target.checked);
   }
 
+  function handleSyncWithConfigChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    resCtrl.setSyncWithConfig(target.checked);
+  }
+
+  function handleBufferWidthInput(event: Event) {
+    const width = (event.target as HTMLInputElement).value;
+    resCtrl.setBufferFixedResolution(width, resCtrl.menuVM.bufferResolutionState.height);
+  }
+
+  function handleBufferHeightInput(event: Event) {
+    const height = (event.target as HTMLInputElement).value;
+    resCtrl.setBufferFixedResolution(resCtrl.menuVM.bufferResolutionState.width, height);
+  }
+
   function handleToggleLock() {
     // Check if we're currently locked (before toggling)
     const wasLocked = isLocked;
-    onToggleLock();
+    onToggleLockProp();
     // If we were locked and now unlocking, refresh
     if (wasLocked) {
       onRefresh();
@@ -322,7 +397,7 @@
 
   // Track where mousedown started so we don't close menus when a drag
   // (e.g. text selection in an input) ends outside the menu.
-  let mouseDownTarget: HTMLElement | null = null;
+  let mouseDownTarget: HTMLElement | null = $state(null);
 
   function handleWindowMouseDown(event: MouseEvent) {
     mouseDownTarget = event.target as HTMLElement;
@@ -460,67 +535,141 @@
       {#if showResolutionMenu}
         {@const hasCustom = currentResolution.customWidth !== undefined && currentResolution.customHeight !== undefined}
         <div class="resolution-menu">
-          <div class="resolution-section">
-            <div class="resolution-section-header">
-              <h4>Resolution Scale</h4>
-              <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
-            </div>
-            <div class="scale-buttons">
-              {#each [0.25, 0.5, 1, 2, 4] as scale}
-                <button
-                  class="resolution-option menu-title"
-                  class:active={currentResolution.scale === scale}
-                  on:click={() => handleResolutionScaleSelect(scale)}
-                >
-                  {scale}x
-                </button>
-              {/each}
-            </div>
+          <div class="resolution-section save-to-config-section">
+            <label class="save-to-config-label">
+              <input
+                type="checkbox"
+                aria-label="Sync With Config"
+                checked={resCtrl.menuVM.syncWithConfig}
+                on:change={handleSyncWithConfigChange}
+              />
+              Sync With Config
+            </label>
+            {#if !resCtrl.menuVM.syncWithConfig}
+              <div class="save-to-config-hint">Local Override</div>
+            {/if}
+            <div class="save-to-config-target">Target: {resCtrl.menuVM.targetLabel}</div>
           </div>
 
-          <div class="resolution-section">
-            <h4>Custom Resolution</h4>
-            <div class="custom-resolution-row">
-              <input
-                type="number"
-                class="custom-res-input"
-                placeholder="W"
-                min="1"
-                step="1"
-                bind:value={customWidthInput}
-                on:input={handleCustomResolutionInput}
-              />
-              <span class="custom-res-separator">&times;</span>
-              <input
-                type="number"
-                class="custom-res-input"
-                placeholder="H"
-                min="1"
-                step="1"
-                bind:value={customHeightInput}
-                on:input={handleCustomResolutionInput}
-              />
-              {#if hasCustom}
-                <button
-                  class="custom-res-btn clear-btn"
-                  on:click={handleClearCustomResolution}
-                >
-                  Clear
-                </button>
-              {/if}
+          {#if resCtrl.menuVM.targetKind === "image"}
+            <div class="resolution-section">
+              <div class="resolution-section-header">
+                <h4>Resolution Scale</h4>
+                <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
+              </div>
+              <div class="scale-buttons">
+                {#each [0.25, 0.5, 1, 2, 4] as scale}
+                  <button
+                    class="resolution-option menu-title"
+                    class:active={currentResolution.scale === scale}
+                    on:click={() => handleResolutionScaleSelect(scale)}
+                  >
+                    {scale}x
+                  </button>
+                {/each}
+              </div>
             </div>
-          </div>
 
-          <div class="resolution-section">
-            <h4>Aspect Ratio</h4>
-            <div class="scale-buttons">
-              <button class="resolution-option menu-title" class:active={currentAspectRatio === "16:9"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("16:9")}>16:9</button>
-              <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("4:3")}>4:3</button>
-              <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("1:1")}>1:1</button>
-              <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("fill")}>Fill</button>
-              <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("auto")}>Auto</button>
+            <div class="resolution-section">
+              <h4>Custom Resolution</h4>
+              <div class="custom-resolution-row">
+                <input
+                  type="number"
+                  class="custom-res-input"
+                  placeholder="W"
+                  min="1"
+                  step="1"
+                  bind:value={customWidthInput}
+                  on:input={handleCustomResolutionInput}
+                />
+                <span class="custom-res-separator">&times;</span>
+                <input
+                  type="number"
+                  class="custom-res-input"
+                  placeholder="H"
+                  min="1"
+                  step="1"
+                  bind:value={customHeightInput}
+                  on:input={handleCustomResolutionInput}
+                />
+                {#if hasCustom}
+                  <button
+                    class="custom-res-btn clear-btn"
+                    on:click={handleClearCustomResolution}
+                  >
+                    Clear
+                  </button>
+                {/if}
+              </div>
             </div>
-          </div>
+
+            <div class="resolution-section">
+              <h4>Aspect Ratio</h4>
+              <div class="scale-buttons">
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "16:9"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("16:9")}>16:9</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("4:3")}>4:3</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("1:1")}>1:1</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("fill")}>Fill</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("auto")}>Auto</button>
+              </div>
+            </div>
+          {:else}
+            <div class="resolution-section">
+              <div class="resolution-section-header">
+                <h4>Buffer Resolution</h4>
+                <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
+              </div>
+              <div class="scale-buttons">
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "none"} on:click={() => resCtrl.setBufferResolutionMode("none")}>Inherit</button>
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "fixed"} on:click={() => resCtrl.setBufferResolutionMode("fixed")}>Fixed px</button>
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "scale"} on:click={() => resCtrl.setBufferResolutionMode("scale")}>Scale</button>
+              </div>
+            </div>
+
+            {#if resCtrl.menuVM.bufferResolutionState.mode === "fixed"}
+              <div class="resolution-section">
+                <h4>Fixed Size</h4>
+                <div class="custom-resolution-row">
+                  <input
+                    type="number"
+                    class="custom-res-input"
+                    placeholder="Width"
+                    min="1"
+                    step="1"
+                    value={resCtrl.menuVM.bufferResolutionState.width}
+                    on:input={handleBufferWidthInput}
+                  />
+                  <span class="custom-res-separator">&times;</span>
+                  <input
+                    type="number"
+                    class="custom-res-input"
+                    placeholder="Height"
+                    min="1"
+                    step="1"
+                    value={resCtrl.menuVM.bufferResolutionState.height}
+                    on:input={handleBufferHeightInput}
+                  />
+                </div>
+              </div>
+            {/if}
+
+            {#if resCtrl.menuVM.bufferResolutionState.mode === "scale"}
+              <div class="resolution-section">
+                <h4>Resolution Scale</h4>
+                <div class="scale-buttons">
+                  {#each [0.25, 0.5, 1, 2, 4] as scale}
+                    <button
+                      class="resolution-option menu-title"
+                      class:active={resCtrl.menuVM.bufferResolutionState.scale === scale}
+                      on:click={() => resCtrl.setBufferScale(scale)}
+                    >
+                      {scale}x
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          {/if}
 
           <div class="resolution-section">
             <h4>Zoom</h4>

@@ -79,6 +79,13 @@ const createAspectRatioStore = () => {
         commit(defaultMode, SESSION_SOURCE);
       }
     },
+    setSessionMode: (mode?: AspectRatioMode) => {
+      const nextMode = mode && VALID_MODES.includes(mode) ? mode : DEFAULT_MODE;
+      if (currentMode === nextMode && currentSource === SESSION_SOURCE) {
+        return;
+      }
+      commit(nextMode, SESSION_SOURCE);
+    },
     reset: () => {
       commit(DEFAULT_MODE, SESSION_SOURCE);
       if (typeof window !== 'undefined') {
