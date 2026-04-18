@@ -7,19 +7,25 @@
   import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
   import { AspectRatioCalculator } from "../util/AspectRatioCalculator";
 
-  export let zoomLevel: number = 1.0;
+  interface Props {
+    zoomLevel?: number;
+    onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+    onCanvasResize?: (data: { width: number; height: number }) => void;
+    onCanvasClick?: (event: MouseEvent) => void;
+    isInspectorActive?: boolean;
+  }
 
-  export let onCanvasReady: (canvas: HTMLCanvasElement) => void = () => {};
-  export let onCanvasResize: (data: {
-    width: number;
-    height: number;
-  }) => void = () => {};
-  export let onCanvasClick: (event: MouseEvent) => void = () => {};
-  export let isInspectorActive: boolean = false;
+  let {
+    zoomLevel = 1.0,
+    onCanvasReady = () => {},
+    onCanvasResize = () => {},
+    onCanvasClick = () => {},
+    isInspectorActive = false,
+  }: Props = $props();
 
   let glCanvas: HTMLCanvasElement;
-  let currentAspectMode: AspectRatioMode = "16:9";
-  let currentResolution: ResolutionState = { scale: 1, forceBlackBackground: false, source: 'session' };
+  let currentAspectMode: AspectRatioMode = $state("16:9");
+  let currentResolution: ResolutionState = $state({ scale: 1, forceBlackBackground: false, source: 'session' });
   let aspectRatioCalculator: AspectRatioCalculator;
   let resizeCanvasToFitAspectRatio: () => void;
 
@@ -67,15 +73,15 @@
     return () => {
       unsubscribeAspectRatio();
       unsubscribeResolution();
+      resizeObserver.disconnect();
     };
   });
 
-  let mouseDownPosition: { x: number; y: number } | null = null;
-  const CLICK_THRESHOLD = 5; // pixels
+  let mouseDownPosition: { x: number; y: number } | null = $state(null);
+  const CLICK_THRESHOLD = 5;
 
   function setupInputHandling() {
     if (glCanvas) {
-      // Make canvas focusable for keyboard events
       glCanvas.tabIndex = 0;
     }
   }
@@ -92,7 +98,6 @@
   }
 
   function handleClick(event: MouseEvent) {
-    // Only trigger click if mouse hasn't moved much (not a drag)
     if (mouseDownPosition) {
       const dx = Math.abs(event.clientX - mouseDownPosition.x);
       const dy = Math.abs(event.clientY - mouseDownPosition.y);
@@ -105,14 +110,17 @@
     mouseDownPosition = null;
   }
 
-  $: if (glCanvas) {
-    setupInputHandling();
-  }
+  $effect(() => {
+    if (glCanvas) {
+      setupInputHandling();
+    }
+  });
 
-  // React to zoom level changes
-  $: if (glCanvas && zoomLevel && resizeCanvasToFitAspectRatio) {
-    resizeCanvasToFitAspectRatio();
-  }
+  $effect(() => {
+    if (glCanvas && zoomLevel && resizeCanvasToFitAspectRatio) {
+      resizeCanvasToFitAspectRatio();
+    }
+  });
 </script>
 
 <div
@@ -120,10 +128,10 @@
   class:force-black-background={currentResolution.forceBlackBackground}
   role="button"
   tabindex="0"
-  on:click={handleClick}
-  on:keydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
+  onclick={handleClick}
+  onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
 >
-  <canvas bind:this={glCanvas} on:mousedown={handleMouseDown}></canvas>
+  <canvas bind:this={glCanvas} onmousedown={handleMouseDown}></canvas>
 </div>
 
 <style>

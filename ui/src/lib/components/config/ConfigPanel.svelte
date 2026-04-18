@@ -1,44 +1,68 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { ConfigManager } from "../../ConfigManager";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
-
-  export let config: ShaderConfig | null = null;
-  export let pathMap: Record<string, string> = {};
-  export let bufferPathMap: Record<string, string> = {};
-  export let transport: Transport;
-  export let shaderPath: string = "";
-  export let isVisible: boolean = true;
-  export let onFileSelect: (bufferName: string) => void = () => {};
-  export let selectedBuffer: string = "Image";
-  export let isLocked: boolean = false;
   import type { AudioVideoController } from "../../AudioVideoController";
-  export let audioVideoController: AudioVideoController | undefined = undefined;
-  export let globalMuted: boolean = false;
-  export let scriptInfo: { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null = null;
-  export let customUniformValues: Record<string, number | number[] | boolean> = {};
-  export let actualPollFps: number = 0;
-  export let uniformActualFps: Record<string, number> = {};
-  export let onConfigChange: (config: ShaderConfig) => void = () => {};
 
-  let configManager: ConfigManager;
-  let activeTab: string = "Image";
+  type ScriptInfoProp = { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null;
+
+  interface Props {
+    config?: ShaderConfig | null;
+    pathMap?: Record<string, string>;
+    bufferPathMap?: Record<string, string>;
+    transport: Transport;
+    shaderPath?: string;
+    isVisible?: boolean;
+    onFileSelect?: (bufferName: string) => void;
+    selectedBuffer?: string;
+    isLocked?: boolean;
+    audioVideoController?: AudioVideoController;
+    globalMuted?: boolean;
+    scriptInfo?: ScriptInfoProp;
+    customUniformValues?: Record<string, number | number[] | boolean>;
+    actualPollFps?: number;
+    uniformActualFps?: Record<string, number>;
+    onConfigChange?: (config: ShaderConfig) => void;
+  }
+
+  let {
+    config = $bindable(null),
+    pathMap = {},
+    bufferPathMap = {},
+    transport,
+    shaderPath = "",
+    isVisible = true,
+    onFileSelect = () => {},
+    selectedBuffer = "Image",
+    isLocked = false,
+    audioVideoController = undefined,
+    globalMuted = false,
+    scriptInfo = null,
+    customUniformValues = {},
+    actualPollFps = 0,
+    uniformActualFps = {},
+    onConfigChange = () => {},
+  }: Props = $props();
+
+  let configManager = $state<ConfigManager | undefined>(undefined);
+  let activeTab: string = $state("Image");
 
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
-  $: {
+  $effect(() => {
     const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
-    if (displayName !== activeTab && activeTab !== "Script") {
-      activeTab = displayName;
-    }
-  }
+    untrack(() => {
+      if (displayName !== activeTab && activeTab !== "Script") {
+        activeTab = displayName;
+      }
+    });
+  });
 
   onMount(() => {
     console.log("ConfigPanel component mounted");
-    // Initialize the config manager with transport and callback
     configManager = new ConfigManager(
       transport,
       (updatedConfig) => {
@@ -47,6 +71,9 @@
         onConfigChange(updatedConfig);
       }
     );
+    configManager.setConfig(config);
+    configManager.setPathMap(pathMap);
+    configManager.setShaderPath(shaderPath);
   });
 
   onDestroy(() => {
@@ -56,17 +83,20 @@
   });
 
   // Update config manager when props change
-  $: if (configManager) {
+  $effect(() => {
+    if (!configManager) return;
     configManager.setConfig(config);
-  }
+  });
 
-  $: if (configManager && pathMap) {
+  $effect(() => {
+    if (!configManager || !pathMap) return;
     configManager.setPathMap(pathMap);
-  }
+  });
 
-  $: if (configManager && shaderPath) {
+  $effect(() => {
+    if (!configManager || !shaderPath) return;
     configManager.setShaderPath(shaderPath);
-  }
+  });
 
   function addCommonBuffer() {
     const success = configManager?.addCommonBuffer();
@@ -167,7 +197,7 @@
   }
 
   // Reactive statement to ensure tabs update when config changes
-  $: allTabs = (() => {
+  let allTabs = $derived.by(() => {
     const tabs = ["Image"];
     if (config?.passes) {
       for (const name of Object.keys(config.passes)) {
@@ -181,7 +211,7 @@
       tabs.push("Script");
     }
     return tabs;
-  })();
+  });
 
   function switchTab(tabName: string) {
     activeTab = tabName;
@@ -207,7 +237,7 @@
 
   // Reactive statement to get the current active tab's config
   // Provides default empty config when no config file exists
-  $: activeTabConfig = (() => {
+  let activeTabConfig = $derived.by(() => {
     const actualBufferName = getActualBufferName(activeTab);
 
     if (activeTab === "Image") {
@@ -217,7 +247,7 @@
       // Return actual buffer config or default empty BufferPass
       return config?.passes?.[actualBufferName] || { path: "", inputs: {} };
     }
-  })();
+  });
 </script>
 
 <div class="config-panel" class:visible={isVisible}>
@@ -227,8 +257,8 @@
       {#each allTabs as tabName}
         <button
           class="tab-button {activeTab === tabName ? 'active' : ''}"
-          on:click={() => switchTab(tabName)}
-          on:dblclick={() => handleTabDblClick(tabName)}
+          onclick={() => switchTab(tabName)}
+          ondblclick={() => handleTabDblClick(tabName)}
         >
           <span class="tab-label">{tabName}</span>
           {#if tabName !== "Image" && config}
@@ -236,8 +266,8 @@
               class="tab-close"
               role="button"
               tabindex="0"
-              on:click|stopPropagation={() => removeBuffer(tabName)}
-              on:keydown={(event) => {
+              onclick={(e) => { e.stopPropagation(); removeBuffer(tabName); }}
+              onkeydown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   removeBuffer(tabName);
@@ -255,12 +285,12 @@
       <div class="add-tab-dropdown">
         <button class="add-tab-btn" title="Add new pass">+ New</button>
         <div class="dropdown-content">
-          <button class="dropdown-item" on:click={() => addBuffer()}>Buffer</button>
+          <button class="dropdown-item" onclick={() => addBuffer()}>Buffer</button>
           {#if !config?.passes?.common}
-            <button class="dropdown-item" on:click={() => addCommonBuffer()}>Common</button>
+            <button class="dropdown-item" onclick={() => addCommonBuffer()}>Common</button>
           {/if}
           {#if !(config && config.script !== undefined)}
-            <button class="dropdown-item" on:click={() => addScript()}>Script</button>
+            <button class="dropdown-item" onclick={() => addScript()}>Script</button>
           {/if}
         </div>
       </div>

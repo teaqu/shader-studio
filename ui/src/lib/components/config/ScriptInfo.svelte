@@ -1,21 +1,39 @@
 <script lang="ts">
   import PathInput from './PathInput.svelte';
 
-  export let filename: string;
-  export let uniforms: { name: string; type: string }[] = [];
-  export let uniformValues: Record<string, number | number[] | boolean> = {};
-  export let uniformActualFps: Record<string, number> = {};
-  export let pollingFps: number = 30;
-  export let actualFps: number = 0;
-  export let onPollingFpsChange: ((fps: number) => void) | undefined = undefined;
-  export let onPathChange: ((path: string) => void) | undefined = undefined;
-  export let suggestedPath: string = '';
-  export let fileExists: boolean = true;
-  export let shaderPath: string = '';
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
+  interface Props {
+    filename: string;
+    uniforms?: { name: string; type: string }[];
+    uniformValues?: Record<string, number | number[] | boolean>;
+    uniformActualFps?: Record<string, number>;
+    pollingFps?: number;
+    actualFps?: number;
+    onPollingFpsChange?: (fps: number) => void;
+    onPathChange?: (path: string) => void;
+    suggestedPath?: string;
+    fileExists?: boolean;
+    shaderPath?: string;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+  }
 
-  let showUniformFps = false;
+  let {
+    filename,
+    uniforms = [],
+    uniformValues = {},
+    uniformActualFps = {},
+    pollingFps = 30,
+    actualFps = 0,
+    onPollingFpsChange = undefined,
+    onPathChange = undefined,
+    suggestedPath = '',
+    fileExists = true,
+    shaderPath = '',
+    postMessage = undefined,
+    onMessage = undefined,
+  }: Props = $props();
+
+  let showUniformFps = $state(false);
 
   function formatValue(val: number | number[] | boolean | undefined): string {
     if (val === undefined) {
@@ -40,8 +58,8 @@
     { label: '120fps', fps: 120 },
   ];
 
-  let localFps = pollingFps;
-  $: localFps = pollingFps;
+  let localFps = $state(pollingFps);
+  $effect(() => { localFps = pollingFps; });
 
   function handleSliderInput(e: Event) {
     localFps = parseInt((e.target as HTMLInputElement).value);
@@ -110,8 +128,8 @@
         max="120"
         step="1"
         value={localFps}
-        on:input={handleSliderInput}
-        on:change={handleSliderCommit}
+        oninput={handleSliderInput}
+        onchange={handleSliderCommit}
         class="polling-slider"
       />
       <div class="polling-presets">
@@ -119,7 +137,7 @@
           <button
             class="preset-btn"
             class:active={localFps === preset.fps}
-            on:click={() => setPreset(preset.fps)}
+            onclick={() => setPreset(preset.fps)}
           >
             {preset.label}
           </button>

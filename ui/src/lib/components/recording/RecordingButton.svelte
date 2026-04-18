@@ -2,16 +2,29 @@
   import RecordingPanel from "./RecordingPanel.svelte";
   import type { OnScreenshot, OnRecord } from "../../recording/types";
 
-  export let canvasWidth: number;
-  export let canvasHeight: number;
-  export let currentTime: number;
-  export let hasShader: boolean;
-  export let isRecording: boolean;
-  export let onScreenshot: OnScreenshot;
-  export let onRecord: OnRecord;
-  export let onCancel: () => void;
+  interface Props {
+    canvasWidth: number;
+    canvasHeight: number;
+    currentTime: number;
+    hasShader: boolean;
+    isRecording: boolean;
+    onScreenshot: OnScreenshot;
+    onRecord: OnRecord;
+    onCancel: () => void;
+    showMenu?: boolean;
+  }
 
-  export let showMenu = false;
+  let {
+    canvasWidth,
+    canvasHeight,
+    currentTime,
+    hasShader,
+    isRecording,
+    onScreenshot,
+    onRecord,
+    onCancel,
+    showMenu = $bindable(false),
+  }: Props = $props();
 
   export function toggle() {
     showMenu = !showMenu;
@@ -29,7 +42,7 @@
 <div class="recording-menu-container">
   <button
     class="collapse-record"
-    on:click={toggle}
+    onclick={toggle}
     aria-label="Export screenshot or recording"
     class:recording={isRecording}
     class:active={showMenu}

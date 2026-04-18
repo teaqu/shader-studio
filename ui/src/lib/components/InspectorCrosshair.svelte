@@ -1,18 +1,33 @@
 <script lang="ts">
-  export let isVisible: boolean = false;
-  export let canvasX: number = 0;
-  export let canvasY: number = 0;
-  export let canvasElement: HTMLCanvasElement | null = null;
-
-  let screenX = 0;
-  let screenY = 0;
-
-  $: if (canvasElement && isVisible) {
-    const rect = canvasElement.getBoundingClientRect();
-    // Convert canvas coordinates to screen coordinates
-    screenX = rect.left + (canvasX / canvasElement.width) * rect.width;
-    screenY = rect.top + (canvasY / canvasElement.height) * rect.height;
+  interface Props {
+    isVisible?: boolean;
+    canvasX?: number;
+    canvasY?: number;
+    canvasElement?: HTMLCanvasElement | null;
   }
+
+  let {
+    isVisible = false,
+    canvasX = 0,
+    canvasY = 0,
+    canvasElement = null as HTMLCanvasElement | null,
+  }: Props = $props();
+
+  let screenX = $derived.by(() => {
+    if (canvasElement && isVisible) {
+      const rect = canvasElement.getBoundingClientRect();
+      return rect.left + (canvasX / canvasElement.width) * rect.width;
+    }
+    return 0;
+  });
+
+  let screenY = $derived.by(() => {
+    if (canvasElement && isVisible) {
+      const rect = canvasElement.getBoundingClientRect();
+      return rect.top + (canvasY / canvasElement.height) * rect.height;
+    }
+    return 0;
+  });
 </script>
 
 {#if isVisible && canvasElement}

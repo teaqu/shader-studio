@@ -29,7 +29,7 @@
 
   import type { AudioVideoController } from "../AudioVideoController";
 
-  type MenuBarProps = {
+  interface Props {
     timeManager: any;
     currentFPS: number;
     canvasWidth?: number;
@@ -115,7 +115,7 @@
     onRecord = () => {},
     onCancel = () => {},
     isRecording = false,
-  }: MenuBarProps = $props();
+  }: Props = $props();
 
   // Resolution state from context
   const resCtrl = getContext<ResolutionSessionController>('resolution');
@@ -430,14 +430,14 @@
 
 </script>
 
-<svelte:window on:mousedown={handleWindowMouseDown} on:click={handleClickOutside} />
+<svelte:window onmousedown={handleWindowMouseDown} onclick={handleClickOutside} />
 
 <div class="menu-bar">
   <div class="left-group">
     {#if compileMode === "manual"}
       <button
         class="compile-now-button toolbar-icon-button"
-        on:click={onManualCompile}
+        onclick={onManualCompile}
         aria-label="Compile shader"
         disabled={!hasShader}
         title="Compile shader"
@@ -445,18 +445,18 @@
         <i class="codicon codicon-run-all"></i>
       </button>
     {/if}
-    <button class="toolbar-icon-button" on:click={onReset} aria-label="Reset shader" disabled={!hasShader}>
+    <button class="toolbar-icon-button" onclick={onReset} aria-label="Reset shader" disabled={!hasShader}>
       <i class="codicon codicon-debug-restart"></i>
     </button>
     <div class="pause-button-container">
       <button
         class="toolbar-icon-button"
-        on:click={onTogglePause}
+        onclick={onTogglePause}
         aria-label="Toggle pause"
         class:error={hasErrors}
         disabled={!hasShader}
-        on:mouseenter={handlePauseTooltipTriggerEnter}
-        on:mouseleave={handlePauseTooltipTriggerLeave}
+        onmouseenter={handlePauseTooltipTriggerEnter}
+        onmouseleave={handlePauseTooltipTriggerLeave}
       >
         {#if isPaused}
           <i class="codicon codicon-play"></i>
@@ -469,8 +469,8 @@
           class="error-tooltip"
           class:visible={isPauseTooltipVisible}
           role="presentation"
-          on:mouseenter={handlePauseTooltipEnter}
-          on:mouseleave={handlePauseTooltipLeave}
+          onmouseenter={handlePauseTooltipEnter}
+          onmouseleave={handlePauseTooltipLeave}
         >{errorMessage}</div>
       {/if}
     </div>
@@ -478,7 +478,7 @@
     <div class="fps-menu-container">
       <button
         class="menu-title fps-button"
-        on:click={handleFPSClick}
+        onclick={handleFPSClick}
         aria-label="Change FPS limit"
         disabled={!hasShader}
       >
@@ -491,21 +491,21 @@
             <button
               class="resolution-option menu-title"
               class:active={currentFPSLimit === 30}
-              on:click={() => handleFPSLimitSelect(30)}
+              onclick={() => handleFPSLimitSelect(30)}
             >
               30 FPS
             </button>
             <button
               class="resolution-option menu-title"
               class:active={currentFPSLimit === 60}
-              on:click={() => handleFPSLimitSelect(60)}
+              onclick={() => handleFPSLimitSelect(60)}
             >
               60 FPS
             </button>
             <button
               class="resolution-option menu-title"
               class:active={currentFPSLimit === 0}
-              on:click={() => handleFPSLimitSelect(0)}
+              onclick={() => handleFPSLimitSelect(0)}
             >
               Unlimited
             </button>
@@ -514,7 +514,7 @@
           <button
             class="resolution-option menu-title"
             class:active={isPerformancePanelVisible}
-            on:click={() => {
+            onclick={() => {
               onTogglePerformancePanel(); showFPSMenu = false; 
             }}
           >
@@ -526,7 +526,7 @@
     <div class="resolution-menu-container">
       <button
         class="menu-title resolution-button"
-        on:click={handleResolutionClick}
+        onclick={handleResolutionClick}
         aria-label="Change resolution settings"
         disabled={!hasShader}
       >
@@ -541,7 +541,7 @@
                 type="checkbox"
                 aria-label="Sync With Config"
                 checked={resCtrl.menuVM.syncWithConfig}
-                on:change={handleSyncWithConfigChange}
+                onchange={handleSyncWithConfigChange}
               />
               Sync With Config
             </label>
@@ -555,14 +555,14 @@
             <div class="resolution-section">
               <div class="resolution-section-header">
                 <h4>Resolution Scale</h4>
-                <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
+                <button class="reset-resolution-btn" onclick={handleResetResolution}>Reset</button>
               </div>
               <div class="scale-buttons">
                 {#each [0.25, 0.5, 1, 2, 4] as scale}
                   <button
                     class="resolution-option menu-title"
                     class:active={currentResolution.scale === scale}
-                    on:click={() => handleResolutionScaleSelect(scale)}
+                    onclick={() => handleResolutionScaleSelect(scale)}
                   >
                     {scale}x
                   </button>
@@ -580,7 +580,7 @@
                   min="1"
                   step="1"
                   bind:value={customWidthInput}
-                  on:input={handleCustomResolutionInput}
+                  oninput={handleCustomResolutionInput}
                 />
                 <span class="custom-res-separator">&times;</span>
                 <input
@@ -590,12 +590,12 @@
                   min="1"
                   step="1"
                   bind:value={customHeightInput}
-                  on:input={handleCustomResolutionInput}
+                  oninput={handleCustomResolutionInput}
                 />
                 {#if hasCustom}
                   <button
                     class="custom-res-btn clear-btn"
-                    on:click={handleClearCustomResolution}
+                    onclick={handleClearCustomResolution}
                   >
                     Clear
                   </button>
@@ -606,23 +606,23 @@
             <div class="resolution-section">
               <h4>Aspect Ratio</h4>
               <div class="scale-buttons">
-                <button class="resolution-option menu-title" class:active={currentAspectRatio === "16:9"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("16:9")}>16:9</button>
-                <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("4:3")}>4:3</button>
-                <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("1:1")}>1:1</button>
-                <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("fill")}>Fill</button>
-                <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} on:click={() => handleAspectRatioSelect("auto")}>Auto</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "16:9"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("16:9")}>16:9</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("4:3")}>4:3</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("1:1")}>1:1</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("fill")}>Fill</button>
+                <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("auto")}>Auto</button>
               </div>
             </div>
           {:else}
             <div class="resolution-section">
               <div class="resolution-section-header">
                 <h4>Buffer Resolution</h4>
-                <button class="reset-resolution-btn" on:click={handleResetResolution}>Reset</button>
+                <button class="reset-resolution-btn" onclick={handleResetResolution}>Reset</button>
               </div>
               <div class="scale-buttons">
-                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "none"} on:click={() => resCtrl.setBufferResolutionMode("none")}>Inherit</button>
-                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "fixed"} on:click={() => resCtrl.setBufferResolutionMode("fixed")}>Fixed px</button>
-                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "scale"} on:click={() => resCtrl.setBufferResolutionMode("scale")}>Scale</button>
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "none"} onclick={() => resCtrl.setBufferResolutionMode("none")}>Inherit</button>
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "fixed"} onclick={() => resCtrl.setBufferResolutionMode("fixed")}>Fixed px</button>
+                <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.mode === "scale"} onclick={() => resCtrl.setBufferResolutionMode("scale")}>Scale</button>
               </div>
             </div>
 
@@ -637,7 +637,7 @@
                     min="1"
                     step="1"
                     value={resCtrl.menuVM.bufferResolutionState.width}
-                    on:input={handleBufferWidthInput}
+                    oninput={handleBufferWidthInput}
                   />
                   <span class="custom-res-separator">&times;</span>
                   <input
@@ -647,7 +647,7 @@
                     min="1"
                     step="1"
                     value={resCtrl.menuVM.bufferResolutionState.height}
-                    on:input={handleBufferHeightInput}
+                    oninput={handleBufferHeightInput}
                   />
                 </div>
               </div>
@@ -661,7 +661,7 @@
                     <button
                       class="resolution-option menu-title"
                       class:active={resCtrl.menuVM.bufferResolutionState.scale === scale}
-                      on:click={() => resCtrl.setBufferScale(scale)}
+                      onclick={() => resCtrl.setBufferScale(scale)}
                     >
                       {scale}x
                     </button>
@@ -682,7 +682,7 @@
                 max="3.0"
                 step="0.1"
                 bind:value={zoomLevel}
-                on:input={handleZoomChange}
+                oninput={handleZoomChange}
                 class="zoom-slider"
               />
             </div>
@@ -693,7 +693,7 @@
               <input
                 type="checkbox"
                 checked={currentResolution.forceBlackBackground}
-                on:change={handleForceBlackBackgroundChange}
+                onchange={handleForceBlackBackgroundChange}
               />
               Black canvas background
             </label>
@@ -705,7 +705,7 @@
   <div class="right-group">
     <button
       class="collapse-debug toolbar-icon-button"
-      on:click={onToggleDebugEnabled}
+      onclick={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
       disabled={!hasShader}
@@ -717,7 +717,7 @@
     </button>
     <button
       class="collapse-editor toolbar-icon-button"
-      on:click={onToggleEditorOverlay}
+      onclick={onToggleEditorOverlay}
       aria-label="Toggle editor overlay"
       class:active={isEditorOverlayVisible}
       disabled={!hasShader}
@@ -727,7 +727,7 @@
     </button>
     <button
       class="collapse-config toolbar-icon-button"
-      on:click={onToggleConfigPanel}
+      onclick={onToggleConfigPanel}
       aria-label="Toggle config panel"
       class:active={isConfigPanelVisible}
       disabled={!hasShader}
@@ -747,7 +747,7 @@
       {onRecord}
       {onCancel}
     />
-    <button class="collapse-lock toolbar-icon-button" on:click={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
+    <button class="collapse-lock toolbar-icon-button" onclick={handleToggleLock} aria-label="Toggle lock" class:active={isLocked} disabled={!hasShader}>
       {#if isLocked}
         <i class="codicon codicon-lock"></i>
       {:else}
@@ -756,7 +756,7 @@
     </button>
     <div class="options-menu-container">
       <button
-        on:click={handleOptionsClick}
+        onclick={handleOptionsClick}
         aria-label="Open options menu"
         class="options-menu-button"
       >
@@ -767,7 +767,7 @@
           {#if !previewVisible}
             <button
               class="options-menu-item"
-              on:click={() => {
+              onclick={() => {
                 onShowPreview(); showOptionsMenu = false; 
               }}
               aria-label="Show preview"
@@ -778,7 +778,7 @@
           {/if}
           <button
             class="options-menu-item show-lock"
-            on:click={() => {
+            onclick={() => {
               handleToggleLock(); showOptionsMenu = false; 
             }}
             aria-label="Toggle lock"
@@ -794,7 +794,7 @@
           </button>
           <button
             class="options-menu-item show-record"
-            on:click={() => {
+            onclick={() => {
               showOptionsMenu = false; handleRecordingClick(); 
             }}
             aria-label="Export recording"
@@ -806,7 +806,7 @@
           </button>
           <button
             class="options-menu-item show-config"
-            on:click={() => {
+            onclick={() => {
               onToggleConfigPanel(); showOptionsMenu = false; 
             }}
             aria-label="Toggle config panel"
@@ -818,7 +818,7 @@
           </button>
           <button
             class="options-menu-item show-editor"
-            on:click={() => {
+            onclick={() => {
               onToggleEditorOverlay(); showOptionsMenu = false; 
             }}
             aria-label="Toggle editor overlay"
@@ -831,7 +831,7 @@
           {#if isEditorOverlayVisible}
             <button
               class="options-menu-item options-submenu-item"
-              on:click={() => {
+              onclick={() => {
                 onToggleVimMode(); 
               }}
               aria-label="Toggle vim mode"
@@ -842,7 +842,7 @@
           {/if}
           <button
             class="options-menu-item show-debug"
-            on:click={() => {
+            onclick={() => {
               onToggleDebugEnabled(); showOptionsMenu = false; 
             }}
             aria-label="Toggle debug mode"
@@ -854,7 +854,7 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => {
+            onclick={() => {
               onResetLayout(); showOptionsMenu = false; 
             }}
             aria-label="Reset layout"
@@ -865,7 +865,7 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={handleRefresh}
+            onclick={handleRefresh}
             aria-label="Refresh shader"
             disabled={!hasShader}
           >
@@ -875,7 +875,7 @@
           {#if showThemeButton}
             <button
               class="options-menu-item"
-              on:click={handleThemeToggle}
+              onclick={handleThemeToggle}
               aria-label="Toggle theme"
             >
               {#if theme === "light"}
@@ -890,7 +890,7 @@
           {#if showFullscreenButton}
             <button
               class="options-menu-item"
-              on:click={handleFullscreenToggle}
+              onclick={handleFullscreenToggle}
               aria-label="Toggle fullscreen"
             >
               <i class="codicon codicon-screen-full"></i>
@@ -899,7 +899,7 @@
           {/if}
           <button
             class="options-menu-item"
-            on:click={() => {
+            onclick={() => {
               onFork(); showOptionsMenu = false; 
             }}
             aria-label="Fork shader"
@@ -910,7 +910,7 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => {
+            onclick={() => {
               onExtensionCommand('newShader'); showOptionsMenu = false; 
             }}
             aria-label="New shader"
@@ -920,7 +920,7 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => {
+            onclick={() => {
               onExtensionCommand('openShaderExplorer'); showOptionsMenu = false; 
             }}
             aria-label="Shader explorer"
@@ -930,7 +930,7 @@
           </button>
           <button
             class="options-menu-item"
-            on:click={() => {
+            onclick={() => {
               onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false; 
             }}
             aria-label="Snippet library"
@@ -945,7 +945,7 @@
               <button
                 class="compile-mode-button"
                 class:active={compileMode === "hot"}
-                on:click={() => onSetCompileMode("hot")}
+                onclick={() => onSetCompileMode("hot")}
                 aria-label="Set hot compile mode"
                 disabled={!hasShader}
                 title={compileModeLabels.hot}
@@ -955,7 +955,7 @@
               <button
                 class="compile-mode-button"
                 class:active={compileMode === "save"}
-                on:click={() => onSetCompileMode("save")}
+                onclick={() => onSetCompileMode("save")}
                 aria-label="Set save compile mode"
                 disabled={!hasShader}
                 title={compileModeLabels.save}
@@ -965,7 +965,7 @@
               <button
                 class="compile-mode-button"
                 class:active={compileMode === "manual"}
-                on:click={() => onSetCompileMode("manual")}
+                onclick={() => onSetCompileMode("manual")}
                 aria-label="Set manual compile mode"
                 disabled={!hasShader}
                 title={compileModeLabels.manual}
@@ -982,7 +982,7 @@
               max="1"
               step="0.05"
               value={audioVolume}
-              on:input={handleVolumeSlider}
+              oninput={handleVolumeSlider}
               class="volume-slider"
               aria-label="Volume"
               class:muted-slider={audioMuted}
@@ -990,8 +990,8 @@
             <span class="volume-label">{Math.round(audioVolume * 100)}%</span>
             <button
               class="mute-icon-btn"
-              on:click|stopPropagation={() => {
-                onToggleMute(); 
+              onclick={(e) => {
+                e.stopPropagation(); onToggleMute();
               }}
               aria-label="Toggle mute"
               class:muted={audioMuted}

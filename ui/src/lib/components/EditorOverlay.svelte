@@ -5,24 +5,43 @@
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl } from "@shader-studio/monaco";
 
-  export let isVisible: boolean = false;
-  export let shaderCode: string = "";
-  export let shaderPath: string = "";
-  export let transport: Transport;
-  export let onCodeChange: (code: string) => void = () => {};
-  export let vimMode: boolean = false;
-  export let bottomInset: number = 0;
-  export let bufferNames: string[] = ["Image"];
-  export let activeBufferName: string = "Image";
-  export let onBufferSwitch: (bufferName: string) => void = () => {};
-  export let errors: string[] = [];
-  export let compileMode: "hot" | "save" | "manual" = "hot";
+  type CompileMode = "hot" | "save" | "manual";
+
+  interface Props {
+    isVisible?: boolean;
+    shaderCode?: string;
+    shaderPath?: string;
+    transport: Transport;
+    onCodeChange?: (code: string) => void;
+    vimMode?: boolean;
+    bottomInset?: number;
+    bufferNames?: string[];
+    activeBufferName?: string;
+    onBufferSwitch?: (bufferName: string) => void;
+    errors?: string[];
+    compileMode?: CompileMode;
+  }
+
+  let {
+    isVisible = false,
+    shaderCode = "",
+    shaderPath = "",
+    transport,
+    onCodeChange = () => {},
+    vimMode = false,
+    bottomInset = 0,
+    bufferNames = ["Image"],
+    activeBufferName = "Image",
+    onBufferSwitch = (_bufferName: string) => {},
+    errors = [],
+    compileMode = "hot",
+  }: Props = $props();
 
   let containerEl: HTMLDivElement;
   let statusBarEl: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
   let vimModeInstance: any = null;
-  let editorReady = false;
+  let editorReady = $state(false);
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
@@ -120,10 +139,9 @@
   }
 
   function switchToNamedBuffer(name: string) {
-    // Try exact match first, then case-insensitive prefix match
     const exact = bufferNames.find(b => b === name);
     if (exact) {
-      onBufferSwitch(exact); return; 
+      onBufferSwitch(exact); return;
     }
     const lower = name.toLowerCase();
     const match = bufferNames.find(b => b.toLowerCase().startsWith(lower));
@@ -159,7 +177,6 @@
         editor?.getAction('editor.action.marker.prev')?.run();
       });
 
-      // Custom vim actions that trigger Monaco editor commands
       vim.defineAction('nextDiagnostic', () => {
         editor?.trigger('vim', 'editor.action.marker.next', null);
       });
@@ -170,15 +187,12 @@
         editor?.trigger('vim', 'editor.action.showHover', null);
       });
 
-      // ]d / [d — next/prev diagnostic
       vim.mapCommand(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
       vim.mapCommand('[d', 'action', 'prevDiagnostic', {}, { context: 'normal' });
-      // gl — show hover (error tooltip) at cursor
       vim.mapCommand('gl', 'action', 'showHover', {}, { context: 'normal' });
 
       vimCommandsRegistered = true;
     } catch (e) {
-      // monaco-vim API may differ across versions
       console.warn('Failed to register vim buffer commands:', e);
     }
   }
@@ -393,7 +407,6 @@
       }
 
       if (compileMode === "hot") {
-        // Fast recompile for immediate visual feedback
         if (recompileTimer) {
           clearTimeout(recompileTimer);
         }
@@ -402,7 +415,6 @@
         }, 30);
       }
 
-      // Keep the tracked TextDocument almost in sync with the overlay in every compile mode.
       if (persistTimer) {
         clearTimeout(persistTimer);
       }
@@ -456,42 +468,45 @@
     lastSentCode = null;
   }
 
-  // React to visibility changes
-  $: if (isVisible && containerEl && !editor) {
-    createEditor();
-  }
-  $: if (!isVisible && editor) {
-    destroyEditor();
-  }
-  $: if (isVisible && editor) {
-    editor.focus();
-    requestAnimationFrame(() => focusMonacoTextInput());
-  }
-
-  // React to vim mode toggle
-  $: if (editor) {
-    if (vimMode && !vimModeInstance) {
-      enableVim();
-    } else if (!vimMode && vimModeInstance) {
-      disableVim();
+  $effect(() => {
+    if (isVisible && containerEl && !editor) {
+      createEditor();
     }
-  }
+    if (!isVisible && editor) {
+      destroyEditor();
+    }
+  });
 
-  // The status bar element can bind after editor creation.
-  // Re-attempt so Vim mode can attach status UI when available.
-  $: if (editor && vimMode && !vimModeInstance) {
-    enableVim();
-  }
-  $: if (editor && vimMode && vimModeInstance && statusBarEl && !vimStatusAttached) {
-    vimModeInstance.dispose();
-    vimModeInstance = null;
-    enableVim();
-  }
+  $effect(() => {
+    if (isVisible && editor) {
+      editor.focus();
+      requestAnimationFrame(() => focusMonacoTextInput());
+    }
+  });
 
-  // React to error changes — set Monaco markers
-  $: if (editor) {
-    updateErrorMarkers(errors);
-  }
+  $effect(() => {
+    if (editor) {
+      if (vimMode && !vimModeInstance) {
+        enableVim();
+      } else if (!vimMode && vimModeInstance) {
+        disableVim();
+      }
+    }
+  });
+
+  $effect(() => {
+    if (editor && vimMode && vimModeInstance && statusBarEl && !vimStatusAttached) {
+      vimModeInstance.dispose();
+      vimModeInstance = null;
+      enableVim();
+    }
+  });
+
+  $effect(() => {
+    if (editor) {
+      updateErrorMarkers(errors);
+    }
+  });
 
   function updateErrorMarkers(errs: string[]) {
     if (!editor) {
@@ -502,12 +517,10 @@
       return;
     }
 
-    // Parse errors for the active buffer, extract line numbers
     const bufferPrefix = activeBufferName === "Image" ? "Image" : activeBufferName;
     const markers: monaco.editor.IMarkerData[] = [];
 
     for (const err of errs) {
-      // Format: "BufferName: ERROR: 0:LINE: message"
       const match = err.match(new RegExp(`^${bufferPrefix}: ERROR: 0:(\\d+):\\s*(.+)`, 's'));
       if (match) {
         const line = parseInt(match[1], 10);
@@ -526,44 +539,41 @@
     monaco.editor.setModelMarkers(model, 'glsl', markers);
   }
 
-  // React to external shader code changes.
-  // When the file path changes (buffer switch), always apply the new content.
-  // When the same file updates, only apply if the editor doesn't have focus.
-  $: if (editor && shaderCode !== undefined) {
-    const fileChanged = shaderPath !== lastShaderPath;
-    const currentValue = editor.getValue();
+  $effect(() => {
+    if (editor && shaderCode !== undefined) {
+      const fileChanged = shaderPath !== lastShaderPath;
+      const currentValue = editor.getValue();
 
-    if (fileChanged) {
-      if (lastShaderPath) {
-        savedViewStates.set(lastShaderPath, editor.saveViewState());
+      if (fileChanged) {
+        if (lastShaderPath) {
+          savedViewStates.set(lastShaderPath, editor.saveViewState());
+        }
+        editor.setValue(shaderCode);
+        const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
+        if (nextViewState) {
+          editor.restoreViewState(nextViewState);
+        } else {
+          editor.setPosition({ lineNumber: 1, column: 1 });
+          editor.setScrollTop(0);
+        }
+        lastSentCode = null;
+        lastShaderPath = shaderPath;
+      } else if (currentValue === shaderCode) {
+        lastSentCode = null;
+      } else if (lastSentCode !== null && shaderCode === lastSentCode) {
+        lastSentCode = null;
+      } else if (!editorHasFocus()) {
+        const position = editor.getPosition();
+        const scrollTop = editor.getScrollTop();
+        editor.setValue(shaderCode);
+        if (position) {
+          editor.setPosition(position);
+        }
+        editor.setScrollTop(scrollTop);
+        lastSentCode = null;
       }
-      // Switched to a different file — always apply, reset state
-      editor.setValue(shaderCode);
-      const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
-      if (nextViewState) {
-        editor.restoreViewState(nextViewState);
-      } else {
-        editor.setPosition({ lineNumber: 1, column: 1 });
-        editor.setScrollTop(0);
-      }
-      lastSentCode = null;
-      lastShaderPath = shaderPath;
-    } else if (currentValue === shaderCode) {
-      lastSentCode = null;
-    } else if (lastSentCode !== null && shaderCode === lastSentCode) {
-      lastSentCode = null;
-    } else if (!editorHasFocus()) {
-      // Genuine external change and editor doesn't have focus — apply it
-      const position = editor.getPosition();
-      const scrollTop = editor.getScrollTop();
-      editor.setValue(shaderCode);
-      if (position) {
-        editor.setPosition(position);
-      }
-      editor.setScrollTop(scrollTop);
-      lastSentCode = null;
     }
-  }
+  });
 
   onMount(() => {
     if (isVisible) {

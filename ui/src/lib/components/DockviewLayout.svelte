@@ -21,28 +21,39 @@
     performanceClosed: void;
   }>();
 
-  // Panel mount callbacks — parent will set Svelte components into these containers
-  export let mountPreview: (container: HTMLElement) => (() => void) | void = () => {};
-  export let mountDebug: (container: HTMLElement) => (() => void) | void = () => {};
-  export let mountConfig: (container: HTMLElement) => (() => void) | void = () => {};
-  export let mountPerformance: (container: HTMLElement) => (() => void) | void = () => {};
+  interface Props {
+    mountPreview?: (container: HTMLElement) => (() => void) | void;
+    mountDebug?: (container: HTMLElement) => (() => void) | void;
+    mountConfig?: (container: HTMLElement) => (() => void) | void;
+    mountPerformance?: (container: HTMLElement) => (() => void) | void;
+    showDebugPanel?: boolean;
+    showConfigPanel?: boolean;
+    showPerformancePanel?: boolean;
+    transport?: Transport | null;
+    layoutSlot?: string | null;
+  }
 
-  export let showDebugPanel: boolean = false;
-  export let showConfigPanel: boolean = false;
-  export let showPerformancePanel: boolean = false;
-  export let transport: Transport | null = null;
-  export let layoutSlot: string | null = null;
+  let {
+    mountPreview = () => {},
+    mountDebug = () => {},
+    mountConfig = () => {},
+    mountPerformance = () => {},
+    showDebugPanel = false,
+    showConfigPanel = false,
+    showPerformancePanel = false,
+    transport = null as Transport | null,
+    layoutSlot = null as string | null,
+  }: Props = $props();
 
   let containerEl: HTMLElement;
   let api: DockviewApi | null = null;
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-  let layoutReady = false;
+  let layoutReady = $state(false);
   let programmaticRemoval = false;
   let isDestroying = false;
   let lastPreviewAlone: boolean | null = null;
   let requestedLayoutSlot: string | null = null;
   let restoredLayoutSlot: string | null = null;
-  // Full layout snapshots saved before each panel removal — used to restore exact positions
   const panelSnapshots = new Map<string, SerializedDockview>();
 
   function getPersistedState(activeLayout: SerializedDockview | null): PersistedLayoutState {
@@ -85,10 +96,8 @@
     }
   }
 
-  // Track mounted cleanup functions
   const cleanupMap = new Map<string, () => void>();
 
-  // Drag detection — toggle class so all single-tab headers expand during drag
   let internalDragActive = false;
   let pointerDown = false;
 
@@ -119,7 +128,6 @@
 
   function handleDragStart() {
     internalDragActive = true;
-    // Clear sash hover state — drag-active takes over
     cancelReveal();
     clearTimeout(sashHoverTimer);
     containerEl.classList.remove("dv-sash-hover");
@@ -127,15 +135,12 @@
   }
 
   function handleDragEnter() {
-    // If the drag left and re-entered the webview, recover active drag visuals.
     if (internalDragActive) {
       setDragActive(true);
     }
   }
 
   function handleDragEnd() {
-    // Some environments can emit dragend while the pointer is still down
-    // (e.g. after leaving and re-entering the webview). Ignore that case.
     if (pointerDown) {
       return;
     }
@@ -147,7 +152,6 @@
       return;
     }
     const nextTarget = e.relatedTarget as Node | null;
-    // If drag leaves the dockview container entirely, treat as canceled.
     if (!nextTarget || !containerEl.contains(nextTarget)) {
       cancelActiveDrag();
     }
@@ -157,8 +161,6 @@
     if (!internalDragActive) {
       return;
     }
-    // If cursor leaves the webview/window bounds, treat it as a canceled drag.
-    // Docking cannot resume until a new drag gesture starts.
     const outsideWindow =
       e.clientX <= 0 ||
         e.clientY <= 0 ||
@@ -171,12 +173,9 @@
   }
 
   function handleWindowBlur() {
-    // Drag left the webview host app/window.
     cancelActiveDrag();
   }
 
-  // Sash hover detection — reveal single-tab headers when hovering resize separators
-  // or the top edge of the layout (where there's no sash above the first group)
   let sashHoverTimer: ReturnType<typeof setTimeout> | undefined;
   let sashRevealTimer: ReturnType<typeof setTimeout> | undefined;
   let topEdgeActive = false;
@@ -209,13 +208,10 @@
     const target = e.target as HTMLElement;
     const related = e.relatedTarget as HTMLElement | null;
 
-    // Only start collapse timer if leaving a sash or single-tab bar
     if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
-      // Don't collapse if moving into the other tracked element
       if (related?.closest(".dv-sash") || related?.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
         return;
       }
-      // Don't collapse if still near the top edge
       if (topEdgeActive) {
         return;
       }
@@ -237,7 +233,6 @@
     } else if (!nearTop && topEdgeActive) {
       topEdgeActive = false;
       cancelReveal();
-      // Don't start collapse if mouse moved onto a sash or revealed tab bar
       const target = e.target as HTMLElement;
       if (target.closest(".dv-sash") || target.closest(".dv-tabs-and-actions-container.dv-single-tab")) {
         return;
@@ -304,7 +299,6 @@
       return;
     }
 
-    // Add the preview panel first — it takes up most of the space
     api.addPanel({
       id: "preview",
       component: "preview",
@@ -312,7 +306,6 @@
       renderer: "always",
     });
 
-    // Debug and config start hidden — added when toggled on
     if (showDebugPanel) {
       addDebugPanel();
     }
@@ -324,9 +317,6 @@
     }
   }
 
-  // Try to restore a panel using a full-layout snapshot saved before its last removal.
-  // Returns true if the snapshot context matched and fromJSON was called to restore.
-  // Context matches when the currently-open panels == snapshot panels minus the panel being added.
   function tryRestoreFromSnapshot(panelId: string): boolean {
     if (!api) {
       return false;
@@ -548,32 +538,51 @@
     }
   }
 
-  // React to debug panel visibility
-  $: if (api && layoutReady) {
-    if (showDebugPanel) {
-      addDebugPanel();
-    } else {
-      removeDebugPanel();
+  // Force-read reactive deps before conditions to ensure they are tracked
+  // even when the guard condition short-circuits.
+  $effect(() => {
+    const _debug = showDebugPanel;
+    const _ready = layoutReady;
+    if (api && _ready) {
+      if (_debug) {
+        addDebugPanel();
+      } else {
+        removeDebugPanel();
+      }
     }
-  }
+  });
 
-  // React to config panel visibility
-  $: if (api && layoutReady) {
-    if (showConfigPanel) {
-      addConfigPanel();
-    } else {
-      removeConfigPanel();
+  $effect(() => {
+    const _config = showConfigPanel;
+    const _ready = layoutReady;
+    if (api && _ready) {
+      if (_config) {
+        addConfigPanel();
+      } else {
+        removeConfigPanel();
+      }
     }
-  }
+  });
 
-  // React to performance panel visibility
-  $: if (api && layoutReady) {
-    if (showPerformancePanel) {
-      addPerformancePanel();
-    } else {
-      removePerformancePanel();
+  $effect(() => {
+    const _perf = showPerformancePanel;
+    const _ready = layoutReady;
+    if (api && _ready) {
+      if (_perf) {
+        addPerformancePanel();
+      } else {
+        removePerformancePanel();
+      }
     }
-  }
+  });
+
+  $effect(() => {
+    const _slot = layoutSlot;
+    const _ready = layoutReady;
+    if (api && !_ready && _slot) {
+      requestInitialLayoutIfReady();
+    }
+  });
 
   onMount(() => {
     api = createDockview(containerEl, {
@@ -588,7 +597,6 @@
       disableFloatingGroups: true,
     });
 
-    // Listen for restoreLayout messages from the extension
     if (transport) {
       console.log("[DockviewLayout] transport available, registering restoreLayout handler");
       transport.onMessage((event: MessageEvent) => {
@@ -603,7 +611,6 @@
             if (restoreState) {
               restoreFromState(restoreState);
             } else {
-              // No saved layout from extension — try localStorage fallback
               const localState = layoutSlot ? layoutStore.load(layoutSlot) : null;
               console.log("[DockviewLayout] no extension layout, localStorage:", localState ? "found" : "empty");
               if (localState) {
@@ -623,10 +630,6 @@
 
     requestInitialLayoutIfReady();
 
-    // Save layout on changes — also clear drag-active as a fallback.
-    // When dockview moves a panel, the drag source element gets removed from
-    // the DOM, so the native dragend event fires on a detached node and never
-    // bubbles to document.  Clearing here ensures tabs re-hide after a drop.
     api.onDidLayoutChange(() => {
       if (layoutReady) {
         internalDragActive = false;
@@ -636,7 +639,6 @@
       }
     });
 
-    // Track panel removal — dispatch events when user closes tabs (not programmatic)
     api.onDidRemovePanel((panel) => {
       if (panel.id === "preview") {
         dispatch("previewVisibleChange", false);
@@ -660,7 +662,6 @@
       checkPreviewAlone();
     });
 
-    // Expand all single-tab headers when a drag starts anywhere in the layout
     document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("pointerup", handlePointerUp, true);
     containerEl.addEventListener("dragstart", handleDragStart);
@@ -670,24 +671,16 @@
     document.addEventListener("dragend", handleDragEnd);
     window.addEventListener("blur", handleWindowBlur);
 
-    // Sash hover detection + top-edge detection
     containerEl.addEventListener("mouseover", handleMouseOver);
     containerEl.addEventListener("mouseout", handleMouseOut);
     containerEl.addEventListener("mousemove", handleMouseMove);
 
     dispatch("ready", { api, resetLayout, showPreview });
-    // Fire initial preview-alone state once layout is ready
-    // Use a microtask to ensure layoutReady is set first
     Promise.resolve().then(() => checkPreviewAlone());
   });
 
-  $: if (api && !layoutReady && layoutSlot) {
-    requestInitialLayoutIfReady();
-  }
-
   onDestroy(() => {
     isDestroying = true;
-    // Flush any pending layout save before disposal
     if (saveTimeout) {
       clearTimeout(saveTimeout);
       saveLayout();
@@ -705,7 +698,6 @@
     containerEl?.removeEventListener("mouseover", handleMouseOver);
     containerEl?.removeEventListener("mouseout", handleMouseOut);
     containerEl?.removeEventListener("mousemove", handleMouseMove);
-    // Clean up all mounted Svelte components
     for (const cleanup of cleanupMap.values()) {
       cleanup();
     }

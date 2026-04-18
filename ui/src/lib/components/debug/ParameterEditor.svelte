@@ -4,13 +4,20 @@
   import { CodeJar } from "codejar";
   import { onMount, onDestroy } from "svelte";
 
-  export let param: DebugParameterInfo;
-  export let onChange: (glslValue: string) => void = () => {};
+  interface Props {
+    param: DebugParameterInfo;
+    onChange?: (glslValue: string) => void;
+  }
 
-  let expression = param.expression || param.defaultExpression;
+  let {
+    param,
+    onChange = () => {},
+  }: Props = $props();
+
+  let expression = $state(param.expression || param.defaultExpression);
   let lastSyncedExpression = expression;
-  let presetMenu: HTMLDetailsElement | undefined;
-  let jarEl: HTMLDivElement | undefined;
+  let presetMenu: HTMLDetailsElement | undefined = $state(undefined);
+  let jarEl: HTMLDivElement | undefined = $state(undefined);
   let jar: ReturnType<typeof CodeJar> | undefined;
 
   const isVec = param.type === 'vec2' || param.type === 'vec3' || param.type === 'vec4';
@@ -37,10 +44,10 @@
     sampler2D: ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'],
   };
   function presetLabel(p: Preset): string {
-    return typeof p === 'string' ? p : p.label; 
+    return typeof p === 'string' ? p : p.label;
   }
   function presetValue(p: Preset): string {
-    return typeof p === 'string' ? p : p.value; 
+    return typeof p === 'string' ? p : p.value;
   }
 
   function normalizeExpression(type: string, value: string): string {
@@ -199,19 +206,20 @@
     }
   }
 
-  $: floatValue = parseNumericValue(expression);
-  $: boolValue = expression.trim() === 'true';
-  $: vecComponents = isVec ? parseVectorComponents(param.type, expression) : null;
-  $: quickChips = quickExpressions[param.type] || [];
-  $: sliderDisplayValue = Number.isFinite(floatValue ?? NaN) ? Math.max(0, Math.min(1, floatValue as number)) : 0;
-  $: {
+  let floatValue = $derived(parseNumericValue(expression));
+  let boolValue = $derived(expression.trim() === 'true');
+  let vecComponents = $derived(isVec ? parseVectorComponents(param.type, expression) : null);
+  let quickChips = $derived(quickExpressions[param.type] || []);
+  let sliderDisplayValue = $derived(Number.isFinite(floatValue ?? NaN) ? Math.max(0, Math.min(1, floatValue as number)) : 0);
+
+  $effect(() => {
     const incoming = param.expression || param.defaultExpression;
     if (incoming !== lastSyncedExpression) {
       expression = incoming;
       lastSyncedExpression = incoming;
       jar?.updateCode(incoming);
     }
-  }
+  });
 </script>
 
 <div class="param-editor">
@@ -227,14 +235,14 @@
       aria-label="Expression for {param.name}"
       aria-multiline="false"
       spellcheck="false"
-      on:keydown={handleKeydown}
-      on:blur={handleBlur}
+      onkeydown={handleKeydown}
+      onblur={handleBlur}
     ></div>
     {#if param.type === 'vec3' || param.type === 'vec4'}
       <input
         type="color"
         value={vecToHex(vecComponents || [0, 0, 0])}
-        on:input={handleColorPicker}
+        oninput={handleColorPicker}
         class="color-picker"
         aria-label="Color picker for {param.name}"
       />
@@ -246,7 +254,7 @@
         max="1"
         step="0.01"
         value={sliderDisplayValue}
-        on:input={(e) => updateFloatValue(parseFloat((e.target as HTMLInputElement).value) || 0)}
+        oninput={(e) => updateFloatValue(parseFloat((e.target as HTMLInputElement).value) || 0)}
         use:dragScrub={{ step: 0.01, onInput: (v) => updateFloatValue(v) }}
         class="value-slider value-slider-inline"
         aria-label="Float slider for {param.name}"
@@ -262,7 +270,7 @@
             <button
               class="preset-option"
               type="button"
-              on:click={() => handlePresetSelect(presetValue(chip))}
+              onclick={() => handlePresetSelect(presetValue(chip))}
             >
               {presetLabel(chip)}
             </button>
@@ -278,7 +286,7 @@
         type="number"
         step="1"
         value={parseNumericValue(expression) ?? ''}
-        on:input={(e) => emit((e.target as HTMLInputElement).value)}
+        oninput={(e) => emit((e.target as HTMLInputElement).value)}
         use:dragScrub={{ step: 1, onInput: (v) => emit(String(Math.round(v))) }}
         class="value-input"
         aria-label="Int value for {param.name}"
@@ -290,7 +298,7 @@
         <input
           type="checkbox"
           checked={boolValue}
-          on:change={(e) => updateBoolValue((e.target as HTMLInputElement).checked)}
+          onchange={(e) => updateBoolValue((e.target as HTMLInputElement).checked)}
           aria-label="Bool value for {param.name}"
         />
         <span>Toggle</span>
@@ -298,7 +306,7 @@
     </div>
   {:else if param.type === 'sampler2D'}
     <div class="control-row">
-      <select class="channel-select" value={expression} on:change={(e) => updateSampler((e.target as HTMLSelectElement).value)} aria-label="Channel for {param.name}">
+      <select class="channel-select" value={expression} onchange={(e) => updateSampler((e.target as HTMLSelectElement).value)} aria-label="Channel for {param.name}">
         <option value="iChannel0">iChannel0</option>
         <option value="iChannel1">iChannel1</option>
         <option value="iChannel2">iChannel2</option>

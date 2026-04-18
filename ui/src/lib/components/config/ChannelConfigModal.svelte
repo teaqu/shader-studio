@@ -1,39 +1,61 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import MiscTab from "./tabs/MiscTab.svelte";
   import TextureTab from "./tabs/TextureTab.svelte";
   import CubemapTab from "./tabs/CubemapTab.svelte";
   import VideoTab from "./tabs/VideoTab.svelte";
   import MusicTab from "./tabs/MusicTab.svelte";
-
-  export let isOpen: boolean;
-  export let channelName: string;
-  export let channelInput: ConfigInput | undefined;
-  export let getWebviewUri: (path: string) => string | undefined;
-  export let onClose: () => void;
-  export let onSave: (channelName: string, input: ConfigInput) => void;
-  export let onRemove: (channelName: string) => void;
-  export let onRename: ((oldName: string, newName: string) => void) | undefined = undefined;
-  export let existingChannelNames: string[] = [];
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
   import type { AudioVideoController } from "../../AudioVideoController";
-  export let shaderPath: string = "";
-  export let audioVideoController: AudioVideoController | undefined = undefined;
 
-  let editingName = false;
-  let nameInput = "";
-  let nameError = "";
+  interface Props {
+    isOpen: boolean;
+    channelName: string;
+    channelInput: ConfigInput | undefined;
+    getWebviewUri: (path: string) => string | undefined;
+    onClose: () => void;
+    onSave: (channelName: string, input: ConfigInput) => void;
+    onRemove: (channelName: string) => void;
+    onRename?: (oldName: string, newName: string) => void;
+    existingChannelNames?: string[];
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    shaderPath?: string;
+    audioVideoController?: AudioVideoController;
+  }
+
+  let {
+    isOpen,
+    channelName,
+    channelInput,
+    getWebviewUri,
+    onClose,
+    onSave,
+    onRemove,
+    onRename = undefined,
+    existingChannelNames = [],
+    postMessage = undefined,
+    onMessage = undefined,
+    shaderPath = "",
+    audioVideoController = undefined,
+  }: Props = $props();
+
+  // Capture onSave in a stable ref so it remains callable during child onDestroy
+  let onSaveRef = onSave;
+  $effect(() => { onSaveRef = onSave; });
+
+  let editingName = $state(false);
+  let nameInput = $state("");
+  let nameError = $state("");
 
   type TabName = "Misc" | "Textures" | "Cubemaps" | "Videos" | "Music";
   const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Videos", "Music"];
 
-  let modalContent: HTMLElement;
-  let tempInput: ConfigInput | undefined;
+  let modalContent: HTMLElement = $state(null!);
+  let tempInput: ConfigInput | undefined = $state(undefined);
   const UNINITIALIZED = Symbol();
   let initializedWithInput: ConfigInput | undefined | typeof UNINITIALIZED = UNINITIALIZED;
-  let activeTab: TabName | null = null;
+  let activeTab: TabName | null = $state(null);
 
   // Map input types to tabs
   function typeToTab(type: string | undefined): TabName | null {
@@ -55,35 +77,45 @@
   }
 
   // Initialize temp input ONLY when modal first opens
-  $: {
-    if (isOpen) {
-      if (channelInput !== initializedWithInput) {
-        initializedWithInput = channelInput;
-        if (channelInput) {
-          tempInput = { ...channelInput };
-          activeTab = typeToTab(channelInput.type);
-        } else {
-          tempInput = undefined;
-          activeTab = "Misc";
+  $effect(() => {
+    const open = isOpen;
+    const ci = channelInput;
+    untrack(() => {
+      if (open) {
+        if (ci !== initializedWithInput) {
+          initializedWithInput = ci;
+          if (ci) {
+            tempInput = { ...ci };
+            activeTab = typeToTab(ci.type);
+          } else {
+            tempInput = undefined;
+            activeTab = "Misc";
+          }
         }
+      } else {
+        initializedWithInput = UNINITIALIZED;
+        activeTab = null;
+        editingName = false;
+        nameError = "";
       }
-    } else {
-      initializedWithInput = UNINITIALIZED;
-      activeTab = null;
-      editingName = false;
-      nameError = "";
-    }
-  }
+    });
+  });
 
   // When parent config updates with resolved_path, merge it into tempInput
-  $: if (isOpen && tempInput && channelInput && 'resolved_path' in channelInput) {
-    const parentResolved = (channelInput as any).resolved_path;
-    const parentPath = 'path' in channelInput ? channelInput.path : undefined;
-    const tempPath = 'path' in tempInput ? tempInput.path : undefined;
-    if (parentResolved && parentPath === tempPath && (tempInput as any).resolved_path !== parentResolved) {
-      tempInput = { ...tempInput, resolved_path: parentResolved } as ConfigInput;
-    }
-  }
+  $effect(() => {
+    const open = isOpen;
+    const ci = channelInput;
+    if (!open || !ci || !('resolved_path' in ci)) return;
+    const parentResolved = (ci as any).resolved_path;
+    const parentPath = 'path' in ci ? ci.path : undefined;
+    untrack(() => {
+      if (!tempInput) return;
+      const tempPath = 'path' in tempInput ? tempInput.path : undefined;
+      if (parentResolved && parentPath === tempPath && (tempInput as any).resolved_path !== parentResolved) {
+        tempInput = { ...tempInput, resolved_path: parentResolved } as ConfigInput;
+      }
+    });
+  });
 
   function handleBackdropClick(event: MouseEvent) {
     const target = event.target as HTMLElement;
@@ -151,7 +183,7 @@
 
   function autoSave() {
     if (tempInput) {
-      onSave(channelName, tempInput);
+      onSaveRef(channelName, tempInput);
     }
   }
 
@@ -223,7 +255,7 @@
     return path;
   }
 
-  let lastSelectedResolvedUri: string = '';
+  let lastSelectedResolvedUri: string = $state('');
 
   function handleAssetSelect(path: string, resolvedUri?: string) {
     if (resolvedUri) {
@@ -281,13 +313,13 @@
   });
 </script>
 
-<svelte:window on:keydown={handleKeyDown} />
+<svelte:window onkeydown={handleKeyDown} />
 
 {#if isOpen}
   <div
     class="modal-overlay"
-    on:click={handleBackdropClick}
-    on:keydown={handleKeyDown}
+    onclick={handleBackdropClick}
+    onkeydown={handleKeyDown}
     role="presentation"
   >
     <div class="modal-content" bind:this={modalContent} role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -298,8 +330,8 @@
             <input
               type="text"
               bind:value={nameInput}
-              on:keydown={handleNameKeydown}
-              on:blur={submitRename}
+              onkeydown={handleNameKeydown}
+              onblur={submitRename}
               class="name-input"
               class:name-error={nameError}
             />
@@ -310,7 +342,7 @@
         {:else}
           <h2 id="modal-title" class="channel-title">
             <span>{channelName}</span>
-            <button class="rename-btn" on:click|stopPropagation={startRename} title="Rename channel" aria-label="Rename channel">
+            <button class="rename-btn" onclick={(e) => { e.stopPropagation(); startRename(); }} title="Rename channel" aria-label="Rename channel">
               <i class="codicon codicon-edit"></i>
             </button>
           </h2>
@@ -325,7 +357,7 @@
             class:active={activeTab === tab}
             role="tab"
             aria-selected={activeTab === tab}
-            on:click={() => selectTab(tab)}
+            onclick={() => selectTab(tab)}
           >
             {tab}
           </button>
@@ -411,12 +443,12 @@
       <!-- Modal Footer -->
       <div class="modal-footer">
         {#if channelInput}
-          <button class="btn-remove" on:click={handleRemove}>
+          <button class="btn-remove" onclick={handleRemove}>
             Remove
           </button>
         {/if}
         <div class="footer-spacer"></div>
-        <button class="btn-primary" on:click={onClose}>
+        <button class="btn-primary" onclick={onClose}>
           Close
         </button>
       </div>

@@ -1,50 +1,64 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
   import type { ConfigInput } from "@shader-studio/types";
   import AssetBrowser from "../AssetBrowser.svelte";
   import PathInput from "../PathInput.svelte";
   import { VIDEO_EXTENSIONS } from "@shader-studio/types";
   import { formatTime } from "../../../util/formatTime";
-
-  export let tempInput: ConfigInput | undefined;
-  export let channelName: string;
-  export let shaderPath: string;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
-  export let onAssetSelect: (path: string, resolvedUri?: string) => void;
-  export let onUpdatePath: (path: string) => void;
-  export let onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
-  export let onUpdateWrap: (wrap: "repeat" | "clamp") => void;
   import type { AudioVideoController } from "../../../AudioVideoController";
-  export let onUpdateVFlip: (vflip: boolean) => void;
-  export let audioVideoController: AudioVideoController | undefined = undefined;
 
-  $: onVideoControl = audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined;
-  $: getVideoState = audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined;
+  interface Props {
+    tempInput: ConfigInput | undefined;
+    channelName: string;
+    shaderPath: string;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    onAssetSelect: (path: string, resolvedUri?: string) => void;
+    onUpdatePath: (path: string) => void;
+    onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
+    onUpdateWrap: (wrap: "repeat" | "clamp") => void;
+    onUpdateVFlip: (vflip: boolean) => void;
+    audioVideoController?: AudioVideoController;
+  }
+
+  let {
+    tempInput,
+    channelName,
+    shaderPath,
+    postMessage = undefined,
+    onMessage = undefined,
+    onAssetSelect,
+    onUpdatePath,
+    onUpdateFilter,
+    onUpdateWrap,
+    onUpdateVFlip,
+    audioVideoController = undefined,
+  }: Props = $props();
+
+  let onVideoControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined);
+  let getVideoState = $derived(audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined);
 
   // Video control state (runtime only, not persisted)
-  let videoState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
+  let videoState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
 
-  // Poll video state
-  let videoStateInterval: ReturnType<typeof setInterval> | undefined;
-  $: if (tempInput?.type === "video" && tempInput.path && getVideoState) {
-    const path = (tempInput as any).resolved_path || tempInput.path;
-    videoState = getVideoState(path);
-    if (!videoStateInterval) {
-      videoStateInterval = setInterval(() => {
-        if (tempInput?.type === "video" && tempInput.path && getVideoState) {
-          const p = (tempInput as any).resolved_path || tempInput.path;
-          videoState = getVideoState(p);
+  $effect(() => {
+    const type = tempInput?.type;
+    const path = tempInput && 'path' in tempInput ? (tempInput as any).path : undefined;
+    const gvs = getVideoState;
+    const ovc = onVideoControl;
+    if (type === "video" && path && gvs && ovc) {
+      const resolvedPath = (tempInput as any).resolved_path || path;
+      videoState = gvs(resolvedPath);
+      const interval = setInterval(() => {
+        if (tempInput?.type === "video" && 'path' in tempInput && gvs) {
+          const p = (tempInput as any).resolved_path || (tempInput as any).path;
+          videoState = gvs(p);
         }
       }, 500);
+      return () => clearInterval(interval);
+    } else {
+      videoState = null;
     }
-  } else {
-    if (videoStateInterval) {
-      clearInterval(videoStateInterval);
-      videoStateInterval = undefined;
-    }
-    videoState = null;
-  }
+  });
 
   function handleVideoControl(action: string) {
     if (tempInput?.type === "video" && tempInput.path && onVideoControl) {
@@ -60,12 +74,6 @@
       }
     }
   }
-
-  onDestroy(() => {
-    if (videoStateInterval) {
-      clearInterval(videoStateInterval);
-    }
-  });
 </script>
 
 {#if postMessage}
@@ -97,7 +105,7 @@
       <select
         id="filter-{channelName}"
         value={tempInput.filter || "linear"}
-        on:change={(e) => onUpdateFilter(e.currentTarget.value as "linear" | "nearest" | "mipmap")}
+        onchange={(e) => onUpdateFilter(e.currentTarget.value as "linear" | "nearest" | "mipmap")}
         class="input-select"
       >
         <option value="linear">Linear</option>
@@ -111,7 +119,7 @@
       <select
         id="wrap-{channelName}"
         value={tempInput.wrap || "clamp"}
-        on:change={(e) => onUpdateWrap(e.currentTarget.value as "repeat" | "clamp")}
+        onchange={(e) => onUpdateWrap(e.currentTarget.value as "repeat" | "clamp")}
         class="input-select"
       >
         <option value="clamp">Clamp</option>
@@ -127,7 +135,7 @@
           id="vflip-{channelName}"
           type="checkbox"
           checked={tempInput.vflip ?? true}
-          on:change={(e) => onUpdateVFlip(e.currentTarget.checked)}
+          onchange={(e) => onUpdateVFlip(e.currentTarget.checked)}
           class="input-checkbox"
         />
         Vertical Flip
@@ -141,14 +149,14 @@
       <div class="controls-row">
         <button
           class="btn-control"
-          on:click={() => handleVideoControl(videoState?.paused ? 'play' : 'pause')}
+          onclick={() => handleVideoControl(videoState?.paused ? 'play' : 'pause')}
           title={videoState?.paused ? 'Play' : 'Pause'}
         >
           {#if videoState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
         </button>
         <button
           class="btn-control"
-          on:click={() => handleVideoControl(videoState?.muted ? 'unmute' : 'mute')}
+          onclick={() => handleVideoControl(videoState?.muted ? 'unmute' : 'mute')}
           title={videoState?.muted ? 'Unmute' : 'Mute'}
         >
           {#if videoState?.muted}
@@ -159,7 +167,7 @@
         </button>
         <button
           class="btn-control"
-          on:click={() => handleVideoControl('reset')}
+          onclick={() => handleVideoControl('reset')}
           aria-label="Reset video to beginning"
           title="Reset to beginning"
         >

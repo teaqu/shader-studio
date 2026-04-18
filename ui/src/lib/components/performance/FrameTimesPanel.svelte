@@ -1,25 +1,29 @@
 <script lang="ts">
-  import { afterUpdate, onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { PerformanceMonitor, type PerformanceData } from "../../PerformanceMonitor";
   import type { RenderingEngine } from "../../../../../rendering/src/types/RenderingEngine";
 
-  export let data: PerformanceData | null = null;
-  export let renderingEngine: RenderingEngine | null = null;
-  export let active: boolean = true;
+  interface Props {
+    data?: PerformanceData | null;
+    renderingEngine?: RenderingEngine | null;
+    active?: boolean;
+  }
 
-  let graphCanvas: HTMLCanvasElement;
+  let { data = null, renderingEngine = null, active = true }: Props = $props();
+
+  let graphCanvas: HTMLCanvasElement = $state(null!);
   let performanceMonitor: PerformanceMonitor | null = null;
-  let visibleSamples = 180;
-  let showFPS = false;
-  let downsample = 1;
-  let yOffset = 0;
-  let xOffset = 0;
-  let centered = false;
-  let graphPaused = false;
+  let visibleSamples = $state(180);
+  let showFPS = $state(false);
+  let downsample = $state(1);
+  let yOffset = $state(0);
+  let xOffset = $state(0);
+  let centered = $state(false);
+  let graphPaused = $state(false);
   let manualPause = false;
   let frozenData: PerformanceData | null = null;
-  let dragging = false;
-  let yZoom = 1;
+  let dragging = $state(false);
+  let yZoom = $state(1);
   let dragStartX = 0;
   let dragStartY = 0;
   let dragStartYOffset = 0;
@@ -299,7 +303,7 @@
     return sec === Math.floor(sec) ? `${sec.toFixed(0)}s` : `${sec.toFixed(1)}s`;
   }
 
-  $: timeWindowLabel = computeTimeWindowLabel(visibleSamples);
+  let timeWindowLabel = $derived(computeTimeWindowLabel(visibleSamples));
 
   function cycleHZoom() {
     const idx = SAMPLE_STEPS.indexOf(visibleSamples);
@@ -929,13 +933,15 @@
     }
   });
 
-  $: if (performanceMonitor) {
-    if (active) {
-      performanceMonitor.start();
-    } else {
-      performanceMonitor.stop();
+  $effect(() => {
+    if (performanceMonitor) {
+      if (active) {
+        performanceMonitor.start();
+      } else {
+        performanceMonitor.stop();
+      }
     }
-  }
+  });
 
   onDestroy(() => {
     performanceMonitor?.dispose();
@@ -949,18 +955,18 @@
     }
   }
 
-  afterUpdate(() => {
-    if (!graphCanvas) {
-      return;
-    }
-    const activeData = graphPaused ? frozenData : data;
+  $effect(() => {
+    const canvas = graphCanvas;
+    const paused = graphPaused;
+    const activeData = paused ? frozenData : data;
+    if (!canvas) return;
     if (activeData?.frameTimeHistory) {
-      drawGraph(graphCanvas, activeData);
+      drawGraph(canvas, activeData);
     }
   });
 </script>
 
-<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} on:keydown={handleKeyDown} />
+<svelte:window onmousemove={handleMouseMove} onmouseup={handleMouseUp} onkeydown={handleKeyDown} />
 
 <div class="performance-panel">
   {#if data && data.frameTimeHistory.length > 0}
@@ -969,34 +975,34 @@
         <button
           class="toggle-btn"
           class:active={!showFPS}
-          on:click={() => {
-            showFPS = false; adjustYOffsetForZoom(); 
+          onclick={() => {
+            showFPS = false; adjustYOffsetForZoom();
           }}
           title="Show frame time in milliseconds"
         >ms</button>
         <button
           class="toggle-btn"
           class:active={showFPS}
-          on:click={() => {
-            showFPS = true; adjustYOffsetForZoom(); 
+          onclick={() => {
+            showFPS = true; adjustYOffsetForZoom();
           }}
           title="Show frames per second"
         >fps</button>
         <button
           class="toggle-btn pause-btn"
           class:active={graphPaused}
-          on:click={() => {
-            toggleGraphPause(); adjustYOffsetForZoom(); 
+          onclick={() => {
+            toggleGraphPause(); adjustYOffsetForZoom();
           }}
           title={graphPaused ? "Resume graph" : "Pause graph"}
         >{#if graphPaused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}</button>
         <button
           class="toggle-btn"
           class:active={centered}
-          on:click={() => {
+          onclick={() => {
             centered = !centered; if (centered) {
               yOffset = 0;
-            } adjustYOffsetForZoom(); 
+            } adjustYOffsetForZoom();
           }}
           title="Center line on visible average"
           aria-label="Center line on visible average"
@@ -1004,21 +1010,21 @@
         <button
           class="toggle-btn"
           class:active={visibleSamples !== 180}
-          on:click={() => {
-            cycleHZoom(); adjustYOffsetForZoom(); 
+          onclick={() => {
+            cycleHZoom(); adjustYOffsetForZoom();
           }}
-          on:wheel={handleHZoomWheel}
+          onwheel={handleHZoomWheel}
           title="Horizontal zoom (time window) — click to cycle, scroll to adjust"
         ><i class="codicon codicon-arrow-both"></i> {timeWindowLabel}</button>
         <button
           class="toggle-btn"
           class:active={yZoom > 1}
-          on:click={cycleYZoomAndCenter}
-          on:wheel={handleYZoomWheel}
+          onclick={cycleYZoomAndCenter}
+          onwheel={handleYZoomWheel}
           title="Vertical zoom — click to cycle, scroll to adjust"
         ><i class="codicon codicon-arrow-both vertical"></i> {yZoom}x</button>
         {#if yOffset !== 0 || xOffset !== 0 || yZoom !== 1 || visibleSamples !== 180}
-          <button class="toggle-btn" on:click={resetView} title="Reset pan and zoom" aria-label="Reset pan and zoom"><i class="codicon codicon-discard"></i></button>
+          <button class="toggle-btn" onclick={resetView} title="Reset pan and zoom" aria-label="Reset pan and zoom"><i class="codicon codicon-discard"></i></button>
         {/if}
       </div>
       <div class="toolbar-group">
@@ -1026,16 +1032,16 @@
           <button
             class="toggle-btn"
             class:active={downsample === d}
-            on:click={() => {
-              downsample = d; adjustYOffsetForZoom(); 
+            onclick={() => {
+              downsample = d; adjustYOffsetForZoom();
             }}
             title="Downsample {downsampleLabel(d)}"
           >{downsampleLabel(d)}</button>
         {/each}
       </div>
     </div>
-    <div class="graph-container" role="presentation" on:wheel={handleWheel} on:mousedown={handleMouseDown}
-      on:mousemove={handleGraphMouseMove} on:mouseleave={handleGraphMouseLeave}>
+    <div class="graph-container" role="presentation" onwheel={handleWheel} onmousedown={handleMouseDown}
+      onmousemove={handleGraphMouseMove} onmouseleave={handleGraphMouseLeave}>
       <canvas bind:this={graphCanvas} class="frame-graph" class:dragging></canvas>
     </div>
   {:else}

@@ -4,16 +4,31 @@
   import PathInput from "../PathInput.svelte";
   import { CUBEMAP_EXTENSIONS } from "@shader-studio/types";
 
-  export let tempInput: ConfigInput | undefined;
-  export let channelName: string;
-  export let shaderPath: string;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
-  export let onAssetSelect: (path: string, resolvedUri?: string) => void;
-  export let onUpdatePath: (path: string) => void;
-  export let onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
-  export let onUpdateWrap: (wrap: "repeat" | "clamp") => void;
-  export let onUpdateVFlip: (vflip: boolean) => void;
+  interface Props {
+    tempInput?: ConfigInput;
+    channelName: string;
+    shaderPath: string;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    onAssetSelect: (path: string, resolvedUri?: string) => void;
+    onUpdatePath: (path: string) => void;
+    onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
+    onUpdateWrap: (wrap: "repeat" | "clamp") => void;
+    onUpdateVFlip: (vflip: boolean) => void;
+  }
+
+  let {
+    tempInput = undefined as ConfigInput | undefined,
+    channelName,
+    shaderPath,
+    postMessage = undefined as ((msg: any) => void) | undefined,
+    onMessage = undefined as ((handler: (event: MessageEvent) => void) => void) | undefined,
+    onAssetSelect,
+    onUpdatePath,
+    onUpdateFilter,
+    onUpdateWrap,
+    onUpdateVFlip,
+  }: Props = $props();
 </script>
 
 {#if postMessage}
@@ -45,7 +60,7 @@
       <select
         id="filter-{channelName}"
         value={tempInput.filter || "mipmap"}
-        on:change={(e) => onUpdateFilter(e.currentTarget.value as "linear" | "nearest" | "mipmap")}
+        onchange={(e) => onUpdateFilter(e.currentTarget.value as "linear" | "nearest" | "mipmap")}
         class="input-select"
       >
         <option value="mipmap">Mipmap</option>
@@ -59,7 +74,7 @@
       <select
         id="wrap-{channelName}"
         value={tempInput.wrap || "clamp"}
-        on:change={(e) => onUpdateWrap(e.currentTarget.value as "repeat" | "clamp")}
+        onchange={(e) => onUpdateWrap(e.currentTarget.value as "repeat" | "clamp")}
         class="input-select"
       >
         <option value="clamp">Clamp</option>
@@ -75,7 +90,7 @@
           id="vflip-{channelName}"
           type="checkbox"
           checked={tempInput.vflip ?? false}
-          on:change={(e) => onUpdateVFlip(e.currentTarget.checked)}
+          onchange={(e) => onUpdateVFlip(e.currentTarget.checked)}
           class="input-checkbox"
         />
         Vertical Flip

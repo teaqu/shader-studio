@@ -6,35 +6,50 @@
   import VideoTab from "./VideoTab.svelte";
   import GifTab from "./GifTab.svelte";
 
-  export let canvasWidth: number;
-  export let canvasHeight: number;
-  export let currentTime: number;
-  export let onScreenshot: OnScreenshot;
-  export let onRecord: OnRecord;
-  export let onCancel: () => void;
+  interface Props {
+    canvasWidth: number;
+    canvasHeight: number;
+    currentTime: number;
+    onScreenshot: OnScreenshot;
+    onRecord: OnRecord;
+    onCancel: () => void;
+  }
 
-  let recordingTab: "screenshot" | "video" | "gif" = "screenshot";
+  let {
+    canvasWidth,
+    canvasHeight,
+    currentTime,
+    onScreenshot,
+    onRecord,
+    onCancel,
+  }: Props = $props();
+
+  let recordingTab: "screenshot" | "video" | "gif" = $state("screenshot");
 
   // Recording store subscription
-  let recordingState: RecordingState = { isRecording: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, format: null, error: null, previewCanvas: null };
+  let recordingState: RecordingState = $state({ isRecording: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, format: null, error: null, previewCanvas: null });
   const unsubRecording = recordingStore.subscribe((s) => {
-    recordingState = s; 
+    recordingState = s;
   });
-  $: recordingPercent = Math.round(recordingState.progress * 100);
+  let recordingPercent = $derived(Math.round(recordingState.progress * 100));
 
   // Elapsed time ticker for finalization
-  let finalizingElapsed = 0;
+  let finalizingElapsed = $state(0);
   let finalizingTimer: ReturnType<typeof setInterval> | null = null;
-  $: if (recordingState.isFinalizing && !finalizingTimer) {
-    finalizingElapsed = 0;
-    finalizingTimer = setInterval(() => {
-      finalizingElapsed = Math.round((performance.now() - recordingState.finalizingStartTime) / 1000);
-    }, 500);
-  } else if (!recordingState.isFinalizing && finalizingTimer) {
-    clearInterval(finalizingTimer);
-    finalizingTimer = null;
-    finalizingElapsed = 0;
-  }
+  $effect(() => {
+    const isFinalizing = recordingState.isFinalizing;
+    const startTime = recordingState.finalizingStartTime;
+    if (isFinalizing && !finalizingTimer) {
+      finalizingElapsed = 0;
+      finalizingTimer = setInterval(() => {
+        finalizingElapsed = Math.round((performance.now() - startTime) / 1000);
+      }, 500);
+    } else if (!isFinalizing && finalizingTimer) {
+      clearInterval(finalizingTimer);
+      finalizingTimer = null;
+      finalizingElapsed = 0;
+    }
+  });
 
   onDestroy(() => {
     unsubRecording();
@@ -70,9 +85,9 @@
 </script>
 
 <div class="recording-tabs">
-  <button class="recording-tab" class:active={recordingTab === "screenshot"} on:click={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}>Screenshot</button>
-  <button class="recording-tab" class:active={recordingTab === "video"} on:click={() => (recordingTab = "video")} disabled={recordingState.isRecording}>Video</button>
-  <button class="recording-tab" class:active={recordingTab === "gif"} on:click={() => (recordingTab = "gif")} disabled={recordingState.isRecording}>GIF</button>
+  <button class="recording-tab" class:active={recordingTab === "screenshot"} onclick={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}>Screenshot</button>
+  <button class="recording-tab" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}>Video</button>
+  <button class="recording-tab" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}>GIF</button>
 </div>
 
 {#if recordingState.isRecording}
@@ -112,7 +127,7 @@
           {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
         </div>
       {/if}
-      <button class="recording-cancel-btn" on:click={onCancel}>Cancel</button>
+      <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
     </div>
   </div>
 {:else}

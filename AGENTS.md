@@ -61,3 +61,4 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 - No `any` without comment explaining why
 - Prefer pure functions over methods with side effects where possible
 - All new `.ts` files with runes must use `.svelte.ts` extension
+- Always define props with an `interface Props` and `let { ... }: Props = $props()`

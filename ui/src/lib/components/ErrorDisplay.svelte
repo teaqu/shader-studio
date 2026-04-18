@@ -1,12 +1,15 @@
 <script lang="ts">
-  export let errors: string[] = [];
-  export let isVisible: boolean = false;
-  
-  export let onDismiss: () => void = () => {};
-  
-  function handleDismiss() {
-    onDismiss();
+  interface Props {
+    errors?: string[];
+    isVisible?: boolean;
+    onDismiss?: () => void;
   }
+
+  let {
+    errors = [] as string[],
+    isVisible = false,
+    onDismiss = () => {},
+  }: Props = $props();
 </script>
 
 {#if isVisible && errors.length > 0}
@@ -16,7 +19,7 @@
       {#each errors as error}
         <p class="error-message">{error}</p>
       {/each}
-      <button class="error-dismiss" on:click={handleDismiss}>Dismiss</button>
+      <button class="error-dismiss" onclick={onDismiss}>Dismiss</button>
     </div>
   </div>
 {/if}

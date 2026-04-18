@@ -1,11 +1,19 @@
 <script lang="ts">
-  export let bins: number[];
-  export let min: number;
-  export let max: number;
+  interface Props {
+    bins: number[];
+    min: number;
+    max: number;
+  }
 
-  let hoveredBin: number | null = null;
+  let {
+    bins,
+    min,
+    max,
+  }: Props = $props();
 
-  $: total = bins.reduce((a, b) => a + b, 0);
+  let hoveredBin: number | null = $state(null);
+
+  let total = $derived(bins.reduce((a, b) => a + b, 0));
 
   function greyColor(i: number): string {
     const center = min + (i + 0.5) / bins.length * (max - min);
@@ -35,13 +43,13 @@
   <div class="bar">
     {#each bins as count, i}
       {#if count > 0 && total > 0}
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div
           class="segment"
           class:hovered={hoveredBin === i}
+          role="presentation"
           style="width: {(count / total) * 100}%; background: {greyColor(i)}"
-          on:mouseenter={() => hoveredBin = i}
-          on:mouseleave={() => hoveredBin = null}
+          onmouseenter={() => hoveredBin = i}
+          onmouseleave={() => hoveredBin = null}
         ></div>
       {/if}
     {/each}

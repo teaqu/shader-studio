@@ -2,11 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { AudioVideoController } from '../lib/AudioVideoController';
 
 describe('AudioVideoController', () => {
-  it('should not crash when constructed with getShaderStudio returning undefined', () => {
-    // This tests the scenario where AudioVideoController is created before
-    // ShaderStudio is initialized. The audioStore subscription fires immediately
-    // on subscribe, calling applyGlobalAudioState(). If getShaderStudio() returns
-    // undefined (or returns a ShaderStudio whose engine isn't ready), it must not throw.
+  it('should not crash when constructed with engine getter returning undefined', () => {
     expect(() => {
       const controller = new AudioVideoController(() => undefined);
       controller.dispose();

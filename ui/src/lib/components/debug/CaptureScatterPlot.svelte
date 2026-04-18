@@ -1,19 +1,30 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  export let xData: Float32Array;
-  export let yData: Float32Array;
-  export let xMin: number;
-  export let xMax: number;
-  export let yMin: number;
-  export let yMax: number;
+  interface Props {
+    xData: Float32Array;
+    yData: Float32Array;
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+  }
+
+  let {
+    xData,
+    yData,
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+  }: Props = $props();
 
   const W = 160;
   const H = 120;
   const PAD = 10;
 
   let canvas: HTMLCanvasElement;
-  let mounted = false;
+  let mounted = $state(false);
 
   function draw() {
     if (!canvas || !mounted) {
@@ -26,7 +37,6 @@
 
     ctx.clearRect(0, 0, W, H);
 
-    // Background
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(0, 0, W, H);
 
@@ -35,7 +45,6 @@
     const tx = (v: number) => PAD + (v - xMin) / xRange * (W - PAD * 2);
     const ty = (v: number) => H - PAD - (v - yMin) / yRange * (H - PAD * 2);
 
-    // Zero-crossing guide lines
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 0.5;
     ctx.setLineDash([2, 2]);
@@ -49,12 +58,10 @@
     }
     ctx.setLineDash([]);
 
-    // Border
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(PAD, PAD, W - PAD * 2, H - PAD * 2);
 
-    // Dots
     ctx.fillStyle = 'rgba(97, 175, 239, 0.55)';
     for (let i = 0; i < xData.length; i++) {
       const x = tx(xData[i]);
@@ -64,9 +71,13 @@
   }
 
   onMount(() => {
-    mounted = true; draw(); 
+    mounted = true; draw();
   });
-  $: xData, yData, xMin, xMax, yMin, yMax, draw();
+
+  $effect(() => {
+    xData; yData; xMin; xMax; yMin; yMax;
+    draw();
+  });
 
   function fmt(n: number): string {
     if (Math.abs(n) >= 1000) {

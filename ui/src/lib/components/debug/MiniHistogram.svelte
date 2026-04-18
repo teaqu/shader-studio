@@ -1,19 +1,28 @@
 <script lang="ts">
-  export let bins: number[];
-  export let min: number;
-  export let max: number;
-  export let color: string = 'var(--vscode-charts-blue, #4a9eff)';
+  interface Props {
+    bins: number[];
+    min: number;
+    max: number;
+    color?: string;
+  }
+
+  let {
+    bins,
+    min,
+    max,
+    color = 'var(--vscode-charts-blue, #4a9eff)',
+  }: Props = $props();
 
   const HEIGHT = 48;
   const BAR_GAP = 1;
 
-  $: maxBin = Math.max(...bins, 1);
-  $: totalSamples = bins.reduce((a, b) => a + b, 0);
-  $: barWidth = bins.length > 0 ? (100 / bins.length) : 0;
-  $: hasZeroCrossing = min < 0 && max > 0;
-  $: zeroFraction = hasZeroCrossing ? (-min) / (max - min) : null;
+  let maxBin = $derived(Math.max(...bins, 1));
+  let totalSamples = $derived(bins.reduce((a, b) => a + b, 0));
+  let barWidth = $derived(bins.length > 0 ? (100 / bins.length) : 0);
+  let hasZeroCrossing = $derived(min < 0 && max > 0);
+  let zeroFraction = $derived(hasZeroCrossing ? (-min) / (max - min) : null);
 
-  let hoveredBin: number | null = null;
+  let hoveredBin: number | null = $state(null);
 
   function formatNum(n: number): string {
     if (Math.abs(n) >= 1000) {
@@ -36,12 +45,12 @@
     hoveredBin = null;
   }
 
-  $: hoveredCount = hoveredBin !== null ? bins[hoveredBin] : null;
-  $: hoveredLo = hoveredBin !== null ? min + (hoveredBin / bins.length) * (max - min) : null;
-  $: hoveredHi = hoveredBin !== null ? min + ((hoveredBin + 1) / bins.length) * (max - min) : null;
-  $: hoveredPct = hoveredBin !== null && totalSamples > 0
+  let hoveredCount = $derived(hoveredBin !== null ? bins[hoveredBin] : null);
+  let hoveredLo = $derived(hoveredBin !== null ? min + (hoveredBin / bins.length) * (max - min) : null);
+  let hoveredHi = $derived(hoveredBin !== null ? min + ((hoveredBin + 1) / bins.length) * (max - min) : null);
+  let hoveredPct = $derived(hoveredBin !== null && totalSamples > 0
     ? ((bins[hoveredBin] / totalSamples) * 100).toFixed(1)
-    : null;
+    : null);
 </script>
 
 <div class="histogram-wrap">
@@ -52,8 +61,8 @@
     height={HEIGHT}
     viewBox="0 0 100 {HEIGHT}"
     preserveAspectRatio="none"
-    on:mousemove={handleMouseMove}
-    on:mouseleave={handleMouseLeave}
+    onmousemove={handleMouseMove}
+    onmouseleave={handleMouseLeave}
     style="cursor: default;"
   >
     <!-- Subtle background so the chart area is visible on any theme -->

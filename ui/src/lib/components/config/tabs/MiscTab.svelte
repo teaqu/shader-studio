@@ -2,9 +2,17 @@
   import type { ConfigInput } from "@shader-studio/types";
   import ChannelPreview from "../ChannelPreview.svelte";
 
-  export let tempInput: ConfigInput | undefined;
-  export let getWebviewUri: (path: string) => string | undefined;
-  export let onSelect: (input: ConfigInput) => void;
+  interface Props {
+    tempInput?: ConfigInput;
+    getWebviewUri: (path: string) => string | undefined;
+    onSelect: (input: ConfigInput) => void;
+  }
+
+  let {
+    tempInput = undefined as ConfigInput | undefined,
+    getWebviewUri,
+    onSelect,
+  }: Props = $props();
 </script>
 
 <div class="misc-grid">
@@ -14,7 +22,7 @@
       <button
         class="misc-card"
         class:selected={tempInput?.type === "buffer" && tempInput.source === buf}
-        on:click={() => onSelect({ type: "buffer", source: buf })}
+        onclick={() => onSelect({ type: "buffer", source: buf })}
       >
         <ChannelPreview channelInput={{ type: "buffer", source: buf }} {getWebviewUri} />
         <div class="misc-card-label">{buf}</div>
@@ -27,7 +35,7 @@
     <button
       class="misc-card"
       class:selected={tempInput?.type === "keyboard"}
-      on:click={() => onSelect({ type: "keyboard" })}
+      onclick={() => onSelect({ type: "keyboard" })}
     >
       <ChannelPreview channelInput={{ type: "keyboard" }} {getWebviewUri} />
       <div class="misc-card-label">Keyboard</div>

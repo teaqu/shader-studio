@@ -1,9 +1,15 @@
 <script lang="ts">
   import type { ColorFrequency } from '../../VariableCaptureManager';
 
-  export let colors: ColorFrequency[];
+  interface Props {
+    colors: ColorFrequency[];
+  }
 
-  let hoveredIndex: number | null = null;
+  let {
+    colors,
+  }: Props = $props();
+
+  let hoveredIndex: number | null = $state(null);
 
   function rgb(r: number, g: number, b: number): string {
     return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
@@ -26,13 +32,13 @@
 <div class="color-freq-wrap">
   <div class="bar">
     {#each colors as c, i}
-      <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div
         class="segment"
         class:hovered={hoveredIndex === i}
+        role="presentation"
         style="width: {c.freq * 100}%; background: {rgb(c.r, c.g, c.b)}"
-        on:mouseenter={() => hoveredIndex = i}
-        on:mouseleave={() => hoveredIndex = null}
+        onmouseenter={() => hoveredIndex = i}
+        onmouseleave={() => hoveredIndex = null}
       ></div>
     {/each}
   </div>

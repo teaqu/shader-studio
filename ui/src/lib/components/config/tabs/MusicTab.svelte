@@ -6,22 +6,38 @@
   import { AUDIO_EXTENSIONS } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../../util/waveformCache";
   import { formatTime } from "../../../util/formatTime";
-
-  export let tempInput: ConfigInput | undefined;
-  export let shaderPath: string;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
-  export let getWebviewUri: (path: string) => string | undefined;
-  export let lastSelectedResolvedUri: string;
-  export let onAssetSelect: (path: string, resolvedUri?: string) => void;
-  export let onUpdatePath: (path: string) => void;
-  export let onUpdateTempInput: (input: ConfigInput) => void;
   import type { AudioVideoController } from "../../../AudioVideoController";
-  export let onAutoSave: () => void;
-  export let audioVideoController: AudioVideoController | undefined = undefined;
 
-  $: onAudioControl = audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined;
-  $: getAudioState = audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined;
+  interface Props {
+    tempInput: ConfigInput | undefined;
+    shaderPath: string;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    getWebviewUri: (path: string) => string | undefined;
+    lastSelectedResolvedUri: string;
+    onAssetSelect: (path: string, resolvedUri?: string) => void;
+    onUpdatePath: (path: string) => void;
+    onUpdateTempInput: (input: ConfigInput) => void;
+    onAutoSave: () => void;
+    audioVideoController?: AudioVideoController;
+  }
+
+  let {
+    tempInput,
+    shaderPath,
+    postMessage = undefined,
+    onMessage = undefined,
+    getWebviewUri,
+    lastSelectedResolvedUri,
+    onAssetSelect,
+    onUpdatePath,
+    onUpdateTempInput,
+    onAutoSave,
+    audioVideoController = undefined,
+  }: Props = $props();
+
+  let onAudioControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined);
+  let getAudioState = $derived(audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined);
 
   // Track whether loop region has been changed so we can persist on destroy
   let pendingLoopRegionSave = false;
@@ -84,42 +100,33 @@
   }
 
   // Audio control state (runtime only, not persisted)
-  let audioState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
+  let audioState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
 
   // Track current audio path so we can detect changes
   let lastAudioPath: string | undefined;
 
-  // Poll audio state
-  let audioStateInterval: ReturnType<typeof setInterval> | undefined;
-  $: if (tempInput?.type === "audio" && tempInput.path && getAudioState) {
-    const currentPath = tempInput.path;
-    if (currentPath !== lastAudioPath) {
-      lastAudioPath = currentPath;
-      audioState = null;
-      waveformPeaks = null;
-      if (audioStateInterval) {
-        clearInterval(audioStateInterval);
-        audioStateInterval = undefined;
+  $effect(() => {
+    const type = tempInput?.type;
+    const path = tempInput && 'path' in tempInput ? (tempInput as any).path : undefined;
+    const gas = getAudioState;
+    if (type === "audio" && path && gas) {
+      if (path !== lastAudioPath) {
+        lastAudioPath = path;
+        audioState = null;
+        waveformPeaks = null;
       }
-    }
-    if (!audioState) {
-      audioState = getAudioState(getEffectiveAudioPath());
-    }
-    if (!audioStateInterval) {
-      audioStateInterval = setInterval(() => {
-        if (tempInput?.type === "audio" && tempInput.path && getAudioState) {
-          audioState = getAudioState(getEffectiveAudioPath());
+      audioState = gas(getEffectiveAudioPath());
+      const interval = setInterval(() => {
+        if (tempInput?.type === "audio" && 'path' in tempInput && gas) {
+          audioState = gas(getEffectiveAudioPath());
         }
       }, 500);
+      return () => clearInterval(interval);
+    } else {
+      audioState = null;
+      lastAudioPath = undefined;
     }
-  } else {
-    if (audioStateInterval) {
-      clearInterval(audioStateInterval);
-      audioStateInterval = undefined;
-    }
-    audioState = null;
-    lastAudioPath = undefined;
-  }
+  });
 
   function handleAudioControl(action: string) {
     if (tempInput?.type === "audio" && tempInput.path && onAudioControl) {
@@ -136,41 +143,49 @@
   }
 
   // --- Waveform timeline editor ---
-  let waveformCanvas: HTMLCanvasElement | null = null;
-  let waveformContainer: HTMLElement | null = null;
-  let waveformPeaks: Float32Array | null = null;
+  let waveformCanvas: HTMLCanvasElement | null = $state(null);
+  let waveformContainer: HTMLElement | null = $state(null);
+  let waveformPeaks: Float32Array | null = $state(null);
   let dragging: 'start' | 'end' | null = null;
   let seekDragging = false;
 
-  $: audioUri = tempInput?.type === 'audio' && tempInput.path
+  let audioUri = $derived(tempInput?.type === 'audio' && tempInput.path
     ? (tempInput as any).resolved_path || (getWebviewUri ? getWebviewUri(tempInput.path) : null) || lastSelectedResolvedUri || ''
-    : '';
+    : '');
 
-  $: if (audioUri) {
-    getWaveformPeaks(audioUri, 350).then(async peaks => {
-      waveformPeaks = peaks;
-      await tick();
-      if (peaks && waveformCanvas) {
-        drawWaveformTimeline();
-      }
-    });
-  } else {
-    waveformPeaks = null;
-  }
+  $effect(() => {
+    const uri = audioUri;
+    if (uri) {
+      let cancelled = false;
+      getWaveformPeaks(uri, 350).then(async peaks => {
+        if (cancelled) return;
+        waveformPeaks = peaks;
+        await tick();
+        if (peaks && waveformCanvas) {
+          drawWaveformTimeline();
+        }
+      });
+      return () => { cancelled = true; };
+    } else {
+      waveformPeaks = null;
+    }
+  });
 
-  $: if (waveformCanvas && waveformPeaks) {
-    drawWaveformTimeline();
-  }
+  $effect(() => {
+    if (waveformCanvas && waveformPeaks) {
+      drawWaveformTimeline();
+    }
+  });
 
-  $: audioDuration = audioState?.duration || 0;
-  $: audioCurrentTime = audioState?.currentTime || 0;
+  let audioDuration = $derived(audioState?.duration || 0);
+  let audioCurrentTime = $derived(audioState?.currentTime || 0);
 
-  $: startPercent = tempInput?.type === 'audio' && tempInput.startTime !== null && tempInput.startTime !== undefined && audioDuration > 0
-    ? Math.min((tempInput.startTime / audioDuration) * 100, 100) : 0;
-  $: endPercent = tempInput?.type === 'audio' && tempInput.endTime !== null && tempInput.endTime !== undefined && audioDuration > 0
-    ? Math.min((tempInput.endTime / audioDuration) * 100, 100) : 100;
-  $: cursorPercent = audioDuration > 0
-    ? Math.min((audioCurrentTime / audioDuration) * 100, 100) : 0;
+  let startPercent = $derived(tempInput?.type === 'audio' && tempInput.startTime !== null && tempInput.startTime !== undefined && audioDuration > 0
+    ? Math.min((tempInput.startTime / audioDuration) * 100, 100) : 0);
+  let endPercent = $derived(tempInput?.type === 'audio' && tempInput.endTime !== null && tempInput.endTime !== undefined && audioDuration > 0
+    ? Math.min((tempInput.endTime / audioDuration) * 100, 100) : 100);
+  let cursorPercent = $derived(audioDuration > 0
+    ? Math.min((audioCurrentTime / audioDuration) * 100, 100) : 0);
 
   function drawWaveformTimeline() {
     if (!waveformCanvas || !waveformPeaks) {
@@ -294,9 +309,6 @@
     window.removeEventListener('mouseup', handleDragEnd);
     window.removeEventListener('mousemove', handleSeekDragMove);
     window.removeEventListener('mouseup', handleSeekDragEnd);
-    if (audioStateInterval) {
-      clearInterval(audioStateInterval);
-    }
     if (pendingLoopRegionSave) {
       pendingLoopRegionSave = false;
       onAutoSave();
@@ -329,8 +341,7 @@
 </div>
 
 {#if tempInput?.type === "audio" && tempInput.path}
-  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="waveform-editor" bind:this={waveformContainer} on:mousedown={handleWaveformMouseDown}>
+  <div class="waveform-editor" role="application" aria-label="Waveform editor" bind:this={waveformContainer} onmousedown={handleWaveformMouseDown}>
     <canvas bind:this={waveformCanvas} class="waveform-editor-canvas" width="700" height="80"></canvas>
     <!-- Dim outside region -->
     <div class="waveform-dim waveform-dim-left" style="width: {startPercent}%"></div>
@@ -340,20 +351,28 @@
       <div class="waveform-cursor" style="left: {cursorPercent}%"></div>
     {/if}
     <!-- Start handle -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
       class="waveform-handle waveform-handle-start"
+      role="slider"
+      aria-label="Start time"
+      aria-valuenow={startPercent}
+      aria-valuemin={0}
+      aria-valuemax={100}
       style="left: {startPercent}%"
-      on:mousedown={(e) => handleHandleMouseDown(e, 'start')}
+      onmousedown={(e) => handleHandleMouseDown(e, 'start')}
     >
       <div class="handle-bar"></div>
     </div>
     <!-- End handle -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
       class="waveform-handle waveform-handle-end"
+      role="slider"
+      aria-label="End time"
+      aria-valuenow={endPercent}
+      aria-valuemin={0}
+      aria-valuemax={100}
       style="left: {endPercent}%"
-      on:mousedown={(e) => handleHandleMouseDown(e, 'end')}
+      onmousedown={(e) => handleHandleMouseDown(e, 'end')}
     >
       <div class="handle-bar"></div>
     </div>
@@ -372,14 +391,14 @@
     <div class="controls-row">
       <button
         class="btn-control"
-        on:click={() => handleAudioControl(audioState?.paused ? 'play' : 'pause')}
+        onclick={() => handleAudioControl(audioState?.paused ? 'play' : 'pause')}
         title={audioState?.paused ? 'Play' : 'Pause'}
       >
         {#if audioState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
       </button>
       <button
         class="btn-control"
-        on:click={() => handleAudioControl(audioState?.muted ? 'unmute' : 'mute')}
+        onclick={() => handleAudioControl(audioState?.muted ? 'unmute' : 'mute')}
         title={audioState?.muted ? 'Unmute' : 'Mute'}
       >
         {#if audioState?.muted}
@@ -390,7 +409,7 @@
       </button>
       <button
         class="btn-control"
-        on:click={() => handleAudioControl('reset')}
+        onclick={() => handleAudioControl('reset')}
         aria-label="Reset audio to beginning"
         title="Reset to beginning"
       >

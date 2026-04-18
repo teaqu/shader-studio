@@ -3,34 +3,43 @@
   import type { ConfigInput } from "@shader-studio/types";
   import type { AudioVideoController } from "../../AudioVideoController";
 
-  export let channelInput: ConfigInput | undefined;
-  export let getWebviewUri: (path: string) => string | undefined;
-  export let audioVideoController: AudioVideoController | undefined = undefined;
-  export let globalMuted: boolean = false;
+  interface Props {
+    channelInput: ConfigInput | undefined;
+    getWebviewUri: (path: string) => string | undefined;
+    audioVideoController?: AudioVideoController;
+    globalMuted?: boolean;
+  }
 
-  $: onVideoControl = audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined;
-  $: getVideoState = audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined;
-  $: onAudioControl = audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined;
-  $: getAudioState = audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined;
-  $: getAudioFFT = audioVideoController ? (t: string, p?: string) => audioVideoController!.getAudioFFT(t, p) : undefined;
+  let {
+    channelInput,
+    getWebviewUri,
+    audioVideoController = undefined as AudioVideoController | undefined,
+    globalMuted = false,
+  }: Props = $props();
 
-  let imageLoaded = false;
-  let imageError = false;
-  let imageElement: HTMLImageElement | null = null;
+  let onVideoControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined);
+  let getVideoState = $derived(audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined);
+  let onAudioControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.audioControl(p, a) : undefined);
+  let getAudioState = $derived(audioVideoController ? (p: string) => audioVideoController!.getAudioState(p) : undefined);
+  let getAudioFFT = $derived(audioVideoController ? (t: string, p?: string) => audioVideoController!.getAudioFFT(t, p) : undefined);
+
+  let imageLoaded = $state(false);
+  let imageError = $state(false);
+  let imageElement: HTMLImageElement | null = $state(null);
 
   // Use resolved_path (webview URI) for image display, fall back to pathMap lookup or raw path
-  $: imageSrc = channelInput && (channelInput.type === "texture" || channelInput.type === "cubemap") && channelInput.path
+  let imageSrc = $derived(channelInput && (channelInput.type === "texture" || channelInput.type === "cubemap") && channelInput.path
     ? channelInput.resolved_path || getWebviewUri(channelInput.path) || channelInput.path
-    : "";
+    : "");
 
   // Video preview source
-  $: videoSrc = channelInput && channelInput.type === "video" && channelInput.path
+  let videoSrc = $derived(channelInput && channelInput.type === "video" && channelInput.path
     ? (channelInput as any).resolved_path || getWebviewUri(channelInput.path) || channelInput.path
-    : "";
+    : "");
 
-  let videoLoaded = false;
-  let videoError = false;
-  let videoElement: HTMLVideoElement | null = null;
+  let videoLoaded = $state(false);
+  let videoError = $state(false);
+  let videoElement: HTMLVideoElement | null = $state(null);
 
   function handleVideoLoad() {
     videoLoaded = true;
@@ -43,27 +52,27 @@
   }
 
   // Video control state polling
-  let videoState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
-  let videoStateInterval: ReturnType<typeof setInterval> | undefined;
+  let videoState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
 
-  $: if (channelInput?.type === "video" && channelInput.path && getVideoState && onVideoControl) {
-    const path = (channelInput as any).resolved_path || channelInput.path;
-    videoState = getVideoState(path);
-    if (!videoStateInterval) {
-      videoStateInterval = setInterval(() => {
-        if (channelInput?.type === "video" && channelInput.path && getVideoState) {
-          const p = (channelInput as any).resolved_path || channelInput.path;
-          videoState = getVideoState(p);
+  $effect(() => {
+    const type = channelInput?.type;
+    const path = channelInput && 'path' in channelInput ? (channelInput as any).path : undefined;
+    const gvs = getVideoState;
+    const ovc = onVideoControl;
+    if (type === "video" && path && gvs && ovc) {
+      const resolvedPath = (channelInput as any).resolved_path || path;
+      videoState = gvs(resolvedPath);
+      const interval = setInterval(() => {
+        if (channelInput?.type === "video" && 'path' in channelInput && gvs) {
+          const p = (channelInput as any).resolved_path || (channelInput as any).path;
+          videoState = gvs(p);
         }
       }, 500);
+      return () => clearInterval(interval);
+    } else {
+      videoState = null;
     }
-  } else {
-    if (videoStateInterval) {
-      clearInterval(videoStateInterval);
-      videoStateInterval = undefined;
-    }
-    videoState = null;
-  }
+  });
 
   function handlePreviewVideoControl(action: string, event: MouseEvent) {
     event.stopPropagation();
@@ -82,21 +91,23 @@
   }
 
   // Sync preview video element with shader video state (pause/play/currentTime)
-  $: if (videoElement && videoState) {
-    // Sync pause/play
-    if (videoState.paused && !videoElement.paused) {
-      videoElement.pause();
-    } else if (!videoState.paused && videoElement.paused) {
-      const p = videoElement.play();
-      if (p && p.catch) {
-        p.catch(() => {});
+  $effect(() => {
+    if (videoElement && videoState) {
+      // Sync pause/play
+      if (videoState.paused && !videoElement.paused) {
+        videoElement.pause();
+      } else if (!videoState.paused && videoElement.paused) {
+        const p = videoElement.play();
+        if (p && p.catch) {
+          p.catch(() => {});
+        }
+      }
+      // Sync currentTime if drifted more than 1 second
+      if (Math.abs(videoElement.currentTime - videoState.currentTime) > 1) {
+        videoElement.currentTime = videoState.currentTime;
       }
     }
-    // Sync currentTime if drifted more than 1 second
-    if (Math.abs(videoElement.currentTime - videoState.currentTime) > 1) {
-      videoElement.currentTime = videoState.currentTime;
-    }
-  }
+  });
 
   function formatVideoTime(seconds: number): string {
     if (!isFinite(seconds) || seconds < 0) {
@@ -115,27 +126,27 @@
   }
 
   // Audio control state polling
-  let audioControlState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = null;
-  let audioStateInterval: ReturnType<typeof setInterval> | undefined;
+  let audioControlState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
 
-  $: if (channelInput?.type === "audio" && channelInput.path && getAudioState && onAudioControl) {
-    const path = (channelInput as any).resolved_path || channelInput.path;
-    audioControlState = getAudioState(path);
-    if (!audioStateInterval) {
-      audioStateInterval = setInterval(() => {
-        if (channelInput?.type === "audio" && channelInput.path && getAudioState) {
-          const p = (channelInput as any).resolved_path || channelInput.path;
-          audioControlState = getAudioState(p);
+  $effect(() => {
+    const type = channelInput?.type;
+    const path = channelInput && 'path' in channelInput ? (channelInput as any).path : undefined;
+    const gas = getAudioState;
+    const oac = onAudioControl;
+    if (type === "audio" && path && gas && oac) {
+      const resolvedPath = (channelInput as any).resolved_path || path;
+      audioControlState = gas(resolvedPath);
+      const interval = setInterval(() => {
+        if (channelInput?.type === "audio" && 'path' in channelInput && gas) {
+          const p = (channelInput as any).resolved_path || (channelInput as any).path;
+          audioControlState = gas(p);
         }
       }, 500);
+      return () => clearInterval(interval);
+    } else {
+      audioControlState = null;
     }
-  } else {
-    if (audioStateInterval) {
-      clearInterval(audioStateInterval);
-      audioStateInterval = undefined;
-    }
-    audioControlState = null;
-  }
+  });
 
   function handlePreviewAudioControl(action: string, event: MouseEvent) {
     event.stopPropagation();
@@ -154,17 +165,17 @@
   }
 
   // Apply vflip: Shadertoy convention is vflip=true (default), so flip when vflip is false/unchecked
-  $: isFlipped = channelInput && (channelInput.type === "texture" || channelInput.type === "video") && channelInput.vflip === false;
-  $: isGrayscale = channelInput && channelInput.type === "texture" && channelInput.grayscale === true;
+  let isFlipped = $derived(channelInput && (channelInput.type === "texture" || channelInput.type === "video") && channelInput.vflip === false);
+  let isGrayscale = $derived(channelInput && channelInput.type === "texture" && channelInput.grayscale === true);
 
   // Build CSS transform/filter string for images
-  $: imageStyle = [
+  let imageStyle = $derived([
     isFlipped ? 'transform: scaleY(-1)' : '',
     isGrayscale ? 'filter: grayscale(100%)' : '',
-  ].filter(Boolean).join('; ');
+  ].filter(Boolean).join('; '));
 
   // Build CSS transform string for video
-  $: videoStyle = isFlipped ? 'transform: scaleY(-1)' : '';
+  let videoStyle = $derived(isFlipped ? 'transform: scaleY(-1)' : '');
 
   function handleImageLoad() {
     imageLoaded = true;
@@ -177,7 +188,7 @@
   }
 
   // FFT canvas rendering for audio types
-  let fftCanvas: HTMLCanvasElement | null = null;
+  let fftCanvas: HTMLCanvasElement | null = $state(null);
   let fftAnimFrame: number | null = null;
 
   function isAudioType(type: string | undefined): boolean {
@@ -235,22 +246,17 @@
     }
   }
 
-  $: if (fftCanvas && channelInput && isAudioType(channelInput.type) && getAudioFFT) {
-    startFFTAnimation();
-  } else {
-    stopFFTAnimation();
-  }
+  $effect(() => {
+    if (fftCanvas && channelInput && isAudioType(channelInput.type) && getAudioFFT) {
+      startFFTAnimation();
+      return () => stopFFTAnimation();
+    } else {
+      stopFFTAnimation();
+    }
+  });
 
   onDestroy(() => {
     stopFFTAnimation();
-    if (videoStateInterval) {
-      clearInterval(videoStateInterval);
-      videoStateInterval = undefined;
-    }
-    if (audioStateInterval) {
-      clearInterval(audioStateInterval);
-      audioStateInterval = undefined;
-    }
     // Clean up image element
     if (imageElement) {
       imageElement.src = "";
@@ -279,8 +285,8 @@
           src={imageSrc}
           alt="Texture preview"
           loading="lazy"
-          on:load={handleImageLoad}
-          on:error={handleImageError}
+          onload={handleImageLoad}
+          onerror={handleImageError}
           class="preview-image"
           class:loaded={imageLoaded}
           style={imageStyle}
@@ -313,8 +319,8 @@
           autoplay
           loop
           playsinline
-          on:loadeddata={handleVideoLoad}
-          on:error={handleVideoError}
+          onloadeddata={handleVideoLoad}
+          onerror={handleVideoError}
           class="preview-video"
           class:loaded={videoLoaded}
           style={videoStyle}
@@ -335,18 +341,17 @@
           <span class="preview-label">Video</span>
         {/if}
         {#if onVideoControl && channelInput.path}
-          <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-          <div class="preview-controls" on:click|stopPropagation>
+          <div class="preview-controls" role="presentation" onclick={(e) => e.stopPropagation()}>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewVideoControlWithSync(videoState?.paused ? 'play' : 'pause', e)}
+              onclick={(e) => handlePreviewVideoControlWithSync(videoState?.paused ? 'play' : 'pause', e)}
               title={videoState?.paused ? 'Play' : 'Pause'}
             >
               {#if videoState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
             </button>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewVideoControlWithSync(videoState?.muted ? 'unmute' : 'mute', e)}
+              onclick={(e) => handlePreviewVideoControlWithSync(videoState?.muted ? 'unmute' : 'mute', e)}
               title={videoState?.muted && globalMuted ? 'Unmute globally first (options menu)' : videoState?.muted ? 'Unmute' : 'Mute'}
               disabled={videoState?.muted && globalMuted}
             >
@@ -358,7 +363,7 @@
             </button>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewVideoControlWithSync('reset', e)}
+              onclick={(e) => handlePreviewVideoControlWithSync('reset', e)}
               aria-label="Reset video to beginning"
               title="Reset to beginning"
             >
@@ -389,18 +394,17 @@
           <span class="preview-label">Audio</span>
         {/if}
         {#if onAudioControl && channelInput.path}
-          <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-          <div class="preview-controls" on:click|stopPropagation>
+          <div class="preview-controls" role="presentation" onclick={(e) => e.stopPropagation()}>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewAudioControl(audioControlState?.paused ? 'play' : 'pause', e)}
+              onclick={(e) => handlePreviewAudioControl(audioControlState?.paused ? 'play' : 'pause', e)}
               title={audioControlState?.paused ? 'Play' : 'Pause'}
             >
               {#if audioControlState?.paused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}
             </button>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewAudioControl(audioControlState?.muted ? 'unmute' : 'mute', e)}
+              onclick={(e) => handlePreviewAudioControl(audioControlState?.muted ? 'unmute' : 'mute', e)}
               title={audioControlState?.muted && globalMuted ? 'Unmute globally first (options menu)' : audioControlState?.muted ? 'Unmute' : 'Mute'}
               disabled={audioControlState?.muted && globalMuted}
             >
@@ -412,7 +416,7 @@
             </button>
             <button
               class="preview-ctrl-btn"
-              on:click={(e) => handlePreviewAudioControl('reset', e)}
+              onclick={(e) => handlePreviewAudioControl('reset', e)}
               aria-label="Reset audio to beginning"
               title="Reset to beginning"
             >
@@ -440,7 +444,7 @@
           bind:this={imageElement}
           src={imageSrc}
           alt="Cubemap preview"
-          on:error={handleImageError}
+          onerror={handleImageError}
           class="preview-image"
         />
       {/if}

@@ -6,35 +6,39 @@
   import GreyscaleFrequencyBar from './GreyscaleFrequencyBar.svelte';
   import CaptureThumbnail from './CaptureThumbnail.svelte';
 
-  export let variable: CapturedVariable;
-  export let isPixelMode: boolean;
-  export let onExpandToggle: () => void = () => {};
-  export let onLineClick: () => void = () => {};
+  interface Props {
+    variable: CapturedVariable;
+    isPixelMode: boolean;
+    onExpandToggle?: () => void;
+    onLineClick?: () => void;
+  }
 
-  $: isScalar = variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool';
-  $: isVec = variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4' || variable.varType === 'mat2';
-  $: isColorVec = variable.varType === 'vec3' || variable.varType === 'vec4';
-  $: isExpanded = variable.histogram !== null || variable.colorFrequencies !== null || variable.channelHistograms !== null;
-  // Vec is "constant" across canvas if all channels have min === max
-  $: isVecConstant = isVec && variable.channelStats !== null
-    && variable.channelStats.every(s => s.min === s.max);
+  let {
+    variable,
+    isPixelMode,
+    onExpandToggle = () => {},
+    onLineClick = () => {},
+  }: Props = $props();
 
-  // Show pixel values if we have them, otherwise fall back to grid display
-  $: hasPixelData = isPixelMode && variable.value !== null;
-  $: showThumbnail = !hasPixelData && variable.thumbnail !== null;
+  let isScalar = $derived(variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool');
+  let isVec = $derived(variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4' || variable.varType === 'mat2');
+  let isColorVec = $derived(variable.varType === 'vec3' || variable.varType === 'vec4');
+  let isExpanded = $derived(variable.histogram !== null || variable.colorFrequencies !== null || variable.channelHistograms !== null);
+  let isVecConstant = $derived(isVec && variable.channelStats !== null
+    && variable.channelStats.every(s => s.min === s.max));
 
-  // Don't show color bar when all vec values are entirely outside [0,1]
-  // (would render as all-black or all-white — uninformative)
-  $: vecGlobalMin = variable.channelStats ? Math.min(...variable.channelStats.map(s => s.min)) : 0;
-  $: vecGlobalMax = variable.channelStats ? Math.max(...variable.channelStats.map(s => s.max)) : 1;
-  $: showColorBar = variable.colorFrequencies !== null
-    && !(vecGlobalMin > 1.0 || vecGlobalMax < 0.0);
+  let hasPixelData = $derived(isPixelMode && variable.value !== null);
+  let showThumbnail = $derived(!hasPixelData && variable.thumbnail !== null);
 
-  // Color swatch for pixel mode (vec3/4 only)
-  $: colorSrc = isColorVec ? (variable.value ?? variable.channelMeans) : null;
-  $: colorStyle = colorSrc && colorSrc.length >= 3
+  let vecGlobalMin = $derived(variable.channelStats ? Math.min(...variable.channelStats.map(s => s.min)) : 0);
+  let vecGlobalMax = $derived(variable.channelStats ? Math.max(...variable.channelStats.map(s => s.max)) : 1);
+  let showColorBar = $derived(variable.colorFrequencies !== null
+    && !(vecGlobalMin > 1.0 || vecGlobalMax < 0.0));
+
+  let colorSrc = $derived(isColorVec ? (variable.value ?? variable.channelMeans) : null);
+  let colorStyle = $derived(colorSrc && colorSrc.length >= 3
     ? `background-color: rgb(${clamp01(colorSrc[0])}, ${clamp01(colorSrc[1])}, ${clamp01(colorSrc[2])})`
-    : '';
+    : '');
 
   function clamp01(v: number): number {
     return Math.round(Math.min(Math.max(v, 0), 1) * 255);
@@ -62,7 +66,7 @@
         <span class="var-name" title={variable.varName}>{variable.varName}</span>
         <span class="var-type">{variable.varType}</span>
         {#if variable.declarationLine >= 0}
-          <span class="var-line" on:click={onLineClick} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
+          <span class="var-line" onclick={onLineClick} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
         {/if}
       </div>
 
@@ -95,7 +99,7 @@
               <span class="stat-label">max</span><span class="stat-val">{fmt(variable.stats.max)}</span>
               <span class="stat-sep">·</span>
               <span class="stat-label">avg</span><span class="stat-val">{fmt(variable.stats.mean)}</span>
-              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle histogram"><i class="codicon codicon-chevron-down"></i></button>
+              <button class="expand-btn" class:expanded={isExpanded} onclick={onExpandToggle} aria-label="Toggle histogram"><i class="codicon codicon-chevron-down"></i></button>
             </span>
           {/if}
         {:else}
@@ -125,7 +129,7 @@
                 >({#each variable.channelMeans as v, i
                 }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})</span>
               {/if}
-              <button class="expand-btn" class:expanded={isExpanded} on:click={onExpandToggle} aria-label="Toggle channel view"><i class="codicon codicon-chevron-down"></i></button>
+              <button class="expand-btn" class:expanded={isExpanded} onclick={onExpandToggle} aria-label="Toggle channel view"><i class="codicon codicon-chevron-down"></i></button>
             {/if}
           </span>
         {:else}

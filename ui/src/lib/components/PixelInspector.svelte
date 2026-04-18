@@ -1,24 +1,33 @@
 <script lang="ts">
-  export let isActive: boolean = false;
-  export let isLocked: boolean = false;
-  export let mouseX: number = 0;
-  export let mouseY: number = 0;
-  export let rgb: { r: number; g: number; b: number } | null = null;
-  export let fragCoord: { x: number; y: number } | null = null;
-  export let canvasWidth: number = 0;
-  export let canvasHeight: number = 0;
+  interface Props {
+    isActive?: boolean;
+    isLocked?: boolean;
+    mouseX?: number;
+    mouseY?: number;
+    rgb?: { r: number; g: number; b: number } | null;
+    fragCoord?: { x: number; y: number } | null;
+    canvasWidth?: number;
+    canvasHeight?: number;
+  }
+
+  let {
+    isActive = false,
+    isLocked = false,
+    mouseX = 0,
+    mouseY = 0,
+    rgb = null as { r: number; g: number; b: number } | null,
+    fragCoord = null as { x: number; y: number } | null,
+    canvasWidth = 0,
+    canvasHeight = 0,
+  }: Props = $props();
 
   let inspectorElement: HTMLDivElement;
-  const OFFSET = 20; // Offset from mouse cursor
-  const ESTIMATED_WIDTH = 250; // Estimated inspector width
+  const OFFSET = 20;
+  const ESTIMATED_WIDTH = 250;
 
-  $: displayY = mouseY;
-
-  // Check if inspector would overflow on the right side
-  $: shouldFlipLeft = typeof window !== 'undefined' && (mouseX + OFFSET + ESTIMATED_WIDTH > window.innerWidth);
-
-  // Calculate position based on whether we need to flip
-  $: positionX = shouldFlipLeft ? mouseX - ESTIMATED_WIDTH - OFFSET : mouseX + OFFSET;
+  let displayY = $derived(mouseY);
+  let shouldFlipLeft = $derived(typeof window !== 'undefined' && (mouseX + OFFSET + ESTIMATED_WIDTH > window.innerWidth));
+  let positionX = $derived(shouldFlipLeft ? mouseX - ESTIMATED_WIDTH - OFFSET : mouseX + OFFSET);
 </script>
 
 {#if isActive && rgb && fragCoord}

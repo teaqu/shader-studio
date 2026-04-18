@@ -1,25 +1,36 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
   import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../util/waveformCache";
 
-  export let extensions: string[];
-  export let shaderPath: string;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
-  export let onSelect: (path: string, resolvedUri?: string) => void;
-  export let selectedPath: string = "";
+  interface Props {
+    extensions: string[];
+    shaderPath: string;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
+    onSelect: (path: string, resolvedUri?: string) => void;
+    selectedPath?: string;
+  }
+
+  let {
+    extensions,
+    shaderPath,
+    postMessage = undefined,
+    onMessage = undefined,
+    onSelect,
+    selectedPath = "",
+  }: Props = $props();
 
   const PAGE_SIZE = 8;
 
-  let files: WorkspaceFileInfo[] = [];
-  let loading = true;
-  let searchQuery = "";
-  let currentPage = 1;
+  let files: WorkspaceFileInfo[] = $state([]);
+  let loading = $state(true);
+  let searchQuery = $state("");
+  let currentPage = $state(1);
   let loadingTimeout: ReturnType<typeof setTimeout> | undefined;
 
-  $: filteredFiles = files.filter((file) => {
+  let filteredFiles = $derived(files.filter((file) => {
     if (!searchQuery) {
       return true;
     }
@@ -28,27 +39,33 @@
       file.name.toLowerCase().includes(query) ||
       file.workspacePath.toLowerCase().includes(query)
     );
-  });
+  }));
 
   // Reset page when search changes
-  $: if (searchQuery !== undefined) {
-    currentPage = 1;
-  }
+  $effect(() => {
+    searchQuery; // track searchQuery
+    untrack(() => { currentPage = 1; });
+  });
 
-  $: totalPages = Math.ceil(filteredFiles.length / PAGE_SIZE);
+  let totalPages = $derived(Math.ceil(filteredFiles.length / PAGE_SIZE));
 
   // Clamp page if it exceeds total
-  $: if (currentPage > totalPages && totalPages > 0) {
-    currentPage = totalPages;
-  }
+  $effect(() => {
+    const tp = totalPages;
+    untrack(() => {
+      if (currentPage > tp && tp > 0) {
+        currentPage = tp;
+      }
+    });
+  });
 
-  $: paginatedFiles = filteredFiles.slice(
+  let paginatedFiles = $derived(filteredFiles.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
-  );
+  ));
 
-  $: sameDirFiles = paginatedFiles.filter((f) => f.isSameDirectory);
-  $: otherFiles = paginatedFiles.filter((f) => !f.isSameDirectory);
+  let sameDirFiles = $derived(paginatedFiles.filter((f) => f.isSameDirectory));
+  let otherFiles = $derived(paginatedFiles.filter((f) => !f.isSameDirectory));
 
   function handleMessage(event: MessageEvent) {
     const message = event.data;
@@ -234,7 +251,7 @@
       placeholder="Search files..."
       bind:value={searchQuery}
     />
-    <button class="refresh-btn" on:click={requestFiles} title="Refresh" aria-label="Refresh files">
+    <button class="refresh-btn" onclick={requestFiles} title="Refresh" aria-label="Refresh files">
       <i class="codicon codicon-refresh"></i>
     </button>
   </div>
@@ -253,19 +270,19 @@
               class="file-card"
               class:audio-card={getFileType(file.name) === 'audio'}
               class:selected={isSelected(file)}
-              on:click={() => handleSelect(file)}
+              onclick={() => handleSelect(file)}
               title={file.name}
             >
               <div class="file-thumbnail" class:audio-thumbnail={getFileType(file.name) === 'audio'}>
                 {#if getFileType(file.name) === 'video'}
-                  <!-- svelte-ignore a11y-mouse-events-have-key-events -->
+                  <!-- svelte-ignore a11y_mouse_events_have_key_events -->
                   <video
                     src={file.thumbnailUri}
                     preload="metadata"
                     muted
                     loop
-                    on:mouseenter={(e) => e.currentTarget.play()}
-                    on:mouseleave={(e) => {
+                    onmouseenter={(e) => e.currentTarget.play()}
+                    onmouseleave={(e) => {
                       e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
                     }}
                   ></video>
@@ -302,19 +319,19 @@
               class="file-card"
               class:audio-card={getFileType(file.name) === 'audio'}
               class:selected={isSelected(file)}
-              on:click={() => handleSelect(file)}
+              onclick={() => handleSelect(file)}
               title={file.workspacePath}
             >
               <div class="file-thumbnail" class:audio-thumbnail={getFileType(file.name) === 'audio'}>
                 {#if getFileType(file.name) === 'video'}
-                  <!-- svelte-ignore a11y-mouse-events-have-key-events -->
+                  <!-- svelte-ignore a11y_mouse_events_have_key_events -->
                   <video
                     src={file.thumbnailUri}
                     preload="metadata"
                     muted
                     loop
-                    on:mouseenter={(e) => e.currentTarget.play()}
-                    on:mouseleave={(e) => {
+                    onmouseenter={(e) => e.currentTarget.play()}
+                    onmouseleave={(e) => {
                       e.currentTarget.pause(); e.currentTarget.currentTime = 0; 
                     }}
                   ></video>
@@ -345,7 +362,7 @@
         <div class="pagination">
           <button
             class="page-button"
-            on:click={prevPage}
+            onclick={prevPage}
             disabled={currentPage === 1}
             aria-label="Previous page"
           >
@@ -357,7 +374,7 @@
               <button
                 class="page-button"
                 class:active={currentPage === i + 1}
-                on:click={() => goToPage(i + 1)}
+                onclick={() => goToPage(i + 1)}
               >
                 {i + 1}
               </button>
@@ -366,7 +383,7 @@
             <button
               class="page-button"
               class:active={currentPage === 1}
-              on:click={() => goToPage(1)}
+              onclick={() => goToPage(1)}
             >
               1
             </button>
@@ -382,7 +399,7 @@
               <button
                 class="page-button"
                 class:active={currentPage === pageNum}
-                on:click={() => goToPage(pageNum)}
+                onclick={() => goToPage(pageNum)}
               >
                 {pageNum}
               </button>
@@ -395,7 +412,7 @@
             <button
               class="page-button"
               class:active={currentPage === totalPages}
-              on:click={() => goToPage(totalPages)}
+              onclick={() => goToPage(totalPages)}
             >
               {totalPages}
             </button>
@@ -403,7 +420,7 @@
 
           <button
             class="page-button"
-            on:click={nextPage}
+            onclick={nextPage}
             disabled={currentPage === totalPages}
             aria-label="Next page"
           >

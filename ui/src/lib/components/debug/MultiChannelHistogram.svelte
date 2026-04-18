@@ -1,7 +1,13 @@
 <script lang="ts">
   import MiniHistogram from './MiniHistogram.svelte';
 
-  export let channels: Array<{ bins: number[]; min: number; max: number; label: string }>;
+  interface Props {
+    channels: Array<{ bins: number[]; min: number; max: number; label: string }>;
+  }
+
+  let {
+    channels,
+  }: Props = $props();
 
   const LABEL_COLORS = [
     'var(--vscode-charts-red)',

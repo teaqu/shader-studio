@@ -1,24 +1,46 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
 
-  export let value: string;
-  export let placeholder: string = '';
-  export let onPathChange: ((path: string) => void) | undefined = undefined;
-  export let fileExists: boolean = true;
-  export let hasError: boolean = false;
-  export let note: string | undefined = undefined;
-  export let shaderPath: string = '';
-  export let suggestedPath: string = '';
-  export let fileType: 'script' | 'glsl-buffer' | 'glsl-common' | 'texture' | 'video' | 'audio' | 'cubemap' = 'glsl-buffer';
-  export let allowCreate: boolean = true;
-  export let postMessage: ((msg: any) => void) | undefined = undefined;
-  export let onMessage: ((handler: (event: MessageEvent) => void) => void) | undefined = undefined;
+  type FileType = 'script' | 'glsl-buffer' | 'glsl-common' | 'texture' | 'video' | 'audio' | 'cubemap';
 
-  let pathInputFocused = false;
-  let localPath = value;
-  $: if (!pathInputFocused) {
-    localPath = value;
+  interface Props {
+    value: string;
+    placeholder?: string;
+    onPathChange?: (path: string) => void;
+    fileExists?: boolean;
+    hasError?: boolean;
+    note?: string;
+    shaderPath?: string;
+    suggestedPath?: string;
+    fileType?: FileType;
+    allowCreate?: boolean;
+    postMessage?: (msg: any) => void;
+    onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
+
+  let {
+    value,
+    placeholder = '',
+    onPathChange = undefined,
+    fileExists = true,
+    hasError = false,
+    note = undefined,
+    shaderPath = '',
+    suggestedPath = '',
+    fileType = 'glsl-buffer',
+    allowCreate = true,
+    postMessage = undefined,
+    onMessage = undefined,
+  }: Props = $props();
+
+  let pathInputFocused = $state(false);
+  let localPath = $state(value);
+  $effect(() => {
+    const v = value; // force track value
+    if (!pathInputFocused) {
+      localPath = v;
+    }
+  });
 
   function handlePathInput(e: Event) {
     localPath = (e.target as HTMLInputElement).value;
@@ -34,32 +56,38 @@
 
   // Suppress the Create button briefly after value changes externally (e.g. after Select),
   // preventing a flash while fileExists hasn't yet been confirmed by the extension.
-  let suppressCreate = false;
+  let suppressCreate = $state(false);
   let suppressTimer: ReturnType<typeof setTimeout> | undefined;
   let prevValue = value;
 
-  $: {
-    if (value !== prevValue) {
-      prevValue = value;
-      if (value) {
-        suppressCreate = true;
-        clearTimeout(suppressTimer);
-        suppressTimer = setTimeout(() => {
-          suppressCreate = false; 
-        }, 400);
-      } else {
-        suppressCreate = false;
+  $effect(() => {
+    const v = value;
+    untrack(() => {
+      if (v !== prevValue) {
+        prevValue = v;
+        if (v) {
+          suppressCreate = true;
+          clearTimeout(suppressTimer);
+          suppressTimer = setTimeout(() => {
+            suppressCreate = false;
+          }, 400);
+        } else {
+          suppressCreate = false;
+        }
       }
-    }
-  }
+    });
+  });
 
-  $: if (fileExists) {
-    suppressCreate = false; clearTimeout(suppressTimer); 
-  }
+  $effect(() => {
+    if (fileExists) {
+      suppressCreate = false;
+      clearTimeout(suppressTimer);
+    }
+  });
 
   onDestroy(() => clearTimeout(suppressTimer));
 
-  $: showCreate = allowCreate && !suppressCreate && (localPath === '' || !fileExists);
+  let showCreate = $derived(allowCreate && !suppressCreate && (localPath === '' || !fileExists));
 
   let pendingRequestId: string | null = null;
 
@@ -97,10 +125,10 @@
       id="path-input"
       type="text"
       value={localPath}
-      on:input={handlePathInput}
-      on:focus={() => pathInputFocused = true}
-      on:blur={() => {
-        pathInputFocused = false; handlePathCommit(); 
+      oninput={handlePathInput}
+      onfocus={() => pathInputFocused = true}
+      onblur={() => {
+        pathInputFocused = false; handlePathCommit();
       }}
       class="config-input"
       class:error={hasError}
@@ -109,9 +137,9 @@
   </div>
   {#if postMessage}
     <div class="input-actions">
-      <button class="select-file-btn" on:click={handleSelect}>Select</button>
+      <button class="select-file-btn" onclick={handleSelect}>Select</button>
       {#if showCreate}
-        <button class="create-file-btn" on:click={handleCreate}>Create</button>
+        <button class="create-file-btn" onclick={handleCreate}>Create</button>
       {/if}
       {#if note}
         <span class="input-note">{note}</span>

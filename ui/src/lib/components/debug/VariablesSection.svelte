@@ -2,17 +2,33 @@
   import type { CapturedVariable, RefreshMode, VariableCaptureManager } from '../../VariableCaptureManager';
   import VariableRow from './VariableRow.svelte';
 
-  export let capturedVariables: CapturedVariable[] = [];
-  export let isPixelMode: boolean = false;
-  export let isLoading: boolean = false;
-  export let captureError: string | null = null;
-  export let onExpandToggle: (varName: string) => void = () => {};
-  export let onVarClick: (varName: string, declarationLine: number) => void = () => {};
-  export let variableCaptureManager: VariableCaptureManager | undefined = undefined;
-  export let sampleSize: number = 32;
-  export let refreshMode: RefreshMode = 'polling';
-  export let pollingMs: number = 500;
-  export let hasPixelSelected: boolean = false;
+  interface Props {
+    capturedVariables?: CapturedVariable[];
+    isPixelMode?: boolean;
+    isLoading?: boolean;
+    captureError?: string | null;
+    onExpandToggle?: (varName: string) => void;
+    onVarClick?: (varName: string, declarationLine: number) => void;
+    variableCaptureManager?: VariableCaptureManager;
+    sampleSize?: number;
+    refreshMode?: RefreshMode;
+    pollingMs?: number;
+    hasPixelSelected?: boolean;
+  }
+
+  let {
+    capturedVariables = [],
+    isPixelMode = false,
+    isLoading = false,
+    captureError = null,
+    onExpandToggle = (_varName: string) => {},
+    onVarClick = (_varName: string, _declarationLine: number) => {},
+    variableCaptureManager = undefined,
+    sampleSize = 32,
+    refreshMode = 'polling',
+    pollingMs = 500,
+    hasPixelSelected = false,
+  }: Props = $props();
 
   const SAMPLE_SIZES = [16, 32, 64, 128];
 
@@ -60,7 +76,7 @@
           <button
             class="ctrl-btn"
             class:active={sampleSize === s}
-            on:click={() => variableCaptureManager?.changeSampleSize(s)}
+            onclick={() => variableCaptureManager?.changeSampleSize(s)}
             title="Sample {s}×{s} points across canvas"
           >{s}</button>
         {/each}
@@ -71,16 +87,16 @@
       <button
         class="ctrl-btn"
         class:active={refreshMode === 'manual'}
-        on:click={toggleManual}
+        onclick={toggleManual}
         title="Recapture on state change (cursor move, shader edit)"
       >manual</button>
       <button
         class="ctrl-btn has-input"
         class:active={refreshMode === 'polling'}
-        on:click={() => {
+        onclick={() => {
           if (refreshMode !== 'polling') {
             changeRefreshMode('polling');
-          } 
+          }
         }}
         title="Auto-recapture every {pollingMs}ms"
       >
@@ -90,9 +106,9 @@
           min="1"
           step="100"
           value={pollingMs}
-          on:focus={handlePollingMsFocus}
-          on:input={handlePollingMsInput}
-          on:click|stopPropagation
+          onfocus={handlePollingMsFocus}
+          oninput={handlePollingMsInput}
+          onclick={(e) => e.stopPropagation()}
           title="Custom refresh interval in milliseconds"
         />
         <span class="ms-suffix">ms</span>
@@ -100,13 +116,13 @@
       <button
         class="ctrl-btn"
         class:active={refreshMode === 'realtime'}
-        on:click={toggleRealtime}
+        onclick={toggleRealtime}
         title="Capture every frame"
       >realtime</button>
       <button
         class="ctrl-btn"
         class:active={refreshMode === 'pause'}
-        on:click={togglePause}
+        onclick={togglePause}
         title="Pause — freeze captured values"
       >pause</button>
     </div>

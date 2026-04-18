@@ -1,22 +1,31 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  export let pixels: Uint8ClampedArray;  // gridWidth×gridHeight×4 RGBA bytes
-  export let gridWidth: number;
-  export let gridHeight: number;
-  export let maxSize: number = 32;       // max CSS display size in px (for the larger dimension)
+  interface Props {
+    pixels: Uint8ClampedArray;
+    gridWidth: number;
+    gridHeight: number;
+    maxSize?: number;
+  }
+
+  let {
+    pixels,
+    gridWidth,
+    gridHeight,
+    maxSize = 32,
+  }: Props = $props();
 
   let canvas: HTMLCanvasElement;
-  let mounted = false;
-  let hovered = false;
+  let mounted = $state(false);
+  let hovered = $state(false);
 
-  $: displayWidth = gridWidth >= gridHeight
+  let displayWidth = $derived(gridWidth >= gridHeight
     ? maxSize
-    : Math.round(maxSize * (gridWidth / gridHeight));
-  $: displayHeight = gridHeight >= gridWidth
+    : Math.round(maxSize * (gridWidth / gridHeight)));
+  let displayHeight = $derived(gridHeight >= gridWidth
     ? maxSize
-    : Math.round(maxSize * (gridHeight / gridWidth));
-  $: canExpand = gridWidth > displayWidth || gridHeight > displayHeight;
+    : Math.round(maxSize * (gridHeight / gridWidth)));
+  let canExpand = $derived(gridWidth > displayWidth || gridHeight > displayHeight);
 
   function draw() {
     if (!canvas || !mounted || gridWidth < 1 || gridHeight < 1) {
@@ -32,17 +41,21 @@
   }
 
   onMount(() => {
-    mounted = true; draw(); 
+    mounted = true; draw();
   });
-  $: pixels, gridWidth, gridHeight, draw();
+
+  $effect(() => {
+    pixels; gridWidth; gridHeight;
+    draw();
+  });
 </script>
 
 <div
   class="thumb-wrap"
   role="img"
   aria-label="Captured variable thumbnail"
-  on:mouseenter={() => hovered = true}
-  on:mouseleave={() => hovered = false}
+  onmouseenter={() => hovered = true}
+  onmouseleave={() => hovered = false}
 >
   <canvas
     bind:this={canvas}
@@ -62,12 +75,12 @@
   {/if}
 </div>
 
-<script lang="ts" context="module">
+<script lang="ts" module>
   function drawExpanded(node: HTMLCanvasElement, params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
     render(node, params);
     return {
       update(params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
-        render(node, params); 
+        render(node, params);
       }
     };
   }
