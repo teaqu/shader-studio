@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { EditorOverlayManager } from '../lib/EditorOverlayManager';
+import { EditorOverlayManager } from '../lib/EditorOverlayManager.svelte';
 import type { ShaderSourceMessage } from '@shader-studio/types';
 
 describe('EditorOverlayManager', () => {

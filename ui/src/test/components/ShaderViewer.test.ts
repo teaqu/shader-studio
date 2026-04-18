@@ -5,7 +5,12 @@ import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
 import { debugPanelStore } from '../../lib/stores/debugPanelStore';
-import { editorOverlayStore } from '../../lib/stores/editorOverlayStore';
+import {
+  getEditorOverlayVisible as getEditorOverlayVisibleState,
+  setEditorOverlayVisible,
+  toggleEditorOverlay,
+  setOverlayActiveFile,
+} from '../../lib/state/editorOverlayState.svelte';
 import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
@@ -307,12 +312,7 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
 
 describe('ShaderViewer', () => {
   function getEditorOverlayVisible(): boolean {
-    let value = false;
-    const unsubscribe = editorOverlayStore.subscribe((state) => {
-      value = state.isVisible;
-    });
-    unsubscribe();
-    return value;
+    return getEditorOverlayVisibleState();
   }
 
   async function waitForEditorOverlay(container: HTMLElement): Promise<void> {
@@ -332,7 +332,7 @@ describe('ShaderViewer', () => {
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setPixelInspectorEnabled(true);
-    editorOverlayStore.setVisible(false);
+    setEditorOverlayVisible(false);
   });
 
   it('should create transport once before initializeApp registers messages', async () => {
@@ -356,12 +356,12 @@ describe('ShaderViewer', () => {
 
     expect(mockSetInputEnabled).toHaveBeenLastCalledWith(true);
 
-    editorOverlayStore.setVisible(true);
+    setEditorOverlayVisible(true);
     await tick();
 
     expect(mockSetInputEnabled).toHaveBeenLastCalledWith(false);
 
-    editorOverlayStore.setVisible(false);
+    setEditorOverlayVisible(false);
     await tick();
 
     expect(mockSetInputEnabled).toHaveBeenLastCalledWith(true);
@@ -1751,7 +1751,7 @@ describe('ShaderViewer', () => {
     expect(container.querySelector('.editor-wrapper')).toBeFalsy();
 
     // Toggle editor overlay on
-    editorOverlayStore.toggle();
+    toggleEditorOverlay();
     await tick();
 
     // Editor overlay should now be visible
@@ -1812,11 +1812,57 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Toggle editor overlay on
-    editorOverlayStore.toggle();
+    toggleEditorOverlay();
     await tick();
 
     // Editor overlay should appear
     await waitForEditorOverlay(container);
+  });
+
+  it('should recreate the open overlay editor when shaderSource switches to a different shader file', async () => {
+    const monaco = await import('monaco-editor');
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const messageHandler = onMessageCalls[0][0];
+
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/first.glsl',
+        code: 'first shader code',
+        config: { passes: { Image: {} } },
+        pathMap: { Image: '/test/first.glsl' },
+      },
+    });
+    await tick();
+
+    toggleEditorOverlay();
+    await tick();
+    await waitForEditorOverlay(container);
+
+    const firstEditor = vi.mocked(monaco.editor.create).mock.results.at(-1)?.value as any;
+    expect(firstEditor).toBeTruthy();
+    const createCountBeforeSwitch = vi.mocked(monaco.editor.create).mock.calls.length;
+
+    await messageHandler({
+      data: {
+        type: 'shaderSource',
+        path: '/test/second.glsl',
+        code: 'second shader code',
+        config: { passes: { Image: {} } },
+        pathMap: { Image: '/test/second.glsl' },
+      },
+    });
+    await tick();
+
+    const createCalls = vi.mocked(monaco.editor.create).mock.calls;
+    expect(createCalls.length).toBe(createCountBeforeSwitch + 1);
+    expect(createCalls.at(-1)?.[1]).toMatchObject({
+      value: 'second shader code',
+    });
   });
 
   it('should send requestFileContents when shaderSource sets up the path context', async () => {
@@ -2468,7 +2514,7 @@ describe('ShaderViewer', () => {
     await tick();
 
     // Toggle editor overlay to see the buffer selector
-    editorOverlayStore.toggle();
+    toggleEditorOverlay();
     await tick();
 
     // Editor overlay should be visible
@@ -3031,7 +3077,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Toggle editor overlay
-      editorOverlayStore.toggle();
+      toggleEditorOverlay();
       await tick();
 
       // Should not crash
@@ -3060,7 +3106,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Toggle editor overlay to make buffer selector visible
-      editorOverlayStore.toggle();
+      toggleEditorOverlay();
       await tick();
 
       vi.clearAllMocks();
@@ -3104,7 +3150,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Toggle editor overlay
-      editorOverlayStore.toggle();
+      toggleEditorOverlay();
       await tick();
 
       // Smoke test: component handles the message without crashing
@@ -3488,7 +3534,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Enable editor overlay first (vim mode button only appears when editor is visible)
-      editorOverlayStore.setVisible(true);
+      setEditorOverlayVisible(true);
       await tick();
 
       // Open options menu
@@ -3733,7 +3779,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Toggle editor overlay
-      editorOverlayStore.toggle();
+      toggleEditorOverlay();
       await tick();
 
       // With null config, only "Image" should be available
@@ -4160,7 +4206,7 @@ describe('ShaderViewer', () => {
       await tick();
 
       // Toggle editor overlay
-      editorOverlayStore.toggle();
+      toggleEditorOverlay();
       await tick();
 
       vi.clearAllMocks();
@@ -4285,9 +4331,9 @@ describe('ShaderViewer', () => {
       debugPanelStore.setVisible(false);
       await tick();
 
-      editorOverlayStore.setVisible(true);
+      setEditorOverlayVisible(true);
       await tick();
-      editorOverlayStore.setVisible(false);
+      setEditorOverlayVisible(false);
       await tick();
 
       // Unmount should unsubscribe from all stores
@@ -4296,7 +4342,7 @@ describe('ShaderViewer', () => {
       // After unmount, store changes should not crash
       configPanelStore.setVisible(true);
       debugPanelStore.setVisible(true);
-      editorOverlayStore.setVisible(true);
+      setEditorOverlayVisible(true);
     });
   });
 
@@ -4376,15 +4422,14 @@ describe('ShaderViewer', () => {
   });
 
   describe('handleConfigFileSelect via config panel', () => {
-    it('keeps the overlay on the main shader when a buffer tab is selected while unlocked', async () => {
-      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    it('loads buffer contents into the overlay when setOverlayActiveFile is called while overlay is visible', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
 
       const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
       const messageHandler = onMessageCalls[0][0];
 
-      // Load shader with multiple buffers including common
       await messageHandler({
         data: {
           type: 'shaderSource',
@@ -4397,36 +4442,23 @@ describe('ShaderViewer', () => {
       });
       await tick();
 
-      editorOverlayStore.setVisible(true);
-      await tick();
-      await tick();
-
-      // Open config panel
-      configPanelStore.setVisible(true);
+      setEditorOverlayVisible(true);
       await tick();
       await tick();
 
       vi.clearAllMocks();
 
-      // Click the Common tab in the config panel
-      const tabButtons = container.querySelectorAll('.tab-button');
-      const commonTab = Array.from(tabButtons).find(b => b.textContent?.includes('Common'));
-      if (commonTab) {
-        await fireEvent.click(commonTab);
-        await tick();
+      setOverlayActiveFile('common');
+      await tick();
 
-        expect(commonTab.classList.contains('active')).toBe(true);
-        expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
-          type: 'requestFileContents',
-          payload: expect.objectContaining({
-            bufferName: 'common',
-          }),
-        });
-      }
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'requestFileContents',
+        payload: expect.objectContaining({ bufferName: 'common' }),
+      });
     });
 
-    it('loads buffer contents into the overlay when a buffer tab is selected while locked', async () => {
-      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    it('does not load buffer contents when overlay is not visible', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
 
@@ -4445,29 +4477,15 @@ describe('ShaderViewer', () => {
       });
       await tick();
 
-      const lockButton = screen.getByLabelText('Toggle lock');
-      await fireEvent.click(lockButton);
-      await tick();
-
-      configPanelStore.setVisible(true);
-      await tick();
-      await tick();
-
       vi.clearAllMocks();
 
-      const tabButtons = container.querySelectorAll('.tab-button');
-      const commonTab = Array.from(tabButtons).find(b => b.textContent?.includes('Common'));
-      if (commonTab) {
-        await fireEvent.click(commonTab);
-        await tick();
+      setOverlayActiveFile('common');
+      await tick();
 
-        expect(mockTransport.postMessage).toHaveBeenCalledWith({
-          type: 'requestFileContents',
-          payload: expect.objectContaining({
-            bufferName: 'common',
-          }),
-        });
-      }
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
+        type: 'requestFileContents',
+        payload: expect.objectContaining({ bufferName: 'common' }),
+      });
     });
 
     it('should switch back to Image and use main shader code', async () => {

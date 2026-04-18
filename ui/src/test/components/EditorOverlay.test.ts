@@ -217,6 +217,32 @@ describe('EditorOverlay', () => {
         selectionHighlight: false,
       });
     });
+
+    it('should replace the editor contents when the shader file changes while the editor is focused', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue
+        .mockReturnValueOnce('old shader code')
+        .mockReturnValueOnce('old shader code');
+      mockEditor.hasTextFocus.mockReturnValue(true);
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { rerender } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode: 'old shader code',
+          shaderPath: '/first.glsl',
+        },
+      });
+
+      await rerender({
+        ...defaultProps,
+        shaderCode: 'new shader code',
+        shaderPath: '/second.glsl',
+      });
+
+      expect(mockEditor.setValue).toHaveBeenCalledWith('new shader code');
+    });
   });
 
   describe('persistence timing', () => {

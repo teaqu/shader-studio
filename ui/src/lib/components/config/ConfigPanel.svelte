@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
   import { ConfigManager } from "../../ConfigManager";
+  import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
@@ -232,6 +233,10 @@
       return;
     }
     const actualName = getActualBufferName(tabName);
+    if (getEditorOverlayVisible()) {
+      setOverlayActiveFile(actualName);
+      return;
+    }
     const bufferPath = bufferPathMap[actualName];
     if (bufferPath) {
       transport.postMessage({

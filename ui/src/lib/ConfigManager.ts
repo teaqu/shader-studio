@@ -419,7 +419,7 @@ export class ConfigManager {
       this.transport.postMessage({
         type: 'updateConfig',
         payload: {
-          config: newConfig,
+          config: JSON.parse(cleanText) as ShaderConfig,
           text: cleanText,
           shaderPath: this.shaderPath,
           skipRefresh: options?.skipRefresh,

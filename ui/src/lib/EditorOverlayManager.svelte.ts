@@ -1,7 +1,12 @@
 import type { Transport } from './transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/RenderingEngine';
 import type { ShaderConfig } from '@shader-studio/types';
-import { editorOverlayStore } from './stores/editorOverlayStore';
+import {
+  getEditorOverlayVisible,
+  getVimMode,
+  toggleEditorOverlay,
+  toggleVimMode as toggleVimModeState,
+} from './state/editorOverlayState.svelte';
 
 export interface EditorOverlayCallbacks {
   onStateChanged: (state: EditorOverlayState) => void;
@@ -24,31 +29,23 @@ export interface EditorOverlayState {
 }
 
 export class EditorOverlayManager {
-  private visible = false;
-  private vimMode = false;
   private shaderCode = '';
+  private shaderPath = '';
   private bufferName = 'Image';
   private filePath = '';
   private fileCode = '';
   private currentConfig: ShaderConfig | null = null;
-  private unsubscribe: (() => void) | null = null;
 
   constructor(
     private transport: Transport,
     private getRenderingEngine: () => RenderingEngine,
     private callbacks: EditorOverlayCallbacks,
-  ) {
-    this.unsubscribe = editorOverlayStore.subscribe((state) => {
-      this.visible = state.isVisible;
-      this.vimMode = state.vimMode;
-      this.notifyStateChanged();
-    });
-  }
+  ) {}
 
   getState(): EditorOverlayState {
     return {
-      visible: this.visible,
-      vimMode: this.vimMode,
+      visible: getEditorOverlayVisible(),
+      vimMode: getVimMode(),
       shaderCode: this.shaderCode,
       bufferName: this.bufferName,
       filePath: this.filePath,
@@ -63,7 +60,7 @@ export class EditorOverlayManager {
 
   setShaderSource(code: string, path: string): void {
     this.shaderCode = code;
-    // Sync editor overlay if it's showing the main shader
+    this.shaderPath = path;
     if (this.bufferName === 'Image') {
       this.filePath = path;
       this.fileCode = code;
@@ -131,11 +128,13 @@ export class EditorOverlayManager {
   }
 
   toggle(): void {
-    editorOverlayStore.toggle();
+    toggleEditorOverlay();
+    this.notifyStateChanged();
   }
 
   toggleVimMode(): void {
-    editorOverlayStore.toggleVimMode();
+    toggleVimModeState();
+    this.notifyStateChanged();
   }
 
   private computeBufferNames(): string[] {
@@ -154,10 +153,5 @@ export class EditorOverlayManager {
     this.callbacks.onStateChanged(this.getState());
   }
 
-  dispose(): void {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
-    }
-  }
+  dispose(): void {}
 }

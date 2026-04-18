@@ -366,8 +366,8 @@ describe('ConfigManager', () => {
       expect(text).not.toContain('resolved_path');
       expect(text).toContain('texture.png');
 
-      // Config object should still have it (for UI use)
-      expect(call.payload.config.passes.Image.inputs.iChannel0.resolved_path).toBe('https://webview-uri/texture.png');
+      // config object in payload is also stripped (plain JSON-parsed object — no reactive proxy, no resolved_path)
+      expect(call.payload.config.passes.Image.inputs.iChannel0.resolved_path).toBeUndefined();
     });
   });
 
@@ -613,6 +613,46 @@ describe('ConfigManager', () => {
   describe('dispose', () => {
     it('should not throw', () => {
       expect(() => configManager.dispose()).not.toThrow();
+    });
+  });
+
+  describe('config sent via postMessage must be a plain object (not a Svelte reactive proxy)', () => {
+    // Svelte $state values are reactive proxies that cannot be sent over MessagePort —
+    // postMessage will throw DataCloneError at runtime. The payload must contain plain objects.
+    function lastPayload() {
+      return (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].payload;
+    }
+
+    function expectPostMessageWillNotThrow() {
+      expect(() => structuredClone(lastPayload())).not.toThrow();
+    }
+
+    it('updateImagePass does not send a reactive proxy', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.updateImagePass({ inputs: { iChannel0: { type: 'keyboard' } } });
+      expectPostMessageWillNotThrow();
+    });
+
+    it('updateBuffer does not send a reactive proxy', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {} };
+      configManager.setConfig(config);
+      configManager.updateBuffer('BufferA', { path: 'new.glsl', inputs: {} });
+      expectPostMessageWillNotThrow();
+    });
+
+    it('addBuffer does not send a reactive proxy', () => {
+      configManager.setConfig(createTestConfig());
+      configManager.addBuffer();
+      expectPostMessageWillNotThrow();
+    });
+
+    it('removeBuffer does not send a reactive proxy', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'buf.glsl', inputs: {} };
+      configManager.setConfig(config);
+      configManager.removeBuffer('BufferA');
+      expectPostMessageWillNotThrow();
     });
   });
 

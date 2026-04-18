@@ -23,11 +23,20 @@
   import { VariableCaptureManager } from "../VariableCaptureManager";
   import { AudioVideoController } from "../AudioVideoController";
   import type { CompilationResult } from "../ShaderProcessor";
-  import { EditorOverlayManager, type EditorOverlayCallbacks } from "../EditorOverlayManager";
+  import { EditorOverlayManager, type EditorOverlayCallbacks } from "../EditorOverlayManager.svelte";
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { performancePanelStore } from "../stores/performancePanelStore";
-  import { editorOverlayStore } from "../stores/editorOverlayStore";
+  import {
+    getEditorOverlayVisible,
+    getOverlayActiveFile,
+    getVimMode,
+    setEditorOverlayVisible,
+    setOverlayActiveFile,
+    toggleEditorOverlay,
+    setLayoutSlot as setEditorOverlayLayoutSlot,
+    restoreFromStorage as restoreEditorOverlayFromStorage,
+  } from "../state/editorOverlayState.svelte";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
@@ -71,8 +80,8 @@
     : allocateWebLayoutSlot();
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
-  let shaderDebugManager: ShaderDebugManager | undefined;
-  let variableCaptureManager: VariableCaptureManager | undefined;
+  let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
+  let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
   let audioVideoController: AudioVideoController | undefined;
   let pendingMessages: MessageEvent[] = [];
   let routerInitialized = false;
@@ -93,6 +102,7 @@
     debugError: null,
     isVariableInspectorEnabled: false,
     capturedVariables: [],
+    activeBufferName: 'Image',
   });
 
   // Audio state (mirrored from AudioVideoController for Svelte reactivity)
@@ -117,9 +127,9 @@
   let uniformTimestamps = $state<Record<string, number[]>>({});
   let uniformActualFps = $state<Record<string, number>>({});
 
-  // Editor overlay state (mirrored from EditorOverlayManager for Svelte reactivity)
-  let editorOverlayVisible = $state(false);
-  let editorVimMode = $state(false);
+  // Editor overlay state
+  let editorOverlayVisible = $derived(hasShader && getEditorOverlayVisible());
+  let editorVimMode = $derived(getVimMode());
   let currentShaderCode = $state('');
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
@@ -247,7 +257,7 @@
     configPanelStore.setLayoutSlot(layoutSlot);
     debugPanelStore.setLayoutSlot(layoutSlot);
     performancePanelStore.setLayoutSlot(layoutSlot);
-    editorOverlayStore.setLayoutSlot(layoutSlot);
+    setEditorOverlayLayoutSlot(layoutSlot);
 
     const unsubConfig = configPanelStore.subscribe((state) => {
       void state;
@@ -401,12 +411,11 @@
 
   function handleOverlayBufferSelect(name: string) {
     configSelectedBuffer = name;
+  }
 
-    if (!isLocked && name !== 'Image') {
-      return;
-    }
-
-    editorOverlayManager?.handleConfigFileSelect(name, shaderPath);
+  function handleOverlayBufferSwitch(name: string) {
+    configSelectedBuffer = name;
+    setOverlayActiveFile(name);
   }
 
   function handleZoomChange(zoom: number) {
@@ -615,7 +624,7 @@
         configPanelStore.restoreFromStorage();
         debugPanelStore.restoreFromStorage();
         performancePanelStore.restoreFromStorage();
-        editorOverlayStore.restoreFromStorage();
+        restoreEditorOverlayFromStorage();
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
@@ -627,7 +636,7 @@
       hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
       if (!hasShader) {
-        editorOverlayStore.setVisible(false);
+        setEditorOverlayVisible(false);
       }
       if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
         renderingEngine.togglePause();
@@ -711,7 +720,7 @@
 
     if (type === 'toggleEditorOverlay') {
       if (hasShader) {
-        editorOverlayStore.toggle();
+        toggleEditorOverlay();
       }
       return;
     }
@@ -827,8 +836,6 @@
 
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
-      editorOverlayVisible = hasShader && state.visible;
-      editorVimMode = state.vimMode;
       editorFilePath = state.filePath;
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
@@ -854,6 +861,12 @@
       void handleMessage(event);
     },
   };
+
+  $effect(() => {
+    if (editorOverlayVisible && editorOverlayManager) {
+      editorOverlayManager.handleConfigFileSelect(getOverlayActiveFile(), shaderPath);
+    }
+  });
 
   function addError(message: string) {
     errors = [...errors, message];
@@ -985,20 +998,22 @@
       <div class="no-active-shader-state">No active shader</div>
     {/if}
     {#if initialized}
-      <EditorOverlay
-        isVisible={editorOverlayVisible}
-        bottomInset={previewAlone && previewVisible ? 44 : 0}
-        shaderCode={editorFileCode}
-        shaderPath={editorFilePath}
-        {transport}
-        onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
-        compileMode={$compileModeStore.mode}
-        vimMode={editorVimMode}
-        bufferNames={editorBufferNames}
-        activeBufferName={editorBufferName}
-        onBufferSwitch={handleOverlayBufferSelect}
-        {errors}
-      />
+      {#key editorFilePath}
+        <EditorOverlay
+          isVisible={editorOverlayVisible}
+          bottomInset={previewAlone && previewVisible ? 44 : 0}
+          shaderCode={editorFileCode}
+          shaderPath={editorFilePath}
+          {transport}
+          onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
+          compileMode={$compileModeStore.mode}
+          vimMode={editorVimMode}
+          bufferNames={editorBufferNames}
+          activeBufferName={editorBufferName}
+          onBufferSwitch={handleOverlayBufferSwitch}
+          {errors}
+        />
+      {/key}
     {/if}
     {#if initialized && previewAlone && previewVisible}
       <MenuBar {...menuBarProps} />
