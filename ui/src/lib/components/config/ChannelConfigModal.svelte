@@ -42,7 +42,9 @@
 
   // Capture onSave in a stable ref so it remains callable during child onDestroy
   let onSaveRef = onSave;
-  $effect(() => { onSaveRef = onSave; });
+  $effect(() => {
+    onSaveRef = onSave; 
+  });
 
   let editingName = $state(false);
   let nameInput = $state("");
@@ -105,11 +107,15 @@
   $effect(() => {
     const open = isOpen;
     const ci = channelInput;
-    if (!open || !ci || !('resolved_path' in ci)) return;
+    if (!open || !ci || !('resolved_path' in ci)) {
+      return;
+    }
     const parentResolved = (ci as any).resolved_path;
     const parentPath = 'path' in ci ? ci.path : undefined;
     untrack(() => {
-      if (!tempInput) return;
+      if (!tempInput) {
+        return;
+      }
       const tempPath = 'path' in tempInput ? tempInput.path : undefined;
       if (parentResolved && parentPath === tempPath && (tempInput as any).resolved_path !== parentResolved) {
         tempInput = { ...tempInput, resolved_path: parentResolved } as ConfigInput;
@@ -342,7 +348,9 @@
         {:else}
           <h2 id="modal-title" class="channel-title">
             <span>{channelName}</span>
-            <button class="rename-btn" onclick={(e) => { e.stopPropagation(); startRename(); }} title="Rename channel" aria-label="Rename channel">
+            <button class="rename-btn" onclick={(e) => {
+              e.stopPropagation(); startRename(); 
+            }} title="Rename channel" aria-label="Rename channel">
               <i class="codicon codicon-edit"></i>
             </button>
           </h2>

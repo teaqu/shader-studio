@@ -15,7 +15,7 @@
   }: Props = $props();
 
   let expression = $state(param.expression || param.defaultExpression);
-  let lastSyncedExpression = expression;
+  let lastSyncedExpression = $state(param.expression || param.defaultExpression);
   let presetMenu: HTMLDetailsElement | undefined = $state(undefined);
   let jarEl: HTMLDivElement | undefined = $state(undefined);
   let jar: ReturnType<typeof CodeJar> | undefined;

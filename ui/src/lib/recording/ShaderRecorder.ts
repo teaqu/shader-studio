@@ -182,7 +182,7 @@ export class ShaderRecorder {
         flipped.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
       }
 
-      const imageData = new ImageData(flipped, width, height);
+      const imageData = new ImageData(new Uint8ClampedArray(flipped), width, height);
       encoder.addFrame(imageData);
 
       recordingStore.updateProgress(i + 1, totalFrames);

@@ -84,17 +84,23 @@
 
   // Update config manager when props change
   $effect(() => {
-    if (!configManager) return;
+    if (!configManager) {
+      return;
+    }
     configManager.setConfig(config);
   });
 
   $effect(() => {
-    if (!configManager || !pathMap) return;
+    if (!configManager || !pathMap) {
+      return;
+    }
     configManager.setPathMap(pathMap);
   });
 
   $effect(() => {
-    if (!configManager || !shaderPath) return;
+    if (!configManager || !shaderPath) {
+      return;
+    }
     configManager.setShaderPath(shaderPath);
   });
 
@@ -266,7 +272,9 @@
               class="tab-close"
               role="button"
               tabindex="0"
-              onclick={(e) => { e.stopPropagation(); removeBuffer(tabName); }}
+              onclick={(e) => {
+                e.stopPropagation(); removeBuffer(tabName); 
+              }}
               onkeydown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();

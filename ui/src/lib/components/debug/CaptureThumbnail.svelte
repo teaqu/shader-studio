@@ -37,7 +37,7 @@
     }
     canvas.width = gridWidth;
     canvas.height = gridHeight;
-    ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels), gridWidth, gridHeight), 0, 0);
   }
 
   onMount(() => {
@@ -95,7 +95,7 @@
     }
     canvas.width = gridWidth;
     canvas.height = gridHeight;
-    ctx.putImageData(new ImageData(pixels, gridWidth, gridHeight), 0, 0);
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels), gridWidth, gridHeight), 0, 0);
   }
 </script>
 

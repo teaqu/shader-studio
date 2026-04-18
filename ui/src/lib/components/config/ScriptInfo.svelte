@@ -59,7 +59,9 @@
   ];
 
   let localFps = $state(pollingFps);
-  $effect(() => { localFps = pollingFps; });
+  $effect(() => {
+    localFps = pollingFps; 
+  });
 
   function handleSliderInput(e: Event) {
     localFps = parseInt((e.target as HTMLInputElement).value);

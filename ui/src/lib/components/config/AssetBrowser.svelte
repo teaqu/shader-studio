@@ -44,7 +44,9 @@
   // Reset page when search changes
   $effect(() => {
     searchQuery; // track searchQuery
-    untrack(() => { currentPage = 1; });
+    untrack(() => {
+      currentPage = 1; 
+    });
   });
 
   let totalPages = $derived(Math.ceil(filteredFiles.length / PAGE_SIZE));

@@ -235,7 +235,9 @@ describe('MenuBar', () => {
       await tick();
 
       let state: any;
-      const unsubscribe = resolutionStore.subscribe((v) => { state = v; });
+      const unsubscribe = resolutionStore.subscribe((v) => {
+        state = v; 
+      });
       unsubscribe();
       expect(state.customWidth).toBe('320');
       expect(state.customHeight).toBe('240');
@@ -270,7 +272,9 @@ describe('MenuBar', () => {
       await tick();
 
       let state: any;
-      const unsubscribe = resolutionStore.subscribe((v) => { state = v; });
+      const unsubscribe = resolutionStore.subscribe((v) => {
+        state = v; 
+      });
       unsubscribe();
       expect(state.customWidth).toBe('320');
       expect(state.customHeight).toBe('240');

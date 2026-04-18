@@ -959,7 +959,9 @@
     const canvas = graphCanvas;
     const paused = graphPaused;
     const activeData = paused ? frozenData : data;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     if (activeData?.frameTimeHistory) {
       drawGraph(canvas, activeData);
     }

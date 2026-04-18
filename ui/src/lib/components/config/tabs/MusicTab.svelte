@@ -158,14 +158,18 @@
     if (uri) {
       let cancelled = false;
       getWaveformPeaks(uri, 350).then(async peaks => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         waveformPeaks = peaks;
         await tick();
         if (peaks && waveformCanvas) {
           drawWaveformTimeline();
         }
       });
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true; 
+      };
     } else {
       waveformPeaks = null;
     }
