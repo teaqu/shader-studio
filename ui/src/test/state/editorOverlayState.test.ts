@@ -10,7 +10,8 @@ describe('editorOverlayStore', () => {
   });
 
   async function importState() {
-    return import('../../lib/state/editorOverlayState.svelte');
+    const modulePath = '../../lib/state/editorOverlayState.svelte.ts';
+    return import(/* @vite-ignore */ modulePath);
   }
 
   it('should have default initial state when localStorage is empty', async () => {
