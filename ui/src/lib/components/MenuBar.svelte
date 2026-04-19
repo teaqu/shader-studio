@@ -205,6 +205,9 @@
       if (state.customWidth !== undefined && state.customHeight !== undefined) {
         customWidthInput = Number(state.customWidth) || null;
         customHeightInput = Number(state.customHeight) || null;
+      } else {
+        customWidthInput = null;
+        customHeightInput = null;
       }
     });
 

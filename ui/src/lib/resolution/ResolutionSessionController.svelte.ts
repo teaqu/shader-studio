@@ -10,6 +10,7 @@ import {
   createDefaultConfig,
   createInitialResolutionSessionState,
   getBufferConfigResolution,
+  getEffectiveBufferResolution,
   getEffectiveImageResolution,
   getImageConfigResolution,
   getResolutionMenuViewModel,
@@ -50,6 +51,9 @@ export interface ControllerDeps {
 
 export class ResolutionSessionController {
   private _state = $state(createInitialResolutionSessionState());
+  // When sync is off and a different shader starts loading, defer re-applying
+  // the session runtime override until that load has finished successfully.
+  private shouldApplySessionRuntimeAfterShaderLoad = false;
 
   public constructor(private readonly deps: ControllerDeps) {}
 
@@ -69,20 +73,38 @@ export class ResolutionSessionController {
       const settings = getEffectiveImageResolution(this._state, config);
       this.applyImagePreviewState(settings, this._state.syncWithConfig ? "config" : "session");
     } else {
-      const resolution = getBufferConfigResolution(config, target.bufferName);
-      const effectiveResolution = this._state.syncWithConfig
-        ? resolution
-        : (this._state.bufferResolutionOverrides[target.bufferName] ?? resolution);
+      const effectiveResolution = getEffectiveBufferResolution(this._state, config, target.bufferName);
       this.applyBufferPreviewState(effectiveResolution);
     }
   }
 
   public handleShaderLoaded(config: ShaderConfig | null, isSameShader: boolean): void {
+    this.shouldApplySessionRuntimeAfterShaderLoad = false;
     this.resetForShaderLoad(isSameShader);
     this.syncStoresToCurrentTarget(config);
+
     if (!this._state.syncWithConfig) {
-      this.applySessionRuntimeConfig();
+      if (isSameShader) {
+        this.applySessionRuntimeConfig();
+      } else {
+        this.shouldApplySessionRuntimeAfterShaderLoad = true;
+      }
     }
+  }
+
+  public handleShaderLoadSucceeded(): void {
+    const shouldApply = this.shouldApplySessionRuntimeAfterShaderLoad;
+    this.shouldApplySessionRuntimeAfterShaderLoad = false;
+
+    if (!shouldApply) {
+      return;
+    }
+
+    this.applySessionRuntimeConfig();
+  }
+
+  public handleShaderLoadFailed(): void {
+    this.shouldApplySessionRuntimeAfterShaderLoad = false;
   }
 
   public handleConfigUpdated(updatedConfig: ShaderConfig): void {
@@ -98,24 +120,27 @@ export class ResolutionSessionController {
   }
 
   public setSyncWithConfig(enabled: boolean): void {
-    this._state.syncWithConfig = enabled;
+    this.shouldApplySessionRuntimeAfterShaderLoad = false;
 
     if (enabled) {
+      const syncedConfig = buildRuntimeConfig(this._state, this.deps.currentConfig);
+      this._state.syncWithConfig = true;
       this._state.imageResolutionOverride = undefined;
       this._state.imageAspectOverride = undefined;
       this._state.bufferResolutionOverrides = {};
-      this.syncStoresToCurrentTarget();
-      this.deps.updatePipelineConfig(createDefaultConfig(this.deps.currentConfig));
+      this.persistConfigUpdate(syncedConfig);
       return;
     }
 
+    this._state.syncWithConfig = false;
+
     const config = this.deps.currentConfig;
+    const currentImageResolution = getImageConfigResolution(config);
+    this._state.imageResolutionOverride = currentImageResolution ? { ...currentImageResolution } : undefined;
+    this._state.imageAspectOverride = currentImageResolution?.aspectRatio ?? this.deps.getCurrentAspectRatioMode();
+
     const target = this.getCurrentTarget(config);
-    if (target.kind === "image") {
-      const currentImageResolution = getImageConfigResolution(config);
-      this._state.imageResolutionOverride = currentImageResolution ? { ...currentImageResolution } : undefined;
-      this._state.imageAspectOverride = currentImageResolution?.aspectRatio ?? this.deps.getCurrentAspectRatioMode();
-    } else {
+    if (target.kind === "buffer") {
       const currentBufferResolution = getBufferConfigResolution(config, target.bufferName);
       this._state.bufferResolutionOverrides = {
         ...this._state.bufferResolutionOverrides,
@@ -144,7 +169,7 @@ export class ResolutionSessionController {
       return;
     }
 
-    const base = this._state.imageResolutionOverride ?? getImageConfigResolution(this.deps.currentConfig) ?? {};
+    const base = this._state.imageResolutionOverride ?? {};
     this._state.imageAspectOverride = mode;
     this._state.imageResolutionOverride = {
       ...base,
@@ -172,11 +197,11 @@ export class ResolutionSessionController {
     }
 
     this._state.imageResolutionOverride = {
-      ...(this._state.imageResolutionOverride ?? getImageConfigResolution(this.deps.currentConfig) ?? {}),
+      ...(this._state.imageResolutionOverride ?? {}),
       scale,
       aspectRatio: this._state.imageAspectOverride
         ?? this._state.imageResolutionOverride?.aspectRatio
-        ?? getImageConfigResolution(this.deps.currentConfig)?.aspectRatio,
+        ?? undefined,
     };
     this.applySessionRuntimeConfig();
   }
@@ -208,7 +233,7 @@ export class ResolutionSessionController {
       return;
     }
 
-    const base = this._state.imageResolutionOverride ?? getImageConfigResolution(this.deps.currentConfig) ?? {};
+    const base = this._state.imageResolutionOverride ?? {};
     this._state.imageResolutionOverride = {
       ...base,
       customWidth: width,

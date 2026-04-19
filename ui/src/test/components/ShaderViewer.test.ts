@@ -649,6 +649,75 @@ describe('ShaderViewer', () => {
     expect(res.source).toBe('session');
   });
 
+  it('should preserve a manual 1x1 Session Resolution override when switching to a different shader with sync disabled', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    const syncToggle = screen.getByLabelText('Sync With Config') as HTMLInputElement;
+    await fireEvent.click(syncToggle);
+    await tick();
+
+    const [widthInput, heightInput] = Array.from(
+      document.querySelectorAll('input.custom-res-input'),
+    ) as HTMLInputElement[];
+    await fireEvent.input(widthInput, { target: { valueAsNumber: 1 } });
+    await fireEvent.input(heightInput, { target: { valueAsNumber: 1 } });
+    await tick();
+
+    mockUpdateCurrentConfig.mockClear();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/other.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 8, customWidth: '3840', customHeight: '2160', aspectRatio: '16:9' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/other.glsl' },
+    });
+
+    const res = get(resolutionStore);
+    expect(res.customWidth).toBe('1');
+    expect(res.customHeight).toBe('1');
+    expect(res.source).toBe('session');
+
+    expect(mockUpdateCurrentConfig).toHaveBeenCalled();
+    expect(mockUpdateCurrentConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+      passes: expect.objectContaining({
+        Image: expect.objectContaining({
+          resolution: expect.objectContaining({
+            customWidth: '1',
+            customHeight: '1',
+          }),
+        }),
+      }),
+    }));
+  });
+
   it('should send scaled variable capture bounds after a manual 1x1 override', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -783,6 +852,55 @@ describe('ShaderViewer', () => {
     expect(popupInputs).toHaveLength(2);
     expect(popupInputs[0]?.value).toBe('64');
     expect(popupInputs[1]?.value).toBe('32');
+  });
+
+  it('should clear stale popup custom resolution inputs when sync is enabled and the next shader has no custom image resolution', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { customWidth: '64', customHeight: '32', aspectRatio: 'fill' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    const resolutionButton = screen.getByLabelText('Change resolution settings');
+    await fireEvent.click(resolutionButton);
+    await tick();
+
+    let popupInputs = Array.from(document.querySelectorAll('.resolution-menu .custom-res-input')) as HTMLInputElement[];
+    expect(popupInputs).toHaveLength(2);
+    expect(popupInputs[0]?.value).toBe('64');
+    expect(popupInputs[1]?.value).toBe('32');
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/other.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: {
+        version: '1',
+        passes: {
+          Image: {
+            resolution: { scale: 1, aspectRatio: 'fill' },
+          },
+        },
+      },
+      pathMap: { Image: '/test/other.glsl' },
+    });
+
+    popupInputs = Array.from(document.querySelectorAll('.resolution-menu .custom-res-input')) as HTMLInputElement[];
+    expect(popupInputs).toHaveLength(2);
+    expect(popupInputs[0]?.value).toBe('');
+    expect(popupInputs[1]?.value).toBe('');
   });
 
   it('should recompile debug output and refresh variable capture from the Live Render Resolution after Image Config Resolution changes', async () => {
@@ -2722,7 +2840,7 @@ describe('ShaderViewer', () => {
       const engine = await setupEngine();
       vi.spyOn(engine, 'controlVideo');
 
-      const actions = ['play', 'pause', 'mute', 'unmute', 'reset'];
+      const actions = ['play', 'pause', 'mute', 'unmute', 'reset'] as const;
       for (const action of actions) {
         engine.controlVideo('/test/video.mp4', action);
       }

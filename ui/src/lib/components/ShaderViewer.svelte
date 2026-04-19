@@ -49,7 +49,7 @@
   let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
 
   // Core state
-  let glCanvas: HTMLCanvasElement;
+  let glCanvas = $state<HTMLCanvasElement>(undefined!);
   let initialized = $state(false);
   let isLocked = $state(false);
   let hasShader = $state(false);
@@ -73,7 +73,7 @@
   // Managers and controllers
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
-  let renderingEngine: RenderingEngine;
+  let renderingEngine = $state<RenderingEngine>(undefined!);
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
@@ -82,7 +82,7 @@
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
-  let audioVideoController: AudioVideoController | undefined;
+  let audioVideoController = $state<AudioVideoController | undefined>(undefined);
   let pendingMessages: MessageEvent[] = [];
   let routerInitialized = false;
   let editorOverlayManager: EditorOverlayManager | undefined;
@@ -700,6 +700,11 @@
       handleShaderSource(event);
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
+        if (result?.success === false) {
+          resolutionController.handleShaderLoadFailed();
+        } else {
+          resolutionController.handleShaderLoadSucceeded();
+        }
         if (result) {
           errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
           if (result.success && scriptInfo) {
@@ -708,6 +713,7 @@
         }
         isLocked = shaderLocker.isLocked();
       } catch (err) {
+        resolutionController.handleShaderLoadFailed();
         addError(`Shader message handling failed: ${err}`);
       }
       return;

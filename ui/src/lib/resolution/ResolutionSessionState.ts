@@ -55,9 +55,12 @@ export function createDefaultConfig(base: ShaderConfig | null): ShaderConfig {
 }
 
 export function resetResolutionSessionState(state: ResolutionSessionState): ResolutionSessionState {
+  if (!state.syncWithConfig) {
+    return { ...state };
+  }
+
   return {
     ...state,
-    syncWithConfig: true,
     imageResolutionOverride: undefined,
     imageAspectOverride: undefined,
     bufferResolutionOverrides: {},
@@ -164,7 +167,7 @@ export function getEffectiveImageResolution(
 ): ResolutionSettings | undefined {
   return state.syncWithConfig
     ? getImageConfigResolution(config)
-    : (state.imageResolutionOverride ?? getImageConfigResolution(config));
+    : state.imageResolutionOverride;
 }
 
 export function getEffectiveBufferResolution(
@@ -174,7 +177,7 @@ export function getEffectiveBufferResolution(
 ): BufferResolution | undefined {
   return state.syncWithConfig
     ? getBufferConfigResolution(config, bufferName)
-    : (state.bufferResolutionOverrides[bufferName] ?? getBufferConfigResolution(config, bufferName));
+    : state.bufferResolutionOverrides[bufferName];
 }
 
 export function buildRuntimeConfig(
