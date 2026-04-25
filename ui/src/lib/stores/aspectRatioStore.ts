@@ -11,7 +11,7 @@ export interface AspectRatioState {
 
 const STORAGE_KEY = 'shader-studio-aspect-ratio';
 const VALID_MODES: AspectRatioMode[] = ['16:9', '4:3', '1:1', 'fill', 'auto'];
-const DEFAULT_MODE: AspectRatioMode = '16:9';
+const DEFAULT_MODE: AspectRatioMode = 'auto';
 const SESSION_SOURCE: AspectRatioSource = 'session';
 const CONFIG_SOURCE: AspectRatioSource = 'config';
 

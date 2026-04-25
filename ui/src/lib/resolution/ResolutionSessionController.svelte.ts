@@ -277,12 +277,14 @@ export class ResolutionSessionController {
     }
 
     if (target.kind === "image") {
-      this._state.imageResolutionOverride = undefined;
-      this._state.imageAspectOverride = undefined;
+      const configResolution = getImageConfigResolution(config);
+      this._state.imageResolutionOverride = configResolution ? { ...configResolution } : undefined;
+      this._state.imageAspectOverride = configResolution?.aspectRatio;
     } else {
+      const configResolution = getBufferConfigResolution(config, target.bufferName);
       this._state.bufferResolutionOverrides = {
         ...this._state.bufferResolutionOverrides,
-        [target.bufferName]: undefined,
+        [target.bufferName]: configResolution ? { ...configResolution } : undefined,
       };
     }
     this.applySessionRuntimeConfig();
@@ -416,7 +418,7 @@ export class ResolutionSessionController {
     }
 
     this.deps.resolutionStore.setSessionSettings(settings);
-    this.deps.aspectRatioStore.setSessionMode(settings?.aspectRatio ?? this._state.imageAspectOverride ?? "fill");
+    this.deps.aspectRatioStore.setSessionMode(settings?.aspectRatio ?? this._state.imageAspectOverride ?? "auto");
   }
 
   private applyBufferPreviewState(resolution?: { width?: number; height?: number; scale?: number }): void {

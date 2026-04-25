@@ -114,7 +114,7 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
     expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith(undefined);
   });
 
-  it('does not fall back to shader config for a buffer target when the session override is cleared', () => {
+  it('preserves snapshot of old config buffer resolution after reset when loading a new shader', () => {
     const deps = makeDeps({
       get debugState() {
         return {
@@ -155,7 +155,11 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       },
     }, false);
 
-    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({ scale: 1 });
+    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({
+      scale: 1,
+      customWidth: '64',
+      customHeight: '32',
+    });
   });
 
   it('preserves the image session override when loading a new shader', () => {
@@ -350,5 +354,138 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
       }),
     }));
     expect(ctrl.menuVM.syncWithConfig).toBe(true);
+  });
+});
+
+describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig=false', () => {
+  it('resets image override to current config resolution when config has one', () => {
+    const deps = makeDeps({
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {},
+            resolution: { scale: 2, customWidth: '1280', customHeight: '720', aspectRatio: '16:9' },
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    ctrl.setImageCustomResolution('100', '100');
+
+    vi.mocked(deps.updatePipelineConfig).mockClear();
+    ctrl.resetCurrentTarget();
+
+    expect(deps.updatePipelineConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+      passes: expect.objectContaining({
+        Image: expect.objectContaining({
+          resolution: expect.objectContaining({
+            scale: 2,
+            customWidth: '1280',
+            customHeight: '720',
+            aspectRatio: '16:9',
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it('clears image override when config has no resolution', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    ctrl.setImageCustomResolution('100', '100');
+
+    vi.mocked(deps.updatePipelineConfig).mockClear();
+    ctrl.resetCurrentTarget();
+
+    const lastCall = vi.mocked(deps.updatePipelineConfig).mock.calls.at(-1)?.[0];
+    expect(lastCall?.passes.Image.resolution).toBeUndefined();
+  });
+
+  it('sets aspect ratio to auto when resetting and config has no aspect ratio', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    ctrl.setAspectRatio('16:9');
+
+    vi.mocked(deps.aspectRatioStore.setSessionMode).mockClear();
+    ctrl.resetCurrentTarget();
+
+    expect(deps.aspectRatioStore.setSessionMode).toHaveBeenLastCalledWith('auto');
+  });
+
+  it('resets buffer override to current config resolution when config has one', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+          activeBufferName: 'BufferA',
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: {
+            path: '/test/bufferA.glsl',
+            inputs: {},
+            resolution: { width: 64, height: 32 },
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    ctrl.setBufferFixedResolution('200', '200');
+
+    vi.mocked(deps.updatePipelineConfig).mockClear();
+    ctrl.resetCurrentTarget();
+
+    expect(deps.updatePipelineConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+      passes: expect.objectContaining({
+        BufferA: expect.objectContaining({
+          resolution: { width: 64, height: 32 },
+        }),
+      }),
+    }));
+  });
+
+  it('clears buffer override when config has no resolution for that buffer', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+          activeBufferName: 'BufferA',
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: {
+            path: '/test/bufferA.glsl',
+            inputs: {},
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    ctrl.setBufferFixedResolution('200', '200');
+
+    vi.mocked(deps.updatePipelineConfig).mockClear();
+    ctrl.resetCurrentTarget();
+
+    const lastCall = vi.mocked(deps.updatePipelineConfig).mock.calls.at(-1)?.[0];
+    const bufferPass = lastCall?.passes.BufferA as { resolution?: unknown } | undefined;
+    expect(bufferPass?.resolution).toBeUndefined();
   });
 });
