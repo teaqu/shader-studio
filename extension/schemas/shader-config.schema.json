@@ -52,6 +52,9 @@
       "properties": {
         "inputs": {
           "$ref": "#/definitions/PassInputs"
+        },
+        "resolution": {
+          "$ref": "#/definitions/ImageResolution"
         }
       },
       "additionalProperties": false
@@ -67,9 +70,83 @@
         },
         "inputs": {
           "$ref": "#/definitions/PassInputs"
+        },
+        "resolution": {
+          "$ref": "#/definitions/BufferResolution"
         }
       },
       "additionalProperties": false
+    },
+    "PositiveNumber": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "ResolutionDimension": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/PositiveNumber"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(px)?$"
+        }
+      ]
+    },
+    "ImageResolution": {
+      "type": "object",
+      "description": "Image pass resolution override",
+      "properties": {
+        "scale": {
+          "$ref": "#/definitions/PositiveNumber",
+          "description": "Render scale multiplier"
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": ["16:9", "4:3", "1:1", "fill", "auto"],
+          "description": "Canvas aspect ratio mode"
+        },
+        "customWidth": {
+          "$ref": "#/definitions/ResolutionDimension",
+          "description": "Custom render width in pixels"
+        },
+        "customHeight": {
+          "$ref": "#/definitions/ResolutionDimension",
+          "description": "Custom render height in pixels"
+        }
+      },
+      "dependencies": {
+        "customWidth": ["customHeight"],
+        "customHeight": ["customWidth"]
+      },
+      "additionalProperties": false
+    },
+    "BufferResolution": {
+      "type": "object",
+      "description": "Buffer pass resolution override",
+      "oneOf": [
+        {
+          "required": ["width", "height"],
+          "properties": {
+            "width": {
+              "$ref": "#/definitions/PositiveNumber"
+            },
+            "height": {
+              "$ref": "#/definitions/PositiveNumber"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["scale"],
+          "properties": {
+            "scale": {
+              "$ref": "#/definitions/PositiveNumber",
+              "description": "Multiplier relative to the Image pass resolution"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "PassInputs": {
       "type": "object",
