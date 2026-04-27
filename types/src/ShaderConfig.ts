@@ -47,21 +47,30 @@ export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigIn
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
 
-// Image pass resolution: scale + aspect ratio + optional custom override
-export interface ResolutionSettings {
-    scale?: number;              // 0.25, 0.5, 1, 2, 4 (default: 1)
-    aspectRatio?: AspectRatioMode; // default: 'fill'
-    customWidth?: number | string;  // px number or "50%" string (overrides scale/aspect)
-    customHeight?: number | string; // must be set with customWidth
+interface BaseImageResolutionSettings {
+    scale?: number; // 0.25, 0.5, 1, 2, 4 (default: 1)
 }
+
+export interface AspectRatioResolutionSettings extends BaseImageResolutionSettings {
+    aspectRatio?: AspectRatioMode; // default: 'fill'
+    width?: never;
+    height?: never;
+}
+
+export interface FixedImageResolutionSettings extends BaseImageResolutionSettings {
+    width: number;
+    height: number;
+    aspectRatio?: never;
+}
+
+// Image pass resolution: either scale/aspect ratio, or fixed base dimensions plus optional scale.
+export type ResolutionSettings = AspectRatioResolutionSettings | FixedImageResolutionSettings;
 
 // Buffer pass resolution: fixed WxH OR scale multiplier on Image resolution
 // Exactly one of (width+height) or scale should be set.
-export interface BufferResolution {
-    width?: number;
-    height?: number;
-    scale?: number;  // multiplier on Image resolution (0.25, 0.5, 1, 2, 4)
-}
+export type BufferResolution =
+    | { width: number; height: number; scale?: never }
+    | { scale: number; width?: never; height?: never };
 
 export interface ImagePass {
     inputs?: Record<string, ConfigInput>;

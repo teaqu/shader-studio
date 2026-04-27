@@ -106,7 +106,7 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       passes: {
         Image: {
           inputs: {},
-          resolution: { scale: 8, customWidth: '3840', customHeight: '2160', aspectRatio: '16:9' },
+          resolution: { scale: 8, width: 3840, height: 2160 },
         },
       },
     }, false);
@@ -174,14 +174,14 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       passes: {
         Image: {
           inputs: {},
-          resolution: { scale: 8, customWidth: '3840', customHeight: '2160', aspectRatio: '16:9' },
+          resolution: { scale: 8, width: 3840, height: 2160 },
         },
       },
     }, false);
 
     expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith(expect.objectContaining({
-      customWidth: '1',
-      customHeight: '1',
+      width: 1,
+      height: 1,
     }));
   });
 
@@ -221,7 +221,7 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       passes: {
         Image: {
           inputs: {},
-          resolution: { scale: 8, customWidth: '3840', customHeight: '2160', aspectRatio: '16:9' },
+          resolution: { scale: 8, width: 3840, height: 2160 },
         },
       },
     }, false);
@@ -231,8 +231,8 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       passes: expect.objectContaining({
         Image: expect.objectContaining({
           resolution: expect.objectContaining({
-            customWidth: '1',
-            customHeight: '1',
+            width: 1,
+            height: 1,
           }),
         }),
       }),
@@ -284,8 +284,8 @@ describe('ResolutionSessionController — syncWithConfig=true rereads shader con
 
     expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({
       scale: 1,
-      customWidth: '64',
-      customHeight: '32',
+      width: 64,
+      height: 32,
     });
 
     debugState = {
@@ -315,7 +315,7 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
         passes: {
           Image: {
             inputs: {},
-            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+            resolution: { scale: 4, width: 1920, height: 1080 },
           },
         },
       },
@@ -335,8 +335,8 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
         passes: expect.objectContaining({
           Image: expect.objectContaining({
             resolution: expect.objectContaining({
-              customWidth: '1',
-              customHeight: '1',
+              width: 1,
+              height: 1,
             }),
           }),
         }),
@@ -347,8 +347,8 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
       passes: expect.objectContaining({
         Image: expect.objectContaining({
           resolution: expect.objectContaining({
-            customWidth: '1',
-            customHeight: '1',
+            width: 1,
+            height: 1,
           }),
         }),
       }),

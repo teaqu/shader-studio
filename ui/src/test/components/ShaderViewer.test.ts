@@ -581,8 +581,8 @@ describe('ShaderViewer', () => {
     });
 
     const res = get(resolutionStore);
-    expect(res.customWidth).toBe('1');
-    expect(res.customHeight).toBe('1');
+    expect(res.width).toBe('1');
+    expect(res.height).toBe('1');
     expect(res.source).toBe('session');
 
     const ar = get(aspectRatioStore);
@@ -602,7 +602,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+            resolution: { scale: 4, width: 1920, height: 1080 },
           },
         },
       },
@@ -636,7 +636,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+            resolution: { scale: 4, width: 1920, height: 1080 },
           },
         },
       },
@@ -644,8 +644,8 @@ describe('ShaderViewer', () => {
     });
 
     const res = get(resolutionStore);
-    expect(res.customWidth).toBe('1');
-    expect(res.customHeight).toBe('1');
+    expect(res.width).toBe('1');
+    expect(res.height).toBe('1');
     expect(res.source).toBe('session');
   });
 
@@ -661,7 +661,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+            resolution: { scale: 4, width: 1920, height: 1080 },
           },
         },
       },
@@ -693,7 +693,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { scale: 8, customWidth: '3840', customHeight: '2160', aspectRatio: '16:9' },
+            resolution: { scale: 8, width: 3840, height: 2160 },
           },
         },
       },
@@ -701,8 +701,8 @@ describe('ShaderViewer', () => {
     });
 
     const res = get(resolutionStore);
-    expect(res.customWidth).toBe('1');
-    expect(res.customHeight).toBe('1');
+    expect(res.width).toBe('1');
+    expect(res.height).toBe('1');
     expect(res.source).toBe('session');
 
     expect(mockUpdateCurrentConfig).toHaveBeenCalled();
@@ -710,8 +710,8 @@ describe('ShaderViewer', () => {
       passes: expect.objectContaining({
         Image: expect.objectContaining({
           resolution: expect.objectContaining({
-            customWidth: '1',
-            customHeight: '1',
+            width: 1,
+            height: 1,
           }),
         }),
       }),
@@ -730,7 +730,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { scale: 4, customWidth: '1920', customHeight: '1080', aspectRatio: '16:9' },
+            resolution: { scale: 4, width: 1920, height: 1080 },
           },
         },
       },
@@ -797,12 +797,12 @@ describe('ShaderViewer', () => {
     await tick();
 
     const resolutionState = get(resolutionStore);
-    expect(resolutionState.customWidth).toBe('64');
-    expect(resolutionState.customHeight).toBe('32');
+    expect(resolutionState.width).toBe('64');
+    expect(resolutionState.height).toBe('32');
     expect(resolutionState.source).toBe('config');
 
     const aspectState = get(aspectRatioStore);
-    expect(aspectState.source).toBe('config');
+    expect(aspectState.source).toBe('session');
 
     const resolutionButton = screen.getByLabelText('Change resolution settings');
     expect(resolutionButton.textContent).toContain('64');
@@ -866,7 +866,7 @@ describe('ShaderViewer', () => {
         version: '1',
         passes: {
           Image: {
-            resolution: { customWidth: '64', customHeight: '32', aspectRatio: 'fill' },
+            resolution: { width: 64, height: 32 },
           },
         },
       },
@@ -947,8 +947,8 @@ describe('ShaderViewer', () => {
     expect(mockTriggerDebugRecompile).toHaveBeenCalled();
 
     const resolutionState = get(resolutionStore);
-    expect(resolutionState.customWidth).toBe('64');
-    expect(resolutionState.customHeight).toBe('32');
+    expect(resolutionState.width).toBe('64');
+    expect(resolutionState.height).toBe('32');
     expect(resolutionState.source).toBe('config');
 
     expect(mockVCMFactory._lastNotifyParams?.canvasWidth).toBe(64);
@@ -1227,8 +1227,8 @@ describe('ShaderViewer', () => {
     expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
     expect(screen.queryByText('Buffer Resolution')).not.toBeInTheDocument();
     expect(get(resolutionStore).scale).toBe(2);
-    expect(get(resolutionStore).customWidth).toBeUndefined();
-    expect(get(resolutionStore).customHeight).toBeUndefined();
+    expect(get(resolutionStore).width).toBeUndefined();
+    expect(get(resolutionStore).height).toBeUndefined();
     expect(get(aspectRatioStore).mode).toBe('4:3');
   });
 

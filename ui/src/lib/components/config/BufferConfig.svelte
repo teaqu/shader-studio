@@ -58,7 +58,7 @@
   const imageResolution = $derived(imageConfig?.resolution);
   const imageScale = $derived(imageResolution?.scale ?? 1);
   const imageAspect = $derived(imageResolution?.aspectRatio ?? 'fill');
-  const imageHasCustom = $derived(imageResolution?.customWidth !== undefined);
+  const imageHasCustom = $derived(imageResolution?.width !== undefined && imageResolution?.height !== undefined);
   const bufferResolution = $derived(bufferPassConfig?.resolution);
   const bufferMode = $derived.by(() => {
     if (!bufferResolution) {
@@ -91,8 +91,8 @@
   let currentPath = $state("path" in config ? config.path : "");
   let activeModalChannel = $state<string | null>(null);
   let tempChannelInput = $state<ConfigInput | undefined>(undefined);
-  let customWidthInput = $state<number | null>(null);
-  let customHeightInput = $state<number | null>(null);
+  let widthInput = $state<number | null>(null);
+  let heightInput = $state<number | null>(null);
   let bufferWidthInput = $state('');
   let bufferHeightInput = $state('');
 
@@ -102,8 +102,8 @@
 
   $effect(() => {
     const res = imageResolution;
-    customWidthInput = res?.customWidth !== undefined ? (Number(res.customWidth) || null) : null;
-    customHeightInput = res?.customHeight !== undefined ? (Number(res.customHeight) || null) : null;
+    widthInput = res?.width !== undefined ? (Number(res.width) || null) : null;
+    heightInput = res?.height !== undefined ? (Number(res.height) || null) : null;
   });
 
   $effect(() => {
@@ -119,7 +119,7 @@
 
   function updateImageResolution(patch: Partial<ResolutionSettings>) {
     const current = imageConfig?.resolution ?? {};
-    const next: ResolutionSettings = { ...current, ...patch };
+    const next = { ...current, ...patch } as ResolutionSettings;
     updateConfig({ ...imageConfig, resolution: next });
   }
 
@@ -201,27 +201,34 @@
   }
 
   function handleCustomResolution() {
-    if (customWidthInput && customHeightInput) {
-      updateImageResolution({
-        customWidth: String(customWidthInput),
-        customHeight: String(customHeightInput),
+    if (widthInput && heightInput) {
+      const { aspectRatio: _aspectRatio, ...current } = imageConfig?.resolution ?? {};
+      updateConfig({
+        ...imageConfig,
+        resolution: {
+          ...current,
+          width: Math.round(widthInput),
+          height: Math.round(heightInput),
+        },
       });
-    } else if (!customWidthInput && !customHeightInput) {
-      updateImageResolution({ customWidth: undefined, customHeight: undefined });
+    } else if (!widthInput && !heightInput) {
+      const { width: _width, height: _height, ...resolution } = imageConfig?.resolution ?? {};
+      updateConfig({ ...imageConfig, resolution });
     }
   }
 
   function handleClearCustomResolution() {
-    customWidthInput = null;
-    customHeightInput = null;
-    updateImageResolution({ customWidth: undefined, customHeight: undefined });
+    widthInput = null;
+    heightInput = null;
+    const { width: _width, height: _height, ...resolution } = imageConfig?.resolution ?? {};
+    updateConfig({ ...imageConfig, resolution });
   }
 
   function handleImageResetResolution() {
     const { resolution: _resolution, ...rest } = imageConfig ?? {};
     config = rest as ImagePass;
-    customWidthInput = null;
-    customHeightInput = null;
+    widthInput = null;
+    heightInput = null;
     onUpdate(bufferName, config);
   }
 
@@ -366,7 +373,7 @@
           </div>
         </div>
         <div class="resolution-row">
-          <span class="resolution-label">Custom</span>
+          <span class="resolution-label">Fixed</span>
           <div class="custom-inputs">
             <input
               class="dim-input"
@@ -374,7 +381,7 @@
               placeholder="W"
               min="1"
               step="1"
-              bind:value={customWidthInput}
+              bind:value={widthInput}
               oninput={handleCustomResolution}
             />
             <span class="dim-sep">×</span>
@@ -384,7 +391,7 @@
               placeholder="H"
               min="1"
               step="1"
-              bind:value={customHeightInput}
+              bind:value={heightInput}
               oninput={handleCustomResolution}
             />
             {#if imageHasCustom}

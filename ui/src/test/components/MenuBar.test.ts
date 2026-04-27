@@ -239,8 +239,8 @@ describe('MenuBar', () => {
         state = v; 
       });
       unsubscribe();
-      expect(state.customWidth).toBe('320');
-      expect(state.customHeight).toBe('240');
+      expect(state.width).toBe('320');
+      expect(state.height).toBe('240');
 
       resolutionStore.clearCustomResolution();
     });
@@ -276,8 +276,8 @@ describe('MenuBar', () => {
         state = v; 
       });
       unsubscribe();
-      expect(state.customWidth).toBe('320');
-      expect(state.customHeight).toBe('240');
+      expect(state.width).toBe('320');
+      expect(state.height).toBe('240');
       expect(state.scale).toBe(2);
 
       resolutionStore.clearCustomResolution();

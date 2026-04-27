@@ -155,8 +155,9 @@ export class ResolutionSessionController {
     if (this._state.syncWithConfig) {
       const base = createDefaultConfig(this.deps.currentConfig);
       const imagePass = { ...base.passes.Image };
+      const { width: _width, height: _height, ...resolution } = imagePass.resolution ?? {};
       imagePass.resolution = {
-        ...imagePass.resolution,
+        ...resolution,
         aspectRatio: mode,
       };
       this.persistConfigUpdate({
@@ -170,9 +171,10 @@ export class ResolutionSessionController {
     }
 
     const base = this._state.imageResolutionOverride ?? {};
+    const { width: _width, height: _height, ...resolution } = base;
     this._state.imageAspectOverride = mode;
     this._state.imageResolutionOverride = {
-      ...base,
+      ...resolution,
       aspectRatio: mode,
     };
     this.applySessionRuntimeConfig();
@@ -196,31 +198,40 @@ export class ResolutionSessionController {
       return;
     }
 
-    this._state.imageResolutionOverride = {
-      ...(this._state.imageResolutionOverride ?? {}),
-      scale,
-      aspectRatio: this._state.imageAspectOverride
-        ?? this._state.imageResolutionOverride?.aspectRatio
-        ?? undefined,
-    };
+    const base = this._state.imageResolutionOverride ?? {};
+    this._state.imageResolutionOverride = this.hasFixedImageSize(base)
+      ? {
+        ...base,
+        scale,
+      }
+      : {
+        ...base,
+        scale,
+        aspectRatio: this._state.imageAspectOverride
+          ?? base.aspectRatio
+          ?? undefined,
+      };
     this.applySessionRuntimeConfig();
   }
 
   public setImageCustomResolution(width?: string, height?: string): void {
+    const parsedWidth = this.parseImageDimension(width);
+    const parsedHeight = this.parseImageDimension(height);
+
     if (this._state.syncWithConfig) {
       const base = createDefaultConfig(this.deps.currentConfig);
       const imagePass = { ...base.passes.Image };
-      if (width && height) {
+      if (parsedWidth !== undefined && parsedHeight !== undefined) {
+        const { aspectRatio: _aspectRatio, ...resolution } = imagePass.resolution ?? {};
         imagePass.resolution = {
-          ...imagePass.resolution,
-          customWidth: width,
-          customHeight: height,
+          ...resolution,
+          width: parsedWidth,
+          height: parsedHeight,
         };
       } else if (imagePass.resolution) {
+        const { width: _width, height: _height, ...resolution } = imagePass.resolution;
         imagePass.resolution = {
-          ...imagePass.resolution,
-          customWidth: undefined,
-          customHeight: undefined,
+          ...resolution,
         };
       }
       this.persistConfigUpdate({
@@ -234,12 +245,19 @@ export class ResolutionSessionController {
     }
 
     const base = this._state.imageResolutionOverride ?? {};
-    this._state.imageResolutionOverride = {
-      ...base,
-      customWidth: width,
-      customHeight: height,
-      aspectRatio: this._state.imageAspectOverride ?? base.aspectRatio,
-    };
+    if (parsedWidth !== undefined && parsedHeight !== undefined) {
+      const { aspectRatio: _aspectRatio, ...resolution } = base;
+      this._state.imageResolutionOverride = {
+        ...resolution,
+        width: parsedWidth,
+        height: parsedHeight,
+      };
+    } else {
+      const { width: _width, height: _height, ...resolution } = base;
+      this._state.imageResolutionOverride = {
+        ...resolution,
+      };
+    }
     this.applySessionRuntimeConfig();
   }
 
@@ -431,8 +449,8 @@ export class ResolutionSessionController {
     if (resolution.width !== undefined || resolution.height !== undefined) {
       this.deps.resolutionStore.setSessionSettings({
         scale: 1,
-        customWidth: resolution.width !== undefined ? String(resolution.width) : undefined,
-        customHeight: resolution.height !== undefined ? String(resolution.height) : undefined,
+        width: resolution.width,
+        height: resolution.height,
       });
       this.deps.aspectRatioStore.setSessionMode("fill");
       return;
@@ -440,6 +458,18 @@ export class ResolutionSessionController {
 
     this.deps.resolutionStore.setSessionSettings({ scale: resolution.scale ?? 1 });
     this.deps.aspectRatioStore.setSessionMode("fill");
+  }
+
+  private parseImageDimension(value?: string): number | undefined {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : undefined;
+  }
+
+  private hasFixedImageSize(settings: Partial<ResolutionSettings>): settings is Partial<ResolutionSettings> & { width: number; height: number } {
+    return settings.width !== undefined && settings.height !== undefined;
   }
 
   private applySessionRuntimeConfig(): void {

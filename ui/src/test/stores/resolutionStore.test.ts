@@ -22,8 +22,8 @@ describe('resolutionStore', () => {
     const state = get(store);
     expect(state.scale).toBe(1);
     expect(state.source).toBe('session');
-    expect(state.customWidth).toBeUndefined();
-    expect(state.customHeight).toBeUndefined();
+    expect(state.width).toBeUndefined();
+    expect(state.height).toBeUndefined();
   });
 
   // --- localStorage persistence (not saved to config) ---
@@ -39,8 +39,8 @@ describe('resolutionStore', () => {
     const store = await importStore();
     store.setCustomResolution('512', '256');
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.customWidth).toBe('512');
-    expect(stored.customHeight).toBe('256');
+    expect(stored.width).toBe('512');
+    expect(stored.height).toBe('256');
   });
 
   it('should remove custom dimensions from localStorage when clearing', async () => {
@@ -48,8 +48,8 @@ describe('resolutionStore', () => {
     store.setCustomResolution('512', '256');
     store.clearCustomResolution();
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.customWidth).toBeUndefined();
-    expect(stored.customHeight).toBeUndefined();
+    expect(stored.width).toBeUndefined();
+    expect(stored.height).toBeUndefined();
   });
 
   // --- Manual changes detach from config ownership ---
@@ -75,12 +75,12 @@ describe('resolutionStore', () => {
     store.setCustomResolution('1920', '1080');
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.customWidth).toBe('1920');
-    expect(stored.customHeight).toBe('1080');
+    expect(stored.width).toBe('1920');
+    expect(stored.height).toBe('1080');
 
     const state = get(store);
-    expect(state.customWidth).toBe('1920');
-    expect(state.customHeight).toBe('1080');
+    expect(state.width).toBe('1920');
+    expect(state.height).toBe('1080');
     expect(state.source).toBe('session');
   });
 
@@ -91,12 +91,12 @@ describe('resolutionStore', () => {
     store.clearCustomResolution();
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.customWidth).toBeUndefined();
-    expect(stored.customHeight).toBeUndefined();
+    expect(stored.width).toBeUndefined();
+    expect(stored.height).toBeUndefined();
 
     const state = get(store);
-    expect(state.customWidth).toBeUndefined();
-    expect(state.customHeight).toBeUndefined();
+    expect(state.width).toBeUndefined();
+    expect(state.height).toBeUndefined();
     expect(state.source).toBe('session');
   });
 
@@ -139,19 +139,19 @@ describe('resolutionStore', () => {
   });
 
   it('should load custom resolution from localStorage on init', async () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ scale: 1, customWidth: '512', customHeight: '256' }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ scale: 1, width: 512, height: 256 }));
     const store = await importStore();
     const state = get(store);
-    expect(state.customWidth).toBe('512');
-    expect(state.customHeight).toBe('256');
+    expect(state.width).toBe('512');
+    expect(state.height).toBe('256');
   });
 
   it('should discard percentage custom resolution from localStorage on init', async () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ scale: 1, customWidth: '50%', customHeight: '50%' }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ scale: 1, width: '50%', height: '50%' }));
     const store = await importStore();
     const state = get(store);
-    expect(state.customWidth).toBeUndefined();
-    expect(state.customHeight).toBeUndefined();
+    expect(state.width).toBeUndefined();
+    expect(state.height).toBeUndefined();
   });
 
   it('should never load savedToConfig as true from localStorage', async () => {
@@ -181,21 +181,21 @@ describe('resolutionStore', () => {
 
   it('setFromConfig should hydrate from config settings', async () => {
     const store = await importStore();
-    store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
+    store.setFromConfig({ scale: 2, width: 512, height: 256 });
     const state = get(store);
     expect(state.scale).toBe(2);
-    expect(state.customWidth).toBe('512');
-    expect(state.customHeight).toBe('256');
+    expect(state.width).toBe('512');
+    expect(state.height).toBe('256');
     expect(state.source).toBe('config');
   });
 
   it('setFromConfig should discard percentage custom dimensions', async () => {
     const store = await importStore();
-    store.setFromConfig({ scale: 2, customWidth: '50%', customHeight: '50%' });
+    store.setFromConfig({ scale: 2, width: '50%', height: '50%' } as any);
     const state = get(store);
     expect(state.scale).toBe(2);
-    expect(state.customWidth).toBeUndefined();
-    expect(state.customHeight).toBeUndefined();
+    expect(state.width).toBeUndefined();
+    expect(state.height).toBeUndefined();
     expect(state.source).toBe('config');
   });
 
@@ -213,8 +213,8 @@ describe('resolutionStore', () => {
     store.setFromConfig({});
     const state = get(store);
     expect(state.scale).toBe(1);
-    expect(state.customWidth).toBeUndefined();
-    expect(state.customHeight).toBeUndefined();
+    expect(state.width).toBeUndefined();
+    expect(state.height).toBeUndefined();
     expect(state.source).toBe('config');
   });
 
@@ -222,7 +222,7 @@ describe('resolutionStore', () => {
 
   it('setFromConfig should not notify subscribers when called with same config settings', async () => {
     const store = await importStore();
-    store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
+    store.setFromConfig({ scale: 2, width: 512, height: 256 });
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
@@ -232,7 +232,7 @@ describe('resolutionStore', () => {
     callCount = 0;
 
     // Call again with identical values — should be a no-op
-    store.setFromConfig({ scale: 2, customWidth: '512', customHeight: '256' });
+    store.setFromConfig({ scale: 2, width: 512, height: 256 });
     expect(callCount).toBe(0);
     unsub();
   });
@@ -303,9 +303,9 @@ describe('resolutionStore', () => {
     unsub();
   });
 
-  it('setFromConfig should detect customWidth change', async () => {
+  it('setFromConfig should detect width change', async () => {
     const store = await importStore();
-    store.setFromConfig({ scale: 1, customWidth: '512', customHeight: '512' });
+    store.setFromConfig({ scale: 1, width: 512, height: 512 });
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
@@ -313,9 +313,9 @@ describe('resolutionStore', () => {
     });
     callCount = 0;
 
-    store.setFromConfig({ scale: 1, customWidth: '1024', customHeight: '512' });
+    store.setFromConfig({ scale: 1, width: 1024, height: 512 });
     expect(callCount).toBe(1);
-    expect(get(store).customWidth).toBe('1024');
+    expect(get(store).width).toBe('1024');
     unsub();
   });
 
@@ -327,8 +327,8 @@ describe('resolutionStore', () => {
     store.setScale(2);
     const state = get(store);
     expect(state.scale).toBe(2);
-    expect(state.customWidth).toBe('320');
-    expect(state.customHeight).toBe('240');
+    expect(state.width).toBe('320');
+    expect(state.height).toBe('240');
   });
 
   it('should keep scale state separate from custom resolution dimensions', async () => {
@@ -337,8 +337,8 @@ describe('resolutionStore', () => {
     store.setScale(4);
     const state = get(store);
     expect(state.scale).toBe(4);
-    expect(state.customWidth).toBe('100');
-    expect(state.customHeight).toBe('50');
+    expect(state.width).toBe('100');
+    expect(state.height).toBe('50');
   });
 
   // --- Reset ---
@@ -356,8 +356,8 @@ describe('resolutionStore', () => {
       store.setCustomResolution('1920', '1080');
       store.reset();
       const state = get(store);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
     });
 
     it('should clear savedToConfig flag', async () => {
@@ -388,8 +388,8 @@ describe('resolutionStore', () => {
       store.setCustomResolution('800', '600');
       store.reset();
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-      expect(stored.customWidth).toBeUndefined();
-      expect(stored.customHeight).toBeUndefined();
+      expect(stored.width).toBeUndefined();
+      expect(stored.height).toBeUndefined();
     });
 
     it('should persist reset defaults even when previously saved to config', async () => {
@@ -406,14 +406,14 @@ describe('resolutionStore', () => {
 
     it('should reset scale and custom even when savedToConfig is true', async () => {
       const store = await importStore();
-      store.setFromConfig({ scale: 4, customWidth: '2560', customHeight: '1440' });
+      store.setFromConfig({ scale: 4, width: 2560, height: 1440 });
       expect(get(store).source).toBe('config');
 
       store.reset();
       const state = get(store);
       expect(state.scale).toBe(1);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
       expect(state.source).toBe('session');
     });
 
@@ -435,8 +435,8 @@ describe('resolutionStore', () => {
 
       const state = get(store);
       expect(state.scale).toBe(1);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
       expect(state.source).toBe('session');
     });
 

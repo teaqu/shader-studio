@@ -31,9 +31,8 @@ suite('Shader config JSON schema', () => {
           inputs: {},
           resolution: {
             scale: 2,
-            aspectRatio: '16:9',
-            customWidth: '320px',
-            customHeight: 180
+            width: 320,
+            height: 180
           }
         },
         BufferA: {
@@ -52,6 +51,21 @@ suite('Shader config JSON schema', () => {
         }
       },
       scriptMaxPollingFps: 30
+    });
+  });
+
+  test('accepts image aspect ratio resolution when fixed dimensions are absent', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {},
+          resolution: {
+            scale: 2,
+            aspectRatio: '16:9'
+          }
+        }
+      }
     });
   });
 
@@ -107,13 +121,63 @@ suite('Shader config JSON schema', () => {
     }, 'should NOT have additional properties');
   });
 
-  test('rejects unpaired image custom dimensions and mixed buffer resolution modes', () => {
+  test('rejects legacy image custom dimension names', () => {
     assertInvalid({
       version: '1.0',
       passes: {
         Image: {
           resolution: {
-            customWidth: 320
+            customWidth: 320,
+            customHeight: 180
+          }
+        }
+      }
+    }, 'should NOT have additional properties');
+  });
+
+  test('rejects string image and buffer dimensions', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          resolution: {
+            width: '320px',
+            height: 180
+          }
+        },
+        BufferA: {
+          path: 'buffer-a.glsl',
+          resolution: {
+            width: 512,
+            height: '256'
+          }
+        }
+      }
+    }, 'should be number');
+  });
+
+  test('rejects image aspect ratio when fixed dimensions are set', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          resolution: {
+            width: 320,
+            height: 180,
+            aspectRatio: '16:9'
+          }
+        }
+      }
+    }, 'should NOT have additional properties');
+  });
+
+  test('rejects unpaired image dimensions and mixed buffer resolution modes', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          resolution: {
+            width: 320
           }
         },
         BufferA: {
@@ -125,7 +189,7 @@ suite('Shader config JSON schema', () => {
           }
         }
       }
-    }, 'should have property customHeight');
+    }, "should have required property 'height'");
   });
 
   test('rejects transient resolved paths in persisted config JSON', () => {

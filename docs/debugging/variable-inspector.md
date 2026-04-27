@@ -57,7 +57,7 @@ The size buttons appear in the Variables section header. The active size is high
 The requested grid size is capped to the **Live Render Resolution**. This matters most when the preview is very small:
 
 - if the canvas is effectively `1 × 1`, the inspector samples at most `1 × 1`
-- if custom resolution is active, the cap uses that live custom resolution after scale has been applied
+- if fixed size is active, the cap uses that live fixed size after scale has been applied
 - Session Resolution changes and Image Config Resolution changes both update this cap immediately
 
 ### Pixel Mode

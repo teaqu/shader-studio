@@ -443,7 +443,7 @@ export class ConfigManager {
       imagePass.resolution = {
         ...imagePass.resolution,
         ...settings,
-      };
+      } as ResolutionSettings;
     }
 
     const updatedConfig = {

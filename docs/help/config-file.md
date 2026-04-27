@@ -200,22 +200,22 @@ Pin a resolution to the config so it applies whenever the shader is opened:
 }
 ```
 
-Custom pixel dimensions:
+Fixed pixel dimensions:
 
 ```json
 "resolution": {
-  "customWidth": 1920,
-  "customHeight": 1080
+  "width": 1920,
+  "height": 1080
 }
 ```
 
-Custom dimensions are the base size. `scale` still applies if you set both:
+Fixed dimensions are the base size. `scale` still applies if you set both:
 
 ```json
 "resolution": {
   "scale": 2,
-  "customWidth": 320,
-  "customHeight": 180
+  "width": 320,
+  "height": 180
 }
 ```
 

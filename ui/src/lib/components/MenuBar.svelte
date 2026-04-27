@@ -145,8 +145,8 @@
   let currentAspectRatio = $state<AspectRatioMode>("16:9");
   let currentResolution = $state<ResolutionState>({ scale: 1, forceBlackBackground: false, source: 'session' });
   let showResolutionMenu = $state(false);
-  let customWidthInput = $state<number | null>(null);
-  let customHeightInput = $state<number | null>(null);
+  let widthInput = $state<number | null>(null);
+  let heightInput = $state<number | null>(null);
   let showFPSMenu = $state(false);
   let showOptionsMenu = $state(false);
   let recordingButton = $state<RecordingButton>(undefined as any);
@@ -202,12 +202,12 @@
 
     const unsubscribeResolution = resolutionStore.subscribe((state) => {
       currentResolution = state;
-      if (state.customWidth !== undefined && state.customHeight !== undefined) {
-        customWidthInput = Number(state.customWidth) || null;
-        customHeightInput = Number(state.customHeight) || null;
+      if (state.width !== undefined && state.height !== undefined) {
+        widthInput = Number(state.width) || null;
+        heightInput = Number(state.height) || null;
       } else {
-        customWidthInput = null;
-        customHeightInput = null;
+        widthInput = null;
+        heightInput = null;
       }
     });
 
@@ -305,21 +305,21 @@
   }
 
   function handleCustomResolutionInput() {
-    if (customWidthInput && customHeightInput) {
-      resCtrl.setImageCustomResolution(String(customWidthInput), String(customHeightInput));
+    if (widthInput && heightInput) {
+      resCtrl.setImageCustomResolution(String(widthInput), String(heightInput));
     }
   }
 
   function handleClearCustomResolution(event: MouseEvent) {
     event.stopPropagation();
-    customWidthInput = null;
-    customHeightInput = null;
+    widthInput = null;
+    heightInput = null;
     resCtrl.setImageCustomResolution(undefined, undefined);
   }
 
   function handleResetResolution() {
-    customWidthInput = null;
-    customHeightInput = null;
+    widthInput = null;
+    heightInput = null;
     resCtrl.resetCurrentTarget();
   }
 
@@ -536,7 +536,7 @@
         {canvasWidth} × {canvasHeight}
       </button>
       {#if showResolutionMenu}
-        {@const hasCustom = currentResolution.customWidth !== undefined && currentResolution.customHeight !== undefined}
+        {@const hasCustom = currentResolution.width !== undefined && currentResolution.height !== undefined}
         <div class="resolution-menu">
           <div class="resolution-section save-to-config-section">
             <label class="save-to-config-label">
@@ -574,7 +574,7 @@
             </div>
 
             <div class="resolution-section">
-              <h4>Custom Resolution</h4>
+              <h4>Fixed Size</h4>
               <div class="custom-resolution-row">
                 <input
                   type="number"
@@ -582,7 +582,7 @@
                   placeholder="W"
                   min="1"
                   step="1"
-                  bind:value={customWidthInput}
+                  bind:value={widthInput}
                   oninput={handleCustomResolutionInput}
                 />
                 <span class="custom-res-separator">&times;</span>
@@ -592,7 +592,7 @@
                   placeholder="H"
                   min="1"
                   step="1"
-                  bind:value={customHeightInput}
+                  bind:value={heightInput}
                   oninput={handleCustomResolutionInput}
                 />
                 {#if hasCustom}

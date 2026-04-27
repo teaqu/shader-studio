@@ -38,8 +38,8 @@
         currentAspectMode,
         currentResolution.scale,
         zoomLevel,
-        currentResolution.customWidth,
-        currentResolution.customHeight,
+        currentResolution.width,
+        currentResolution.height,
       );
 
       glCanvas.style.width = `${result.visualWidth}px`;

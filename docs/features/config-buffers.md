@@ -36,7 +36,7 @@ The Image tab has no file path — it always corresponds to your main shader fil
 |---------|---------|-------------|
 | **Scale** | 0.25×, 0.5×, 1×, 2×, 4× | Relative to the panel size |
 | **Aspect ratio** | 16:9, 4:3, 1:1, Fill, Auto | Constrains the canvas shape |
-| **Custom dimensions** | e.g. `1920 × 1080` | Base width and height in pixels |
+| **Fixed dimensions** | e.g. `1920 × 1080` | Base width and height in pixels |
 
 These settings are the persistent default for this shader.
 
@@ -45,7 +45,7 @@ These settings are the persistent default for this shader.
 - Editing the Image pass resolution in the config panel updates the live preview immediately.
 - The toolbar resolution popup updates immediately to match the new **Session Resolution** derived from that config change.
 - If debug mode is enabled, inline rendering and the variable inspector also refresh immediately from the new **Live Render Resolution**.
-- `scale` and `customWidth` / `customHeight` are composable. For example, `customWidth: 320`, `customHeight: 180`, `scale: 2` renders as `640 × 360`.
+- `scale` and `width` / `height` are composable. For example, `width: 320`, `height: 180`, `scale: 2` renders as `640 × 360`.
 
 Switching to a different shader resets the Session Resolution back to whatever that shader's Config Resolution specifies.
 

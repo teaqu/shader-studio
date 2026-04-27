@@ -81,44 +81,43 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
-    "ResolutionDimension": {
-      "oneOf": [
-        {
-          "$ref": "#/definitions/PositiveNumber"
-        },
-        {
-          "type": "string",
-          "pattern": "^[0-9]+(\\.[0-9]+)?(px)?$"
-        }
-      ]
-    },
     "ImageResolution": {
       "type": "object",
       "description": "Image pass resolution override",
-      "properties": {
-        "scale": {
-          "$ref": "#/definitions/PositiveNumber",
-          "description": "Render scale multiplier"
+      "oneOf": [
+        {
+          "properties": {
+            "scale": {
+              "$ref": "#/definitions/PositiveNumber",
+              "description": "Render scale multiplier"
+            },
+            "aspectRatio": {
+              "type": "string",
+              "enum": ["16:9", "4:3", "1:1", "fill", "auto"],
+              "description": "Canvas aspect ratio mode"
+            }
+          },
+          "additionalProperties": false
         },
-        "aspectRatio": {
-          "type": "string",
-          "enum": ["16:9", "4:3", "1:1", "fill", "auto"],
-          "description": "Canvas aspect ratio mode"
-        },
-        "customWidth": {
-          "$ref": "#/definitions/ResolutionDimension",
-          "description": "Custom render width in pixels"
-        },
-        "customHeight": {
-          "$ref": "#/definitions/ResolutionDimension",
-          "description": "Custom render height in pixels"
+        {
+          "required": ["width", "height"],
+          "properties": {
+            "scale": {
+              "$ref": "#/definitions/PositiveNumber",
+              "description": "Render scale multiplier"
+            },
+            "width": {
+              "$ref": "#/definitions/PositiveNumber",
+              "description": "Base render width in pixels"
+            },
+            "height": {
+              "$ref": "#/definitions/PositiveNumber",
+              "description": "Base render height in pixels"
+            }
+          },
+          "additionalProperties": false
         }
-      },
-      "dependencies": {
-        "customWidth": ["customHeight"],
-        "customHeight": ["customWidth"]
-      },
-      "additionalProperties": false
+      ]
     },
     "BufferResolution": {
       "type": "object",

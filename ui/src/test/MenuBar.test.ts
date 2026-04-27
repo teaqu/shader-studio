@@ -477,12 +477,12 @@ describe('MenuBar Component', () => {
       expect(onZoomChange).toHaveBeenCalledWith(2.0);
     });
 
-    it('should show custom resolution inputs', async () => {
+    it('should show fixed size inputs', async () => {
       renderMenuBar();
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
 
-      expect(screen.getByText('Custom Resolution')).toBeInTheDocument();
+      expect(screen.getByText('Fixed Size')).toBeInTheDocument();
       const inputs = screen.getAllByRole('spinbutton');
       expect(inputs).toHaveLength(2);
     });
@@ -497,14 +497,14 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       let state = get(resolutionStore);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
 
       await fireEvent.input(inputs[1], { target: { value: '1080' } });
 
       state = get(resolutionStore);
-      expect(state.customWidth).toBe('1920');
-      expect(state.customHeight).toBe('1080');
+      expect(state.width).toBe('1920');
+      expect(state.height).toBe('1080');
     });
 
     it('should update resolution store when both custom inputs are filled', async () => {
@@ -519,8 +519,8 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
-      expect(state.customWidth).toBe('1920');
-      expect(state.customHeight).toBe('1080');
+      expect(state.width).toBe('1920');
+      expect(state.height).toBe('1080');
     });
 
     it('should show Clear button when custom resolution is active', async () => {
@@ -545,8 +545,8 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
     });
 
     it('should keep scale buttons enabled when custom resolution is active', async () => {
@@ -647,8 +647,8 @@ describe('MenuBar Component', () => {
       const { get } = await import('svelte/store');
       const state = get(resolutionStore);
       expect(state.scale).toBe(1);
-      expect(state.customWidth).toBeUndefined();
-      expect(state.customHeight).toBeUndefined();
+      expect(state.width).toBeUndefined();
+      expect(state.height).toBeUndefined();
     });
 
     it('should reset source back to session when reset is clicked', async () => {

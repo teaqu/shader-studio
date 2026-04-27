@@ -164,8 +164,8 @@ This is useful when you want to use normalization or variable capture on the unm
 
 Inline rendering always uses the **current live preview resolution**, not a stale config snapshot.
 
-- Changing the toolbar **scale**, **custom resolution**, or **aspect ratio** updates inline rendering immediately.
+- Changing the toolbar **scale**, **fixed size**, or **aspect ratio** updates inline rendering immediately.
 - Changing the Image pass resolution in the config panel also updates inline rendering immediately.
-- When custom resolution is active, the selected **scale still applies** to the render target.
+- When fixed size is active, the selected **scale still applies** to the render target.
 
 This means the debug image you see should match the same effective canvas size shown in the toolbar resolution button.

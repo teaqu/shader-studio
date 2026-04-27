@@ -870,8 +870,8 @@ describe('BufferConfig', () => {
 
       const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
       const updatedConfig = lastCall?.[1] as ImagePass;
-      expect(updatedConfig?.resolution?.customWidth).toBe('512');
-      expect(updatedConfig?.resolution?.customHeight).toBe('256');
+      expect(updatedConfig?.resolution?.width).toBe(512);
+      expect(updatedConfig?.resolution?.height).toBe(256);
     });
 
     it('should preserve scale when custom resolution is set', async () => {
@@ -886,14 +886,14 @@ describe('BufferConfig', () => {
 
       const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
       const updatedConfig = lastCall?.[1] as ImagePass;
-      expect(updatedConfig?.resolution?.customWidth).toBe('320');
-      expect(updatedConfig?.resolution?.customHeight).toBe('240');
+      expect(updatedConfig?.resolution?.width).toBe(320);
+      expect(updatedConfig?.resolution?.height).toBe(240);
       expect(updatedConfig?.resolution?.scale).toBe(2);
     });
 
     it('should preserve custom resolution when scale is changed', async () => {
       const onUpdate = vi.fn();
-      const config: ImagePass = { inputs: {}, resolution: { customWidth: '320', customHeight: '240' } };
+      const config: ImagePass = { inputs: {}, resolution: { width: 320, height: 240 } };
       const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
       await tick();
 
@@ -904,12 +904,12 @@ describe('BufferConfig', () => {
       const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1];
       const updatedConfig = lastCall?.[1] as ImagePass;
       expect(updatedConfig?.resolution?.scale).toBe(2);
-      expect(updatedConfig?.resolution?.customWidth).toBe('320');
-      expect(updatedConfig?.resolution?.customHeight).toBe('240');
+      expect(updatedConfig?.resolution?.width).toBe(320);
+      expect(updatedConfig?.resolution?.height).toBe(240);
     });
 
     it('should show Clear button when custom resolution is active', async () => {
-      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const config: ImagePass = { inputs: {}, resolution: { width: 800, height: 600 } };
       const { container } = render(BufferConfig, { ...baseImageProps, config });
       await tick();
 
@@ -924,7 +924,7 @@ describe('BufferConfig', () => {
     });
 
     it('should populate inputs from existing config custom resolution', async () => {
-      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const config: ImagePass = { inputs: {}, resolution: { width: 800, height: 600 } };
       const { container } = render(BufferConfig, { ...baseImageProps, config });
       await tick();
 
@@ -934,7 +934,7 @@ describe('BufferConfig', () => {
     });
 
     it('should disable aspect ratio buttons when custom resolution is active', async () => {
-      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const config: ImagePass = { inputs: {}, resolution: { width: 800, height: 600 } };
       const { container } = render(BufferConfig, { ...baseImageProps, config });
       await tick();
 
@@ -964,7 +964,7 @@ describe('BufferConfig', () => {
 
     it('should not call onUpdate when disabled aspect button is clicked', async () => {
       const onUpdate = vi.fn();
-      const config: ImagePass = { inputs: {}, resolution: { customWidth: '800', customHeight: '600' } };
+      const config: ImagePass = { inputs: {}, resolution: { width: 800, height: 600 } };
       const { container } = render(BufferConfig, { ...baseImageProps, config, onUpdate });
       await tick();
 

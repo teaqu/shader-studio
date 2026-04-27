@@ -22,18 +22,18 @@ export class AspectRatioCalculator {
     aspectMode: AspectRatioMode,
     resolutionScale: number,
     zoomLevel: number,
-    customWidth?: string,
-    customHeight?: string,
+    width?: string,
+    height?: string,
   ): CalculationResult {
     const { width: containerWidth, height: containerHeight } = this.getContainerDimensions();
 
-    // Custom resolution: resolve px or % values, fit aspect into container for visual
-    if (customWidth && customHeight) {
+    // Fixed resolution: resolve px or % values, fit aspect into container for visual
+    if (width && height) {
       const scaleFactor = window.devicePixelRatio;
       const nativeW = containerWidth * scaleFactor;
       const nativeH = containerHeight * scaleFactor;
-      const resolvedW = parseDimension(customWidth, nativeW);
-      const resolvedH = parseDimension(customHeight, nativeH);
+      const resolvedW = parseDimension(width, nativeW);
+      const resolvedH = parseDimension(height, nativeH);
 
       if (resolvedW && resolvedH) {
         const customAspect = resolvedW / resolvedH;

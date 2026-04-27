@@ -5,8 +5,8 @@ export type ResolutionSource = 'session' | 'config';
 
 export interface ResolutionState {
     scale: number;           // 0.25, 0.5, 1, 2, 4
-    customWidth?: string;    // "512" or "512px"
-    customHeight?: string;
+    width?: string;    // "512" or "512px"
+    height?: string;
     forceBlackBackground: boolean;
     source: ResolutionSource;
 }
@@ -63,13 +63,13 @@ function loadInitialState(): ResolutionState {
     try {
       const parsed = JSON.parse(stored);
       if (parsed && typeof parsed.scale === 'number') {
-        const customWidth = normalizeStoredDimension(parsed.customWidth);
-        const customHeight = normalizeStoredDimension(parsed.customHeight);
+        const width = normalizeStoredDimension(parsed.width);
+        const height = normalizeStoredDimension(parsed.height);
         return {
           ...defaultState,
           ...parsed,
-          customWidth,
-          customHeight,
+          width,
+          height,
           source: SESSION_SOURCE,
         };
       }
@@ -109,9 +109,9 @@ function persistGlobal(state: ResolutionState): void {
     scale: state.scale,
     forceBlackBackground: state.forceBlackBackground,
   };
-  if (state.customWidth !== undefined && state.customHeight !== undefined) {
-    toStore.customWidth = state.customWidth;
-    toStore.customHeight = state.customHeight;
+  if (state.width !== undefined && state.height !== undefined) {
+    toStore.width = state.width;
+    toStore.height = state.height;
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
 }
@@ -123,8 +123,8 @@ function createStateFromSettings(
 ): ResolutionState {
   return {
     scale: settings?.scale ?? 1,
-    customWidth: normalizeStoredDimension(settings?.customWidth),
-    customHeight: normalizeStoredDimension(settings?.customHeight),
+    width: normalizeStoredDimension(settings?.width),
+    height: normalizeStoredDimension(settings?.height),
     forceBlackBackground,
     source,
   };
@@ -162,8 +162,8 @@ const createResolutionStore = () => {
       update(state => {
         const newState: ResolutionState = {
           ...state,
-          customWidth: width,
-          customHeight: height,
+          width: width,
+          height: height,
           source: SESSION_SOURCE,
         };
         persistGlobal(newState); 
@@ -174,8 +174,8 @@ const createResolutionStore = () => {
       update(state => {
         const newState: ResolutionState = {
           ...state,
-          customWidth: undefined,
-          customHeight: undefined,
+          width: undefined,
+          height: undefined,
           source: SESSION_SOURCE,
         };
         persistGlobal(newState); 
@@ -190,8 +190,8 @@ const createResolutionStore = () => {
           CONFIG_SOURCE,
         );
         // Skip if store already matches
-        if (current.scale === next.scale && current.customWidth === next.customWidth &&
-                    current.customHeight === next.customHeight && current.source === CONFIG_SOURCE) {
+        if (current.scale === next.scale && current.width === next.width &&
+                    current.height === next.height && current.source === CONFIG_SOURCE) {
           return;
         }
         commit(next);
@@ -210,8 +210,8 @@ const createResolutionStore = () => {
         current.forceBlackBackground,
         SESSION_SOURCE,
       );
-      if (current.scale === next.scale && current.customWidth === next.customWidth &&
-                  current.customHeight === next.customHeight && current.source === SESSION_SOURCE) {
+      if (current.scale === next.scale && current.width === next.width &&
+                  current.height === next.height && current.source === SESSION_SOURCE) {
         return;
       }
       commit(next);

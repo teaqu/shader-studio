@@ -720,7 +720,7 @@ canvas {
   margin: 0.75rem 0;
 }
 
-/* Disabled state for scale/aspect buttons when custom resolution is active */
+/* Disabled state for scale/aspect buttons when fixed dimensions are active */
 .resolution-option:disabled {
   opacity: 0.4;
   cursor: default;

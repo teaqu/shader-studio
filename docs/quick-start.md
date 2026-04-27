@@ -51,7 +51,7 @@ The preview toolbar gives quick access to all features:
 - <i class="codicon codicon-play"></i> / <i class="codicon codicon-debug-pause"></i> [**Play/Pause**](features/time-controls.md) — freeze or resume animation
 - [**Time**](features/time-controls.md) — scrub, loop, and control playback speed
 - **FPS** — click to set frame rate limit or open the performance monitor
-- **Resolution** — click to change scale, aspect ratio, zoom, or set a custom resolution
+- **Resolution** — click to change scale, aspect ratio, zoom, or set a fixed size
 - <i class="codicon codicon-bug"></i> [**Debug**](workflows/debug-shaders.md) — enable line-by-line visual debugging
 - <i class="codicon codicon-code"></i> [**Editor**](features/editor-overlay.md) — toggle inline code editing overlay
 - <i class="codicon codicon-gear"></i> [**Config**](features/config-buffers.md) — set up buffers, inputs, and uniforms
