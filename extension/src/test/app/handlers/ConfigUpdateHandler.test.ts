@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { ConfigUpdateHandler } from '../../../app/handlers/ConfigUpdateHandler';
+import * as vscode from 'vscode';
+import { ConfigUpdateHandler, computeMinimalReplace } from '../../../app/handlers/ConfigUpdateHandler';
 import { Logger } from '../../../app/services/Logger';
 
 suite('ConfigUpdateHandler Test Suite', () => {
@@ -185,6 +186,139 @@ suite('ConfigUpdateHandler Test Suite', () => {
           shaderPath: '/test/shader.glsl',
         }),
       );
+    });
+  });
+
+  suite('handleConfigUpdate - WorkspaceEdit when document is open', () => {
+    test('applies WorkspaceEdit instead of writeFileSync when document is open', async () => {
+      const fs = require('fs');
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      const mockDocument = {
+        uri: { fsPath: '/test/shader.sha.json' } as any,
+        getText: sandbox.stub().returns('{"old":true}'),
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+      const applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text: '{"version":1}',
+        shaderPath: '/test/shader.glsl',
+        skipRefresh: true,
+      });
+
+      sinon.assert.calledOnce(applyEditStub);
+      sinon.assert.notCalled(writeStub);
+    });
+
+    test('skips edit when buffer content already matches incoming text', async () => {
+      const fs = require('fs');
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      const text = '{"version":1}';
+      const mockDocument = {
+        uri: { fsPath: '/test/shader.sha.json' } as any,
+        getText: sandbox.stub().returns(text),
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+      const applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text,
+        shaderPath: '/test/shader.glsl',
+        skipRefresh: true,
+      });
+
+      sinon.assert.notCalled(applyEditStub);
+      sinon.assert.notCalled(writeStub);
+    });
+
+    test('falls back to writeFileSync when applyEdit returns false', async () => {
+      const fs = require('fs');
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      const mockDocument = {
+        uri: { fsPath: '/test/shader.sha.json' } as any,
+        getText: sandbox.stub().returns('{"old":true}'),
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+      sandbox.stub(vscode.workspace, 'applyEdit').resolves(false);
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text: '{"version":1}',
+        shaderPath: '/test/shader.glsl',
+        skipRefresh: true,
+      });
+
+      sinon.assert.calledOnce(writeStub);
+    });
+
+    test('does NOT schedule a manual refresh when applyEdit succeeds', async () => {
+      const clock = sandbox.useFakeTimers();
+      const fs = require('fs');
+      sandbox.stub(fs, 'writeFileSync');
+
+      const mockDocument = {
+        uri: { fsPath: '/test/shader.sha.json' } as any,
+        getText: sandbox.stub().returns('{"old":true}'),
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+      sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text: '{"version":1}',
+        shaderPath: '/test/shader.glsl',
+      });
+
+      clock.tick(300);
+      sinon.assert.notCalled(mockShaderProvider.sendShaderFromPath);
+
+      clock.restore();
+    });
+  });
+
+  suite('computeMinimalReplace', () => {
+    test('replaces only the diverging slice', () => {
+      const result = computeMinimalReplace('{"old":true}', '{"new":true}');
+      assert.strictEqual(result.startOffset, 2);
+      assert.strictEqual(result.endOffsetOld, 5);
+      assert.strictEqual(result.replacement, 'new');
+    });
+
+    test('handles inserts at start', () => {
+      const result = computeMinimalReplace('bar', 'foobar');
+      assert.strictEqual(result.startOffset, 0);
+      assert.strictEqual(result.endOffsetOld, 0);
+      assert.strictEqual(result.replacement, 'foo');
+    });
+
+    test('handles inserts at end', () => {
+      const result = computeMinimalReplace('foo', 'foobar');
+      assert.strictEqual(result.startOffset, 3);
+      assert.strictEqual(result.endOffsetOld, 3);
+      assert.strictEqual(result.replacement, 'bar');
+    });
+
+    test('handles deletes from middle', () => {
+      const result = computeMinimalReplace('fooXXXbar', 'foobar');
+      assert.strictEqual(result.startOffset, 3);
+      assert.strictEqual(result.endOffsetOld, 6);
+      assert.strictEqual(result.replacement, '');
+    });
+
+    test('disjoint prefix/suffix shrink correctly when shorter side runs out', () => {
+      const result = computeMinimalReplace('aaa', 'aaaa');
+      assert.strictEqual(result.startOffset, 3);
+      assert.strictEqual(result.endOffsetOld, 3);
+      assert.strictEqual(result.replacement, 'a');
     });
   });
 });

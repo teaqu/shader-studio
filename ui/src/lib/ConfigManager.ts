@@ -1,5 +1,6 @@
 import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution } from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
+import { persistConfig } from './config/ConfigPersistence';
 
 export class ConfigManager {
   private config: ShaderConfig | null = null;
@@ -398,32 +399,17 @@ export class ConfigManager {
      * Update the configuration and notify via transport
      */
   private updateConfig(newConfig: ShaderConfig, options?: { skipRefresh?: boolean }): void {
-    console.log('Updating config:', newConfig);
     this.config = newConfig;
 
-    // Notify change callback
     if (this.onConfigChange) {
       this.onConfigChange(newConfig);
     }
 
-    // Send update back via transport
     if (this.transport) {
-      console.log('Sending updateConfig message via transport');
-      // Strip resolved_path from config before saving - it's only for rendering
-      const cleanText = JSON.stringify(newConfig, (key, value) => {
-        if (key === 'resolved_path') {
-          return undefined;
-        }
-        return value;
-      }, 2);
-      this.transport.postMessage({
-        type: 'updateConfig',
-        payload: {
-          config: JSON.parse(cleanText) as ShaderConfig,
-          text: cleanText,
-          shaderPath: this.shaderPath,
-          skipRefresh: options?.skipRefresh,
-        }
+      persistConfig(this.transport, {
+        config: newConfig,
+        shaderPath: this.shaderPath,
+        skipRefresh: options?.skipRefresh,
       });
     } else {
       console.warn('Transport not available');

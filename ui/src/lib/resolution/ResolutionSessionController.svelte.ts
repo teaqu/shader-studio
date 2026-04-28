@@ -5,6 +5,8 @@ import type {
   ShaderConfig,
 } from "@shader-studio/types";
 import type { ShaderDebugState } from "../types/ShaderDebugState";
+import type { Transport } from "../transport/MessageTransport";
+import { persistConfig } from "../config/ConfigPersistence";
 import {
   buildRuntimeConfig,
   createDefaultConfig,
@@ -46,7 +48,7 @@ export interface ControllerDeps {
   recompileCurrentShader(): void;
   setShaderContext(config: ShaderConfig, shaderPath: string, bufferPathMap: Record<string, string>): void;
   setEditorConfig(config: ShaderConfig): void;
-  postConfigUpdate(payload: { config: ShaderConfig; text: string; shaderPath: string; skipRefresh: boolean }): void;
+  transport: Transport;
 }
 
 export class ResolutionSessionController {
@@ -485,15 +487,12 @@ export class ResolutionSessionController {
   }
 
   private persistConfigUpdate(updatedConfig: ShaderConfig): void {
-    this.deps.setCurrentConfig(updatedConfig);
-    const text = JSON.stringify(updatedConfig, (key, value) =>
-      key === "resolved_path" ? undefined : value, 2);
-    this.deps.postConfigUpdate({
+    persistConfig(this.deps.transport, {
       config: updatedConfig,
-      text,
       shaderPath: this.deps.getShaderPath(),
       skipRefresh: true,
     });
+    this.deps.setCurrentConfig(updatedConfig);
     this.deps.updatePipelineConfig(updatedConfig);
     this.deps.setShaderContext(updatedConfig, this.deps.getShaderPath(), this.deps.getBufferPathMap());
     this.deps.setEditorConfig(updatedConfig);

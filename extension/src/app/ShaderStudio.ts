@@ -15,6 +15,7 @@ import { ErrorHandler } from "./ErrorHandler";
 import { ConfigGenerator } from "./ConfigGenerator";
 import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
+import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -35,6 +36,8 @@ export class ShaderStudio {
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
   private compileController: CompileController;
+  private configChangeDebounce = new Map<string, NodeJS.Timeout>();
+  private static readonly CONFIG_CHANGE_DEBOUNCE_MS = 150;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -368,6 +371,7 @@ export class ShaderStudio {
 
     vscode.workspace.onDidChangeTextDocument((event) => {
       this.compileController.handleTextDocumentChange(event);
+      this.handleConfigDocumentChange(event.document);
     });
 
     vscode.workspace.onDidSaveTextDocument((document) => {
@@ -387,6 +391,27 @@ export class ShaderStudio {
 
   private isGlslEditor(editor: vscode.TextEditor): boolean {
     return this.glslFileTracker.isGlslEditor(editor);
+  }
+
+  private handleConfigDocumentChange(document: vscode.TextDocument): void {
+    const fsPath = document.uri.fsPath;
+    if (!isConfigPath(fsPath)) {
+      return;
+    }
+    const shaderPath = getShaderPathFromConfigPath(fsPath);
+    if (!shaderPath) {
+      return;
+    }
+
+    const existing = this.configChangeDebounce.get(shaderPath);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      this.configChangeDebounce.delete(shaderPath);
+      void this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+    }, ShaderStudio.CONFIG_CHANGE_DEBOUNCE_MS);
+    this.configChangeDebounce.set(shaderPath, timer);
   }
 
   private handleCursorPositionChange(event: vscode.TextEditorSelectionChangeEvent): void {

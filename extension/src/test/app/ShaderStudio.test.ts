@@ -997,4 +997,69 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.notCalled(setPortSpy);
     });
   });
+
+  suite('.sha.json change watcher (live updates)', () => {
+    function makeConfigDoc(fsPath: string): vscode.TextDocument {
+      return {
+        uri: vscode.Uri.file(fsPath),
+        fileName: fsPath,
+        languageId: 'json',
+      } as any;
+    }
+
+    function simulateDocumentChange(document: vscode.TextDocument): void {
+      if (textDocumentChangeListener) {
+        textDocumentChangeListener({ document } as vscode.TextDocumentChangeEvent);
+      }
+    }
+
+    test('debounces and fires sendShaderFromPath when .sha.json changes', () => {
+      const clock = sandbox.useFakeTimers();
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateDocumentChange(makeConfigDoc('/mock/path/shader.sha.json'));
+
+      sinon.assert.notCalled(sendFromPathSpy);
+      clock.tick(149);
+      sinon.assert.notCalled(sendFromPathSpy);
+      clock.tick(2);
+      sinon.assert.calledOnce(sendFromPathSpy);
+      sinon.assert.calledWith(
+        sendFromPathSpy,
+        '/mock/path/shader.glsl',
+        sinon.match({ forceCleanup: true }),
+      );
+
+      clock.restore();
+    });
+
+    test('coalesces rapid changes into one refresh', () => {
+      const clock = sandbox.useFakeTimers();
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      const doc = makeConfigDoc('/mock/path/shader.sha.json');
+      simulateDocumentChange(doc);
+      clock.tick(50);
+      simulateDocumentChange(doc);
+      clock.tick(50);
+      simulateDocumentChange(doc);
+      clock.tick(200);
+
+      sinon.assert.calledOnce(sendFromPathSpy);
+
+      clock.restore();
+    });
+
+    test('ignores non-config document changes', () => {
+      const clock = sandbox.useFakeTimers();
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateDocumentChange(makeConfigDoc('/mock/path/notes.md'));
+      clock.tick(300);
+
+      sinon.assert.notCalled(sendFromPathSpy);
+
+      clock.restore();
+    });
+  });
 });

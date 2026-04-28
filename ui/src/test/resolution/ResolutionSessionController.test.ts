@@ -27,14 +27,24 @@ const baseConfig: ShaderConfig = {
   passes: { Image: { inputs: {} } },
 };
 
+function makeTransport() {
+  return {
+    postMessage: vi.fn(),
+    onMessage: vi.fn(),
+    dispose: vi.fn(),
+    getType: vi.fn(() => 'vscode' as const),
+    isConnected: vi.fn(() => true),
+  };
+}
+
 function makeDeps(overrides: Partial<ControllerDeps> = {}): ControllerDeps {
   let config: ShaderConfig | null = baseConfig;
   return {
     get currentConfig() {
-      return config; 
+      return config;
     },
     get debugState() {
-      return defaultDebugState; 
+      return defaultDebugState;
     },
     resolutionStore: {
       setFromConfig: vi.fn(),
@@ -45,7 +55,7 @@ function makeDeps(overrides: Partial<ControllerDeps> = {}): ControllerDeps {
       setSessionMode: vi.fn(),
     },
     setCurrentConfig: vi.fn((c) => {
-      config = c; 
+      config = c;
     }),
     getShaderPath: vi.fn(() => '/shader.glsl'),
     getBufferPathMap: vi.fn(() => ({})),
@@ -56,9 +66,16 @@ function makeDeps(overrides: Partial<ControllerDeps> = {}): ControllerDeps {
     recompileCurrentShader: vi.fn(),
     setShaderContext: vi.fn(),
     setEditorConfig: vi.fn(),
-    postConfigUpdate: vi.fn(),
+    transport: makeTransport(),
     ...overrides,
   };
+}
+
+function postedPayloads(deps: ControllerDeps): Array<{ config: ShaderConfig; text: string; shaderPath: string; skipRefresh: boolean }> {
+  const post = vi.mocked(deps.transport.postMessage);
+  return post.mock.calls
+    .filter((call) => call[0]?.type === 'updateConfig')
+    .map((call) => call[0].payload);
 }
 
 describe('ResolutionSessionController — syncWithConfig persistence', () => {
@@ -157,8 +174,8 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
 
     expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({
       scale: 1,
-      customWidth: '64',
-      customHeight: '32',
+      width: 64,
+      height: 32,
     });
   });
 
@@ -325,12 +342,12 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
     ctrl.setSyncWithConfig(false);
     ctrl.setImageCustomResolution('1', '1');
 
-    vi.mocked(deps.postConfigUpdate).mockClear();
+    vi.mocked(deps.transport.postMessage).mockClear();
     vi.mocked(deps.updatePipelineConfig).mockClear();
 
     ctrl.setSyncWithConfig(true);
 
-    expect(deps.postConfigUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(postedPayloads(deps)[0]).toEqual(expect.objectContaining({
       config: expect.objectContaining({
         passes: expect.objectContaining({
           Image: expect.objectContaining({
@@ -354,6 +371,209 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
       }),
     }));
     expect(ctrl.menuVM.syncWithConfig).toBe(true);
+  });
+});
+
+describe('ResolutionSessionController — persistConfigUpdate ordering', () => {
+  it('posts the config update BEFORE mutating reactive currentConfig state', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+    vi.mocked(deps.setCurrentConfig).mockClear();
+
+    ctrl.setImageScale(2);
+
+    const postOrder = vi.mocked(deps.transport.postMessage).mock.invocationCallOrder[0];
+    const setOrder = vi.mocked(deps.setCurrentConfig).mock.invocationCallOrder[0];
+    expect(postOrder).toBeDefined();
+    expect(setOrder).toBeDefined();
+    expect(postOrder).toBeLessThan(setOrder);
+  });
+
+  it('posts the config update before updatePipelineConfig and setShaderContext', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+    vi.mocked(deps.updatePipelineConfig).mockClear();
+    vi.mocked(deps.setShaderContext).mockClear();
+
+    ctrl.setAspectRatio('4:3');
+
+    const postOrder = vi.mocked(deps.transport.postMessage).mock.invocationCallOrder[0];
+    const pipelineOrder = vi.mocked(deps.updatePipelineConfig).mock.invocationCallOrder[0];
+    const ctxOrder = vi.mocked(deps.setShaderContext).mock.invocationCallOrder[0];
+    expect(postOrder).toBeLessThan(pipelineOrder);
+    expect(postOrder).toBeLessThan(ctxOrder);
+  });
+});
+
+describe('ResolutionSessionController — sync ON popup setters persist to disk', () => {
+  it('setImageScale posts config with the new scale and stripped resolved_path', () => {
+    const deps = makeDeps({
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {}, resolved_path: '/abs/main.glsl' },
+        },
+      } as ShaderConfig,
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setImageScale(2);
+
+    expect(postedPayloads(deps)).toHaveLength(1);
+    const payload = postedPayloads(deps)[0]!;
+    expect(payload.shaderPath).toBe('/shader.glsl');
+    expect(payload.skipRefresh).toBe(true);
+    const parsed = JSON.parse(payload.text) as ShaderConfig;
+    expect(parsed.passes.Image.resolution?.scale).toBe(2);
+    expect(payload.text).not.toContain('resolved_path');
+  });
+
+  it('setAspectRatio posts config with the new aspect ratio', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setAspectRatio('1:1');
+
+    const payload = postedPayloads(deps)[0]!;
+    const parsed = JSON.parse(payload.text) as ShaderConfig;
+    expect(parsed.passes.Image.resolution?.aspectRatio).toBe('1:1');
+  });
+
+  it('setImageCustomResolution posts config with custom dimensions', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setImageCustomResolution('800', '600');
+
+    const payload = postedPayloads(deps)[0]!;
+    const parsed = JSON.parse(payload.text) as ShaderConfig;
+    const resolution = parsed.passes.Image.resolution as { width?: number; height?: number };
+    expect(resolution.width).toBe(800);
+    expect(resolution.height).toBe(600);
+  });
+
+  it('setBufferScale posts config with buffer scale', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+          activeBufferName: 'BufferA',
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '/b.glsl', inputs: {} },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setBufferScale(0.5);
+
+    const payload = postedPayloads(deps)[0]!;
+    const parsed = JSON.parse(payload.text) as ShaderConfig;
+    const bufferPass = parsed.passes.BufferA as { resolution?: { scale?: number } };
+    expect(bufferPass.resolution?.scale).toBe(0.5);
+  });
+
+  it('setBufferFixedResolution posts config with width/height', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+          activeBufferName: 'BufferA',
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '/b.glsl', inputs: {} },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setBufferFixedResolution('256', '256');
+
+    const payload = postedPayloads(deps)[0]!;
+    const parsed = JSON.parse(payload.text) as ShaderConfig;
+    const bufferPass = parsed.passes.BufferA as { resolution?: { width?: number; height?: number } };
+    expect(bufferPass.resolution?.width).toBe(256);
+    expect(bufferPass.resolution?.height).toBe(256);
+  });
+});
+
+describe('ResolutionSessionController — sync OFF does NOT persist (Local Override)', () => {
+  it('setImageScale does not call postConfigUpdate', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setImageScale(2);
+
+    expect(postedPayloads(deps)).toHaveLength(0);
+  });
+
+  it('setBufferScale does not call postConfigUpdate', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+          activeBufferName: 'BufferA',
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '/b.glsl', inputs: {} },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+    ctrl.setSyncWithConfig(false);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setBufferScale(0.5);
+
+    expect(postedPayloads(deps)).toHaveLength(0);
+  });
+});
+
+describe('ResolutionSessionController — handleConfigUpdated does not post', () => {
+  it('does not call postConfigUpdate (it is a state-receive path)', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: {
+        Image: { inputs: {}, resolution: { scale: 4 } },
+      },
+    });
+
+    expect(postedPayloads(deps)).toHaveLength(0);
   });
 });
 

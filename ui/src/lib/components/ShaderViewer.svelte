@@ -146,7 +146,7 @@
       return debugState; 
     },
     setCurrentConfig: (config) => {
-      currentConfig = config; 
+      currentConfig = config;
     },
     resolutionStore,
     aspectRatioStore,
@@ -161,7 +161,7 @@
     },
     setShaderContext: (config, sp, bpm) => shaderDebugManager?.setShaderContext(config, sp, bpm),
     setEditorConfig: (config) => editorOverlayManager?.setConfig(config),
-    postConfigUpdate: (payload) => transport.postMessage({ type: 'updateConfig', payload }),
+    transport,
   });
 
   setContext('resolution', resolutionController);

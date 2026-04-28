@@ -25,8 +25,8 @@ export class ShaderConfigProcessor {
 
   /**
    * Load and process a shader configuration file.
-   * Returns the config and buffers, or null if config doesn't exist or fails to load.
-   * If the config file is open in an editor, reads from the editor to capture unsaved changes.
+   * Source of truth: open TextDocument when one exists (any state), else disk.
+   * Mirrors the GLSL hot-reload pattern so unsaved buffer edits propagate live.
    */
   public loadAndProcessConfig(
     shaderPath: string,
@@ -34,22 +34,21 @@ export class ShaderConfigProcessor {
   ): ShaderConfig | null {
     const configPath = ShaderConfigProcessor.getConfigPath(shaderPath);
 
-    if (!fs.existsSync(configPath)) {
-      return null;
+    const configDocument = vscode.workspace.textDocuments.find(
+      doc => doc.uri.fsPath === configPath,
+    );
+
+    let configContent: string;
+    if (configDocument) {
+      configContent = configDocument.getText();
+    } else {
+      if (!fs.existsSync(configPath)) {
+        return null;
+      }
+      configContent = fs.readFileSync(configPath, 'utf-8');
     }
 
     try {
-      // Check if config file is open in an editor (to capture unsaved changes)
-      const configDocument = vscode.workspace.textDocuments.find(
-        doc => doc.uri.fsPath === configPath
-      );
-      
-      // Only use TextDocument content if it has unsaved changes (isDirty).
-      // Otherwise read from disk — after handleConfigUpdate writes via fs.writeFileSync,
-      // the TextDocument may be stale until VS Code refreshes it.
-      const configContent = (configDocument && configDocument.isDirty)
-        ? configDocument.getText()
-        : fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configContent);
 
       if (config) {

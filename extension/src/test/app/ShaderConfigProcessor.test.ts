@@ -234,46 +234,60 @@ suite('ShaderConfigProcessor Test Suite', () => {
       fsReadFileSyncStub = sandbox.stub(fs, 'readFileSync');
     });
 
-    test('should read from editor memory when config file is open', () => {
+    test('reads from open TextDocument when dirty (live buffer is source of truth)', () => {
       const shaderPath = '/path/to/shader.glsl';
       const configPath = '/path/to/shader.sha.json';
-      const editorConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: {} }
-        }
+      const editorContent = JSON.stringify({
+        passes: { Image: { inputs: { iChannel0: { type: 'buffer', source: 'BufferA' } } } },
       });
 
-      fsExistsSyncStub.returns(true);
-
-      // Mock an open document with the config
       const mockDocument = {
         uri: { fsPath: configPath },
         isDirty: true,
-        getText: sandbox.stub().returns(editorConfigContent)
+        getText: sandbox.stub().returns(editorContent),
       };
       textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
 
       const result = configProcessor.loadAndProcessConfig(shaderPath, {});
 
       assert.ok(result);
-      assert.ok(result!.passes);
-      assert.ok(result!.passes.Image);
+      const inputs = result!.passes.Image.inputs!;
+      assert.ok(inputs.iChannel0);
       sinon.assert.calledOnce(mockDocument.getText);
       sinon.assert.notCalled(fsReadFileSyncStub);
     });
 
-    test('should read from disk when config file is not open in editor', () => {
+    test('reads from open TextDocument when clean (any-state, not dirty-only)', () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const configPath = '/path/to/shader.sha.json';
+      const editorContent = JSON.stringify({
+        passes: { Image: { inputs: { iChannel0: { type: 'buffer', source: 'BufferA' } } } },
+      });
+
+      const mockDocument = {
+        uri: { fsPath: configPath },
+        isDirty: false,
+        getText: sandbox.stub().returns(editorContent),
+      };
+      textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+
+      const result = configProcessor.loadAndProcessConfig(shaderPath, {});
+
+      assert.ok(result);
+      const inputs = result!.passes.Image.inputs!;
+      assert.ok(inputs.iChannel0);
+      sinon.assert.calledOnce(mockDocument.getText);
+      sinon.assert.notCalled(fsReadFileSyncStub);
+    });
+
+    test('falls back to disk when no document is open', () => {
       const shaderPath = '/path/to/shader.glsl';
       const diskConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: {} }
-        }
+        passes: { Image: { inputs: {} } },
       });
 
       fsExistsSyncStub.returns(true);
       fsReadFileSyncStub.returns(diskConfigContent);
-
-      // No open documents
       textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([]);
 
       const result = configProcessor.loadAndProcessConfig(shaderPath, {});
@@ -283,126 +297,19 @@ suite('ShaderConfigProcessor Test Suite', () => {
       sinon.assert.calledOnce(fsReadFileSyncStub);
     });
 
-    test('should prefer editor memory over disk content', () => {
+    test('falls back to disk when only an unrelated document is open', () => {
       const shaderPath = '/path/to/shader.glsl';
-      const configPath = '/path/to/shader.sha.json';
-            
-      // Editor has different content than disk
-      const editorConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: { iChannel0: { type: 'buffer', id: 'BufferA' } } }
-        }
-      });
       const diskConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: {} }
-        }
+        passes: { Image: { inputs: {} } },
       });
 
       fsExistsSyncStub.returns(true);
       fsReadFileSyncStub.returns(diskConfigContent);
 
-      const mockDocument = {
-        uri: { fsPath: configPath },
-        isDirty: true,
-        getText: sandbox.stub().returns(editorConfigContent)
-      };
-      textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
-
-      const result = configProcessor.loadAndProcessConfig(shaderPath, {});
-
-      assert.ok(result);
-      // Should have the editor content (with iChannel0), not disk content (empty inputs)
-      const inputs = result!.passes.Image.inputs!;
-      const iChannel0 = inputs.iChannel0;
-      assert.ok(iChannel0);
-      assert.strictEqual(iChannel0!.type, 'buffer');
-      sinon.assert.notCalled(fsReadFileSyncStub);
-    });
-
-    test('should read from disk when config file is open but not dirty', () => {
-      const shaderPath = '/path/to/shader.glsl';
-      const configPath = '/path/to/shader.sha.json';
-      const diskConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: { iChannel0: { type: 'buffer', id: 'BufferA' } } }
-        }
-      });
-
-      fsExistsSyncStub.returns(true);
-      fsReadFileSyncStub.returns(diskConfigContent);
-
-      // Document is open but not dirty (isDirty: false)
-      const mockDocument = {
-        uri: { fsPath: configPath },
-        isDirty: false,
-        getText: sandbox.stub().returns('stale content')
-      };
-      textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
-
-      const result = configProcessor.loadAndProcessConfig(shaderPath, {});
-
-      assert.ok(result);
-      const inputs = result!.passes.Image.inputs!;
-      assert.ok(inputs.iChannel0);
-      sinon.assert.notCalled(mockDocument.getText);
-      sinon.assert.calledOnce(fsReadFileSyncStub);
-    });
-
-    test('should use disk content over stale editor when not dirty', () => {
-      const shaderPath = '/path/to/shader.glsl';
-      const configPath = '/path/to/shader.sha.json';
-
-      // Disk has updated content (e.g. just written by handleConfigUpdate)
-      const diskConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: { iChannel0: { type: 'buffer', id: 'BufferA' } } }
-        }
-      });
-      // Editor still has old content (stale TextDocument)
-      const staleEditorContent = JSON.stringify({
-        passes: {
-          Image: { inputs: {} }
-        }
-      });
-
-      fsExistsSyncStub.returns(true);
-      fsReadFileSyncStub.returns(diskConfigContent);
-
-      const mockDocument = {
-        uri: { fsPath: configPath },
-        isDirty: false,
-        getText: sandbox.stub().returns(staleEditorContent)
-      };
-      textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
-
-      const result = configProcessor.loadAndProcessConfig(shaderPath, {});
-
-      assert.ok(result);
-      // Should have disk content (with iChannel0), not stale editor content (empty inputs)
-      const inputs = result!.passes.Image.inputs!;
-      assert.ok(inputs.iChannel0);
-      assert.strictEqual(inputs.iChannel0!.type, 'buffer');
-      sinon.assert.notCalled(mockDocument.getText);
-      sinon.assert.calledOnce(fsReadFileSyncStub);
-    });
-
-    test('should not read from editor with different path', () => {
-      const shaderPath = '/path/to/shader.glsl';
-      const configPath = '/path/to/shader.sha.json';
-      const diskConfigContent = JSON.stringify({
-        passes: {
-          Image: { inputs: {} }
-        }
-      });
-
-      fsExistsSyncStub.returns(true);
-      fsReadFileSyncStub.returns(diskConfigContent);
-
-      // Open document has different path
       const mockDocument = {
         uri: { fsPath: '/different/path/other.sha.json' },
-        getText: sandbox.stub().returns('{}')
+        isDirty: false,
+        getText: sandbox.stub().returns('{}'),
       };
       textDocumentsStub = sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
 
