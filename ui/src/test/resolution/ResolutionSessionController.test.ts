@@ -128,7 +128,7 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
       },
     }, false);
 
-    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith(undefined);
+    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({ scale: 1 });
   });
 
   it('preserves snapshot of old config buffer resolution after reset when loading a new shader', () => {
@@ -320,7 +320,7 @@ describe('ResolutionSessionController — syncWithConfig=true rereads shader con
       },
     }, false);
 
-    expect(deps.resolutionStore.setFromConfig).toHaveBeenLastCalledWith(undefined);
+    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({ scale: 1 });
   });
 });
 

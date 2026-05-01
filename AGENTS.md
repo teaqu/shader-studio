@@ -77,3 +77,7 @@ When a bug is reported:
 2. **Then fix the bug.** Run tests again to confirm the new test passes and nothing else broke.
 3. **Never skip step 1.** Fixing first and testing after risks writing a test that passes regardless of the fix.
 
+### When investigation gets stuck
+
+If you've spent more than ~3 rounds of code-reading without converging on the cause, **stop speculating and add `console.log` traces** at the suspect call sites. Ask the user to reproduce and report what the logs show. Real runtime values beat any amount of static analysis. Remove the logs once the root cause is found.
+

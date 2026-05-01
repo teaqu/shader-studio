@@ -557,7 +557,31 @@ describe('ShaderViewer', () => {
     expect(get(aspectRatioStore).source).toBe('session');
   });
 
-  it('should preserve Session Resolution overrides on same-shader shaderSource updates', async () => {
+  it('should clear stale localStorage resolution when loading a different shader without resolution config while sync is enabled', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    // Simulate stale localStorage state (e.g. previous session left 1x1)
+    resolutionStore.setCustomResolution('1', '1');
+    expect(get(resolutionStore).width).toBe('1');
+    expect(get(resolutionStore).height).toBe('1');
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/other.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/other.glsl' },
+    });
+
+    const res = get(resolutionStore);
+    expect(res.width).toBeUndefined();
+    expect(res.height).toBeUndefined();
+    expect(res.scale).toBe(1);
+    expect(res.source).toBe('session');
+  });
+
+  it('should clear Session Resolution overrides on same-shader shaderSource updates when sync enabled and config has no resolution', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
 
@@ -581,12 +605,12 @@ describe('ShaderViewer', () => {
     });
 
     const res = get(resolutionStore);
-    expect(res.width).toBe('1');
-    expect(res.height).toBe('1');
+    expect(res.width).toBeUndefined();
+    expect(res.height).toBeUndefined();
     expect(res.source).toBe('session');
 
     const ar = get(aspectRatioStore);
-    expect(ar.mode).toBe('1:1');
+    expect(ar.mode).toBe('auto');
     expect(ar.source).toBe('session');
   });
 

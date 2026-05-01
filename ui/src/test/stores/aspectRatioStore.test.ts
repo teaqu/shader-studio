@@ -108,7 +108,7 @@ describe('aspectRatioStore', () => {
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
-      callCount++; 
+      callCount++;
     });
     callCount = 0;
 
@@ -135,7 +135,7 @@ describe('aspectRatioStore', () => {
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
-      callCount++; 
+      callCount++;
     });
     callCount = 0;
 

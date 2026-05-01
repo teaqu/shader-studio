@@ -198,7 +198,7 @@ const createResolutionStore = () => {
       } else {
         // No config — fall back to global defaults (skip if already there)
         if (current.source !== CONFIG_SOURCE) {
-          return; 
+          return;
         }
         const next = loadInitialState();
         commit(next);

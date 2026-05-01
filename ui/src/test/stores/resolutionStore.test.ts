@@ -243,7 +243,7 @@ describe('resolutionStore', () => {
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
-      callCount++; 
+      callCount++;
     });
     callCount = 0;
 
@@ -277,7 +277,7 @@ describe('resolutionStore', () => {
 
     let callCount = 0;
     const unsub = store.subscribe(() => {
-      callCount++; 
+      callCount++;
     });
     callCount = 0;
 

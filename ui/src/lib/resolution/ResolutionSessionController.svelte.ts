@@ -431,6 +431,12 @@ export class ResolutionSessionController {
     settings?: ResolutionSettings,
     source: "config" | "session" = "config",
   ): void {
+    if (!settings) {
+      this.deps.resolutionStore.setSessionSettings({ scale: 1 });
+      this.deps.aspectRatioStore.setSessionMode("auto");
+      return;
+    }
+
     if (source === "config") {
       this.deps.resolutionStore.setFromConfig(settings);
       this.deps.aspectRatioStore.setFromConfig(settings?.aspectRatio);
