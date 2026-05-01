@@ -46,18 +46,26 @@ function buildThumbnail(
   const isScalar = varType === 'float' || varType === 'int' || varType === 'bool';
   const clamp = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 255);
 
-  for (let i = 0; i < totalPixels; i++) {
-    if (isScalar) {
-      const v = clamp(rgba[i * 4]);
-      pixels[i * 4 + 0] = v;
-      pixels[i * 4 + 1] = v;
-      pixels[i * 4 + 2] = v;
-    } else {
-      pixels[i * 4 + 0] = clamp(rgba[i * 4 + 0]);
-      pixels[i * 4 + 1] = clamp(rgba[i * 4 + 1]);
-      pixels[i * 4 + 2] = clamp(rgba[i * 4 + 2]);
+  // gl.readPixels returns bottom-to-top; putImageData expects top-to-bottom,
+  // so we reverse rows to match the screen orientation.
+  for (let y = 0; y < gridHeight; y++) {
+    const srcRow = (gridHeight - 1 - y) * gridWidth;
+    const dstRow = y * gridWidth;
+    for (let x = 0; x < gridWidth; x++) {
+      const srcIdx = (srcRow + x) * 4;
+      const dstIdx = (dstRow + x) * 4;
+      if (isScalar) {
+        const v = clamp(rgba[srcIdx]);
+        pixels[dstIdx + 0] = v;
+        pixels[dstIdx + 1] = v;
+        pixels[dstIdx + 2] = v;
+      } else {
+        pixels[dstIdx + 0] = clamp(rgba[srcIdx + 0]);
+        pixels[dstIdx + 1] = clamp(rgba[srcIdx + 1]);
+        pixels[dstIdx + 2] = clamp(rgba[srcIdx + 2]);
+      }
+      pixels[dstIdx + 3] = 255;
     }
-    pixels[i * 4 + 3] = 255;
   }
   return pixels;
 }

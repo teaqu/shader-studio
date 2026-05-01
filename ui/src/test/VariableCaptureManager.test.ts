@@ -964,6 +964,39 @@ describe('VariableCaptureManager', () => {
       expect(thumb[3]).toBe(255); // A always 255
     });
 
+    it('thumbnail reverses rows so WebGL bottom-to-top maps to canvas top-to-bottom', () => {
+      const { gridWidth, gridHeight } = BASE_GRID;
+      const totalPixels = gridWidth * gridHeight;
+      const data = new Float32Array(totalPixels * 4);
+      for (let y = 0; y < gridHeight; y++) {
+        const isBottomRow = y === 0;
+        const r = isBottomRow ? 1.0 : 0.0;
+        const g = isBottomRow ? 0.0 : 1.0;
+        for (let x = 0; x < gridWidth; x++) {
+          const idx = (y * gridWidth + x) * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = 0.0;
+          data[idx + 3] = 1.0;
+        }
+      }
+      const v = setupCapture('col', 'vec3', data);
+
+      const thumb = v.thumbnail!;
+      const rowStride = gridWidth * 4;
+      // After row reversal, thumbnail top row (y=0) should come from WebGL top row (y=gridHeight-1)
+      expect(thumb[0]).toBe(0);   // R
+      expect(thumb[1]).toBe(255); // G
+      expect(thumb[2]).toBe(0);   // B
+      expect(thumb[3]).toBe(255); // A
+      // thumbnail bottom row should come from WebGL bottom row (y=0)
+      const bottomRowStart = (gridHeight - 1) * rowStride;
+      expect(thumb[bottomRowStart + 0]).toBe(255); // R
+      expect(thumb[bottomRowStart + 1]).toBe(0);   // G
+      expect(thumb[bottomRowStart + 2]).toBe(0);   // B
+      expect(thumb[bottomRowStart + 3]).toBe(255); // A
+    });
+
     it('vec3: channelMeans computed correctly', () => {
       const data = makeVec3GridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.2, 0.5, 0.8);
       const v = setupCapture('col', 'vec3', data);
