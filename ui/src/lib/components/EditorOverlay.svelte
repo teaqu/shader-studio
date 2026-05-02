@@ -457,8 +457,8 @@
         if (!position || !model) {
           return;
         }
-        onCursorChange(position.lineNumber, model.getLineContent(position.lineNumber), activeBufferName);
-      }, 30);
+        onCursorChange(position.lineNumber - 1, model.getLineContent(position.lineNumber), activeBufferName);
+      }, 10);
     });
 
     editor.focus();

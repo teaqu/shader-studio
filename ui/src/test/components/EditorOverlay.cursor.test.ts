@@ -54,8 +54,8 @@ describe('EditorOverlay — cursor change emission', () => {
     cursorCb({});
     expect(onCursorChange).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(30);
-    expect(onCursorChange).toHaveBeenCalledWith(7, 'float x = 1.0;', 'Image');
+    vi.advanceTimersByTime(10);
+    expect(onCursorChange).toHaveBeenCalledWith(6, 'float x = 1.0;', 'Image');
   });
 
   it('debounces rapid cursor moves into a single call', async () => {
@@ -70,14 +70,14 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('line1');
 
     cursorCb({});
-    vi.advanceTimersByTime(10);
+    vi.advanceTimersByTime(5);
     cursorCb({});
-    vi.advanceTimersByTime(10);
+    vi.advanceTimersByTime(5);
     cursorCb({});
 
     expect(onCursorChange).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(30);
+    vi.advanceTimersByTime(10);
     expect(onCursorChange).toHaveBeenCalledTimes(1);
   });
 
@@ -92,7 +92,7 @@ describe('EditorOverlay — cursor change emission', () => {
 
     expect(() => {
       cursorCb({});
-      vi.advanceTimersByTime(30);
+      vi.advanceTimersByTime(10);
     }).not.toThrow();
   });
 
@@ -112,9 +112,9 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float t = iTime;');
 
     cursorCb({});
-    vi.advanceTimersByTime(30);
+    vi.advanceTimersByTime(10);
 
-    expect(onCursorChange).toHaveBeenCalledWith(2, 'float t = iTime;', 'BufferA');
+    expect(onCursorChange).toHaveBeenCalledWith(1, 'float t = iTime;', 'BufferA');
   });
 
   it('disposes cursor listener when editor is destroyed', async () => {
