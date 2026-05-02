@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
@@ -29,14 +29,9 @@ async function getLatestMockEditor() {
 describe('EditorOverlay — cursor change emission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('fires onCursorChange with line, lineContent and bufferName after debounce', async () => {
+  it('fires onCursorChange immediately with 0-based line, lineContent and bufferName', async () => {
     const onCursorChange = vi.fn();
 
     render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });
@@ -52,13 +47,10 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float x = 1.0;');
 
     cursorCb({});
-    expect(onCursorChange).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(10);
     expect(onCursorChange).toHaveBeenCalledWith(6, 'float x = 1.0;', 'Image');
   });
 
-  it('debounces rapid cursor moves into a single call', async () => {
+  it('fires on every cursor move', async () => {
     const onCursorChange = vi.fn();
 
     render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });
@@ -70,15 +62,10 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('line1');
 
     cursorCb({});
-    vi.advanceTimersByTime(5);
     cursorCb({});
-    vi.advanceTimersByTime(5);
     cursorCb({});
 
-    expect(onCursorChange).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(10);
-    expect(onCursorChange).toHaveBeenCalledTimes(1);
+    expect(onCursorChange).toHaveBeenCalledTimes(3);
   });
 
   it('does not throw when onCursorChange prop is not provided', async () => {
@@ -90,10 +77,7 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
     editor.getModel().getLineContent.mockReturnValue('');
 
-    expect(() => {
-      cursorCb({});
-      vi.advanceTimersByTime(10);
-    }).not.toThrow();
+    expect(() => cursorCb({})).not.toThrow();
   });
 
   it('fires with updated bufferName after buffer switch', async () => {
@@ -112,7 +96,6 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float t = iTime;');
 
     cursorCb({});
-    vi.advanceTimersByTime(10);
 
     expect(onCursorChange).toHaveBeenCalledWith(1, 'float t = iTime;', 'BufferA');
   });
