@@ -1070,6 +1070,7 @@
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}
           onBufferSwitch={handleOverlayBufferSwitch}
+          onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
           {errors}
         />
       {/key}
