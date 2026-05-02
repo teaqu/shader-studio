@@ -20,6 +20,7 @@
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
     compileMode?: CompileMode;
+    onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
 
   let {
@@ -35,6 +36,7 @@
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
     compileMode = "hot",
+    onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
 
   let containerEl = $state<HTMLDivElement | null>(null);
@@ -45,6 +47,8 @@
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
+  let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  let cursorChangeDisposable: monaco.editor.IDisposable | null = null;
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -440,6 +444,23 @@
       enableVim();
     }
 
+    cursorChangeDisposable = editor.onDidChangeCursorPosition(() => {
+      if (cursorChangeTimer) {
+        clearTimeout(cursorChangeTimer);
+      }
+      cursorChangeTimer = setTimeout(() => {
+        if (!editor) {
+          return;
+        }
+        const position = editor.getPosition();
+        const model = editor.getModel();
+        if (!position || !model) {
+          return;
+        }
+        onCursorChange(position.lineNumber, model.getLineContent(position.lineNumber), activeBufferName);
+      }, 30);
+    });
+
     editor.focus();
     requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
@@ -454,6 +475,14 @@
     if (persistTimer) {
       clearTimeout(persistTimer);
       persistTimer = null;
+    }
+    if (cursorChangeTimer) {
+      clearTimeout(cursorChangeTimer);
+      cursorChangeTimer = null;
+    }
+    if (cursorChangeDisposable) {
+      cursorChangeDisposable.dispose();
+      cursorChangeDisposable = null;
     }
     disableVim();
     if (containerEl) {

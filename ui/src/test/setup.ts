@@ -65,15 +65,19 @@ const monacoMock = {
       hasTextFocus: vi.fn(() => false),
       onDidChangeModelContent: vi.fn(),
       onDidScrollChange: vi.fn(),
+      onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
       onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
       onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
       onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
       getOption: vi.fn(() => 0),
-      getModel: vi.fn(() => ({
-        getLineMaxColumn: vi.fn(() => 80),
-        getLineCount: vi.fn(() => 0),
-        getLineContent: vi.fn(() => ''),
-      })),
+      getModel: (() => {
+        const model = {
+          getLineMaxColumn: vi.fn(() => 80),
+          getLineCount: vi.fn(() => 0),
+          getLineContent: vi.fn(() => ''),
+        };
+        return vi.fn(() => model);
+      })(),
       deltaDecorations: vi.fn(() => []),
       getVisibleRanges: vi.fn(() => []),
     })),

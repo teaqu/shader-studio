@@ -62,8 +62,11 @@ function createMockEditorWithCallbacks() {
       scrollChangeCallback = cb; 
     }),
     onKeyDown: vi.fn((cb: any) => {
-      keyDownCallback = cb; 
+      keyDownCallback = cb;
     }),
+    onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
     getOption: vi.fn(() => 0),
     getModel: vi.fn(() => model),
     deltaDecorations: vi.fn(() => []),
