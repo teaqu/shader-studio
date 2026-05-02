@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
@@ -26,12 +26,18 @@ async function getLatestMockEditor() {
   return calls.length ? (calls[calls.length - 1].value as any) : null;
 }
 
+const flushMicrotasks = () => new Promise(resolve => queueMicrotask(resolve as () => void));
+
 describe('EditorOverlay — cursor change emission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('fires onCursorChange immediately with 0-based line, lineContent and bufferName', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('fires onCursorChange (via microtask) with 0-based line, lineContent and bufferName', async () => {
     const onCursorChange = vi.fn();
 
     render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });
@@ -47,6 +53,8 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float x = 1.0;');
 
     cursorCb({});
+    expect(onCursorChange).not.toHaveBeenCalled();
+    await flushMicrotasks();
     expect(onCursorChange).toHaveBeenCalledWith(6, 'float x = 1.0;', 'Image');
   });
 
@@ -64,6 +72,7 @@ describe('EditorOverlay — cursor change emission', () => {
     cursorCb({});
     cursorCb({});
     cursorCb({});
+    await flushMicrotasks();
 
     expect(onCursorChange).toHaveBeenCalledTimes(3);
   });
@@ -77,7 +86,8 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
     editor.getModel().getLineContent.mockReturnValue('');
 
-    expect(() => cursorCb({})).not.toThrow();
+    cursorCb({});
+    await expect(flushMicrotasks()).resolves.not.toThrow();
   });
 
   it('fires with updated bufferName after buffer switch', async () => {
@@ -96,6 +106,7 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float t = iTime;');
 
     cursorCb({});
+    await flushMicrotasks();
 
     expect(onCursorChange).toHaveBeenCalledWith(1, 'float t = iTime;', 'BufferA');
   });

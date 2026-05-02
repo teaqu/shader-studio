@@ -447,7 +447,10 @@
       const position = editor?.getPosition();
       const model = editor?.getModel();
       if (!position || !model) return;
-      onCursorChange(position.lineNumber - 1, model.getLineContent(position.lineNumber), activeBufferName);
+      const line = position.lineNumber - 1;
+      const content = model.getLineContent(position.lineNumber);
+      const buffer = activeBufferName;
+      queueMicrotask(() => onCursorChange(line, content, buffer));
     });
 
     editor.focus();
