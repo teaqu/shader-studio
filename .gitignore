@@ -1,3 +1,6 @@
+# AI planning docs (local only)
+docs/superpowers/
+
 # Dependencies
 node_modules/
 .venv/
