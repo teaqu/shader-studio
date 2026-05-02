@@ -13,6 +13,7 @@ import { BufferUpdater } from './util/BufferUpdater';
 import { BufferPathResolver } from './util/BufferPathResolver';
 import { ShaderDebugManager } from './ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from './ShaderProcessor';
+import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderPipeline {
@@ -253,6 +254,9 @@ export class ShaderPipeline {
   }
 
   public handleCursorPositionMessage(message: CursorPositionMessage): void {
+    if (getEditorOverlayVisible()) {
+      return;
+    }
     const { line, lineContent, filePath } = message.payload;
 
     // If shader is locked, accept cursors from the locked file and its buffer files
@@ -267,6 +271,43 @@ export class ShaderPipeline {
 
     // If debug mode is active, recompile shader
     if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getImageShaderCode() && this.lastEvent) {
+      void this.debugCompile();
+    }
+  }
+
+  public handleOverlayCursor(line: number, lineContent: string, bufferName: string): void {
+    let filePath: string;
+    if (bufferName === 'Image') {
+      const lastMessage = (this.lastEvent?.data as { path?: string } | undefined);
+      filePath = lastMessage?.path ?? bufferName;
+    } else {
+      const config = this.renderEngine.getCurrentConfig();
+      const passConfig = config?.passes[bufferName];
+      const configPath =
+        passConfig && typeof passConfig === 'object' && 'path' in passConfig
+          ? (passConfig as { path?: string }).path
+          : undefined;
+      filePath = configPath ?? bufferName;
+    }
+
+    if (this.shaderLocker.isLocked()) {
+      const lockedPath = this.shaderLocker.getLockedShaderPath();
+      if (
+        lockedPath
+        && filePath !== lockedPath
+        && !this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+      ) {
+        return;
+      }
+    }
+
+    this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+
+    if (
+      this.shaderDebugManager.getState().isActive
+      && this.shaderProcessor.getImageShaderCode()
+      && this.lastEvent
+    ) {
       void this.debugCompile();
     }
   }
