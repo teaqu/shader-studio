@@ -1,4 +1,4 @@
-import type { ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
+import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
@@ -8,6 +8,24 @@ export interface DebugTarget {
   code: string;
   config: ShaderConfig | null;
   inputConfig?: Record<string, ConfigInput>;
+}
+
+interface VariablePreviewState {
+  varName: string;
+  varType: string;
+  debugLine: number;
+  activeBufferName: string;
+  filePath: string | null;
+  debugError: string | null;
+  debugNotice?: string | null;
+}
+
+export interface VariablePreviewRequest {
+  varName: string;
+  varType: string;
+  debugLine: number;
+  activeBufferName: string;
+  filePath: string | null;
 }
 
 export class ShaderDebugManager {
@@ -42,6 +60,7 @@ export class ShaderDebugManager {
   private imagePassPath: string | null = null;
   private bufferPathMap: Record<string, string> = {}; // bufferName → filePath
   private bufferCodes: Record<string, string> = {};
+  private variablePreview: VariablePreviewState | null = null;
 
   public setShaderContext(
     config: ShaderConfig | null,
@@ -60,7 +79,7 @@ export class ShaderDebugManager {
   }
 
   public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
-    const passName = this.state.activeBufferName;
+    const passName = this.variablePreview?.activeBufferName ?? this.state.activeBufferName;
     const code = passName === 'Image'
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode;
@@ -129,6 +148,7 @@ export class ShaderDebugManager {
     if (!this.state.isEnabled) {
       this.state.isLineLocked = false;
       this.lockedFilePath = null;
+      this.variablePreview = null;
     }
     this.updateActiveState();
     this.notifyStateChange();
@@ -151,6 +171,7 @@ export class ShaderDebugManager {
     this.state.filePath = filePath;
     this.state.debugError = null;
     this.state.debugNotice = null;
+    this.variablePreview = null;
     this.state.activeBufferName = this.resolveActiveBuffer(filePath);
     this.updateActiveState();
     this.updateFunctionContext();
@@ -158,7 +179,62 @@ export class ShaderDebugManager {
     this.onCaptureStateChanged?.();
   }
 
+  public setVariablePreview(request: VariablePreviewRequest): boolean {
+    if (
+      !this.state.isEnabled
+      || !this.state.isActive
+      || this.state.isLineLocked
+      || !Number.isInteger(request.debugLine)
+      || request.debugLine < 0
+      || request.varName.trim() === ''
+      || request.varType.trim() === ''
+      || request.activeBufferName.trim() === ''
+    ) {
+      return false;
+    }
+
+    if (
+      this.variablePreview?.varName === request.varName
+      && this.variablePreview.varType === request.varType
+      && this.variablePreview.debugLine === request.debugLine
+      && this.variablePreview.activeBufferName === request.activeBufferName
+      && this.variablePreview.filePath === request.filePath
+    ) {
+      return false;
+    }
+
+    this.variablePreview = {
+      varName: request.varName,
+      varType: request.varType,
+      debugLine: request.debugLine,
+      activeBufferName: request.activeBufferName,
+      filePath: request.filePath,
+      debugError: null,
+      debugNotice: null,
+    };
+    this.notifyStateChange();
+    return true;
+  }
+
+  public clearVariablePreview(): boolean {
+    if (!this.variablePreview) {
+      return false;
+    }
+
+    this.variablePreview = null;
+    this.notifyStateChange();
+    return true;
+  }
+
   public getState(): ShaderDebugState {
+    if (this.variablePreview) {
+      return {
+        ...this.state,
+        debugError: this.variablePreview.debugError,
+        debugNotice: this.variablePreview.debugNotice,
+      };
+    }
+
     return { ...this.state };
   }
 
@@ -211,6 +287,7 @@ export class ShaderDebugManager {
     this.state.isLineLocked = !this.state.isLineLocked;
     if (this.state.isLineLocked) {
       this.lockedFilePath = this.state.filePath;
+      this.variablePreview = null;
     } else {
       this.lockedFilePath = null;
     }
@@ -253,9 +330,10 @@ export class ShaderDebugManager {
   }
 
   public setDebugError(error: string | null): void {
-    this.state.debugError = error;
+    const target = this.variablePreview ?? this.state;
+    target.debugError = error;
     if (error) {
-      this.state.debugNotice = null;
+      target.debugNotice = null;
     }
     this.notifyStateChange();
   }
@@ -293,22 +371,7 @@ export class ShaderDebugManager {
   }
 
   private updateFunctionContext(): void {
-    const codeToAnalyse = this.getDebugTarget(this.imageShaderCode ?? '', null).code;
-    if (!codeToAnalyse || this.state.currentLine === null) {
-      this.state.functionContext = null;
-      return;
-    }
-
-    let context: ReturnType<typeof ShaderDebugger.extractFunctionContext> | null = null;
-    try {
-      context = ShaderDebugger.extractFunctionContext(
-        codeToAnalyse,
-        this.state.currentLine,
-      );
-    } catch {
-      this.state.functionContext = null;
-      return;
-    }
+    const context = this.extractFunctionContext(this.state.currentLine, this.state.activeBufferName);
 
     // Clear custom params when switching functions
     const newFunctionName = context?.functionName ?? null;
@@ -323,15 +386,7 @@ export class ShaderDebugManager {
   }
 
   private syncFunctionContextParameters(): void {
-    const context = this.state.functionContext;
-    if (!context) {
-      return;
-    }
-
-    context.parameters = context.parameters.map((param, index) => ({
-      ...param,
-      expression: this.customParameters.get(index) ?? param.defaultExpression,
-    }));
+    this.syncContextParameters(this.state.functionContext, this.customParameters);
   }
 
   private notifyStateChange(): void {
@@ -357,42 +412,92 @@ export class ShaderDebugManager {
   }
 
   /**
-   * Modifies shader code to execute up to the debug line.
-   * Returns modified code or null if modification fails or inline rendering is off.
-   * Falls back to full-shader post-processing when inline is off but normalize/step active.
+   * Modifies shader code to render the active debug target.
+   * Variable previews are independent of inline line rendering.
+   * Falls back to full-shader post-processing when inline line rendering is off.
    */
   public modifyShaderForDebugging(
     originalCode: string,
     debugLine: number,
   ): string | null {
-    if (!this.state.isActive || this.state.lineContent === null) {
+    const effectiveState = this.getState();
+    if (!effectiveState.isActive || effectiveState.lineContent === null) {
       return null;
     }
 
-    if (!this.state.isInlineRenderingEnabled) {
-      return this.applyFullShaderPostProcessing(originalCode);
+    let result: string | null;
+    let shouldReportMissingVariable = false;
+    if (this.variablePreview) {
+      result = ShaderDebugger.modifyShaderForVariablePreview(
+        originalCode,
+        this.variablePreview.debugLine,
+        { name: this.variablePreview.varName, type: this.variablePreview.varType },
+        this.loopMaxIterations,
+        this.customParameters,
+        effectiveState.normalizeMode,
+        effectiveState.isStepEnabled ? effectiveState.stepEdge : null,
+      );
+      shouldReportMissingVariable = true;
+    } else if (effectiveState.isInlineRenderingEnabled) {
+      result = ShaderDebugger.modifyShaderForLineDebug(
+        originalCode,
+        debugLine,
+        effectiveState.lineContent,
+        this.loopMaxIterations,
+        this.customParameters,
+        effectiveState.normalizeMode,
+        effectiveState.isStepEnabled ? effectiveState.stepEdge : null,
+      );
+      shouldReportMissingVariable = true;
+    } else {
+      result = this.applyFullShaderPostProcessing(originalCode);
     }
 
-    const result = ShaderDebugger.modifyShaderForDebugging(
-      originalCode,
-      debugLine,
-      this.state.lineContent,
-      this.loopMaxIterations,
-      this.customParameters,
-      this.state.normalizeMode,
-      this.state.isStepEnabled ? this.state.stepEdge : null,
-    );
-
-    if (result === null) {
-      this.state.debugError = null;
-      this.state.debugNotice = 'No debuggable variable on this line';
-      this.state.capturedVariables = [];
+    const target = this.variablePreview ?? this.state;
+    if (result === null && shouldReportMissingVariable) {
+      target.debugError = null;
+      target.debugNotice = 'No debuggable variable on this line';
       this.notifyStateChange();
     } else {
-      this.state.debugError = null;
-      this.state.debugNotice = null;
+      target.debugError = null;
+      target.debugNotice = null;
     }
 
     return result;
+  }
+
+  private getCodeForActiveBuffer(activeBufferName: string): string {
+    const imageCode = this.imageShaderCode ?? '';
+    return activeBufferName === 'Image'
+      ? imageCode
+      : this.bufferCodes[activeBufferName] ?? imageCode;
+  }
+
+  private extractFunctionContext(line: number | null, activeBufferName: string): DebugFunctionContext | null {
+    const codeToAnalyse = this.getCodeForActiveBuffer(activeBufferName);
+    if (!codeToAnalyse || line === null) {
+      return null;
+    }
+
+    try {
+      return ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
+    } catch {
+      return null;
+    }
+  }
+
+  private syncContextParameters(
+    context: DebugFunctionContext | null,
+    params: Map<number, string>,
+  ): DebugFunctionContext | null {
+    if (!context) {
+      return null;
+    }
+
+    context.parameters = context.parameters.map((param, index) => ({
+      ...param,
+      expression: params.get(index) ?? param.defaultExpression,
+    }));
+    return context;
   }
 }

@@ -37,8 +37,8 @@
     compileMode = "hot",
   }: Props = $props();
 
-  let containerEl: HTMLDivElement;
-  let statusBarEl: HTMLDivElement;
+  let containerEl = $state<HTMLDivElement | null>(null);
+  let statusBarEl = $state<HTMLDivElement | null>(null);
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
   let vimModeInstance: any = null;
   let editorReady = $state(false);
@@ -322,7 +322,7 @@
 
     setupMonacoGlsl(monaco as any);
 
-    editor = monaco.editor.create(containerEl, {
+    const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
       value: shaderCode,
       language: "glsl",
       theme: "shader-studio-transparent",
@@ -363,7 +363,9 @@
         highlightActiveIndentation: false,
         bracketPairsHorizontal: false,
       },
-    });
+    };
+
+    editor = monaco.editor.create(containerEl, editorOptions);
 
     if (shaderPath && savedViewStates.has(shaderPath)) {
       editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);

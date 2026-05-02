@@ -37,6 +37,10 @@
     setLayoutSlot as setEditorOverlayLayoutSlot,
     restoreFromStorage as restoreEditorOverlayFromStorage,
   } from "../state/editorOverlayState.svelte";
+  import {
+    getVariablePreview,
+    resetVariablePreview,
+  } from "../state/variablePreviewState.svelte";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
@@ -83,6 +87,7 @@
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
   let audioVideoController = $state<AudioVideoController | undefined>(undefined);
+  let lastAppliedVariablePreviewToken = 0;
   let pendingMessages: MessageEvent[] = [];
   let routerInitialized = false;
   let editorOverlayManager: EditorOverlayManager | undefined;
@@ -324,6 +329,8 @@
   });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
+    resetVariablePreview();
+    lastAppliedVariablePreviewToken = 0;
     glCanvas = canvas;
     await initializeApp();
   }
@@ -596,6 +603,8 @@
       code: debugTarget.code,
       inputConfig: debugTarget.inputConfig,
       debugLine: state.currentLine,
+      activeBufferName: debugTarget.passName,
+      filePath: state.filePath,
       pixelX: capturePixelX,
       pixelY: capturePixelY,
       canvasWidth: effectiveCanvasWidth,
@@ -894,6 +903,49 @@
     resolutionController.handleDebugStateChanged();
   });
 
+  $effect(() => {
+    const preview = getVariablePreview();
+    const { token, varName, varType, debugLine, activeBufferName, filePath } = preview;
+
+    if (!shaderDebugManager || !pipeline) {
+      return;
+    }
+
+    const canPreview = initialized
+      && debugState.isEnabled
+      && !debugState.isLineLocked;
+
+    if (!canPreview) {
+      lastAppliedVariablePreviewToken = -1;
+      if (shaderDebugManager.clearVariablePreview()) {
+        pipeline.triggerDebugRecompile();
+      }
+      return;
+    }
+
+    if (token === lastAppliedVariablePreviewToken) {
+      return;
+    }
+    lastAppliedVariablePreviewToken = token;
+
+    if (varName !== null && varType !== null && debugLine !== null && activeBufferName !== null) {
+      if (shaderDebugManager.setVariablePreview({
+        varName,
+        varType,
+        debugLine,
+        activeBufferName,
+        filePath,
+      })) {
+        pipeline.triggerDebugRecompile();
+      }
+      return;
+    }
+
+    if (shaderDebugManager.clearVariablePreview()) {
+      pipeline.triggerDebugRecompile();
+    }
+  });
+
   // Dockview functions
   let resetLayoutFn: (() => void) | null = null;
   let showPreviewFn: (() => void) | null = null;
@@ -964,6 +1016,7 @@
   const mountPerformance = createMountFn(() => performanceEl);
 
   onDestroy(() => {
+    resetVariablePreview();
     if (transport?.getType() === 'websocket') {
       releaseWebLayoutSlot();
     }

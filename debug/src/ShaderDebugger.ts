@@ -10,8 +10,99 @@ import type { DebugFunctionContext, DebugParameterInfo, DebugLoopInfo } from './
  */
 export class ShaderDebugger {
   /**
-   * Modifies shader code to execute up to the debug line and visualize the result.
-   * Returns modified code or null if modification fails.
+   * Modifies shader code for line-debug mode: auto-detects the variable
+   * on the given line with fallback behavior.
+   */
+  public static modifyShaderForLineDebug(
+    originalCode: string,
+    debugLine: number,
+    lineContent: string,
+    loopMaxIterations: Map<number, number> = new Map(),
+    customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
+  ): string | null {
+    const ctx = this.prepareDebugContext(originalCode, debugLine, lineContent);
+    const { lines, resolvedLine, resolvedLineContent, functionInfo, isFunctionEntryLine, varTypes, functionReturnType } = ctx;
+
+    let varInfo = this.detectVariableAndRewrite(resolvedLineContent, varTypes, functionReturnType, lines, resolvedLine);
+
+    if (!varInfo && isFunctionEntryLine && functionInfo.name && functionInfo.name !== 'mainImage') {
+      if (functionReturnType && functionReturnType !== 'void') {
+        console.log('[ShaderDebug] Path: full function execution (no variable on line)');
+        return CodeGenerator.wrapFullFunctionForDebugging(
+          lines,
+          functionInfo,
+          functionReturnType,
+          loopMaxIterations,
+          customParameters,
+          normalizeMode,
+          stepEdge,
+        );
+      }
+
+      console.log('[ShaderDebug] ❌ Void function entry line has no debuggable return value');
+      return null;
+    }
+
+    if (!varInfo && GlslParser.shouldSurfaceCompileErrorForLine(resolvedLineContent, lines, resolvedLine)) {
+      console.log('[ShaderDebug] Selected line has invalid syntax; preserving original shader to surface compile error');
+      return originalCode;
+    }
+
+    if (!varInfo) {
+      const shouldClimb = GlslParser.shouldClimbForNearestDebuggableLine(resolvedLineContent, lines, resolvedLine);
+      const fallbackLine = shouldClimb
+        ? this.findNearestDebuggableLineAbove(lines, resolvedLine, functionInfo, functionReturnType)
+        : null;
+      if (fallbackLine !== null) {
+        const fallbackLineContent = lines[fallbackLine] || '';
+        const fallbackVarTypes = GlslParser.buildVariableTypeMap(lines, fallbackLine, functionInfo);
+        varInfo = this.detectVariableAndRewrite(fallbackLineContent, fallbackVarTypes, functionReturnType, lines, fallbackLine);
+
+        if (varInfo) {
+          console.log('[ShaderDebug] Resolved to nearest debuggable line above:', fallbackLine);
+          return this.buildDebugShader(lines, fallbackLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
+        }
+      }
+    }
+
+    if (!varInfo) {
+      console.log('[ShaderDebug] ❌ Could not detect variable/type');
+      return null;
+    }
+
+    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
+  }
+
+  /**
+   * Modifies shader code to visualize an explicitly specified variable.
+   * No auto-detection or fallback behavior.
+   */
+  public static modifyShaderForVariablePreview(
+    originalCode: string,
+    debugLine: number,
+    varInfo: VarInfo,
+    loopMaxIterations: Map<number, number> = new Map(),
+    customParameters: Map<number, string> = new Map(),
+    normalizeMode: string = 'off',
+    stepEdge: number | null = null,
+  ): string | null {
+    const ctx = this.prepareDebugContext(originalCode, debugLine, '');
+    const { lines, resolvedLine, functionInfo, varTypes, functionReturnType } = ctx;
+
+    if (!this.isVariableInScope(varInfo, varTypes, functionInfo, lines, resolvedLine, functionReturnType)) {
+      console.log('[ShaderDebug] ❌ Explicit variable is not in scope');
+      return null;
+    }
+
+    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
+  }
+
+  /**
+   * Backward-compatible wrapper. Delegates to modifyShaderForLineDebug
+   * or modifyShaderForVariablePreview based on explicitVarInfo.
+   * @deprecated Use modifyShaderForLineDebug or modifyShaderForVariablePreview directly.
    */
   public static modifyShaderForDebugging(
     originalCode: string,
@@ -21,7 +112,43 @@ export class ShaderDebugger {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
+    explicitVarInfo: VarInfo | null = null,
   ): string | null {
+    if (explicitVarInfo) {
+      return this.modifyShaderForVariablePreview(
+        originalCode,
+        debugLine,
+        explicitVarInfo,
+        loopMaxIterations,
+        customParameters,
+        normalizeMode,
+        stepEdge,
+      );
+    }
+    return this.modifyShaderForLineDebug(
+      originalCode,
+      debugLine,
+      lineContent,
+      loopMaxIterations,
+      customParameters,
+      normalizeMode,
+      stepEdge,
+    );
+  }
+
+  private static prepareDebugContext(
+    originalCode: string,
+    debugLine: number,
+    lineContent: string,
+  ): {
+    lines: string[];
+    resolvedLine: number;
+    resolvedLineContent: string;
+    functionInfo: { start: number; end: number; name: string | null };
+    isFunctionEntryLine: boolean;
+    varTypes: Map<string, string>;
+    functionReturnType: string | undefined;
+  } {
     console.log('[ShaderDebug] === MODIFY SHADER ===');
     console.log('[ShaderDebug] Debug line number:', debugLine);
 
@@ -33,29 +160,32 @@ export class ShaderDebugger {
     const functionInfo = GlslParser.findEnclosingFunction(lines, debugLine);
     console.log('[ShaderDebug] Function:', functionInfo.name || 'none');
 
+    let resolvedLine = debugLine;
+    let resolvedLineContent = lineContent;
+
     // If on closing brace of function, treat as last line of body
     if (functionInfo.end >= 0 && debugLine === functionInfo.end) {
-      debugLine = functionInfo.end - 1;
-      lineContent = lines[debugLine] || '';
-      console.log('[ShaderDebug] Resolved closing brace to line:', debugLine);
+      resolvedLine = functionInfo.end - 1;
+      resolvedLineContent = lines[resolvedLine] || '';
+      console.log('[ShaderDebug] Resolved closing brace to line:', resolvedLine);
     }
 
-    const isFunctionEntryLine = this.isFunctionEntryLine(lines, debugLine, functionInfo);
+    const isFunctionEntryLine = this.isFunctionEntryLine(lines, resolvedLine, functionInfo);
 
     if (isFunctionEntryLine) {
       if (functionInfo.name === 'mainImage') {
         const lastBodyLine = this.findLastMeaningfulBodyLine(lines, functionInfo);
         if (lastBodyLine >= 0) {
-          debugLine = lastBodyLine;
-          lineContent = lines[debugLine] || '';
-          console.log('[ShaderDebug] Resolved mainImage entry line to body line:', debugLine);
+          resolvedLine = lastBodyLine;
+          resolvedLineContent = lines[resolvedLine] || '';
+          console.log('[ShaderDebug] Resolved mainImage entry line to body line:', resolvedLine);
         }
       } else {
         console.log('[ShaderDebug] Function entry line detected; falling back to function result debug');
       }
     }
 
-    const varTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
+    const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
 
     // Extract function return type if we're in a function
     let functionReturnType: string | undefined;
@@ -67,66 +197,47 @@ export class ShaderDebugger {
       }
     }
 
-    const actualLineContent = lines[debugLine] || '';
-    let varInfo = GlslParser.detectVariableAndType(actualLineContent, varTypes, functionReturnType, lines, debugLine);
+    return {
+      lines,
+      resolvedLine,
+      resolvedLineContent,
+      functionInfo,
+      isFunctionEntryLine,
+      varTypes,
+      functionReturnType,
+    };
+  }
+
+  private static detectVariableAndRewrite(
+    lineContent: string,
+    varTypes: Map<string, string>,
+    functionReturnType: string | undefined,
+    lines: string[],
+    debugLine: number,
+  ): VarInfo | null {
+    let varInfo = GlslParser.detectVariableAndType(lineContent, varTypes, functionReturnType, lines, debugLine);
 
     // If we detected a standalone function call, rewrite the line to capture its result
     if (varInfo && varInfo.name === '_dbgCall') {
-      const trimmed = actualLineContent.trim().replace(/;$/, '');
-      lines[debugLine] = actualLineContent.replace(trimmed, `${varInfo.type} _dbgCall = ${trimmed}`);
+      const trimmed = lineContent.trim().replace(/;$/, '');
+      lines[debugLine] = lineContent.replace(trimmed, `${varInfo.type} _dbgCall = ${trimmed}`);
       // Update varInfo to use the temp variable with proper name
       varInfo = { name: '_dbgCall', type: varInfo.type };
     }
 
-    if (!varInfo) {
-      if (isFunctionEntryLine && functionInfo.name && functionInfo.name !== 'mainImage') {
-        if (functionReturnType && functionReturnType !== 'void') {
-          console.log('[ShaderDebug] Path: full function execution (no variable on line)');
-          return CodeGenerator.wrapFullFunctionForDebugging(
-            lines,
-            functionInfo,
-            functionReturnType,
-            loopMaxIterations,
-            customParameters,
-            normalizeMode,
-            stepEdge,
-          );
-        }
+    return varInfo;
+  }
 
-        console.log('[ShaderDebug] ❌ Void function entry line has no debuggable return value');
-        return null;
-      }
-
-      if (GlslParser.shouldSurfaceCompileErrorForLine(actualLineContent, lines, debugLine)) {
-        console.log('[ShaderDebug] Selected line has invalid syntax; preserving original shader to surface compile error');
-        return originalCode;
-      }
-
-      const shouldClimb = GlslParser.shouldClimbForNearestDebuggableLine(actualLineContent, lines, debugLine);
-      const fallbackLine = shouldClimb
-        ? this.findNearestDebuggableLineAbove(lines, debugLine, functionInfo, functionReturnType)
-        : null;
-      if (fallbackLine !== null) {
-        debugLine = fallbackLine;
-        lineContent = lines[debugLine] || '';
-        console.log('[ShaderDebug] Resolved to nearest debuggable line above:', debugLine);
-
-        const fallbackVarTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
-        const fallbackLineContent = lines[debugLine] || '';
-        varInfo = GlslParser.detectVariableAndType(fallbackLineContent, fallbackVarTypes, functionReturnType, lines, debugLine);
-
-        if (varInfo && varInfo.name === '_dbgCall') {
-          const trimmed = fallbackLineContent.trim().replace(/;$/, '');
-          lines[debugLine] = fallbackLineContent.replace(trimmed, `${varInfo.type} _dbgCall = ${trimmed}`);
-          varInfo = { name: '_dbgCall', type: varInfo.type };
-        }
-      }
-    }
-
-    if (!varInfo) {
-      console.log('[ShaderDebug] ❌ Could not detect variable/type');
-      return null;
-    }
+  private static buildDebugShader(
+    lines: string[],
+    debugLine: number,
+    functionInfo: { start: number; end: number; name: string | null },
+    varInfo: VarInfo,
+    loopMaxIterations: Map<number, number>,
+    customParameters: Map<number, string>,
+    normalizeMode: string,
+    stepEdge: number | null,
+  ): string {
     console.log('[ShaderDebug] ✓ Detected:', varInfo.name, `(${varInfo.type})`);
     console.log('[ShaderDebug] normalizeMode:', normalizeMode);
 
@@ -146,6 +257,47 @@ export class ShaderDebugger {
 
     console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
     return result;
+  }
+
+  private static isVariableInScope(
+    varInfo: VarInfo,
+    varTypes: Map<string, string>,
+    functionInfo: { start: number; end: number; name: string | null },
+    lines: string[],
+    debugLine: number,
+    functionReturnType?: string,
+  ): boolean {
+    if (functionInfo.name) {
+      if (varTypes.get(varInfo.name) === varInfo.type) {
+        return true;
+      }
+
+      const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
+      if (globalVars.some((globalVar) => globalVar.name === varInfo.name && globalVar.type === varInfo.type)) {
+        return true;
+      }
+
+      if (varInfo.name !== '_dbgReturn') {
+        return false;
+      }
+
+      if (!functionReturnType || functionReturnType !== varInfo.type) {
+        return false;
+      }
+
+      const detected = GlslParser.detectVariableAndType(
+        lines[debugLine] || '',
+        varTypes,
+        varInfo.type,
+        lines,
+        debugLine,
+        false,
+      );
+      return detected?.name === '_dbgReturn';
+    }
+
+    return GlslParser.getGlobalVariables(lines, debugLine)
+      .some((globalVar) => globalVar.name === varInfo.name && globalVar.type === varInfo.type);
   }
 
   private static isFunctionEntryLine(lines: string[], lineNumber: number, functionInfo: { start: number; end: number; name: string | null }): boolean {

@@ -1,4 +1,4 @@
-import type { RenderingEngine } from "../../../rendering/src/RenderingEngine";
+import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 
 export interface PerformanceData {
   currentFPS: number;

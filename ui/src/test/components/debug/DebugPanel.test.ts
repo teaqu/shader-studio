@@ -9,6 +9,7 @@ import type { RefreshMode } from '../../../lib/VariableCaptureManager';
 import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
+import { getVariablePreview, resetVariablePreview } from '../../../lib/state/variablePreviewState.svelte';
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -97,6 +98,7 @@ function createMockVariableCaptureManager() {
 
 describe('DebugPanel', () => {
   beforeEach(() => {
+    resetVariablePreview();
     debugPanelStore.setLayoutSlot('test');
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setVariableInspectorEnabled(false);
@@ -856,6 +858,7 @@ describe('DebugPanel', () => {
             stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
             channelHistograms: null, colorFrequencies: null, thumbnail: null,
             declarationLine: 0, gridWidth: 32, gridHeight: 32,
+            captureLine: 5, captureFilePath: '/test.glsl', captureBufferName: 'Image',
           }],
         }),
         getUniforms: mockGetUniforms,
@@ -973,6 +976,7 @@ describe('DebugPanel', () => {
             stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
             channelHistograms: null, colorFrequencies: null, thumbnail: null,
             declarationLine: 0, gridWidth: 32, gridHeight: 32,
+            captureLine: 5, captureFilePath: '/test.glsl', captureBufferName: 'Image',
           }],
         }),
         getUniforms: mockGetUniforms,
@@ -998,6 +1002,7 @@ describe('DebugPanel', () => {
             stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
             channelHistograms: null, colorFrequencies: null, thumbnail: null,
             declarationLine: 12, gridWidth: 32, gridHeight: 32,
+            captureLine: 5, captureFilePath: '/test.glsl', captureBufferName: 'Image',
           }],
         }),
         getUniforms: mockGetUniforms,
@@ -1009,6 +1014,63 @@ describe('DebugPanel', () => {
       expect(lineEl.textContent).toBe('L13');
       await fireEvent.click(lineEl);
       expect(onVarClick).toHaveBeenCalledWith('myVar', 12);
+    });
+
+    it('mini preview hover and focus update shared preview state with the displayed variable', async () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isVariableInspectorEnabled: true,
+          capturedVariables: [{
+            varName: 'myVar', varType: 'float', value: null,
+            channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+            stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+            channelHistograms: null, colorFrequencies: null,
+            thumbnail: new Uint8ClampedArray(32 * 32 * 4).fill(128),
+            declarationLine: 12, gridWidth: 32, gridHeight: 32,
+            captureLine: 9, captureFilePath: '/test.glsl', captureBufferName: 'Image',
+          }],
+        }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const preview = container.querySelector('.thumb-wrap') as HTMLElement;
+      expect(preview).toBeInTheDocument();
+
+      await fireEvent.mouseEnter(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: 'myVar',
+        varType: 'float',
+        debugLine: 9,
+        activeBufferName: 'Image',
+        filePath: '/test.glsl',
+      });
+
+      await fireEvent.mouseLeave(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: null,
+        varType: null,
+        debugLine: null,
+        activeBufferName: null,
+        filePath: null,
+      });
+
+      await fireEvent.focus(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: 'myVar',
+        varType: 'float',
+        debugLine: 9,
+        activeBufferName: 'Image',
+        filePath: '/test.glsl',
+      });
+
+      await fireEvent.blur(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: null,
+        varType: null,
+        debugLine: null,
+        activeBufferName: null,
+        filePath: null,
+      });
     });
 
     it('refreshMode border survives rapid debugState changes', async () => {
@@ -1034,6 +1096,7 @@ describe('DebugPanel', () => {
               stats: { min: 0, max: 1, mean: 0.1 * i }, histogram: null,
               channelHistograms: null, colorFrequencies: null, thumbnail: null,
               declarationLine: 0, gridWidth: 32, gridHeight: 32,
+              captureLine: 5, captureFilePath: '/test.glsl', captureBufferName: 'Image',
             }],
           }),
           getUniforms: mockGetUniforms,

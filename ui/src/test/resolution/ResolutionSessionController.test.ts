@@ -585,7 +585,7 @@ describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig
         passes: {
           Image: {
             inputs: {},
-            resolution: { scale: 2, customWidth: '1280', customHeight: '720', aspectRatio: '16:9' },
+            resolution: { scale: 2, width: 1280, height: 720 },
           },
         },
       },
@@ -602,9 +602,8 @@ describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig
         Image: expect.objectContaining({
           resolution: expect.objectContaining({
             scale: 2,
-            customWidth: '1280',
-            customHeight: '720',
-            aspectRatio: '16:9',
+            width: 1280,
+            height: 720,
           }),
         }),
       }),

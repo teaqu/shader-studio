@@ -21,7 +21,7 @@
     canvasHeight = 0,
   }: Props = $props();
 
-  let inspectorElement: HTMLDivElement;
+  let inspectorElement = $state<HTMLDivElement | null>(null);
   const OFFSET = 20;
   const ESTIMATED_WIDTH = 250;
 

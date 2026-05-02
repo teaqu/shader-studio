@@ -58,6 +58,8 @@ const BASE_PARAMS = {
   canvasHeight: 600,
   loopMaxIters: new Map<number, number>(),
   customParams: new Map<number, string>(),
+  activeBufferName: 'Image',
+  filePath: '/shaders/image.glsl',
   sampleSize: 64,
   refreshMode: 'manual' as const,
   pollingMs: 500,
@@ -915,6 +917,15 @@ describe('VariableCaptureManager', () => {
       expect(v.stats!.mean).toBeCloseTo(0.5, 5);
       expect(v.stats!.min).toBeCloseTo(0.5, 5);
       expect(v.stats!.max).toBeCloseTo(0.5, 5);
+    });
+
+    it('stores the capture provenance needed for large variable previews', () => {
+      const data = makeGridData(BASE_GRID.gridWidth, BASE_GRID.gridHeight,0.5);
+      const v = setupCapture('x', 'float', data);
+
+      expect(v.captureLine).toBe(0);
+      expect(v.captureBufferName).toBe('Image');
+      expect(v.captureFilePath).toBe('/shaders/image.glsl');
     });
 
     it('float: thumbnail has correct size (gridWidth×gridHeight×4 bytes)', () => {

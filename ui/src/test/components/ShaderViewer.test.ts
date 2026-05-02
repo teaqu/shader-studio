@@ -5076,8 +5076,12 @@ describe('ShaderViewer', () => {
       varName: 'myVar', varType: 'float', value: null,
       channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
       stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
-      channelHistograms: null, colorFrequencies: null, thumbnail: null,
+      channelHistograms: null, colorFrequencies: null,
+      thumbnail: new Uint8ClampedArray(32 * 32 * 4).fill(128),
       declarationLine: 5, gridWidth: 32, gridHeight: 32,
+      captureLine: 6,
+      captureFilePath: TEST_FILE,
+      captureBufferName: 'Image',
     };
 
     async function setupWithVars(filePath: string | null = TEST_FILE) {
@@ -5093,7 +5097,14 @@ describe('ShaderViewer', () => {
         data: {
           type: 'shaderSource',
           path: TEST_FILE,
-          code: 'void mainImage(out vec4 o, vec2 uv) { float myVar = 0.5; o = vec4(1.0); }',
+          code: `void mainImage(out vec4 o, vec2 uv) {
+  vec3 base = vec3(0.0);
+  base.r = uv.x;
+  base.g = uv.y;
+  base.b = 1.0;
+  float myVar = 0.5;
+  o = vec4(base * myVar, 1.0);
+}`,
           config: { passes: { image: {} } },
           pathMap: { image: TEST_FILE },
         },
@@ -5105,7 +5116,7 @@ describe('ShaderViewer', () => {
         await messageHandler({
           data: {
             type: 'cursorPosition',
-            payload: { line: 5, lineContent: 'float myVar = 0.5;', filePath },
+            payload: { line: 6, lineContent: '  o = vec4(base * myVar, 1.0);', filePath },
           },
         });
         await tick();
@@ -5140,6 +5151,117 @@ describe('ShaderViewer', () => {
         type: 'goToLine',
         payload: { line: 5, filePath: TEST_FILE },
       });
+    });
+
+    it('previews the displayed variable while the mini preview is hovered and restores on leave', async () => {
+      await setupWithVars();
+      vi.clearAllMocks();
+
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      expect(preview).toBeInTheDocument();
+
+      await fireEvent.mouseEnter(preview);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
+      let goToLineCalls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c: any[]) => c[0]?.type === 'goToLine');
+      expect(goToLineCalls).toHaveLength(0);
+
+      await fireEvent.mouseLeave(preview);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(2);
+      goToLineCalls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls
+        .filter((c: any[]) => c[0]?.type === 'goToLine');
+      expect(goToLineCalls).toHaveLength(0);
+    });
+
+    it('does not preview when the line badge is hovered', async () => {
+      await setupWithVars();
+      vi.clearAllMocks();
+
+      const lineEl = document.querySelector('.var-line') as HTMLElement;
+      expect(lineEl).toBeInTheDocument();
+
+      await fireEvent.mouseEnter(lineEl);
+      await tick();
+      await fireEvent.mouseLeave(lineEl);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
+    });
+
+    it('previews the mini preview while inline rendering is disabled', async () => {
+      await setupWithVars();
+
+      const inlineButton = document.querySelector('[aria-label="Toggle inline rendering"]') as HTMLElement;
+      expect(inlineButton).toBeInTheDocument();
+      await fireEvent.keyDown(inlineButton, { key: 'Enter' });
+      await tick();
+      await tick();
+      expect(inlineButton.classList.contains('active')).toBe(false);
+      vi.clearAllMocks();
+
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      await fireEvent.mouseEnter(preview);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not preview mini previews while line lock is enabled', async () => {
+      await setupWithVars();
+
+      const lineLockButton = document.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
+      expect(lineLockButton).toBeInTheDocument();
+      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
+      await tick();
+
+      vi.clearAllMocks();
+
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      await fireEvent.mouseEnter(preview);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
+    });
+
+    it('starts previewing a hovered mini preview after line lock is disabled', async () => {
+      await setupWithVars();
+
+      const lineLockButton = document.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
+      expect(lineLockButton).toBeInTheDocument();
+      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
+      await tick();
+      vi.clearAllMocks();
+
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      await fireEvent.mouseEnter(preview);
+      await tick();
+      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
+
+      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
+      await tick();
+
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not require the declaration line to resolve to source text before previewing', async () => {
+      await setupWithVars();
+      mockVCMFactory.inject([{ ...TEST_VAR, declarationLine: 99 }]);
+      await tick();
+      vi.clearAllMocks();
+
+      const lineEl = document.querySelector('.var-line') as HTMLElement;
+      expect(lineEl.textContent).toBe('L100');
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      expect(preview).toBeInTheDocument();
+
+      await fireEvent.mouseEnter(preview);
+      await tick();
+
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
     });
 
     it('does not send goToLine when filePath is null', async () => {

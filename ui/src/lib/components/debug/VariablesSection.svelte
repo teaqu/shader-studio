@@ -72,7 +72,7 @@
       <!-- Grid sample size (hidden when pixel is selected) -->
       {#if !hasPixelSelected}
         <span class="ctrl-label">Size</span>
-        {#each SAMPLE_SIZES as s}
+        {#each SAMPLE_SIZES as s (s)}
           <button
             class="ctrl-btn"
             class:active={sampleSize === s}

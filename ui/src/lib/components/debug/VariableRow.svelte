@@ -56,7 +56,17 @@
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
     <div class="thumb-col">
-      <CaptureThumbnail pixels={variable.thumbnail!} gridWidth={variable.gridWidth} gridHeight={variable.gridHeight} maxSize={32} />
+      <CaptureThumbnail
+        pixels={variable.thumbnail!}
+        gridWidth={variable.gridWidth}
+        gridHeight={variable.gridHeight}
+        varName={variable.varName}
+        varType={variable.varType}
+        debugLine={variable.captureLine}
+        activeBufferName={variable.captureBufferName}
+        filePath={variable.captureFilePath}
+        maxSize={32}
+      />
     </div>
   {/if}
 
@@ -66,7 +76,13 @@
         <span class="var-name" title={variable.varName}>{variable.varName}</span>
         <span class="var-type">{variable.varType}</span>
         {#if variable.declarationLine >= 0}
-          <span class="var-line" onclick={onLineClick} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onLineClick()}>L{variable.declarationLine + 1}</span>
+          <span
+            class="var-line"
+            onclick={onLineClick}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => e.key === 'Enter' && onLineClick()}
+          >L{variable.declarationLine + 1}</span>
         {/if}
       </div>
 
@@ -79,9 +95,9 @@
           {#if variable.value && variable.value.length === 1}
             <span class:dimmed={isDimmed(variable.value[0])}>{fmt(variable.value[0])}</span>
           {:else if variable.value}
-            <span class="vec-value"
-            >({#each variable.value as v, i
-            }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.value.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+            <span class="vec-value">
+              ({#each variable.value as v, i (i)}<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.value.length - 1}<span class="sep">, </span>{/if}{/each})
+            </span>
           {/if}
         </span>
 
@@ -115,9 +131,9 @@
               {#if variable.channelStats.length === 1}
                 <span class:dimmed={isDimmed(variable.channelStats[0].mean)}>{fmt(variable.channelStats[0].mean)}</span>
               {:else}
-                <span class="vec-value"
-                >({#each variable.channelStats as s, i
-                }<span class:dimmed={isDimmed(s.mean)}>{fmt(s.mean)}</span>{#if i < variable.channelStats.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+                <span class="vec-value">
+                  ({#each variable.channelStats as s, i (i)}<span class:dimmed={isDimmed(s.mean)}>{fmt(s.mean)}</span>{#if i < variable.channelStats.length - 1}<span class="sep">, </span>{/if}{/each})
+                </span>
               {/if}
             {:else}
               <!-- Varying: means + expand -->
@@ -125,9 +141,9 @@
               {#if variable.channelMeans.length === 1}
                 <span class:dimmed={isDimmed(variable.channelMeans[0])}>{fmt(variable.channelMeans[0])}</span>
               {:else}
-                <span class="vec-value"
-                >({#each variable.channelMeans as v, i
-                }<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})</span>
+                <span class="vec-value">
+                  ({#each variable.channelMeans as v, i (i)}<span class:dimmed={isDimmed(v)}>{fmt(v)}</span>{#if i < variable.channelMeans.length - 1}<span class="sep">, </span>{/if}{/each})
+                </span>
               {/if}
               <button class="expand-btn" class:expanded={isExpanded} onclick={onExpandToggle} aria-label="Toggle channel view"><i class="codicon codicon-chevron-down"></i></button>
             {/if}

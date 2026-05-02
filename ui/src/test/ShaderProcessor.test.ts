@@ -357,7 +357,7 @@ describe('ShaderProcessor', () => {
 
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined, undefined);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined);
       expect(result.success).toBe(true);
     });
 
@@ -475,7 +475,6 @@ describe('ShaderProcessor', () => {
         message.buffers,
         undefined,
         undefined,
-        undefined,
       );
       expect(result.success).toBe(true);
     });
@@ -519,7 +518,6 @@ describe('ShaderProcessor', () => {
         message.buffers,
         undefined,
         undefined,
-        undefined,
       );
       expect(result.success).toBe(true);
     });
@@ -559,7 +557,6 @@ describe('ShaderProcessor', () => {
         message.config,
         message.path,
         message.buffers,
-        undefined,
         undefined,
         undefined,
       );

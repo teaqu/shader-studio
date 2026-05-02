@@ -64,7 +64,9 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 - Prefer pure functions over methods with side effects where possible
 - All new `.ts` files with runes must use `.svelte.ts` extension
 - Always define props with an `interface Props` and `let { ... }: Props = $props()`
-- Prefer reactive state over callbacks for **state propagation**: use `$derived` or `$effect` reading module-level `$state` rather than threading values down through props
+- Prefer reactive state over callbacks for **state propagation**: use `$derived` or `$effect` reading module-level `$state` rather than threading values down through props.
+- Do not build callback chains for shared UI state such as hover previews, active selections, transient inspector state, or cross-panel coordination. From the first implementation, put that state in `ui/src/lib/state/` as a `.svelte.ts` rune module and have producers call exported setters while consumers read exported getters in `$derived`/`$effect`.
+- Use callback props for direct commands/events only, such as button clicks that invoke an owner action. If the callback only exists to move state through intermediate components, replace it with shared rune state.
 - Shared UI state lives in `ui/src/lib/state/` as `.svelte.ts` files exporting getter/setter functions over module-level `$state`. No writable stores, no `subscribe`.
 - **Effects belong in the class that owns the behavior**, not in the consumer. If a manager class needs to react to state changes, give it a `$effect.root()` in its constructor and clean up in `dispose()`. Don't push reactive glue into components that shouldn't need to know about it.
 - When a class needs reactive effects outside a component lifecycle, use `$effect.root()` — it creates a standalone reactive root. Store the returned cleanup and call it in `dispose()`.
@@ -80,4 +82,3 @@ When a bug is reported:
 ### When investigation gets stuck
 
 If you've spent more than ~3 rounds of code-reading without converging on the cause, **stop speculating and add `console.log` traces** at the suspect call sites. Ask the user to reproduce and report what the logs show. Real runtime values beat any amount of static analysis. Remove the logs once the root cause is found.
-

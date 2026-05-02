@@ -1,10 +1,20 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import {
+    clearVariablePreview,
+    setVariablePreview,
+  } from '../../state/variablePreviewState.svelte';
+  import type { VariablePreviewRequest } from '../../state/variablePreviewState.svelte';
 
   interface Props {
     pixels: Uint8ClampedArray;
     gridWidth: number;
     gridHeight: number;
+    varName: string;
+    varType: string;
+    debugLine: number;
+    activeBufferName: string;
+    filePath: string | null;
     maxSize?: number;
   }
 
@@ -12,13 +22,19 @@
     pixels,
     gridWidth,
     gridHeight,
+    varName,
+    varType,
+    debugLine,
+    activeBufferName,
+    filePath,
     maxSize = 32,
   }: Props = $props();
 
   let canvas: HTMLCanvasElement;
   let mounted = $state(false);
   let hovered = $state(false);
-
+  let focused = $state(false);
+  let previewActive = $state(false);
   let displayWidth = $derived(gridWidth >= gridHeight
     ? maxSize
     : Math.round(maxSize * (gridWidth / gridHeight)));
@@ -26,6 +42,13 @@
     ? maxSize
     : Math.round(maxSize * (gridHeight / gridWidth)));
   let canExpand = $derived(gridWidth > displayWidth || gridHeight > displayHeight);
+  let previewRequest: VariablePreviewRequest = $derived({
+    varName,
+    varType,
+    debugLine,
+    activeBufferName,
+    filePath,
+  });
 
   function draw() {
     if (!canvas || !mounted || gridWidth < 1 || gridHeight < 1) {
@@ -40,8 +63,35 @@
     ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels), gridWidth, gridHeight), 0, 0);
   }
 
+  function syncPreviewActive() {
+    const nextActive = hovered || focused;
+    if (previewActive === nextActive) {
+      return;
+    }
+    previewActive = nextActive;
+    if (previewActive) {
+      setVariablePreview(previewRequest);
+    } else {
+      clearVariablePreview(varName, varType);
+    }
+  }
+
+  function setHovered(value: boolean) {
+    hovered = value;
+    syncPreviewActive();
+  }
+
+  function setFocused(value: boolean) {
+    focused = value;
+    syncPreviewActive();
+  }
+
   onMount(() => {
     mounted = true; draw();
+  });
+
+  onDestroy(() => {
+    clearVariablePreview(varName, varType);
   });
 
   $effect(() => {
@@ -50,12 +100,14 @@
   });
 </script>
 
-<div
+<button
+  type="button"
   class="thumb-wrap"
-  role="img"
   aria-label="Captured variable thumbnail"
-  onmouseenter={() => hovered = true}
-  onmouseleave={() => hovered = false}
+  onmouseenter={() => setHovered(true)}
+  onmouseleave={() => setHovered(false)}
+  onfocus={() => setFocused(true)}
+  onblur={() => setFocused(false)}
 >
   <canvas
     bind:this={canvas}
@@ -64,7 +116,7 @@
     style="width: {displayWidth}px; height: {displayHeight}px; image-rendering: pixelated;"
     class="thumb"
   ></canvas>
-  {#if canExpand && hovered}
+  {#if canExpand && previewActive}
     <canvas
       width={gridWidth}
       height={gridHeight}
@@ -73,7 +125,7 @@
       use:drawExpanded={{ pixels, gridWidth, gridHeight }}
     ></canvas>
   {/if}
-</div>
+</button>
 
 <script lang="ts" module>
   function drawExpanded(node: HTMLCanvasElement, params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
@@ -103,6 +155,12 @@
   .thumb-wrap {
     position: relative;
     flex-shrink: 0;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
   }
 
   .thumb {

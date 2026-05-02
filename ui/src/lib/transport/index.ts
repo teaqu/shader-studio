@@ -1,4 +1,4 @@
 export { VSCodeTransport } from './VSCodeTransport';
 export { WebSocketTransport } from './WebSocketTransport';
-export { MessageHandler } from './MessageHandler';
+export { ShaderPipeline as MessageHandler } from '../ShaderPipeline';
 export { createTransport, isVSCodeEnvironment } from './TransportFactory';

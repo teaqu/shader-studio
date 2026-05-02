@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import VariablesSection from '../../lib/components/debug/VariablesSection.svelte';
 import type { RefreshMode, CapturedVariable, VariableCaptureManager } from '../../lib/VariableCaptureManager';
+import { getVariablePreview, resetVariablePreview } from '../../lib/state/variablePreviewState.svelte';
 
 function createMockVariableCaptureManager(overrides: Partial<VariableCaptureManager> = {}) {
   return {
@@ -45,6 +46,16 @@ function makeGridVar(name: string, type: string, mean: number, declarationLine =
     gridWidth: 32,
     gridHeight: 32,
     declarationLine,
+    captureLine: 5,
+    captureFilePath: '/test.glsl',
+    captureBufferName: 'Image',
+  };
+}
+
+function makeGridVarWithThumbnail(name: string, type: string, mean: number, declarationLine = 0): CapturedVariable {
+  return {
+    ...makeGridVar(name, type, mean, declarationLine),
+    thumbnail: new Uint8ClampedArray(32 * 32 * 4).fill(128),
   };
 }
 
@@ -63,6 +74,9 @@ function makePixelVar(name: string, type: string, value: number[], declarationLi
     gridWidth: 1,
     gridHeight: 1,
     declarationLine,
+    captureLine: 5,
+    captureFilePath: '/test.glsl',
+    captureBufferName: 'Image',
   };
 }
 
@@ -73,6 +87,10 @@ function getButtonByText(container: HTMLElement, text: string): HTMLElement | un
 }
 
 describe('VariablesSection', () => {
+  beforeEach(() => {
+    resetVariablePreview();
+  });
+
   it('shows capture errors instead of the loading state when capture fails', () => {
     const { getByText, queryByText } = render(VariablesSection, {
       props: { ...BASE_PROPS, isLoading: true, captureError: 'Failed to capture variables' },
@@ -490,6 +508,34 @@ describe('VariablesSection', () => {
       expect(lineEl).toBeTruthy();
       await fireEvent.click(lineEl);
       expect(onVarClick).toHaveBeenCalledWith('myFloat', 7);
+    });
+
+    it('updates shared preview state with variable identity when the mini preview is hovered', async () => {
+      const vars = [makeGridVarWithThumbnail('myFloat', 'float', 0.5, 7)];
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, capturedVariables: vars },
+      });
+
+      const preview = container.querySelector('.thumb-wrap') as HTMLElement;
+      expect(preview).toBeTruthy();
+
+      await fireEvent.mouseEnter(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: 'myFloat',
+        varType: 'float',
+        debugLine: 5,
+        activeBufferName: 'Image',
+        filePath: '/test.glsl',
+      });
+
+      await fireEvent.mouseLeave(preview);
+      expect(getVariablePreview()).toMatchObject({
+        varName: null,
+        varType: null,
+        debugLine: null,
+        activeBufferName: null,
+        filePath: null,
+      });
     });
   });
 

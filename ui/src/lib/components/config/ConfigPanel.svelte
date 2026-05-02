@@ -106,7 +106,10 @@
   });
 
   function addCommonBuffer() {
-    const success = configManager?.addCommonBuffer();
+    if (!configManager) {
+      return;
+    }
+    const success = configManager.addCommonBuffer();
     if (success) {
       config = configManager.getConfig();
       if (config) {
@@ -117,7 +120,10 @@
   }
 
   function addBuffer() {
-    const bufferName = configManager?.addBuffer();
+    if (!configManager) {
+      return;
+    }
+    const bufferName = configManager.addBuffer();
     if (bufferName) {
       config = configManager.getConfig();
       if (config) {

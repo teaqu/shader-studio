@@ -1,10 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VariableRow from '../../lib/components/debug/VariableRow.svelte';
 import type { CapturedVariable } from '../../lib/VariableCaptureManager';
+import { getVariablePreview, resetVariablePreview } from '../../lib/state/variablePreviewState.svelte';
 
-const NULL_FIELDS = { thumbnail: null, channelHistograms: null, colorFrequencies: null, gridWidth: 32, gridHeight: 32, declarationLine: 0 } as const;
+const NULL_FIELDS = {
+  thumbnail: null,
+  channelHistograms: null,
+  colorFrequencies: null,
+  gridWidth: 32,
+  gridHeight: 32,
+  declarationLine: 0,
+  captureLine: 8,
+  captureFilePath: '/shaders/image.glsl',
+  captureBufferName: 'Image',
+} as const;
 
 function makeFloatVar(value: number): CapturedVariable {
   return { varName: 'myFloat', varType: 'float', value: [value], channelMeans: null, channelStats: null, stats: null, histogram: null, ...NULL_FIELDS };
@@ -87,10 +98,17 @@ function makeExpandedVecVar(): CapturedVariable {
     gridWidth: 32,
     gridHeight: 32,
     declarationLine: 0,
+    captureLine: 8,
+    captureFilePath: '/shaders/image.glsl',
+    captureBufferName: 'Image',
   };
 }
 
 describe('VariableRow', () => {
+  beforeEach(() => {
+    resetVariablePreview();
+  });
+
   it('renders float value in pixel mode as single number', () => {
     render(VariableRow, {
       props: { variable: makeFloatVar(0.342), isPixelMode: true },
@@ -256,6 +274,9 @@ describe('VariableRow', () => {
         { r: 0.0, g: 0.1, b: 0.0, freq: 0.4 },
       ],
       thumbnail: null, gridWidth: 32, gridHeight: 32, declarationLine: 0,
+      captureLine: 8,
+      captureFilePath: '/shaders/image.glsl',
+      captureBufferName: 'Image',
     };
     render(VariableRow, { props: { variable: vec2Var, isPixelMode: false } });
     const segments = document.querySelectorAll('.segment');
@@ -333,12 +354,74 @@ describe('VariableRow', () => {
 
   it('reserves the preview column width when thumbnail is shown', () => {
     const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
-    const v = { ...makeGridVecVar(), thumbnail: thumb };
+    const v = {
+      ...makeGridVecVar(),
+      thumbnail: thumb,
+      captureLine: 14,
+      captureBufferName: 'BufferA',
+      captureFilePath: '/shaders/buffer-a.glsl',
+    };
     render(VariableRow, { props: { variable: v, isPixelMode: false } });
     const thumbCol = document.querySelector('.thumb-col') as HTMLElement;
     expect(thumbCol).toBeInTheDocument();
     expect(thumbCol.querySelector('canvas')).toBeInTheDocument();
     expect(thumbCol.nextElementSibling).toHaveClass('var-body');
+  });
+
+  it('updates shared variable preview state when the mini preview is hovered and focused', async () => {
+    const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
+    const v = {
+      ...makeGridVecVar(),
+      thumbnail: thumb,
+      captureLine: 14,
+      captureBufferName: 'BufferA',
+      captureFilePath: '/shaders/buffer-a.glsl',
+    };
+    render(VariableRow, {
+      props: {
+        variable: v,
+        isPixelMode: false,
+      },
+    });
+
+    const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+    expect(preview).toBeInTheDocument();
+
+    await fireEvent.mouseEnter(preview);
+    expect(getVariablePreview()).toMatchObject({
+      varName: 'gridVec',
+      varType: 'vec3',
+      debugLine: 14,
+      activeBufferName: 'BufferA',
+      filePath: '/shaders/buffer-a.glsl',
+    });
+
+    await fireEvent.mouseLeave(preview);
+    expect(getVariablePreview()).toMatchObject({
+      varName: null,
+      varType: null,
+      debugLine: null,
+      activeBufferName: null,
+      filePath: null,
+    });
+
+    await fireEvent.focus(preview);
+    expect(getVariablePreview()).toMatchObject({
+      varName: 'gridVec',
+      varType: 'vec3',
+      debugLine: 14,
+      activeBufferName: 'BufferA',
+      filePath: '/shaders/buffer-a.glsl',
+    });
+
+    await fireEvent.blur(preview);
+    expect(getVariablePreview()).toMatchObject({
+      varName: null,
+      varType: null,
+      debugLine: null,
+      activeBufferName: null,
+      filePath: null,
+    });
   });
 
   it('calls onLineClick when line number is clicked', async () => {

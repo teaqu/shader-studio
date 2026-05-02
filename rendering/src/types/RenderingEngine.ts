@@ -24,6 +24,8 @@ export interface RenderingEngine {
   stopRenderLoop(): void;
   render(time?: number): void;
   getCurrentFPS(): number;
+  getFrameTimeHistory(): number[];
+  getFrameTimeCount(): number;
   setFPSLimit(limit: number): void;
   getUniforms(): import("../models").PassUniforms;
   cleanup(): void;

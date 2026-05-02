@@ -142,7 +142,6 @@ export class ShaderProcessor {
       config,
       path,
       buffers,
-      undefined,
       customUniformDeclarations,
       customUniformInfo,
     );

@@ -18,6 +18,9 @@ export interface CapturedVariable {
   varName: string;
   varType: string;
   declarationLine: number;         // 0-indexed line where the variable is declared
+  captureLine: number;             // 0-indexed debug line used to generate this capture
+  captureFilePath: string | null;  // file the capture/debug line came from
+  captureBufferName: string;       // Image/BufferA/etc. pass used for this capture
   value: number[] | null;          // pixel mode: exact component values
   channelMeans: number[] | null;   // grid mode: per-component means
   channelStats: Array<{ min: number; max: number; mean: number }> | null;  // grid mode: per-component stats
@@ -117,6 +120,8 @@ interface CaptureParams {
   canvasHeight: number;
   loopMaxIters: Map<number, number>;
   customParams: Map<number, string>;
+  activeBufferName?: string;
+  filePath?: string | null;
   sampleSize: number;
   refreshMode: RefreshMode;
   pollingMs: number;
@@ -180,6 +185,10 @@ export class VariableCaptureManager {
   private varDeclarationLines: Map<string, number> = new Map();
   private lastGridWidth = 32;
   private lastGridHeight = 32;
+  private lastCaptureMode: 'pixel' | 'grid' = 'grid';
+  private lastCaptureLine = -1;
+  private lastCaptureFilePath: string | null = null;
+  private lastCaptureBufferName = 'Image';
   private pollTimeout: number | null = null;
   private _sampleSize = 32;
   private _gridRefreshMode: RefreshMode = 'polling';
@@ -494,18 +503,24 @@ export class VariableCaptureManager {
     this.collecting = true;
     this.emitLoadingState(true);
 
-    // Store mode context for decoding
-    (this as any)._lastCaptureMode = isPixelMode ? 'pixel' : 'grid';
-    (this as any)._lastCaptures = captures.map(c => ({ varName: c.varName, varType: c.varType }));
+    this.lastCaptureMode = isPixelMode ? 'pixel' : 'grid';
+    this.lastCaptureLine = resolvedLine;
+    this.lastCaptureFilePath = params.filePath ?? null;
+    this.lastCaptureBufferName = params.activeBufferName ?? 'Image';
   }
 
   private decodeAndUpdate(
     results: Array<{ varName: string; varType: string; rgba: Float32Array }>
   ): void {
-    const isPixelMode = (this as any)._lastCaptureMode === 'pixel';
+    const isPixelMode = this.lastCaptureMode === 'pixel';
     const capturedVars: CapturedVariable[] = [];
 
     const isScalar = (t: string) => t === 'float' || t === 'int' || t === 'bool';
+    const captureProvenance = {
+      captureLine: this.lastCaptureLine,
+      captureFilePath: this.lastCaptureFilePath,
+      captureBufferName: this.lastCaptureBufferName,
+    };
 
     for (const result of results) {
       if (isPixelMode) {
@@ -515,6 +530,7 @@ export class VariableCaptureManager {
           varName: result.varName,
           varType: result.varType,
           declarationLine: this.varDeclarationLines.get(result.varName) ?? 0,
+          ...captureProvenance,
           value,
           channelMeans: null,
           channelStats: null,
@@ -572,6 +588,7 @@ export class VariableCaptureManager {
           varName: result.varName,
           varType: result.varType,
           declarationLine: this.varDeclarationLines.get(result.varName) ?? 0,
+          ...captureProvenance,
           value: null,
           channelMeans,
           channelStats: componentStats,

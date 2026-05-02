@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest';
 import DebugPanel from '../../../lib/components/debug/DebugPanel.svelte';
 import type { ShaderDebugState } from '../../../lib/types/ShaderDebugState';
 import type { PassUniforms } from '../../../../../rendering/src/models/PassUniforms';
+import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -46,7 +47,7 @@ const mockUniforms: PassUniforms = {
   cameraDir: [0, 0, -1],
 };
 
-function makeShaderDebugManager() {
+function makeShaderDebugManager(): ShaderDebugManager {
   return {
     toggleEnabled: vi.fn(),
     toggleLineLock: vi.fn(),
@@ -61,7 +62,7 @@ function makeShaderDebugManager() {
     setStateCallback: vi.fn(),
     setRecompileCallback: vi.fn(),
     setCaptureStateCallback: vi.fn(),
-  };
+  } as unknown as ShaderDebugManager;
 }
 
 // ---------------------------------------------------------------------------

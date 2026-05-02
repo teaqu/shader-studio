@@ -100,7 +100,7 @@
   }
 
   // Audio control state (runtime only, not persisted)
-  let audioState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
+  let audioState = $state<{ paused: boolean; muted: boolean; currentTime: number; duration: number } | null>(null);
 
   // Track current audio path so we can detect changes
   let lastAudioPath: string | undefined;
@@ -345,7 +345,14 @@
 </div>
 
 {#if tempInput?.type === "audio" && tempInput.path}
-  <div class="waveform-editor" role="application" aria-label="Waveform editor" bind:this={waveformContainer} onmousedown={handleWaveformMouseDown}>
+  <div
+    class="waveform-editor"
+    role="button"
+    tabindex="0"
+    aria-label="Waveform editor"
+    bind:this={waveformContainer}
+    onmousedown={handleWaveformMouseDown}
+  >
     <canvas bind:this={waveformCanvas} class="waveform-editor-canvas" width="700" height="80"></canvas>
     <!-- Dim outside region -->
     <div class="waveform-dim waveform-dim-left" style="width: {startPercent}%"></div>
@@ -362,6 +369,7 @@
       aria-valuenow={startPercent}
       aria-valuemin={0}
       aria-valuemax={100}
+      tabindex="0"
       style="left: {startPercent}%"
       onmousedown={(e) => handleHandleMouseDown(e, 'start')}
     >
@@ -375,6 +383,7 @@
       aria-valuenow={endPercent}
       aria-valuemin={0}
       aria-valuemax={100}
+      tabindex="0"
       style="left: {endPercent}%"
       onmousedown={(e) => handleHandleMouseDown(e, 'end')}
     >
