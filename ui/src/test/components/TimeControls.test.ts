@@ -163,6 +163,7 @@ describe('TimeControls Component', () => {
 
   describe('Duration Presets', () => {
     it('should select 2π duration when clicked', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
@@ -170,12 +171,12 @@ describe('TimeControls Component', () => {
       const preset2Pi = screen.getByText('2π');
       await fireEvent.click(preset2Pi);
 
-      // Should update internal scrubDuration
       const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.max).toBe((Math.PI * 2).toString());
     });
 
     it('should select 10s duration when clicked', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
@@ -188,6 +189,7 @@ describe('TimeControls Component', () => {
     });
 
     it('should select 2m duration when clicked', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
@@ -313,16 +315,18 @@ describe('TimeControls Component', () => {
     });
 
     it('should have correct min and max values on scrub slider', async () => {
+      // Loop disabled, currentTime = 3.14 → max = Math.max(60, 3.14) = 60
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
       const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.min).toBe('0');
-      expect(scrubSlider?.max).toBe((Math.PI * 2).toString());
+      expect(scrubSlider?.max).toBe('60');
     });
 
     it('should update scrub slider max when duration preset changes', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
       const { container } = render(TimeControls, { props: defaultProps });
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);

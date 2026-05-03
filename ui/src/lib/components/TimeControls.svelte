@@ -15,6 +15,7 @@
   let loopEnabled = $state(timeManager?.isLoopEnabled() ?? false);
   let scrubDuration = $state(timeManager?.getLoopDuration() ?? 60);
   let isScrubbing = $state(false);
+  let scrubMax = $state(0);
   let showTimeMenu = $state(false);
 
   function handleTimeClick() {
@@ -47,6 +48,7 @@
   }
 
   function handleTimeScubStart() {
+    scrubMax = Math.max(60, currentTime);
     isScrubbing = true;
   }
 
@@ -102,9 +104,9 @@
           <input
             type="range"
             min="0"
-            max={scrubDuration}
+            max={loopEnabled ? scrubDuration : (isScrubbing ? scrubMax : Math.max(60, currentTime))}
             step="0.01"
-            value={currentTime % scrubDuration}
+            value={loopEnabled ? currentTime % scrubDuration : currentTime}
             onmousedown={handleTimeScubStart}
             oninput={handleTimeScrub}
             onmouseup={handleTimeScrubEnd}
@@ -117,6 +119,7 @@
               class="scrub-duration-option menu-title"
               class:active={Math.abs(scrubDuration - Math.PI * 2) < 0.01}
               onclick={() => handleScrubDurationSelect(Math.PI * 2)}
+              disabled={!loopEnabled}
             >
               2π
             </button>
@@ -124,6 +127,7 @@
               class="scrub-duration-option menu-title"
               class:active={scrubDuration === 10}
               onclick={() => handleScrubDurationSelect(10)}
+              disabled={!loopEnabled}
             >
               10s
             </button>
@@ -131,6 +135,7 @@
               class="scrub-duration-option menu-title"
               class:active={scrubDuration === 30}
               onclick={() => handleScrubDurationSelect(30)}
+              disabled={!loopEnabled}
             >
               30s
             </button>
@@ -138,6 +143,7 @@
               class="scrub-duration-option menu-title"
               class:active={scrubDuration === 60}
               onclick={() => handleScrubDurationSelect(60)}
+              disabled={!loopEnabled}
             >
               1m
             </button>
@@ -145,6 +151,7 @@
               class="scrub-duration-option menu-title"
               class:active={scrubDuration === 120}
               onclick={() => handleScrubDurationSelect(120)}
+              disabled={!loopEnabled}
             >
               2m
             </button>
