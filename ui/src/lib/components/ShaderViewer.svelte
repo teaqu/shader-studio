@@ -205,9 +205,9 @@
 
   // Reactive: notify variable capture manager when relevant state changes.
   $effect(() => {
-    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled) {
+    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugState.isEnabled) {
       notifyVariableCaptureManager();
-    } else if (initialized && variableCaptureManager && !varInspectorEnabled) {
+    } else if (initialized && variableCaptureManager && (!varInspectorEnabled || !debugState.isEnabled)) {
       variableCaptureManager.stop();
     }
   });
@@ -592,7 +592,7 @@
       return;
     }
     const state = shaderDebugManager.getState();
-    if (!state.isVariableInspectorEnabled) {
+    if (!state.isEnabled || !state.isVariableInspectorEnabled) {
       return;
     }
     const engineCanvas = renderingEngine?.getCanvas?.();

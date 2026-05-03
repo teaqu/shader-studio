@@ -1141,6 +1141,63 @@ describe('ShaderViewer', () => {
     });
   });
 
+  it('should stop variable capture when debug mode is disabled', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await enableDebugAndVariableInspector();
+
+    // Capture should be active
+    expect(mockVCMFactory._lastNotifyParams).not.toBeNull();
+
+    // Disable debug mode
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+
+    // Capture should have been stopped
+    expect(mockVCMFactory._lastNotifyParams).toBeNull();
+  });
+
+  it('should not trigger variable capture when debug mode is off', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    // Enable variable inspector without enabling debug — not normally reachable via UI,
+    // but guards against direct state manipulation or future refactors
+    await enableDebugAndVariableInspector();
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton); // disable debug
+    await tick();
+
+    mockVCMFactory._notifyCalls = [];
+
+    // Cursor move while debug is off should not trigger capture
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: { line: 0, lineContent: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }', filePath: '/test/shader.glsl' },
+    });
+    await tick();
+
+    expect(mockVCMFactory._notifyCalls.length).toBe(0);
+  });
+
   it('should keep resolution target on Image when a config tab is selected', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
