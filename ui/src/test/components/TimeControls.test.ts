@@ -214,6 +214,28 @@ describe('TimeControls Component', () => {
 
       expect(mockTimeManager.setLoopDuration).toHaveBeenCalledWith(30);
     });
+
+    it('should disable all duration preset buttons when loop is off', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(false);
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const presets = ['2π', '10s', '30s', '1m', '2m'];
+      for (const label of presets) {
+        expect(screen.getByText(label)).toBeDisabled();
+      }
+    });
+
+    it('should enable all duration preset buttons when loop is on', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const presets = ['2π', '10s', '30s', '1m', '2m'];
+      for (const label of presets) {
+        expect(screen.getByText(label)).not.toBeDisabled();
+      }
+    });
   });
 
   describe('Speed Control', () => {
