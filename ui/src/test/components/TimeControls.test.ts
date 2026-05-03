@@ -396,12 +396,39 @@ describe('TimeControls Component', () => {
       await fireEvent.mouseDown(slider);
       await fireEvent.mouseUp(slider);
 
-      // After scrub ends, simulate new currentTime post-scrub
+      // After scrub ends, simulate new currentTime post-scrub (scrubbed back to 45s)
       await rerender({ currentTime: 45 });
       await tick();
 
-      // Max should now be Math.max(60, 45) = 60 (unfrozen)
-      expect(slider.max).toBe('60');
+      // High-water mark was 90 at scrub start — scrubbing back to 45s doesn't shrink it
+      expect(slider.max).toBe('90');
+    });
+
+    it('should preserve high-water mark after scrubbing back', async () => {
+      // Start at 90s — high-water mark = 90
+      const props = { timeManager: mockTimeManager, currentTime: 90 };
+      const { container, rerender } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('90.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+
+      // Scrub back to 30s
+      await fireEvent.mouseDown(slider);
+      await fireEvent.mouseUp(slider);
+      await rerender({ currentTime: 30 });
+      await tick();
+
+      // Max should still be 90 (high-water mark), not reset to Math.max(60, 30) = 60
+      expect(slider.max).toBe('90');
+    });
+
+    it('should cap range max at 300s (5 minutes)', async () => {
+      const props = { timeManager: mockTimeManager, currentTime: 350 };
+      const { container } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('350.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      expect(slider.max).toBe('300');
     });
   });
 

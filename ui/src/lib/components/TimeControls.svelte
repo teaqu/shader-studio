@@ -16,7 +16,14 @@
   let scrubDuration = $state(timeManager?.getLoopDuration() ?? 60);
   let isScrubbing = $state(false);
   let scrubMax = $state(0);
+  let rangeMax = $state(60);
   let showTimeMenu = $state(false);
+
+  $effect(() => {
+    if (!isScrubbing) {
+      rangeMax = Math.min(300, Math.max(rangeMax, currentTime));
+    }
+  });
 
   function handleTimeClick() {
     showTimeMenu = !showTimeMenu;
@@ -48,7 +55,7 @@
   }
 
   function handleTimeScubStart() {
-    scrubMax = Math.max(60, currentTime);
+    scrubMax = rangeMax;
     isScrubbing = true;
   }
 
@@ -104,7 +111,7 @@
           <input
             type="range"
             min="0"
-            max={loopEnabled ? scrubDuration : (isScrubbing ? scrubMax : Math.max(60, currentTime))}
+            max={loopEnabled ? scrubDuration : (isScrubbing ? scrubMax : rangeMax)}
             step="0.01"
             value={loopEnabled ? currentTime % scrubDuration : currentTime}
             onmousedown={handleTimeScubStart}
