@@ -188,6 +188,7 @@
   // Extract specific debug state fields so that capturedVariables changes
   // don't re-trigger the capture loop (Svelte tracks the whole object reference).
   const varInspectorEnabled = $derived(debugState.isVariableInspectorEnabled);
+  const debugEnabled = $derived(debugState.isEnabled);
 
   // Extract inspectorState fields as stable primitives.
   const inspectorEnabled = $derived(inspectorState.isEnabled);
@@ -205,9 +206,9 @@
 
   // Reactive: notify variable capture manager when relevant state changes.
   $effect(() => {
-    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugState.isEnabled) {
+    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugEnabled) {
       notifyVariableCaptureManager();
-    } else if (initialized && variableCaptureManager && (!varInspectorEnabled || !debugState.isEnabled)) {
+    } else if (initialized && variableCaptureManager && (!varInspectorEnabled || !debugEnabled)) {
       variableCaptureManager.stop();
     }
   });

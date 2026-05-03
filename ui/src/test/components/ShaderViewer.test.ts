@@ -1198,6 +1198,26 @@ describe('ShaderViewer', () => {
     expect(mockVCMFactory._notifyCalls.length).toBe(0);
   });
 
+  it('should not re-trigger capture when captured variables are updated (manual/polling mode)', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await loadShader();
+    await enableDebugAndVariableInspector();
+
+    // Record calls after initial capture trigger
+    const callsAfterInit = mockVCMFactory._notifyCalls.length;
+    expect(callsAfterInit).toBeGreaterThan(0);
+
+    mockVCMFactory._notifyCalls = [];
+
+    // Simulate capture completing with some variables — this should NOT re-trigger notifyStateChange
+    mockVCMFactory.inject([{ varName: 'x', varType: 'float', values: [1.0], declarationLine: 0, histogram: null, channelHistograms: null, colorFrequencies: null }]);
+    await tick();
+
+    expect(mockVCMFactory._notifyCalls.length).toBe(0);
+  });
+
   it('should keep resolution target on Image when a config tab is selected', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
