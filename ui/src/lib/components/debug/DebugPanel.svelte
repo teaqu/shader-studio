@@ -94,10 +94,10 @@
   const lineTooltipText = $derived(
     debugError || debugNotice || (debugState?.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''))
   );
-  const showParams = $derived(isInlineOn && isInFunction && ctx !== null);
-  const showLoops = $derived(isInlineOn && ctx !== null && ctx !== undefined && ctx.loops.length > 0);
-  const hasContentAboveUniforms = $derived((showParams && ctx && ctx.parameters.length > 0) || showLoops);
   const isVarInspectorOn = $derived(debugState?.isVariableInspectorEnabled);
+  const showParams = $derived((isInlineOn || isVarInspectorOn) && isInFunction && ctx !== null);
+  const showLoops = $derived((isInlineOn || isVarInspectorOn) && ctx !== null && ctx !== undefined && ctx.loops.length > 0);
+  const hasContentAboveUniforms = $derived((showParams && ctx && ctx.parameters.length > 0) || showLoops);
   const capturedVariables = $derived(debugState?.capturedVariables);
   const customUniformEntries = $derived(Object.entries(customUniformValues));
   const isLineTooltipVisible = $derived(
@@ -510,7 +510,7 @@
         <span class="hint-text">Place cursor on a GLSL line to inspect</span>
       </div>
     {/if}
-    {#if isInlineOn}
+    {#if isInlineOn || isVarInspectorOn}
       {#if showParams && ctx && ctx.parameters.length > 0}
         <div class="section">
           <div class="section-heading">
@@ -576,6 +576,7 @@
         {refreshMode}
         {pollingMs}
         {hasPixelSelected}
+        hasBorderTop={isInlineOn || hasContentAboveUniforms}
       />
     {:else}
       <div class="section var-hint-section" class:has-border={isInlineOn}>

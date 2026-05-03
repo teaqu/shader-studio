@@ -14,6 +14,7 @@
     refreshMode?: RefreshMode;
     pollingMs?: number;
     hasPixelSelected?: boolean;
+    hasBorderTop?: boolean;
   }
 
   let {
@@ -28,6 +29,7 @@
     refreshMode = 'polling',
     pollingMs = 500,
     hasPixelSelected = false,
+    hasBorderTop = false,
   }: Props = $props();
 
   const SAMPLE_SIZES = [16, 32, 64, 128];
@@ -65,7 +67,7 @@
   }
 </script>
 
-<div class="variables-section">
+<div class="variables-section" class:has-border-top={hasBorderTop}>
   <div class="section-header">
     <span class="section-label">Variables</span>
     <div class="controls">
@@ -155,8 +157,11 @@
 <style>
   .variables-section {
     margin-bottom: 8px;
-    border-top: 1px solid var(--vscode-panel-border);
     padding-top: 6px;
+  }
+
+  .variables-section.has-border-top {
+    border-top: 1px solid var(--vscode-panel-border);
   }
 
   .section-header {
