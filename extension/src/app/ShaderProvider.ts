@@ -126,11 +126,11 @@ export class ShaderProvider {
         (editor) => editor.document.uri.fsPath === shaderPath,
       );
       if (matchingEditor) {
-        const line = matchingEditor.selection.active.line;
+        const line = Math.min(matchingEditor.selection.active.line, document.lineCount - 1);
         cursorPosition = {
           line,
           character: matchingEditor.selection.active.character,
-          lineContent: matchingEditor.document.lineAt(line).text,
+          lineContent: document.lineAt(line).text,
           filePath: shaderPath,
         };
       }
@@ -473,11 +473,11 @@ export class ShaderProvider {
         (editor) => editor.document.uri.fsPath === document.uri.fsPath,
       );
       if (matchingEditor) {
-        const line = matchingEditor.selection.active.line;
+        const line = Math.min(matchingEditor.selection.active.line, document.lineCount - 1);
         cursorPosition = {
           line,
           character: matchingEditor.selection.active.character,
-          lineContent: matchingEditor.document.lineAt(line).text,
+          lineContent: document.lineAt(line).text,
           filePath,
         };
       }

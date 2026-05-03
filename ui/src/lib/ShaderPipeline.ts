@@ -25,6 +25,7 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
+  private pendingShaderEvent: MessageEvent | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
 
@@ -51,6 +52,11 @@ export class ShaderPipeline {
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
 
       if (!this.isValidShaderMessage(type)) {
+        return undefined;
+      }
+
+      if (this.shaderProcessor.isCurrentlyProcessing()) {
+        this.pendingShaderEvent = event;
         return undefined;
       }
 
@@ -105,7 +111,7 @@ export class ShaderPipeline {
   }
 
   private isValidShaderMessage(type: string): boolean {
-    return type === "shaderSource" && !this.shaderProcessor.isCurrentlyProcessing();
+    return type === "shaderSource";
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
@@ -136,6 +142,13 @@ export class ShaderPipeline {
       message.forceCleanup || false,
     );
     this.handleCompilationResult(result);
+
+    if (this.pendingShaderEvent) {
+      const pending = this.pendingShaderEvent;
+      this.pendingShaderEvent = null;
+      void this.handleShaderMessage(pending);
+    }
+
     return result;
   }
 

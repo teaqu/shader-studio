@@ -591,13 +591,12 @@ suite('ShaderProvider Test Suite', () => {
         getText: sandbox.stub().returns('void mainImage() {}'),
         uri: vscode.Uri.file(shaderPath),
         languageId: 'glsl',
+        lineCount: 10,
+        lineAt: sandbox.stub().withArgs(3).returns({ text: lineText }),
       } as any;
 
       sandbox.stub(vscode.window, 'visibleTextEditors').value([{
-        document: {
-          uri: vscode.Uri.file(shaderPath),
-          lineAt: sandbox.stub().withArgs(3).returns({ text: lineText }),
-        },
+        document: { uri: vscode.Uri.file(shaderPath) },
         selection: {
           active: { line: 3, character: 12 },
         },
@@ -618,6 +617,36 @@ suite('ShaderProvider Test Suite', () => {
         lineContent: lineText,
         filePath: shaderPath,
       });
+    });
+
+    test('should not throw when cursor line exceeds new document line count (paste-shorter-shader)', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const newCode = 'void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }';
+      const providerWithDebug = new ShaderProvider(mockMessenger, () => true);
+
+      // Document now has only 1 line after paste, but cursor was on line 50 in the old doc
+      const document = {
+        getText: sandbox.stub().returns(newCode),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+        lineCount: 1,
+        lineAt: sandbox.stub().withArgs(0).returns({ text: newCode }),
+      } as any;
+
+      sandbox.stub(vscode.window, 'visibleTextEditors').value([{
+        document: { uri: vscode.Uri.file(shaderPath) },
+        selection: { active: { line: 50, character: 0 } },
+      } as any]);
+
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await assert.doesNotReject(() => providerWithDebug.sendShaderFromDocument(document));
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSource');
+      // Cursor clamped to last valid line (0)
+      assert.strictEqual(message.cursorPosition?.line, 0);
     });
 
     test('should send error for standalone common documents without mainImage', async () => {

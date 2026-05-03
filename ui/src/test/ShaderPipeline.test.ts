@@ -233,3 +233,119 @@ describe('ShaderPipeline — overlay cursor gate', () => {
     });
   });
 });
+
+function makeShaderEvent(code: string, path = '/shader.glsl'): MessageEvent {
+  return {
+    data: { type: 'shaderSource', code, config: null, path, buffers: {} },
+  } as unknown as MessageEvent;
+}
+
+function makeConcurrentMocks() {
+  let resolveCompile: (() => void) | null = null;
+
+  const compileShaderPipeline = vi.fn(() =>
+    new Promise<{ success: boolean }>((resolve) => {
+      resolveCompile = () => resolve({ success: true });
+    }),
+  );
+
+  const renderEngine = {
+    getCurrentConfig: vi.fn(() => null),
+    getPasses: vi.fn(() => []),
+    cleanup: vi.fn(),
+    compileShaderPipeline,
+    startRenderLoop: vi.fn(),
+  } as unknown as RenderingEngine;
+
+  const transport: Transport = {
+    postMessage: vi.fn(),
+    onMessage: vi.fn(),
+    dispose: vi.fn(),
+    getType: () => 'vscode' as const,
+    isConnected: () => true,
+  };
+
+  const shaderLocker = {
+    isLocked: vi.fn(() => false),
+    getLockedShaderPath: vi.fn(() => undefined),
+  } as unknown as ShaderLocker;
+
+  const shaderDebugManager = {
+    updateDebugLine: vi.fn(),
+    getState: vi.fn(() => ({
+      isActive: false, isEnabled: false, currentLine: 0, lineContent: '',
+      filePath: null, activeBufferName: 'Image', functionContext: null,
+      isLineLocked: false, isInlineRenderingEnabled: true, normalizeMode: 'off' as const,
+      isStepEnabled: false, stepEdge: 0.5, debugError: null, debugNotice: null,
+      isVariableInspectorEnabled: false, capturedVariables: [],
+    })),
+    setShaderContext: vi.fn(),
+    getDebugTarget: vi.fn((code: string, config: any) => ({ code, config: config ?? null, passName: 'Image' })),
+    modifyShaderForDebugging: vi.fn(() => null),
+    applyFullShaderPostProcessing: vi.fn(() => null),
+    setStateCallback: vi.fn(),
+    setRecompileCallback: vi.fn(),
+    setCaptureStateCallback: vi.fn(),
+    setImageShaderCode: vi.fn(),
+    setDebugError: vi.fn(),
+  } as unknown as ShaderDebugManager;
+
+  return {
+    transport,
+    renderEngine,
+    shaderLocker,
+    shaderDebugManager,
+    compileShaderPipeline,
+    resolveCompile: () => resolveCompile?.(),
+  };
+}
+
+describe('ShaderPipeline — concurrent shader messages', () => {
+  let pipeline: ShaderPipeline;
+  let mocks: ReturnType<typeof makeConcurrentMocks>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = makeConcurrentMocks();
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+    );
+  });
+
+  it('compiles the latest shader after a message arrives while a compile is in flight', async () => {
+    const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
+
+    void pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(0.0); }'));
+
+    mocks.resolveCompile();
+    await first;
+
+    mocks.resolveCompile();
+    await vi.waitFor(() => {
+      const codes = mocks.compileShaderPipeline.mock.calls.map((c: any[]) => c[0] as string);
+      expect(codes.some((code) => code.includes('vec4(0.0)'))).toBe(true);
+    });
+  });
+
+  it('only keeps the latest pending message when multiple arrive while compiling', async () => {
+    const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
+
+    void pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(0.5); }'));
+    void pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(0.0); }'));
+
+    mocks.resolveCompile();
+    await first;
+    mocks.resolveCompile();
+
+    await vi.waitFor(() => {
+      expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2);
+    });
+
+    const codes = mocks.compileShaderPipeline.mock.calls.map((c: any[]) => c[0] as string);
+    expect(codes.some((code) => code.includes('vec4(0.5)'))).toBe(false);
+    expect(codes.some((code) => code.includes('vec4(0.0)'))).toBe(true);
+  });
+});
