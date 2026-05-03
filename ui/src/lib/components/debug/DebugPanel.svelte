@@ -578,7 +578,7 @@
         {hasPixelSelected}
       />
     {:else}
-      <div class="section var-hint-section">
+      <div class="section var-hint-section" class:has-border={isInlineOn}>
         <span class="hint-text">Enable Variable Inspector to view variables</span>
       </div>
     {/if}
@@ -907,8 +907,11 @@
   }
 
   .var-hint-section {
-    border-top: 1px solid var(--vscode-panel-border);
     padding-top: 6px;
+  }
+
+  .var-hint-section.has-border {
+    border-top: 1px solid var(--vscode-panel-border);
   }
 
   .uniform-row.custom-first {
