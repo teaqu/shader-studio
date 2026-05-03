@@ -8,8 +8,7 @@ The snippet library provides insertable GLSL building blocks organized by catego
 - Toolbar menu → **Snippet Library**
 - Command palette → **Shader Studio: Open Snippet Library**
 
-![Snippet library panel](../assets/placeholders/template.svg)
-_Placeholder: `feature-snippet-library.png` — Snippet library panel showing categories on the left and snippet details on the right with code preview._
+![Snippet library panel](../assets/images/snippet-library.png)
 
 ## Built-in Snippets
 
@@ -87,11 +86,11 @@ In the snippet library UI:
 - **Edit** — update existing custom snippets
 - **Delete** — remove custom snippets
 
-Custom snippets support VS Code snippet syntax including `${1:placeholder}` tab stops.
+
 
 ## Inserting
 
-Click a snippet to insert it at the cursor position in your active GLSL editor. If the snippet library panel has focus, it inserts into the last active editor.
+Click a snippet to insert it at the cursor position in your active GLSL editor. If the snippet library panel has focus, it inserts into the last active editor. You can also use them as regular VS Code snippets — type the prefix in the editor and press `Tab` to insert.
 
 ## Enabling
 

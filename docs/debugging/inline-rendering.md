@@ -13,6 +13,7 @@ The debug system detects variables from these line patterns:
 | Reassignment | `uv = fragCoord / iResolution.xy;` |
 | Compound assignment | `uv *= 2.0;` |
 | Member access | `uv.x *= aspect;` |
+| Expression statement | `test;` — a plain variable or expression on its own line |
 | Return statement | `return length(p) - r;` (uses function return type) |
 
 User-defined struct types are supported in all of the above patterns.
@@ -41,109 +42,19 @@ Each GLSL type is visualized differently:
 | `bool` | Black or white | `false` = black, `true` = white |
 | `mat2/3/4` | First column visualized | Extracted and displayed as vector |
 
-![Type visualization comparison](../assets/placeholders/template.svg)
-_Placeholder: `debug-type-visualization.png` — Side-by-side showing the same shader with cursor on a float (grayscale), vec2 (red-green), and vec3 (RGB) variable._
+
 
 Values outside the 0–1 range are clamped by the GPU, making negative values appear as black and values above 1 appear as white. Use [normalization modes](normalization.md) to see out-of-range values.
 
-## Debugging in mainImage
-
-When the cursor is inside `mainImage`, the shader is truncated at the debug line. Everything after the cursor line is removed, and the detected variable is visualized as `fragColor`.
-
-```glsl
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;  // cursor here
-    // everything below is removed
-    float d = length(uv - 0.5);
-    fragColor = vec4(vec3(d), 1.0);
-}
-```
-
-Becomes:
-
-```glsl
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    fragColor = vec4(uv, 0.0, 1.0);  // visualize uv as RG
-}
-```
-
-Open control-flow braces (from `if`, `for`, `while` blocks) are automatically closed so the truncated shader compiles.
-
 ## Debugging in Helper Functions
 
-When the cursor is inside a helper function (not `mainImage`), the debug system:
+You can also debug inside helper functions (not just `mainImage`). Place the cursor inside any function and inline rendering will visualize variables there.
 
-1. Truncates the helper function at the debug line
-2. Generates a new `mainImage` that calls the helper function
-3. Populates function parameters based on the [parameter modes](parameters.md) you configure
-4. Visualizes the target variable
+When debugging a helper function, the [Parameters & Loops](parameters-and-loops.md) section appears automatically so you can control what values are passed to the function's arguments.
 
-![Debugging a helper function](../assets/placeholders/template.svg)
-_Placeholder: `debug-helper-function.png` — Editor with cursor inside a helper function, preview showing the visualized output, and the Parameters section visible in the debug panel._
+## Loop Control
 
-### Example
-
-Given this shader:
-
-```glsl
-float sdf(vec2 p, float r) {
-    float d = length(p) - r;  // cursor here
-    return d;
-}
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    float result = sdf(uv, 0.5);
-    fragColor = vec4(vec3(result), 1.0);
-}
-```
-
-With cursor on the `float d` line, debug mode generates:
-
-```glsl
-float sdf(vec2 p, float r) {
-    float d = length(p) - r;
-    return d;  // returns d (the truncated variable)
-}
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    float result = sdf(uv, 0.5);
-    fragColor = vec4(vec3(result), 1.0);  // visualize as grayscale
-}
-```
-
-The parameter values (`uv` and `0.5`) can be changed via the [Parameters](parameters.md) section. The Parameters section appears automatically when debugging inside a helper function.
-
-### Full Function Execution
-
-When the cursor is on the entry line of a non-`mainImage` function (the function signature or opening brace), the entire function is executed untruncated and its return value is visualized. If the function returns `void`, no visualization is possible and an error is shown.
-
-## Shadow Variables in Loops
-
-When the debug line is inside a loop body, a **shadow variable** is created to capture the value from the last iteration. Without this, the visualization would only show the value from the loop's first iteration (since the shader truncates at the debug line).
-
-```glsl
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    float total = 0.0;
-    float _dbg_total;  // shadow variable declared before loop
-    for (int i = 0; i < 10; i++) {
-        total += float(i) * 0.1;  // cursor here
-        _dbg_total = total;  // shadow assigned after debug line
-    }
-    fragColor = vec4(vec3(_dbg_total), 1.0);  // uses final iteration value
-}
-```
-
-The shadow variable is declared before the outermost enclosing loop and assigned immediately after the debug line executes. This ensures you see the value from the **final** loop iteration.
-
-## Global Variables
-
-Variables declared at global scope (outside any function) are visible to the debug system. When the cursor is inside a function, global variables declared before the current line are included in the available scope.
-
-If the cursor is on a global scope expression (outside any function), it is wrapped in a simple `mainImage` and visualized directly.
+When the debug line is inside a loop, you can configure how many iterations run. This is useful for debugging expensive loops without the shader freezing. See [Parameters & Loops](parameters-and-loops.md) for more.
 
 ## Buffer Pass Debugging
 
@@ -169,3 +80,7 @@ Inline rendering always uses the **current live preview resolution**, not a stal
 - When fixed size is active, the selected **scale still applies** to the render target.
 
 This means the debug image you see should match the same effective canvas size shown in the toolbar resolution button.
+
+## Next
+
+[Variable Inspector](variable-inspector.md) — capture and inspect all in-scope variables

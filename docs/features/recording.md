@@ -7,9 +7,6 @@ Shader Studio can capture your shader output as a screenshot, video, or animated
 
 Click the <i class="codicon codicon-device-camera"></i> **Record** button in the toolbar, or open **Menu → Export**.
 
-![Recording panel](../assets/placeholders/template.svg)
-_Placeholder: `feature-recording-panel.png` — Recording panel open with screenshot, video, and GIF export options visible._
-
 ## Screenshot
 
 Capture a single frame as a PNG or JPEG.
@@ -22,6 +19,8 @@ Capture a single frame as a PNG or JPEG.
 | **Resolution** | 480p, 720p, 1080p, 4K, or custom pixel dimensions |
 
 Click **Capture** to save. A live canvas preview updates as you change options.
+
+![Screenshot options](../assets/images/recording-screenshot.png)
 
 ## Video
 
@@ -37,10 +36,7 @@ Record shader output as an MP4 (H.264) or WebM (VP8) file using the browser's We
 
 Click **Record** to start. A progress bar shows rendering and finalization phases. Click **Cancel** to abort.
 
-**Notes:**
-- MP4 requires H.264 encoding support in the browser (available in most modern browsers)
-- Resolution is rounded to even pixel dimensions for MP4 codec compatibility
-- Default bitrate is 5 Mbps
+![Video options](../assets/images/recording-video.png)
 
 ## GIF
 
@@ -57,13 +53,12 @@ Record an animated GIF using the gifski encoder (WASM).
 
 An estimated file size is shown before recording. Click **Record** to start.
 
+![GIF options](../assets/images/recording-gif.png)
+
 **Tips:**
-- Lower FPS and color counts produce smaller GIF files
-- Quality 80–90 gives a good balance of size and visual quality
-- GIF encoding runs in a background worker and does not block the UI
+- For shaders you usually want **Quality 100** to preserve fine detail, but try reducing it if the file is too large
+- Lower FPS and color counts also produce smaller GIF files
 
-## During Recording
+## Next
 
-- A live canvas preview is shown in the panel
-- A progress bar tracks both the render phase and the encoding/finalization phase
-- Click **Cancel** at any time to stop and discard the recording
+[Open in Browser](web-server.md) — preview your shader in a web browser

@@ -67,9 +67,8 @@ nav:
       - Quick Start: quick-start.md
   - Features:
       - Configure Buffers And Inputs: features/config-buffers.md
+      - Channels: features/channels.md
       - Time And Playback Controls: features/time-controls.md
-      - Options Menu: features/menu.md
-      - FPS: features/fps.md
       - Resolution: features/resolution.md
       - Panel Layout: features/panel-layout.md
       - Locking: features/locking.md
@@ -79,17 +78,16 @@ nav:
       - Open In Browser: features/web-server.md
       - Shader Explorer: features/shader-explorer.md
       - Snippet Library: features/snippet-library.md
-      - Performance Monitor: features/performance.md
+      - Performance: features/performance.md
   - Debugging:
       - Overview: debugging/index.md
+      - Pixel Inspector: debugging/pixel-inspector.md
       - Inline Rendering: debugging/inline-rendering.md
       - Variable Inspector: debugging/variable-inspector.md
+      - Parameters & Loops: debugging/parameters-and-loops.md
       - Normalization And Step: debugging/normalization.md
-      - Parameter Editing: debugging/parameters.md
-      - Loop Control: debugging/loops.md
   - Help:
       - Troubleshooting: help/troubleshooting.md
-      - FAQ: help/faq.md
       - Shadertoy Compatibility: help/shadertoy-compatibility.md
       - Config File Format: help/config-file.md
       - Settings: help/settings.md

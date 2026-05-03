@@ -5,10 +5,9 @@ The variable inspector captures the values of **all in-scope variables** at the 
 
 ## Enabling
 
-Toggle the variable inspector with the **list icon** button in the debug panel header. When enabled, a Variables section appears in the debug panel showing every captured variable. The enabled state persists across sessions.
+Toggle the variable inspector with the <i class="codicon codicon-symbol-variable"></i> button in the debug panel header. When enabled, a Variables section appears in the debug panel showing every captured variable. The enabled state persists across sessions.
 
-![Variable inspector panel](../assets/placeholders/template.svg)
-_Placeholder: `debug-variable-inspector.png` — Variables section showing several captured variables with thumbnails, names, types, and value summaries._
+![Variable inspector panel](../assets/images/var-inspector.png)
 
 ## Captured Variables
 
@@ -43,6 +42,8 @@ When no specific debug line is selected (debug line is -1), the inspector captur
 
 Samples the variable across a grid of points spanning the full canvas. Each grid cell samples the shader at the corresponding screen position.
 
+![Grid mode](../assets/images/var-inspector-grid-mode.png)
+
 **Grid sizes:**
 
 | Size | Total Samples | Speed | Detail |
@@ -54,19 +55,19 @@ Samples the variable across a grid of points spanning the full canvas. Each grid
 
 The size buttons appear in the Variables section header. The active size is highlighted.
 
-The requested grid size is capped to the **Live Render Resolution**. This matters most when the preview is very small:
+The requested grid size is capped to the **current render resolution**. This matters most when the preview is very small:
 
 - if the canvas is effectively `1 × 1`, the inspector samples at most `1 × 1`
-- if fixed size is active, the cap uses that live fixed size after scale has been applied
-- Session Resolution changes and Image Config Resolution changes both update this cap immediately
+- if custom resolution is active, the cap uses that live custom resolution after scale has been applied
+- Resolution changes from the toolbar or config panel both update this cap immediately
 
 ### Pixel Mode
 
-Captures variable values at a **single pixel** under the cursor. The capture coordinate is sent as a uniform (`_dbgCaptureCoord`) and renders a 1x1 framebuffer at that position.
+Captures variable values at a **single pixel** under the cursor. The [pixel inspector](pixel-inspector.md) needs to be enabled so you can click to lock a specific pixel position.
 
-The Y coordinate is flipped (`captureY = canvasHeight - pixelY - 1`) to match the OpenGL coordinate system where Y=0 is at the bottom.
+![Pixel mode](../assets/images/var-inspector-pixel-mode.png)
 
-Pixel and grid captures both use the same live session canvas dimensions as inline rendering.
+In pixel mode, the shader runs once at that single pixel to capture the variable values.
 
 ## Refresh Modes
 
@@ -81,41 +82,13 @@ Control how often captures are updated. The refresh mode buttons appear in the V
 
 ### Polling Interval
 
-When in polling mode, a number input appears to set the interval in milliseconds. Default is **500ms**, minimum is 1ms, step size is 100ms.
-
-## Variable Row Display
-
-Each captured variable is shown as a row with different information depending on the capture mode.
-
-### Grid Mode Display
-
-Each variable row shows:
-
-- **Thumbnail** — a 32x32 pixelated preview showing the spatial distribution of the variable across the canvas. Scalars render as grayscale, vectors as RGB. Values are clamped to 0–1 with no normalization, so you see actual shader colors. For grid sizes larger than 32, hovering the thumbnail shows a full-size expanded preview.
-- **Name** — variable name in monospace bold
-- **Type** — variable type in italic
-- **Value summary** (right-aligned):
-    - **Constant** (min equals max): shows the exact value
-    - **Varying scalar**: shows `min`, `max`, and `avg` with an expand button
-    - **Varying vector**: shows approximate mean as `≈ (mean_x, mean_y, mean_z)` with an expand button
-
-### Pixel Mode Display
-
-Each variable row shows:
-
-- **Name** — variable name in monospace bold
-- **Type** — variable type in italic
-- **Color swatch** — for `vec3` and `vec4` types, a small color preview
-- **Exact values** — the component values at that pixel, e.g. `(0.123, 0.456, 0.789)`
-
-No thumbnail or statistics are shown in pixel mode since there's only one sample point.
+When in polling mode, a number input appears to set the interval in milliseconds. Default is **500ms**.
 
 ## Expanded Details
 
 Click the expand button on a varying variable (grid mode) to see detailed statistics and visualizations.
 
-![Expanded variable with histogram](../assets/placeholders/template.svg)
-_Placeholder: `debug-variable-expanded.png` — A scalar variable expanded to show greyscale frequency bar and histogram, and a vec3 variable expanded to show color frequency bar and per-channel histograms._
+![Expanded variable with histogram](../assets/images/var-inspector-expanded.png)
 
 ### Scalar Variables (float, int, bool)
 

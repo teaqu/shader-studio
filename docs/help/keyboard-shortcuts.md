@@ -31,7 +31,7 @@ When Vim mode is enabled, standard Vim keybindings are active. Extra mappings:
 | `:lnext` / `:lne` | Jump to next error marker |
 | `:lprev` / `:lp` | Jump to previous error marker |
 
-## Performance Monitor
+## Performance
 
 | Shortcut | Action |
 |----------|--------|

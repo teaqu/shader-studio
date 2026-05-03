@@ -1,27 +1,55 @@
 # Resolution
 
-This page uses three resolution terms:
 
-- **Config Resolution**: the Image pass resolution saved in the shader config
-- **Session Resolution**: temporary toolbar overrides for the current session
-- **Live Render Resolution**: the final render size currently driving the canvas and debug tools
+The **Resolution** button in the preview toolbar shows the current canvas size. Click it to change how large the shader renders.
 
-The **Resolution** display in the preview toolbar shows the current canvas dimensions.
+![Resolution menu](../assets/images/resolution.png)
 
-Click it to open the resolution menu:
+## How It Works
 
-![Resolution menu](../assets/placeholders/template.svg)
-_Placeholder: `interface-resolution-menu.png` — Resolution menu expanded with scale, custom size, aspect ratio, black background, and zoom controls._
+Resolution changes through a simple toggle: **Sync with Config**.
 
-- **Scale presets**: 0.25x, 0.5x, 1x, 2x, 4x
-- **Fixed size**: Enter a width and height in pixels
-- **Aspect Ratio**: 16:9, 4:3, 1:1 (square), Fill (full space), Auto (responsive)
-- **Black background**: Force a black canvas background
-- **Zoom**: Slider from 0.1x to 3.0x
+### Sync with Config — On (Default)
 
-The toolbar always shows the **Live Render Resolution** currently driving the preview canvas.
+When the checkbox is ticked, every change you make is saved to the shader's config file (`.sha.json`). The next time you open this shader, it will use the same resolution.
 
-- Changing **scale**, **fixed size**, or **aspect ratio** here updates the **Session Resolution** immediately.
-- If debug mode is enabled, **inline rendering** and the **variable inspector** refresh against the new live resolution immediately.
-- **Scale still applies when fixed size is set**. For example, `320 × 180` at `2x` renders at `640 × 360`.
-Changes made here override the **Config Resolution** for the current session. The override stays active for the current shader until you reset it or switch to a different shader. When you switch shaders, the **Session Resolution** resets to whatever that shader's **Config Resolution** specifies, or the Shader Studio defaults if no config exists. To make a setting persist, save it in the [Config panel](config-buffers.md#the-image-pass) Image tab.
+Use this when you want a specific resolution to stick with the shader — for example, forcing a 720p output for a particular effect.
+
+### Sync with Config — Off
+
+When the checkbox is unticked, your changes are **session-only** — they are not saved to the config file. The session override stays active for all shaders until you close Shader Studio or turn sync back on.
+
+Use this when you want to temporarily test a different size — for example, dropping to half resolution to see if performance improves — without changing the saved config.
+
+---
+
+## Resolution Options
+
+- **Scale presets** — Quick multipliers: 0.25x, 0.5x, 1x, 2x, 4x. Scale is applied on top of everything else.
+- **Custom resolution** — Type an exact width and height in pixels. When set, this overrides scale and aspect ratio.
+- **Aspect ratio** — 16:9, 4:3, 1:1 (square), Fill (use all available space), or Auto (match your screen).
+- **Black background** — Fill the area around the shader with black instead of the editor background.
+- **Zoom** — Magnify the preview visually without changing the actual render size (0.1x to 3.0x).
+
+!!! tip
+    **Scale still applies when custom resolution is set.** For example, a custom size of `320 × 180` at `2x` renders at `640 × 360`.
+
+---
+
+## Setting Resolution in the Config Panel
+
+You can also set the resolution from the **Config** panel. Open it from the toolbar, go to the **Image** tab, and set the resolution there. This is the same as using the toolbar with **Sync with Config** enabled.
+
+See [Configure Buffers and Inputs](config-buffers.md) for the full guide on setting up passes, channels, and resolution through the config panel.
+
+---
+
+## Buffer Resolution
+
+Buffer passes have their own resolution settings, but these can only be edited from the **Config** panel, not the resolution toolbar.
+
+See [Configure Buffers and Inputs](config-buffers.md) for how to set buffer resolution.
+
+## Next
+
+[Panel Layout](panel-layout.md) — rearrange and dock panels

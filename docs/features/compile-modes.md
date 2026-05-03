@@ -29,3 +29,7 @@ The shader only compiles when you explicitly request it. Two ways to trigger:
 
 - Press **`Ctrl+Enter`**
 - Click the <i class="codicon codicon-run-all"></i> **Compile Now** button that appears at the left of the toolbar in manual mode
+
+## Next
+
+[Recording](recording.md) — take screenshots and record video or GIF

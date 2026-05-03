@@ -1,7 +1,7 @@
 # Config File Format (`.sha.json`)
 
 
-Config files define multi-pass rendering pipelines and input channel bindings for your shaders. They open in a visual editor by default, but you can also edit the JSON directly.
+This page describes the raw JSON config format. Most users will find it easier to use the [Config panel](../features/config-buffers.md) in the UI instead — this reference is for those who prefer editing the file directly.
 
 ## Naming Convention
 
@@ -11,21 +11,6 @@ The config file must share the same base name as your shader:
 - Config file: `example.sha.json`
 
 Place them in the same directory. To generate a config automatically, run **Shader Studio: Generate Config for GLSL File** from the command palette.
-
-## Visual Config Editor
-
-![Config editor GUI](../assets/placeholders/template.svg)
-_Placeholder: `reference-config-editor.png` — Visual config editor showing tabs for Image and BufferA, with input channels configured and a texture selected._
-
-The visual editor provides:
-
-- **Tab navigation** — one tab per pass (Image, BufferA, BufferB, etc.)
-- **Add pass** — click **+ New** to add a Buffer, Common, or Script pass
-- **Remove pass** — click the × on non-Image tabs
-- **Input channels** — configure `iChannel0–3` for each pass with a modal dialog
-- **Buffer path** — set which `.glsl` file each buffer pass reads from
-- **Script tab** — configure a custom uniforms script: set the JS/TS file path, adjust polling FPS, and view current uniform values and types
-- **Toggle to source** — switch to raw JSON editing with the toolbar button
 
 ## Basic Example
 

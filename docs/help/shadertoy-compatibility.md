@@ -52,12 +52,4 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
 
-## Porting from Shadertoy
 
-Most Shadertoy shaders work without modification. Common adjustments:
-
-- **Multi-pass shaders** need a `.sha.json` config to define buffer passes and channel bindings. Use **Generate Config** from the command palette.
-- **Textures** referenced as `iChannel0` need to be bound in the config file.
-- **Common code** (shared functions) should use a Common pass in the config.
-- **Audio shaders** bind an audio file as a channel input; the texture provides FFT (row 0) and waveform (row 1) data matching Shadertoy's layout.
-- **Cubemap shaders** bind a T-cross cubemap image as a channel input, which becomes a `samplerCube`.

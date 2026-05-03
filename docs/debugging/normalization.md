@@ -71,8 +71,7 @@ Key properties:
 - Visualizing magnitude regardless of direction
 - Debugging distance fields where you only care about distance, not inside/outside
 
-![Normalization mode comparison](../assets/placeholders/template.svg)
-_Placeholder: `debug-normalization-comparison.png` — Three side-by-side previews of the same SDF variable: Off (black and white clipped), Soft (gray at zero, gradient), Abs (black at zero, bright at edges)._
+
 
 ## Step Threshold
 
@@ -93,39 +92,8 @@ Each color channel is independently compared to the threshold:
 
 The edge value ranges from 0.0 to 1.0 (default **0.5**). You can type a value or drag-scrub the input to adjust it.
 
-### Use Cases
 
-**SDF boundary visualization:**
-Set the edge to 0.0 with no normalization. Pixels where the distance field is non-negative (outside the shape) appear white; pixels inside appear black. This shows the exact surface boundary.
 
-**Threshold isolation:**
-See exactly which areas of the screen exceed a certain value. Useful for debugging conditionals and branches.
 
-**Combined with soft normalize:**
-Use soft normalize + step at 0.5 to see exactly where a signed value crosses zero. Since soft normalize maps zero to 0.5, stepping at 0.5 creates a binary black/white boundary at the zero-crossing.
 
-**Combined with abs normalize:**
-Use abs normalize + step to find where values are near zero. Abs normalize maps zero to black, so stepping at a low threshold (e.g. 0.05) highlights only the regions where the variable is nearly zero.
 
-![Step threshold on an SDF](../assets/placeholders/template.svg)
-_Placeholder: `debug-step-threshold.png` — SDF shader with step enabled at edge 0.0, showing a clean black/white boundary at the shape surface._
-
-## Combining Modes
-
-Normalization is applied first, then step. This means step always operates on the normalized 0–1 range.
-
-| Combination | Effect |
-|-------------|--------|
-| Off + Step 0.5 | Binary split at the raw value of 0.5 |
-| Soft + Step 0.5 | Binary split at zero (since soft maps 0 to 0.5) |
-| Abs + Step 0.1 | Show regions where magnitude exceeds ~0.11 |
-| Soft + No Step | Smooth signed visualization with gray as zero |
-| Abs + No Step | Smooth magnitude visualization with black as zero |
-
-## Full-Shader Mode
-
-When inline rendering is **off**, normalization and step apply to the **full original shader output** instead of a specific variable. This lets you analyze the final rendered image:
-
-- Use **soft normalize** to check if any pixel values go negative
-- Use **abs normalize** to see the magnitude distribution of output colors
-- Use **step** to create binary masks based on brightness thresholds

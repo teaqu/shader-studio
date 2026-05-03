@@ -7,8 +7,7 @@ Time controls let you scrub through shader animations, loop specific time ranges
 
 Click the **time display** (e.g. `42.53s`) in the toolbar to expand the time controls menu.
 
-![Time controls menu](../assets/placeholders/template.svg)
-_Placeholder: `feature-time-controls.png` — Time controls menu expanded with scrubber, loop controls, presets, and playback speed slider._
+![Time controls menu](../assets/images/time.png)
 
 ## Time Scrubbing
 
@@ -46,11 +45,6 @@ Adjust how fast time advances with the **speed slider** (0.25x to 4.0x in 0.25 i
 | **2x** | Double speed — quickly preview long animations |
 | **4x** | Fast forward |
 
-The current speed is shown as a label (e.g. `Speed: 1.00x`).
+## Next
 
-## Tips
-
-- Use **slow playback** (0.25x) combined with the time scrubber for precision debugging of animations
-- **Loop mode** with the 2π preset is ideal for tuning `sin`/`cos` based effects
-- Click **Reset** in the toolbar to jump back to time 0
-- The time display in the toolbar always shows the current shader time, even when the menu is closed
+[Performance](performance.md) — cap the frame rate and monitor rendering performance

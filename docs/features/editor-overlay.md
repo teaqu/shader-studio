@@ -1,50 +1,25 @@
 # Editor Overlay
 
+The editor overlay lets you write shader code directly on top of the preview canvas. You see the shader output behind the code as you type, so you don't have to switch back and forth between the editor and the preview.
 
-The editor overlay lets you edit shader code directly on top of the preview canvas. It uses a Monaco editor with GLSL syntax highlighting and a semi-transparent background so you can see the shader output while you type.
+The overlay includes editor features designed to feel similar to the VS Code editor. Due to VS Code limitations, a custom embedded editor is used instead of the native one.
+
+![Editor overlay active](../assets/images/overlay.png)
 
 ## Opening
 
-- Click the **Editor** icon (code brackets) in the toolbar
-- Or select **Editor** from the options menu
+- Click the <i class="codicon codicon-code"></i> **Editor** icon in the toolbar
 - Or run **Shader Studio: Toggle Editor Overlay** from the command palette
 
-![Editor overlay active](../assets/placeholders/template.svg)
-_Placeholder: `feature-editor-overlay.png` — Editor overlay open on top of the shader preview with Monaco editor content visible._
+## Working with Multiple Passes
 
-## Features
+When your shader has multiple passes — Image, BufferA, BufferB, Common, and so on — each appears as a tab along the top of the overlay. Click a tab to switch to that pass. Changes you make are saved back to the file automatically.
 
-- **GLSL syntax highlighting** with custom shader-studio theme
-- **Line numbers** with current line highlight
-- **Error markers** — red squiggly underlines on lines with compilation errors, hover for full error message
-- **Live recompile** — 30ms debounce on edits for near-instant preview updates
-- **File sync** — 500ms debounce to save changes back to the file
-- **Position preservation** — cursor position and scroll are maintained when switching buffers
-
-## Buffer Tabs
-
-When your shader has multiple passes (Image, BufferA, BufferB, Common, etc.), each appears as a tab along the top of the overlay. Click a tab to switch to that buffer.
-
-- **Close (×)** on a tab removes that buffer pass from the config
-- **Double-click** a tab to navigate to that file in the VS Code editor (requires shader lock to be on)
-- Buffer selection syncs with the config panel
-
-### Adding Passes from the Overlay
-
-Click the **+** button in the tab bar to add a new pass:
-
-| Option | Description |
-|--------|-------------|
-| **Buffer** | Add a new render pass (BufferA–D) |
-| **Common** | Add a shared GLSL code pass (only one allowed) |
-| **Script** | Add a custom uniforms script file (only one allowed) |
+**Double-click** a tab to open that file in the VS Code editor. Use [locked mode](locking.md) to keep the preview pinned while you do this.
 
 ## Vim Mode
 
-Toggle Vim mode from the options menu → **Vim Mode**. When active, a Vim status bar appears at the bottom of the overlay.
-
-![Editor overlay with Vim mode](../assets/placeholders/template.svg)
-_Placeholder: `feature-editor-vim.png` — Editor overlay with Vim mode status bar visible at the bottom showing the current mode (NORMAL/INSERT)._
+If you prefer Vim keybindings, open the options menu while the overlay is enabled and select **Vim Mode**.
 
 ### Vim Commands
 
@@ -63,3 +38,7 @@ _Placeholder: `feature-editor-vim.png` — Editor overlay with Vim mode status b
 | `]d` | Next diagnostic/error |
 | `[d` | Previous diagnostic/error |
 | `gl` | Show hover (error tooltip) |
+
+## Next
+
+[Compile Modes](compile-modes.md) — choose when the shader recompiles

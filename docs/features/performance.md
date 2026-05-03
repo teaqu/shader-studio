@@ -1,16 +1,22 @@
-# Performance Monitor
+# Performance
 
+
+The **FPS** display in the preview toolbar shows the live frame rate.
+
+Click it to open the FPS menu:
+
+![FPS menu](../assets/images/fps.png)
+
+- **Frame rate limit**: Unlimited, 60 fps, or 30 fps
+- **Frame Times**: Toggle the frame times panel
+
+## Frame Times Panel
 
 The frame times panel shows a real-time graph of your shader's rendering performance.
 
-## Opening
+![Frame times panel](../assets/images/frame-times.png)
 
-Click the **FPS** display in the toolbar and enable **Frame Times**.
-
-![Frame times panel](../assets/placeholders/template.svg)
-_Placeholder: `feature-frame-times.png` — Frame times graph showing a scrollable canvas with reference lines at 16.6ms and 33.3ms, and a hover tooltip._
-
-## Reading the Graph
+### Reading the Graph
 
 The graph plots frame time (in milliseconds) on the Y-axis over recent history on the X-axis.
 
@@ -19,44 +25,44 @@ The graph plots frame time (in milliseconds) on the Y-axis over recent history o
 | Line | Value | Meaning |
 |------|-------|---------|
 | Green | 16.6ms | 60 fps |
-| Yellow | 33.3ms | 30 fps |
-| Blue | Auto-detected | Your screen refresh rate |
+| Red | 33.3ms | 30 fps |
+| Yellow | Auto-detected | Your screen refresh rate |
 
-A dashed line shows the **rolling average** frame time.
+A dashed line shows the **average of the visible time window**.
 
-Switch to **FPS mode** to display frames-per-second on the Y-axis instead of milliseconds.
+Switch between **ms** and **fps** views with the toggle buttons.
 
-## Controls
+### Controls
 
-### Zoom and Pan
+#### Zoom and Pan
 
 | Action | Effect |
 |--------|--------|
-| Scroll horizontally | Pan through history |
-| Ctrl + scroll | Zoom Y-axis (1x–32x) |
-| Click zoom buttons | Cycle Y-axis zoom |
-| Drag | Pan the visible window |
-| **Center** button | Re-center the visible area on the rolling average |
+| Drag | Pan through history |
+| Ctrl + scroll | Zoom Y-axis (1×–32×) |
+| Click zoom button | Cycle Y-axis zoom |
+| Scroll | Change the time window width |
+| **Center** button | Re-center the visible area on the average |
 
-### Time Window
+#### Time Window
 
-Click the time window buttons to change how many samples are shown:
+A single button cycles through sample counts, showing more or less history. The default view is 180 frames (≈3 seconds at 60 fps).
 
-- Narrow (≈0.5s) — detailed view of recent frames
-- Medium (≈5s) — default
-- Wide (≈60s) — long-term trend
+#### Downsample
 
-### Downsample
+When viewing a long stretch of history, the downsample control averages frames together so the graph draws fewer points (1:1, 1:2, 1:4, 1:8). Higher values keep the graph responsive when zoomed out.
 
-For large history buffers, use the downsample control to reduce the number of rendered points (1:1, 1:2, 1:4, 1:8). This keeps the graph fast when zoomed out.
+#### Pause
 
-### Pause
+Click **Pause** to freeze the graph. Useful for inspecting a specific spike. Click again to resume. The graph also auto-pauses while you drag to pan.
 
-Click **Pause** to freeze the graph. Useful for inspecting a specific spike. Click again to resume.
-
-## Tips
+### Tips
 
 - A spike above the 16.6ms line means a frame was rendered slower than 60 fps
 - Consistent high values suggest the shader is GPU-bound; try lowering the resolution scale
 - Zoom in vertically (Ctrl+scroll up) to magnify small variations
 - Pan left to examine earlier history
+
+## Next
+
+[Resolution](resolution.md) — change the render size, aspect ratio, and zoom
