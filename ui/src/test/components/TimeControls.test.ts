@@ -313,6 +313,72 @@ describe('TimeControls Component', () => {
     });
   });
 
+  describe('Non-Loop Slider Behavior', () => {
+    it('should use Math.max(60, currentTime) as slider max when loop is disabled', async () => {
+      // currentTime = 3.14, loop disabled → max should be 60 (the floor)
+      const { container } = render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      expect(slider.max).toBe('60');
+    });
+
+    it('should use currentTime as slider max when loop is disabled and currentTime > 60', async () => {
+      const props = { timeManager: mockTimeManager, currentTime: 90 };
+      const { container } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('90.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      expect(slider.max).toBe('90');
+    });
+
+    it('should set slider value to currentTime (no modulo) when loop is disabled', async () => {
+      // Use a time larger than the old default loop duration to prove no wrap
+      const props = { timeManager: mockTimeManager, currentTime: 75 };
+      const { container } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('75.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      expect(slider.value).toBe('75');
+    });
+
+    it('should freeze slider max at scrub start and not grow during scrub', async () => {
+      const props = { timeManager: mockTimeManager, currentTime: 90 };
+      const { container, rerender } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('90.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+
+      // Start scrubbing — max freezes at Math.max(60, 90) = 90
+      await fireEvent.mouseDown(slider);
+
+      // Simulate time advancing during scrub
+      await rerender({ currentTime: 95 });
+      await tick();
+
+      // Max should still be frozen at 90 (the value when scrub started)
+      expect(slider.max).toBe('90');
+    });
+
+    it('should unfreeze slider max after scrub ends', async () => {
+      const props = { timeManager: mockTimeManager, currentTime: 90 };
+      const { container, rerender } = render(TimeControls, { props });
+      await fireEvent.click(screen.getByText('90.00s'));
+
+      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+
+      await fireEvent.mouseDown(slider);
+      await fireEvent.mouseUp(slider);
+
+      // After scrub ends, simulate new currentTime post-scrub
+      await rerender({ currentTime: 45 });
+      await tick();
+
+      // Max should now be Math.max(60, 45) = 60 (unfrozen)
+      expect(slider.max).toBe('60');
+    });
+  });
+
   describe('Menu Behavior', () => {
     it('should close menu when clicking outside', async () => {
       const { container } = render(TimeControls, { props: defaultProps });
