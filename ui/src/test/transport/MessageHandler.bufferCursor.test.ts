@@ -229,7 +229,7 @@ describe('MessageHandler — buffer cursor handling', () => {
       await handler.handleShaderMessage(makeShaderMessage({
         cursorPosition: { line: 3, lineContent: 'fragColor = vec4(d);', filePath: 'bufferA.glsl' },
       } as any));
-      expect(spy).toHaveBeenCalledWith(3, 'fragColor = vec4(d);', 'bufferA.glsl');
+      expect(spy).toHaveBeenCalledWith(3, 'fragColor = vec4(d);', 'bufferA.glsl', false);
     });
 
     it('updates debug line from buffer file when locked to Image and buffer belongs to shader', async () => {
@@ -244,7 +244,7 @@ describe('MessageHandler — buffer cursor handling', () => {
         path: '/shaders/image.glsl', // matches locked path so it processes
         cursorPosition: { line: 2, lineContent: 'float d = 0.5;', filePath: 'bufferA.glsl' },
       } as any));
-      expect(spy).toHaveBeenCalledWith(2, 'float d = 0.5;', 'bufferA.glsl');
+      expect(spy).toHaveBeenCalledWith(2, 'float d = 0.5;', 'bufferA.glsl', false);
     });
 
     it('does not update debug line from unrelated file in shader message when locked', async () => {
@@ -258,6 +258,52 @@ describe('MessageHandler — buffer cursor handling', () => {
         cursorPosition: { line: 0, lineContent: 'line', filePath: '/other/unrelated.glsl' },
       } as any));
       expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // In debug mode the extension sends TWO messages per cursor move:
+  //   1. shaderSource  — debug-injected shader with cursor position baked in
+  //   2. cursorPosition — standalone cursor position (same line)
+  // The shaderSource cursor update must NOT fire onCaptureStateChanged (notifyCapture=false)
+  // so that only the standalone cursorPosition triggers a capture. If both fired,
+  // every cursor move would capture twice — once from the edit, once from the cursor move.
+  describe('debug mode: shaderSource + cursorPosition per cursor move', () => {
+    it('shaderSource embedded cursor does not fire capture callback', async () => {
+      const captureCallback = vi.fn();
+      shaderDebugManager.setCaptureStateCallback(captureCallback);
+
+      await handler.handleShaderMessage(makeShaderMessage({
+        cursorPosition: { line: 5, lineContent: 'float d = 0.5;', filePath: 'bufferA.glsl' },
+      } as any));
+
+      expect(captureCallback).not.toHaveBeenCalled();
+    });
+
+    it('standalone cursorPosition fires capture callback once', () => {
+      const captureCallback = vi.fn();
+      shaderDebugManager.setCaptureStateCallback(captureCallback);
+      shaderDebugManager.updateDebugLine(4, 'float x = 1.0;', 'bufferA.glsl', false);
+
+      handler.handleCursorPositionMessage(makeCursorMessage('bufferA.glsl', 5, 'float d = 0.5;'));
+
+      expect(captureCallback).toHaveBeenCalledTimes(1);
+    });
+
+    it('standalone cursorPosition for same line as embedded cursor is suppressed', async () => {
+      // Simulate what the extension does: shaderSource with embedded cursor at line 5,
+      // then standalone cursorPosition for the same line 5.
+      // The standalone should be suppressed because the position hasn't changed.
+      await handler.handleShaderMessage(makeShaderMessage({
+        cursorPosition: { line: 5, lineContent: 'float d = 0.5;', filePath: '/shaders/image.glsl' },
+      } as any));
+
+      const captureCallback = vi.fn();
+      shaderDebugManager.setCaptureStateCallback(captureCallback);
+
+      handler.handleCursorPositionMessage(makeCursorMessage('/shaders/image.glsl', 5, 'float d = 0.5;'));
+
+      expect(captureCallback).not.toHaveBeenCalled();
     });
   });
 

@@ -60,13 +60,15 @@ export class ShaderPipeline {
         return undefined;
       }
 
-      // Update cursor position if provided
+      // Update cursor position if provided. Don't notify capture here: the
+      // currentShaderCode reactive change fires the $effect, and the paired
+      // standalone cursorPosition message handles the capture trigger.
       if (cursorPosition) {
         const { line, lineContent, filePath } = cursorPosition;
 
         // If shader is locked, accept cursors from the locked file and its buffer files
         if (this.isCursorFileAccepted(filePath, message)) {
-          this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+          this.shaderDebugManager.updateDebugLine(line, lineContent, filePath, false);
         }
       }
 

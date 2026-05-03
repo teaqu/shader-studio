@@ -189,6 +189,12 @@ vi.mock('../../lib/ShaderPipeline', () => {
         if (typeof event.data.code === 'string') {
           this._shaderDebugManager.setImageShaderCode(event.data.code);
         }
+        // Mirror real ShaderPipeline: update cursor silently (no capture trigger)
+        // so standalone cursorPosition deduplicates via positionUnchanged check
+        if (event.data.cursorPosition) {
+          const { line, lineContent, filePath } = event.data.cursorPosition;
+          this._shaderDebugManager.updateDebugLine(line, lineContent, filePath, false);
+        }
         this._lastEvent = event;
       }
       return { success: true };
@@ -1196,6 +1202,73 @@ describe('ShaderViewer', () => {
     await tick();
 
     expect(mockVCMFactory._notifyCalls.length).toBe(0);
+  });
+
+  it('should trigger exactly one capture when variable inspector is enabled', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    // Enable debug only
+    const debugButton = screen.getByLabelText('Toggle debug mode');
+    await fireEvent.click(debugButton);
+    await tick();
+
+    mockVCMFactory._notifyCalls = [];
+
+    // Now enable variable inspector — should fire exactly once
+    const variableInspectorButton = screen.getByLabelText('Toggle variable inspector');
+    await fireEvent.pointerDown(variableInspectorButton);
+    await tick();
+
+    expect(mockVCMFactory._notifyCalls.length).toBe(1);
+  });
+
+  it('should trigger exactly one capture per cursor move in manual mode', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    await enableDebugAndVariableInspector();
+    mockVCMFactory.refreshMode = 'manual';
+    mockVCMFactory._notifyCalls = [];
+
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: { line: 1, lineContent: 'float x = 1.0;', filePath: '/test/shader.glsl' },
+    });
+    await tick();
+
+    expect(mockVCMFactory._notifyCalls.length).toBe(1);
+    expect(mockVCMFactory._notifyCalls[0].refreshMode).toBe('manual');
+  });
+
+  it('should trigger exactly one capture when shaderSource with cursor is followed by standalone cursorPosition', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    await enableDebugAndVariableInspector();
+    mockVCMFactory.refreshMode = 'manual';
+    mockVCMFactory._notifyCalls = [];
+
+    // Extension sends shaderSource with embedded cursor (debug-injected shader)
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); /* debug injected */ }',
+      config: { version: '1', passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.glsl' },
+      cursorPosition: { line: 1, lineContent: 'float x = 1.0;', filePath: '/test/shader.glsl' },
+    });
+    await tick();
+
+    // Then extension sends standalone cursorPosition for same position
+    await sendMessage({
+      type: 'cursorPosition',
+      payload: { line: 1, lineContent: 'float x = 1.0;', filePath: '/test/shader.glsl' },
+    });
+    await tick();
+
+    expect(mockVCMFactory._notifyCalls.length).toBe(1);
   });
 
   it('should not re-trigger capture when captured variables are updated (manual/polling mode)', async () => {

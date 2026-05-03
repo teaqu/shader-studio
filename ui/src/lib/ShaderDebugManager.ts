@@ -154,7 +154,7 @@ export class ShaderDebugManager {
     this.notifyStateChange();
   }
 
-  public updateDebugLine(line: number, lineContent: string, filePath: string): void {
+  public updateDebugLine(line: number, lineContent: string, filePath: string, notifyCapture = true): void {
     // Line lock logic
     if (this.state.isLineLocked) {
       if (filePath === this.lockedFilePath) {
@@ -166,6 +166,8 @@ export class ShaderDebugManager {
       this.lockedFilePath = null;
     }
 
+    const positionUnchanged = this.state.currentLine === line && this.state.filePath === filePath;
+
     this.state.currentLine = line;
     this.state.lineContent = lineContent;
     this.state.filePath = filePath;
@@ -176,7 +178,9 @@ export class ShaderDebugManager {
     this.updateActiveState();
     this.updateFunctionContext();
     this.notifyStateChange();
-    this.onCaptureStateChanged?.();
+    if (notifyCapture && !positionUnchanged) {
+      this.onCaptureStateChanged?.();
+    }
   }
 
   public setVariablePreview(request: VariablePreviewRequest): boolean {
@@ -344,7 +348,7 @@ export class ShaderDebugManager {
       this.state.capturedVariables = [];
     }
     this.notifyStateChange();
-    this.onCaptureStateChanged?.();
+    // No onCaptureStateChanged: the $effect in ShaderViewer re-fires via varInspectorEnabled
   }
 
   public setVariableInspectorEnabled(enabled: boolean): void {
@@ -356,7 +360,7 @@ export class ShaderDebugManager {
       this.state.capturedVariables = [];
     }
     this.notifyStateChange();
-    this.onCaptureStateChanged?.();
+    // No onCaptureStateChanged: the $effect in ShaderViewer re-fires via varInspectorEnabled
   }
 
   public setCapturedVariables(vars: CapturedVariable[]): void {
