@@ -32,6 +32,16 @@ const withLoop = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(acc);
 }`;
 
+const withMultilineLoopAssignment = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  for (int i = 0; i < 10; i++) {
+    vec2 rnd2 = vec2(
+      sin(float(i)),
+      cos(float(i)));
+    fragColor = vec4(rnd2, 0.0, 1.0);
+  }
+}`;
+
 const signatureBraceNextLine = `void mainImage(out vec4 fragColor, in vec2 fragCoord)
 {
   vec2 uv = fragCoord / iResolution.xy;
@@ -275,11 +285,10 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
   });
 
   it("should reject capture of globals declared after the selected global line", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
       withGlobals,
       0,
-      "exposure",
-      "float",
+      [{ varName: "exposure", varType: "float", declarationLine: 1 }],
       new Map(),
       new Map(),
       false,
@@ -289,228 +298,149 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
   });
 });
 
-describe("VariableCaptureBuilder.generateCaptureShader", () => {
-  it("should generate shader that outputs float var in R channel", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), false
+describe("VariableCaptureBuilder.generateMultiCaptureShader", () => {
+  it("generates one selector shader for multiple mainImage variables", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      simpleMainImage,
+      3,
+      [
+        { varName: "d", varType: "float", declarationLine: 2 },
+        { varName: "col", varType: "vec3", declarationLine: 3 },
+      ],
+      new Map(),
+      new Map(),
+      false,
+      43,
+      24,
     );
+
     expect(result).not.toBeNull();
+    expect(result).toContain("uniform int _dbgVarIndex;");
+    expect(result).toContain("if (_dbgVarIndex == 0)");
     expect(result).toContain("fragColor = vec4(d, 0.0, 0.0, 0.0);");
-  });
-
-  it("should generate shader that outputs vec3 var with padding", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 3, "col", "vec3", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
+    expect(result).toContain("if (_dbgVarIndex == 1)");
     expect(result).toContain("fragColor = vec4(col, 0.0);");
+    expect(result).toContain("vec2 _dbgRemappedFragCoord = gl_FragCoord.xy / vec2(43.0, 24.0) * iResolution.xy;");
   });
 
-  it("should inject _dbgCaptureCoord when captureCoordUniform=true", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), true
+  it("injects pixel capture coordinate override for selector shaders", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      simpleMainImage,
+      2,
+      [{ varName: "d", varType: "float", declarationLine: 2 }],
+      new Map(),
+      new Map(),
+      true,
     );
+
     expect(result).not.toBeNull();
+    expect(result).toContain("uniform int _dbgVarIndex;");
     expect(result).toContain("uniform vec2 _dbgCaptureCoord;");
     expect(result).toContain("vec2 _dbgRemappedFragCoord = _dbgCaptureCoord;");
-    expect(result).toContain("fragCoord = _dbgRemappedFragCoord;");
   });
 
-  it("should remap direct gl_FragCoord usage in pixel capture shaders", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      mainImageUsingBuiltinFragCoord, 2, "col", "vec3", new Map(), new Map(), true
+  it("generates one selector shader for helper function captures", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      helperWithOutParam,
+      3,
+      [
+        { varName: "tm", varType: "float", declarationLine: 1 },
+        { varName: "p", varType: "vec3", declarationLine: 0 },
+      ],
+      new Map(),
+      new Map(),
+      false,
     );
 
     expect(result).not.toBeNull();
-    expect(result).toContain("vec2 uv = _dbgGlFragCoord.xy / iResolution.xy;");
-    expect(result).toContain("vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);");
-  });
-
-  it("should remap direct gl_FragCoord usage in grid capture shaders", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      mainImageUsingBuiltinFragCoord, 2, "col", "vec3", new Map(), new Map(), false, 43, 24
-    );
-
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec2 uv = _dbgGlFragCoord.xy / iResolution.xy;");
-    expect(result).toContain("vec2 _dbgRemappedFragCoord = gl_FragCoord.xy / vec2(43.0, 24.0) * iResolution.xy;");
-    expect(result).toContain("vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);");
-  });
-
-  it("should return null for unknown varName not in scope", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "nonExistentVar", "float", new Map(), new Map(), false
-    );
-    expect(result).toBeNull();
-  });
-
-  it("should generate capture shader for a referenced global variable", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      withGlobals, 10, "tint", "vec3", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec3 tint = vec3(1.0, 0.0, 0.0);");
-    expect(result).toContain("fragColor = vec4(tint, 0.0);");
-  });
-
-  it("should generate capture shader for a global variable outside any function", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      withGlobals, 0, "tint", "vec3", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec3 tint = vec3(1.0, 0.0, 0.0);");
-    expect(result).toContain("float exposure = 1.5;");
-    expect(result).toContain("float shade(vec2 uv) {");
-    expect(result).toContain("fragColor = vec4(tint, 0.0);");
-  });
-
-  it("should generate capture shader for common-style global code without mainImage", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      commonGlobalsOnly, 0, "red", "vec3", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec3 red = vec3(1.0, 0.0, 0.0);");
-    expect(result).toContain("vec3 helper(vec2 uv) {");
-    expect(result).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord) {");
-    expect(result).toContain("fragColor = vec4(red, 0.0);");
-  });
-
-  it("should handle loop-scoped var with shadow variable", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      withLoop, 4, "val", "float", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("_dbgShadow");
-  });
-
-  it("should generate shader that packs mat2 columns into vec4", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      withMat2, 2, "m", "mat2", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("fragColor = vec4(m[0], m[1]);");
-  });
-
-  it("should work in whole-shader mode (debugLine=-1)", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, -1, "uv", "vec2", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("fragColor = vec4(uv, 0.0, 0.0);");
-  });
-
-  it("keeps preprocessor conditionals balanced for helper capture wrappers", () => {
-    const lines = helperWithPreprocessorReturn.split('\n');
-    const debugLine = lines.findIndex(line => line.includes("return (((v21-v10)"));
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperWithPreprocessorReturn, debugLine, "_dbgReturn", "vec2", new Map(), new Map(), false
-    );
-
-    expect(result).not.toBeNull();
-    expect(result).toContain("#endif");
-  });
-
-  it("should inject non-square grid coord for wide grid (gridWidth > gridHeight)", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 128, 72
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec2(128.0, 72.0)");
-  });
-
-  it("should inject non-square grid coord for tall grid (gridHeight > gridWidth)", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 72, 128
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec2(72.0, 128.0)");
-  });
-
-  it("should inject square grid coord when gridWidth equals gridHeight", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), false, 64, 64
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec2(64.0, 64.0)");
-  });
-
-  it("should not inject grid coord when captureCoordUniform=true (pixel mode)", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      simpleMainImage, 2, "d", "float", new Map(), new Map(), true, 128, 72
-    );
-    expect(result).not.toBeNull();
-    expect(result).not.toContain("vec2(128.0, 72.0)");
-    expect(result).toContain("_dbgCaptureCoord");
-  });
-
-  it("should generate capture shader for fragCoord on the function declaration line", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      signatureBraceNextLine, 0, "fragCoord", "vec2", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("fragColor = vec4(fragCoord, 0.0, 0.0);");
-  });
-
-  it("should generate capture shader for helper out parameters", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperWithOutParam, 3, "p", "vec3", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec3 _dbgCaptured;");
-    expect(result).toContain("_dbgCaptured = p;");
-    expect(result).toContain("vec3 _dbgArg2 = vec3(0.5);");
-    expect(result).toContain("heightMapTracing(vec3(0.5), vec3(0.5), _dbgArg2);");
-    expect(result).toContain("fragColor = vec4(_dbgCaptured, 0.0);");
-  });
-
-  it("should strip earlier returns in multi-return helpers so later variables remain capturable", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      multiReturnHelper, 11, "shape", "float", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("// Debug: stripped earlier return");
-    expect(result).toContain("float shape = cloud * 0.5;");
-    expect(result).toContain("return shape;");
-  });
-
-  it("should preserve support functions defined after the target helper", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperWithLaterDependency, 1, "cloudHeight", "float", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("float saturateLater(float x) {");
-    expect(result).toContain("return clamp(x, 0.0, 1.0);");
-    expect(result).toContain("cloudHeight = saturateLater(p.y);");
-  });
-
-  it("should generate helper capture shaders for functions with user-defined struct parameters", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperWithStructParam, 7, "_dbgReturn", "vec2", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("vec2 _dbg_PointArray(int i, CtrlPts ctrlPts)");
-    expect(result).toContain("CtrlPts _dbgArg1;");
-    expect(result).toContain("vec2 result = _dbg_PointArray(1, _dbgArg1);");
-  });
-
-  it("should strip all original returns when capturing an int parameter in a multi-return helper", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperWithStructParam, 7, "i", "int", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
-    expect(result).toContain("int _dbg_PointArray(int i, CtrlPts ctrlPts)");
-    expect(result).toContain("int result = _dbg_PointArray(1, _dbgArg1);");
-    expect(result).toContain("if(i==0 || i==POINT_COUNT  ) ; // Debug: stripped return");
-    expect(result).toContain("return i;");
-  });
-
-  it("should not duplicate helper or mainImage when capturing a helper declared after mainImage", () => {
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      helperAfterMainImage, 6, "_dbgReturn", "float", new Map(), new Map(), false
-    );
-    expect(result).not.toBeNull();
+    expect(result).toContain("uniform int _dbgVarIndex;");
+    expect(result).toContain("float _dbgCaptured0;");
+    expect(result).toContain("vec3 _dbgCaptured1;");
+    expect(result).toContain("_dbgCaptured0 = tm;");
+    expect(result).toContain("_dbgCaptured1 = p;");
+    expect(result).toContain("if (_dbgVarIndex == 0)");
+    expect(result).toContain("fragColor = vec4(_dbgCaptured0, 0.0, 0.0, 0.0);");
+    expect(result).toContain("if (_dbgVarIndex == 1)");
+    expect(result).toContain("fragColor = vec4(_dbgCaptured1, 0.0);");
     expect(result!.match(/void mainImage\(out vec4 fragColor, in vec2 fragCoord\) \{/g)?.length).toBe(1);
-    expect(result!.match(/float test\(\) \{/g)?.length).toBe(1);
-    expect(result!.match(/float _dbg_test\(\) \{/g)?.length).toBe(1);
+  });
+
+  it("generates one selector shader for global-scope captures", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      withGlobals,
+      1,
+      [
+        { varName: "tint", varType: "vec3", declarationLine: 0 },
+        { varName: "exposure", varType: "float", declarationLine: 1 },
+      ],
+      new Map(),
+      new Map(),
+      false,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("uniform int _dbgVarIndex;");
+    expect(result).toContain("if (_dbgVarIndex == 0)");
+    expect(result).toContain("fragColor = vec4(tint, 0.0);");
+    expect(result).toContain("if (_dbgVarIndex == 1)");
+    expect(result).toContain("fragColor = vec4(exposure, 0.0, 0.0, 0.0);");
+  });
+
+  it("generates one selector shader for externally declared uniforms", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      simpleMainImage,
+      3,
+      [
+        { varName: "d", varType: "float", declarationLine: 2 },
+        { varName: "customGain", varType: "float", declarationLine: -1 },
+      ],
+      new Map(),
+      new Map(),
+      false,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("if (_dbgVarIndex == 0)");
+    expect(result).toContain("fragColor = vec4(d, 0.0, 0.0, 0.0);");
+    expect(result).toContain("if (_dbgVarIndex == 1)");
+    expect(result).toContain("fragColor = vec4(customGain, 0.0, 0.0, 0.0);");
+  });
+
+  it("generates one selector shader for loop-scoped mainImage captures using shadows", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      withLoop,
+      4,
+      [{ varName: "val", varType: "float", declarationLine: 4 }],
+      new Map(),
+      new Map(),
+      false,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("float _dbgShadow0;");
+    expect(result).toContain("_dbgShadow0 = val;");
+    expect(result).toContain("fragColor = vec4(_dbgShadow0, 0.0, 0.0, 0.0);");
+  });
+
+  it("shadows loop locals from a closing-brace line so selector output stays in scope", () => {
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      withLoop,
+      6,
+      [
+        { varName: "i", varType: "int", declarationLine: 3 },
+        { varName: "val", varType: "float", declarationLine: 4 },
+      ],
+      new Map(),
+      new Map(),
+      false,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("int _dbgShadow0;");
+    expect(result).toContain("float _dbgShadow1;");
+    expect(result).toContain("_dbgShadow0 = i;");
+    expect(result).toContain("_dbgShadow1 = val;");
+    expect(result).toContain("fragColor = vec4(float(_dbgShadow0), 0.0, 0.0, 0.0);");
+    expect(result).toContain("fragColor = vec4(_dbgShadow1, 0.0, 0.0, 0.0);");
   });
 });

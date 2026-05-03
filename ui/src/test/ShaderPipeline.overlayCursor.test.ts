@@ -47,6 +47,8 @@ function makeMocks() {
     stepEdge: 0.5,
     debugError: null,
     debugNotice: null,
+    isVariableInspectorEnabled: false,
+    capturedVariables: [],
   };
 
   const shaderDebugManager = {
@@ -81,7 +83,7 @@ describe('ShaderPipeline — overlay cursor gate', () => {
 
   const cursorMsg = (filePath = '/shader.glsl'): CursorPositionMessage => ({
     type: 'cursorPosition',
-    payload: { line: 5, lineContent: 'float x = 1.0;', filePath },
+    payload: { line: 5, character: 0, lineContent: 'float x = 1.0;', filePath },
   });
 
   describe('handleCursorPositionMessage', () => {
@@ -99,6 +101,29 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       vi.mocked(getEditorOverlayVisible).mockReturnValue(true);
 
       pipeline.handleCursorPositionMessage(cursorMsg());
+
+      expect(mocks.shaderDebugManager.updateDebugLine).not.toHaveBeenCalled();
+    });
+
+    it('ignores cursor updates from files outside the current shader when unlocked', () => {
+      vi.mocked(getEditorOverlayVisible).mockReturnValue(false);
+      const config = {
+        passes: {
+          Image: { inputs: [] },
+          BufferA: { path: '/project/bufferA.glsl', inputs: [] },
+        },
+      };
+      vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(config as any);
+      (pipeline as any).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/current.glsl',
+          config,
+          buffers: { BufferA: 'void mainImage() {}' },
+        },
+      } as MessageEvent;
+
+      pipeline.handleCursorPositionMessage(cursorMsg('/project/other.glsl'));
 
       expect(mocks.shaderDebugManager.updateDebugLine).not.toHaveBeenCalled();
     });

@@ -366,6 +366,27 @@ describe("CodeGenerator", () => {
       const outerForIdx = result.findIndex(l => l.includes('for (int i'));
       expect(shadowIdx).toBeLessThan(outerForIdx);
     });
+
+    it("should insert shadow assignment after a multi-line statement inside a loop", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  for (int i = 0; i < 5; i++) {",
+        "    vec2 rnd2 = vec2(",
+        "      sin(float(i)),",
+        "      cos(float(i)));",
+        "    fragColor = vec4(rnd2, 0.0, 1.0);",
+        "  }",
+        "}",
+      ];
+      const varInfo: VarInfo = { name: "rnd2", type: "vec2" };
+      const containingLoops = [{ lineNumber: 1 }];
+      const { lines: result } = CodeGenerator.insertShadowVariable(lines, 2, varInfo, containingLoops);
+
+      const statementEndIndex = result.findIndex(l => l.includes("cos(float(i)));"));
+      const assignmentIndex = result.findIndex(l => l.includes("_dbgShadow = rnd2;"));
+
+      expect(assignmentIndex).toBeGreaterThan(statementEndIndex);
+    });
   });
 
   describe("generateDefaultParameters", () => {

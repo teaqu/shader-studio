@@ -203,7 +203,7 @@ export class ShaderPipeline {
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
-      const shader = this.shaderCompiler.compileShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+      const shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);

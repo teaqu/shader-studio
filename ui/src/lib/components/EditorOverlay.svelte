@@ -47,7 +47,8 @@
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
-  let cursorChangeDisposable: monaco.editor.IDisposable | null = null;
+  let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -446,11 +447,16 @@
     cursorChangeDisposable = editor.onDidChangeCursorPosition(() => {
       const position = editor?.getPosition();
       const model = editor?.getModel();
-      if (!position || !model) return;
+      if (!position || !model) {
+        return;
+      }
       const line = position.lineNumber - 1;
       const content = model.getLineContent(position.lineNumber);
       const buffer = activeBufferName;
-      queueMicrotask(() => onCursorChange(line, content, buffer));
+      if (cursorChangeTimer) {
+        clearTimeout(cursorChangeTimer);
+      }
+      cursorChangeTimer = setTimeout(() => onCursorChange(line, content, buffer), 150);
     });
 
     editor.focus();
@@ -467,6 +473,10 @@
     if (persistTimer) {
       clearTimeout(persistTimer);
       persistTimer = null;
+    }
+    if (cursorChangeTimer) {
+      clearTimeout(cursorChangeTimer);
+      cursorChangeTimer = null;
     }
     if (cursorChangeDisposable) {
       cursorChangeDisposable.dispose();

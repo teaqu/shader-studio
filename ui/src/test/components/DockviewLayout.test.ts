@@ -523,7 +523,7 @@ describe('DockviewLayout', () => {
       expect(transport.postMessage).toHaveBeenCalledWith({ type: 'requestLayout', payload: { layoutSlot: 'web:1' } });
     });
 
-    it('should restore layout from transport payload', async () => {
+    it('should reject empty transport layout and recreate the default preview', async () => {
       const transport = createMockTransport();
       renderLayout({ transport });
       await tick();
@@ -535,10 +535,11 @@ describe('DockviewLayout', () => {
           state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
         },
       });
-      expect(mockApi.fromJSON).toHaveBeenCalledTimes(1);
+      expect(mockApi.fromJSON).not.toHaveBeenCalled();
+      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });
 
-    it('should restore from local layout when transport payload is null', async () => {
+    it('should reject empty local layout and recreate the default preview when transport payload is null', async () => {
       vi.mocked(layoutStore.load).mockReturnValue({ activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} } as any);
       const transport = createMockTransport();
       renderLayout({ transport });
@@ -546,7 +547,8 @@ describe('DockviewLayout', () => {
 
       transport.emit({ type: 'restoreLayout', payload: { layoutSlot: 'web:1', state: null } });
       expect(layoutStore.load).toHaveBeenCalledWith('web:1');
-      expect(mockApi.fromJSON).toHaveBeenCalledTimes(1);
+      expect(mockApi.fromJSON).not.toHaveBeenCalled();
+      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });
 
     it('should reset and recreate default layout when fromJSON throws', async () => {
@@ -561,7 +563,13 @@ describe('DockviewLayout', () => {
         type: 'restoreLayout',
         payload: {
           layoutSlot: 'web:1',
-          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
+          state: {
+            activeLayout: {
+              panels: { preview: { id: 'preview', component: 'preview', title: 'Preview' } },
+              grid: { root: { type: 'leaf', data: { views: ['preview'] } } },
+            },
+            panelSnapshots: {},
+          },
         },
       });
       expect(mockApi.clear).toHaveBeenCalled();

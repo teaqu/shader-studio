@@ -186,6 +186,13 @@ export class ShaderDebugger {
     }
 
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
+    if (functionInfo.name) {
+      for (const globalVar of GlslParser.getUsedGlobalVariables(lines, functionInfo)) {
+        if (!varTypes.has(globalVar.name)) {
+          varTypes.set(globalVar.name, globalVar.type);
+        }
+      }
+    }
 
     // Extract function return type if we're in a function
     let functionReturnType: string | undefined;

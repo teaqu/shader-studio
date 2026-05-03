@@ -37,16 +37,26 @@ interface PendingCapture {
   dataSize: number;
 }
 
+interface CaptureRequest {
+  varName: string;
+  varType: string;
+  captureShader: string;
+  selectorIndex?: number;
+}
+
 interface ShaderCacheEntry {
   shader: PiShader;
   lastUsed: number;
 }
+
+type CaptureContinuation = () => boolean;
 
 const SHADER_CACHE_MAX = 20;
 const FLOAT_BYTES = 4;
 const RGBA_CHANNELS = 4;
 
 export class VariableCapturer {
+  private static nextCaptureRequestId = 1;
   private pendingCaptures: PendingCapture[] = [];
   private shaderCache = new Map<string, ShaderCacheEntry>();
   private shaderCacheOrder: string[] = [];
@@ -64,6 +74,7 @@ export class VariableCapturer {
   private inputBindings: (PiTexture | null)[] = [];
   private compileContext: CaptureCompileContext = {};
   private lastError: string | null = null;
+  private fboTextures = new WeakMap<WebGLFramebuffer, WebGLTexture>();
 
   constructor(
     private gl: WebGL2RenderingContext,
@@ -123,30 +134,66 @@ export class VariableCapturer {
   }
 
   /**
-   * Issue N async captures (one per variable) at a specific pixel. Returns immediately.
+   * Issue async variable captures at a specific pixel. Returns immediately.
    * Call collectResults() on next frame to get decoded values.
    */
-  issueCaptureAtPixel(
-    captures: Array<{ varName: string; varType: string; captureShader: string }>,
+  async issueCaptureAtPixel(
+    captures: CaptureRequest[],
     pixelX: number,
     pixelY: number,
     canvasWidth: number,
     canvasHeight: number,
     uniforms: CaptureUniforms,
-  ): number {
+    shouldContinue: CaptureContinuation = () => true,
+  ): Promise<number> {
     this.clearLastError();
     if (captures.length === 0) return 0;
 
+    const requestId = VariableCapturer.nextCaptureRequestId++;
+    const preExistingErrors = this.drainGlErrors();
+    if (preExistingErrors.length > 0) {
+      console.warn('[VariableCapture] pre-existing GL errors at issue start', { requestId, preExistingErrors });
+    }
+    const startedAt = performance.now();
     const fbo = this.createFloatFBO(1, 1);
-    if (!fbo) return 0;
+    if (!fbo) {
+      console.error('[VariableCapture] issue pixel failed', {
+        requestId,
+        reason: 'float-fbo-create',
+        elapsedMs: this.roundElapsed(performance.now() - startedAt),
+        glError: this.readGlError(),
+      });
+      return 0;
+    }
 
     // WebGL Y-flip: bottom-left origin
     const captureY = canvasHeight - pixelY - 1;
     let issued = 0;
+    const requestShaderResults = new Map<string, PiShader | null>();
 
     for (const cap of captures) {
+      if (!shouldContinue()) break;
+
       try {
-        const piShader = this.getOrCompileShader(cap.captureShader);
+        const hasRequestShaderResult = requestShaderResults.has(cap.captureShader);
+        const wasCacheMiss = !hasRequestShaderResult && !this.shaderCache.has(cap.captureShader);
+        if (wasCacheMiss) {
+          if (this.gl.isContextLost()) break;
+          await this.nextFrame();
+          if (!shouldContinue() || this.gl.isContextLost()) break;
+        }
+        if (this.gl.isContextLost()) break;
+        let piShader = requestShaderResults.get(cap.captureShader) ?? null;
+        if (!hasRequestShaderResult) {
+          try {
+            piShader = await this.getOrCompileShader(cap.captureShader, requestId, cap.varName);
+            requestShaderResults.set(cap.captureShader, piShader);
+          } catch (error) {
+            requestShaderResults.set(cap.captureShader, null);
+            throw error;
+          }
+        }
+        if (!shouldContinue() || this.gl.isContextLost()) break;
         if (!piShader || !piShader.mProgram) continue;
 
         this.renderCaptureShader(
@@ -158,6 +205,7 @@ export class VariableCapturer {
           canvasWidth,
           canvasHeight,
           { x: pixelX + 0.5, y: captureY + 0.5 }, // pass coord for _dbgCaptureCoord
+          cap.selectorIndex,
         );
 
         const dataSize = 1 * 1 * RGBA_CHANNELS * FLOAT_BYTES; // 16 bytes
@@ -182,34 +230,75 @@ export class VariableCapturer {
         issued++;
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
-        console.error(`[VariableCapture] Failed pixel capture for ${cap.varName}:`, error);
+        console.error(`[VariableCapture] Failed pixel capture for ${cap.varName}:`, error, {
+          requestId,
+          glError: this.readGlError(),
+        });
         continue;
       }
     }
 
-    this.gl.deleteFramebuffer(fbo);
+    this.deleteFBOWithTexture(fbo);
     return issued;
   }
 
   /**
    * Issue N async captures on a gridWidth×gridHeight grid covering the full canvas. Returns immediately.
    */
-  issueCaptureGrid(
-    captures: Array<{ varName: string; varType: string; captureShader: string }>,
+  async issueCaptureGrid(
+    captures: CaptureRequest[],
     uniforms: CaptureUniforms,
     gridWidth: number,
     gridHeight: number,
-  ): number {
+    shouldContinue: CaptureContinuation = () => true,
+  ): Promise<number> {
     this.clearLastError();
     if (captures.length === 0) return 0;
 
+    const requestId = VariableCapturer.nextCaptureRequestId++;
+    const preExistingErrors = this.drainGlErrors();
+    if (preExistingErrors.length > 0) {
+      console.warn('[VariableCapture] pre-existing GL errors at issue start', { requestId, preExistingErrors });
+    }
+    const startedAt = performance.now();
     const fbo = this.createFloatFBO(gridWidth, gridHeight);
-    if (!fbo) return 0;
+    if (!fbo) {
+      console.error('[VariableCapture] issue grid failed', {
+        requestId,
+        reason: 'float-fbo-create',
+        gridWidth,
+        gridHeight,
+        elapsedMs: this.roundElapsed(performance.now() - startedAt),
+        glError: this.readGlError(),
+      });
+      return 0;
+    }
     let issued = 0;
+    const requestShaderResults = new Map<string, PiShader | null>();
 
     for (const cap of captures) {
+      if (!shouldContinue()) break;
+
       try {
-        const piShader = this.getOrCompileShader(cap.captureShader);
+        const hasRequestShaderResult = requestShaderResults.has(cap.captureShader);
+        const wasCacheMiss = !hasRequestShaderResult && !this.shaderCache.has(cap.captureShader);
+        if (wasCacheMiss) {
+          if (this.gl.isContextLost()) break;
+          await this.nextFrame();
+          if (!shouldContinue() || this.gl.isContextLost()) break;
+        }
+        if (this.gl.isContextLost()) break;
+        let piShader = requestShaderResults.get(cap.captureShader) ?? null;
+        if (!hasRequestShaderResult) {
+          try {
+            piShader = await this.getOrCompileShader(cap.captureShader, requestId, cap.varName);
+            requestShaderResults.set(cap.captureShader, piShader);
+          } catch (error) {
+            requestShaderResults.set(cap.captureShader, null);
+            throw error;
+          }
+        }
+        if (!shouldContinue() || this.gl.isContextLost()) break;
         if (!piShader || !piShader.mProgram) continue;
 
         this.renderCaptureShader(
@@ -221,6 +310,7 @@ export class VariableCapturer {
           uniforms.res[0],
           uniforms.res[1],
           null,
+          cap.selectorIndex,
         );
 
         const dataSize = gridWidth * gridHeight * RGBA_CHANNELS * FLOAT_BYTES;
@@ -245,13 +335,24 @@ export class VariableCapturer {
         issued++;
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
-        console.error(`[VariableCapture] Failed grid capture for ${cap.varName}:`, error);
+        console.error(`[VariableCapture] Failed grid capture for ${cap.varName}:`, error, {
+          requestId,
+          glError: this.readGlError(),
+        });
         continue;
       }
     }
 
-    this.gl.deleteFramebuffer(fbo);
+    this.deleteFBOWithTexture(fbo);
     return issued;
+  }
+
+  cancelPendingCaptures(): void {
+    for (const pending of this.pendingCaptures) {
+      this.gl.deleteSync(pending.fence);
+      this.gl.deleteBuffer(pending.pbo);
+    }
+    this.pendingCaptures = [];
   }
 
   /**
@@ -289,11 +390,7 @@ export class VariableCapturer {
 
   dispose(): void {
     // Cancel pending captures
-    for (const pending of this.pendingCaptures) {
-      this.gl.deleteSync(pending.fence);
-      this.gl.deleteBuffer(pending.pbo);
-    }
-    this.pendingCaptures = [];
+    this.cancelPendingCaptures();
 
     // Release PBO pool
     for (const [, pool] of this.pboPool) {
@@ -321,7 +418,7 @@ export class VariableCapturer {
     }
   }
 
-  private getOrCompileShader(code: string): PiShader | null {
+  private async getOrCompileShader(code: string, requestId?: number, varName?: string): Promise<PiShader | null> {
     const existing = this.shaderCache.get(code);
     if (existing) {
       existing.lastUsed = performance.now();
@@ -334,7 +431,9 @@ export class VariableCapturer {
       this.shaderCache.delete(oldest);
     }
 
-    const piShader = this.shaderCompiler.compileShader(
+    const startedAt = performance.now();
+
+    const piShader = await this.shaderCompiler.compileShaderAsync(
       code,
       this.compileContext.commonCode,
       this.compileContext.slotAssignments,
@@ -344,10 +443,20 @@ export class VariableCapturer {
     if (!piShader || !piShader.mProgram) {
       if (piShader?.mInfo) {
         this.lastError = piShader.mInfo;
-        console.error('[VariableCapture] Shader compile failed:', piShader.mInfo);
+        console.error('[VariableCapture] Shader compile failed:', piShader.mInfo, {
+          requestId,
+          varName,
+          elapsedMs: this.roundElapsed(performance.now() - startedAt),
+          glError: this.readGlError(),
+        });
       } else {
         this.lastError = 'Shader compile failed';
-        console.error('[VariableCapture] Shader compile failed');
+        console.error('[VariableCapture] Shader compile failed', {
+          requestId,
+          varName,
+          elapsedMs: this.roundElapsed(performance.now() - startedAt),
+          glError: this.readGlError(),
+        });
       }
       return null;
     }
@@ -389,9 +498,7 @@ export class VariableCapturer {
       return null;
     }
 
-    // Store texture reference on fbo for cleanup (use a WeakMap pattern via property)
-    (fbo as any)._captureTexture = texture;
-
+    this.fboTextures.set(fbo, texture);
     return fbo;
   }
 
@@ -442,6 +549,7 @@ export class VariableCapturer {
     canvasWidth: number,
     canvasHeight: number,
     captureCoord: { x: number; y: number } | null,
+    selectorIndex?: number,
   ): void {
     const gl = this.gl;
     const program = piShader.mProgram!;
@@ -513,6 +621,13 @@ export class VariableCapturer {
       }
     }
 
+    if (selectorIndex !== undefined) {
+      const loc = gl.getUniformLocation(program, '_dbgVarIndex');
+      if (loc !== null) {
+        gl.uniform1i(loc, selectorIndex);
+      }
+    }
+
     // Draw fullscreen triangle
     gl.bindVertexArray(this.quadVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
@@ -533,5 +648,52 @@ export class VariableCapturer {
     gl.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
     gl.useProgram(prevProgram);
     gl.bindVertexArray(prevVao);
+  }
+
+  private roundElapsed(elapsedMs: number): number {
+    return Math.round(elapsedMs * 100) / 100;
+  }
+
+  private nextFrame(): Promise<void> {
+    return new Promise<void>(resolve => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) { resolved = true; resolve(); }
+      };
+      requestAnimationFrame(done);
+      // Safety: if rAF is throttled (e.g. WebGL context loss killing Metal), don't
+      // hang indefinitely. 500ms covers any reasonable frame rate while still
+      // resolving orders of magnitude faster than the ~42s we saw post-crash.
+      setTimeout(done, 500);
+    });
+  }
+
+
+  private deleteFBOWithTexture(fbo: WebGLFramebuffer): void {
+    const texture = this.fboTextures.get(fbo);
+    this.fboTextures.delete(fbo);
+    this.gl.deleteFramebuffer(fbo);
+    if (texture) {
+      this.gl.deleteTexture(texture);
+    }
+  }
+
+  private drainGlErrors(): number[] {
+    const errors: number[] = [];
+    for (let i = 0; i < 16; i++) {
+      const err = this.readGlError();
+      if (err === null) break;
+      errors.push(err);
+    }
+    return errors;
+  }
+
+  private readGlError(): number | null {
+    const getError = (this.gl as { getError?: () => number }).getError;
+    if (!getError) return null;
+
+    const error = getError.call(this.gl);
+    const noError = (this.gl as { NO_ERROR?: number }).NO_ERROR ?? 0;
+    return error === noError ? null : error;
   }
 }

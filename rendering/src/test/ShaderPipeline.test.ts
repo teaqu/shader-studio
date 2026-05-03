@@ -14,6 +14,7 @@ const createMockCanvas = () => ({
 
 const createMockShaderCompiler = () => ({
     compileShader: vi.fn(),
+    compileShaderAsync: vi.fn(),
     wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0, commonCodeLineCount: 0 }),
 });
 
@@ -75,7 +76,7 @@ describe("ShaderPipeline", () => {
             mockTimeManager as unknown as TimeManager,
         );
 
-        mockShaderCompiler.compileShader.mockReturnValue(createMockShader());
+        mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
         vi.spyOn(console, "log").mockImplementation(() => { });
         vi.spyOn(console, "error").mockImplementation(() => { });
     });
@@ -210,7 +211,7 @@ describe("ShaderPipeline", () => {
             mockTimeManager.cleanup.mockClear();
             mockBufferManager.dispose.mockClear();
 
-            mockShaderCompiler.compileShader.mockReturnValueOnce(null);
+            mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(null);
 
             const failingShaderCode = "void mainImage() { SYNTAX_ERROR; }";
             const secondShaderPath = "broken_shader.glsl";
@@ -232,7 +233,7 @@ describe("ShaderPipeline", () => {
 
         it("should preserve the last good passes and shaders when recompilation fails", async () => {
             const initialShader = createMockShader();
-            mockShaderCompiler.compileShader.mockReturnValueOnce(initialShader);
+            mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(initialShader);
 
             await shaderPipeline.compileShaderPipeline(
                 "void mainImage() { gl_FragColor = vec4(1.0); }",
@@ -245,7 +246,7 @@ describe("ShaderPipeline", () => {
             expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
 
             const nextImageShader = createMockShader();
-            mockShaderCompiler.compileShader
+            mockShaderCompiler.compileShaderAsync
                 .mockReturnValueOnce(nextImageShader)
                 .mockReturnValueOnce(null);
 
@@ -526,7 +527,7 @@ describe("ShaderPipeline", () => {
             const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", buffers);
             
             expect(result.success).toBe(true);
-            expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
+            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
                 expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
                 expect.stringContaining("commonFunction"),
                 expect.any(Array),
@@ -1334,7 +1335,7 @@ describe("ShaderPipeline", () => {
 
             await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
 
-            expect(mockShaderCompiler.compileShader).toHaveBeenCalledWith(
+            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
                 expect.any(String),
                 "",
                 [{ slot: 0, key: "myTexture", isCustomName: true }],

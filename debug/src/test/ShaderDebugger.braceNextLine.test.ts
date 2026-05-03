@@ -163,45 +163,66 @@ describe('Brace-on-next-line - modifyShaderForDebugging', () => {
   });
 });
 
-describe('Brace-on-next-line - generateCaptureShader for _dbgReturn', () => {
-  it('should generate capture for _dbgReturn on sdBoxFrame multi-line return', () => {
+describe('Brace-on-next-line - selector capture for _dbgReturn', () => {
+  it('should generate selector capture for _dbgReturn on sdBoxFrame multi-line return', () => {
     const line = findLine('return min(min(');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER_BRACE_NEXT_LINE, line, '_dbgReturn', 'float', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE,
+      line,
+      [{ varName: '_dbgReturn', varType: 'float', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('_dbgReturn');
-    expect(result).toContain('float result = _dbg_sdBoxFrame');
+    expect(result).toContain('uniform int _dbgVarIndex;');
+    expect(result).toContain('_dbgCaptured0 = min(min(');
+    expect(result).toContain('_dbg_sdBoxFrame');
   });
 
-  it('should generate capture for _dbgReturn on sdBox return', () => {
+  it('should generate selector capture for _dbgReturn on sdBox return', () => {
     const line = findLine('return length(max(q,0.0))');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER_BRACE_NEXT_LINE, line, '_dbgReturn', 'float', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE,
+      line,
+      [{ varName: '_dbgReturn', varType: 'float', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('_dbgReturn');
-    expect(result).toContain('float result = _dbg_sdBox');
+    expect(result).toContain('_dbgCaptured0 = length(max(q,0.0))');
+    expect(result).toContain('_dbg_sdBox');
   });
 
-  it('should generate capture for regular var p on sdBoxFrame return', () => {
+  it('should generate selector capture for regular var p on sdBoxFrame return', () => {
     const line = findLine('return min(min(');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER_BRACE_NEXT_LINE, line, 'p', 'vec3', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE,
+      line,
+      [{ varName: 'p', varType: 'vec3', declarationLine: 1 }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('vec3 result = _dbg_sdBoxFrame');
-    expect(result).toContain('return p;');
+    expect(result).toContain('_dbgCaptured0 = p;');
+    expect(result).toContain('fragColor = vec4(_dbgCaptured0, 0.0);');
   });
 
-  it('should generate capture for regular var q on sdBoxFrame return', () => {
+  it('should generate selector capture for regular var q on sdBoxFrame return', () => {
     const line = findLine('return min(min(');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER_BRACE_NEXT_LINE, line, 'q', 'vec3', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE,
+      line,
+      [{ varName: 'q', varType: 'vec3', declarationLine: findLine('vec3 q = abs(p+e)-e') }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('vec3 result = _dbg_sdBoxFrame');
-    expect(result).toContain('return q;');
+    expect(result).toContain('_dbgCaptured0 = q;');
+    expect(result).toContain('fragColor = vec4(_dbgCaptured0, 0.0);');
   });
 });
 
@@ -216,16 +237,13 @@ describe('Brace-on-next-line - ALL vars capturable on return lines', () => {
     expect(names).toContain('q');
     expect(names).toContain('_dbgReturn');
 
-    // Verify EVERY variable produces a valid (non-null) capture shader
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER_BRACE_NEXT_LINE, line, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture shader for '${v.varName}' should not be null`).not.toBeNull();
-      if (v.varName !== '_dbgReturn') {
-        expect(shader, `capture shader for '${v.varName}' should return the captured value from the clone`)
-          .toContain(`return ${v.varName};`);
-      }
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE, line, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
+    for (const [index, v] of vars.entries()) {
+      expect(shader, `selector capture for '${v.varName}' should include index ${index}`)
+        .toContain(`if (_dbgVarIndex == ${index})`);
     }
   });
 
@@ -240,16 +258,13 @@ describe('Brace-on-next-line - ALL vars capturable on return lines', () => {
     expect(names).toContain('q');
     expect(names).toContain('_dbgReturn');
 
-    // Verify EVERY variable produces a valid (non-null) capture shader
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER_BRACE_NEXT_LINE, line, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture shader for '${v.varName}' should not be null`).not.toBeNull();
-      if (v.varName !== '_dbgReturn') {
-        expect(shader, `capture for '${v.varName}' should return the captured value from the clone`)
-          .toContain(`return ${v.varName};`);
-      }
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE, line, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
+    for (const [index, v] of vars.entries()) {
+      expect(shader, `selector capture for '${v.varName}' should include index ${index}`)
+        .toContain(`if (_dbgVarIndex == ${index})`);
     }
   });
 
@@ -261,12 +276,10 @@ describe('Brace-on-next-line - ALL vars capturable on return lines', () => {
     expect(names).toContain('q');
     expect(names).toContain('_dbgReturn');
 
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER_BRACE_NEXT_LINE, line, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture shader for '${v.varName}' should not be null`).not.toBeNull();
-    }
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE, line, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
   });
 });
 
@@ -328,31 +341,27 @@ describe('Closing brace of function - getAllInScopeVariables', () => {
   });
 });
 
-describe('Closing brace of function - generateCaptureShader', () => {
-  it('sdBox closing brace: capture succeeds for every in-scope var', () => {
+describe('Closing brace of function - selector capture shader', () => {
+  it('sdBox closing brace: selector capture succeeds for every in-scope var', () => {
     const sdBoxStart = findLine('float sdBox( vec3 p, vec3 b )');
     const closingBrace = lines.findIndex((l, i) => i > sdBoxStart && l.trim() === '}');
     const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, closingBrace);
     expect(vars.length).toBeGreaterThan(0);
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER_BRACE_NEXT_LINE, closingBrace, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture for '${v.varName}' should not be null`).not.toBeNull();
-    }
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE, closingBrace, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
   });
 
-  it('sdBoxFrame closing brace: capture succeeds for every in-scope var', () => {
+  it('sdBoxFrame closing brace: selector capture succeeds for every in-scope var', () => {
     const start = findLine('float sdBoxFrame');
     const closingBrace = lines.findIndex((l, i) => i > start && l.trim() === '}');
     const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER_BRACE_NEXT_LINE, closingBrace);
     expect(vars.length).toBeGreaterThan(0);
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER_BRACE_NEXT_LINE, closingBrace, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture for '${v.varName}' should not be null`).not.toBeNull();
-    }
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER_BRACE_NEXT_LINE, closingBrace, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
   });
 });
 

@@ -110,21 +110,24 @@ export class VariableCaptureBuilder {
   }
 
   /**
-   * Generate a capture shader that outputs varName to fragColor as raw floats.
-   * captureCoordUniform=true injects uniform vec2 _dbgCaptureCoord and uses it as fragCoord.
-   * Returns null if var cannot be captured.
+   * Generate one capture shader that can output any mainImage variable by setting
+   * uniform int _dbgVarIndex before drawing.
+   *
+   * Returns null only when the current variable set cannot be represented as
+   * a single selector shader for the current scope.
    */
-  static generateCaptureShader(
+  static generateMultiCaptureShader(
     code: string,
     debugLine: number,
-    varName: string,
-    varType: string,
+    vars: CaptureVarInfo[],
     loopMaxIterations: Map<number, number>,
-    customParameters: Map<number, string>,
+    _customParameters: Map<number, string>,
     captureCoordUniform: boolean,
     gridWidth: number = DEFAULT_GRID_SIZE,
     gridHeight: number = DEFAULT_GRID_SIZE,
   ): string | null {
+    if (vars.length === 0) return null;
+
     const lines = code.split('\n');
 
     let resolvedLine = debugLine;
@@ -137,70 +140,94 @@ export class VariableCaptureBuilder {
     }
 
     const functionInfo = GlslParser.findEnclosingFunction(lines, resolvedLine);
-    let varTypes = new Map<string, string>();
-    let isGlobalVar = false;
 
-    if (functionInfo.name) {
-      // If on closing brace of function, treat as last line of body
-      if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
-        resolvedLine = functionInfo.end - 1;
-      }
-
-      // Validate var is actually in scope (_dbgReturn is synthetic, always allowed)
-      varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
-      const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
-      isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
-      if (varName !== '_dbgReturn' && !varTypes.has(varName) && !isGlobalVar) return null;
-    } else {
-      const globalVars = GlslParser.getGlobalVariables(lines, resolvedLine);
-      isGlobalVar = globalVars.some((globalVar) => globalVar.name === varName && globalVar.type === varType);
-      if (!isGlobalVar) return null;
+    if (functionInfo.end >= 0 && resolvedLine === functionInfo.end) {
+      resolvedLine = functionInfo.end - 1;
     }
 
-    const varInfo = { name: varName, type: varType };
+    if (!functionInfo.name) {
+      const globalVars = GlslParser.getGlobalVariables(lines, resolvedLine);
+      for (const captureVar of vars) {
+        if (VariableCaptureBuilder.isExternalCaptureVar(captureVar)) {
+          continue;
+        }
+        const isGlobal = globalVars.some(
+          globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
+        );
+        if (!isGlobal) return null;
+      }
 
-    let result: string;
+      let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars);
+      if (captureCoordUniform) {
+        shader = VariableCaptureBuilder.injectCaptureCoord(shader);
+      } else {
+        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
+      }
+      return shader;
+    }
 
-    if (functionInfo.name === 'mainImage') {
-      result = ShaderDebugger.truncateMainImage(
-        lines,
-        resolvedLine,
-        functionInfo.start,
-        varInfo,
-        loopMaxIterations,
-        'off',
-        null,
-        true, // captureMode
-      );
-    } else if (functionInfo.name) {
-      const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, resolvedLine);
-      // Generate the wrapper but with capture output instead of visualization
-      result = VariableCaptureBuilder.wrapFunctionForCapture(
+    if (functionInfo.name !== 'mainImage') {
+      let shader = VariableCaptureBuilder.wrapFunctionForMultiCapture(
         lines,
         functionInfo,
         resolvedLine,
-        varInfo,
-        containingLoops,
+        vars,
         loopMaxIterations,
-        customParameters,
+        _customParameters,
       );
-    } else {
-      result = VariableCaptureBuilder.wrapGlobalScopeForCapture(lines, varInfo);
+      if (shader === null) return null;
+      if (captureCoordUniform) {
+        shader = VariableCaptureBuilder.injectCaptureCoord(shader);
+      } else {
+        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
+      }
+      return shader;
     }
 
-    // Inject coord override: pixel mode uses uniform, grid mode scales gl_FragCoord
+    const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
+    const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
+    for (const captureVar of vars) {
+      if (VariableCaptureBuilder.isExternalCaptureVar(captureVar)) {
+        continue;
+      }
+      const isLocal = varTypes.get(captureVar.varName) === captureVar.varType;
+      const isGlobal = globalVars.some(
+        globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
+      );
+      if (!isLocal && !isGlobal) return null;
+    }
+
+    let truncationEnd = CodeGenerator.extendForMultiLine(lines, resolvedLine);
+    truncationEnd = VariableCaptureBuilder.extendToFunctionBodyLevel(lines, functionInfo.start, truncationEnd);
+    truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionInfo.start, truncationEnd);
+
+    const truncatedLines = lines.slice(0, truncationEnd + 1);
+    const { lines: shadowedLines, vars: outputVars } = VariableCaptureBuilder.insertSelectorShadows(
+      truncatedLines,
+      lines,
+      functionInfo.start,
+      truncationEnd,
+      vars,
+    );
+    const withCappedLoops = CodeGenerator.capLoopIterations(shadowedLines, functionInfo.start, loopMaxIterations);
+    const closedLines = CodeGenerator.closeOpenBraces(withCappedLoops, functionInfo.start);
+    const originalLength = withCappedLoops.length;
+    const result = closedLines.slice(0, originalLength);
+    result.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(outputVars));
+    result.push(...closedLines.slice(originalLength));
+
+    let shader = `uniform int _dbgVarIndex;\n${result.join('\n')}`;
     if (captureCoordUniform) {
-      result = VariableCaptureBuilder.injectCaptureCoord(result);
+      shader = VariableCaptureBuilder.injectCaptureCoord(shader);
     } else {
-      result = VariableCaptureBuilder.injectGridCoord(result, gridWidth, gridHeight);
+      shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
     }
-
-    return result;
+    return shader;
   }
 
-  private static wrapGlobalScopeForCapture(
+  private static wrapGlobalScopeForMultiCapture(
     lines: string[],
-    varInfo: import('./GlslParser').VarInfo,
+    vars: CaptureVarInfo[],
   ): string {
     const mainImageStart = VariableCaptureBuilder.findMainImageStart(lines);
     const mainImageEnd = mainImageStart >= 0
@@ -214,84 +241,61 @@ export class VariableCaptureBuilder {
       ]
       : [...lines];
 
-    const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, varInfo.name);
     return [
+      'uniform int _dbgVarIndex;',
       ...preservedLines,
       '',
       'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
-      captureOutput,
+      ...VariableCaptureBuilder.generateSelectorCaptureOutput(vars),
       '}',
     ].join('\n');
   }
 
-  /**
-   * Wraps a helper function for capture mode (raw float output).
-   * Similar to CodeGenerator.wrapFunctionForDebugging but uses generateCaptureOutputForVar.
-   */
-  private static wrapFunctionForCapture(
+  private static wrapFunctionForMultiCapture(
     lines: string[],
     functionInfo: import('./GlslParser').FunctionInfo,
     debugLine: number,
-    varInfo: import('./GlslParser').VarInfo,
-    containingLoops: { lineNumber: number; endLine: number }[],
+    vars: CaptureVarInfo[],
     loopMaxIterations: Map<number, number>,
     customParameters: Map<number, string>,
-  ): string {
-    const captureVarName = '_dbgCaptured';
-    const debugFunctionName = `_dbg_${functionInfo.name}`;
-    const preservedSource = (() => {
-      const mainImageRange = (() => {
-        let start = -1;
-        for (let i = 0; i < lines.length; i++) {
-          if (/void\s+mainImage\s*\(/.test(lines[i])) {
-            start = i;
-            break;
-          }
-        }
-        if (start === -1) return null;
-        let braceDepth = 0;
-        let started = false;
-        for (let i = start; i < lines.length; i++) {
-          const stripped = lines[i].replace(/\/\/.*$/, '');
-          for (const char of stripped) {
-            if (char === '{') { braceDepth++; started = true; }
-            if (char === '}') { braceDepth--; }
-          }
-          if (started && braceDepth === 0) {
-            return { start, end: i };
-          }
-        }
-        return null;
-      })();
-      if (mainImageRange === null) {
-        return [...lines];
+  ): string | null {
+    const returnType = VariableCaptureBuilder.getFunctionReturnType(lines, functionInfo.start);
+    if (returnType === null) return null;
+
+    const varTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
+    const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
+    for (const captureVar of vars) {
+      if (VariableCaptureBuilder.isExternalCaptureVar(captureVar)) {
+        continue;
       }
-      return [
-        ...lines.slice(0, mainImageRange.start),
-        ...lines.slice(mainImageRange.end + 1),
-      ];
-    })();
+      const isReturnCapture = captureVar.varName === '_dbgReturn';
+      const isLocal = varTypes.get(captureVar.varName) === captureVar.varType;
+      const isGlobal = globalVars.some(
+        globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
+      );
+      if (!isReturnCapture && !isLocal && !isGlobal) return null;
+    }
+
+    const debugFunctionName = `_dbg_${functionInfo.name}`;
+    const preservedSource = VariableCaptureBuilder.splitSourceForHelperWrapper(lines);
+    const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
 
     let truncationEnd: number;
     if (containingLoops.length > 0) {
       truncationEnd = containingLoops[0].endLine;
     } else {
-      truncationEnd = debugLine;
-      // Extend for multi-line statements
-      truncationEnd = CodeGenerator.extendForMultiLine(lines, truncationEnd);
+      truncationEnd = CodeGenerator.extendForMultiLine(lines, debugLine);
     }
     truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionInfo.start, truncationEnd);
 
-    // Detect return statement range on the debug line
     const returnRange = CodeGenerator.findReturnRange(lines, debugLine, truncationEnd);
-    const useCaptureSideChannel =
-      returnRange !== null &&
-      varInfo.name !== '_dbgReturn' &&
-      VariableCaptureBuilder.isOutParameter(lines, functionInfo.start, varInfo.name);
     const returnRanges = CodeGenerator.findReturnRanges(lines, functionInfo.start, truncationEnd);
     const returnRangeMap = new Map(returnRanges.map(range => [range.start, range]));
+    const returnCaptureIndexes = vars
+      .map((captureVar, index) => captureVar.varName === '_dbgReturn' ? index : -1)
+      .filter(index => index >= 0);
 
-    const functionLines = [];
+    const functionLines: string[] = [];
     for (let i = functionInfo.start; i <= truncationEnd; i++) {
       let line = lines[i];
 
@@ -300,7 +304,6 @@ export class VariableCaptureBuilder {
           line,
           functionInfo.name!,
           debugFunctionName,
-          useCaptureSideChannel ? undefined : varInfo.type,
         );
       }
 
@@ -312,90 +315,300 @@ export class VariableCaptureBuilder {
           currentReturnRange.start === returnRange.start &&
           currentReturnRange.end === returnRange.end;
 
-        if (isTargetReturn) {
-          if (useCaptureSideChannel) {
-            functionLines.push(`${indent}${captureVarName} = ${varInfo.name};`);
-          } else if (varInfo.name === '_dbgReturn') {
-            const fullReturn = lines.slice(currentReturnRange.start, currentReturnRange.end + 1).join(' ');
-            const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
-            if (returnMatch) {
-              functionLines.push(`${indent}${varInfo.type} ${varInfo.name} = ${returnMatch[1]};`);
+        if (isTargetReturn && returnCaptureIndexes.length > 0) {
+          const fullReturn = lines.slice(currentReturnRange.start, currentReturnRange.end + 1).join(' ');
+          const returnMatch = fullReturn.match(/^\s*return\s+(.+);/);
+          if (returnMatch) {
+            for (const index of returnCaptureIndexes) {
+              functionLines.push(`${indent}_dbgCaptured${index} = ${returnMatch[1]};`);
             }
           }
         } else {
-          functionLines.push(`${indent}// Debug: stripped earlier return`);
+          functionLines.push(`${indent}// Debug: stripped return`);
         }
 
         i = currentReturnRange.end;
-        if (!useCaptureSideChannel || !isTargetReturn) {
-          continue;
-        }
+        continue;
       }
 
       functionLines.push(line);
     }
 
-    if (!useCaptureSideChannel && varInfo.name !== '_dbgReturn') {
-      functionLines.splice(0, functionLines.length, ...CodeGenerator.stripReturnStatements(functionLines));
-    }
-
-    const debugLineIndexInFunc = debugLine - functionInfo.start;
-    const loopsRelativeToFunc = containingLoops.map(l => ({
-      lineNumber: l.lineNumber - functionInfo.start,
-      endLine: l.endLine - functionInfo.start,
+    const relativeVars = vars.map(captureVar => ({
+      ...captureVar,
+      declarationLine: captureVar.declarationLine >= functionInfo.start
+        ? captureVar.declarationLine - functionInfo.start
+        : captureVar.declarationLine,
     }));
-    const { lines: withShadow, shadowVarName } = CodeGenerator.insertShadowVariable(
-      functionLines, debugLineIndexInFunc, varInfo, loopsRelativeToFunc
+    const varsNeedingEndCapture = relativeVars.filter(captureVar => captureVar.varName !== '_dbgReturn');
+    const { lines: shadowedLines, vars: outputVars } = VariableCaptureBuilder.insertSelectorShadows(
+      functionLines,
+      functionLines,
+      0,
+      functionLines.length - 1,
+      varsNeedingEndCapture,
     );
 
-    const cappedLines = CodeGenerator.capLoopIterations(withShadow, 0, loopMaxIterations);
+    const cappedLines = CodeGenerator.capLoopIterations(shadowedLines, 0, loopMaxIterations);
     const closedLines = CodeGenerator.closeOpenBraces(cappedLines, 0);
-
     const originalLength = cappedLines.length;
     const result = closedLines.slice(0, originalLength);
-    if (!useCaptureSideChannel) {
-      const indent = '  ';
-      const returnVar = shadowVarName || varInfo.name;
-      result.push(`${indent}return ${returnVar};`);
-      result.push(...closedLines.slice(originalLength));
-    } else {
-      result.push(...closedLines.slice(originalLength));
+    let outputVarIndex = 0;
+    for (let index = 0; index < vars.length; index++) {
+      if (vars[index].varName === '_dbgReturn') continue;
+      const outputVar = outputVars[outputVarIndex++];
+      result.push(`  _dbgCaptured${index} = ${outputVar.varName};`);
     }
+    const defaultReturn = VariableCaptureBuilder.generateDefaultReturn(returnType);
+    if (defaultReturn) {
+      result.push(`  ${defaultReturn}`);
+    }
+    result.push(...closedLines.slice(originalLength));
 
-    // Build the parameters for function call
     const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
     const defaultArgs = params.args ? params.args.split(', ') : [];
     const args = defaultArgs.map((arg, index) => {
       const custom = customParameters.get(index);
       return custom !== undefined ? custom : arg;
     });
-
     let setup = [...params.setup];
     const anyArgUsesUv = args.some(arg => arg === 'uv' || arg.includes('uv'));
     if (!anyArgUsesUv) {
       setup = setup.filter(s => !s.includes('vec2 uv'));
     }
 
-    const captureTarget = useCaptureSideChannel ? captureVarName : 'result';
-    const captureOutput = CodeGenerator.generateCaptureOutputForVar(varInfo.type, captureTarget);
-    const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
-    const callLine = useCaptureSideChannel
-      ? `${setupCode}  ${debugFunctionName}(${args.join(', ')});\n${captureOutput}`
-      : `${setupCode}  ${varInfo.type} result = ${debugFunctionName}(${args.join(', ')});\n${captureOutput}`;
-
-    const wrapper = [];
+    const wrapper: string[] = [];
+    wrapper.push('uniform int _dbgVarIndex;');
     wrapper.push(...preservedSource);
     wrapper.push('');
-    if (useCaptureSideChannel) {
-      wrapper.push(`${varInfo.type} ${captureVarName};`);
+    for (let index = 0; index < vars.length; index++) {
+      wrapper.push(`${vars[index].varType} _dbgCaptured${index};`);
     }
     wrapper.push(...result);
     wrapper.push('');
     wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
-    wrapper.push(callLine);
+    if (setup.length > 0) {
+      wrapper.push(...setup);
+    }
+    wrapper.push(`  ${debugFunctionName}(${args.join(', ')});`);
+    wrapper.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(vars.map((captureVar, index) => ({
+      ...captureVar,
+      varName: `_dbgCaptured${index}`,
+    }))));
     wrapper.push('}');
 
     return wrapper.join('\n');
+  }
+
+  private static isExternalCaptureVar(captureVar: CaptureVarInfo): boolean {
+    return captureVar.declarationLine < 0 && CAPTURABLE_TYPES.has(captureVar.varType);
+  }
+
+  private static insertSelectorShadows(
+    truncatedLines: string[],
+    originalLines: string[],
+    functionStart: number,
+    truncationEnd: number,
+    vars: CaptureVarInfo[],
+  ): { lines: string[]; vars: CaptureVarInfo[] } {
+    const shadowSpecs = vars
+      .map((captureVar, index) => {
+        const loop = VariableCaptureBuilder.findContainingLoopClosedBeforeOutput(
+          originalLines,
+          functionStart,
+          captureVar.declarationLine,
+          truncationEnd,
+        );
+        if (!loop) return null;
+        return {
+          originalIndex: index,
+          originalName: captureVar.varName,
+          shadowName: `_dbgShadow${index}`,
+          type: captureVar.varType,
+          declarationLine: captureVar.declarationLine,
+          loopLine: loop.lineNumber,
+          insertionLine: VariableCaptureBuilder.findSelectorShadowAssignmentLine(
+            originalLines,
+            captureVar.declarationLine,
+            captureVar.varName,
+            loop.lineNumber,
+          ),
+        };
+      })
+      .filter((spec): spec is NonNullable<typeof spec> => spec !== null);
+
+    if (shadowSpecs.length === 0) {
+      return { lines: truncatedLines, vars };
+    }
+
+    const specsByLoopLine = new Map<number, typeof shadowSpecs>();
+    const specsByInsertionLine = new Map<number, typeof shadowSpecs>();
+    for (const spec of shadowSpecs) {
+      const loopSpecs = specsByLoopLine.get(spec.loopLine) ?? [];
+      loopSpecs.push(spec);
+      specsByLoopLine.set(spec.loopLine, loopSpecs);
+
+      const insertionSpecs = specsByInsertionLine.get(spec.insertionLine) ?? [];
+      insertionSpecs.push(spec);
+      specsByInsertionLine.set(spec.insertionLine, insertionSpecs);
+    }
+
+    const result: string[] = [];
+    for (let lineIndex = 0; lineIndex < truncatedLines.length; lineIndex++) {
+      const declarations = specsByLoopLine.get(lineIndex);
+      if (declarations) {
+        const indent = truncatedLines[lineIndex].match(/^(\s*)/)?.[1] ?? '  ';
+        for (const spec of declarations) {
+          result.push(`${indent}${spec.type} ${spec.shadowName};`);
+        }
+      }
+
+      result.push(truncatedLines[lineIndex]);
+
+      const assignments = specsByInsertionLine.get(lineIndex);
+      if (assignments) {
+        const indent = `${truncatedLines[lineIndex].match(/^(\s*)/)?.[1] ?? '  '}  `;
+        for (const spec of assignments) {
+          result.push(`${indent}${spec.shadowName} = ${spec.originalName};`);
+        }
+      }
+    }
+
+    const outputVars = vars.map((captureVar, index) => {
+      const shadow = shadowSpecs.find(spec => spec.originalIndex === index);
+      return shadow
+        ? { ...captureVar, varName: shadow.shadowName }
+        : captureVar;
+    });
+
+    return { lines: result, vars: outputVars };
+  }
+
+  private static findContainingLoopClosedBeforeOutput(
+    lines: string[],
+    functionStart: number,
+    declarationLine: number,
+    truncationEnd: number,
+  ): { lineNumber: number; endLine: number } | null {
+    if (declarationLine < 0) return null;
+    const containingLoops = ShaderDebugger.extractLoops(lines, functionStart, declarationLine)
+      .filter(loop => loop.endLine <= truncationEnd);
+    if (containingLoops.length === 0) {
+      const headerLoops = ShaderDebugger.extractLoops(lines, functionStart, declarationLine + 1)
+        .filter(loop => loop.lineNumber === declarationLine && loop.endLine <= truncationEnd);
+      return headerLoops[0] ?? null;
+    }
+    return containingLoops[0];
+  }
+
+  private static findSelectorShadowAssignmentLine(
+    lines: string[],
+    declarationLine: number,
+    varName: string,
+    loopLine: number,
+  ): number {
+    if (declarationLine === loopLine && new RegExp(`\\b${varName}\\b`).test(lines[loopLine] ?? '')) {
+      for (let i = loopLine; i < lines.length; i++) {
+        if (lines[i].replace(/\/\/.*$/, '').includes('{')) {
+          return i;
+        }
+      }
+      return loopLine;
+    }
+
+    return CodeGenerator.extendForMultiLine(lines, declarationLine);
+  }
+
+  private static generateSelectorCaptureOutput(vars: CaptureVarInfo[]): string[] {
+    const lines: string[] = [];
+    for (let index = 0; index < vars.length; index++) {
+      const captureVar = vars[index];
+      lines.push(`  if (_dbgVarIndex == ${index}) {`);
+      lines.push(...CodeGenerator.generateCaptureOutputForVar(captureVar.varType, captureVar.varName)
+        .split('\n')
+        .map(line => `  ${line}`));
+      lines.push('    return;');
+      lines.push('  }');
+    }
+    lines.push('  fragColor = vec4(0.0);');
+    return lines;
+  }
+
+  private static extendToFunctionBodyLevel(
+    lines: string[],
+    functionStart: number,
+    truncationEnd: number,
+  ): number {
+    let depth = 0;
+    for (let i = functionStart; i <= truncationEnd; i++) {
+      const stripped = lines[i].replace(/\/\/.*$/, '');
+      for (const char of stripped) {
+        if (char === '{') depth++;
+        if (char === '}') depth--;
+      }
+    }
+
+    if (depth <= 1) return truncationEnd;
+
+    for (let i = truncationEnd + 1; i < lines.length; i++) {
+      const stripped = lines[i].replace(/\/\/.*$/, '');
+      for (const char of stripped) {
+        if (char === '{') depth++;
+        if (char === '}') depth--;
+      }
+      if (depth <= 1) return i;
+    }
+
+    return truncationEnd;
+  }
+
+  private static splitSourceForHelperWrapper(lines: string[]): string[] {
+    const mainImageStart = VariableCaptureBuilder.findMainImageStart(lines);
+    const mainImageEnd = mainImageStart >= 0
+      ? VariableCaptureBuilder.findFunctionEnd(lines, mainImageStart)
+      : -1;
+
+    if (mainImageStart === -1 || mainImageEnd < mainImageStart) {
+      return [...lines];
+    }
+
+    return [
+      ...lines.slice(0, mainImageStart),
+      ...lines.slice(mainImageEnd + 1),
+    ];
+  }
+
+  private static getFunctionReturnType(lines: string[], functionStart: number): string | null {
+    const signature = GlslParser.getFullFunctionSignature(lines, functionStart);
+    const match = signature.match(/^\s*([A-Za-z_]\w*)\s+\w+\s*\(/);
+    return match?.[1] ?? null;
+  }
+
+  private static generateDefaultReturn(returnType: string): string | null {
+    switch (returnType) {
+      case 'void':
+        return null;
+      case 'float':
+        return 'return 0.0;';
+      case 'vec2':
+        return 'return vec2(0.0);';
+      case 'vec3':
+        return 'return vec3(0.0);';
+      case 'vec4':
+        return 'return vec4(0.0);';
+      case 'int':
+        return 'return 0;';
+      case 'bool':
+        return 'return false;';
+      case 'mat2':
+        return 'return mat2(0.0);';
+      case 'mat3':
+        return 'return mat3(0.0);';
+      case 'mat4':
+        return 'return mat4(0.0);';
+      default:
+        return null;
+    }
   }
 
   /**
@@ -505,20 +718,4 @@ export class VariableCaptureBuilder {
     return -1;
   }
 
-  private static isOutParameter(lines: string[], functionStart: number, varName: string): boolean {
-    const signature = GlslParser.getFullFunctionSignature(lines, functionStart);
-    const paramsMatch = signature.match(/\(([^)]*)\)/);
-    if (!paramsMatch || !paramsMatch[1].trim()) {
-      return false;
-    }
-
-    for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
-      const match = pair.match(/^(?:(in|out|inout)\s+)?(?:const\s+)?(?:vec2|vec3|vec4|float|int|bool|mat2|mat3|mat4|sampler2D)\s+(\w+)$/);
-      if (match && match[1] === 'out' && match[2] === varName) {
-        return true;
-      }
-    }
-
-    return false;
-  }
 }

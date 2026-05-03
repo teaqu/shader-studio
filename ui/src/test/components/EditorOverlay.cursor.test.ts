@@ -26,18 +26,17 @@ async function getLatestMockEditor() {
   return calls.length ? (calls[calls.length - 1].value as any) : null;
 }
 
-const flushMicrotasks = () => new Promise(resolve => queueMicrotask(resolve as () => void));
-
 describe('EditorOverlay — cursor change emission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  it('fires onCursorChange (via microtask) with 0-based line, lineContent and bufferName', async () => {
+  it('fires onCursorChange with 0-based line, lineContent and bufferName after 150ms debounce', async () => {
     const onCursorChange = vi.fn();
 
     render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });
@@ -45,20 +44,19 @@ describe('EditorOverlay — cursor change emission', () => {
     const editor = await getLatestMockEditor();
     expect(editor).toBeTruthy();
 
-    const cursorCalls = editor.onDidChangeCursorPosition.mock.calls;
-    expect(cursorCalls.length).toBeGreaterThan(0);
-    const [cursorCb] = cursorCalls[0];
+    const [cursorCb] = editor.onDidChangeCursorPosition.mock.calls[0];
 
     editor.getPosition.mockReturnValue({ lineNumber: 7, column: 3 });
     editor.getModel().getLineContent.mockReturnValue('float x = 1.0;');
 
     cursorCb({});
     expect(onCursorChange).not.toHaveBeenCalled();
-    await flushMicrotasks();
+
+    vi.advanceTimersByTime(150);
     expect(onCursorChange).toHaveBeenCalledWith(6, 'float x = 1.0;', 'Image');
   });
 
-  it('fires on every cursor move', async () => {
+  it('debounces rapid cursor moves into a single call', async () => {
     const onCursorChange = vi.fn();
 
     render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });
@@ -70,11 +68,15 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('line1');
 
     cursorCb({});
+    vi.advanceTimersByTime(50);
     cursorCb({});
+    vi.advanceTimersByTime(50);
     cursorCb({});
-    await flushMicrotasks();
 
-    expect(onCursorChange).toHaveBeenCalledTimes(3);
+    expect(onCursorChange).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(150);
+    expect(onCursorChange).toHaveBeenCalledTimes(1);
   });
 
   it('does not throw when onCursorChange prop is not provided', async () => {
@@ -86,8 +88,10 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
     editor.getModel().getLineContent.mockReturnValue('');
 
-    cursorCb({});
-    await expect(flushMicrotasks()).resolves.not.toThrow();
+    expect(() => {
+      cursorCb({});
+      vi.advanceTimersByTime(150);
+    }).not.toThrow();
   });
 
   it('fires with updated bufferName after buffer switch', async () => {
@@ -106,12 +110,12 @@ describe('EditorOverlay — cursor change emission', () => {
     editor.getModel().getLineContent.mockReturnValue('float t = iTime;');
 
     cursorCb({});
-    await flushMicrotasks();
+    vi.advanceTimersByTime(150);
 
     expect(onCursorChange).toHaveBeenCalledWith(1, 'float t = iTime;', 'BufferA');
   });
 
-  it('disposes cursor listener when editor is destroyed', async () => {
+  it('disposes cursor listener and clears timer when editor is destroyed', async () => {
     const onCursorChange = vi.fn();
 
     const { rerender } = render(EditorOverlay, { props: { ...defaultProps, onCursorChange } });

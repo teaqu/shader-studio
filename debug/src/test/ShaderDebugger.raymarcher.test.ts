@@ -594,49 +594,68 @@ describe('Raymarcher shader - buildVariableTypeMap scoping', () => {
   });
 });
 
-describe('Raymarcher shader - _dbgReturn capture shader', () => {
-  it('should generate capture shader for _dbgReturn on sdBox return line', () => {
+describe('Raymarcher shader - _dbgReturn selector capture shader', () => {
+  it('should generate selector capture shader for _dbgReturn on sdBox return line', () => {
     const line = findLine('return max(max(abs(p.x)');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER, line, '_dbgReturn', 'float', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER,
+      line,
+      [{ varName: '_dbgReturn', varType: 'float', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    // Function body should have _dbgReturn assignment (converted from return)
-    expect(result).toContain('_dbgReturn');
-    // Wrapper mainImage captures via 'result' variable
-    expect(result).toContain('float result = _dbg_sdBox');
-    expect(result).toContain('fragColor = vec4(result, 0.0, 0.0, 0.0);');
+    expect(result).toContain('uniform int _dbgVarIndex;');
+    expect(result).toContain('_dbgCaptured0 = max(max(abs(p.x)');
+    expect(result).toContain('_dbg_sdBox');
+    expect(result).toContain('fragColor = vec4(_dbgCaptured0, 0.0, 0.0, 0.0);');
   });
 
-  it('should generate capture shader for _dbgReturn on rayMarch return line', () => {
+  it('should generate selector capture shader for _dbgReturn on rayMarch return line', () => {
     const line = findLine('return vec4(col, 1.0);');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER, line, '_dbgReturn', 'vec4', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER,
+      line,
+      [{ varName: '_dbgReturn', varType: 'vec4', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('_dbgReturn');
-    expect(result).toContain('vec4 result = _dbg_rayMarch');
-    expect(result).toContain('fragColor = result;');
+    expect(result).toContain('_dbgCaptured0 = vec4(col, 1.0)');
+    expect(result).toContain('_dbg_rayMarch');
+    expect(result).toContain('fragColor = _dbgCaptured0;');
   });
 
-  it('should generate capture shader for _dbgReturn on calcDirection return line', () => {
+  it('should generate selector capture shader for _dbgReturn on calcDirection return line', () => {
     const line = findLine('return normalize(forward + uv.x');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER, line, '_dbgReturn', 'vec3', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER,
+      line,
+      [{ varName: '_dbgReturn', varType: 'vec3', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('_dbgReturn');
-    expect(result).toContain('vec3 result = _dbg_calcDirection');
-    expect(result).toContain('fragColor = vec4(result, 0.0);');
+    expect(result).toContain('_dbgCaptured0 = normalize(forward + uv.x');
+    expect(result).toContain('_dbg_calcDirection');
+    expect(result).toContain('fragColor = vec4(_dbgCaptured0, 0.0);');
   });
 
-  it('should generate capture shader for _dbgReturn on getDist return inside if', () => {
+  it('should generate selector capture shader for _dbgReturn on getDist return inside if', () => {
     const line = findLine('return min(sdBoxFrame');
-    const result = VariableCaptureBuilder.generateCaptureShader(
-      SHADER, line, '_dbgReturn', 'float', new Map(), new Map(), false
+    const result = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER,
+      line,
+      [{ varName: '_dbgReturn', varType: 'float', declarationLine: line }],
+      new Map(),
+      new Map(),
+      false,
     );
     expect(result).not.toBeNull();
-    expect(result).toContain('_dbgReturn');
+    expect(result).toContain('_dbgCaptured0 = min(sdBoxFrame');
   });
 
   it('should not include _dbgReturn on non-return lines', () => {
@@ -756,16 +775,18 @@ describe('Raymarcher shader - closing brace of function', () => {
     expect(names).toContain('p');
   });
 
-  it('closing brace: capture shader succeeds for all in-scope vars', () => {
+  it('closing brace: selector capture shader succeeds for all in-scope vars', () => {
     const start = findLine('float sdBoxFrame');
     const closingBrace = lines.findIndex((l, i) => i > start && l.trim() === '}');
     const vars = VariableCaptureBuilder.getAllInScopeVariables(SHADER, closingBrace);
     expect(vars.length).toBeGreaterThan(0);
-    for (const v of vars) {
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        SHADER, closingBrace, v.varName, v.varType, new Map(), new Map(), false
-      );
-      expect(shader, `capture for '${v.varName}' should not be null`).not.toBeNull();
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      SHADER, closingBrace, vars, new Map(), new Map(), false
+    );
+    expect(shader).not.toBeNull();
+    for (const [index, v] of vars.entries()) {
+      expect(shader, `selector capture for '${v.varName}' should include index ${index}`)
+        .toContain(`if (_dbgVarIndex == ${index})`);
     }
   });
 });

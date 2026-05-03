@@ -23,6 +23,7 @@ type StatementKind =
   | 'declaration'
   | 'assignment'
   | 'memberAssignment'
+  | 'variableExpression'
   | 'call'
   | 'unknown';
 
@@ -36,6 +37,7 @@ interface StatementInfo {
   assignedVarName?: string;
   assignedExpression?: string;
   assignedValueType?: string;
+  expressionVarName?: string;
   callName?: string;
 }
 
@@ -379,6 +381,23 @@ export class GlslParser {
               console.log(`[ShaderDebug] ✓ Matched ${kindLabel}: ${statement.assignedVarName} (${varType})`);
             }
             return { name: statement.assignedVarName, type: varType };
+          }
+        }
+        break;
+
+      case 'variableExpression':
+        if (statement.expressionVarName) {
+          const varType = varTypes.get(statement.expressionVarName);
+          if (log) {
+            console.log(
+              `[ShaderDebug] Trying variable expression: found var '${statement.expressionVarName}', type: ${varType || 'NOT IN SCOPE'}`
+            );
+          }
+          if (varType) {
+            if (log) {
+              console.log(`[ShaderDebug] ✓ Matched variable expression: ${statement.expressionVarName} (${varType})`);
+            }
+            return { name: statement.expressionVarName, type: varType };
           }
         }
         break;
@@ -1104,6 +1123,19 @@ export class GlslParser {
         ...base,
         kind: 'call',
         callName: tokens[0].value,
+      };
+    }
+
+    if (
+      tokens.length === 2 &&
+      tokens[0].type === 'identifier' &&
+      tokens[1].value === ';' &&
+      !GLSL_TYPES.has(tokens[0].value)
+    ) {
+      return {
+        ...base,
+        kind: 'variableExpression',
+        expressionVarName: tokens[0].value,
       };
     }
 

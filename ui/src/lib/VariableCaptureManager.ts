@@ -176,6 +176,9 @@ export class VariableCaptureManager {
   private lastParams: CaptureParams | null = null;
   private expandedVars = new Set<string>();
   private collecting = false;
+  private issuing = false;
+  private captureRequestId = 0;
+  private collectionRequestId = 0;
   private disposed = false;
   // Accumulate partial PBO results until all fences have signaled
   private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
@@ -278,9 +281,17 @@ export class VariableCaptureManager {
    * Called when any relevant state changes. Marks dirty and schedules capture.
    */
   notifyStateChange(params: CaptureParams): void {
+    this.captureRequestId += 1;
     this.lastParams = params;
     // Cancel any stale poll timeout so old intervals don't conflict with new params
     this.clearPollTimeout();
+    if (this.collecting) {
+      this.cancelCurrentCollection(); // also calls cancelPendingCaptures
+    } else {
+      // During issuing phase: free stale GPU captures so PBOs/fences don't accumulate
+      // across requests while async compiles yield between frames.
+      this.capturer?.cancelPendingCaptures();
+    }
     // Paused: store params but don't issue captures
     if (params.refreshMode === 'pause') {
       return; 
@@ -309,6 +320,9 @@ export class VariableCaptureManager {
     this.dirty = false;
     this.loopRunning = false;
     this.collecting = false;
+    this.issuing = false;
+    this.captureRequestId += 1;
+    this.collectionRequestId = 0;
     this.lastParams = null;
     this.pendingResults = [];
     this.expectedCount = 0;
@@ -334,60 +348,116 @@ export class VariableCaptureManager {
 
     // Always try to collect pending results first
     if (this.collecting && this.capturer) {
-      const results = this.capturer.collectResults();
-      if (results.length > 0) {
-        this.emptyCollectFrames = 0;
-        this.pendingResults.push(...results);
-        if (this.pendingResults.length >= this.expectedCount) {
-          this.decodeAndUpdate(this.pendingResults);
+      const activeRequestId = this.collectionRequestId;
+      if (!this.isCurrentRequest(activeRequestId)) {
+        this.cancelCurrentCollection();
+      } else {
+        const results = this.capturer.collectResults();
+        if (results.length > 0) {
+          this.emptyCollectFrames = 0;
+          this.pendingResults.push(...results);
+          if (this.pendingResults.length >= this.expectedCount && this.isCurrentRequest(activeRequestId)) {
+            this.decodeAndUpdate(this.pendingResults);
+          }
+        } else if (this.noteEmptyCollectFrame()) {
+          this.finishCollection([]);
         }
-      } else if (this.noteEmptyCollectFrame()) {
-        this.finishCollection([]);
       }
     }
 
     // Issue new captures as soon as previous batch is done
-    if (this.dirty && !this.collecting && this.lastParams) {
+    if (this.dirty && !this.collecting && !this.issuing && this.lastParams) {
       this.dirty = false;
-      this.issueCaptures(this.lastParams);
+      this.issuing = true;
+      const requestId = this.captureRequestId;
+      void this.issueCaptures(this.lastParams, requestId).finally(() => {
+        this.issuing = false;
+        const mode = this.lastParams?.refreshMode ?? 'manual';
+        const shouldContinue =
+          !this.disposed &&
+          this.loopRunning &&
+          (this.dirty || this.collecting || mode === 'realtime');
+
+        if (!shouldContinue) {
+          if (this.rafHandle !== null) {
+            cancelAnimationFrame(this.rafHandle);
+            this.rafHandle = null;
+          }
+          if (!this.disposed && this.loopRunning) {
+            this.finishIdleLoop(mode);
+          }
+          return;
+        }
+
+        if (this.rafHandle === null) {
+          this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
+        }
+      });
     }
 
     // Continue loop while there's pending work; otherwise stop (or schedule poll/realtime).
     const mode = this.lastParams?.refreshMode ?? 'manual';
-    if (this.dirty || this.collecting) {
+    if (this.dirty || this.collecting || this.issuing) {
       this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
     } else if (mode === 'realtime') {
       // Realtime: keep rAF loop running, re-mark dirty each frame
       this.dirty = true;
       this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
     } else {
-      this.loopRunning = false;
-      // Schedule next poll if polling mode with ms > 0
-      if (mode === 'polling' && this.lastParams && this.lastParams.pollingMs > 0) {
-        this.pollTimeout = this.setPollTimeout(() => {
-          this.pollTimeout = null;
-          if (!this.disposed && this.lastParams) {
-            this.dirty = true;
-            if (!this.loopRunning) {
-              this.loopRunning = true;
-              this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
-            }
-          }
-        }, this.lastParams.pollingMs);
-      }
+      this.finishIdleLoop(mode);
     }
   }
 
-  private issueCaptures(params: CaptureParams): void {
+  private finishIdleLoop(mode: RefreshMode): void {
+    this.loopRunning = false;
+    // Schedule next poll if polling mode with ms > 0
+    if (mode === 'polling' && this.lastParams && this.lastParams.pollingMs > 0) {
+      this.pollTimeout = this.setPollTimeout(() => {
+        this.pollTimeout = null;
+        if (!this.disposed && this.lastParams) {
+          this.dirty = true;
+          if (!this.loopRunning) {
+            this.loopRunning = true;
+            this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
+          }
+        }
+      }, this.lastParams.pollingMs);
+    }
+  }
+
+  private isCurrentRequest(requestId: number): boolean {
+    return requestId === this.captureRequestId && !this.disposed;
+  }
+
+  private cancelCurrentCollection(): void {
+    this.capturer?.cancelPendingCaptures();
+    this.collecting = false;
+    this.collectionRequestId = 0;
+    this.pendingResults = [];
+    this.expectedCount = 0;
+    this.emptyCollectFrames = 0;
+    this.emitLoadingState(false);
+  }
+
+  private async issueCaptures(params: CaptureParams, requestId: number): Promise<void> {
+    if (!this.isCurrentRequest(requestId)) {
+      return;
+    }
+
     if (!this.capturer) {
       try {
         this.capturer = this.renderingEngine.createVariableCapturer();
       } catch {
-        this.emitErrorState('Failed to initialize variable capture');
+        if (this.isCurrentRequest(requestId)) {
+          this.emitErrorState('Failed to initialize variable capture');
+        }
         return;
       }
     }
 
+    if (!this.isCurrentRequest(requestId)) {
+      return;
+    }
     this.capturer.setCompileContext(this.renderingEngine.getVariableCaptureCompileContext(params.code));
     this.capturer.clearLastError();
     this.emitErrorState(null);
@@ -398,8 +468,15 @@ export class VariableCaptureManager {
     try {
       vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
     } catch {
+      if (!this.isCurrentRequest(requestId)) {
+        return;
+      }
       this.emitErrorState('Failed to analyse variables for capture');
       this.finishCollection([]);
+      return;
+    }
+
+    if (!this.isCurrentRequest(requestId)) {
       return;
     }
 
@@ -412,6 +489,9 @@ export class VariableCaptureManager {
     }
 
     if (vars.length === 0) {
+      if (!this.isCurrentRequest(requestId)) {
+        return;
+      }
       this.emitErrorState(null);
       this.finishCollection([]);
       return;
@@ -425,29 +505,41 @@ export class VariableCaptureManager {
       params.canvasHeight,
     );
 
-    const captures: Array<{ varName: string; varType: string; captureShader: string }> = [];
+    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number }> = [];
 
     // Store declaration lines for each variable
     this.varDeclarationLines.clear();
     for (const v of vars) {
       this.varDeclarationLines.set(v.varName, v.declarationLine);
-      const shader = VariableCaptureBuilder.generateCaptureShader(
-        params.code,
-        resolvedLine,
-        v.varName,
-        v.varType,
-        params.loopMaxIters,
-        params.customParams,
-        isPixelMode,
-        gridWidth,
-        gridHeight,
-      );
-      if (shader) {
-        captures.push({ varName: v.varName, varType: v.varType, captureShader: shader });
+    }
+
+    const selectorShader = VariableCaptureBuilder.generateMultiCaptureShader(
+      params.code,
+      resolvedLine,
+      vars,
+      params.loopMaxIters,
+      params.customParams,
+      isPixelMode,
+      gridWidth,
+      gridHeight,
+    );
+
+    if (selectorShader) {
+      for (let index = 0; index < vars.length; index++) {
+        const v = vars[index];
+        captures.push({
+          varName: v.varName,
+          varType: v.varType,
+          captureShader: selectorShader,
+          selectorIndex: index,
+        });
       }
     }
 
     if (captures.length === 0) {
+      if (!this.isCurrentRequest(requestId)) {
+        return;
+      }
       this.emitErrorState(null);
       this.finishCollection([]);
       return;
@@ -463,6 +555,10 @@ export class VariableCaptureManager {
       this.capturer.setInputBindings(params.inputConfig);
     }
 
+    if (!this.isCurrentRequest(requestId)) {
+      return;
+    }
+
     this.pendingResults = [];
     this.declaredOrder = captures.map(c => c.varName);
     this.lastGridWidth = gridWidth;
@@ -471,16 +567,27 @@ export class VariableCaptureManager {
 
     let issued: number;
     if (isPixelMode) {
-      issued = this.capturer.issueCaptureAtPixel(
+      issued = await this.capturer.issueCaptureAtPixel(
         captures,
         params.pixelX!,
         params.pixelY!,
         params.canvasWidth,
         params.canvasHeight,
         uniforms,
+        () => this.isCurrentRequest(requestId),
       );
     } else {
-      issued = this.capturer.issueCaptureGrid(captures, uniforms, gridWidth, gridHeight);
+      issued = await this.capturer.issueCaptureGrid(
+        captures,
+        uniforms,
+        gridWidth,
+        gridHeight,
+        () => this.isCurrentRequest(requestId),
+      );
+    }
+
+    if (!this.isCurrentRequest(requestId)) {
+      return;
     }
 
     if (issued === 0) {
@@ -501,6 +608,7 @@ export class VariableCaptureManager {
 
     this.expectedCount = issued;
     this.collecting = true;
+    this.collectionRequestId = requestId;
     this.emitLoadingState(true);
 
     this.lastCaptureMode = isPixelMode ? 'pixel' : 'grid';

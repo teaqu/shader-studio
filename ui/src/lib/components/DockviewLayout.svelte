@@ -482,11 +482,21 @@
     if (!api) {
       return;
     }
+    if (!isRestorableLayout(data)) {
+      api.clear();
+      createDefaultLayout();
+      layoutReady = true;
+      return;
+    }
     try {
       console.log("[DockviewLayout] restoreFromData called, panels:", JSON.stringify(data?.panels ?? {}));
       programmaticRemoval = true;
       api.fromJSON(data);
       programmaticRemoval = false;
+      if (api.panels.length === 0) {
+        api.clear();
+        createDefaultLayout();
+      }
       console.log("[DockviewLayout] fromJSON succeeded, total panels:", api.panels.length);
       layoutReady = true;
     } catch (e) {
@@ -498,9 +508,13 @@
     }
   }
 
+  function isRestorableLayout(data: SerializedDockview | null | undefined): data is SerializedDockview {
+    return !!data?.panels && Object.keys(data.panels).length > 0;
+  }
+
   function restoreFromState(state: PersistedLayoutState | null) {
     hydrateSnapshots(state);
-    if (state?.activeLayout) {
+    if (isRestorableLayout(state?.activeLayout)) {
       restoreFromData(state.activeLayout);
     } else {
       createDefaultLayout();

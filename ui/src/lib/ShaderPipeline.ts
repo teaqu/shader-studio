@@ -25,6 +25,8 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
+  private debugCompileInFlight = false;
+  private debugCompilePending = false;
 
   constructor(
     transport: Transport,
@@ -57,9 +59,7 @@ export class ShaderPipeline {
         const { line, lineContent, filePath } = cursorPosition;
 
         // If shader is locked, accept cursors from the locked file and its buffer files
-        if (!this.shaderLocker.isLocked()
-            || this.shaderLocker.getLockedShaderPath() === filePath
-            || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)) {
+        if (this.isCursorFileAccepted(filePath, message)) {
           this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
         }
       }
@@ -259,12 +259,8 @@ export class ShaderPipeline {
     }
     const { line, lineContent, filePath } = message.payload;
 
-    // If shader is locked, accept cursors from the locked file and its buffer files
-    if (this.shaderLocker.isLocked()) {
-      const lockedPath = this.shaderLocker.getLockedShaderPath();
-      if (lockedPath && filePath !== lockedPath && !this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)) {
-        return;
-      }
+    if (!this.isCursorFileAccepted(filePath)) {
+      return;
     }
 
     this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
@@ -355,10 +351,24 @@ export class ShaderPipeline {
       return undefined;
     }
 
-    const message = this.lastEvent.data as ShaderSourceMessage;
-    const result = await this.shaderProcessor.debugCompile(message);
-    this.handleCompilationResult(result);
-    return result;
+    if (this.debugCompileInFlight) {
+      this.debugCompilePending = true;
+      return undefined;
+    }
+
+    this.debugCompileInFlight = true;
+    try {
+      const message = this.lastEvent.data as ShaderSourceMessage;
+      const result = await this.shaderProcessor.debugCompile(message);
+      this.handleCompilationResult(result);
+      return result;
+    } finally {
+      this.debugCompileInFlight = false;
+      if (this.debugCompilePending) {
+        this.debugCompilePending = false;
+        void this.debugCompile();
+      }
+    }
   }
 
   public refresh(path?: string): void {
@@ -374,5 +384,50 @@ export class ShaderPipeline {
       },
     };
     this.transport.postMessage(refreshMessage);
+  }
+
+  private isCursorFileAccepted(filePath: string, message?: ShaderSourceMessage): boolean {
+    const lockedPath = this.shaderLocker.getLockedShaderPath();
+    if (this.shaderLocker.isLocked()) {
+      return !lockedPath
+        || filePath === lockedPath
+        || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+        || this.messageContainsBufferFile(message, filePath);
+    }
+
+    const currentMessage = message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined);
+    if (!currentMessage?.path) {
+      return true;
+    }
+
+    return filePath === currentMessage.path
+      || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+      || this.messageContainsBufferFile(currentMessage, filePath);
+  }
+
+  private messageContainsBufferFile(message: ShaderSourceMessage | undefined, filePath: string): boolean {
+    const passes = message?.config?.passes ?? {};
+    for (const [passName, passConfig] of Object.entries(passes)) {
+      if (passName === "Image" || typeof passConfig !== "object" || !passConfig || !("path" in passConfig)) {
+        continue;
+      }
+
+      const configPath = (passConfig as { path?: string }).path;
+      if (!configPath) {
+        continue;
+      }
+
+      const normalizedFilePath = filePath.replace(/\\/g, "/");
+      const normalizedConfigPath = configPath.replace(/\\/g, "/");
+      if (
+        normalizedFilePath === normalizedConfigPath
+        || normalizedFilePath.endsWith("/" + normalizedConfigPath.split("/").pop())
+        || normalizedConfigPath.endsWith("/" + normalizedFilePath.split("/").pop())
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

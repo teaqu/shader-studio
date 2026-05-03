@@ -37,35 +37,49 @@ describe('VariableCaptureManager — buffer capture', () => {
 
   // RAF mocking
   let rafCallbacks: FrameRequestCallback[];
+  let rafCallbackIds: number[];
   let rafId: number;
 
-  function flushRAF(n = 1) {
+  async function flushRAF(n = 1) {
     for (let i = 0; i < n; i++) {
       const cbs = rafCallbacks.splice(0);
+      rafCallbackIds.splice(0);
       for (const cb of cbs) {
         cb(performance.now());
       }
+      await Promise.resolve();
+      await Promise.resolve();
     }
   }
 
   beforeEach(() => {
     rafCallbacks = [];
+    rafCallbackIds = [];
     rafId = 0;
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      const id = ++rafId;
+      rafCallbackIds.push(id);
       rafCallbacks.push(cb);
-      return ++rafId;
+      return id;
     });
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id: number) => {
+      const index = rafCallbackIds.indexOf(id);
+      if (index !== -1) {
+        rafCallbackIds.splice(index, 1);
+        rafCallbacks.splice(index, 1);
+      }
+    });
 
     mockCapturer = {
       setCompileContext: vi.fn(),
       setCustomUniforms: vi.fn(),
       setInputBindings: vi.fn(),
-      issueCaptureGrid: vi.fn().mockReturnValue(1),
-      issueCaptureAtPixel: vi.fn().mockReturnValue(1),
+      issueCaptureGrid: vi.fn().mockResolvedValue(1),
+      issueCaptureAtPixel: vi.fn().mockResolvedValue(1),
       collectResults: vi.fn().mockReturnValue([]),
       getLastError: vi.fn().mockReturnValue(null),
       clearLastError: vi.fn(),
+      cancelPendingCaptures: vi.fn(),
       dispose: vi.fn(),
     };
 
@@ -103,13 +117,13 @@ describe('VariableCaptureManager — buffer capture', () => {
 
   // -------------------------------------------------------------------------
   describe('setInputBindings called when inputConfig is present', () => {
-    it('calls setInputBindings on the capturer when inputConfig is provided', () => {
+    it('calls setInputBindings on the capturer when inputConfig is provided', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });
-      flushRAF();
+      await flushRAF();
       expect(mockCapturer.setInputBindings).toHaveBeenCalledWith(BUFFER_A_INPUTS);
     });
 
-    it('calls setInputBindings before issuing captures', () => {
+    it('calls setInputBindings before issuing captures', async () => {
       const callOrder: string[] = [];
       mockCapturer.setInputBindings.mockImplementation(() => callOrder.push('setInputBindings'));
       mockCapturer.issueCaptureGrid.mockImplementation(() => {
@@ -117,7 +131,7 @@ describe('VariableCaptureManager — buffer capture', () => {
       });
 
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });
-      flushRAF();
+      await flushRAF();
 
       const bindIdx = callOrder.indexOf('setInputBindings');
       const issueIdx = callOrder.indexOf('issueCaptureGrid');
@@ -125,84 +139,84 @@ describe('VariableCaptureManager — buffer capture', () => {
       expect(issueIdx).toBeGreaterThan(bindIdx);
     });
 
-    it('does NOT call setInputBindings when inputConfig is absent', () => {
+    it('does NOT call setInputBindings when inputConfig is absent', async () => {
       manager.notifyStateChange(BASE_PARAMS); // no inputConfig field
-      flushRAF();
+      await flushRAF();
       expect(mockCapturer.setInputBindings).not.toHaveBeenCalled();
     });
 
-    it('does NOT call setInputBindings when inputConfig is undefined', () => {
+    it('does NOT call setInputBindings when inputConfig is undefined', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: undefined });
-      flushRAF();
+      await flushRAF();
       expect(mockCapturer.setInputBindings).not.toHaveBeenCalled();
     });
 
-    it('passes the exact inputConfig object to setInputBindings', () => {
+    it('passes the exact inputConfig object to setInputBindings', async () => {
       const inputs: Record<string, ConfigInput> = {
         iChannel0: { type: 'buffer', source: 'BufferA' },
         iChannel1: { type: 'texture', path: 'lut.png' },
       };
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: inputs });
-      flushRAF();
+      await flushRAF();
       expect(mockCapturer.setInputBindings).toHaveBeenCalledWith(inputs);
     });
 
-    it('uses updated inputConfig on subsequent notifyStateChange calls', () => {
+    it('uses updated inputConfig on subsequent notifyStateChange calls', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });
-      flushRAF();
+      await flushRAF();
 
       const newInputs: Record<string, ConfigInput> = { iChannel0: { type: 'keyboard' } };
       // Wait for first collection to finish before issuing another
       mockCapturer.collectResults.mockReturnValueOnce([{ varName: 'd', varType: 'float', rgba: new Float32Array(4) }]);
-      flushRAF(); // finish first batch
-      flushRAF(); // trigger decode
+      await flushRAF(); // finish first batch
+      await flushRAF(); // trigger decode
 
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: newInputs });
-      flushRAF();
+      await flushRAF();
       expect(mockCapturer.setInputBindings).toHaveBeenLastCalledWith(newInputs);
     });
   });
 
   // -------------------------------------------------------------------------
   describe('capture shader uses buffer code', () => {
-    it('passes buffer code to getVariableCaptureCompileContext', () => {
+    it('passes buffer code to getVariableCaptureCompileContext', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, code: BUFFER_A_CODE });
-      flushRAF();
+      await flushRAF();
       expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(BUFFER_A_CODE);
     });
 
-    it('getVariableCaptureCompileContext is called with whatever code is in params', () => {
+    it('getVariableCaptureCompileContext is called with whatever code is in params', async () => {
       const customCode = 'float sdf(vec2 p, float r) { return length(p) - r; }';
       manager.notifyStateChange({ ...BASE_PARAMS, code: customCode });
-      flushRAF();
+      await flushRAF();
       expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(customCode);
     });
   });
 
   // -------------------------------------------------------------------------
   describe('setInputBindings called on newly created capturer', () => {
-    it('calls setInputBindings on a freshly created capturer', () => {
+    it('calls setInputBindings on a freshly created capturer', async () => {
       // capturer is created lazily on first capture
       expect(mockRenderingEngine.createVariableCapturer).not.toHaveBeenCalled();
 
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });
-      flushRAF();
+      await flushRAF();
 
       expect(mockRenderingEngine.createVariableCapturer).toHaveBeenCalledTimes(1);
       expect(mockCapturer.setInputBindings).toHaveBeenCalledWith(BUFFER_A_INPUTS);
     });
 
-    it('calls setInputBindings again on subsequent captures with new inputConfig', () => {
+    it('calls setInputBindings again on subsequent captures with new inputConfig', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });
-      flushRAF();
+      await flushRAF();
       // Finish collection
       mockCapturer.collectResults.mockReturnValueOnce([{ varName: 'd', varType: 'float', rgba: new Float32Array(4) }]);
-      flushRAF();
-      flushRAF();
+      await flushRAF();
+      await flushRAF();
 
       const newInputs: Record<string, ConfigInput> = { iChannel0: { type: 'keyboard' } };
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: newInputs });
-      flushRAF();
+      await flushRAF();
 
       expect(mockCapturer.setInputBindings).toHaveBeenCalledTimes(2);
       expect(mockCapturer.setInputBindings).toHaveBeenNthCalledWith(1, BUFFER_A_INPUTS);
@@ -212,7 +226,7 @@ describe('VariableCaptureManager — buffer capture', () => {
 
   // -------------------------------------------------------------------------
   describe('backwards compatibility — no inputConfig', () => {
-    it('works correctly without inputConfig (Image pass debugging unchanged)', () => {
+    it('works correctly without inputConfig (Image pass debugging unchanged)', async () => {
       const imageParams = {
         ...BASE_PARAMS,
         debugLine: 1,
@@ -221,10 +235,8 @@ describe('VariableCaptureManager — buffer capture', () => {
   f = vec4(t);
 }`,
       };
-      expect(() => {
-        manager.notifyStateChange(imageParams);
-        flushRAF();
-      }).not.toThrow();
+      manager.notifyStateChange(imageParams);
+      await flushRAF();
       expect(mockCapturer.setInputBindings).not.toHaveBeenCalled();
       expect(mockCapturer.issueCaptureGrid).toHaveBeenCalled();
     });

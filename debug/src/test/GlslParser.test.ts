@@ -336,6 +336,12 @@ describe("GlslParser", () => {
       expect(result).toEqual({ name: "uv", type: "vec2" });
     });
 
+    it("should detect standalone variable expressions", () => {
+      const varTypes = new Map([["test", "float"]]);
+      const result = GlslParser.detectVariableAndType("  test; // inline preview", varTypes);
+      expect(result).toEqual({ name: "test", type: "float" });
+    });
+
     it("should detect indexed struct-member assignments as assignments to the root variable", () => {
       const varTypes = new Map([["ctrlPts", "CtrlPts"]]);
       const result = GlslParser.detectVariableAndType("  ctrlPts.p[0] = vec2(0.10, 0.25);", varTypes);

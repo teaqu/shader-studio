@@ -25,6 +25,7 @@ import type { PiTexture } from "./types/piRenderer";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
+  private gl: WebGL2RenderingContext | null = null;
   private renderer!: PiRenderer;
 
   private shaderCompiler!: ShaderCompiler;
@@ -49,9 +50,10 @@ export class RenderingEngine implements RenderingEngineInterface {
       throw new Error("WebGL2 not supported");
     }
 
+    this.gl = gl as WebGL2RenderingContext;
     this.renderer = piRenderer();
-    this.renderer.Initialize(gl as WebGL2RenderingContext);
-    this.shaderCompiler = new ShaderCompiler(this.renderer);
+    this.renderer.Initialize(this.gl);
+    this.shaderCompiler = new ShaderCompiler(this.renderer, this.gl);
     this.resourceManager = new ResourceManager(this.renderer);
     this.bufferManager = new BufferManager(this.renderer);
     this.timeManager = new TimeManager();

@@ -85,4 +85,29 @@ describe("ShaderDebugger common helper functions", () => {
     expect(result).toContain("fragColor = vec4(vec3(globalA), 1.0)");
     expect(result).not.toContain("fragColor = vec4(vec3(localValue), 1.0)");
   });
+
+  it("renders a referenced global when the selected mainImage line is a standalone variable expression", () => {
+    const shader = [
+      "float test = 1.0;",
+      "",
+      "void mainImage( out vec4 fragColor, in vec2 fragCoord )",
+      "{",
+      "    vec2 uv = fragCoord/iResolution.xy;",
+      "    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));",
+      "    test; // inline preview",
+      "    fragColor = vec4(col,1.0);",
+      "}",
+    ].join("\n");
+
+    const result = ShaderDebugger.modifyShaderForDebugging(
+      shader,
+      6,
+      "    test; // inline preview",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("float test = 1.0;");
+    expect(result).toContain("fragColor = vec4(vec3(test), 1.0)");
+    expect(result).not.toContain("fragColor = vec4(col,1.0)");
+  });
 });

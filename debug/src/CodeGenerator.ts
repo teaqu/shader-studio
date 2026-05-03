@@ -244,7 +244,7 @@ export class CodeGenerator {
   /**
    * Inserts a shadow variable when the debug line is inside a containing loop.
    * Declares `{type} _dbgShadow;` before the outermost containing loop,
-   * and inserts `_dbgShadow = {varName};` after the debug line.
+   * and inserts `_dbgShadow = {varName};` after the selected statement.
    * Returns the modified lines and the shadow variable name (or null if no shadow needed).
    */
   static insertShadowVariable(
@@ -284,14 +284,15 @@ export class CodeGenerator {
     }
 
     const indent = lines[outermostLoopIndex].match(/^(\s*)/)?.[1] || '  ';
-    const debugIndent = lines[debugLineIndex]?.match(/^(\s*)/)?.[1] || '    ';
+    const insertionIndex = CodeGenerator.extendForMultiLine(lines, debugLineIndex);
+    const debugIndent = lines[insertionIndex]?.match(/^(\s*)/)?.[1] || lines[debugLineIndex]?.match(/^(\s*)/)?.[1] || '    ';
 
     for (let i = 0; i < lines.length; i++) {
       if (i === outermostLoopIndex) {
         result.push(`${indent}${varInfo.type} ${shadowVarName};`);
       }
       result.push(lines[i]);
-      if (i === debugLineIndex) {
+      if (i === insertionIndex) {
         result.push(`${debugIndent}${shadowVarName} = ${varInfo.name};`);
       }
     }
