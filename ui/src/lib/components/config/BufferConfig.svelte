@@ -10,7 +10,7 @@
     BufferResolution,
     AspectRatioMode,
   } from "@shader-studio/types";
-  import ChannelPreview from "./ChannelPreview.svelte";
+  import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import PathInput from "./PathInput.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -72,21 +72,7 @@
     }
     return 'none' as const;
   });
-  const channelNames = $derived.by(() => {
-    const configKeys = Object.keys(configuredInputs);
-    if (configKeys.length >= 4) {
-      return configKeys;
-    }
-
-    const pad: string[] = [];
-    for (let i = 0; pad.length < 4 - configKeys.length && i < 16; i++) {
-      const name = `iChannel${i}`;
-      if (!configKeys.includes(name)) {
-        pad.push(name);
-      }
-    }
-    return [...configKeys, ...pad];
-  });
+  const configuredChannelNames = $derived(Object.keys(configuredInputs));
 
   let currentPath = $state("path" in config ? config.path : "");
   let activeModalChannel = $state<string | null>(null);
@@ -164,7 +150,7 @@
   }
 
   function handleAddChannel() {
-    const existing = new Set(channelNames);
+    const existing = new Set(configuredChannelNames);
     for (let i = 0; i < 16; i++) {
       const name = `iChannel${i}`;
       if (!existing.has(name)) {
@@ -295,51 +281,30 @@
     {#if bufferName !== "common"}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
-        {#if Object.keys(configuredInputs).length > 1}
-          <div class="channels-toolbar">
-            <button
-              class="sort-btn"
-              onclick={handleSortChannels}
-              title="Sort channels alphabetically"
-            >
+        <div class="channel-list">
+          {#each configuredChannelNames as channelName}
+            <ChannelListItem
+              {channelName}
+              channelInput={configuredInputs[channelName]!}
+              {getWebviewUri}
+              {audioVideoController}
+              {globalMuted}
+              onEdit={() => openChannelModal(channelName)}
+              onRemove={() => handleModalRemove(channelName)}
+            />
+          {/each}
+        </div>
+        <div class="channel-list-footer">
+          {#if configuredChannelNames.length > 1}
+            <button class="sort-btn" onclick={handleSortChannels} title="Sort channels alphabetically">
               <i class="codicon codicon-sort-precedence"></i>
               Sort A-Z
             </button>
-          </div>
-        {/if}
-        <div class="channels-grid">
-          {#each channelNames as channelName}
-            {@const input =
-              config.inputs?.[channelName]}
-            <div
-              class="channel-box {input ? 'configured' : 'empty'}"
-              onclick={() => openChannelModal(channelName)}
-              onkeydown={(e) => e.key === 'Enter' && openChannelModal(channelName)}
-              role="button"
-              tabindex="0"
-            >
-              <ChannelPreview channelInput={input} {getWebviewUri} {audioVideoController} {globalMuted} />
-
-              <div class="channel-footer">
-                <h4 class="channel-name">{channelName}</h4>
-              </div>
-            </div>
-          {/each}
-          {#if channelNames.length < 16}
-            <div
-              class="channel-box empty add-channel"
-              onclick={handleAddChannel}
-              onkeydown={(e) => e.key === 'Enter' && handleAddChannel()}
-              role="button"
-              tabindex="0"
-            >
-              <div class="add-channel-content">
-                <span class="add-icon">+</span>
-              </div>
-              <div class="channel-footer">
-                <h4 class="channel-name">Add Channel</h4>
-              </div>
-            </div>
+          {/if}
+          {#if configuredChannelNames.length < 16}
+            <button class="add-channel-btn" onclick={handleAddChannel}>
+              + Add Channel
+            </button>
           {/if}
         </div>
       </div>
@@ -478,6 +443,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    padding-bottom: 32px;
   }
 
   .section-title {
@@ -495,64 +461,34 @@
     gap: 12px;
   }
 
-  .channels-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 200px));
-    gap: 16px;
-  }
-
-  .channel-box {
-    background: var(--vscode-editor-background, #ffffff);
-    border: 1px solid var(--vscode-panel-border, #e0e0e0);
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    transition: all 0.2s ease;
-    cursor: pointer;
+  .channel-list {
     display: flex;
     flex-direction: column;
+    gap: 6px;
   }
 
-  .channel-box.configured {
-    border-color: var(--vscode-focusBorder, #007acc);
-    box-shadow: 0 2px 12px rgba(0, 123, 255, 0.15);
-  }
-
-  .channel-box.empty {
-    opacity: 0.7;
-    border-style: dashed;
-  }
-
-  .channel-box:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    transform: translateY(-2px);
-  }
-
-  .channel-box:focus {
-    outline: 2px solid var(--vscode-focusBorder, #007acc);
-    outline-offset: 2px;
-  }
-
-  .channel-footer {
+  .channel-list-footer {
     display: flex;
-    justify-content: center;
     align-items: center;
-    padding: 12px 16px;
-    background: var(--vscode-tab-inactiveBackground, #f8f8f8);
-    border-top: 1px solid var(--vscode-panel-border, #e0e0e0);
-    margin-top: auto;
+    gap: 8px;
+    margin-top: 2px;
   }
 
-  .channel-name {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--vscode-tab-activeForeground, #333);
+  .add-channel-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    background: none;
+    border: 1px dashed var(--vscode-panel-border, #3c3c3c);
+    border-radius: 4px;
+    color: var(--vscode-descriptionForeground, #888);
+    cursor: pointer;
+    transition: all 0.15s;
   }
 
-  .channels-toolbar {
-    display: flex;
-    justify-content: flex-end;
+  .add-channel-btn:hover {
+    color: var(--vscode-foreground, #cccccc);
+    border-color: var(--vscode-focusBorder, #007acc);
+    border-style: solid;
   }
 
   .sort-btn {
@@ -572,24 +508,6 @@
   .sort-btn:hover {
     color: var(--vscode-foreground, #cccccc);
     border-color: var(--vscode-focusBorder, #007acc);
-  }
-
-  .add-channel-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    aspect-ratio: 16 / 9;
-    background: var(--vscode-editor-background, #1e1e1e);
-  }
-
-  .add-icon {
-    font-size: 32px;
-    color: var(--vscode-descriptionForeground, #888);
-    font-weight: 300;
-  }
-
-  .add-channel:hover .add-icon {
-    color: var(--vscode-focusBorder, #007acc);
   }
 
   .resolution-section {

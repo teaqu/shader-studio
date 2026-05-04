@@ -160,19 +160,18 @@ describe('BufferConfig', () => {
   });
 
   describe('Channel Grid', () => {
-    it('should show channels grid for regular buffers', () => {
+    it('should show channels list for regular buffers', () => {
       const config: BufferPass = { path: 'buffer.glsl', inputs: {} };
 
-      const { getAllByText, getByText } = render(BufferConfig, {
+      const { getByText } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri
       });
 
-      // Should always show the 4 default channels even with empty inputs
-      expect(getAllByText(/iChannel/)).toHaveLength(4);
-      expect(getByText('Add Channel')).toBeTruthy();
+      // No padding — just shows the Add Channel button
+      expect(getByText('+ Add Channel')).toBeTruthy();
     });
 
     it('should not show channels grid for common buffer', () => {
@@ -208,7 +207,7 @@ describe('BufferConfig', () => {
       expect(getByText('iChannel1')).toBeTruthy();
     });
 
-    it('should not pad to 4 when 4 or more channels exist', () => {
+    it('should render all configured channels as list rows', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -227,9 +226,9 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      // 5 configured channels + 1 add channel box = 6 total channel boxes
-      const channelBoxes = container.querySelectorAll('.channel-box');
-      expect(channelBoxes).toHaveLength(6);
+      // 5 configured channels = 5 channel rows
+      const channelRows = container.querySelectorAll('.channel-row');
+      expect(channelRows).toHaveLength(5);
     });
 
     it('should show sort button when more than 1 input exists', () => {
@@ -309,7 +308,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      await fireEvent.click(getByText('Add Channel'));
+      await fireEvent.click(getByText('+ Add Channel'));
 
       // The modal should open showing iChannel1 (next available)
       expect(getByText('iChannel1')).toBeTruthy();
@@ -329,7 +328,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri
       });
 
-      expect(queryByText('Add Channel')).toBeNull();
+      expect(queryByText('+ Add Channel')).toBeNull();
     });
   });
 
@@ -407,7 +406,7 @@ describe('BufferConfig', () => {
   });
 
   describe('Channel Modal Interaction', () => {
-    it('should open modal when clicking a channel box', async () => {
+    it('should open modal when clicking a channel row', async () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -422,18 +421,17 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      // Click on the iChannel0 box
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.click(channelBox);
+      // Click on the iChannel0 row
+      const channelRow = getByText('iChannel0').closest('.channel-row')!;
+      await fireEvent.click(channelRow);
       await tick();
 
       // Modal should be open - ChannelConfigModal with isOpen=true
-      // The modal has overlay class when open
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
-    it('should open modal via keyboard Enter on channel box', async () => {
+    it('should open modal via keyboard Enter on channel row', async () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -448,15 +446,15 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.keyDown(channelBox, { key: 'Enter' });
+      const channelRow = getByText('iChannel0').closest('.channel-row')!;
+      await fireEvent.keyDown(channelRow, { key: 'Enter' });
       await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
-    it('should open modal for empty channel (no input configured)', async () => {
+    it('should open modal for add channel when no input configured', async () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {}
@@ -469,9 +467,8 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      // Click on an empty channel slot (iChannel0 should be padded in)
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.click(channelBox);
+      // Click Add Channel to open the modal for the next available slot
+      await fireEvent.click(getByText('+ Add Channel'));
       await tick();
 
       const modal = container.querySelector('.modal-overlay');
@@ -496,14 +493,14 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      await fireEvent.click(getByText('Add Channel'));
+      await fireEvent.click(getByText('+ Add Channel'));
       await tick();
 
       const modal = container.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
-    it('should open Add Channel via keyboard Enter', async () => {
+    it('should open Add Channel via keyboard Enter on the button', async () => {
       const config: BufferPass = { path: 'buffer.glsl', inputs: {} };
 
       const { getByText, container } = render(BufferConfig, {
@@ -513,8 +510,9 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      const addBox = getByText('Add Channel').closest('.channel-box')!;
-      await fireEvent.keyDown(addBox, { key: 'Enter' });
+      const addBtn = getByText('+ Add Channel');
+      await fireEvent.keyDown(addBtn, { key: 'Enter' });
+      await fireEvent.click(addBtn);
       await tick();
 
       const modal = container.querySelector('.modal-overlay');
@@ -567,7 +565,7 @@ describe('BufferConfig', () => {
   });
 
   describe('Channel Names Computation', () => {
-    it('should pad to 4 channels when fewer than 4 inputs exist', () => {
+    it('should show only configured channels (no padding)', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -582,12 +580,12 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
       });
 
-      // 4 channel boxes + 1 add channel box = 5 total
-      const channelBoxes = container.querySelectorAll('.channel-box');
-      expect(channelBoxes).toHaveLength(5);
+      // 1 configured channel = 1 channel row
+      const channelRows = container.querySelectorAll('.channel-row');
+      expect(channelRows).toHaveLength(1);
     });
 
-    it('should not duplicate existing channel names when padding', () => {
+    it('should show exactly the configured channels', () => {
       const config: BufferPass = {
         path: 'buffer.glsl',
         inputs: {
@@ -596,18 +594,18 @@ describe('BufferConfig', () => {
         }
       };
 
-      const { getByText } = render(BufferConfig, {
+      const { getByText, queryByText } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
       });
 
-      // Should have iChannel0, iChannel2 (configured) + iChannel1, iChannel3 (padded)
+      // Only configured channels shown — no padding
       expect(getByText('iChannel0')).toBeTruthy();
-      expect(getByText('iChannel1')).toBeTruthy();
       expect(getByText('iChannel2')).toBeTruthy();
-      expect(getByText('iChannel3')).toBeTruthy();
+      expect(queryByText('iChannel1')).toBeNull();
+      expect(queryByText('iChannel3')).toBeNull();
     });
 
     it('should show exactly the configured channels when 4 or more exist', () => {
@@ -632,7 +630,6 @@ describe('BufferConfig', () => {
       expect(getByText('b')).toBeTruthy();
       expect(getByText('c')).toBeTruthy();
       expect(getByText('d')).toBeTruthy();
-      // No iChannel padding
       expect(queryByText('iChannel0')).toBeNull();
     });
   });
@@ -654,8 +651,8 @@ describe('BufferConfig', () => {
       });
 
       // Open modal for iChannel0
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.click(channelBox);
+      const channelRow = getByText('iChannel0').closest('.channel-row')!;
+      await fireEvent.click(channelRow);
       await tick();
 
       // Modal should be open
@@ -688,8 +685,8 @@ describe('BufferConfig', () => {
       });
 
       // Open modal for configured channel
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.click(channelBox);
+      const channelRow = getByText('iChannel0').closest('.channel-row')!;
+      await fireEvent.click(channelRow);
       await tick();
 
       // Modal should be open with Remove button
@@ -728,8 +725,8 @@ describe('BufferConfig', () => {
       });
 
       // Open modal
-      const channelBox = getByText('iChannel0').closest('.channel-box')!;
-      await fireEvent.click(channelBox);
+      const channelRow = getByText('iChannel0').closest('.channel-row')!;
+      await fireEvent.click(channelRow);
       await tick();
       expect(container.querySelector('.modal-overlay')).not.toBeNull();
 
@@ -779,7 +776,7 @@ describe('BufferConfig', () => {
         audioVideoController: { videoControl: vi.fn(), getVideoState: vi.fn().mockReturnValue(null), audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      expect(container.querySelector('.channels-grid')).toBeTruthy();
+      expect(container.querySelector('.channel-list')).toBeTruthy();
     });
 
     it('should render with audioVideoController for audio inputs', () => {
@@ -798,7 +795,7 @@ describe('BufferConfig', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue(null), getAudioFFT: vi.fn().mockReturnValue(null), videoControl: vi.fn(), getVideoState: vi.fn() } as any,
       });
 
-      expect(container.querySelector('.channels-grid')).toBeTruthy();
+      expect(container.querySelector('.channel-list')).toBeTruthy();
     });
 
     it('should render with globalMuted prop', () => {
@@ -834,7 +831,64 @@ describe('BufferConfig', () => {
         globalMuted: false,
       });
 
-      expect(container.querySelector('.channels-grid')).toBeTruthy();
+      expect(container.querySelector('.channel-list')).toBeTruthy();
+    });
+  });
+
+  describe('Channel list layout', () => {
+    it('shows only "Add Channel" button when no channels configured', () => {
+      const config: ImagePass = { inputs: {} };
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: vi.fn(),
+        getWebviewUri: vi.fn(),
+        isImagePass: true,
+      });
+      expect(getByText('+ Add Channel')).toBeTruthy();
+      expect(container.querySelector('.channel-row')).toBeNull();
+    });
+
+    it('renders configured channels as list rows', () => {
+      const config: ImagePass = {
+        inputs: {
+          iChannel0: { type: 'texture', path: 'tex.png' },
+          iChannel1: { type: 'buffer', source: 'BufferA' },
+        },
+      };
+      const { container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: vi.fn(),
+        getWebviewUri: vi.fn(),
+        isImagePass: true,
+      });
+      expect(container.querySelectorAll('.channel-row').length).toBe(2);
+    });
+
+    it('does not render empty placeholder boxes', () => {
+      const config: ImagePass = { inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: vi.fn(),
+        getWebviewUri: vi.fn(),
+        isImagePass: true,
+      });
+      expect(container.querySelector('.channel-box')).toBeNull();
+    });
+
+    it('clicking Add Channel opens modal', async () => {
+      const config: ImagePass = { inputs: {} };
+      const { getByText, container } = render(BufferConfig, {
+        bufferName: 'Image',
+        config,
+        onUpdate: vi.fn(),
+        getWebviewUri: vi.fn(),
+        isImagePass: true,
+      });
+      await fireEvent.click(getByText('+ Add Channel'));
+      expect(container.querySelector('.modal-overlay')).toBeTruthy();
     });
   });
 
