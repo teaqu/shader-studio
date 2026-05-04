@@ -687,8 +687,8 @@ describe('DockviewLayout', () => {
       );
     });
 
-    it('should open below preview even when config is already open (no auto-tab default)', async () => {
-      // Start with only config open, then toggle debug on — should open below, not tab with config
+    it('should tab into config when config is already open', async () => {
+      // Start with only config open, then toggle debug on — should tab into config
       const { rerender } = renderLayout({ showConfigPanel: true });
       await tick();
 
@@ -697,7 +697,7 @@ describe('DockviewLayout', () => {
 
       const debugCall = mockApi.addPanel.mock.calls.find((c: any[]) => c[0]?.id === 'debug');
       expect(debugCall).toBeDefined();
-      expect(debugCall![0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+      expect(debugCall![0].position).toEqual({ referencePanel: 'config', direction: 'within' });
     });
 
     it('should remove debug panel when showDebugPanel becomes false', async () => {
@@ -964,7 +964,7 @@ describe('DockviewLayout', () => {
 
       expect(mockApi.fromJSON).toHaveBeenCalledTimes(before);
       const debugCalls = mockApi.addPanel.mock.calls.filter((c: any[]) => c[0]?.id === 'debug');
-      expect(debugCalls[debugCalls.length - 1][0].position).toEqual({ referencePanel: 'preview', direction: 'below' });
+      expect(debugCalls[debugCalls.length - 1][0].position).toEqual({ referencePanel: 'config', direction: 'within' });
     });
 
     it('falls back to addPanel when a panel from the snapshot is now missing', async () => {
@@ -1419,7 +1419,7 @@ describe('DockviewLayout', () => {
       );
     });
 
-    it('should open below preview even when debug is visible (no auto-tab)', async () => {
+    it('should tab into debug when debug is visible', async () => {
       renderLayout({
         showDebugPanel: true,
         showPerformancePanel: true,
@@ -1432,12 +1432,12 @@ describe('DockviewLayout', () => {
       );
       expect(perfCall).toBeDefined();
       expect(perfCall![0].position).toEqual({
-        referencePanel: 'preview',
-        direction: 'below',
+        referencePanel: 'debug',
+        direction: 'within',
       });
     });
 
-    it('should open below preview even when config is visible (no auto-tab)', async () => {
+    it('should tab into config when config is visible', async () => {
       renderLayout({
         showDebugPanel: false,
         showConfigPanel: true,
@@ -1451,8 +1451,8 @@ describe('DockviewLayout', () => {
       );
       expect(perfCall).toBeDefined();
       expect(perfCall![0].position).toEqual({
-        referencePanel: 'preview',
-        direction: 'below',
+        referencePanel: 'config',
+        direction: 'within',
       });
     });
 

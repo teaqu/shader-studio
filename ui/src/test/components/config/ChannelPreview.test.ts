@@ -508,7 +508,7 @@ describe('ChannelPreview', () => {
       });
 
       expect(container.querySelector('.buffer-preview')).toBeTruthy();
-      expect(container.querySelector('.buffer-name')).toBeTruthy();
+      expect(container.querySelector('.buffer-letter')).toBeTruthy();
     });
 
     it('should render video preview', () => {
