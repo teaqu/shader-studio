@@ -25,9 +25,10 @@ The header has buttons to toggle individual features:
 |---------|-------------|------|
 | <i class="codicon codicon-inspect"></i> Pixel Inspector | See exact RGB, float, and coordinate values under your cursor | [Pixel Inspector](pixel-inspector.md) |
 | <i class="codicon codicon-eye"></i> Inline Rendering | Execute only up to the current line and visualize the result | [Inline Rendering](inline-rendering.md) |
-| <i class="codicon codicon-symbol-variable"></i> Variable Inspector | Capture all in-scope variable values in a grid or at a single pixel | [Variable Inspector](variable-inspector.md) |
+| <i class="codicon codicon-symbol-variable"></i> Variable Inspector | Capture all in-scope variable values by sampling across the canvas or at a single pixel | [Variable Inspector](variable-inspector.md) |
 | <i class="codicon codicon-graph-line"></i> Normalization & Step | Remap value ranges and apply binary thresholds | [Normalization & Step](normalization.md) |
 | <i class="codicon codicon-gear"></i> Parameters & Loops | Control function arguments and cap loop iterations | [Parameters & Loops](parameters-and-loops.md) |
+| <i class="codicon codicon-code"></i> JavaScript Transpilation | Transpile GLSL to JavaScript for step-through debugging | [JavaScript Transpilation](../help/transpilation.md) |
 
 ## Uniforms
 
@@ -47,4 +48,4 @@ If the shader has [script-driven uniforms](../help/config-file.md#script-driven-
 
 ## Next
 
-[Inline Rendering](inline-rendering.md) — visualize any variable line-by-line as color output
+[Pixel Inspector](pixel-inspector.md) — see exact RGB, float, and coordinate values under your cursor

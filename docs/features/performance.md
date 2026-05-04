@@ -65,4 +65,4 @@ Click **Pause** to freeze the graph. Useful for inspecting a specific spike. Cli
 
 ## Next
 
-[Resolution](resolution.md) — change the render size, aspect ratio, and zoom
+[Debug Mode](../debugging/index.md) — inspect and analyse your shader while it runs

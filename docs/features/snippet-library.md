@@ -95,3 +95,7 @@ Click a snippet to insert it at the cursor position in your active GLSL editor. 
 ## Enabling
 
 Snippets are enabled by default. If the library is missing, check that `shader-studio.enableSnippets` is enabled in settings and reload the VS Code window.
+
+## Next
+
+[Performance](performance.md) — cap the frame rate and monitor rendering performance

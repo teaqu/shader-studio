@@ -1,7 +1,7 @@
 # Variable Inspector
 
 
-The variable inspector captures the values of **all in-scope variables** at the current debug line and displays them in the debug panel. It supports two capture modes: **grid mode** (sampling across the canvas) and **pixel mode** (a single pixel under the cursor).
+The variable inspector captures the values of **all in-scope variables** at the current debug line and displays them in the debug panel. It supports two capture modes: **sampling** (across the canvas) and **pixel mode** (a single pixel under the cursor).
 
 ## Enabling
 
@@ -38,7 +38,7 @@ When no specific debug line is selected (debug line is -1), the inspector captur
 
 ## Capture Modes
 
-### Grid Mode
+### Sampling
 
 Samples the variable across a grid of points spanning the full canvas. Each grid cell samples the shader at the corresponding screen position.
 
@@ -86,7 +86,7 @@ When in polling mode, a number input appears to set the interval in milliseconds
 
 ## Expanded Details
 
-Click the expand button on a varying variable (grid mode) to see detailed statistics and visualizations.
+Click the expand button on a varying variable (sampling mode) to see detailed statistics and visualizations.
 
 ![Expanded variable with histogram](../assets/images/var-inspector-expanded.png)
 

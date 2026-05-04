@@ -1,8 +1,8 @@
 # Shader Studio User Guide
 
-Shader Studio is a VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time GPU canvas inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects — all without leaving VS Code.
+Shader Studio is a VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time GPU canvas inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects.
 
-Use these docs to learn how to develop, preview, and debug shaders in Shader Studio.
+
 
 ![Shader Studio overview](assets/images/overview.png)
 
@@ -16,13 +16,13 @@ Write GLSL in VS Code and see the result instantly. Every keystroke recompiles a
 
 ### Multi-Pass Pipelines
 
-Build complex effects with buffer passes that render offscreen and feed into each other. Set up feedback loops for particle trails, blur chains, post-processing stacks, and simulation grids. A visual config panel manages the pipeline and writes the `.sha.json` file for you.
+Build complex effects with buffer passes that render offscreen and feed into each other. Set up feedback loops for particle trails, blur chains, post-processing stacks, and simulation grids.
 
 See [Configure Buffers and Inputs](features/config-buffers.md) for the full guide.
 
 ### Visual Debugging
 
-Place your cursor on any line and see the value of that variable rendered across the whole screen in real time. Debug mode works inside `mainImage`, helper functions, buffer passes, and even loops. You can inspect variables in a grid, normalize value ranges, and cap loop iterations to debug expensive shaders without crashing the GPU.
+Place your cursor on any line and see the value of that variable rendered across the whole screen in real time. Debug mode works inside `mainImage`, helper functions, buffer passes, and even loops. You can inspect variables by sampling across the canvas or at a specific pixel.
 
 See [Debug Mode Overview](debugging/index.md) to get started.
 
@@ -38,7 +38,7 @@ See [Time and Playback Controls](features/time-controls.md).
 
 ### Recording
 
-Take screenshots or record MP4 video and GIF animations directly from the preview. Recordings use the live canvas resolution and respect the current time, paused state, and playback speed.
+Take screenshots or record video and GIF animations directly from the preview. Recordings use the live canvas resolution and respect the current time, paused state, and playback speed.
 
 See [Recording](features/recording.md).
 

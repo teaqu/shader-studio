@@ -86,6 +86,7 @@ nav:
       - Variable Inspector: debugging/variable-inspector.md
       - Parameters & Loops: debugging/parameters-and-loops.md
       - Normalization And Step: debugging/normalization.md
+      - JavaScript Transpilation: help/transpilation.md
   - Help:
       - Troubleshooting: help/troubleshooting.md
       - Shadertoy Compatibility: help/shadertoy-compatibility.md
