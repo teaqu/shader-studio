@@ -7,10 +7,14 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**.md'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
   pull_request:
     paths-ignore:
       - 'docs/**'
       - '**.md'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
   workflow_dispatch:
 
 permissions:
