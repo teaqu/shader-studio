@@ -697,12 +697,12 @@
 
   .preview-timer {
     color: white;
-    font-size: 11px;
+    font-size: 9px;
     font-family: monospace;
     font-weight: 600;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
-    height: 22px;
-    line-height: 22px;
+    height: 16px;
+    line-height: 16px;
     padding-left: 4px;
     white-space: nowrap;
   }
