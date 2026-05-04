@@ -118,8 +118,7 @@
   tabindex="0"
 >
   <div class="thumbnail">
-    <!-- No audioVideoController passed: suppresses overlay controls on the thumbnail -->
-    <ChannelPreview {channelInput} {getWebviewUri} />
+    <ChannelPreview {channelInput} {getWebviewUri} {audioVideoController} showControls={false} />
   </div>
 
   <div class="row-info">

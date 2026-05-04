@@ -8,6 +8,7 @@
     getWebviewUri: (path: string) => string | undefined;
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
+    showControls?: boolean;
   }
 
   let {
@@ -15,6 +16,7 @@
     getWebviewUri,
     audioVideoController = undefined as AudioVideoController | undefined,
     globalMuted = false,
+    showControls = true,
   }: Props = $props();
 
   let onVideoControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined);
@@ -340,7 +342,7 @@
         {:else}
           <span class="preview-label">Video</span>
         {/if}
-        {#if onVideoControl && channelInput.path}
+        {#if onVideoControl && showControls && channelInput.path}
           <div class="preview-controls" role="presentation" onclick={(e) => e.stopPropagation()}>
             <button
               class="preview-ctrl-btn"
@@ -393,7 +395,7 @@
         {:else}
           <span class="preview-label">Audio</span>
         {/if}
-        {#if onAudioControl && channelInput.path}
+        {#if onAudioControl && showControls && channelInput.path}
           <div class="preview-controls" role="presentation" onclick={(e) => e.stopPropagation()}>
             <button
               class="preview-ctrl-btn"

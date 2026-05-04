@@ -1,5 +1,6 @@
 import { render, fireEvent } from '@testing-library/svelte';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { tick } from 'svelte';
 import ChannelListItem from '../../../lib/components/config/ChannelListItem.svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
@@ -87,6 +88,55 @@ describe('ChannelListItem', () => {
     await fireEvent.click(container.querySelector('.remove-btn')!);
     expect(onRemove).toHaveBeenCalledOnce();
     expect(onEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('video preview sync', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('syncs preview video element play/pause state via audioVideoController', async () => {
+    const playSpy = vi.spyOn(HTMLVideoElement.prototype, 'play').mockResolvedValue(undefined);
+
+    const videoProps = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4' } as ConfigInput,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    render(ChannelListItem, videoProps);
+    await tick();
+
+    // ChannelPreview must receive audioVideoController so its sync effect
+    // calls play() when videoState.paused is false (jsdom video starts paused by default)
+    expect(playSpy).toHaveBeenCalled();
+  });
+
+  it('does not show overlay controls on the thumbnail', async () => {
+    const videoProps = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4' } as ConfigInput,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { container } = render(ChannelListItem, videoProps);
+    await tick();
+
+    // Thumbnail must NOT show ChannelPreview overlay controls — they live in .media-controls
+    expect(container.querySelector('.thumbnail .preview-controls')).toBeNull();
   });
 });
 
