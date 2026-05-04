@@ -707,6 +707,16 @@
   </div>
   <div class="right-group">
     <button
+      class="collapse-config toolbar-icon-button"
+      onclick={onToggleConfigPanel}
+      aria-label="Toggle config panel"
+      class:active={isConfigPanelVisible}
+      disabled={!hasShader}
+      title="Toggle shader configuration panel"
+    >
+      <i class="codicon codicon-gear"></i>
+    </button>
+    <button
       class="collapse-debug toolbar-icon-button"
       onclick={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
@@ -727,16 +737,6 @@
       title="Toggle editor overlay"
     >
       <i class="codicon codicon-code"></i>
-    </button>
-    <button
-      class="collapse-config toolbar-icon-button"
-      onclick={onToggleConfigPanel}
-      aria-label="Toggle config panel"
-      class:active={isConfigPanelVisible}
-      disabled={!hasShader}
-      title="Toggle shader configuration panel"
-    >
-      <i class="codicon codicon-gear"></i>
     </button>
     <RecordingButton
       bind:this={recordingButton}
@@ -810,7 +810,7 @@
           <button
             class="options-menu-item show-config"
             onclick={() => {
-              onToggleConfigPanel(); showOptionsMenu = false; 
+              onToggleConfigPanel(); showOptionsMenu = false;
             }}
             aria-label="Toggle config panel"
             class:active={isConfigPanelVisible}
@@ -820,9 +820,21 @@
             <span>Config</span>
           </button>
           <button
+            class="options-menu-item show-debug"
+            onclick={() => {
+              onToggleDebugEnabled(); showOptionsMenu = false;
+            }}
+            aria-label="Toggle debug mode"
+            class:active={isDebugEnabled}
+            disabled={!hasShader}
+          >
+            <i class="codicon codicon-bug"></i>
+            <span>Debug</span>
+          </button>
+          <button
             class="options-menu-item show-editor"
             onclick={() => {
-              onToggleEditorOverlay(); showOptionsMenu = false; 
+              onToggleEditorOverlay(); showOptionsMenu = false;
             }}
             aria-label="Toggle editor overlay"
             class:active={isEditorOverlayVisible}
@@ -835,7 +847,7 @@
             <button
               class="options-menu-item options-submenu-item"
               onclick={() => {
-                onToggleVimMode(); 
+                onToggleVimMode();
               }}
               aria-label="Toggle vim mode"
               class:active={isVimModeEnabled}
@@ -843,18 +855,6 @@
               <span>Vim Mode</span>
             </button>
           {/if}
-          <button
-            class="options-menu-item show-debug"
-            onclick={() => {
-              onToggleDebugEnabled(); showOptionsMenu = false; 
-            }}
-            aria-label="Toggle debug mode"
-            class:active={isDebugEnabled}
-            disabled={!hasShader}
-          >
-            <i class="codicon codicon-bug"></i>
-            <span>Debug</span>
-          </button>
           <button
             class="options-menu-item"
             onclick={() => {

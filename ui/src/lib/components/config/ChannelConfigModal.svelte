@@ -22,6 +22,7 @@
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
+    availableBufferNames?: string[];
   }
 
   let {
@@ -38,6 +39,7 @@
     onMessage = undefined,
     shaderPath = "",
     audioVideoController = undefined,
+    availableBufferNames = [],
   }: Props = $props();
 
   // Capture onSave in a stable ref so it remains callable during child onDestroy
@@ -380,8 +382,9 @@
           <MiscTab
             {tempInput}
             {getWebviewUri}
+            {availableBufferNames}
             onSelect={(input) => {
-              tempInput = input; autoSave(); 
+              tempInput = input; autoSave();
             }}
           />
 

@@ -82,6 +82,90 @@ describe('MiscTab', () => {
     });
   });
 
+  describe('availableBufferNames', () => {
+    it('shows A-D by default when no availableBufferNames provided', () => {
+      const { container } = render(MiscTab, defaultProps());
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      expect(labels).toContain('BufferA');
+      expect(labels).toContain('BufferB');
+      expect(labels).toContain('BufferC');
+      expect(labels).toContain('BufferD');
+      expect(labels.filter(l => l?.startsWith('Buffer'))).toHaveLength(4);
+    });
+
+    it('shows BufferE when availableBufferNames includes BufferE', () => {
+      const props = {
+        ...defaultProps(),
+        availableBufferNames: ['BufferA', 'BufferB', 'BufferC', 'BufferD', 'BufferE'],
+      };
+      const { container } = render(MiscTab, props);
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      expect(labels).toContain('BufferE');
+    });
+
+    it('shows BufferF when availableBufferNames includes BufferF', () => {
+      const props = {
+        ...defaultProps(),
+        availableBufferNames: ['BufferA', 'BufferB', 'BufferC', 'BufferD', 'BufferE', 'BufferF'],
+      };
+      const { container } = render(MiscTab, props);
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      expect(labels).toContain('BufferF');
+    });
+
+    it('always shows minimum A-D even when availableBufferNames is empty', () => {
+      const props = { ...defaultProps(), availableBufferNames: [] };
+      const { container } = render(MiscTab, props);
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      expect(labels).toContain('BufferA');
+      expect(labels).toContain('BufferD');
+    });
+
+    it('does not duplicate buffers when availableBufferNames overlaps with A-D', () => {
+      const props = {
+        ...defaultProps(),
+        availableBufferNames: ['BufferA', 'BufferB'],
+      };
+      const { container } = render(MiscTab, props);
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      const bufferLabels = labels.filter(l => l?.startsWith('Buffer'));
+      const unique = new Set(bufferLabels);
+      expect(bufferLabels.length).toBe(unique.size);
+    });
+
+    it('buffers are sorted alphabetically', () => {
+      const props = {
+        ...defaultProps(),
+        availableBufferNames: ['BufferF', 'BufferE', 'BufferB', 'BufferA', 'BufferC', 'BufferD'],
+      };
+      const { container } = render(MiscTab, props);
+
+      const labels = Array.from(container.querySelectorAll('.misc-card-label')).map(el => el.textContent);
+      const bufferLabels = labels.filter(l => l?.startsWith('Buffer'));
+      expect(bufferLabels).toEqual([...bufferLabels].sort());
+    });
+
+    it('can click BufferE to select it', async () => {
+      const props = {
+        ...defaultProps(),
+        availableBufferNames: ['BufferA', 'BufferB', 'BufferC', 'BufferD', 'BufferE'],
+      };
+      const { container } = render(MiscTab, props);
+
+      const labels = container.querySelectorAll('.misc-card-label');
+      const bufferELabel = Array.from(labels).find(el => el.textContent === 'BufferE');
+      const bufferEButton = bufferELabel?.closest('button');
+      await fireEvent.click(bufferEButton!);
+
+      expect(props.onSelect).toHaveBeenCalledWith({ type: 'buffer', source: 'BufferE' });
+    });
+  });
+
   describe('Callbacks', () => {
     it('should call onSelect with buffer input when buffer card clicked', async () => {
       const props = defaultProps();

@@ -6,19 +6,28 @@
     tempInput?: ConfigInput;
     getWebviewUri: (path: string) => string | undefined;
     onSelect: (input: ConfigInput) => void;
+    availableBufferNames?: string[];
   }
+
+  const MIN_BUFFERS = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
   let {
     tempInput = undefined as ConfigInput | undefined,
     getWebviewUri,
     onSelect,
+    availableBufferNames = [],
   }: Props = $props();
+
+  const bufferList = $derived.by(() => {
+    const all = new Set([...MIN_BUFFERS, ...availableBufferNames]);
+    return [...all].sort();
+  });
 </script>
 
 <div class="misc-grid">
   <div class="misc-section-label">Buffer</div>
   <div class="misc-options">
-    {#each ["BufferA", "BufferB", "BufferC", "BufferD"] as buf}
+    {#each bufferList as buf}
       <button
         class="misc-card"
         class:selected={tempInput?.type === "buffer" && tempInput.source === buf}
@@ -61,7 +70,7 @@
 
   .misc-options {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 180px));
+    grid-template-columns: repeat(auto-fill, minmax(72px, 96px));
     gap: 8px;
     margin-bottom: 8px;
   }

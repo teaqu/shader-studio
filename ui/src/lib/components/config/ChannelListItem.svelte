@@ -144,7 +144,7 @@
         <button
           class="ctrl-btn"
           onclick={(e) => videoControl(videoState?.muted ? 'unmute' : 'mute', e)}
-          title={videoState?.muted ? 'Unmute' : 'Mute'}
+          title={videoState?.muted && globalMuted ? 'Unmute globally first (options menu)' : videoState?.muted ? 'Unmute' : 'Mute'}
           disabled={videoState?.muted && globalMuted}
         >
           {#if videoState?.muted}
@@ -176,7 +176,7 @@
         <button
           class="ctrl-btn"
           onclick={(e) => audioControl(audioState?.muted ? 'unmute' : 'mute', e)}
-          title={audioState?.muted ? 'Unmute' : 'Mute'}
+          title={audioState?.muted && globalMuted ? 'Unmute globally first (options menu)' : audioState?.muted ? 'Unmute' : 'Mute'}
           disabled={audioState?.muted && globalMuted}
         >
           {#if audioState?.muted}

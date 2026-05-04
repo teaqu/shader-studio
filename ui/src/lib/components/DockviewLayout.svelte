@@ -306,11 +306,11 @@
       renderer: "always",
     });
 
-    if (showDebugPanel) {
-      addDebugPanel();
-    }
     if (showConfigPanel) {
       addConfigPanel();
+    }
+    if (showDebugPanel) {
+      addDebugPanel();
     }
     if (showPerformancePanel) {
       addPerformancePanel();
@@ -354,12 +354,14 @@
       return;
     }
 
+    const tabRef = api.getPanel("config") ?? api.getPanel("performance");
     api.addPanel({
       id: "debug",
       component: "debug",
       title: "Debug",
-      position: { referencePanel: "preview", direction: "below" },
-      initialHeight: 350,
+      ...(tabRef
+        ? { position: { referencePanel: tabRef.id, direction: "within" } }
+        : { position: { referencePanel: "preview", direction: "below" }, initialHeight: 350 }),
     });
   }
 
@@ -384,13 +386,47 @@
       return;
     }
 
-    api.addPanel({
-      id: "config",
-      component: "config",
-      title: "Config",
-      position: { referencePanel: "preview", direction: "below" },
-      initialHeight: 250,
-    });
+    const existingTab = api.getPanel("debug") ?? api.getPanel("performance");
+    if (existingTab) {
+      // Config is tab 1: evict existing bottom panels, add config standalone, re-add within.
+      const siblingIds = existingTab.api.group.panels
+        .filter((p) => p.id !== "config")
+        .map((p) => p.id);
+
+      for (const sid of siblingIds) {
+        const p = api.getPanel(sid);
+        if (p) {
+          programmaticRemoval = true;
+          api.removePanel(p);
+          programmaticRemoval = false;
+        }
+      }
+
+      api.addPanel({
+        id: "config",
+        component: "config",
+        title: "Config",
+        position: { referencePanel: "preview", direction: "below" },
+        initialHeight: 250,
+      });
+
+      for (const sid of siblingIds) {
+        api.addPanel({
+          id: sid,
+          component: sid,
+          title: sid === "performance" ? "Frame Times" : sid.charAt(0).toUpperCase() + sid.slice(1),
+          position: { referencePanel: "config", direction: "within" },
+        });
+      }
+    } else {
+      api.addPanel({
+        id: "config",
+        component: "config",
+        title: "Config",
+        position: { referencePanel: "preview", direction: "below" },
+        initialHeight: 250,
+      });
+    }
   }
 
   function removeConfigPanel() {
@@ -414,12 +450,14 @@
       return;
     }
 
+    const tabRef = api.getPanel("debug") ?? api.getPanel("config");
     api.addPanel({
       id: "performance",
       component: "performance",
       title: "Frame Times",
-      position: { referencePanel: "preview", direction: "below" },
-      initialHeight: 200,
+      ...(tabRef
+        ? { position: { referencePanel: tabRef.id, direction: "within" } }
+        : { position: { referencePanel: "preview", direction: "below" }, initialHeight: 200 }),
     });
   }
 

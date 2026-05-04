@@ -429,13 +429,10 @@
   {:else if channelInput.type === "buffer"}
     <!-- Buffer preview -->
     <div class="buffer-preview">
-      <div class="buffer-layers">
-        <div class="buffer-layer layer-1"></div>
-        <div class="buffer-layer layer-2"></div>
-        <div class="buffer-layer layer-3"></div>
-      </div>
-      <div class="buffer-name">{channelInput.source || "Buffer"}</div>
+      <i class="codicon codicon-layers buffer-type-icon"></i>
+      <span class="buffer-letter">{(channelInput.source || 'B').replace(/^.*?([A-Za-z])$/, '$1').toUpperCase()}</span>
     </div>
+
   {:else if channelInput.type === "cubemap"}
     <!-- Cubemap preview -->
     <div class="texture-preview">
@@ -465,15 +462,7 @@
   {:else if channelInput.type === "keyboard"}
     <!-- Keyboard preview -->
     <div class="keyboard-preview">
-      <div class="keyboard-grid">
-        <div class="keyboard-key"></div>
-        <div class="keyboard-key"></div>
-        <div class="keyboard-key"></div>
-        <div class="keyboard-key"></div>
-        <div class="keyboard-key"></div>
-        <div class="keyboard-key"></div>
-      </div>
-      <div class="keyboard-label">Keyboard</div>
+      <i class="codicon codicon-keyboard type-icon"></i>
     </div>
   {/if}
 </div>
@@ -489,6 +478,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    container-type: inline-size;
   }
 
   /* Empty state */
@@ -579,57 +569,19 @@
 
   /* Buffer preview */
   .buffer-preview {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+    position: relative;
     width: 100%;
     height: 100%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
 
-  .buffer-layers {
-    position: relative;
-    width: 36px;
-    height: 28px;
-  }
-
-  .buffer-layer {
+  .buffer-type-icon {
     position: absolute;
-    width: 100%;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 2px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  }
-
-  .buffer-layer.layer-1 {
-    top: 0;
-    left: 0;
-    transform: rotate(-5deg);
-    opacity: 0.5;
-  }
-
-  .buffer-layer.layer-2 {
-    top: 2px;
-    left: 2px;
-    transform: rotate(0deg);
-    opacity: 0.7;
-  }
-
-  .buffer-layer.layer-3 {
-    top: 4px;
-    left: 4px;
-    transform: rotate(3deg);
-    opacity: 0.9;
-  }
-
-  .buffer-name {
-    font-size: 11px;
-    font-weight: 600;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    font-size: 28px;
+    color: rgba(255, 255, 255, 0.35);
+    top: 50%;
+    left: 50%;
+    transform: translate(-95%, -72%);
   }
 
   /* Video preview */
@@ -681,35 +633,44 @@
   /* Keyboard preview */
   .keyboard-preview {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
     width: 100%;
     height: 100%;
     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
   }
 
-  .keyboard-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 3px;
-    padding: 6px;
+  .buffer-letter {
+    position: absolute;
+    font-size: 26px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    top: 50%;
+    left: 50%;
+    transform: translate(-5%, -28%);
+    line-height: 1;
   }
 
-  .keyboard-key {
-    width: 12px;
-    height: 12px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  /* Shared icon for non-visual types */
+  .type-icon {
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.9);
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
   }
 
-  .keyboard-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  @container (min-width: 100px) {
+    .type-icon {
+      font-size: 40px;
+    }
+
+    .buffer-type-icon {
+      font-size: 48px;
+    }
+
+    .buffer-letter {
+      font-size: 44px;
+    }
   }
 
   /* Preview overlay (bottom gradient with label) */

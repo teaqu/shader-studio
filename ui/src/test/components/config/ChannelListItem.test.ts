@@ -79,4 +79,30 @@ describe('ChannelListItem', () => {
     await fireEvent.click(container.querySelector('.channel-row')!);
     expect(onEdit).toHaveBeenCalledOnce();
   });
+
+  it('does not call onEdit when remove button is clicked', async () => {
+    const onEdit = vi.fn();
+    const onRemove = vi.fn();
+    const { container } = render(ChannelListItem, { ...mockProps, onEdit, onRemove });
+    await fireEvent.click(container.querySelector('.remove-btn')!);
+    expect(onRemove).toHaveBeenCalledOnce();
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('type badge labels', () => {
+  const cases: [ConfigInput, string][] = [
+    [{ type: 'video', path: 'v.mp4' } as ConfigInput, 'Video'],
+    [{ type: 'audio', path: 'a.mp3' } as ConfigInput, 'Audio'],
+    [{ type: 'buffer', source: 'BufferA' } as ConfigInput, 'Buffer'],
+    [{ type: 'cubemap', path: 'c.png' } as ConfigInput, 'Cubemap'],
+    [{ type: 'keyboard' } as ConfigInput, 'Keyboard'],
+  ];
+
+  for (const [input, label] of cases) {
+    it(`shows '${label}' badge for ${input.type} type`, () => {
+      const { container } = render(ChannelListItem, { ...mockProps, channelInput: input });
+      expect(container.querySelector('.type-badge')?.textContent).toBe(label);
+    });
+  }
 });

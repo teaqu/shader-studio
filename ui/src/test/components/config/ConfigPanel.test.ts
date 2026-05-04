@@ -335,6 +335,151 @@ describe('ConfigPanel', () => {
     });
   });
 
+  describe('tab ordering', () => {
+    function tabLabels(container: HTMLElement): string[] {
+      return Array.from(container.querySelectorAll('.tab-button'))
+        .map(el => el.textContent?.replace('×', '').trim() ?? '');
+    }
+
+    it('buffer tabs are sorted alphabetically', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferC: { path: '', inputs: {} },
+          BufferA: { path: '', inputs: {} },
+          BufferB: { path: '', inputs: {} },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container).filter(l => l.startsWith('Buffer'));
+      expect(labels).toEqual(['BufferA', 'BufferB', 'BufferC']);
+    });
+
+    it('Common tab appears after Image and before buffers', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+          common: { path: '' },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container).filter(l => l !== '+ New');
+      const imageIdx = labels.indexOf('Image');
+      const commonIdx = labels.indexOf('Common');
+      const bufferAIdx = labels.indexOf('BufferA');
+      expect(imageIdx).toBeLessThan(commonIdx);
+      expect(commonIdx).toBeLessThan(bufferAIdx);
+    });
+
+    it('Script tab appears last', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+          common: { path: '' },
+        },
+        script: './shader.uniforms.ts',
+      } as any;
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container).filter(l => l !== '+ New');
+      expect(labels[labels.length - 1]).toBe('Script');
+    });
+
+    it('BufferE appears in tabs when it exists in config', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+          BufferE: { path: '', inputs: {} },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container);
+      expect(labels).toContain('BufferE');
+    });
+
+    it('BufferE sorts after BufferD in tab order', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferE: { path: '', inputs: {} },
+          BufferA: { path: '', inputs: {} },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container).filter(l => l.startsWith('Buffer'));
+      const aIdx = labels.indexOf('BufferA');
+      const eIdx = labels.indexOf('BufferE');
+      expect(aIdx).toBeLessThan(eIdx);
+    });
+  });
+
   describe('add buffer', () => {
     it('should switch to new tab after adding a buffer', async () => {
       const config: ShaderConfig = {

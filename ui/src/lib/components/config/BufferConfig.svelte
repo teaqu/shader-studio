@@ -29,6 +29,7 @@
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
+    availableBufferNames?: string[];
   };
 
   let {
@@ -43,6 +44,7 @@
     shaderPath = "",
     audioVideoController = undefined,
     globalMuted = false,
+    availableBufferNames = [],
   }: BufferConfigProps = $props();
 
   const IMAGE_SCALES = [0.25, 0.5, 1, 2, 4] as const;
@@ -281,19 +283,21 @@
     {#if bufferName !== "common"}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
-        <div class="channel-list">
-          {#each configuredChannelNames as channelName}
-            <ChannelListItem
-              {channelName}
-              channelInput={configuredInputs[channelName]!}
-              {getWebviewUri}
-              {audioVideoController}
-              {globalMuted}
-              onEdit={() => openChannelModal(channelName)}
-              onRemove={() => handleModalRemove(channelName)}
-            />
-          {/each}
-        </div>
+        {#if configuredChannelNames.length > 0}
+          <div class="channel-list">
+            {#each configuredChannelNames as channelName}
+              <ChannelListItem
+                {channelName}
+                channelInput={configuredInputs[channelName]!}
+                {getWebviewUri}
+                {audioVideoController}
+                {globalMuted}
+                onEdit={() => openChannelModal(channelName)}
+                onRemove={() => handleModalRemove(channelName)}
+              />
+            {/each}
+          </div>
+        {/if}
         <div class="channel-list-footer">
           {#if configuredChannelNames.length > 1}
             <button class="sort-btn" onclick={handleSortChannels} title="Sort channels alphabetically">
@@ -432,6 +436,7 @@
   {onMessage}
   {shaderPath}
   {audioVideoController}
+  {availableBufferNames}
 />
 
 <style>

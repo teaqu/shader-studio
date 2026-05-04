@@ -209,17 +209,35 @@
     return configManager?.getWebviewUri(path);
   }
 
+  let availableBufferNames = $derived.by(() => {
+    if (!config?.passes) {
+      return [];
+    }
+    return Object.keys(config.passes).filter((k) => k !== "Image" && k !== "common");
+  });
+
   // Reactive statement to ensure tabs update when config changes
   let allTabs = $derived.by(() => {
-    const tabs = ["Image"];
+    const bufferTabs: string[] = [];
+    let hasCommon = false;
     if (config?.passes) {
       for (const name of Object.keys(config.passes)) {
         if (name === "Image") {
           continue;
         }
-        tabs.push(name === "common" ? "Common" : name);
+        if (name === "common") {
+          hasCommon = true;
+        } else {
+          bufferTabs.push(name);
+        }
       }
     }
+    bufferTabs.sort();
+    const tabs = ["Image"];
+    if (hasCommon) {
+      tabs.push("Common");
+    }
+    tabs.push(...bufferTabs);
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -347,6 +365,7 @@
           {shaderPath}
           {audioVideoController}
           {globalMuted}
+          {availableBufferNames}
         />
       {:else}
         <BufferConfig
@@ -365,6 +384,7 @@
           {shaderPath}
           {audioVideoController}
           {globalMuted}
+          {availableBufferNames}
         />
       {/if}
     </div>
@@ -375,12 +395,48 @@
   .config-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
     background: var(--vscode-editor-background);
   }
 
   .config-panel.visible {
     display: flex;
+  }
+
+  .config-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .tab-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    height: auto;
+    min-height: 28px;
+  }
+
+  .tab-navigation :global(.tab-button),
+  .tab-navigation :global(.add-tab-btn) {
+    padding: 2px 12px;
+    min-height: 28px;
+  }
+
+  .tab-navigation :global(.tab-close) {
+    width: 14px;
+    height: 14px;
+    font-size: 13px;
+  }
+
+  .tab-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
   }
 </style>
