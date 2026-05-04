@@ -1,15 +1,36 @@
 import * as fs from "fs";
+import * as path from "path";
 import glslTranspiler from "glsl-transpiler";
+import { PathResolver } from "./PathResolver";
 
 export class GlslToJsTranspiler {
   static transpileFile(uri: { fsPath: string }): string | undefined {
     if (!uri.fsPath.endsWith(".glsl") && !uri.fsPath.endsWith(".frag") && !uri.fsPath.endsWith(".vert")) {
       throw new Error("Selected file is not a GLSL shader.");
     }
-    const glslSource = fs.readFileSync(uri.fsPath, "utf8");
-    // Parse uniforms and common buffer (simple regex, can be improved)
+    const shaderPath = uri.fsPath;
+    let glslSource = fs.readFileSync(shaderPath, "utf8");
+
+    // Include Common pass code if a config exists
+    const configPath = shaderPath.replace(/\.(glsl|frag|vert)$/i, ".sha.json");
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const commonPath = config.passes?.common?.path;
+        if (commonPath) {
+          const resolvedCommonPath = PathResolver.resolvePath(shaderPath, commonPath);
+          if (fs.existsSync(resolvedCommonPath)) {
+            const commonSource = fs.readFileSync(resolvedCommonPath, "utf8");
+            glslSource = commonSource + "\n" + glslSource;
+          }
+        }
+      } catch {
+        // Config parse failed — proceed without Common code
+      }
+    }
+
+    // Parse uniforms
     const uniforms = Array.from(glslSource.matchAll(/uniform\s+([\w\d_]+)\s+([\w\d_]+)\s*;/g)).map(m => ({ type: m[1], name: m[2] }));
-    const commonBuffer = Array.from(glslSource.matchAll(/buffer\s+([\w\d_]+)\s*\{([^}]*)\}/g)).map(m => ({ name: m[1], content: m[2] }));
 
     // Add default ShaderToy uniforms if not present
     const defaultUniforms = [
@@ -54,12 +75,8 @@ export class GlslToJsTranspiler {
     }
     const uniformDecls = allUniforms.map(u => jsUniformInit(u.type, u.name)).join("\n");
 
-    // Compose output with buffer info only, no uniform comments
-    let output = `// Transpiled from GLSL\n`;
-    if (commonBuffer.length) {
-      output += `// Common Buffers:\n` + commonBuffer.map(b => `//   ${b.name}: ${b.content.trim().replace(/\n/g, " ")}`).join("\n") + "\n";
-    }
-    output += "\n" + uniformDecls + "\n" + jsCode + "\nlet fragColor = [0,0,0,0];\nlet fragCoord = [0,0];\nmainImage(fragColor, fragCoord);\n ";
+    // Compose output
+    let output = `// Transpiled from GLSL\n\n` + uniformDecls + "\n" + jsCode + "\nlet fragColor = [0,0,0,0];\nlet fragCoord = [0,0];\nmainImage(fragColor, fragCoord);\n ";
     return output;
   }
 
