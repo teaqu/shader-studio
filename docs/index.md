@@ -65,20 +65,6 @@ See [Editor Overlay](features/editor-overlay.md).
 | [Compile Modes](features/compile-modes.md) | Switch between strict and compatibility compilation modes |
 | [Open in Browser](features/web-server.md) | Run the preview in a standalone browser window |
 
----
-
-## Who Is This For?
-
-Shader Studio is built primarily for **shader artists** — anyone who writes Shadertoy-style GLSL for creative expression, prototyping, or learning.
-
-- **Shader artists** who want a Shadertoy-like environment inside their everyday editor, with live preview, visual debugging, and multi-pass pipelines
-- **Graphics programmers** prototyping GLSL effects before integrating them into an engine
-- **Learners** following shader tutorials and wanting immediate feedback, clear error messages, and tools that make GLSL less opaque
-
----
-
-## Getting Started
-
-New to Shader Studio? Start here:
+## Next
 
 [Quick Start](quick-start.md) — install the extension, open your first preview, and understand the toolbar.
