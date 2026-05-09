@@ -2,7 +2,8 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import DockviewLayout from '../../lib/components/DockviewLayout.svelte';
-import { layoutStore } from '../../lib/stores/layoutStore';
+import * as layoutState from '../../lib/state/layoutState.svelte';
+import * as profileStore from '../../lib/state/profileStore.svelte';
 
 // --- dockview-core mock ---
 
@@ -93,12 +94,23 @@ vi.mock('dockview-core', () => {
 
 vi.mock('dockview-core/dist/styles/dockview.css', () => ({}));
 
-vi.mock('../../lib/stores/layoutStore', () => ({
-  layoutStore: {
-    load: vi.fn(() => null),
-    save: vi.fn(),
-    clear: vi.fn(),
-  },
+vi.mock('../../lib/state/layoutState.svelte', () => ({
+  setCurrentLayout: vi.fn(),
+  getCurrentLayout: vi.fn(() => null),
+  getPendingRestore: vi.fn(() => null),
+  clearPendingRestore: vi.fn(),
+  requestRestore: vi.fn(),
+}));
+
+vi.mock('../../lib/state/profileStore.svelte', () => ({
+  scheduleProfileSave: vi.fn(),
+  getActiveProfile: vi.fn(() => 'default'),
+  getProfileList: vi.fn(() => []),
+  init: vi.fn(),
+  switchTo: vi.fn(),
+  saveAs: vi.fn(),
+  renameProfile: vi.fn(),
+  deleteProfile: vi.fn(),
 }));
 
 function fireLayoutChange() {
@@ -125,7 +137,7 @@ describe('DockviewLayout', () => {
     addPanelListeners = [];
     panels.clear();
     vi.clearAllMocks();
-    vi.mocked(layoutStore.load).mockReturnValue(null);
+    vi.mocked(layoutState.getPendingRestore).mockReturnValue(null);
   });
 
   function renderLayout(props: Record<string, any> = {}) {
@@ -137,7 +149,6 @@ describe('DockviewLayout', () => {
         showDebugPanel: false,
         showConfigPanel: false,
         transport: null,
-        layoutSlot: 'web:1',
         ...props,
       },
     });
@@ -492,102 +503,46 @@ describe('DockviewLayout', () => {
   // ─── Layout save on changes ────────────────────────────────────
 
   describe('layout persistence', () => {
-    it('should schedule a layout save when layout changes', async () => {
-      vi.useFakeTimers();
+    it('should call setCurrentLayout and scheduleProfileSave when layout changes', async () => {
       renderLayout();
       await tick();
 
       fireLayoutChange();
 
-      vi.advanceTimersByTime(500);
       expect(mockApi.toJSON).toHaveBeenCalled();
-      expect(layoutStore.save).toHaveBeenCalledWith(
-        'web:1',
-        expect.objectContaining({
-          activeLayout: expect.any(Object),
-          panelSnapshots: expect.any(Object),
-        }),
-      );
-
-      vi.useRealTimers();
+      expect(layoutState.setCurrentLayout).toHaveBeenCalledWith(expect.any(Object));
+      expect(profileStore.scheduleProfileSave).toHaveBeenCalled();
     });
   });
 
   describe('transport restore and ready actions', () => {
-    it('should request layout when transport is provided', async () => {
+    it('should not send requestLayout when transport is provided (slot-based transport removed)', async () => {
       const transport = createMockTransport();
       renderLayout({ transport });
       await tick();
 
-      expect(transport.onMessage).toHaveBeenCalledTimes(1);
-      expect(transport.postMessage).toHaveBeenCalledWith({ type: 'requestLayout', payload: { layoutSlot: 'web:1' } });
+      expect(transport.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'requestLayout' }),
+      );
     });
 
-    it('should reject empty transport layout and recreate the default preview', async () => {
-      const transport = createMockTransport();
-      renderLayout({ transport });
+    it('should apply pending restore from layoutState when getPendingRestore returns a layout', async () => {
+      const pendingLayout = {
+        panels: { preview: { id: 'preview', component: 'preview', title: 'Preview' } },
+        grid: { root: { type: 'leaf', data: { views: ['preview'] } } },
+      };
+      vi.mocked(layoutState.getPendingRestore).mockReturnValue(pendingLayout as any);
+      renderLayout();
       await tick();
 
-      transport.emit({
-        type: 'restoreLayout',
-        payload: {
-          layoutSlot: 'web:1',
-          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
-        },
-      });
-      expect(mockApi.fromJSON).not.toHaveBeenCalled();
-      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
+      expect(mockApi.fromJSON).toHaveBeenCalledWith(pendingLayout);
+      expect(layoutState.clearPendingRestore).toHaveBeenCalled();
     });
 
-    it('should reject empty local layout and recreate the default preview when transport payload is null', async () => {
-      vi.mocked(layoutStore.load).mockReturnValue({ activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} } as any);
-      const transport = createMockTransport();
-      renderLayout({ transport });
+    it('should not call fromJSON when getPendingRestore returns null', async () => {
+      vi.mocked(layoutState.getPendingRestore).mockReturnValue(null);
+      renderLayout();
       await tick();
-
-      transport.emit({ type: 'restoreLayout', payload: { layoutSlot: 'web:1', state: null } });
-      expect(layoutStore.load).toHaveBeenCalledWith('web:1');
-      expect(mockApi.fromJSON).not.toHaveBeenCalled();
-      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
-    });
-
-    it('should reset and recreate default layout when fromJSON throws', async () => {
-      const transport = createMockTransport();
-      renderLayout({ transport });
-      await tick();
-      mockApi.fromJSON.mockImplementation(() => {
-        throw new Error('bad layout');
-      });
-
-      transport.emit({
-        type: 'restoreLayout',
-        payload: {
-          layoutSlot: 'web:1',
-          state: {
-            activeLayout: {
-              panels: { preview: { id: 'preview', component: 'preview', title: 'Preview' } },
-              grid: { root: { type: 'leaf', data: { views: ['preview'] } } },
-            },
-            panelSnapshots: {},
-          },
-        },
-      });
-      expect(mockApi.clear).toHaveBeenCalled();
-      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
-    });
-
-    it('should ignore restore payloads for a different layout slot', async () => {
-      const transport = createMockTransport();
-      renderLayout({ transport, layoutSlot: 'web:2' });
-      await tick();
-
-      transport.emit({
-        type: 'restoreLayout',
-        payload: {
-          layoutSlot: 'web:1',
-          state: { activeLayout: { panels: {}, grid: { root: { type: 'branch', data: [] } } }, panelSnapshots: {} },
-        },
-      });
 
       expect(mockApi.fromJSON).not.toHaveBeenCalled();
     });
@@ -725,7 +680,6 @@ describe('DockviewLayout', () => {
       showConfigPanel: false,
       showPerformancePanel: false,
       transport: null,
-      layoutSlot: 'web:1',
       ...overrides,
     });
 
@@ -1091,7 +1045,6 @@ describe('DockviewLayout', () => {
           showDebugPanel: true,
           showConfigPanel: false,
           transport: null,
-          layoutSlot: 'web:1',
         },
         events: { debugClosed: debugClosedHandler },
       });
@@ -1106,7 +1059,7 @@ describe('DockviewLayout', () => {
   // ─── Layout reset ──────────────────────────────────────────────
 
   describe('layout reset', () => {
-    it('resetLayout calls api.clear and layoutStore.clear, rebuilding default layout', async () => {
+    it('resetLayout calls api.clear and rebuilds default layout', async () => {
       // In Svelte 5, createEventDispatcher routes through $$events (not onXxx props).
       // Pass events as a top-level render option so Svelte.mount receives them correctly.
       const ref: { resetLayout: (() => void) | null } = { resetLayout: null };
@@ -1120,7 +1073,6 @@ describe('DockviewLayout', () => {
           showConfigPanel: false,
           showPerformancePanel: false,
           transport: null,
-          layoutSlot: 'web:1',
         },
         events: {
           ready: (event: any) => {
@@ -1137,7 +1089,6 @@ describe('DockviewLayout', () => {
       ref.resetLayout!();
 
       expect((mockApi.clear as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(clearCallsBefore);
-      expect(layoutStore.clear).toHaveBeenCalledWith('web:1');
       // createDefaultLayout re-adds preview after reset
       expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
     });

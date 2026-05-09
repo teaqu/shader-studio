@@ -10,7 +10,8 @@
   } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
   import type { Transport } from "../transport/MessageTransport";
-  import { layoutStore, type PersistedLayoutState } from "../stores/layoutStore";
+  import { setCurrentLayout, getPendingRestore, clearPendingRestore } from "../state/layoutState.svelte";
+  import { scheduleProfileSave } from "../state/profileStore.svelte";
 
   const dispatch = createEventDispatcher<{
     ready: { api: DockviewApi; resetLayout: () => void; showPreview: () => void };
@@ -30,7 +31,6 @@
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
     transport?: Transport | null;
-    layoutSlot?: string | null;
   }
 
   let {
@@ -42,47 +42,16 @@
     showConfigPanel = false,
     showPerformancePanel = false,
     transport = null as Transport | null,
-    layoutSlot = null as string | null,
   }: Props = $props();
 
   let containerEl: HTMLElement;
   let api: DockviewApi | null = null;
-  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  let apiReady = $state(false);
   let layoutReady = $state(false);
   let programmaticRemoval = false;
   let isDestroying = false;
   let lastPreviewAlone: boolean | null = null;
-  let requestedLayoutSlot: string | null = null;
-  let restoredLayoutSlot: string | null = null;
   const panelSnapshots = new Map<string, SerializedDockview>();
-
-  function getPersistedState(activeLayout: SerializedDockview | null): PersistedLayoutState {
-    return {
-      activeLayout,
-      panelSnapshots: Object.fromEntries(panelSnapshots.entries()),
-    };
-  }
-
-  function persistState(activeLayout: SerializedDockview | null) {
-    if (!layoutSlot) {
-      return;
-    }
-    const state = getPersistedState(activeLayout);
-    layoutStore.save(layoutSlot, state);
-    if (transport) {
-      transport.postMessage({
-        type: "saveLayout",
-        payload: { layoutSlot, state },
-      });
-    }
-  }
-
-  function hydrateSnapshots(state: PersistedLayoutState | null) {
-    panelSnapshots.clear();
-    for (const [panelId, snapshot] of Object.entries(state?.panelSnapshots ?? {})) {
-      panelSnapshots.set(panelId, snapshot);
-    }
-  }
 
   function checkPreviewAlone() {
     if (!api) {
@@ -488,32 +457,12 @@
   }
 
   function resetLayout() {
-    if (!api || !layoutSlot) {
+    if (!api) {
       return;
     }
     panelSnapshots.clear();
-    layoutStore.clear(layoutSlot);
-    if (transport) {
-      transport.postMessage({ type: "saveLayout", payload: { layoutSlot, state: null } });
-    }
     api.clear();
     createDefaultLayout();
-  }
-
-  function saveLayout() {
-    if (!api || !layoutSlot) {
-      return;
-    }
-    const serialized = api.toJSON();
-    console.log("[DockviewLayout] saveLayout called, groups:", Array.isArray(serialized?.grid?.root?.data) ? serialized.grid.root.data.length : "unknown");
-    persistState(serialized);
-  }
-
-  function scheduleLayoutSave() {
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-    }
-    saveTimeout = setTimeout(saveLayout, 500);
   }
 
   function restoreFromData(data: SerializedDockview) {
@@ -548,46 +497,6 @@
 
   function isRestorableLayout(data: SerializedDockview | null | undefined): data is SerializedDockview {
     return !!data?.panels && Object.keys(data.panels).length > 0;
-  }
-
-  function restoreFromState(state: PersistedLayoutState | null) {
-    hydrateSnapshots(state);
-    if (isRestorableLayout(state?.activeLayout)) {
-      restoreFromData(state.activeLayout);
-    } else {
-      createDefaultLayout();
-      layoutReady = true;
-    }
-    restoredLayoutSlot = layoutSlot;
-  }
-
-  function requestInitialLayoutIfReady() {
-    if (!api || layoutReady || !layoutSlot) {
-      return;
-    }
-
-    if (transport) {
-      if (requestedLayoutSlot === layoutSlot) {
-        return;
-      }
-      console.log("[DockviewLayout] sending requestLayout for slot", layoutSlot);
-      transport.postMessage({ type: "requestLayout", payload: { layoutSlot } });
-      requestedLayoutSlot = layoutSlot;
-      return;
-    }
-
-    if (restoredLayoutSlot === layoutSlot) {
-      return;
-    }
-    const savedState = layoutStore.load(layoutSlot);
-    if (savedState) {
-      restoreFromState(savedState);
-    } else {
-      hydrateSnapshots(null);
-      createDefaultLayout();
-      layoutReady = true;
-      restoredLayoutSlot = layoutSlot;
-    }
   }
 
   // Force-read reactive deps before conditions to ensure they are tracked
@@ -629,10 +538,12 @@
   });
 
   $effect(() => {
-    const _slot = layoutSlot;
-    const _ready = layoutReady;
-    if (api && !_ready && _slot) {
-      requestInitialLayoutIfReady();
+    // apiReady is a reactive dep that ensures this effect re-runs after onMount sets up api.
+    const _ready = apiReady;
+    const pending = getPendingRestore();
+    if (pending && _ready && api) {
+      api.fromJSON(pending as any); // SerializedLayout is Record<string,unknown>; dockview expects SerializedDockview
+      clearPendingRestore();
     }
   });
 
@@ -649,44 +560,16 @@
       disableFloatingGroups: true,
     });
 
-    if (transport) {
-      console.log("[DockviewLayout] transport available, registering restoreLayout handler");
-      transport.onMessage((event: MessageEvent) => {
-        if (event.data.type === "restoreLayout") {
-          const restoreLayoutSlot = event.data.payload?.layoutSlot ?? null;
-          const restoreState = event.data.payload?.state ?? null;
-          console.log("[DockviewLayout] restoreLayout received, payload:", restoreState ? "present" : "null", "slot:", restoreLayoutSlot, "api:", !!api, "layoutReady:", layoutReady);
-          if (api && !layoutReady) {
-            if (restoreLayoutSlot && layoutSlot && restoreLayoutSlot !== layoutSlot) {
-              return;
-            }
-            if (restoreState) {
-              restoreFromState(restoreState);
-            } else {
-              const localState = layoutSlot ? layoutStore.load(layoutSlot) : null;
-              console.log("[DockviewLayout] no extension layout, localStorage:", localState ? "found" : "empty");
-              if (localState) {
-                restoreFromState(localState);
-              } else {
-                hydrateSnapshots(null);
-                console.log("[DockviewLayout] creating default layout");
-                createDefaultLayout();
-                layoutReady = true;
-                restoredLayoutSlot = layoutSlot;
-              }
-            }
-          }
-        }
-      });
-    }
-
-    requestInitialLayoutIfReady();
+    apiReady = true;
+    createDefaultLayout();
+    layoutReady = true;
 
     api.onDidLayoutChange(() => {
       if (layoutReady) {
         internalDragActive = false;
         setDragActive(false);
-        scheduleLayoutSave();
+        setCurrentLayout(api!.toJSON());
+        scheduleProfileSave();
         checkPreviewAlone();
       }
     });
@@ -733,10 +616,6 @@
 
   onDestroy(() => {
     isDestroying = true;
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-      saveLayout();
-    }
     document.removeEventListener("pointerdown", handlePointerDown, true);
     document.removeEventListener("pointerup", handlePointerUp, true);
     clearTimeout(sashHoverTimer);
