@@ -1,34 +1,27 @@
-import { createSlotPersistedStore } from "./createSlotPersistedStore";
+import { writable } from 'svelte/store';
 
 export interface ConfigPanelState {
   isVisible: boolean;
 }
 
-const STORAGE_KEY = "shader-studio-config-panel-state";
 const DEFAULT_STATE: ConfigPanelState = { isVisible: false };
 
-function createConfigPanelStore() {
-  // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
-  const store = createSlotPersistedStore<ConfigPanelState>({
-    storageKey: STORAGE_KEY,
-    defaultState: DEFAULT_STATE,
-    loadErrorMessage: "Failed to restore config panel state from localStorage:",
-    saveErrorMessage: "Failed to save config panel state to localStorage:",
-    parseStoredState: (parsed, defaultState) => {
-      const state = parsed as Partial<ConfigPanelState> | null;
-      return state?.isVisible ? { isVisible: true } : defaultState;
-    },
-  });
+const _store = writable<ConfigPanelState>(DEFAULT_STATE);
 
-  return {
-    subscribe: store.subscribe,
-    setLayoutSlot: store.setLayoutSlot,
-    toggle: () =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
-    setVisible: (visible: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
-    restoreFromStorage: store.restoreFromStorage,
-  };
+export const configPanelStore = {
+  subscribe: _store.subscribe,
+  toggle: () => _store.update(s => ({ ...s, isVisible: !s.isVisible })),
+  setVisible: (visible: boolean) => _store.update(s => ({ ...s, isVisible: visible })),
+};
+
+export function snapshotConfigPanel(): ConfigPanelState {
+  let state = DEFAULT_STATE;
+  _store.subscribe(s => {
+    state = s; 
+  })();
+  return state;
 }
 
-export const configPanelStore = createConfigPanelStore();
+export function applyConfigPanelProfile(data: ConfigPanelState): void {
+  _store.set(data);
+}

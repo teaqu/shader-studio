@@ -272,9 +272,6 @@
 
   // Subscribe to config/debug panel stores
   onMount(() => {
-    configPanelStore.setLayoutSlot(layoutSlot);
-    debugPanelStore.setLayoutSlot(layoutSlot);
-    performancePanelStore.setLayoutSlot(layoutSlot);
     setEditorOverlayLayoutSlot(layoutSlot);
 
     const unsubConfig = configPanelStore.subscribe((state) => {
@@ -652,9 +649,6 @@
     if (!locked || lockedPath === event.data.path) {
       const isFirstShader = !hasShader && event.data.path;
       if (isFirstShader) {
-        configPanelStore.restoreFromStorage();
-        debugPanelStore.restoreFromStorage();
-        performancePanelStore.restoreFromStorage();
         restoreEditorOverlayFromStorage();
       }
       const prevShaderPath = shaderPath;

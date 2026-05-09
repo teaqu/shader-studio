@@ -28,3 +28,16 @@ export function toggleTheme() {
 if (typeof document !== 'undefined') {
   applyTheme(defaultTheme);
 }
+
+export function snapshotTheme(): Theme {
+  let theme: Theme = 'dark';
+  currentTheme.subscribe(t => {
+    theme = t; 
+  })();
+  return theme;
+}
+
+export function applyThemeProfile(theme: Theme): void {
+  applyTheme(theme);
+  currentTheme.set(theme);
+}

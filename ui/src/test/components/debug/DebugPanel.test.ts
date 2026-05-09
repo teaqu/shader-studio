@@ -102,7 +102,6 @@ function createMockVariableCaptureManager() {
 describe('DebugPanel', () => {
   beforeEach(() => {
     resetVariablePreview();
-    debugPanelStore.setLayoutSlot('test');
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setErrorsEnabled(false);

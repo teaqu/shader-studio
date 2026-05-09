@@ -1,33 +1,26 @@
-import { createSlotPersistedStore } from "./createSlotPersistedStore";
+import { writable } from 'svelte/store';
 
 export interface PerformancePanelState {
   isVisible: boolean;
 }
 
-const STORAGE_KEY = "shader-studio-performance-panel-state";
 const DEFAULT_STATE: PerformancePanelState = { isVisible: false };
+const _store = writable<PerformancePanelState>(DEFAULT_STATE);
 
-function createPerformancePanelStore() {
-  const store = createSlotPersistedStore<PerformancePanelState>({
-    storageKey: STORAGE_KEY,
-    defaultState: DEFAULT_STATE,
-    loadErrorMessage: "Failed to restore performance panel state from localStorage:",
-    saveErrorMessage: "Failed to save performance panel state to localStorage:",
-    parseStoredState: (parsed, defaultState) => {
-      const state = parsed as Partial<PerformancePanelState> | null;
-      return state?.isVisible ? { isVisible: true } : defaultState;
-    },
-  });
+export const performancePanelStore = {
+  subscribe: _store.subscribe,
+  toggle: () => _store.update(s => ({ ...s, isVisible: !s.isVisible })),
+  setVisible: (visible: boolean) => _store.update(s => ({ ...s, isVisible: visible })),
+};
 
-  return {
-    subscribe: store.subscribe,
-    setLayoutSlot: store.setLayoutSlot,
-    toggle: () =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
-    setVisible: (visible: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
-    restoreFromStorage: store.restoreFromStorage,
-  };
+export function snapshotPerformancePanel(): PerformancePanelState {
+  let state = DEFAULT_STATE;
+  _store.subscribe(s => {
+    state = s; 
+  })();
+  return state;
 }
 
-export const performancePanelStore = createPerformancePanelStore();
+export function applyPerformancePanelProfile(data: PerformancePanelState): void {
+  _store.set(data);
+}

@@ -1857,16 +1857,16 @@ describe('ShaderViewer', () => {
     expect(inspectorButton2.classList.contains('active')).toBe(true);
   });
 
-  it('should restore persisted variable inspector state when a shader loads', async () => {
-    localStorage.setItem(
-      'shader-studio-debug-panel-state:vscode:1',
-      JSON.stringify({
-        isVisible: false,
-        isVariableInspectorEnabled: true,
-        isInlineRenderingEnabled: true,
-        isPixelInspectorEnabled: true,
-      }),
-    );
+  it('should reflect variable inspector state set via applyDebugPanelProfile', async () => {
+    // Profiles are now applied explicitly by profileStore, not auto-restored from localStorage.
+    // Verify that applying a profile before render is reflected in the UI.
+    const { applyDebugPanelProfile } = await import('../../lib/stores/debugPanelStore');
+    applyDebugPanelProfile({
+      isVisible: false,
+      isVariableInspectorEnabled: true,
+      isInlineRenderingEnabled: true,
+      isPixelInspectorEnabled: true,
+    });
 
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
@@ -1901,9 +1901,6 @@ describe('ShaderViewer', () => {
       await tick();
     }
     expect(varInspectorButton.classList.contains('active')).toBe(true);
-    expect(
-      localStorage.getItem('shader-studio-debug-panel-state:vscode:1'),
-    ).toContain('"isVariableInspectorEnabled":true');
 
     first.unmount();
     vi.clearAllMocks();

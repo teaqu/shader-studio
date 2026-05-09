@@ -4,8 +4,8 @@ import { get } from 'svelte/store';
 const STORAGE_KEY = 'shader-studio-theme';
 
 async function createFreshStore() {
-  const { currentTheme, applyTheme, toggleTheme } = await import('../../lib/stores/themeStore');
-  return { currentTheme, applyTheme, toggleTheme };
+  const { currentTheme, applyTheme, toggleTheme, snapshotTheme, applyThemeProfile } = await import('../../lib/stores/themeStore');
+  return { currentTheme, applyTheme, toggleTheme, snapshotTheme, applyThemeProfile };
 }
 
 describe('themeStore', () => {
@@ -108,6 +108,53 @@ describe('themeStore', () => {
       toggleTheme();
       unsubscribe();
       expect(values).toEqual(['light', 'dark', 'light']);
+    });
+  });
+
+  describe('snapshotTheme', () => {
+    it('returns current theme value', async () => {
+      const { snapshotTheme } = await createFreshStore();
+      expect(snapshotTheme()).toBe('light');
+    });
+
+    it('returns dark after toggling', async () => {
+      const { toggleTheme, snapshotTheme } = await createFreshStore();
+      toggleTheme();
+      expect(snapshotTheme()).toBe('dark');
+    });
+
+    it('returns saved theme from localStorage', async () => {
+      localStorage.setItem(STORAGE_KEY, 'dark');
+      const { snapshotTheme } = await createFreshStore();
+      expect(snapshotTheme()).toBe('dark');
+    });
+  });
+
+  describe('applyThemeProfile', () => {
+    it('sets the theme store to the given value', async () => {
+      const { currentTheme, applyThemeProfile } = await createFreshStore();
+      applyThemeProfile('dark');
+      expect(get(currentTheme)).toBe('dark');
+    });
+
+    it('applies data-theme attribute to document', async () => {
+      const { applyThemeProfile } = await createFreshStore();
+      applyThemeProfile('dark');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    });
+
+    it('persists theme to localStorage', async () => {
+      const { applyThemeProfile } = await createFreshStore();
+      applyThemeProfile('dark');
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('dark');
+    });
+
+    it('can switch back to light', async () => {
+      const { currentTheme, applyThemeProfile } = await createFreshStore();
+      applyThemeProfile('dark');
+      applyThemeProfile('light');
+      expect(get(currentTheme)).toBe('light');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     });
   });
 });

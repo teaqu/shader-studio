@@ -1,4 +1,4 @@
-import { createSlotPersistedStore } from "./createSlotPersistedStore";
+import { writable } from 'svelte/store';
 
 export interface DebugPanelState {
   isVisible: boolean;
@@ -8,7 +8,6 @@ export interface DebugPanelState {
   isErrorsEnabled: boolean;
 }
 
-const STORAGE_KEY = "shader-studio-debug-panel-state";
 const DEFAULT_STATE: DebugPanelState = {
   isVisible: false,
   isVariableInspectorEnabled: false,
@@ -17,42 +16,30 @@ const DEFAULT_STATE: DebugPanelState = {
   isErrorsEnabled: false,
 };
 
-function createDebugPanelStore() {
-  // Start hidden — restoreFromStorage() applies the saved preference once a shader loads
-  const store = createSlotPersistedStore<DebugPanelState>({
-    storageKey: STORAGE_KEY,
-    defaultState: DEFAULT_STATE,
-    loadErrorMessage: "Failed to restore debug panel state from localStorage:",
-    saveErrorMessage: "Failed to save debug panel state to localStorage:",
-    parseStoredState: (parsed, defaultState) => {
-      const state = parsed as Partial<DebugPanelState> | null;
-      return {
-        isVisible: state?.isVisible ?? defaultState.isVisible,
-        isVariableInspectorEnabled: state?.isVariableInspectorEnabled ?? defaultState.isVariableInspectorEnabled,
-        isInlineRenderingEnabled: state?.isInlineRenderingEnabled ?? defaultState.isInlineRenderingEnabled,
-        isPixelInspectorEnabled: state?.isPixelInspectorEnabled ?? defaultState.isPixelInspectorEnabled,
-        isErrorsEnabled: state?.isErrorsEnabled ?? defaultState.isErrorsEnabled,
-      };
-    },
-  });
+const _store = writable<DebugPanelState>(DEFAULT_STATE);
 
-  return {
-    subscribe: store.subscribe,
-    setLayoutSlot: store.setLayoutSlot,
-    toggle: () =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: !state.isVisible })),
-    setVisible: (visible: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isVisible: visible })),
-    restoreFromStorage: store.restoreFromStorage,
-    setVariableInspectorEnabled: (enabled: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isVariableInspectorEnabled: enabled })),
-    setInlineRenderingEnabled: (enabled: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isInlineRenderingEnabled: enabled })),
-    setPixelInspectorEnabled: (enabled: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isPixelInspectorEnabled: enabled })),
-    setErrorsEnabled: (enabled: boolean) =>
-      store.updateAndPersist((state) => ({ ...state, isErrorsEnabled: enabled })),
-  };
+export const debugPanelStore = {
+  subscribe: _store.subscribe,
+  toggle: () => _store.update(s => ({ ...s, isVisible: !s.isVisible })),
+  setVisible: (visible: boolean) => _store.update(s => ({ ...s, isVisible: visible })),
+  setVariableInspectorEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isVariableInspectorEnabled: enabled })),
+  setInlineRenderingEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isInlineRenderingEnabled: enabled })),
+  setPixelInspectorEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isPixelInspectorEnabled: enabled })),
+  setErrorsEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isErrorsEnabled: enabled })),
+};
+
+export function snapshotDebugPanel(): DebugPanelState {
+  let state = DEFAULT_STATE;
+  _store.subscribe(s => {
+    state = s;
+  })();
+  return state;
 }
 
-export const debugPanelStore = createDebugPanelStore();
+export function applyDebugPanelProfile(data: DebugPanelState): void {
+  _store.set(data);
+}

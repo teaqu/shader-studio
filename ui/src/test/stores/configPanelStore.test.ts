@@ -2,108 +2,59 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 describe('configPanelStore', () => {
-  const SLOT_KEY = 'shader-studio-config-panel-state:vscode:1';
-  const OTHER_SLOT_KEY = 'shader-studio-config-panel-state:vscode:2';
-
   beforeEach(() => {
-    localStorage.clear();
     vi.resetModules();
   });
 
   async function importStore() {
     const mod = await import('../../lib/stores/configPanelStore');
-    return mod.configPanelStore;
+    return mod;
   }
 
-  it('should have default initial state when localStorage is empty', async () => {
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    const state = get(store);
-    expect(state.isVisible).toBe(false);
+  it('should have default initial state (isVisible false)', async () => {
+    const { configPanelStore } = await importStore();
+    expect(get(configPanelStore).isVisible).toBe(false);
   });
 
-  it('should not restore from localStorage on creation (deferred restore)', async () => {
-    localStorage.setItem(SLOT_KEY, JSON.stringify({
-      isVisible: true,
-    }));
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    const state = get(store);
-    expect(state.isVisible).toBe(false);
+  it('toggle flips visibility', async () => {
+    const { configPanelStore } = await importStore();
+    configPanelStore.setVisible(false);
+    configPanelStore.toggle();
+    expect(get(configPanelStore).isVisible).toBe(true);
+    configPanelStore.toggle();
+    expect(get(configPanelStore).isVisible).toBe(false);
   });
 
-  it('restoreFromStorage should apply saved state', async () => {
-    localStorage.setItem(SLOT_KEY, JSON.stringify({
-      isVisible: true,
-    }));
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    store.restoreFromStorage();
-    expect(get(store).isVisible).toBe(true);
+  it('setVisible sets visibility directly', async () => {
+    const { configPanelStore } = await importStore();
+    configPanelStore.setVisible(true);
+    expect(get(configPanelStore).isVisible).toBe(true);
+    configPanelStore.setVisible(false);
+    expect(get(configPanelStore).isVisible).toBe(false);
   });
 
-  it('restoreFromStorage should handle invalid localStorage gracefully', async () => {
-    localStorage.setItem(SLOT_KEY, 'not-json');
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    store.restoreFromStorage();
-    expect(get(store).isVisible).toBe(false);
+  it('snapshotConfigPanel returns current state', async () => {
+    const { configPanelStore, snapshotConfigPanel } = await importStore();
+    configPanelStore.setVisible(true);
+    expect(snapshotConfigPanel()).toEqual({ isVisible: true });
   });
 
-  it('should fall back to defaults on invalid localStorage', async () => {
-    localStorage.setItem(SLOT_KEY, 'not-json');
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    const state = get(store);
-    expect(state.isVisible).toBe(false);
+  it('snapshotConfigPanel returns false when hidden', async () => {
+    const { configPanelStore, snapshotConfigPanel } = await importStore();
+    configPanelStore.setVisible(false);
+    expect(snapshotConfigPanel()).toEqual({ isVisible: false });
   });
 
-  it('toggle should flip isVisible', async () => {
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    expect(get(store).isVisible).toBe(false);
-    store.toggle();
-    expect(get(store).isVisible).toBe(true);
-    store.toggle();
-    expect(get(store).isVisible).toBe(false);
+  it('applyConfigPanelProfile sets state from profile data', async () => {
+    const { configPanelStore, applyConfigPanelProfile } = await importStore();
+    applyConfigPanelProfile({ isVisible: true });
+    expect(get(configPanelStore).isVisible).toBe(true);
   });
 
-  it('toggle should persist to localStorage', async () => {
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    store.toggle();
-    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
-    expect(stored.isVisible).toBe(true);
-  });
-
-  it('setVisible should set visibility directly', async () => {
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    store.setVisible(true);
-    expect(get(store).isVisible).toBe(true);
-    store.setVisible(false);
-    expect(get(store).isVisible).toBe(false);
-  });
-
-  it('setVisible should persist to localStorage', async () => {
-    const store = await importStore();
-    store.setLayoutSlot('vscode:1');
-    store.setVisible(true);
-    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
-    expect(stored.isVisible).toBe(true);
-  });
-
-  it('restores state independently per slot', async () => {
-    localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true }));
-    localStorage.setItem(OTHER_SLOT_KEY, JSON.stringify({ isVisible: false }));
-    const store = await importStore();
-
-    store.setLayoutSlot('vscode:1');
-    store.restoreFromStorage();
-    expect(get(store).isVisible).toBe(true);
-
-    store.setLayoutSlot('vscode:2');
-    store.restoreFromStorage();
-    expect(get(store).isVisible).toBe(false);
+  it('applyConfigPanelProfile can set isVisible false', async () => {
+    const { configPanelStore, applyConfigPanelProfile } = await importStore();
+    configPanelStore.setVisible(true);
+    applyConfigPanelProfile({ isVisible: false });
+    expect(get(configPanelStore).isVisible).toBe(false);
   });
 });
