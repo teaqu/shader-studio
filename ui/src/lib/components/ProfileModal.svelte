@@ -127,71 +127,76 @@
 <style>
   .modal-backdrop {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.4);
     display: flex; align-items: center; justify-content: center;
     z-index: 1000;
   }
   .modal {
-    background: var(--editor-background, #252525);
-    border: 1px solid var(--border-color, rgba(128,128,128,0.3));
-    border-radius: 8px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+    border-radius: 4px;
     width: 360px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     overflow: hidden;
   }
   .modal-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color, rgba(128,128,128,0.3));
+    border-bottom: 1px solid var(--vscode-panel-border);
   }
-  .modal-title { font-weight: bold; font-size: 13px; }
+  .modal-title { font-weight: 600; font-size: 13px; color: var(--vscode-editor-foreground); }
   .close-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--foreground, #ccc); font-size: 16px; line-height: 1; padding: 0;
+    color: var(--vscode-editor-foreground); font-size: 16px; line-height: 1; padding: 0;
+    opacity: 0.7;
   }
-  .profile-list { padding: 6px 0; }
+  .close-btn:hover { opacity: 1; }
+  .profile-list { padding: 4px 0; }
   .profile-row {
     display: flex; align-items: center; gap: 6px;
-    padding: 6px 14px;
+    padding: 5px 12px;
   }
-  .profile-row.active { background: rgba(74,138,224,0.15); }
-  .check-col { width: 16px; text-align: center; flex-shrink: 0; }
+  .profile-row:hover { background: var(--vscode-list-hoverBackground); }
+  .profile-row.active { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground)); }
+  .check-col { width: 16px; text-align: center; flex-shrink: 0; color: var(--vscode-editor-foreground); }
   .profile-name-btn {
     flex: 1; background: none; border: none; text-align: left;
-    cursor: pointer; color: var(--foreground, #ccc); font-size: 12px; padding: 0;
+    cursor: pointer; color: var(--vscode-editor-foreground); font-size: 12px; padding: 0;
   }
   .profile-row.active .profile-name-btn { cursor: default; }
   .rename-input {
     flex: 1; font-size: 12px; padding: 2px 6px;
-    background: var(--input-background, #111);
-    border: 1px solid var(--focus-border, #4a8ae0);
-    border-radius: 3px; color: var(--foreground, #eee); outline: none;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 2px; color: var(--vscode-input-foreground); outline: none;
   }
-  .rename-hint { font-size: 10px; color: var(--foreground, #666); opacity: 0.5; white-space: nowrap; }
+  .rename-hint { font-size: 10px; color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)); opacity: 0.6; white-space: nowrap; }
   .icon-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--foreground, #888); padding: 2px 4px; border-radius: 3px;
-    opacity: 0.6; display: flex; align-items: center;
+    color: var(--vscode-editor-foreground); padding: 2px 4px; border-radius: 2px;
+    opacity: 0.5; display: flex; align-items: center;
   }
-  .icon-btn:hover { opacity: 1; }
-  .delete-btn:hover { color: #e05; }
+  .icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+  .delete-btn:hover { color: var(--vscode-errorForeground, #f44); opacity: 1; }
   .icon-btn:disabled { opacity: 0.2; cursor: not-allowed; }
   .modal-footer {
-    border-top: 1px solid var(--border-color, rgba(128,128,128,0.3));
-    padding: 10px 14px;
+    border-top: 1px solid var(--vscode-panel-border);
+    padding: 10px 12px;
   }
-  .footer-label { font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .footer-label { font-size: 10px; color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)); opacity: 0.6; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
   .footer-row { display: flex; gap: 8px; }
   .new-profile-input {
-    flex: 1; font-size: 12px; padding: 5px 8px;
-    background: var(--input-background, #1a1a1a);
-    border: 1px solid var(--border-color, #3a3a3a);
-    border-radius: 4px; color: var(--foreground, #eee); outline: none;
+    flex: 1; font-size: 12px; padding: 4px 8px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 2px; color: var(--vscode-input-foreground); outline: none;
   }
+  .new-profile-input:focus { border-color: var(--vscode-focusBorder); }
   .save-btn {
-    background: var(--button-background, #2d5a8e);
-    border: none; color: #fff; cursor: pointer;
-    font-size: 12px; padding: 5px 14px; border-radius: 4px;
+    background: var(--vscode-button-background);
+    border: 1px solid transparent; color: var(--vscode-button-foreground); cursor: pointer;
+    font-size: 12px; padding: 4px 14px; border-radius: 2px;
   }
+  .save-btn:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
