@@ -46,12 +46,76 @@
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { AspectRatioMode, ShaderConfig } from "@shader-studio/types";
-  import { allocateWebLayoutSlot, getInjectedLayoutSlot, releaseWebLayoutSlot } from "../util/layoutSlot";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
+
+  // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
+  const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
+  const WEB_SLOT_CLAIMS_KEY = "shader-studio.web-layout-claims";
+  const WEB_SLOT_STALE_MS = 5 * 60 * 1000;
+
+  function readSlotClaims(): Record<string, number> {
+    try {
+      const raw = localStorage.getItem(WEB_SLOT_CLAIMS_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeSlotClaims(claims: Record<string, number>): void {
+    try {
+      localStorage.setItem(WEB_SLOT_CLAIMS_KEY, JSON.stringify(claims)); 
+    } catch { /* best-effort */ }
+  }
+
+  function getInjectedLayoutSlot(): string | null {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    return document.querySelector('meta[name="shader-studio-layout-slot"]')?.getAttribute("content") ?? null;
+  }
+
+  function allocateWebLayoutSlot(): string {
+    if (typeof window === "undefined") {
+      return "web:1";
+    }
+    const now = Date.now();
+    const existing = sessionStorage.getItem(WEB_SLOT_SESSION_KEY);
+    const claims: Record<string, number> = Object.fromEntries(
+      Object.entries(readSlotClaims()).filter(([, ts]) => now - ts < WEB_SLOT_STALE_MS),
+    );
+    if (existing) {
+      claims[existing] = now; writeSlotClaims(claims); return existing; 
+    }
+    let i = 1;
+    while (claims[`web:${i}`]) {
+      i++;
+    }
+    const slot = `web:${i}`;
+    claims[slot] = now;
+    writeSlotClaims(claims);
+    sessionStorage.setItem(WEB_SLOT_SESSION_KEY, slot);
+    return slot;
+  }
+
+  function releaseWebLayoutSlot(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const slot = sessionStorage.getItem(WEB_SLOT_SESSION_KEY);
+    if (!slot) {
+      return;
+    }
+    const claims = readSlotClaims();
+    delete claims[slot];
+    writeSlotClaims(claims);
+    sessionStorage.removeItem(WEB_SLOT_SESSION_KEY);
+  }
+  // --- end slot helpers ---
 
   let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
 

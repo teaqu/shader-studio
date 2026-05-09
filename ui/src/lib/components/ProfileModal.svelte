@@ -24,22 +24,30 @@
     renamingId = null;
   }
 
-  function cancelRename() { renamingId = null; }
+  function cancelRename() {
+    renamingId = null; 
+  }
 
   async function handleSaveAs() {
     const name = newProfileName.trim();
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     await saveAs(name);
     newProfileName = '';
   }
 
   async function handleDelete(id: string) {
-    if (getProfileList().length <= 1) return;
+    if (getProfileList().length <= 1) {
+      return;
+    }
     await deleteProfile(id);
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onclose();
+    if (e.key === 'Escape') {
+      onclose();
+    }
   }
 </script>
 
@@ -65,7 +73,13 @@
             <input
               class="rename-input"
               bind:value={renameValue}
-              onkeydown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') cancelRename(); }}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  confirmRename();
+                } if (e.key === 'Escape') {
+                  cancelRename();
+                } 
+              }}
             />
             <span class="rename-hint">↵ save · esc cancel</span>
           {:else}
@@ -96,7 +110,11 @@
           class="new-profile-input"
           placeholder="Profile name…"
           bind:value={newProfileName}
-          onkeydown={(e) => { if (e.key === 'Enter') handleSaveAs(); }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              handleSaveAs();
+            } 
+          }}
         />
         <button class="save-btn" onclick={handleSaveAs} disabled={!newProfileName.trim()}>
           Save
