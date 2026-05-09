@@ -578,30 +578,26 @@
         {hasPixelSelected}
         hasBorderTop={isInlineOn || hasContentAboveUniforms}
       />
-    {:else}
-      <div class="section var-hint-section" class:has-border={isInlineOn}>
-        <span class="hint-text">Enable Variable Inspector to view variables</span>
+
+      <div class="section uniforms-section" class:has-border={hasContentAboveUniforms || isVarInspectorOn}>
+        <div class="section-label">Uniforms</div>
+        {#if displayedUniforms}
+          <div class="uniform-row"><span class="uniform-name">iTime</span><span class="uniform-value">{formatTime(displayedUniforms.time)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iResolution</span><span class="uniform-value">{formatVec(displayedUniforms.res)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iMouse</span><span class="uniform-value">{formatVec(displayedUniforms.mouse)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iFrame</span><span class="uniform-value">{displayedUniforms.frame}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iTimeDelta</span><span class="uniform-value">{displayedUniforms.timeDelta.toFixed(4)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{displayedUniforms.frameRate.toFixed(1)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(displayedUniforms.date)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{displayedUniforms.sampleRate}</span></div>
+          {#each customUniformEntries as [name, value], i}
+            <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
+          {/each}
+        {:else}
+          <div class="uniform-row"><span class="uniform-value">—</span></div>
+        {/if}
       </div>
     {/if}
-
-    <div class="section uniforms-section" class:has-border={hasContentAboveUniforms || isVarInspectorOn}>
-      <div class="section-label">Uniforms</div>
-      {#if displayedUniforms}
-        <div class="uniform-row"><span class="uniform-name">iTime</span><span class="uniform-value">{formatTime(displayedUniforms.time)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iResolution</span><span class="uniform-value">{formatVec(displayedUniforms.res)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iMouse</span><span class="uniform-value">{formatVec(displayedUniforms.mouse)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iFrame</span><span class="uniform-value">{displayedUniforms.frame}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iTimeDelta</span><span class="uniform-value">{displayedUniforms.timeDelta.toFixed(4)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{displayedUniforms.frameRate.toFixed(1)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(displayedUniforms.date)}</span></div>
-        <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{displayedUniforms.sampleRate}</span></div>
-        {#each customUniformEntries as [name, value], i}
-          <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
-        {/each}
-      {:else}
-        <div class="uniform-row"><span class="uniform-value">—</span></div>
-      {/if}
-    </div>
   </div>
 </div>
 
@@ -905,14 +901,6 @@
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     font-size: 12px;
-  }
-
-  .var-hint-section {
-    padding-top: 6px;
-  }
-
-  .var-hint-section.has-border {
-    border-top: 1px solid var(--vscode-panel-border);
   }
 
   .uniform-row.custom-first {

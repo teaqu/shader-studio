@@ -273,15 +273,27 @@ describe('DebugPanel', () => {
     expect(labelTexts).not.toContain('Loops');
   });
 
-  it('uniforms section always visible even when inline rendering is off', () => {
+  it('shows uniforms as part of variable inspector even when inline rendering is off', () => {
     const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isInlineRenderingEnabled: false }),
+      debugState: makeDebugState({
+        isInlineRenderingEnabled: false,
+        isVariableInspectorEnabled: true,
+      }),
       getUniforms: mockGetUniforms,
     });
 
     const sectionLabels = container.querySelectorAll('.section-label');
     const labelTexts = Array.from(sectionLabels).map(el => el.textContent);
     expect(labelTexts).toContain('Uniforms');
+  });
+
+  it('hides uniforms when variable inspector is off', () => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ isVariableInspectorEnabled: false }),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(container.querySelector('.uniforms-section')).toBeFalsy();
   });
 
   it('lock button toggles active state', async () => {
@@ -625,15 +637,15 @@ describe('DebugPanel', () => {
     expect(iterLabels[0].textContent).toBe('Iterations');
   });
 
-  it('uniforms section has no border when no loops or params above', () => {
+  it('uniforms section has border below the variable inspector', () => {
     const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ functionContext: null }),
+      debugState: makeDebugState({ functionContext: null, isVariableInspectorEnabled: true }),
       getUniforms: mockGetUniforms,
     });
 
     const uniformsSection = container.querySelector('.uniforms-section');
     expect(uniformsSection).toBeTruthy();
-    expect(uniformsSection?.classList.contains('has-border')).toBe(false);
+    expect(uniformsSection?.classList.contains('has-border')).toBe(true);
   });
 
   it('uniforms section has border when loops are above', () => {
@@ -650,7 +662,7 @@ describe('DebugPanel', () => {
     });
 
     const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ functionContext: ctx }),
+      debugState: makeDebugState({ functionContext: ctx, isVariableInspectorEnabled: true }),
       getUniforms: mockGetUniforms,
     });
 
@@ -662,7 +674,7 @@ describe('DebugPanel', () => {
     const ctx = makeFunctionContext();
 
     const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ functionContext: ctx }),
+      debugState: makeDebugState({ functionContext: ctx, isVariableInspectorEnabled: true }),
       getUniforms: mockGetUniforms,
     });
 
@@ -733,14 +745,14 @@ describe('DebugPanel', () => {
       expect(varBtn.classList.contains('active')).toBe(false);
     });
 
-    it('shows hint text when variable inspector is off', () => {
+    it('does not show variable inspector hint text when variable inspector is off', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: false }),
         getUniforms: mockGetUniforms,
       });
 
-      expect(container.querySelector('.var-hint-section')).toBeTruthy();
-      expect(container.querySelector('.hint-text')?.textContent).toContain('Enable Variable Inspector');
+      const removedHint = ['Enable', 'Variable', 'Inspector', 'to', 'view', 'variables'].join(' ');
+      expect(container.textContent).not.toContain(removedHint);
     });
 
     it('shows VariablesSection when variable inspector is on', () => {
@@ -762,14 +774,17 @@ describe('DebugPanel', () => {
       expect(container.querySelector('.variables-section')).toBeFalsy();
     });
 
-    it('uniforms has-border when variable inspector is on', () => {
+    it('places uniforms after VariablesSection when variable inspector is on', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true, functionContext: null }),
         getUniforms: mockGetUniforms,
       });
 
+      const variablesSection = container.querySelector('.variables-section');
       const uniformsSection = container.querySelector('.uniforms-section');
-      expect(uniformsSection?.classList.contains('has-border')).toBe(true);
+      expect(variablesSection).toBeTruthy();
+      expect(uniformsSection).toBeTruthy();
+      expect(variablesSection?.compareDocumentPosition(uniformsSection as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     });
   });
 
