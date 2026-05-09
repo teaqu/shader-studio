@@ -839,7 +839,7 @@
             >
               <div style="display:flex;align-items:center;gap:8px">
                 <i class="codicon codicon-layout"></i>
-                <span>Layout: {getActiveProfile()}</span>
+                <span>Layout: {getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}</span>
               </div>
               <i class="codicon codicon-chevron-right"></i>
             </button>

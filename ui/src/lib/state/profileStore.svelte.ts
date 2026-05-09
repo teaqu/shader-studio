@@ -122,10 +122,7 @@ export async function switchTo(id: string): Promise<void> {
     applyAll(data);
   }
   _activeProfile = id;
-  const index = await _adapter.readIndex();
-  if (index) {
-    await _adapter.writeIndex({ ...index, active: id });
-  }
+  await _adapter.writeIndex({ active: id, order: _profileList });
 }
 
 export async function saveAs(name: string): Promise<void> {
