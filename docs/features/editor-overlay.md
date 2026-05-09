@@ -6,6 +6,18 @@ The overlay includes editor features designed to feel similar to the VS Code edi
 
 ![Editor overlay active](../assets/images/overlay.png)
 
+## Current Limitations
+
+Search inside the editor overlay is not currently supported (except in vim mode). To search shader text while using Shader Studio, open the shader in the VS Code editor or open Shader Studio in a browser and use the browser's page search.
+
+| Key | Action |
+|-----|--------|
+| `]d` | Jump to next diagnostic/error |
+| `[d` | Jump to previous diagnostic/error |
+| `gl` | Show the hover or diagnostic at the cursor |
+
+(These commands not workign atm working but will fix eventually)
+
 ## Opening
 
 - Click the <i class="codicon codicon-code"></i> **Editor** icon in the toolbar
@@ -21,23 +33,15 @@ When your shader has multiple passes — Image, BufferA, BufferB, Common, and so
 
 If you prefer Vim keybindings, open the options menu while the overlay is enabled and select **Vim Mode**.
 
-### Vim Commands
-
-| Command | Action |
-|---------|--------|
-| `:bnext` / `:bn` | Switch to next buffer |
-| `:bprev` / `:bp` | Switch to previous buffer |
-| `:buffer name` / `:b name` | Jump to named buffer |
-| `:lnext` / `:lne` | Jump to next error |
-| `:lprev` / `:lp` | Jump to previous error |
-
-### Vim Key Mappings
+Vim mode supports the standard editing motions provided by the embedded editor, plus diagnostic navigation shortcuts:
 
 | Key | Action |
 |-----|--------|
-| `]d` | Next diagnostic/error |
-| `[d` | Previous diagnostic/error |
-| `gl` | Show hover (error tooltip) |
+| `]d` | Jump to next diagnostic/error |
+| `[d` | Jump to previous diagnostic/error |
+| `gl` | Show the hover or diagnostic at the cursor |
+
+
 
 ## Next
 

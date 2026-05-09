@@ -23,6 +23,18 @@
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
 
+  interface OverlayKeyEvent {
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+    browserEvent?: {
+      key?: string;
+      metaKey?: boolean;
+      ctrlKey?: boolean;
+      preventDefault?: () => void;
+      stopPropagation?: () => void;
+    };
+  }
+
   let {
     isVisible = false,
     shaderCode = "",
@@ -49,6 +61,8 @@
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  let vimPendingDiagnosticKey: string | null = null;
+  let vimPendingDiagnosticTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -71,21 +85,30 @@
       return;
     }
 
+    const setStatusText = (text: string) => {
+      const modeNode = statusBarEl?.firstElementChild;
+      if (modeNode) {
+        modeNode.textContent = text;
+        return;
+      }
+      statusBarEl.textContent = text;
+    };
+
     switch (mode) {
       case "insert":
-        statusBarEl.textContent = "-- INSERT --";
+        setStatusText("-- INSERT --");
         break;
       case "visual":
-        statusBarEl.textContent = "-- VISUAL --";
+        setStatusText("-- VISUAL --");
         break;
       case "visualblock":
-        statusBarEl.textContent = "-- VISUAL BLOCK --";
+        setStatusText("-- VISUAL BLOCK --");
         break;
       case "replace":
-        statusBarEl.textContent = "-- REPLACE --";
+        setStatusText("-- REPLACE --");
         break;
       default:
-        statusBarEl.textContent = "-- NORMAL --";
+        setStatusText("-- NORMAL --");
         break;
     }
   }
@@ -128,6 +151,76 @@
       return false;
     }
     return editor.hasTextFocus();
+  }
+
+  function runEditorAction(actionId: string, args?: unknown) {
+    editor?.getAction(actionId)?.run(args);
+  }
+
+  function clearPendingVimDiagnosticKey() {
+    vimPendingDiagnosticKey = null;
+    if (vimPendingDiagnosticTimer) {
+      clearTimeout(vimPendingDiagnosticTimer);
+      vimPendingDiagnosticTimer = null;
+    }
+  }
+
+  function setPendingVimDiagnosticKey(key: string) {
+    clearPendingVimDiagnosticKey();
+    vimPendingDiagnosticKey = key;
+    vimPendingDiagnosticTimer = setTimeout(() => {
+      vimPendingDiagnosticKey = null;
+      vimPendingDiagnosticTimer = null;
+    }, 1000);
+  }
+
+  function stopKeyEvent(event: OverlayKeyEvent) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.browserEvent?.preventDefault?.();
+    event.browserEvent?.stopPropagation?.();
+  }
+
+  function handleVimDiagnosticKeySequence(key: string | undefined, event: OverlayKeyEvent): boolean {
+    if (
+      !key
+      || vimCurrentMode !== "normal"
+      || !vimModeInstance?.state?.vim
+      || vimModeInstance.state.vim.inputState?.operator
+    ) {
+      clearPendingVimDiagnosticKey();
+      return false;
+    }
+
+    if (vimPendingDiagnosticKey) {
+      const sequence = `${vimPendingDiagnosticKey}${key}`;
+      clearPendingVimDiagnosticKey();
+
+      if (sequence === "]d") {
+        stopKeyEvent(event);
+        runEditorAction("editor.action.marker.next");
+        return true;
+      }
+
+      if (sequence === "[d") {
+        stopKeyEvent(event);
+        runEditorAction("editor.action.marker.prev");
+        return true;
+      }
+
+      if (sequence === "gl") {
+        stopKeyEvent(event);
+        runEditorAction("editor.action.showHover", { focus: true });
+        return true;
+      }
+    }
+
+    if (key === "]" || key === "[" || key === "g") {
+      setPendingVimDiagnosticKey(key);
+      return false;
+    }
+
+    return false;
   }
 
   function switchToNextBuffer() {
@@ -175,20 +268,20 @@
         }
       });
       vim.defineEx('lnext', 'lne', () => {
-        editor?.getAction('editor.action.marker.next')?.run();
+        runEditorAction('editor.action.marker.next');
       });
       vim.defineEx('lprev', 'lp', () => {
-        editor?.getAction('editor.action.marker.prev')?.run();
+        runEditorAction('editor.action.marker.prev');
       });
 
       vim.defineAction('nextDiagnostic', () => {
-        editor?.trigger('vim', 'editor.action.marker.next', null);
+        runEditorAction('editor.action.marker.next');
       });
       vim.defineAction('prevDiagnostic', () => {
-        editor?.trigger('vim', 'editor.action.marker.prev', null);
+        runEditorAction('editor.action.marker.prev');
       });
       vim.defineAction('showHover', () => {
-        editor?.trigger('vim', 'editor.action.showHover', null);
+        runEditorAction('editor.action.showHover', { focus: true });
       });
 
       vim.mapCommand(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
@@ -354,7 +447,7 @@
       lineNumbersMinChars: 4,
       scrollBeyondLastLine: false,
       contextmenu: false,
-      fixedOverflowWidgets: true,
+      fixedOverflowWidgets: false,
       readOnly: false,
       domReadOnly: false,
       editContext: false,
@@ -375,14 +468,17 @@
       editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
     }
 
-    editor.onKeyDown?.((event: any) => {
+    editor.onKeyDown?.((event: OverlayKeyEvent) => {
       const browserKey = event.browserEvent?.key;
       const metaKey = !!event.browserEvent?.metaKey;
       const ctrlKey = !!event.browserEvent?.ctrlKey;
 
+      if (handleVimDiagnosticKeySequence(browserKey, event)) {
+        return;
+      }
+
       if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
-        event.browserEvent?.preventDefault?.();
-        event.browserEvent?.stopPropagation?.();
+        stopKeyEvent(event);
         handleOverlaySave();
         return;
       }
@@ -479,6 +575,7 @@
       clearTimeout(cursorChangeTimer);
       cursorChangeTimer = null;
     }
+    clearPendingVimDiagnosticKey();
     if (cursorChangeDisposable) {
       cursorChangeDisposable.dispose();
       cursorChangeDisposable = null;
@@ -547,14 +644,19 @@
       return;
     }
 
-    const bufferPrefix = activeBufferName === "Image" ? "Image" : activeBufferName;
+    const activeBufferKey = activeBufferName.trim().toLowerCase();
     const markers: monaco.editor.IMarkerData[] = [];
 
     for (const err of errs) {
-      const match = err.match(new RegExp(`^${bufferPrefix}: ERROR: 0:(\\d+):\\s*(.+)`, 's'));
+      const match = err.match(/^(?:(.+?):\s*)?ERROR:\s*\d+:(\d+):\s*(.+)$/s);
       if (match) {
-        const line = parseInt(match[1], 10);
-        const message = match[2].trim();
+        const [, passName, lineNumber, diagnostic] = match;
+        if (passName && passName.trim().toLowerCase() !== activeBufferKey) {
+          continue;
+        }
+
+        const line = parseInt(lineNumber, 10);
+        const message = diagnostic.trim();
         markers.push({
           severity: monaco.MarkerSeverity.Error,
           startLineNumber: line,

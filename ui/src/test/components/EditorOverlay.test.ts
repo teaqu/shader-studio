@@ -214,6 +214,7 @@ describe('EditorOverlay', () => {
       expect(createCall?.[1]).toMatchObject({
         domReadOnly: false,
         editContext: false,
+        fixedOverflowWidgets: false,
         occurrencesHighlight: 'off',
         padding: { top: 0 },
         readOnly: false,
@@ -681,7 +682,7 @@ describe('EditorOverlay', () => {
       expect(vim.mapCommand).toHaveBeenCalledWith('gl', 'action', 'showHover', {}, { context: 'normal' });
     });
 
-    it('should invoke editor.trigger for vim actions', async () => {
+    it('should run editor actions for vim diagnostic and hover actions', async () => {
       const { VimMode } = await import('monaco-vim');
       const vim = (VimMode as any).Vim;
 
@@ -690,21 +691,71 @@ describe('EditorOverlay', () => {
       });
 
       const mockEditor = await getLatestMockEditor();
-      const triggerMock = vi.fn();
-      mockEditor.trigger = triggerMock;
+      const runFn = vi.fn();
+      mockEditor.getAction = vi.fn(() => ({ run: runFn }));
 
       const nextDiagCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'nextDiagnostic');
       const prevDiagCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'prevDiagnostic');
       const showHoverCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'showHover');
 
       nextDiagCall[1]();
-      expect(triggerMock).toHaveBeenCalledWith('vim', 'editor.action.marker.next', null);
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.next');
 
       prevDiagCall[1]();
-      expect(triggerMock).toHaveBeenCalledWith('vim', 'editor.action.marker.prev', null);
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.prev');
 
       showHoverCall[1]();
-      expect(triggerMock).toHaveBeenCalledWith('vim', 'editor.action.showHover', null);
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.showHover');
+      expect(runFn).toHaveBeenLastCalledWith({ focus: true });
+    });
+
+    it('should handle ]d, [d, and gl through the overlay key path in normal mode', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      const runFn = vi.fn();
+      mockEditor.getAction = vi.fn(() => ({ run: runFn }));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+        constructor: { keyMap: { vim: {} } },
+      } as any);
+
+      render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      const keyDown = getKeyDownCallback()!;
+      const press = (key: string) => {
+        const preventDefault = vi.fn();
+        const stopPropagation = vi.fn();
+        keyDown({
+          browserEvent: { key, preventDefault, stopPropagation },
+        });
+        return { preventDefault, stopPropagation };
+      };
+
+      press(']');
+      const nextEvent = press('d');
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.next');
+      expect(nextEvent.preventDefault).toHaveBeenCalled();
+      expect(nextEvent.stopPropagation).toHaveBeenCalled();
+
+      press('[');
+      const prevEvent = press('d');
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.prev');
+      expect(prevEvent.preventDefault).toHaveBeenCalled();
+      expect(prevEvent.stopPropagation).toHaveBeenCalled();
+
+      press('g');
+      const hoverEvent = press('l');
+      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.showHover');
+      expect(runFn).toHaveBeenLastCalledWith({ focus: true });
+      expect(hoverEvent.preventDefault).toHaveBeenCalled();
+      expect(hoverEvent.stopPropagation).toHaveBeenCalled();
     });
 
     it('should update the visible status text from vim-mode-change events', async () => {
@@ -739,6 +790,34 @@ describe('EditorOverlay', () => {
 
       onModeChange?.({ mode: 'insert' });
       expect(status.textContent).toContain('INSERT');
+    });
+
+    it('should preserve monaco-vim status bar nodes when syncing visible mode text', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockImplementation((_editor: any, statusBar: HTMLElement | null) => {
+        statusBar?.appendChild(document.createElement('span'));
+        const promptNode = document.createElement('span');
+        promptNode.dataset.testid = 'vim-prompt-node';
+        statusBar?.appendChild(promptNode);
+
+        return {
+          on: vi.fn(),
+          dispose: vi.fn(),
+          state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+          constructor: { keyMap: { vim: {} } },
+        } as any;
+      });
+
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: true },
+      });
+
+      const status = container.querySelector('.vim-status-bar') as HTMLDivElement;
+      expect(status.querySelector('[data-testid="vim-prompt-node"]')).toBeTruthy();
     });
 
     it('should switch to a thin line cursor in insert mode and block cursor in normal mode', async () => {
@@ -1229,6 +1308,44 @@ describe('EditorOverlay', () => {
       const markers = lastCall[2];
       expect(markers.length).toBe(1);
       expect(markers[0].startLineNumber).toBe(7);
+    });
+
+    it('should mark unprefixed compiler errors on the active file', async () => {
+      const monaco = await import('monaco-editor');
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode: 'void main() {}',
+          activeBufferName: 'Image',
+          errors: ['ERROR: 0:4: syntax error'],
+        },
+      });
+
+      const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+      const markers = calls[calls.length - 1][2];
+      expect(markers.length).toBe(1);
+      expect(markers[0].startLineNumber).toBe(4);
+      expect(markers[0].message).toBe('syntax error');
+    });
+
+    it('should match common diagnostics regardless of active buffer casing', async () => {
+      const monaco = await import('monaco-editor');
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode: 'vec3 shared;',
+          activeBufferName: 'Common',
+          errors: ['common: ERROR: 0:2: shared syntax error'],
+        },
+      });
+
+      const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+      const markers = calls[calls.length - 1][2];
+      expect(markers.length).toBe(1);
+      expect(markers[0].startLineNumber).toBe(2);
+      expect(markers[0].message).toBe('shared syntax error');
     });
   });
 
