@@ -542,7 +542,7 @@
     const _ready = apiReady;
     const pending = getPendingRestore();
     if (pending && _ready && api) {
-      api.fromJSON(pending as any); // SerializedLayout is Record<string,unknown>; dockview expects SerializedDockview
+      restoreFromData(pending as SerializedDockview);
       clearPendingRestore();
     }
   });
