@@ -684,6 +684,18 @@ describe('DebugPanel', () => {
       expect(varBtn).toBeTruthy();
     });
 
+    it('places variable inspector button next to pixel inspector button', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState(),
+        getUniforms: mockGetUniforms,
+      });
+
+      const headerButtons = Array.from(container.querySelectorAll('.debug-header button[aria-label]'));
+      const labels = headerButtons.map((button) => button.getAttribute('aria-label'));
+
+      expect(labels.slice(0, 2)).toEqual(['Toggle inspector', 'Toggle variable inspector']);
+    });
+
     it('variable inspector button updates persisted store state', async () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState(),

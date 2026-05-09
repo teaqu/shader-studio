@@ -390,6 +390,19 @@
     </button>
     <button
       class="header-btn has-tooltip"
+      class:active={isVarInspectorOn}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleVariableInspector)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleVariableInspector)}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
+      aria-label="Toggle variable inspector"
+      data-tooltip="Variable Inspector"
+    >
+      <i class="codicon codicon-symbol-variable"></i>
+    </button>
+    <button
+      class="header-btn has-tooltip"
       class:active={isInlineOn}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInlineRendering)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInlineRendering)}
@@ -460,19 +473,6 @@
         aria-label="Step edge threshold"
       />
     {/if}
-    <button
-      class="header-btn has-tooltip"
-      class:active={isVarInspectorOn}
-      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleVariableInspector)}
-      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleVariableInspector)}
-      onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
-      }}
-      aria-label="Toggle variable inspector"
-      data-tooltip="Variable Inspector"
-    >
-      <i class="codicon codicon-symbol-variable"></i>
-    </button>
     {#if lineNum !== null}
       <span class="line-tooltip-anchor">
         <span
