@@ -6,6 +6,7 @@ import { snapshotDebugPanel, applyDebugPanelProfile } from '../stores/debugPanel
 import { snapshotPerformancePanel, applyPerformancePanelProfile } from '../stores/performancePanelStore';
 import { snapshotTheme, applyThemeProfile } from '../stores/themeStore';
 import { getCurrentLayout, requestRestore } from './layoutState.svelte';
+import { isVSCodeEnvironment } from '../transport/TransportFactory';
 
 let _activeProfile = $state<string>('default');
 let _profileList = $state<Array<{ id: string; name: string }>>([]);
@@ -31,7 +32,9 @@ function snapshotAll(): ProfileData {
 }
 
 function applyAll(data: ProfileData): void {
-  applyThemeProfile(data.theme);
+  if (!isVSCodeEnvironment()) {
+    applyThemeProfile(data.theme);
+  }
   applyConfigPanelProfile(data.configPanel);
   applyDebugPanelProfile(data.debugPanel);
   applyPerformancePanelProfile(data.performancePanel);

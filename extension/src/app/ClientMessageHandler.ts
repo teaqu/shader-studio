@@ -31,7 +31,9 @@ export class ClientMessageHandler {
     this.logger = Logger.getInstance();
     this.layoutStateStore = new LayoutStateStore(context);
     this.overlay = new OverlayPanelHandler();
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? context.storageUri?.fsPath
+      ?? context.globalStorageUri.fsPath;
     this.profileHandler = new ProfileMessageHandler(new ProfileFileService(workspaceRoot));
     this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger);
     this.nav = new NavigationHandler(glslFileTracker, getPanelColumns ?? (() => new Set()), this.logger);

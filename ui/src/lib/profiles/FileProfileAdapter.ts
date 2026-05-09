@@ -43,11 +43,11 @@ export class FileProfileAdapter {
   }
 
   async writeProfile(id: string, data: ProfileData): Promise<void> {
-    this.transport.postMessage({ type: 'profile:writeProfile', id, data });
+    this.transport.postMessage({ type: 'profile:writeProfile', id, data: JSON.parse(JSON.stringify(data)) });
   }
 
   async writeIndex(index: ProfileIndex): Promise<void> {
-    this.transport.postMessage({ type: 'profile:writeIndex', index });
+    this.transport.postMessage({ type: 'profile:writeIndex', index: JSON.parse(JSON.stringify(index)) });
   }
 
   async deleteProfile(id: string): Promise<void> {
