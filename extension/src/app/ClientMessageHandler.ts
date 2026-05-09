@@ -8,6 +8,8 @@ import { LayoutStateStore } from "./services/LayoutStateStore";
 import { ConfigUpdateHandler } from "./handlers/ConfigUpdateHandler";
 import { NavigationHandler } from "./handlers/NavigationHandler";
 import { FileDialogHandler } from "./handlers/FileDialogHandler";
+import { ProfileMessageHandler } from "./handlers/ProfileMessageHandler";
+import { ProfileFileService } from "./services/ProfileFileService";
 
 export class ClientMessageHandler {
   readonly overlay: OverlayPanelHandler;
@@ -16,6 +18,7 @@ export class ClientMessageHandler {
   readonly files: FileDialogHandler;
   private logger: Logger;
   private layoutStateStore: LayoutStateStore;
+  private profileHandler: ProfileMessageHandler;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -28,6 +31,8 @@ export class ClientMessageHandler {
     this.logger = Logger.getInstance();
     this.layoutStateStore = new LayoutStateStore(context);
     this.overlay = new OverlayPanelHandler();
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    this.profileHandler = new ProfileMessageHandler(new ProfileFileService(workspaceRoot));
     this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger);
     this.nav = new NavigationHandler(glslFileTracker, getPanelColumns ?? (() => new Set()), this.logger);
     this.files = new FileDialogHandler(
@@ -106,6 +111,9 @@ export class ClientMessageHandler {
       }
       case 'setCompileMode':
         await vscode.commands.executeCommand('shader-studio.setCompileMode', message.payload?.mode);
+        break;
+      default:
+        await this.profileHandler.handle(message, respondFn);
         break;
     }
   }
