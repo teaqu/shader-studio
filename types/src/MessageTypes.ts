@@ -1,5 +1,7 @@
 // Message types for communication between extension and UI
 
+import type { ProfileIndex, ProfileData } from './ProfileTypes';
+
 export interface BaseMessage {
   type: string;
 }
@@ -180,4 +182,38 @@ export interface SaveFileResultMessage extends BaseMessage {
   };
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage;
+// Profile messages — UI → Extension (reads return responses with same requestId)
+export interface ProfileReadIndexMessage extends BaseMessage {
+  type: 'profile:readIndex';
+  requestId: string;
+}
+export interface ProfileIndexDataMessage extends BaseMessage {
+  type: 'profile:indexData';
+  requestId: string;
+  index: ProfileIndex | null;
+}
+export interface ProfileReadProfileMessage extends BaseMessage {
+  type: 'profile:readProfile';
+  requestId: string;
+  id: string;
+}
+export interface ProfileDataMessage extends BaseMessage {
+  type: 'profile:profileData';
+  requestId: string;
+  data: ProfileData | null;
+}
+export interface ProfileWriteProfileMessage extends BaseMessage {
+  type: 'profile:writeProfile';
+  id: string;
+  data: ProfileData;
+}
+export interface ProfileWriteIndexMessage extends BaseMessage {
+  type: 'profile:writeIndex';
+  index: ProfileIndex;
+}
+export interface ProfileDeleteProfileMessage extends BaseMessage {
+  type: 'profile:deleteProfile';
+  id: string;
+}
+
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
