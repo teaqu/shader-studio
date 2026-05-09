@@ -28,6 +28,8 @@
 
 
   import type { AudioVideoController } from "../AudioVideoController";
+  import { getActiveProfile, getProfileList, switchTo } from '../state/profileStore.svelte';
+  import ProfileModal from './ProfileModal.svelte';
 
   interface Props {
     timeManager: any;
@@ -149,6 +151,8 @@
   let heightInput = $state<number | null>(null);
   let showFPSMenu = $state(false);
   let showOptionsMenu = $state(false);
+  let showLayoutMenu = $state(false);
+  let showProfileModal = $state(false);
   let recordingButton = $state<RecordingButton>(undefined as any);
   let recordingMenuOpen = $state(false);
   let zoomLevel = $state(1.0);
@@ -266,12 +270,14 @@
     showResolutionMenu = !showResolutionMenu;
     showFPSMenu = false;
     showOptionsMenu = false;
+    showLayoutMenu = false;
   }
 
   function handleFPSClick() {
     showFPSMenu = !showFPSMenu;
     showResolutionMenu = false;
     showOptionsMenu = false;
+    showLayoutMenu = false;
   }
 
   function handleFPSLimitSelect(limit: number) {
@@ -283,12 +289,14 @@
     showOptionsMenu = !showOptionsMenu;
     showResolutionMenu = false;
     showFPSMenu = false;
+    showLayoutMenu = false;
   }
 
   function handleRecordingClick() {
     showResolutionMenu = false;
     showFPSMenu = false;
     showOptionsMenu = false;
+    showLayoutMenu = false;
     recordingButton?.toggle();
   }
 
@@ -426,6 +434,7 @@
       && !clickTarget.closest(".options-menu-container")
       && !mouseDownTarget?.closest(".options-menu-container")) {
       showOptionsMenu = false;
+      showLayoutMenu = false;
     }
 
     mouseDownTarget = null;
@@ -714,7 +723,7 @@
       disabled={!hasShader}
       title="Toggle shader configuration panel"
     >
-      <i class="codicon codicon-gear"></i>
+      <i class="codicon codicon-layers"></i>
     </button>
     <button
       class="collapse-debug toolbar-icon-button"
@@ -816,9 +825,55 @@
             class:active={isConfigPanelVisible}
             disabled={!hasShader}
           >
-            <i class="codicon codicon-gear"></i>
+            <i class="codicon codicon-layers"></i>
             <span>Config</span>
           </button>
+          <div class="layout-menu-container">
+            <button
+              class="options-menu-item"
+              onclick={() => {
+                showLayoutMenu = !showLayoutMenu; 
+              }}
+              aria-label="Switch layout profile"
+              style="width:100%;justify-content:space-between"
+            >
+              <div style="display:flex;align-items:center;gap:8px">
+                <i class="codicon codicon-layout"></i>
+                <span>Layout: {getActiveProfile()}</span>
+              </div>
+              <i class="codicon codicon-chevron-right"></i>
+            </button>
+            {#if showLayoutMenu}
+              <div class="layout-submenu">
+                {#each getProfileList() as profile}
+                  <button
+                    class="layout-submenu-item"
+                    class:active={profile.id === getActiveProfile()}
+                    onclick={() => {
+                      switchTo(profile.id); showLayoutMenu = false; showOptionsMenu = false; 
+                    }}
+                  >
+                    {#if profile.id === getActiveProfile()}
+                      <i class="codicon codicon-check"></i>
+                    {:else}
+                      <span class="check-placeholder"></span>
+                    {/if}
+                    {profile.name}
+                  </button>
+                {/each}
+                <div class="options-menu-divider"></div>
+                <button
+                  class="layout-submenu-item"
+                  onclick={() => {
+                    showProfileModal = true; showLayoutMenu = false; showOptionsMenu = false; 
+                  }}
+                >
+                  <i class="codicon codicon-settings"></i>
+                  Manage profiles…
+                </button>
+              </div>
+            {/if}
+          </div>
           <button
             class="options-menu-item show-debug"
             onclick={() => {
@@ -1012,6 +1067,12 @@
   </div>
 </div>
 
+{#if showProfileModal}
+  <ProfileModal onclose={() => {
+    showProfileModal = false; 
+  }} />
+{/if}
+
 <style>
   .compile-mode-selector {
     display: flex;
@@ -1076,5 +1137,46 @@
 
   .mute-icon-btn.muted {
     color: #e55;
+  }
+
+  .layout-menu-container {
+    position: relative;
+  }
+
+  .layout-submenu {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    background: var(--menu-background, #252525);
+    border: 1px solid var(--border-color, rgba(128,128,128,0.3));
+    border-radius: 4px;
+    min-width: 160px;
+    box-shadow: -4px 4px 12px rgba(0,0,0,0.3);
+    z-index: 100;
+    padding: 4px 0;
+  }
+
+  .layout-submenu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 12px;
+    background: none;
+    border: none;
+    color: var(--foreground, #ccc);
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .layout-submenu-item:hover,
+  .layout-submenu-item.active {
+    background: var(--list-hover-background, rgba(255,255,255,0.05));
+  }
+
+  .check-placeholder {
+    width: 16px;
+    display: inline-block;
   }
 </style>
