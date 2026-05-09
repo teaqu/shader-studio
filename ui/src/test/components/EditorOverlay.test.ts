@@ -932,6 +932,66 @@ describe('EditorOverlay', () => {
       expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 6, column: 1 });
     });
 
+    it('should not trigger insert fallback for "a" when an operator is pending (e.g. caw)', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 2, column: 4 });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      const vimState = {
+        keyMap: 'vim',
+        vim: { insertMode: false, visualMode: false, inputState: { operator: 'change' } },
+      };
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: vimState,
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      const preventDefault = vi.fn();
+      getKeyDownCallback()!({
+        browserEvent: { key: 'a', preventDefault, stopPropagation: vi.fn() },
+      });
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(mockEditor.setPosition).not.toHaveBeenCalled();
+      expect(vimState.vim.insertMode).toBe(false);
+    });
+
+    it('should not trigger insert fallback for "i" when an operator is pending (e.g. ciw)', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      mockEditor.getPosition.mockReturnValue({ lineNumber: 1, column: 1 });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { initVimMode } = await import('monaco-vim');
+      const vimState = {
+        keyMap: 'vim',
+        vim: { insertMode: false, visualMode: false, inputState: { operator: 'change' } },
+      };
+      vi.mocked(initVimMode).mockReturnValue({
+        on: vi.fn(),
+        dispose: vi.fn(),
+        state: vimState,
+        constructor: { keyMap: { default: {}, vim: {}, 'vim-insert': {}, 'vim-replace': {} } },
+      } as any);
+
+      render(EditorOverlay, { props: { ...defaultProps, vimMode: true } });
+
+      const preventDefault = vi.fn();
+      getKeyDownCallback()!({
+        browserEvent: { key: 'i', preventDefault, stopPropagation: vi.fn() },
+      });
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(mockEditor.setPosition).not.toHaveBeenCalled();
+      expect(vimState.vim.insertMode).toBe(false);
+    });
+
     it('should apply the bottomInset to the wrapper style', () => {
       const { container } = render(EditorOverlay, {
         props: { ...defaultProps, bottomInset: 44 },

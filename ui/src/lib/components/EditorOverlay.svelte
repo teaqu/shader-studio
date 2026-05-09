@@ -392,6 +392,7 @@
         && ["i", "a", "I", "A", "o", "O"].includes(browserKey)
         && vimCurrentMode === "normal"
         && vimModeInstance?.state?.vim
+        && !vimModeInstance.state.vim.inputState?.operator
       ) {
         event.browserEvent?.preventDefault?.();
         event.browserEvent?.stopPropagation?.();
