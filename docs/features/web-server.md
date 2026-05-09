@@ -23,6 +23,10 @@ You can also use the command palette:
 
 Port must be in the range 1024–65535.
 
+## Light and Dark Mode
+
+The browser preview supports both light and dark themes, independent of your VS Code theme. Open the toolbar's **Menu → Options** and select **Dark Mode** or **Light Mode** to switch.
+
 ## Tips
 
 - The browser preview can sometimes achieve better performance due to browser optimisations
