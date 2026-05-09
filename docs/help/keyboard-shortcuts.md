@@ -18,15 +18,7 @@ Standard VS Code/Monaco shortcuts apply. Additional shortcuts:
 
 ### Vim Mode
 
-When Vim mode is enabled, standard Vim keybindings are active.
-
-| Key | Action |
-|-----|--------|
-| `]d` | Jump to next diagnostic/error |
-| `[d` | Jump to previous diagnostic/error |
-| `gl` | Show the hover or diagnostic at the cursor |
-
-(These commands not workign atm working but will fix eventually)
+When Vim mode is enabled, standard Vim keybindings are active, including `/` search in the overlay.
 
 ## Performance
 

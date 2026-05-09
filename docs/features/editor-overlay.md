@@ -8,15 +8,7 @@ The overlay includes editor features designed to feel similar to the VS Code edi
 
 ## Current Limitations
 
-Search inside the editor overlay is not currently supported (except in vim mode). To search shader text while using Shader Studio, open the shader in the VS Code editor or open Shader Studio in a browser and use the browser's page search.
-
-| Key | Action |
-|-----|--------|
-| `]d` | Jump to next diagnostic/error |
-| `[d` | Jump to previous diagnostic/error |
-| `gl` | Show the hover or diagnostic at the cursor |
-
-(These commands not workign atm working but will fix eventually)
+Search inside the editor overlay is currently available in Vim mode with `/`. Non-Vim overlay search shortcuts are not currently supported; open the shader in the VS Code editor or use browser page search when you need those.
 
 ## Opening
 
@@ -33,15 +25,11 @@ When your shader has multiple passes — Image, BufferA, BufferB, Common, and so
 
 If you prefer Vim keybindings, open the options menu while the overlay is enabled and select **Vim Mode**.
 
-Vim mode supports the standard editing motions provided by the embedded editor, plus diagnostic navigation shortcuts:
+Vim mode supports the standard editing motions provided by the embedded editor, including `/` search:
 
 | Key | Action |
 |-----|--------|
-| `]d` | Jump to next diagnostic/error |
-| `[d` | Jump to previous diagnostic/error |
-| `gl` | Show the hover or diagnostic at the cursor |
-
-
+| `/` | Search forward in the overlay |
 
 ## Next
 

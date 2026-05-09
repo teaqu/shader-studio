@@ -214,12 +214,20 @@ describe('EditorOverlay', () => {
       expect(createCall?.[1]).toMatchObject({
         domReadOnly: false,
         editContext: false,
-        fixedOverflowWidgets: false,
+        fixedOverflowWidgets: true,
         occurrencesHighlight: 'off',
         padding: { top: 0 },
         readOnly: false,
         selectionHighlight: false,
       });
+    });
+
+    it('should load Monaco hover and marker navigation contributions for diagnostics', () => {
+      render(EditorOverlay, { props: defaultProps });
+      const contributionLoadState = (globalThis as any).__monacoContributionLoadState;
+
+      expect(contributionLoadState.hover).toBeGreaterThan(0);
+      expect(contributionLoadState.gotoError).toBeGreaterThan(0);
     });
 
     it('should replace the editor contents when the shader file changes while the editor is focused', async () => {
@@ -665,7 +673,7 @@ describe('EditorOverlay', () => {
       expect(initVimMode).toHaveBeenCalled();
     });
 
-    it('should register vim defineAction and mapCommand for diagnostics and hover', async () => {
+    it('should not register vim diagnostic or hover key mappings', async () => {
       const { VimMode } = await import('monaco-vim');
       const vim = (VimMode as any).Vim;
 
@@ -673,43 +681,16 @@ describe('EditorOverlay', () => {
         props: { ...defaultProps, vimMode: true },
       });
 
-      expect(vim.defineAction).toHaveBeenCalledWith('nextDiagnostic', expect.any(Function));
-      expect(vim.defineAction).toHaveBeenCalledWith('prevDiagnostic', expect.any(Function));
-      expect(vim.defineAction).toHaveBeenCalledWith('showHover', expect.any(Function));
-
-      expect(vim.mapCommand).toHaveBeenCalledWith(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
-      expect(vim.mapCommand).toHaveBeenCalledWith('[d', 'action', 'prevDiagnostic', {}, { context: 'normal' });
-      expect(vim.mapCommand).toHaveBeenCalledWith('gl', 'action', 'showHover', {}, { context: 'normal' });
+      expect(vim.defineAction).not.toHaveBeenCalledWith('nextDiagnostic', expect.any(Function));
+      expect(vim.defineAction).not.toHaveBeenCalledWith('prevDiagnostic', expect.any(Function));
+      expect(vim.defineAction).not.toHaveBeenCalledWith('showHover', expect.any(Function));
+      expect(vim.mapCommand).not.toHaveBeenCalledWith(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
+      expect(vim.mapCommand).not.toHaveBeenCalledWith('[d', 'action', 'prevDiagnostic', {}, { context: 'normal' });
+      expect(vim.mapCommand).not.toHaveBeenCalledWith('gl', 'action', 'showHover', {}, { context: 'normal' });
+      expect(vim.mapCommand).not.toHaveBeenCalledWith('K', 'action', 'showHover', {}, { context: 'normal' });
     });
 
-    it('should run editor actions for vim diagnostic and hover actions', async () => {
-      const { VimMode } = await import('monaco-vim');
-      const vim = (VimMode as any).Vim;
-
-      render(EditorOverlay, {
-        props: { ...defaultProps, vimMode: true },
-      });
-
-      const mockEditor = await getLatestMockEditor();
-      const runFn = vi.fn();
-      mockEditor.getAction = vi.fn(() => ({ run: runFn }));
-
-      const nextDiagCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'nextDiagnostic');
-      const prevDiagCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'prevDiagnostic');
-      const showHoverCall = vim.defineAction.mock.calls.find((c: any) => c[0] === 'showHover');
-
-      nextDiagCall[1]();
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.next');
-
-      prevDiagCall[1]();
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.prev');
-
-      showHoverCall[1]();
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.showHover');
-      expect(runFn).toHaveBeenLastCalledWith({ focus: true });
-    });
-
-    it('should handle ]d, [d, and gl through the overlay key path in normal mode', async () => {
+    it('should leave ]d, [d, gl, and K to vim mode without running overlay diagnostic actions', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
       const runFn = vi.fn();
@@ -740,22 +721,27 @@ describe('EditorOverlay', () => {
 
       press(']');
       const nextEvent = press('d');
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.next');
-      expect(nextEvent.preventDefault).toHaveBeenCalled();
-      expect(nextEvent.stopPropagation).toHaveBeenCalled();
+      expect(mockEditor.getAction).not.toHaveBeenCalledWith('editor.action.marker.next');
+      expect(nextEvent.preventDefault).not.toHaveBeenCalled();
+      expect(nextEvent.stopPropagation).not.toHaveBeenCalled();
 
       press('[');
       const prevEvent = press('d');
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.marker.prev');
-      expect(prevEvent.preventDefault).toHaveBeenCalled();
-      expect(prevEvent.stopPropagation).toHaveBeenCalled();
+      expect(mockEditor.getAction).not.toHaveBeenCalledWith('editor.action.marker.prev');
+      expect(prevEvent.preventDefault).not.toHaveBeenCalled();
+      expect(prevEvent.stopPropagation).not.toHaveBeenCalled();
 
       press('g');
-      const hoverEvent = press('l');
-      expect(mockEditor.getAction).toHaveBeenCalledWith('editor.action.showHover');
-      expect(runFn).toHaveBeenLastCalledWith({ focus: true });
-      expect(hoverEvent.preventDefault).toHaveBeenCalled();
-      expect(hoverEvent.stopPropagation).toHaveBeenCalled();
+      const glEvent = press('l');
+      expect(mockEditor.getAction).not.toHaveBeenCalledWith('editor.action.showHover');
+      expect(glEvent.preventDefault).not.toHaveBeenCalled();
+      expect(glEvent.stopPropagation).not.toHaveBeenCalled();
+
+      const hoverEvent = press('K');
+      expect(mockEditor.getAction).not.toHaveBeenCalledWith('editor.action.showHover');
+      expect(runFn).not.toHaveBeenCalled();
+      expect(hoverEvent.preventDefault).not.toHaveBeenCalled();
+      expect(hoverEvent.stopPropagation).not.toHaveBeenCalled();
     });
 
     it('should update the visible status text from vim-mode-change events', async () => {

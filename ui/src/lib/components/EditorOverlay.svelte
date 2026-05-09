@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+  import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
+  import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl } from "@shader-studio/monaco";
 
@@ -61,8 +63,6 @@
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
-  let vimPendingDiagnosticKey: string | null = null;
-  let vimPendingDiagnosticTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -157,70 +157,11 @@
     editor?.getAction(actionId)?.run(args);
   }
 
-  function clearPendingVimDiagnosticKey() {
-    vimPendingDiagnosticKey = null;
-    if (vimPendingDiagnosticTimer) {
-      clearTimeout(vimPendingDiagnosticTimer);
-      vimPendingDiagnosticTimer = null;
-    }
-  }
-
-  function setPendingVimDiagnosticKey(key: string) {
-    clearPendingVimDiagnosticKey();
-    vimPendingDiagnosticKey = key;
-    vimPendingDiagnosticTimer = setTimeout(() => {
-      vimPendingDiagnosticKey = null;
-      vimPendingDiagnosticTimer = null;
-    }, 1000);
-  }
-
   function stopKeyEvent(event: OverlayKeyEvent) {
     event.preventDefault?.();
     event.stopPropagation?.();
     event.browserEvent?.preventDefault?.();
     event.browserEvent?.stopPropagation?.();
-  }
-
-  function handleVimDiagnosticKeySequence(key: string | undefined, event: OverlayKeyEvent): boolean {
-    if (
-      !key
-      || vimCurrentMode !== "normal"
-      || !vimModeInstance?.state?.vim
-      || vimModeInstance.state.vim.inputState?.operator
-    ) {
-      clearPendingVimDiagnosticKey();
-      return false;
-    }
-
-    if (vimPendingDiagnosticKey) {
-      const sequence = `${vimPendingDiagnosticKey}${key}`;
-      clearPendingVimDiagnosticKey();
-
-      if (sequence === "]d") {
-        stopKeyEvent(event);
-        runEditorAction("editor.action.marker.next");
-        return true;
-      }
-
-      if (sequence === "[d") {
-        stopKeyEvent(event);
-        runEditorAction("editor.action.marker.prev");
-        return true;
-      }
-
-      if (sequence === "gl") {
-        stopKeyEvent(event);
-        runEditorAction("editor.action.showHover", { focus: true });
-        return true;
-      }
-    }
-
-    if (key === "]" || key === "[" || key === "g") {
-      setPendingVimDiagnosticKey(key);
-      return false;
-    }
-
-    return false;
   }
 
   function switchToNextBuffer() {
@@ -273,20 +214,6 @@
       vim.defineEx('lprev', 'lp', () => {
         runEditorAction('editor.action.marker.prev');
       });
-
-      vim.defineAction('nextDiagnostic', () => {
-        runEditorAction('editor.action.marker.next');
-      });
-      vim.defineAction('prevDiagnostic', () => {
-        runEditorAction('editor.action.marker.prev');
-      });
-      vim.defineAction('showHover', () => {
-        runEditorAction('editor.action.showHover', { focus: true });
-      });
-
-      vim.mapCommand(']d', 'action', 'nextDiagnostic', {}, { context: 'normal' });
-      vim.mapCommand('[d', 'action', 'prevDiagnostic', {}, { context: 'normal' });
-      vim.mapCommand('gl', 'action', 'showHover', {}, { context: 'normal' });
 
       vimCommandsRegistered = true;
     } catch (e) {
@@ -447,7 +374,7 @@
       lineNumbersMinChars: 4,
       scrollBeyondLastLine: false,
       contextmenu: false,
-      fixedOverflowWidgets: false,
+      fixedOverflowWidgets: true,
       readOnly: false,
       domReadOnly: false,
       editContext: false,
@@ -472,10 +399,6 @@
       const browserKey = event.browserEvent?.key;
       const metaKey = !!event.browserEvent?.metaKey;
       const ctrlKey = !!event.browserEvent?.ctrlKey;
-
-      if (handleVimDiagnosticKeySequence(browserKey, event)) {
-        return;
-      }
 
       if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
         stopKeyEvent(event);
@@ -575,7 +498,6 @@
       clearTimeout(cursorChangeTimer);
       cursorChangeTimer = null;
     }
-    clearPendingVimDiagnosticKey();
     if (cursorChangeDisposable) {
       cursorChangeDisposable.dispose();
       cursorChangeDisposable = null;

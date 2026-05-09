@@ -31,6 +31,13 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
 
+const monacoContributionLoadState = vi.hoisted(() => ({
+  gotoError: 0,
+  hover: 0,
+}));
+
+(globalThis as any).__monacoContributionLoadState = monacoContributionLoadState;
+
 const monacoMock = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
   KeyMod: { Shift: 1024 },
@@ -96,6 +103,14 @@ const monacoMock = {
 // crash jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
 vi.mock('monaco-editor', () => monacoMock);
 vi.mock('monaco-editor/esm/vs/editor/editor.api', () => monacoMock);
+vi.mock('monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError', () => {
+  monacoContributionLoadState.gotoError += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', () => {
+  monacoContributionLoadState.hover += 1;
+  return {};
+});
 
 // Mock @shader-studio/monaco — delegates to mocked monaco-editor above
 vi.mock('@shader-studio/monaco', () => ({
