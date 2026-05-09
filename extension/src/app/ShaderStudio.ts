@@ -477,19 +477,20 @@ export class ShaderStudio {
       );
       this.shaderProvider.sendShaderFromEditor(activeEditor, { forceCleanup: true });
     } else {
+      // Only fall back to the last viewed file if it is currently open in VS Code.
+      // Avoid loading a stale path from a previous session when nothing is open.
       const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
-      if (lastViewedFile) {
+      const isCurrentlyOpen = lastViewedFile
+        ? vscode.window.visibleTextEditors.some(e => e.document.uri.fsPath === lastViewedFile)
+        : false;
+      if (lastViewedFile && isCurrentlyOpen) {
         this.logger.info(
           `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
         );
         // Use sendShaderFromPath to avoid switching focus
         await this.shaderProvider.sendShaderFromPath(lastViewedFile, { forceCleanup: true });
       } else {
-        this.logger.warn(
-          "No active GLSL editor and no last viewed file to refresh",
-        );
-        const errorMsg: ErrorMessage = { type: "error", payload: ["No GLSL file to refresh. Open a .glsl file first."] };
-        this.messenger.send(errorMsg);
+        this.logger.info("No active GLSL editor and no open last viewed file — nothing to refresh");
       }
     }
   }

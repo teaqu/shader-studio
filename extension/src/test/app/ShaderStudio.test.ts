@@ -521,17 +521,18 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { forceCleanup: true });
   });
 
-  test('refreshCurrentShader should call sendShaderFromPath with forceCleanup when no active GLSL editor', async () => {
+  test('refreshCurrentShader should call sendShaderFromPath when last viewed file is currently open', async () => {
     const lastViewedFile = '/mock/path/last-shader.glsl';
     const fs = require('fs');
-    
+
     fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
 
-    // Set up last viewed file
     shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
 
-    // Mock no active editor
     sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    // File is open in a visible editor (e.g. focus is on a non-GLSL file)
+    const mockVisibleEditor = { document: { uri: vscode.Uri.file(lastViewedFile) } } as any;
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([mockVisibleEditor]);
 
     const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
 
@@ -539,6 +540,25 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
     sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { forceCleanup: true });
+  });
+
+  test('refreshCurrentShader should not send shader when last viewed file is from a previous session (not currently open)', async () => {
+    const lastViewedFile = '/mock/path/last-shader.glsl';
+    const fs = require('fs');
+
+    fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
+
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    // No visible editors — stale globalState path from a previous VS Code session
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+
+    const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshCurrentShader']();
+
+    sinon.assert.notCalled(sendShaderFromPathSpy);
   });
 
   test('refreshCurrentShader should call sendShaderFromEditor with forceCleanup when active GLSL editor exists', async () => {
@@ -840,9 +860,9 @@ suite('Shader Studio Test Suite', () => {
       messengerSendSpy = sandbox.spy(shaderStudio['messenger'], 'send');
     });
 
-    test('refreshCurrentShader should send error to UI when no GLSL file available', async () => {
-      // No active editor and no last viewed file
+    test('refreshCurrentShader should not send any message when no GLSL file is available', async () => {
       sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
       shaderStudio['glslFileTracker'].setLastViewedGlslFile(null as any);
 
       await shaderStudio['refreshCurrentShader']();
@@ -850,12 +870,12 @@ suite('Shader Studio Test Suite', () => {
       const errorCall = messengerSendSpy.getCalls().find(
         (call: sinon.SinonSpyCall) => call.args[0].type === 'error'
       );
-      assert.ok(errorCall, 'Should send error message to UI');
-      assert.deepStrictEqual(errorCall!.args[0].payload, ['No GLSL file to refresh. Open a .glsl file first.']);
+      assert.ok(!errorCall, 'Should not send error message when nothing is open');
     });
 
     test('refreshCurrentShader should not show VS Code warning when no GLSL file available', async () => {
       sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
       shaderStudio['glslFileTracker'].setLastViewedGlslFile(null as any);
 
       const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage');
