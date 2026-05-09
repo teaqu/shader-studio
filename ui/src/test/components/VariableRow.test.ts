@@ -2,6 +2,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VariableRow from '../../lib/components/debug/VariableRow.svelte';
+import variableRowSource from '../../lib/components/debug/VariableRow.svelte?raw';
 import type { CapturedVariable } from '../../lib/VariableCaptureManager';
 import { getVariablePreview, resetVariablePreview } from '../../lib/state/variablePreviewState.svelte';
 
@@ -102,6 +103,22 @@ function makeExpandedVecVar(): CapturedVariable {
     captureFilePath: '/shaders/image.glsl',
     captureBufferName: 'Image',
   };
+}
+
+function expectStyleRule(selector: string, declarations: string[]) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rule = new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`).exec(variableRowSource)?.[1] ?? '';
+  for (const declaration of declarations) {
+    expect(rule).toContain(declaration);
+  }
+}
+
+function expectStyleRuleNotToContain(selector: string, declarations: string[]) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rule = new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`).exec(variableRowSource)?.[1] ?? '';
+  for (const declaration of declarations) {
+    expect(rule).not.toContain(declaration);
+  }
 }
 
 describe('VariableRow', () => {
@@ -352,6 +369,37 @@ describe('VariableRow', () => {
     expect(typeEl.textContent).toBe('vec3');
   });
 
+  it('allows long capture names and values to wrap at narrow widths', () => {
+    const v = {
+      ...makeVec3Var(0.123456, 0.234567, 0.345678),
+      varName: 'this_is_a_very_long_variable_name_that_should_wrap_before_the_value',
+    };
+    const { container } = render(VariableRow, { props: { variable: v, isPixelMode: true } });
+    const nameEl = container.querySelector('.var-name') as HTMLElement;
+    const vecValueEl = container.querySelector('.vec-value') as HTMLElement;
+
+    expect(nameEl).toHaveAttribute('title', v.varName);
+    expect(vecValueEl.textContent).toContain('0.123');
+    expectStyleRule('.var-header', ['flex-wrap: wrap']);
+    expectStyleRule('.var-meta', ['flex-wrap: wrap']);
+    expectStyleRule('.var-name', ['overflow-wrap: anywhere', 'white-space: normal']);
+    expectStyleRule('.var-value', ['flex-wrap: wrap']);
+    expectStyleRule('.vec-value', ['overflow-wrap: anywhere', 'white-space: normal']);
+  });
+
+  it('keeps fitted capture rows compact instead of reserving extra wrap space', () => {
+    render(VariableRow, { props: { variable: makeVec3Var(0.21, 0.45, 0.80), isPixelMode: true } });
+    const headerEl = document.querySelector('.var-header') as HTMLElement;
+    const metaEl = document.querySelector('.var-meta') as HTMLElement;
+    const valueEl = document.querySelector('.var-value') as HTMLElement;
+
+    expect(headerEl).toBeInTheDocument();
+    expect(metaEl).toBeInTheDocument();
+    expect(valueEl).toBeInTheDocument();
+    expectStyleRule('.var-header', ['row-gap: 0']);
+    expectStyleRule('.var-meta', ['flex: 1 1 auto']);
+  });
+
   it('reserves the preview column width when thumbnail is shown', () => {
     const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
     const v = {
@@ -366,6 +414,46 @@ describe('VariableRow', () => {
     expect(thumbCol).toBeInTheDocument();
     expect(thumbCol.querySelector('canvas')).toBeInTheDocument();
     expect(thumbCol.nextElementSibling).toHaveClass('var-body');
+  });
+
+  it('keeps the preview box vertically centered beside wrapped variable text', () => {
+    const thumb = new Uint8ClampedArray(43 * 24 * 4).fill(128);
+    const v = {
+      ...makeGridVecVar(),
+      varName: 'this_is_a_long_grid_variable_name_that_can_wrap_across_lines',
+      thumbnail: thumb,
+      gridWidth: 43,
+      gridHeight: 24,
+    };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const thumbCol = document.querySelector('.thumb-col') as HTMLElement;
+
+    expect(thumbCol).toBeInTheDocument();
+    expect(thumbCol.querySelector('canvas')).toBeInTheDocument();
+    expectStyleRule('.thumb-col', [
+      'align-self: center',
+      'align-items: center',
+      'padding-top: 0',
+    ]);
+    expectStyleRuleNotToContain('.thumb-col', ['min-height: 32px']);
+  });
+
+  it('top-aligns the preview box when expanded dropdown content is shown', () => {
+    const thumb = new Uint8ClampedArray(43 * 24 * 4).fill(128);
+    const v = {
+      ...makeExpandedVecVar(),
+      thumbnail: thumb,
+      gridWidth: 43,
+      gridHeight: 24,
+    };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    const thumbCol = document.querySelector('.thumb-col') as HTMLElement;
+    const expandedRow = document.querySelector('.expanded-row') as HTMLElement;
+
+    expect(thumbCol).toBeInTheDocument();
+    expect(thumbCol).toHaveClass('expanded');
+    expect(expandedRow).toBeInTheDocument();
+    expectStyleRule('.thumb-col.expanded', ['align-self: flex-start']);
   });
 
   it('updates shared variable preview state when the mini preview is hovered and focused', async () => {

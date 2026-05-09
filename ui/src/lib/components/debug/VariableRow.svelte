@@ -55,7 +55,7 @@
 
 <div class="var-row" class:has-thumb={showThumbnail}>
   {#if showThumbnail}
-    <div class="thumb-col">
+    <div class="thumb-col" class:expanded={isExpanded}>
       <CaptureThumbnail
         pixels={variable.thumbnail!}
         gridWidth={variable.gridWidth}
@@ -185,12 +185,17 @@
   }
 
   .thumb-col {
+    align-self: center;
     flex-shrink: 0;
-    padding-top: 1px;
+    padding-top: 0;
     width: 32px;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
+  }
+
+  .thumb-col.expanded {
+    align-self: flex-start;
   }
 
   .var-body {
@@ -201,13 +206,16 @@
   .var-header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
+    row-gap: 0;
     min-width: 0;
   }
 
   .var-meta {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     min-width: 0;
     flex: 1 1 auto;
@@ -218,9 +226,9 @@
     color: var(--vscode-editor-foreground);
     font-weight: 600;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.25;
   }
 
   .var-line {
@@ -252,9 +260,13 @@
     color: var(--vscode-editor-foreground);
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 3px;
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    min-width: 0;
     max-width: 100%;
+    line-height: 1.25;
   }
 
   .color-swatch {
@@ -274,9 +286,15 @@
     margin-left: auto;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 3px;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 12px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    line-height: 1.25;
   }
 
   .stat-label {
@@ -327,6 +345,8 @@
 
   .vec-value {
     font-family: var(--vscode-editor-font-family, monospace);
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .expanded-row {
