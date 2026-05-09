@@ -3,24 +3,25 @@ import { FileProfileAdapter } from '../../lib/profiles/FileProfileAdapter';
 import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 
 // Mock transport matching the real Transport interface.
-// onMessage receives (event: MessageEvent) => void, so we fire MessageEvents.
+// Responses are dispatched via adapter.handleMessage() since the adapter no longer
+// self-registers via transport.onMessage — ShaderViewer owns that handler.
 function makeTransport() {
-  let messageHandler: ((event: MessageEvent) => void) | null = null;
+  let _adapter: { handleMessage: (e: MessageEvent) => void } | null = null;
 
   const postMessage = vi.fn((msg: Record<string, unknown>) => {
-    // Simulate async extension response for read messages
+    // Simulate async extension response for read messages via adapter.handleMessage
     setTimeout(() => {
-      if (!messageHandler) {
+      if (!_adapter) {
         return;
       }
       if (msg.type === 'profile:readIndex') {
-        messageHandler(
+        _adapter.handleMessage(
           new MessageEvent('message', {
             data: { type: 'profile:indexData', requestId: msg.requestId, index: null },
           })
         );
       } else if (msg.type === 'profile:readProfile') {
-        messageHandler(
+        _adapter.handleMessage(
           new MessageEvent('message', {
             data: { type: 'profile:profileData', requestId: msg.requestId, data: null },
           })
@@ -31,21 +32,24 @@ function makeTransport() {
 
   const transport = {
     postMessage,
-    onMessage: vi.fn((handler: (event: MessageEvent) => void) => {
-      messageHandler = handler;
-    }),
+    onMessage: vi.fn(),
     dispose: vi.fn(),
     getType: vi.fn(() => 'vscode' as const),
     isConnected: vi.fn(() => true),
   };
 
-  return { transport, postMessage };
+  function registerAdapter(adapter: { handleMessage: (e: MessageEvent) => void }) {
+    _adapter = adapter;
+  }
+
+  return { transport, postMessage, registerAdapter };
 }
 
 describe('FileProfileAdapter', () => {
   it('readIndex resolves with index from response', async () => {
-    const { transport } = makeTransport();
+    const { transport, registerAdapter } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
+    registerAdapter(adapter);
     const result = await adapter.readIndex();
     expect(transport.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:readIndex' })
@@ -54,8 +58,9 @@ describe('FileProfileAdapter', () => {
   });
 
   it('readProfile sends id and resolves with data', async () => {
-    const { transport } = makeTransport();
+    const { transport, registerAdapter } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
+    registerAdapter(adapter);
     const result = await adapter.readProfile('default');
     expect(transport.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:readProfile', id: 'default' })
@@ -104,16 +109,13 @@ describe('FileProfileAdapter', () => {
   });
 
   it('concurrent reads resolve independently by requestId', async () => {
-    let handlers: Array<(event: MessageEvent) => void> = [];
     const sentMessages: Record<string, unknown>[] = [];
 
     const transport = {
       postMessage: vi.fn((msg: Record<string, unknown>) => {
         sentMessages.push(msg);
       }),
-      onMessage: vi.fn((handler: (event: MessageEvent) => void) => {
-        handlers.push(handler);
-      }),
+      onMessage: vi.fn(),
       dispose: vi.fn(),
       getType: vi.fn(() => 'vscode' as const),
       isConnected: vi.fn(() => true),
@@ -131,19 +133,17 @@ describe('FileProfileAdapter', () => {
     const index1: ProfileIndex = { active: 'a', order: [] };
     const index2: ProfileIndex = { active: 'b', order: [] };
 
-    // Respond in reverse order to prove independent resolution
-    for (const handler of handlers) {
-      handler(
-        new MessageEvent('message', {
-          data: { type: 'profile:indexData', requestId: msg2.requestId, index: index2 },
-        })
-      );
-      handler(
-        new MessageEvent('message', {
-          data: { type: 'profile:indexData', requestId: msg1.requestId, index: index1 },
-        })
-      );
-    }
+    // Respond in reverse order via handleMessage to prove independent resolution
+    adapter.handleMessage(
+      new MessageEvent('message', {
+        data: { type: 'profile:indexData', requestId: msg2.requestId, index: index2 },
+      })
+    );
+    adapter.handleMessage(
+      new MessageEvent('message', {
+        data: { type: 'profile:indexData', requestId: msg1.requestId, index: index1 },
+      })
+    );
 
     const [r1, r2] = await Promise.all([p1, p2]);
     expect(r1).toEqual(index1);

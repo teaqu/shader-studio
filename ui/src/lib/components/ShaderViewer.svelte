@@ -50,6 +50,8 @@
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
+  import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
+  import { init as initProfiles } from "../state/profileStore.svelte";
 
   let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
 
@@ -83,6 +85,7 @@
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
+  const profileAdapter = new FileProfileAdapter(transport);
   let timeManager: any = null;
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
@@ -269,6 +272,11 @@
     onSetCompileMode: handleSetCompileMode,
     onManualCompile: handleManualCompile,
   }));
+
+  // Initialize layout profiles — must run before DockviewLayout restores from layoutState
+  onMount(async () => {
+    await initProfiles(profileAdapter);
+  });
 
   // Subscribe to config/debug panel stores
   onMount(() => {
@@ -774,6 +782,7 @@
   async function initializeApp() {
     try {
       transport.onMessage(async (event: MessageEvent) => {
+        profileAdapter.handleMessage(event);
         if (routerInitialized) {
           await handleMessage(event);
         } else {
@@ -1155,7 +1164,6 @@
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
     {transport}
-    {layoutSlot}
     on:ready={handleDockviewReady}
     on:previewVisibleChange={handlePreviewVisibleChange}
     on:previewAloneChange={handlePreviewAloneChange}

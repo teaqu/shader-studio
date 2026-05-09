@@ -329,6 +329,24 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
   },
 }));
 
+vi.mock('../../lib/profiles/FileProfileAdapter', () => ({
+  FileProfileAdapter: class {
+    constructor(_transport: any) {}
+    handleMessage(_event: MessageEvent) {}
+  },
+}));
+
+vi.mock('../../lib/state/profileStore.svelte', () => ({
+  init: vi.fn().mockResolvedValue(undefined),
+  getActiveProfile: vi.fn().mockReturnValue('default'),
+  getProfileList: vi.fn().mockReturnValue([{ id: 'default', name: 'Default' }]),
+  switchTo: vi.fn().mockResolvedValue(undefined),
+  saveAs: vi.fn().mockResolvedValue(undefined),
+  renameProfile: vi.fn().mockResolvedValue(undefined),
+  deleteProfile: vi.fn().mockResolvedValue(undefined),
+  scheduleProfileSave: vi.fn(),
+}));
+
 describe('ShaderViewer', () => {
   function getEditorOverlayVisible(): boolean {
     return getEditorOverlayVisibleState();

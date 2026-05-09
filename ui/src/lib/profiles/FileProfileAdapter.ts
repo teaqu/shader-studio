@@ -4,16 +4,17 @@ import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 export class FileProfileAdapter {
   private pending = new Map<string, (msg: Record<string, unknown>) => void>();
 
-  constructor(private transport: Transport) {
-    transport.onMessage((event: MessageEvent) => {
-      const m = event.data as Record<string, unknown>;
-      const requestId = m?.requestId as string | undefined;
-      if (requestId && this.pending.has(requestId)) {
-        const resolve = this.pending.get(requestId)!;
-        this.pending.delete(requestId);
-        resolve(m);
-      }
-    });
+  constructor(private transport: Transport) {}
+
+  /** Forward a message event to this adapter so it can resolve pending requests. */
+  handleMessage(event: MessageEvent): void {
+    const m = event.data as Record<string, unknown>;
+    const requestId = m?.requestId as string | undefined;
+    if (requestId && this.pending.has(requestId)) {
+      const resolve = this.pending.get(requestId)!;
+      this.pending.delete(requestId);
+      resolve(m);
+    }
   }
 
   private request<T extends Record<string, unknown>>(
