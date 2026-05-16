@@ -29,32 +29,6 @@ describe('MenuBar Recording Integration', () => {
     };
   });
 
-  it('should not show recording menu initially', () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    expect(container.querySelector('.recording-menu')).not.toBeInTheDocument();
-  });
-
-  it('should show recording menu when camera button is clicked', async () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    const cameraButton = container.querySelector('.collapse-record')!;
-    expect(cameraButton).toBeInTheDocument();
-
-    await fireEvent.click(cameraButton);
-
-    expect(container.querySelector('.recording-menu')).toBeInTheDocument();
-  });
-
-  it('should hide recording menu when camera button is clicked again', async () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    const cameraButton = container.querySelector('.collapse-record')!;
-
-    await fireEvent.click(cameraButton);
-    expect(container.querySelector('.recording-menu')).toBeInTheDocument();
-
-    await fireEvent.click(cameraButton);
-    expect(container.querySelector('.recording-menu')).not.toBeInTheDocument();
-  });
-
   it('camera button should be disabled when hasShader is false', () => {
     const { container } = render(MenuBar, { props: { ...defaultProps, hasShader: false } });
     const cameraButton = container.querySelector('.collapse-record') as HTMLButtonElement;
@@ -67,47 +41,83 @@ describe('MenuBar Recording Integration', () => {
     expect(indicator).toBeInTheDocument();
   });
 
-  it('should show Export option in options menu', async () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    const optionsButton = container.querySelector('.options-menu-button')!;
-    await fireEvent.click(optionsButton);
-
-    expect(screen.getByText('Export')).toBeInTheDocument();
-  });
-
   it('should not show recording indicator when isRecording is false', () => {
     const { container } = render(MenuBar, { props: { ...defaultProps, isRecording: false } });
     const indicator = container.querySelector('.recording-indicator');
     expect(indicator).not.toBeInTheDocument();
   });
 
-  it('should pass recording props to RecordingButton', () => {
-    const onScreenshot = vi.fn();
-    const onRecord = vi.fn();
-    const onCancel = vi.fn();
+  it('should apply active class to camera button when recording panel is visible', () => {
     const { container } = render(MenuBar, {
-      props: { ...defaultProps, onScreenshot, onRecord, onCancel, isRecording: true },
+      props: { ...defaultProps, isRecordingPanelVisible: true },
     });
-    // RecordingButton renders inside MenuBar — verify it received isRecording
+    const cameraButton = container.querySelector('.collapse-record');
+    expect(cameraButton).toHaveClass('active');
+  });
+
+  it('should call onToggleRecordingPanel when camera button is clicked', async () => {
+    const onToggleRecordingPanel = vi.fn();
+    const { container } = render(MenuBar, { props: { ...defaultProps, onToggleRecordingPanel } });
+    const cameraButton = container.querySelector('.collapse-record')!;
+
+    await fireEvent.click(cameraButton);
+
+    expect(onToggleRecordingPanel).toHaveBeenCalledOnce();
+  });
+
+  it('should show Export option in options menu when toolbar is narrow', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) { this.cb = cb; }
+      observe(target: Element) {
+        this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    const { container } = render(MenuBar, { props: defaultProps });
+    const optionsButton = container.querySelector('.options-menu-button')!;
+    await fireEvent.click(optionsButton);
+
+    expect(screen.getByText('Export')).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('should not show Export option in options menu when toolbar is wide', async () => {
+    const { container } = render(MenuBar, { props: defaultProps });
+    const optionsButton = container.querySelector('.options-menu-button')!;
+    await fireEvent.click(optionsButton);
+
+    expect(screen.queryByText('Export')).not.toBeInTheDocument();
+  });
+
+  it('should call onToggleRecordingPanel when Export clicked from options menu', async () => {
+    const onToggleRecordingPanel = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) { this.cb = cb; }
+      observe(target: Element) {
+        this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    const { container } = render(MenuBar, { props: { ...defaultProps, onToggleRecordingPanel } });
+    const optionsButton = container.querySelector('.options-menu-button')!;
+    await fireEvent.click(optionsButton);
+
+    const exportButton = screen.getByText('Export');
+    await fireEvent.click(exportButton);
+
+    expect(onToggleRecordingPanel).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it('should pass isRecording to RecordingButton indicator', () => {
+    const { container } = render(MenuBar, {
+      props: { ...defaultProps, isRecording: true },
+    });
     const indicator = container.querySelector('.recording-indicator');
     expect(indicator).toBeInTheDocument();
-  });
-
-  it('should show all three tabs when recording menu is opened', async () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    const cameraButton = container.querySelector('.collapse-record')!;
-    await fireEvent.click(cameraButton);
-
-    expect(screen.getByText('Screenshot')).toBeInTheDocument();
-    expect(screen.getByText('Video')).toBeInTheDocument();
-    expect(screen.getByText('GIF')).toBeInTheDocument();
-  });
-
-  it('should show Capture button on default screenshot tab', async () => {
-    const { container } = render(MenuBar, { props: defaultProps });
-    const cameraButton = container.querySelector('.collapse-record')!;
-    await fireEvent.click(cameraButton);
-
-    expect(screen.getByText('Capture')).toBeInTheDocument();
   });
 });

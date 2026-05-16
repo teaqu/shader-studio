@@ -1,12 +1,19 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MenuBar from '../../lib/components/MenuBar.svelte';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 
 // Mock TransportFactory
 vi.mock('../../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: () => false
+}));
+
+vi.mock('../../lib/state/profileStore.svelte', () => ({
+  getActiveProfile: vi.fn(() => 'default'),
+  getProfileList: vi.fn(() => [{ id: 'default', name: 'Default' }]),
+  switchTo: vi.fn(),
+  saveProfile: vi.fn().mockResolvedValue(undefined),
 }));
 
 /** Create a minimal mock ResolutionSessionController for tests. */
@@ -342,6 +349,104 @@ describe('MenuBar', () => {
 
       await fireEvent.click(compileButton);
       expect(defaultProps.onManualCompile).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('layout save confirmation', () => {
+    function stubResizeObserver() {
+      vi.stubGlobal('ResizeObserver', class {
+        observe(target: Element) {
+          const cb = (this as any)._cb;
+          if (cb) {
+            cb([{ contentRect: { width: 300 } }], this);
+          }
+        }
+        unobserve() {}
+        disconnect() {}
+        constructor(cb: ResizeObserverCallback) {
+          (this as any)._cb = cb;
+        }
+      });
+    }
+
+    async function openLayoutSubmenu(props: any = defaultProps) {
+      stubResizeObserver();
+      renderMenuBar(props);
+      await tick();
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+      const layoutButton = screen.getByLabelText('Switch layout profile');
+      await fireEvent.click(layoutButton);
+      await tick();
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('shows Reset Layout only inside the layout submenu', async () => {
+      stubResizeObserver();
+      renderMenuBar();
+      await tick();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      expect(screen.queryByLabelText('Reset layout')).toBeNull();
+
+      const layoutButton = screen.getByLabelText('Switch layout profile');
+      await fireEvent.click(layoutButton);
+      await tick();
+
+      const resetButton = screen.getByLabelText('Reset layout');
+      expect(resetButton).toBeTruthy();
+
+      await fireEvent.click(resetButton);
+      await tick();
+
+      expect(defaultProps.onResetLayout).toHaveBeenCalledTimes(1);
+      expect(screen.queryByLabelText('Reset layout')).toBeNull();
+      expect(screen.queryByLabelText('Switch layout profile')).toBeNull();
+    });
+
+    it('disables Reset Layout in the layout submenu when no shader is loaded', async () => {
+      await openLayoutSubmenu({ ...defaultProps, hasShader: false });
+
+      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
+    });
+
+    it('clicking Save current layout shows Are you sure confirmation', async () => {
+      await openLayoutSubmenu();
+      await fireEvent.click(screen.getByText('Save current layout'));
+      await tick();
+      expect(screen.getByText(/Are you sure/)).toBeTruthy();
+      expect(screen.getByText('Yes')).toBeTruthy();
+      expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    it('Yes calls saveProfile and closes menus', async () => {
+      const { saveProfile } = await import('../../lib/state/profileStore.svelte');
+      await openLayoutSubmenu();
+      await fireEvent.click(screen.getByText('Save current layout'));
+      await tick();
+      await fireEvent.click(screen.getByText('Yes'));
+      await tick();
+      expect(saveProfile).toHaveBeenCalled();
+      expect(screen.queryByText(/Are you sure/)).toBeFalsy();
+    });
+
+    it('Cancel dismisses confirmation without saving', async () => {
+      const { saveProfile } = await import('../../lib/state/profileStore.svelte');
+      await openLayoutSubmenu();
+      await fireEvent.click(screen.getByText('Save current layout'));
+      await tick();
+      await fireEvent.click(screen.getByText('Cancel'));
+      await tick();
+      expect(saveProfile).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Are you sure/)).toBeFalsy();
+      expect(screen.getByText('Save current layout')).toBeTruthy();
     });
   });
 });

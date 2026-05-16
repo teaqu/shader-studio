@@ -68,7 +68,7 @@ describe('RecordingPanel', () => {
 
   it('should render three tab buttons (Screenshot, Video, GIF)', () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     expect(tabs).toHaveLength(3);
     expect(tabs[0]).toHaveTextContent('Screenshot');
     expect(tabs[1]).toHaveTextContent('Video');
@@ -77,25 +77,25 @@ describe('RecordingPanel', () => {
 
   it('Screenshot tab should be active by default', () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const activeTab = container.querySelector('.recording-tab.active');
+    const activeTab = container.querySelector('.tab-button.active');
     expect(activeTab).toHaveTextContent('Screenshot');
   });
 
   it('should switch to Video tab when clicked', async () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     await fireEvent.click(tabs[1]);
 
-    const activeTab = container.querySelector('.recording-tab.active');
+    const activeTab = container.querySelector('.tab-button.active');
     expect(activeTab).toHaveTextContent('Video');
   });
 
   it('should switch to GIF tab when clicked', async () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     await fireEvent.click(tabs[2]);
 
-    const activeTab = container.querySelector('.recording-tab.active');
+    const activeTab = container.querySelector('.tab-button.active');
     expect(activeTab).toHaveTextContent('GIF');
   });
 
@@ -103,7 +103,7 @@ describe('RecordingPanel', () => {
     getMockStore().set({ ...makeDefaultState(), isRecording: true, format: 'mp4', totalFrames: 100 });
 
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     tabs.forEach((tab) => {
       expect(tab).toBeDisabled();
     });
@@ -173,7 +173,7 @@ describe('RecordingPanel', () => {
 
   it('should show VideoTab when video tab active', async () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     await fireEvent.click(tabs[1]);
 
     expect(screen.getByText('Record')).toBeInTheDocument();
@@ -183,7 +183,7 @@ describe('RecordingPanel', () => {
 
   it('should show GifTab when gif tab active', async () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     await fireEvent.click(tabs[2]);
 
     expect(screen.getByText('Record')).toBeInTheDocument();
@@ -243,9 +243,9 @@ describe('RecordingPanel', () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
 
     // Switch to GIF tab
-    const tabs = container.querySelectorAll('.recording-tab');
+    const tabs = container.querySelectorAll('.tab-button');
     await fireEvent.click(tabs[2]);
-    expect(container.querySelector('.recording-tab.active')).toHaveTextContent('GIF');
+    expect(container.querySelector('.tab-button.active')).toHaveTextContent('GIF');
 
     // Simulate recording start and stop
     getMockStore().set({ ...makeDefaultState(), isRecording: true, format: 'gif', totalFrames: 10 });
@@ -255,7 +255,7 @@ describe('RecordingPanel', () => {
     await tick();
 
     // GIF tab should still be active after recording ends
-    expect(container.querySelector('.recording-tab.active')).toHaveTextContent('GIF');
+    expect(container.querySelector('.tab-button.active')).toHaveTextContent('GIF');
   });
 
   it('should render tab content with scrollable class', () => {
@@ -266,7 +266,7 @@ describe('RecordingPanel', () => {
 
   it('should render tabs and content areas as siblings for flex layout', () => {
     const { container } = render(RecordingPanel, { props: defaultProps });
-    const tabs = container.querySelector('.recording-tabs');
+    const tabs = container.querySelector('.tab-navigation');
     const content = container.querySelector('.recording-tab-content');
     expect(tabs).toBeInTheDocument();
     expect(content).toBeInTheDocument();

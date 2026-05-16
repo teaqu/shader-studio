@@ -41,16 +41,17 @@ describe('profileStore', () => {
     expect(getProfileList()).toEqual(defaultIndex.order);
   });
 
-  it('init creates default profile when index is null (first run)', async () => {
+  it('init with no index writes nothing and uses in-memory defaults', async () => {
     const adapter = makeAdapter({ readIndex: vi.fn().mockResolvedValue(null) });
-    const { init, getActiveProfile } = await import('../../lib/state/profileStore.svelte');
+    const { init, getActiveProfile, getProfileList } = await import('../../lib/state/profileStore.svelte');
     await init(adapter);
-    expect(adapter.writeProfile).toHaveBeenCalled();
-    expect(adapter.writeIndex).toHaveBeenCalled();
+    expect(adapter.writeProfile).not.toHaveBeenCalled();
+    expect(adapter.writeIndex).not.toHaveBeenCalled();
     expect(getActiveProfile()).toBe('default');
+    expect(getProfileList()).toEqual([{ id: 'default', name: 'Default' }]);
   });
 
-  it('switchTo saves current, reads new, updates activeProfile', async () => {
+  it('switchTo reads new profile and updates activeProfile without saving current', async () => {
     const twoProfileIndex: ProfileIndex = {
       active: 'default',
       order: [
@@ -63,8 +64,9 @@ describe('profileStore', () => {
     });
     const { init, switchTo, getActiveProfile } = await import('../../lib/state/profileStore.svelte');
     await init(adapter);
+    vi.mocked(adapter.writeProfile).mockClear();
     await switchTo('wide-editor');
-    expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.any(Object));
+    expect(adapter.writeProfile).not.toHaveBeenCalled();
     expect(adapter.readProfile).toHaveBeenCalledWith('wide-editor');
     expect(getActiveProfile()).toBe('wide-editor');
   });
@@ -127,17 +129,40 @@ describe('profileStore', () => {
     expect(getProfileList()).toHaveLength(1);
   });
 
-  it('scheduleProfileSave writes active profile after 500ms', async () => {
-    vi.useFakeTimers();
+  it('saveProfile writes profile and index immediately', async () => {
     const adapter = makeAdapter();
-    const { init, scheduleProfileSave } = await import('../../lib/state/profileStore.svelte');
+    const { init, saveProfile } = await import('../../lib/state/profileStore.svelte');
     await init(adapter);
     vi.mocked(adapter.writeProfile).mockClear();
-    scheduleProfileSave();
-    expect(adapter.writeProfile).not.toHaveBeenCalled();
-    await vi.runAllTimersAsync();
+    vi.mocked(adapter.writeIndex).mockClear();
+    await saveProfile();
     expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.any(Object));
-    vi.useRealTimers();
+    expect(adapter.writeIndex).toHaveBeenCalledWith({ active: 'default', order: expect.any(Array) });
+  });
+
+  it('saveProfile does nothing before init', async () => {
+    const adapter = makeAdapter();
+    const { saveProfile } = await import('../../lib/state/profileStore.svelte');
+    await saveProfile();
+    expect(adapter.writeProfile).not.toHaveBeenCalled();
+  });
+
+  it('switchTo does not write current profile before switching', async () => {
+    const twoProfileIndex: ProfileIndex = {
+      active: 'default',
+      order: [
+        { id: 'default', name: 'Default' },
+        { id: 'wide-editor', name: 'Wide editor' },
+      ],
+    };
+    const adapter = makeAdapter({
+      readIndex: vi.fn().mockResolvedValue(twoProfileIndex),
+    });
+    const { init, switchTo } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    vi.mocked(adapter.writeProfile).mockClear();
+    await switchTo('wide-editor');
+    expect(adapter.writeProfile).not.toHaveBeenCalled();
   });
 
   it('init with null readProfile does not throw and state still initialises', async () => {
@@ -168,6 +193,25 @@ describe('profileStore', () => {
     expect(getActiveProfile()).toBe('wide-editor');
   });
 
+  it('reorderProfiles updates list and writes index', async () => {
+    const twoProfileIndex: ProfileIndex = {
+      active: 'default',
+      order: [
+        { id: 'default', name: 'Default' },
+        { id: 'wide-editor', name: 'Wide editor' },
+      ],
+    };
+    const adapter = makeAdapter({ readIndex: vi.fn().mockResolvedValue(twoProfileIndex) });
+    const { init, reorderProfiles, getProfileList } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    const newOrder = [{ id: 'wide-editor', name: 'Wide editor' }, { id: 'default', name: 'Default' }];
+    await reorderProfiles(newOrder);
+    expect(getProfileList()).toEqual(newOrder);
+    expect(adapter.writeIndex).toHaveBeenLastCalledWith(
+      expect.objectContaining({ active: 'default', order: newOrder })
+    );
+  });
+
   it('deleteProfile of non-active profile removes it from list without switching', async () => {
     const twoProfileIndex: ProfileIndex = {
       active: 'default',
@@ -192,5 +236,55 @@ describe('profileStore', () => {
     expect(adapter.writeIndex).toHaveBeenCalledWith(
       expect.objectContaining({ active: 'default', order: [{ id: 'default', name: 'Default' }] })
     );
+  });
+
+  it('init calls requestRestore when profile data has a non-null layout', async () => {
+    const { getPendingRestore, clearPendingRestore } = await import('../../lib/state/layoutState.svelte');
+    const layoutData = { panels: { preview: { id: 'preview' } } } as any;
+    const dataWithLayout: ProfileData = { ...defaultData, layout: layoutData };
+    const adapter = makeAdapter({ readProfile: vi.fn().mockResolvedValue(dataWithLayout) });
+    const { init } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    expect(getPendingRestore()).toEqual(layoutData);
+    clearPendingRestore();
+  });
+
+  it('uniqueSlug appends counter when base slug already exists', async () => {
+    const adapter = makeAdapter({
+      readIndex: vi.fn().mockResolvedValue({
+        active: 'default',
+        order: [{ id: 'default', name: 'Default' }],
+      }),
+    });
+    const { init, saveAs, getProfileList } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    // 'default' slug already taken — saveAs should use 'default-2'
+    await saveAs('Default');
+    const ids = getProfileList().map((p) => p.id);
+    expect(ids).toContain('default-2');
+    expect(adapter.writeProfile).toHaveBeenCalledWith('default-2', expect.any(Object));
+  });
+
+  it('saveAs does nothing when adapter is null (called before init)', async () => {
+    const { saveAs, getProfileList } = await import('../../lib/state/profileStore.svelte');
+    await saveAs('New Profile');
+    // No adapter set — list should be empty (uninitialised default)
+    expect(getProfileList()).toHaveLength(0);
+  });
+
+  it('renameProfile does nothing when adapter is null (called before init)', async () => {
+    const { renameProfile, getProfileList } = await import('../../lib/state/profileStore.svelte');
+    await renameProfile('default', 'Renamed');
+    expect(getProfileList()).toHaveLength(0);
+  });
+
+  it('switchTo does nothing when called with the already-active profile id', async () => {
+    const adapter = makeAdapter();
+    const { init, switchTo, getActiveProfile } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    vi.mocked(adapter.readProfile).mockClear();
+    await switchTo('default');
+    expect(adapter.readProfile).not.toHaveBeenCalled();
+    expect(getActiveProfile()).toBe('default');
   });
 });

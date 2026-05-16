@@ -1,72 +1,29 @@
+<svelte:options runes={true} />
 <script lang="ts">
-  import RecordingPanel from "./RecordingPanel.svelte";
-  import type { OnScreenshot, OnRecord } from "../../recording/types";
-
   interface Props {
-    canvasWidth: number;
-    canvasHeight: number;
-    currentTime: number;
     hasShader: boolean;
     isRecording: boolean;
-    onScreenshot: OnScreenshot;
-    onRecord: OnRecord;
-    onCancel: () => void;
-    showMenu?: boolean;
+    isActive?: boolean;
+    onToggle?: () => void;
   }
 
-  let {
-    canvasWidth,
-    canvasHeight,
-    currentTime,
-    hasShader,
-    isRecording,
-    onScreenshot,
-    onRecord,
-    onCancel,
-    showMenu = $bindable(false),
-  }: Props = $props();
-
-  export function toggle() {
-    showMenu = !showMenu;
-  }
-
-  export function getIcon(): string {
-    return '<i class="codicon codicon-device-camera"></i>';
-  }
-
-  export function isOpen(): boolean {
-    return showMenu;
-  }
+  let { hasShader, isRecording, isActive = false, onToggle }: Props = $props();
 </script>
 
-<div class="recording-menu-container">
-  <button
-    class="collapse-record"
-    onclick={toggle}
-    aria-label="Export screenshot or recording"
-    class:recording={isRecording}
-    class:active={showMenu}
-    disabled={!hasShader}
-    title="Export screenshot, video, or GIF"
-  >
-    <i class="codicon codicon-device-camera"></i>
-    {#if isRecording}
-      <span class="recording-indicator"></span>
-    {/if}
-  </button>
-  {#if showMenu}
-    <div class="recording-menu">
-      <RecordingPanel
-        {canvasWidth}
-        {canvasHeight}
-        {currentTime}
-        {onScreenshot}
-        {onRecord}
-        {onCancel}
-      />
-    </div>
+<button
+  class="collapse-record toolbar-icon-button"
+  onclick={onToggle}
+  aria-label="Toggle export panel"
+  class:recording={isRecording}
+  class:active={isActive}
+  disabled={!hasShader}
+  title="Export screenshot, video, or GIF"
+>
+  <i class="codicon codicon-device-camera"></i>
+  {#if isRecording}
+    <span class="recording-indicator"></span>
   {/if}
-</div>
+</button>
 
 <style>
   .collapse-record {
@@ -91,29 +48,5 @@
 
   .collapse-record.recording {
     color: #e53935;
-  }
-
-  .recording-menu-container {
-    position: relative;
-    display: flex;
-  }
-
-  .recording-menu {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
-    margin-bottom: 8px;
-    background-color: var(--vscode-notifications-background);
-    border: 1px solid var(--vscode-notifications-border);
-    border-radius: 6px;
-    padding: 0;
-    min-width: 300px;
-    max-height: calc(100vh - 60px);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 1301;
-    animation: aspect-menu-appear 0.2s ease-out;
   }
 </style>

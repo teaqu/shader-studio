@@ -141,3 +141,19 @@ vi.mock('monaco-vim', () => ({
   getState: vi.fn(() => ({})),
   setState: vi.fn()
 }));
+
+// Mock ResizeObserver — not implemented in jsdom. Fires callback immediately with
+// a default width of 1000px so components that derive state from width work correctly.
+(global as any).ResizeObserver = class {
+  private cb: ResizeObserverCallback;
+  private width: number;
+  constructor(cb: ResizeObserverCallback, width = 1000) {
+    this.cb = cb;
+    this.width = width;
+  }
+  observe(target: Element) {
+    this.cb([{ contentRect: { width: this.width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+  }
+  unobserve() {}
+  disconnect() {}
+};

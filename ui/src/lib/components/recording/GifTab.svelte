@@ -90,10 +90,10 @@
 <div class="resolution-section">
   <h4>Duration</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={gifDuration === 2 * Math.PI} onclick={() => (gifDuration = 2 * Math.PI)}>2&pi;</button>
-    <button class="resolution-option menu-title" class:active={gifDuration === 3} onclick={() => (gifDuration = 3)}>3s</button>
-    <button class="resolution-option menu-title" class:active={gifDuration === 5} onclick={() => (gifDuration = 5)}>5s</button>
-    <button class="resolution-option menu-title" class:active={gifDuration === 10} onclick={() => (gifDuration = 10)}>10s</button>
+    <button class="resolution-option" class:active={gifDuration === 2 * Math.PI} onclick={() => (gifDuration = 2 * Math.PI)}>2&pi;</button>
+    <button class="resolution-option" class:active={gifDuration === 3} onclick={() => (gifDuration = 3)}>3s</button>
+    <button class="resolution-option" class:active={gifDuration === 5} onclick={() => (gifDuration = 5)}>5s</button>
+    <button class="resolution-option" class:active={gifDuration === 10} onclick={() => (gifDuration = 10)}>10s</button>
     <div class="recording-custom-fps" class:active={![2 * Math.PI, 3, 5, 10].includes(gifDuration)}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifDuration} placeholder="s" min="0.5" max="30" step="0.5" />
     </div>
@@ -102,8 +102,8 @@
 <div class="resolution-section">
   <h4>Start Time</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={gifStartMode === "current"} onclick={() => (gifStartMode = "current")}>{currentTime.toFixed(1)}s</button>
-    <button class="resolution-option menu-title" class:active={gifStartMode === "zero"} onclick={() => (gifStartMode = "zero")}>0</button>
+    <button class="resolution-option" class:active={gifStartMode === "current"} onclick={() => (gifStartMode = "current")}>{currentTime.toFixed(1)}s</button>
+    <button class="resolution-option" class:active={gifStartMode === "zero"} onclick={() => (gifStartMode = "zero")}>0</button>
     <div class="recording-custom-fps" class:active={gifStartMode === "custom"}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomStartTime} placeholder="s" step="0.1" min="0" onfocus={() => (gifStartMode = "custom")} />
     </div>
@@ -112,10 +112,10 @@
 <div class="resolution-section">
   <h4>Frame Rate</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={!gifCustomFps && gifFps === 10} onclick={() => selectGifFps(10)}>10</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomFps && gifFps === 15} onclick={() => selectGifFps(15)}>15</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomFps && gifFps === 24} onclick={() => selectGifFps(24)}>24</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomFps && gifFps === 30} onclick={() => selectGifFps(30)}>30</button>
+    <button class="resolution-option" class:active={!gifCustomFps && gifFps === 10} onclick={() => selectGifFps(10)}>10</button>
+    <button class="resolution-option" class:active={!gifCustomFps && gifFps === 15} onclick={() => selectGifFps(15)}>15</button>
+    <button class="resolution-option" class:active={!gifCustomFps && gifFps === 24} onclick={() => selectGifFps(24)}>24</button>
+    <button class="resolution-option" class:active={!gifCustomFps && gifFps === 30} onclick={() => selectGifFps(30)}>30</button>
     <div class="recording-custom-fps" class:active={!!gifCustomFps}>
       <input type="number" class="recording-custom-fps-input" bind:value={gifCustomFps} placeholder="fps" min="1" max="60" step="1" />
     </div>
@@ -124,10 +124,10 @@
 <div class="resolution-section">
   <h4>Resolution</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={gifResPreset === "current"} onclick={() => (gifResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
-    <button class="resolution-option menu-title" class:active={gifResPreset === "480p"} onclick={() => (gifResPreset = "480p")}>480p</button>
-    <button class="resolution-option menu-title" class:active={gifResPreset === "720p"} onclick={() => (gifResPreset = "720p")}>720p</button>
-    <button class="resolution-option menu-title" class:active={gifResPreset === "1080p"} onclick={() => (gifResPreset = "1080p")}>1080p</button>
+    <button class="resolution-option" class:active={gifResPreset === "current"} onclick={() => (gifResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
+    <button class="resolution-option" class:active={gifResPreset === "480p"} onclick={() => (gifResPreset = "480p")}>480p</button>
+    <button class="resolution-option" class:active={gifResPreset === "720p"} onclick={() => (gifResPreset = "720p")}>720p</button>
+    <button class="resolution-option" class:active={gifResPreset === "1080p"} onclick={() => (gifResPreset = "1080p")}>1080p</button>
     <div class="recording-custom-res" class:active={gifResPreset === "custom"} onclick={() => (gifResPreset = "custom")} onkeydown={() => (gifResPreset = "custom")} role="button" tabindex="0">
       <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder={String(canvasWidth)} min="1" step="1" onfocus={() => (gifResPreset = "custom")} />
       <span class="recording-custom-res-sep">&times;</span>
@@ -138,10 +138,10 @@
 <div class="resolution-section">
   <h4>Colors</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 32} onclick={() => selectGifColors(32)}>32</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 64} onclick={() => selectGifColors(64)}>64</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 128} onclick={() => selectGifColors(128)}>128</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomColors && gifMaxColors === 256} onclick={() => selectGifColors(256)}>256</button>
+    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 32} onclick={() => selectGifColors(32)}>32</button>
+    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 64} onclick={() => selectGifColors(64)}>64</button>
+    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 128} onclick={() => selectGifColors(128)}>128</button>
+    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 256} onclick={() => selectGifColors(256)}>256</button>
     <div class="recording-custom-fps" class:active={!!gifCustomColors}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomColors} placeholder="2-256" min="2" max="256" step="1" onchange={() => {
         if (gifCustomColors) {
@@ -154,16 +154,16 @@
 <div class="resolution-section">
   <h4>Loop</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={gifLoopCount === -1} onclick={() => (gifLoopCount = -1)}>Infinite</button>
-    <button class="resolution-option menu-title" class:active={gifLoopCount === 0} onclick={() => (gifLoopCount = 0)}>Once</button>
+    <button class="resolution-option" class:active={gifLoopCount === -1} onclick={() => (gifLoopCount = -1)}>Infinite</button>
+    <button class="resolution-option" class:active={gifLoopCount === 0} onclick={() => (gifLoopCount = 0)}>Once</button>
   </div>
 </div>
 <div class="resolution-section">
   <h4>Quality</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={!gifCustomQuality && gifQuality === 50} onclick={() => selectGifQuality(50)}>50</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomQuality && gifQuality === 80} onclick={() => selectGifQuality(80)}>80</button>
-    <button class="resolution-option menu-title" class:active={!gifCustomQuality && gifQuality === 100} onclick={() => selectGifQuality(100)}>100</button>
+    <button class="resolution-option" class:active={!gifCustomQuality && gifQuality === 50} onclick={() => selectGifQuality(50)}>50</button>
+    <button class="resolution-option" class:active={!gifCustomQuality && gifQuality === 80} onclick={() => selectGifQuality(80)}>80</button>
+    <button class="resolution-option" class:active={!gifCustomQuality && gifQuality === 100} onclick={() => selectGifQuality(100)}>100</button>
     <div class="recording-custom-fps" class:active={!!gifCustomQuality}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomQuality} placeholder="1-100" min="1" max="100" step="1" onchange={() => {
         if (gifCustomQuality) {
@@ -177,5 +177,7 @@
   ~{gifFrames} frames, est. ~{gifEstimatedKB > 1024 ? (gifEstimatedKB / 1024).toFixed(1) + " MB" : gifEstimatedKB + " KB"}
 </div>
 <div class="resolution-section">
-  <div class="scale-buttons"><button class="recording-submit resolution-option menu-title active" onclick={handleGifRecord}>Record</button></div>
+  <div class="scale-buttons">
+    <button class="export-action-btn" onclick={handleGifRecord}>Record</button>
+  </div>
 </div>

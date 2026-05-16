@@ -57,15 +57,15 @@
 <div class="resolution-section">
   <h4>Format</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={screenshotFormat === "png"} onclick={() => (screenshotFormat = "png")}>PNG</button>
-    <button class="resolution-option menu-title" class:active={screenshotFormat === "jpeg"} onclick={() => (screenshotFormat = "jpeg")}>JPEG</button>
+    <button class="resolution-option" class:active={screenshotFormat === "png"} onclick={() => (screenshotFormat = "png")}>PNG</button>
+    <button class="resolution-option" class:active={screenshotFormat === "jpeg"} onclick={() => (screenshotFormat = "jpeg")}>JPEG</button>
   </div>
 </div>
 <div class="resolution-section">
   <h4>Time</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={screenshotStartMode === "current"} onclick={() => (screenshotStartMode = "current")}>{currentTime.toFixed(1)}s</button>
-    <button class="resolution-option menu-title" class:active={screenshotStartMode === "zero"} onclick={() => (screenshotStartMode = "zero")}>0</button>
+    <button class="resolution-option" class:active={screenshotStartMode === "current"} onclick={() => (screenshotStartMode = "current")}>{currentTime.toFixed(1)}s</button>
+    <button class="resolution-option" class:active={screenshotStartMode === "zero"} onclick={() => (screenshotStartMode = "zero")}>0</button>
     <div class="recording-custom-fps" class:active={screenshotStartMode === "custom"}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={screenshotCustomTime} placeholder="s" step="0.1" min="0" onfocus={() => (screenshotStartMode = "custom")} />
     </div>
@@ -74,10 +74,10 @@
 <div class="resolution-section">
   <h4>Resolution</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={screenshotResPreset === "current"} onclick={() => (screenshotResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
-    <button class="resolution-option menu-title" class:active={screenshotResPreset === "720p"} onclick={() => (screenshotResPreset = "720p")}>720p</button>
-    <button class="resolution-option menu-title" class:active={screenshotResPreset === "1080p"} onclick={() => (screenshotResPreset = "1080p")}>1080p</button>
-    <button class="resolution-option menu-title" class:active={screenshotResPreset === "4k"} onclick={() => (screenshotResPreset = "4k")}>4K</button>
+    <button class="resolution-option" class:active={screenshotResPreset === "current"} onclick={() => (screenshotResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
+    <button class="resolution-option" class:active={screenshotResPreset === "720p"} onclick={() => (screenshotResPreset = "720p")}>720p</button>
+    <button class="resolution-option" class:active={screenshotResPreset === "1080p"} onclick={() => (screenshotResPreset = "1080p")}>1080p</button>
+    <button class="resolution-option" class:active={screenshotResPreset === "4k"} onclick={() => (screenshotResPreset = "4k")}>4K</button>
     <div class="recording-custom-res" class:active={screenshotResPreset === "custom"} onclick={() => (screenshotResPreset = "custom")} onkeydown={() => (screenshotResPreset = "custom")} role="button" tabindex="0">
       <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder={String(canvasWidth)} min="1" step="1" onfocus={() => (screenshotResPreset = "custom")} />
       <span class="recording-custom-res-sep">&times;</span>
@@ -86,5 +86,7 @@
   </div>
 </div>
 <div class="resolution-section">
-  <div class="scale-buttons"><button class="recording-submit resolution-option menu-title active" onclick={handleScreenshot}>Capture</button></div>
+  <div class="scale-buttons">
+    <button class="export-action-btn" onclick={handleScreenshot}>Capture</button>
+  </div>
 </div>

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { portal } from '../actions/portal';
+  import { computeMenuPos } from '../utils/menuPos';
+
   interface Props {
     timeManager?: any;
     currentTime?: number;
@@ -18,6 +21,22 @@
   let scrubMax = $state(0);
   let rangeMax = $state(60);
   let showTimeMenu = $state(false);
+  let triggerEl = $state<HTMLElement | null>(null);
+  let menuEl = $state<HTMLElement | null>(null);
+  let menuPos = $state({ top: 0, left: 0 });
+  let menuVisible = $state(false);
+
+  $effect(() => {
+    if (!showTimeMenu) {
+      menuVisible = false;
+    }
+  });
+  $effect(() => {
+    if (showTimeMenu && menuEl && triggerEl) {
+      menuPos = computeMenuPos(triggerEl, menuEl, 'below-left');
+      menuVisible = true;
+    }
+  });
 
   $effect(() => {
     if (!isScrubbing) {
@@ -71,20 +90,31 @@
     isScrubbing = false;
   }
 
+  let mouseDownTarget: HTMLElement | null = null;
+
+  function handleWindowMouseDown(event: MouseEvent) {
+    mouseDownTarget = event.target as HTMLElement;
+  }
+
   function handleClickOutside(event: MouseEvent) {
-    const target = event.target as HTMLElement;
-    if (showTimeMenu &&
-      !target.closest(".time-menu-container") &&
-      !target.closest(".menu-bar button")) {
+    if (!showTimeMenu) {
+      return; 
+    }
+    const clickTarget = event.target as HTMLElement;
+    const inTrigger = clickTarget.closest(".time-menu-container") || mouseDownTarget?.closest(".time-menu-container");
+    const inMenu = menuEl?.contains(clickTarget) || menuEl?.contains(mouseDownTarget);
+    if (!inTrigger && !inMenu) {
       showTimeMenu = false;
     }
+    mouseDownTarget = null;
   }
 </script>
 
-<svelte:window onclick={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} onmousedown={handleWindowMouseDown} />
 
 <div class="time-menu-container">
   <button
+    bind:this={triggerEl}
     class="menu-title time-button"
     onclick={handleTimeClick}
     aria-label="Time settings"
@@ -92,158 +122,164 @@
   >
     {currentTime.toFixed(2)}s
   </button>
-  {#if showTimeMenu}
-    <div class="time-menu">
-      <div class="time-section">
-        <div class="time-section-header">
-          <h4>Time Range</h4>
-          <button
-            class="loop-toggle-button"
-            class:active={loopEnabled}
-            onclick={handleLoopToggle}
-            aria-label={loopEnabled ? "Disable loop" : "Enable loop"}
-            title={loopEnabled ? "Disable loop" : "Enable loop"}
-          >
-            <i class="codicon codicon-sync"></i>
-          </button>
-        </div>
-        <div class="scrub-control">
-          <input
-            type="range"
-            min="0"
-            max={loopEnabled ? scrubDuration : (isScrubbing ? scrubMax : rangeMax)}
-            step="0.01"
-            value={loopEnabled ? currentTime % scrubDuration : currentTime}
-            onmousedown={handleTimeScubStart}
-            oninput={handleTimeScrub}
-            onmouseup={handleTimeScrubEnd}
-            ontouchstart={handleTimeScubStart}
-            ontouchend={handleTimeScrubEnd}
-            class="time-scrub-slider"
-          />
-          <div class="scrub-duration-buttons">
-            <button
-              class="scrub-duration-option menu-title"
-              class:active={Math.abs(scrubDuration - Math.PI * 2) < 0.01}
-              onclick={() => handleScrubDurationSelect(Math.PI * 2)}
-              disabled={!loopEnabled}
-            >
-              2π
-            </button>
-            <button
-              class="scrub-duration-option menu-title"
-              class:active={scrubDuration === 10}
-              onclick={() => handleScrubDurationSelect(10)}
-              disabled={!loopEnabled}
-            >
-              10s
-            </button>
-            <button
-              class="scrub-duration-option menu-title"
-              class:active={scrubDuration === 30}
-              onclick={() => handleScrubDurationSelect(30)}
-              disabled={!loopEnabled}
-            >
-              30s
-            </button>
-            <button
-              class="scrub-duration-option menu-title"
-              class:active={scrubDuration === 60}
-              onclick={() => handleScrubDurationSelect(60)}
-              disabled={!loopEnabled}
-            >
-              1m
-            </button>
-            <button
-              class="scrub-duration-option menu-title"
-              class:active={scrubDuration === 120}
-              onclick={() => handleScrubDurationSelect(120)}
-              disabled={!loopEnabled}
-            >
-              2m
-            </button>
-          </div>
-        </div>
-      </div>
+</div>
 
-      <div class="time-section">
-        <h4>Speed</h4>
-        <div class="speed-control">
-          <label for="speed-slider">Speed: {timeSpeed.toFixed(2)}×</label>
-          <input
-            id="speed-slider"
-            type="range"
-            min="0.25"
-            max="4.0"
-            step="0.25"
-            bind:value={timeSpeed}
-            oninput={handleSpeedChange}
-            class="speed-slider"
-          />
-          <div class="speed-presets">
-            <button
-              class="speed-preset menu-title"
-              class:active={timeSpeed === 0.25}
-              onclick={() => {
-                timeSpeed = 0.25;
-                if (timeManager) {
-                  timeManager.setSpeed(0.25);
-                }
-              }}
-            >
-              0.25×
-            </button>
-            <button
-              class="speed-preset menu-title"
-              class:active={timeSpeed === 0.5}
-              onclick={() => {
-                timeSpeed = 0.5;
-                if (timeManager) {
-                  timeManager.setSpeed(0.5);
-                }
-              }}
-            >
-              0.5×
-            </button>
-            <button
-              class="speed-preset menu-title"
-              class:active={timeSpeed === 1.0}
-              onclick={() => {
-                timeSpeed = 1.0;
-                if (timeManager) {
-                  timeManager.setSpeed(1.0);
-                }
-              }}
-            >
-              1×
-            </button>
-            <button
-              class="speed-preset menu-title"
-              class:active={timeSpeed === 2.0}
-              onclick={() => {
-                timeSpeed = 2.0;
-                if (timeManager) {
-                  timeManager.setSpeed(2.0);
-                }
-              }}
-            >
-              2×
-            </button>
-            <button
-              class="speed-preset menu-title"
-              class:active={timeSpeed === 4.0}
-              onclick={() => {
-                timeSpeed = 4.0;
-                if (timeManager) {
-                  timeManager.setSpeed(4.0);
-                }
-              }}
-            >
-              4×
-            </button>
-          </div>
+{#if showTimeMenu}
+  <div
+    use:portal
+    bind:this={menuEl}
+    class="time-menu"
+    style="top: {menuPos.top}px; left: {menuPos.left}px; visibility: {menuVisible ? 'visible' : 'hidden'};"
+  >
+    <div class="time-section">
+      <div class="time-section-header">
+        <h4>Time Range</h4>
+        <button
+          class="loop-toggle-button"
+          class:active={loopEnabled}
+          onclick={handleLoopToggle}
+          aria-label={loopEnabled ? "Disable loop" : "Enable loop"}
+          title={loopEnabled ? "Disable loop" : "Enable loop"}
+        >
+          <i class="codicon codicon-sync"></i>
+        </button>
+      </div>
+      <div class="scrub-control">
+        <input
+          type="range"
+          min="0"
+          max={loopEnabled ? scrubDuration : (isScrubbing ? scrubMax : rangeMax)}
+          step="0.01"
+          value={loopEnabled ? currentTime % scrubDuration : currentTime}
+          onmousedown={handleTimeScubStart}
+          oninput={handleTimeScrub}
+          onmouseup={handleTimeScrubEnd}
+          ontouchstart={handleTimeScubStart}
+          ontouchend={handleTimeScrubEnd}
+          class="time-scrub-slider"
+        />
+        <div class="scrub-duration-buttons">
+          <button
+            class="scrub-duration-option menu-title"
+            class:active={Math.abs(scrubDuration - Math.PI * 2) < 0.01}
+            onclick={() => handleScrubDurationSelect(Math.PI * 2)}
+            disabled={!loopEnabled}
+          >
+            2π
+          </button>
+          <button
+            class="scrub-duration-option menu-title"
+            class:active={scrubDuration === 10}
+            onclick={() => handleScrubDurationSelect(10)}
+            disabled={!loopEnabled}
+          >
+            10s
+          </button>
+          <button
+            class="scrub-duration-option menu-title"
+            class:active={scrubDuration === 30}
+            onclick={() => handleScrubDurationSelect(30)}
+            disabled={!loopEnabled}
+          >
+            30s
+          </button>
+          <button
+            class="scrub-duration-option menu-title"
+            class:active={scrubDuration === 60}
+            onclick={() => handleScrubDurationSelect(60)}
+            disabled={!loopEnabled}
+          >
+            1m
+          </button>
+          <button
+            class="scrub-duration-option menu-title"
+            class:active={scrubDuration === 120}
+            onclick={() => handleScrubDurationSelect(120)}
+            disabled={!loopEnabled}
+          >
+            2m
+          </button>
         </div>
       </div>
     </div>
-  {/if}
-</div>
+
+    <div class="time-section">
+      <h4>Speed</h4>
+      <div class="speed-control">
+        <label for="speed-slider">Speed: {timeSpeed.toFixed(2)}×</label>
+        <input
+          id="speed-slider"
+          type="range"
+          min="0.25"
+          max="4.0"
+          step="0.25"
+          bind:value={timeSpeed}
+          oninput={handleSpeedChange}
+          class="speed-slider"
+        />
+        <div class="speed-presets">
+          <button
+            class="speed-preset menu-title"
+            class:active={timeSpeed === 0.25}
+            onclick={() => {
+              timeSpeed = 0.25;
+              if (timeManager) {
+                timeManager.setSpeed(0.25);
+              }
+            }}
+          >
+            0.25×
+          </button>
+          <button
+            class="speed-preset menu-title"
+            class:active={timeSpeed === 0.5}
+            onclick={() => {
+              timeSpeed = 0.5;
+              if (timeManager) {
+                timeManager.setSpeed(0.5);
+              }
+            }}
+          >
+            0.5×
+          </button>
+          <button
+            class="speed-preset menu-title"
+            class:active={timeSpeed === 1.0}
+            onclick={() => {
+              timeSpeed = 1.0;
+              if (timeManager) {
+                timeManager.setSpeed(1.0);
+              }
+            }}
+          >
+            1×
+          </button>
+          <button
+            class="speed-preset menu-title"
+            class:active={timeSpeed === 2.0}
+            onclick={() => {
+              timeSpeed = 2.0;
+              if (timeManager) {
+                timeManager.setSpeed(2.0);
+              }
+            }}
+          >
+            2×
+          </button>
+          <button
+            class="speed-preset menu-title"
+            class:active={timeSpeed === 4.0}
+            onclick={() => {
+              timeSpeed = 4.0;
+              if (timeManager) {
+                timeManager.setSpeed(4.0);
+              }
+            }}
+          >
+            4×
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}

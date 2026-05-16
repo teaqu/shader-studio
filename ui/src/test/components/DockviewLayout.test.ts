@@ -103,12 +103,12 @@ vi.mock('../../lib/state/layoutState.svelte', () => ({
 }));
 
 vi.mock('../../lib/state/profileStore.svelte', () => ({
-  scheduleProfileSave: vi.fn(),
   getActiveProfile: vi.fn(() => 'default'),
   getProfileList: vi.fn(() => []),
   init: vi.fn(),
   switchTo: vi.fn(),
   saveAs: vi.fn(),
+  saveProfile: vi.fn(),
   renameProfile: vi.fn(),
   deleteProfile: vi.fn(),
 }));
@@ -503,7 +503,7 @@ describe('DockviewLayout', () => {
   // ─── Layout save on changes ────────────────────────────────────
 
   describe('layout persistence', () => {
-    it('should call setCurrentLayout and scheduleProfileSave when layout changes', async () => {
+    it('should call setCurrentLayout when layout changes (no auto-save)', async () => {
       renderLayout();
       await tick();
 
@@ -511,7 +511,6 @@ describe('DockviewLayout', () => {
 
       expect(mockApi.toJSON).toHaveBeenCalled();
       expect(layoutState.setCurrentLayout).toHaveBeenCalledWith(expect.any(Object));
-      expect(profileStore.scheduleProfileSave).toHaveBeenCalled();
     });
   });
 

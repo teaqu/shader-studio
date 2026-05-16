@@ -36,7 +36,7 @@ describe('TimeControls Component', () => {
     it('should not show menu initially', () => {
       const { container } = render(TimeControls, { props: defaultProps });
 
-      expect(container.querySelector('.time-menu')).not.toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).not.toBeInTheDocument();
     });
 
     it('should show menu when time button is clicked', async () => {
@@ -45,14 +45,14 @@ describe('TimeControls Component', () => {
 
       await fireEvent.click(timeButton);
 
-      expect(container.querySelector('.time-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).toBeInTheDocument();
     });
 
     it('should render the time menu container with both sections when opened', async () => {
       const { container } = render(TimeControls, { props: defaultProps });
       await fireEvent.click(screen.getByText('3.14s'));
 
-      const menu = container.querySelector('.time-menu');
+      const menu = document.body.querySelector('.time-menu');
       expect(menu).toBeInTheDocument();
       expect(menu?.textContent).toContain('Time Range');
       expect(menu?.textContent).toContain('Speed');
@@ -115,7 +115,7 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      const loopButton = container.querySelector('.loop-toggle-button');
+      const loopButton = document.body.querySelector('.loop-toggle-button');
       expect(loopButton).toBeInTheDocument();
     });
 
@@ -138,7 +138,7 @@ describe('TimeControls Component', () => {
       timeButton.click();
       await tick();
 
-      const loopButton = container.querySelector('.loop-toggle-button') as HTMLElement;
+      const loopButton = document.body.querySelector('.loop-toggle-button') as HTMLElement;
       loopButton.click();
       await tick();
 
@@ -156,7 +156,7 @@ describe('TimeControls Component', () => {
       timeButton.click();
       await tick();
 
-      const loopButton = container.querySelector('.loop-toggle-button');
+      const loopButton = document.body.querySelector('.loop-toggle-button');
       expect(loopButton).toHaveClass('active');
     });
   });
@@ -171,7 +171,7 @@ describe('TimeControls Component', () => {
       const preset2Pi = screen.getByText('2π');
       await fireEvent.click(preset2Pi);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.max).toBe((Math.PI * 2).toString());
     });
 
@@ -184,7 +184,7 @@ describe('TimeControls Component', () => {
       const preset10s = screen.getByText('10s');
       await fireEvent.click(preset10s);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.max).toBe('10');
     });
 
@@ -197,7 +197,7 @@ describe('TimeControls Component', () => {
       const preset2m = screen.getByText('2m');
       await fireEvent.click(preset2m);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.max).toBe('120');
     });
 
@@ -254,7 +254,7 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      const speedSlider = container.querySelector('#speed-slider') as HTMLInputElement;
+      const speedSlider = document.body.querySelector('#speed-slider') as HTMLInputElement;
       // For range inputs, we need to use fireEvent since userEvent doesn't support sliders well
       await fireEvent.input(speedSlider, { target: { value: '2.0' } });
 
@@ -298,7 +298,7 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider');
+      const scrubSlider = document.body.querySelector('.time-scrub-slider');
       expect(scrubSlider).toBeInTheDocument();
     });
 
@@ -307,7 +307,7 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       // For range inputs, we need to use fireEvent since userEvent doesn't support sliders well
       await fireEvent.input(scrubSlider, { target: { value: '2.5' } });
 
@@ -320,7 +320,7 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.min).toBe('0');
       expect(scrubSlider?.max).toBe('60');
     });
@@ -334,7 +334,7 @@ describe('TimeControls Component', () => {
       const preset60s = screen.getByText('1m');
       await fireEvent.click(preset60s);
 
-      const scrubSlider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(scrubSlider?.max).toBe('60');
     });
   });
@@ -345,7 +345,7 @@ describe('TimeControls Component', () => {
       const { container } = render(TimeControls, { props: defaultProps });
       await fireEvent.click(screen.getByText('3.14s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(slider.max).toBe('60');
     });
 
@@ -354,7 +354,7 @@ describe('TimeControls Component', () => {
       const { container } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('90.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(slider.max).toBe('90');
     });
 
@@ -364,7 +364,7 @@ describe('TimeControls Component', () => {
       const { container } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('75.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(slider.value).toBe('75');
     });
 
@@ -373,7 +373,7 @@ describe('TimeControls Component', () => {
       const { container, rerender } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('90.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
 
       // Start scrubbing — max freezes at Math.max(60, 90) = 90
       await fireEvent.mouseDown(slider);
@@ -391,7 +391,7 @@ describe('TimeControls Component', () => {
       const { container, rerender } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('90.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
 
       await fireEvent.mouseDown(slider);
       await fireEvent.mouseUp(slider);
@@ -410,7 +410,7 @@ describe('TimeControls Component', () => {
       const { container, rerender } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('90.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
 
       // Scrub back to 30s
       await fireEvent.mouseDown(slider);
@@ -427,7 +427,7 @@ describe('TimeControls Component', () => {
       const { container } = render(TimeControls, { props });
       await fireEvent.click(screen.getByText('350.00s'));
 
-      const slider = container.querySelector('.time-scrub-slider') as HTMLInputElement;
+      const slider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
       expect(slider.max).toBe('300');
     });
   });
@@ -438,12 +438,12 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
 
-      expect(container.querySelector('.time-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).toBeInTheDocument();
 
       // Click outside
       await fireEvent.click(document.body);
 
-      expect(container.querySelector('.time-menu')).not.toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).not.toBeInTheDocument();
     });
 
     it('should toggle menu when time button is clicked again', async () => {
@@ -451,37 +451,26 @@ describe('TimeControls Component', () => {
       const timeButton = screen.getByText('3.14s');
 
       await fireEvent.click(timeButton);
-      expect(container.querySelector('.time-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).toBeInTheDocument();
 
       await fireEvent.click(timeButton);
-      expect(container.querySelector('.time-menu')).not.toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).not.toBeInTheDocument();
     });
 
-    it('should NOT close menu when clicking menu bar buttons', async () => {
-      // Render TimeControls within a menu bar context
-      const { container } = render(TimeControls, { props: defaultProps });
+    it('should close menu when clicking outside the trigger and menu', async () => {
+      render(TimeControls, { props: defaultProps });
 
-      // Open the time menu
       const timeButton = screen.getByText('3.14s');
       await fireEvent.click(timeButton);
-      expect(container.querySelector('.time-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.time-menu')).toBeInTheDocument();
 
-      // Create a mock menu bar button
-      const menuBarButton = document.createElement('button');
-      menuBarButton.className = 'menu-bar-button';
-      const menuBar = document.createElement('div');
-      menuBar.className = 'menu-bar';
-      menuBar.appendChild(menuBarButton);
-      document.body.appendChild(menuBar);
+      const outsideButton = document.createElement('button');
+      document.body.appendChild(outsideButton);
 
-      // Click the menu bar button
-      await fireEvent.click(menuBarButton);
+      await fireEvent.click(outsideButton);
+      expect(document.body.querySelector('.time-menu')).not.toBeInTheDocument();
 
-      // Menu should still be open
-      expect(container.querySelector('.time-menu')).toBeInTheDocument();
-
-      // Cleanup
-      document.body.removeChild(menuBar);
+      document.body.removeChild(outsideButton);
     });
   });
 
@@ -534,7 +523,7 @@ describe('TimeControls Component', () => {
       await fireEvent.click(timeButton);
 
       // Enable loop
-      const loopButton = container.querySelector('.loop-toggle-button') as HTMLElement;
+      const loopButton = document.body.querySelector('.loop-toggle-button') as HTMLElement;
       await fireEvent.click(loopButton);
       expect(mockTimeManager.setLoopEnabled).toHaveBeenCalledWith(true);
 

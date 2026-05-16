@@ -27,6 +27,8 @@
   import { configPanelStore } from "../stores/configPanelStore";
   import { debugPanelStore } from "../stores/debugPanelStore";
   import { performancePanelStore } from "../stores/performancePanelStore";
+  import { recordingPanelStore } from "../stores/recordingPanelStore";
+  import RecordingPanel from "./recording/RecordingPanel.svelte";
   import {
     getEditorOverlayVisible,
     getOverlayActiveFile,
@@ -315,6 +317,8 @@
     onToggleConfigPanel: handleToggleConfigPanel,
     isPerformancePanelVisible: $performancePanelStore.isVisible,
     onTogglePerformancePanel: handleTogglePerformancePanel,
+    isRecordingPanelVisible: $recordingPanelStore.isVisible,
+    onToggleRecordingPanel: handleToggleRecordingPanel,
     isEditorOverlayVisible: editorOverlayVisible,
     onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
     isVimModeEnabled: editorVimMode,
@@ -328,9 +332,6 @@
     audioVolume,
     audioMuted,
     audioVideoController,
-    onScreenshot: handleScreenshot,
-    onRecord: handleRecord,
-    onCancel: handleCancelRecording,
     isRecording,
     compileMode: $compileModeStore.mode,
     onSetCompileMode: handleSetCompileMode,
@@ -539,6 +540,29 @@
   function handlePerformanceClosed() {
     performancePanelStore.setVisible(false);
   }
+
+  function handleToggleRecordingPanel() {
+    recordingPanelStore.toggle();
+  }
+
+  function handleRecordingClosed() {
+    recordingPanelStore.setVisible(false);
+  }
+
+  // Track current time for RecordingPanel (only runs RAF when panel is visible)
+  let recordingCurrentTime = $state(0);
+  $effect(() => {
+    if (!$recordingPanelStore.isVisible) {
+      return;
+    }
+    let rafId: number;
+    function tick() {
+      recordingCurrentTime = timeManager?.getCurrentTime(performance.now()) ?? 0;
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  });
 
   $effect(() => {
     if (initialized && renderingEngine) {
@@ -1088,6 +1112,7 @@
   let debugEl: HTMLElement;
   let configEl: HTMLElement;
   let performanceEl: HTMLElement;
+  let recordingEl: HTMLElement;
 
   function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
     return (container) => {
@@ -1098,7 +1123,7 @@
       return () => {
         if (el?.parentNode === container) {
           container.removeChild(el);
-        } 
+        }
       };
     };
   }
@@ -1107,6 +1132,7 @@
   const mountDebug = createMountFn(() => debugEl);
   const mountConfig = createMountFn(() => configEl);
   const mountPerformance = createMountFn(() => performanceEl);
+  const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
     resetVariablePreview();
@@ -1218,15 +1244,29 @@
       <FrameTimesPanel {renderingEngine} active={$performancePanelStore.isVisible} />
     {/if}
   </div>
+  <div class="dockview-panel-source" bind:this={recordingEl}>
+    {#if $recordingPanelStore.isVisible}
+      <RecordingPanel
+        {canvasWidth}
+        {canvasHeight}
+        currentTime={recordingCurrentTime}
+        onScreenshot={handleScreenshot}
+        onRecord={handleRecord}
+        onCancel={handleCancelRecording}
+      />
+    {/if}
+  </div>
 
   <DockviewLayout
     {mountPreview}
     {mountDebug}
     {mountConfig}
     {mountPerformance}
+    {mountRecording}
     showDebugPanel={$debugPanelStore.isVisible}
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
+    showRecordingPanel={$recordingPanelStore.isVisible}
     {transport}
     on:ready={handleDockviewReady}
     on:previewVisibleChange={handlePreviewVisibleChange}
@@ -1234,6 +1274,7 @@
     on:debugClosed={handleDebugClosed}
     on:configClosed={handleConfigClosed}
     on:performanceClosed={handlePerformanceClosed}
+    on:recordingClosed={handleRecordingClosed}
   />
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />

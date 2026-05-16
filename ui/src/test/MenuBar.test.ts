@@ -399,7 +399,7 @@ describe('MenuBar Component', () => {
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
       
-      expect(container.querySelector('.resolution-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.resolution-menu')).toBeInTheDocument();
       expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
       expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
       expect(screen.getByText('Zoom')).toBeInTheDocument();
@@ -706,7 +706,7 @@ describe('MenuBar Component', () => {
       const fpsButton = screen.getByLabelText('Change FPS limit');
       await fireEvent.click(fpsButton);
 
-      expect(container.querySelector('.fps-menu')).toBeInTheDocument();
+      expect(document.body.querySelector('.fps-menu')).toBeInTheDocument();
       expect(screen.getByText('Frame Rate Limit')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '30 FPS' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '60 FPS' })).toBeInTheDocument();
@@ -1106,13 +1106,35 @@ describe('MenuBar Component', () => {
   });
 
   describe('Editor Overlay in Options Menu', () => {
-    it('should show Editor option in options menu', async () => {
+    it('should show Editor option in options menu when toolbar is narrow', async () => {
+      // Editor appears when menuBarWidth <= 410 (editor button hidden from toolbar)
+      vi.stubGlobal('ResizeObserver', class {
+        private cb: ResizeObserverCallback;
+        constructor(cb: ResizeObserverCallback) {
+          this.cb = cb;
+        }
+        observe(target: Element) {
+          this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        unobserve() {}
+        disconnect() {}
+      });
       renderMenuBar();
 
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
       expect(screen.getByText('Editor')).toBeInTheDocument();
+      vi.unstubAllGlobals();
+    });
+
+    it('should not show Editor option in options menu when toolbar is wide', async () => {
+      renderMenuBar();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.queryByText('Editor')).not.toBeInTheDocument();
     });
 
     it('should call onToggleEditorOverlay from main toolbar button', async () => {
@@ -1672,6 +1694,18 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Open options menu')).not.toBeDisabled();
     });
 
+    async function openLayoutSubmenu(props: any) {
+      renderMenuBar({ props });
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.queryByLabelText('Reset layout')).not.toBeInTheDocument();
+
+      const layoutButton = screen.getByLabelText('Switch layout profile');
+      await fireEvent.click(layoutButton);
+    }
+
     it('should disable shader-affecting options menu items when hasShader is false', async () => {
       renderMenuBar({ props: { ...defaultProps, hasShader: false } });
 
@@ -1687,8 +1721,13 @@ describe('MenuBar Component', () => {
       const lockButtons = screen.getAllByLabelText('Toggle lock');
       expect(lockButtons[lockButtons.length - 1]).toBeDisabled();
 
-      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
       expect(screen.getByLabelText('Refresh shader')).toBeDisabled();
+    });
+
+    it('should disable Reset layout in the layout submenu when hasShader is false', async () => {
+      await openLayoutSubmenu({ ...defaultProps, hasShader: false });
+
+      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
     });
 
     it('should keep New Shader, Shader Explorer, and Snippet Library enabled when hasShader is false', async () => {
@@ -1716,8 +1755,13 @@ describe('MenuBar Component', () => {
       const lockButtons = screen.getAllByLabelText('Toggle lock');
       expect(lockButtons[lockButtons.length - 1]).not.toBeDisabled();
 
-      expect(screen.getByLabelText('Reset layout')).not.toBeDisabled();
       expect(screen.getByLabelText('Refresh shader')).not.toBeDisabled();
+    });
+
+    it('should enable Reset layout in the layout submenu when hasShader is true', async () => {
+      await openLayoutSubmenu({ ...defaultProps, hasShader: true });
+
+      expect(screen.getByLabelText('Reset layout')).not.toBeDisabled();
     });
 
   });

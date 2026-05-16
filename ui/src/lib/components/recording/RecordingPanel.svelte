@@ -84,112 +84,145 @@
   }
 </script>
 
-<div class="recording-tabs">
-  <button class="recording-tab" class:active={recordingTab === "screenshot"} onclick={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}>Screenshot</button>
-  <button class="recording-tab" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}>Video</button>
-  <button class="recording-tab" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}>GIF</button>
+<div class="recording-panel">
+<div class="tab-navigation">
+  <button class="tab-button" class:active={recordingTab === "screenshot"} onclick={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}><span class="tab-label">Screenshot</span></button>
+  <button class="tab-button" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}><span class="tab-label">Video</span></button>
+  <button class="tab-button" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}><span class="tab-label">GIF</span></button>
 </div>
 
 {#if recordingState.isRecording}
   <div class="recording-tab-content">
-    {#if recordingState.previewCanvas}
-      <div class="recording-preview">
-        <canvas
-          class="recording-preview-canvas"
-          width={recordingState.previewCanvas.width}
-          height={recordingState.previewCanvas.height}
-          use:mirrorCanvas={recordingState.previewCanvas}
-        ></canvas>
-      </div>
-    {/if}
-    <div class="recording-progress-section">
-      <div class="recording-progress-header">
-        <span class="recording-dot-inline"></span>
-        {#if recordingState.isFinalizing}
-          Encoding {recordingState.format?.toUpperCase()} ({recordingState.totalFrames} frames)...
-        {:else}
-          Recording {recordingState.format?.toUpperCase()}
-        {/if}
-      </div>
-      <div class="recording-progress-bar">
-        {#if recordingState.isFinalizing}
-          <div class="recording-progress-fill recording-progress-indeterminate"></div>
-        {:else}
-          <div class="recording-progress-fill" style="width: {recordingPercent}%"></div>
-        {/if}
-      </div>
-      {#if recordingState.isFinalizing}
-        <div class="recording-info-text">
-          {finalizingElapsed}s elapsed
-        </div>
-      {:else}
-        <div class="recording-info-text">
-          {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
+    <div class="recording-tab-inner">
+      {#if recordingState.previewCanvas}
+        <div class="recording-preview">
+          <canvas
+            class="recording-preview-canvas"
+            width={recordingState.previewCanvas.width}
+            height={recordingState.previewCanvas.height}
+            use:mirrorCanvas={recordingState.previewCanvas}
+          ></canvas>
         </div>
       {/if}
-      <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+      <div class="recording-progress-section">
+        <div class="recording-progress-header">
+          <span class="recording-dot-inline"></span>
+          {#if recordingState.isFinalizing}
+            Encoding {recordingState.format?.toUpperCase()} ({recordingState.totalFrames} frames)...
+          {:else}
+            Recording {recordingState.format?.toUpperCase()}
+          {/if}
+        </div>
+        <div class="recording-progress-bar">
+          {#if recordingState.isFinalizing}
+            <div class="recording-progress-fill recording-progress-indeterminate"></div>
+          {:else}
+            <div class="recording-progress-fill" style="width: {recordingPercent}%"></div>
+          {/if}
+        </div>
+        {#if recordingState.isFinalizing}
+          <div class="recording-info-text">
+            {finalizingElapsed}s elapsed
+          </div>
+        {:else}
+          <div class="recording-info-text">
+            {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
+          </div>
+        {/if}
+        <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+      </div>
     </div>
   </div>
 {:else}
   <div class="recording-tab-content">
-    {#if recordingTab === "screenshot"}
-      <ScreenshotTab {canvasWidth} {canvasHeight} {currentTime} {onScreenshot} />
-    {:else if recordingTab === "video"}
-      <VideoTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
-    {:else if recordingTab === "gif"}
-      <GifTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
-    {/if}
+    <div class="recording-tab-inner">
+      {#if recordingTab === "screenshot"}
+        <ScreenshotTab {canvasWidth} {canvasHeight} {currentTime} {onScreenshot} />
+      {:else if recordingTab === "video"}
+        <VideoTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+      {:else if recordingTab === "gif"}
+        <GifTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+      {/if}
+    </div>
   </div>
 {/if}
+</div>
 
 <style>
-  .recording-tabs {
+  .recording-panel {
     display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background-color: var(--vscode-notifications-background);
-    border-bottom: 1px solid var(--vscode-notifications-border);
-  }
-
-  .recording-tab {
-    flex: 1;
-    padding: 7px 0;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--vscode-descriptionForeground);
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-    margin-bottom: -1px;
-  }
-
-  .recording-tab:hover {
-    color: var(--vscode-editor-foreground);
-    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
-  }
-
-  .recording-tab.active {
-    color: var(--vscode-button-foreground);
-    background-color: var(--vscode-button-background);
-    border-bottom-color: var(--vscode-button-background);
-  }
-
-  .recording-tab:disabled {
-    opacity: 0.5;
-    cursor: default;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .recording-tab-content {
-    padding: 0.75rem 0.5rem 0.75rem 1rem;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
   }
 
-  :global(.recording-submit) {
-    margin-top: 0.25rem;
+  .recording-tab-inner {
+    padding: 12px;
+  }
+
+  /* Override global menu-bar button styles for panel context */
+  :global(.recording-tab-inner .scale-buttons) {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  :global(.recording-tab-content .scale-buttons .resolution-option) {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 3px 8px;
+    font-size: 11px;
+    background: none;
+    border: 1px solid var(--vscode-panel-border, #3c3c3c);
+    border-radius: 4px;
+    color: var(--vscode-descriptionForeground, #888);
+    margin-bottom: 0;
+    transition: all 0.15s;
+  }
+
+  :global(.recording-tab-content .scale-buttons .resolution-option:hover) {
+    color: var(--vscode-foreground, #cccccc);
+    border-color: var(--vscode-focusBorder, #007acc);
+    background: none;
+  }
+
+  :global(.recording-tab-content .scale-buttons .resolution-option.active) {
+    background: var(--vscode-focusBorder, #007acc);
+    border-color: var(--vscode-focusBorder, #007acc);
+    color: #fff;
+  }
+
+  :global(.recording-tab-content .scale-buttons .resolution-option.active:hover) {
+    background: var(--vscode-button-hoverBackground, #005f9e);
+    border-color: var(--vscode-button-hoverBackground, #005f9e);
+  }
+
+  :global(.export-action-btn) {
+    flex: 0 0 auto;
+    padding: 3px 12px;
+    font-size: 11px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-background);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  :global(.export-action-btn:hover) {
+    background: var(--vscode-button-hoverBackground);
+    border-color: var(--vscode-button-hoverBackground);
+  }
+
+  :global(.export-action-btn:disabled) {
+    opacity: 0.5;
+    cursor: default;
   }
 
   :global(.recording-info-text) {
@@ -201,17 +234,17 @@
   :global(.recording-custom-res) {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 2px 4px;
+    gap: 4px;
+    padding: 3px 6px;
     border-radius: 4px;
-    border: 1px solid transparent;
+    border: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-input-background);
-    cursor: pointer;
+    cursor: default;
+    flex: 0 0 auto;
   }
 
   :global(.recording-custom-res.active) {
-    border-color: var(--vscode-focusBorder);
+    border-color: var(--vscode-focusBorder, #007acc);
   }
 
   :global(.recording-custom-res-input) {
@@ -220,9 +253,9 @@
     border: none;
     color: var(--vscode-input-foreground);
     font-size: 11px;
-    width: 38px;
+    width: 36px;
     text-align: center;
-    padding: 1px 0;
+    padding: 0;
     outline: none;
     -moz-appearance: textfield;
   }
@@ -239,26 +272,23 @@
   }
 
   :global(.recording-custom-res-sep) {
-    font-size: 10px;
-    color: var(--vscode-descriptionForeground);
-    line-height: 1;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
   }
 
   :global(.recording-custom-fps) {
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex: 1;
-    padding: 2px 6px;
+    padding: 3px 6px;
     border-radius: 4px;
-    border: 1px solid transparent;
+    border: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-input-background);
-    cursor: pointer;
-    margin-left: 2px;
+    cursor: default;
+    flex: 0 0 auto;
   }
 
   :global(.recording-custom-fps.active) {
-    border-color: var(--vscode-focusBorder);
+    border-color: var(--vscode-focusBorder, #007acc);
   }
 
   :global(.recording-custom-fps-input) {
@@ -267,16 +297,15 @@
     border: none;
     color: var(--vscode-input-foreground);
     font-size: 11px;
-    width: 100%;
-    min-width: 24px;
+    width: 40px;
     text-align: center;
-    padding: 1px 0;
+    padding: 0;
     outline: none;
     -moz-appearance: textfield;
   }
 
   :global(.recording-duration-input) {
-    width: 40px;
+    width: 36px;
   }
 
   :global(.recording-custom-fps-input::placeholder) {

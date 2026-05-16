@@ -11,7 +11,6 @@
   import "dockview-core/dist/styles/dockview.css";
   import type { Transport } from "../transport/MessageTransport";
   import { setCurrentLayout, getPendingRestore, clearPendingRestore } from "../state/layoutState.svelte";
-  import { scheduleProfileSave } from "../state/profileStore.svelte";
 
   const dispatch = createEventDispatcher<{
     ready: { api: DockviewApi; resetLayout: () => void; showPreview: () => void };
@@ -20,6 +19,7 @@
     debugClosed: void;
     configClosed: void;
     performanceClosed: void;
+    recordingClosed: void;
   }>();
 
   interface Props {
@@ -27,9 +27,11 @@
     mountDebug?: (container: HTMLElement) => (() => void) | void;
     mountConfig?: (container: HTMLElement) => (() => void) | void;
     mountPerformance?: (container: HTMLElement) => (() => void) | void;
+    mountRecording?: (container: HTMLElement) => (() => void) | void;
     showDebugPanel?: boolean;
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
+    showRecordingPanel?: boolean;
     transport?: Transport | null;
   }
 
@@ -38,9 +40,11 @@
     mountDebug = () => {},
     mountConfig = () => {},
     mountPerformance = () => {},
+    mountRecording = () => {},
     showDebugPanel = false,
     showConfigPanel = false,
     showPerformancePanel = false,
+    showRecordingPanel = false,
     transport = null as Transport | null,
   }: Props = $props();
 
@@ -244,6 +248,9 @@
         case "performance":
           mountFn = mountPerformance;
           break;
+        case "recording":
+          mountFn = mountRecording;
+          break;
         default:
           return;
       }
@@ -283,6 +290,9 @@
     }
     if (showPerformancePanel) {
       addPerformancePanel();
+    }
+    if (showRecordingPanel) {
+      addRecordingPanel();
     }
   }
 
@@ -375,6 +385,7 @@
         id: "config",
         component: "config",
         title: "Config",
+        renderer: "always",
         position: { referencePanel: "preview", direction: "below" },
         initialHeight: 250,
       });
@@ -384,6 +395,7 @@
           id: sid,
           component: sid,
           title: sid === "performance" ? "Frame Times" : sid.charAt(0).toUpperCase() + sid.slice(1),
+          renderer: "always",
           position: { referencePanel: "config", direction: "within" },
         });
       }
@@ -392,6 +404,7 @@
         id: "config",
         component: "config",
         title: "Config",
+        renderer: "always",
         position: { referencePanel: "preview", direction: "below" },
         initialHeight: 250,
       });
@@ -437,6 +450,38 @@
     const panel = api.getPanel("performance");
     if (panel) {
       panelSnapshots.set("performance", api.toJSON());
+      programmaticRemoval = true;
+      api.removePanel(panel);
+      programmaticRemoval = false;
+    }
+  }
+
+  function addRecordingPanel() {
+    if (!api || api.getPanel("recording")) {
+      return;
+    }
+    if (tryRestoreFromSnapshot("recording")) {
+      return;
+    }
+
+    const tabRef = api.getPanel("debug") ?? api.getPanel("config") ?? api.getPanel("performance");
+    api.addPanel({
+      id: "recording",
+      component: "recording",
+      title: "Export",
+      ...(tabRef
+        ? { position: { referencePanel: tabRef.id, direction: "within" } }
+        : { position: { referencePanel: "preview", direction: "below" }, initialHeight: 300 }),
+    });
+  }
+
+  function removeRecordingPanel() {
+    if (!api) {
+      return;
+    }
+    const panel = api.getPanel("recording");
+    if (panel) {
+      panelSnapshots.set("recording", api.toJSON());
       programmaticRemoval = true;
       api.removePanel(panel);
       programmaticRemoval = false;
@@ -538,6 +583,18 @@
   });
 
   $effect(() => {
+    const _recording = showRecordingPanel;
+    const _ready = layoutReady;
+    if (api && _ready) {
+      if (_recording) {
+        addRecordingPanel();
+      } else {
+        removeRecordingPanel();
+      }
+    }
+  });
+
+  $effect(() => {
     // apiReady is a reactive dep that ensures this effect re-runs after onMount sets up api.
     const _ready = apiReady;
     const pending = getPendingRestore();
@@ -569,7 +626,6 @@
         internalDragActive = false;
         setDragActive(false);
         setCurrentLayout(api!.toJSON());
-        scheduleProfileSave();
         checkPreviewAlone();
       }
     });
@@ -586,6 +642,9 @@
       }
       if (panel.id === "performance" && !programmaticRemoval && !isDestroying) {
         dispatch("performanceClosed");
+      }
+      if (panel.id === "recording" && !programmaticRemoval && !isDestroying) {
+        dispatch("recordingClosed");
       }
       checkPreviewAlone();
     });

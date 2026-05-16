@@ -5012,12 +5012,12 @@ describe('ShaderViewer', () => {
       await tick();
     });
 
-    it('should have exactly 4 dockview-panel-source elements (preview, debug, config, performance)', async () => {
+    it('should have exactly 5 dockview-panel-source elements (preview, debug, config, performance, recording)', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
 
       const panelSources = container.querySelectorAll('.dockview-panel-source');
-      expect(panelSources.length).toBe(4);
+      expect(panelSources.length).toBe(5);
     });
 
     it('should subscribe to performancePanelStore on mount', async () => {

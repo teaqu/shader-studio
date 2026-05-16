@@ -1,5 +1,5 @@
 import type { FileProfileAdapter } from '../profiles/FileProfileAdapter';
-import { slugify, defaultProfileData } from '@shader-studio/types';
+import { slugify } from '@shader-studio/types';
 import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 import { snapshotConfigPanel, applyConfigPanelProfile } from '../stores/configPanelStore';
 import { snapshotDebugPanel, applyDebugPanelProfile } from '../stores/debugPanelStore';
@@ -12,7 +12,6 @@ let _activeProfile = $state<string>('default');
 let _profileList = $state<Array<{ id: string; name: string }>>([]);
 let _adapter: FileProfileAdapter | null = null;
 let _initialized = false;
-let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function getActiveProfile(): string {
   return _activeProfile; 
@@ -52,66 +51,23 @@ function uniqueSlug(base: string, existingIds: string[]): string {
   return slug;
 }
 
-function migrateFromLocalStorage(): ProfileData {
-  if (typeof localStorage === 'undefined') {
-    return defaultProfileData();
-  }
-  const candidates = ['electron', 'vscode', 'vscode:1', 'web:1'];
-  for (const slot of candidates) {
-    try {
-      const raw = localStorage.getItem(`shader-studio-dockview-layout:${slot}`);
-      if (!raw) {
-        continue;
-      }
-      const saved = JSON.parse(raw);
-      const layout = saved?.activeLayout ?? null;
-      const data = defaultProfileData();
-      data.layout = layout;
-      const configRaw = localStorage.getItem(`shader-studio-config-panel-state:${slot}`);
-      if (configRaw) {
-        const c = JSON.parse(configRaw);
-        data.configPanel.isVisible = c?.isVisible ?? false;
-      }
-      const debugRaw = localStorage.getItem(`shader-studio-debug-panel-state:${slot}`);
-      if (debugRaw) {
-        const d = JSON.parse(debugRaw);
-        data.debugPanel = { ...data.debugPanel, ...d };
-      }
-      const perfRaw = localStorage.getItem(`shader-studio-performance-panel-state:${slot}`);
-      if (perfRaw) {
-        const p = JSON.parse(perfRaw);
-        data.performancePanel.isVisible = p?.isVisible ?? false;
-      }
-      const themeRaw = localStorage.getItem('shader-studio-theme');
-      if (themeRaw === 'light' || themeRaw === 'dark') {
-        data.theme = themeRaw;
-      }
-      return data;
-    } catch {
-      continue;
-    }
-  }
-  return defaultProfileData();
-}
 
 export async function init(adapter: FileProfileAdapter): Promise<void> {
   _adapter = adapter;
-  let index: ProfileIndex | null = await adapter.readIndex();
+  const index: ProfileIndex | null = await adapter.readIndex();
 
-  if (!index) {
-    const data = migrateFromLocalStorage();
-    await adapter.writeProfile('default', data);
-    index = { active: 'default', order: [{ id: 'default', name: 'Default' }] };
-    await adapter.writeIndex(index);
+  if (index) {
+    _profileList = index.order;
+    _activeProfile = index.active;
+    const data = await adapter.readProfile(index.active);
+    if (data) {
+      applyAll(data);
+    }
+  } else {
+    _profileList = [{ id: 'default', name: 'Default' }];
+    _activeProfile = 'default';
   }
 
-  _profileList = index.order;
-  _activeProfile = index.active;
-
-  const data = await adapter.readProfile(index.active);
-  if (data) {
-    applyAll(data);
-  }
   _initialized = true;
 }
 
@@ -119,13 +75,20 @@ export async function switchTo(id: string): Promise<void> {
   if (!_adapter || id === _activeProfile) {
     return;
   }
-  await _adapter.writeProfile(_activeProfile, snapshotAll());
   const data = await _adapter.readProfile(id);
   if (data) {
     applyAll(data);
   }
   _activeProfile = id;
   await _adapter.writeIndex({ active: id, order: _profileList });
+}
+
+export async function saveProfile(): Promise<void> {
+  if (!_adapter || !_initialized) {
+    return;
+  }
+  await _adapter.writeProfile(_activeProfile, snapshotAll());
+  await _adapter.writeIndex({ active: _activeProfile, order: _profileList });
 }
 
 export async function saveAs(name: string): Promise<void> {
@@ -150,6 +113,12 @@ export async function renameProfile(id: string, newName: string): Promise<void> 
   await _adapter.writeIndex({ active: _activeProfile, order: newOrder });
 }
 
+export async function reorderProfiles(newOrder: Array<{ id: string; name: string }>): Promise<void> {
+  if (!_adapter) return;
+  _profileList = newOrder;
+  await _adapter.writeIndex({ active: _activeProfile, order: newOrder });
+}
+
 export async function deleteProfile(id: string): Promise<void> {
   if (!_adapter || _profileList.length <= 1) {
     return;
@@ -169,17 +138,3 @@ export async function deleteProfile(id: string): Promise<void> {
   }
 }
 
-export function scheduleProfileSave(): void {
-  if (!_initialized || !_adapter) {
-    return;
-  }
-  if (_saveTimer) {
-    clearTimeout(_saveTimer);
-  }
-  _saveTimer = setTimeout(async () => {
-    _saveTimer = null;
-    if (_adapter && _activeProfile) {
-      await _adapter.writeProfile(_activeProfile, snapshotAll());
-    }
-  }, 500);
-}

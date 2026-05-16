@@ -68,18 +68,18 @@
 <div class="resolution-section">
   <h4>Format</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={videoFormat === "mp4"} onclick={() => (videoFormat = "mp4")}>MP4</button>
-    <button class="resolution-option menu-title" class:active={videoFormat === "webm"} onclick={() => (videoFormat = "webm")}>WebM</button>
+    <button class="resolution-option" class:active={videoFormat === "mp4"} onclick={() => (videoFormat = "mp4")}>MP4</button>
+    <button class="resolution-option" class:active={videoFormat === "webm"} onclick={() => (videoFormat = "webm")}>WebM</button>
   </div>
 </div>
 <div class="resolution-section">
   <h4>Duration</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={videoDuration === 2 * Math.PI} onclick={() => (videoDuration = 2 * Math.PI)}>2&pi;</button>
-    <button class="resolution-option menu-title" class:active={videoDuration === 5} onclick={() => (videoDuration = 5)}>5s</button>
-    <button class="resolution-option menu-title" class:active={videoDuration === 10} onclick={() => (videoDuration = 10)}>10s</button>
-    <button class="resolution-option menu-title" class:active={videoDuration === 30} onclick={() => (videoDuration = 30)}>30s</button>
-    <button class="resolution-option menu-title" class:active={videoDuration === 60} onclick={() => (videoDuration = 60)}>60s</button>
+    <button class="resolution-option" class:active={videoDuration === 2 * Math.PI} onclick={() => (videoDuration = 2 * Math.PI)}>2&pi;</button>
+    <button class="resolution-option" class:active={videoDuration === 5} onclick={() => (videoDuration = 5)}>5s</button>
+    <button class="resolution-option" class:active={videoDuration === 10} onclick={() => (videoDuration = 10)}>10s</button>
+    <button class="resolution-option" class:active={videoDuration === 30} onclick={() => (videoDuration = 30)}>30s</button>
+    <button class="resolution-option" class:active={videoDuration === 60} onclick={() => (videoDuration = 60)}>60s</button>
     <div class="recording-custom-fps" class:active={![2 * Math.PI, 5, 10, 30, 60].includes(videoDuration)}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={videoDuration} placeholder="s" min="0.5" max="120" step="0.5" />
     </div>
@@ -88,8 +88,8 @@
 <div class="resolution-section">
   <h4>Start Time</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={videoStartMode === "current"} onclick={() => (videoStartMode = "current")}>{currentTime.toFixed(1)}s</button>
-    <button class="resolution-option menu-title" class:active={videoStartMode === "zero"} onclick={() => (videoStartMode = "zero")}>0</button>
+    <button class="resolution-option" class:active={videoStartMode === "current"} onclick={() => (videoStartMode = "current")}>{currentTime.toFixed(1)}s</button>
+    <button class="resolution-option" class:active={videoStartMode === "zero"} onclick={() => (videoStartMode = "zero")}>0</button>
     <div class="recording-custom-fps" class:active={videoStartMode === "custom"}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={videoCustomStartTime} placeholder="s" step="0.1" min="0" onfocus={() => (videoStartMode = "custom")} />
     </div>
@@ -98,9 +98,9 @@
 <div class="resolution-section">
   <h4>Frame Rate</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={!videoCustomFps && videoFps === 24} onclick={() => selectVideoFps(24)}>24</button>
-    <button class="resolution-option menu-title" class:active={!videoCustomFps && videoFps === 30} onclick={() => selectVideoFps(30)}>30</button>
-    <button class="resolution-option menu-title" class:active={!videoCustomFps && videoFps === 60} onclick={() => selectVideoFps(60)}>60</button>
+    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 24} onclick={() => selectVideoFps(24)}>24</button>
+    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 30} onclick={() => selectVideoFps(30)}>30</button>
+    <button class="resolution-option" class:active={!videoCustomFps && videoFps === 60} onclick={() => selectVideoFps(60)}>60</button>
     <div class="recording-custom-fps" class:active={!!videoCustomFps}>
       <input type="number" class="recording-custom-fps-input" bind:value={videoCustomFps} placeholder="fps" min="1" max="120" step="1" />
     </div>
@@ -109,10 +109,10 @@
 <div class="resolution-section">
   <h4>Resolution</h4>
   <div class="scale-buttons">
-    <button class="resolution-option menu-title" class:active={videoResPreset === "current"} onclick={() => (videoResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
-    <button class="resolution-option menu-title" class:active={videoResPreset === "720p"} onclick={() => (videoResPreset = "720p")}>720p</button>
-    <button class="resolution-option menu-title" class:active={videoResPreset === "1080p"} onclick={() => (videoResPreset = "1080p")}>1080p</button>
-    <button class="resolution-option menu-title" class:active={videoResPreset === "4k"} onclick={() => (videoResPreset = "4k")}>4K</button>
+    <button class="resolution-option" class:active={videoResPreset === "current"} onclick={() => (videoResPreset = "current")}>{canvasWidth}&times;{canvasHeight}</button>
+    <button class="resolution-option" class:active={videoResPreset === "720p"} onclick={() => (videoResPreset = "720p")}>720p</button>
+    <button class="resolution-option" class:active={videoResPreset === "1080p"} onclick={() => (videoResPreset = "1080p")}>1080p</button>
+    <button class="resolution-option" class:active={videoResPreset === "4k"} onclick={() => (videoResPreset = "4k")}>4K</button>
     <div class="recording-custom-res" class:active={videoResPreset === "custom"} onclick={() => (videoResPreset = "custom")} onkeydown={() => (videoResPreset = "custom")} role="button" tabindex="0">
       <input type="number" class="recording-custom-res-input" bind:value={customResW} placeholder={String(canvasWidth)} min="1" step="1" onfocus={() => (videoResPreset = "custom")} />
       <span class="recording-custom-res-sep">&times;</span>
@@ -121,5 +121,7 @@
   </div>
 </div>
 <div class="resolution-section">
-  <div class="scale-buttons"><button class="recording-submit resolution-option menu-title active" onclick={handleVideoRecord}>Record</button></div>
+  <div class="scale-buttons">
+    <button class="export-action-btn" onclick={handleVideoRecord}>Record</button>
+  </div>
 </div>

@@ -1,5 +1,6 @@
 # AI planning docs (local only)
 docs/superpowers/
+.superpowers/
 
 # Dependencies
 node_modules/

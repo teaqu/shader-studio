@@ -20,5 +20,5 @@ If the shader freezes or crashes:
 
 If panels have disappeared or the layout is broken:
 
-- Use **Menu → Reset Layout** in the preview toolbar
+- Use **Menu → Layout → Reset Layout** in the preview toolbar
 - Or run **Shader Studio: Reset Layout** from the command palette
