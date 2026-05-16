@@ -18,6 +18,7 @@ const defaultDebugState: ShaderDebugState = {
   stepEdge: 0.5,
   debugError: null,
   isVariableInspectorEnabled: false,
+  isErrorsEnabled: false,
   capturedVariables: [],
   activeBufferName: 'Image',
 };

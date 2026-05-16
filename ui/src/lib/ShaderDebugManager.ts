@@ -44,6 +44,7 @@ export class ShaderDebugManager {
     debugError: null,
     debugNotice: null,
     isVariableInspectorEnabled: false,
+    isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
   };
@@ -361,6 +362,19 @@ export class ShaderDebugManager {
     }
     this.notifyStateChange();
     // No onCaptureStateChanged: the $effect in ShaderViewer re-fires via varInspectorEnabled
+  }
+
+  public toggleErrors(): void {
+    this.state.isErrorsEnabled = !this.state.isErrorsEnabled;
+    this.notifyStateChange();
+  }
+
+  public setErrorsEnabled(enabled: boolean): void {
+    if (this.state.isErrorsEnabled === enabled) {
+      return;
+    }
+    this.state.isErrorsEnabled = enabled;
+    this.notifyStateChange();
   }
 
   public setCapturedVariables(vars: CapturedVariable[]): void {

@@ -53,7 +53,15 @@ npx eslint --fix
 
 Do not commit code with lint errors.
 
-**Also run `npx svelte-check` after making changes to `.svelte` files.** Fix all errors and warnings it reports — including Svelte-specific diagnostics like non-reactive updates (`$state` missing), unused props, and type errors that `tsc` alone won't catch.
+**Always run the full UI type check after making changes:**
+
+```sh
+cd ui && npm run check
+```
+
+This runs `svelte-check --tsconfig ./tsconfig.app.json` and the Node TypeScript check. Fix all errors and warnings it reports — including Svelte-specific diagnostics like non-reactive updates (`$state` missing), unused props, and type errors that `tsc` alone won't catch.
+
+For quick local iteration on `.svelte` files, `cd ui && npx svelte-check` is useful, but it does not replace `npm run check`.
 
 Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores, `$state`/`$derived`/`$effect` over `$:` reactivity, module-level `.svelte.ts` state or context over prop drilling.
 

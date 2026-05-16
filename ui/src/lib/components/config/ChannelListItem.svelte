@@ -33,7 +33,7 @@
       case 'buffer': return 'Buffer';
       case 'cubemap': return 'Cubemap';
       case 'keyboard': return 'Keyboard';
-      default: return input.type;
+      default: return 'Unknown';
     }
   }
 

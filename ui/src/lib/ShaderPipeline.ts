@@ -14,6 +14,7 @@ import { BufferPathResolver } from './util/BufferPathResolver';
 import { ShaderDebugManager } from './ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from './ShaderProcessor';
 import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
+import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderPipeline {
@@ -26,6 +27,7 @@ export class ShaderPipeline {
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
   private pendingShaderEvent: MessageEvent | null = null;
+  private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
 
@@ -34,6 +36,7 @@ export class ShaderPipeline {
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
     shaderDebugManager: ShaderDebugManager,
+    compilationState?: Pick<ShaderCompilationState, 'setResult'>,
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
@@ -42,6 +45,11 @@ export class ShaderPipeline {
     this.bufferPathResolver = new BufferPathResolver(renderEngine);
     this.shaderDebugManager = shaderDebugManager;
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
+    this.compilationState = compilationState ?? null;
+  }
+
+  public setCompilationState(compilationState: Pick<ShaderCompilationState, 'setResult'> | null): void {
+    this.compilationState = compilationState;
   }
 
   public async handleShaderMessage(
@@ -155,6 +163,7 @@ export class ShaderPipeline {
   }
 
   private handleCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+    this.compilationState?.setResult(result);
     this.reportCompilationResult(result);
   }
 

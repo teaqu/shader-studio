@@ -35,6 +35,7 @@
     isVariableCaptureLoading?: boolean;
     variableCaptureError?: string | null;
     onCaptureSettingsChanged?: () => void;
+    errors?: string[];
   };
 
   let {
@@ -58,6 +59,7 @@
     isVariableCaptureLoading: variableCaptureLoadingOverride = undefined,
     variableCaptureError: variableCaptureErrorOverride = undefined,
     onCaptureSettingsChanged = () => {},
+    errors = [],
   }: DebugPanelProps = $props();
 
   let liveUniforms = $state<PassUniforms | null>(null);
@@ -69,11 +71,14 @@
   let persistedVariableInspectorEnabled = $state(false);
   let persistedInlineRenderingEnabled = $state(true);
   let persistedPixelInspectorEnabled = $state(true);
+  let persistedErrorsEnabled = $state(false);
   let debugPanelPrefsRestored = $state(false);
   let lastAppliedPersistedVariableInspectorEnabled = $state<boolean | null>(null);
   let lastAppliedPersistedInlineRenderingEnabled = $state<boolean | null>(null);
+  let lastAppliedPersistedErrorsEnabled = $state<boolean | null>(null);
   let lastObservedDebugStateVariableInspectorEnabled = $state<boolean | null>(null);
   let lastObservedDebugStateInlineRenderingEnabled = $state<boolean | null>(null);
+  let lastObservedDebugStateErrorsEnabled = $state<boolean | null>(null);
   let internalSampleSize = $state(32);
   let internalRefreshMode = $state<RefreshMode>('polling');
   let internalPollingMs = $state(500);
@@ -95,9 +100,11 @@
     debugError || debugNotice || (debugState?.lineContent ? debugState.lineContent.trim() : (lineNum !== null ? `Line ${lineNum}` : ''))
   );
   const isVarInspectorOn = $derived(debugState?.isVariableInspectorEnabled);
+  const isErrorsOn = $derived(debugState?.isErrorsEnabled);
   const showParams = $derived((isInlineOn || isVarInspectorOn) && isInFunction && ctx !== null);
   const showLoops = $derived((isInlineOn || isVarInspectorOn) && ctx !== null && ctx !== undefined && ctx.loops.length > 0);
   const hasContentAboveUniforms = $derived((showParams && ctx && ctx.parameters.length > 0) || showLoops);
+  const hasContentAboveErrors = $derived((isInlineOn && !hasVariable) || (showParams && ctx && ctx.parameters.length > 0) || showLoops);
   const capturedVariables = $derived(debugState?.capturedVariables);
   const customUniformEntries = $derived(Object.entries(customUniformValues));
   const isLineTooltipVisible = $derived(
@@ -141,6 +148,7 @@
       persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
       persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
       persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
+      persistedErrorsEnabled = state.isErrorsEnabled;
       debugPanelPrefsRestored = true;
     });
 
@@ -183,6 +191,11 @@
       lastAppliedPersistedVariableInspectorEnabled = persistedVariableInspectorEnabled;
       shaderDebugManager.setVariableInspectorEnabled?.(persistedVariableInspectorEnabled);
     }
+
+    if (lastAppliedPersistedErrorsEnabled !== persistedErrorsEnabled) {
+      lastAppliedPersistedErrorsEnabled = persistedErrorsEnabled;
+      shaderDebugManager.setErrorsEnabled?.(persistedErrorsEnabled);
+    }
   });
 
   $effect(() => {
@@ -214,6 +227,22 @@
 
     if (persistedInlineRenderingEnabled !== debugState.isInlineRenderingEnabled) {
       debugPanelStore.setInlineRenderingEnabled(debugState.isInlineRenderingEnabled);
+    }
+  });
+
+  $effect(() => {
+    if (!debugPanelPrefsRestored || !debugState) {
+      return;
+    }
+
+    if (lastObservedDebugStateErrorsEnabled !== debugState.isErrorsEnabled) {
+      lastObservedDebugStateErrorsEnabled = debugState.isErrorsEnabled;
+    } else {
+      return;
+    }
+
+    if (persistedErrorsEnabled !== debugState.isErrorsEnabled) {
+      debugPanelStore.setErrorsEnabled(debugState.isErrorsEnabled);
     }
   });
 
@@ -282,6 +311,10 @@
 
   function handleToggleVariableInspector() {
     debugPanelStore.setVariableInspectorEnabled(!persistedVariableInspectorEnabled);
+  }
+
+  function handleToggleErrors() {
+    debugPanelStore.setErrorsEnabled(!persistedErrorsEnabled);
   }
 
   function handleHeaderControlPointerDown(event: PointerEvent, action: () => void) {
@@ -400,6 +433,19 @@
       data-tooltip="Variable Inspector"
     >
       <i class="codicon codicon-symbol-variable"></i>
+    </button>
+    <button
+      class="header-btn has-tooltip"
+      class:active={isErrorsOn}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleErrors)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleErrors)}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation(); 
+      }}
+      aria-label="Toggle errors"
+      data-tooltip="Errors"
+    >
+      <i class="codicon codicon-error"></i>
     </button>
     <button
       class="header-btn has-tooltip"
@@ -563,6 +609,21 @@
 
     {/if}
 
+    {#if isErrorsOn}
+      <div class="section errors-section" class:has-border={hasContentAboveErrors}>
+        <div class="section-label">Errors</div>
+        {#if errors.length > 0}
+          {#each errors as error}
+            <div class="error-row">
+              <span class="error-text">{error}</span>
+            </div>
+          {/each}
+        {:else}
+          <span class="hint-text">No errors</span>
+        {/if}
+      </div>
+    {/if}
+
     {#if isVarInspectorOn}
       <VariablesSection
         {capturedVariables}
@@ -576,7 +637,7 @@
         {refreshMode}
         {pollingMs}
         {hasPixelSelected}
-        hasBorderTop={isInlineOn || hasContentAboveUniforms}
+        hasBorderTop={isInlineOn || hasContentAboveUniforms || isErrorsOn}
       />
 
       <div class="section uniforms-section" class:has-border={hasContentAboveUniforms || isVarInspectorOn}>
@@ -916,5 +977,25 @@
   .uniform-value {
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--vscode-editor-foreground);
+  }
+
+  .errors-section {
+    padding-top: 6px;
+  }
+
+  .errors-section.has-border {
+    border-top: 1px solid var(--vscode-panel-border);
+  }
+
+  .error-row {
+    padding: 4px 0;
+  }
+
+  .error-text {
+    color: var(--vscode-errorForeground, #f44747);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 </style>

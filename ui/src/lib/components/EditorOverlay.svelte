@@ -81,17 +81,18 @@
 
   function syncVimStatus(mode?: string) {
     vimCurrentMode = mode ?? "normal";
-    if (!statusBarEl) {
+    const statusBar = statusBarEl;
+    if (!statusBar) {
       return;
     }
 
     const setStatusText = (text: string) => {
-      const modeNode = statusBarEl?.firstElementChild;
+      const modeNode = statusBar.firstElementChild;
       if (modeNode) {
         modeNode.textContent = text;
         return;
       }
-      statusBarEl.textContent = text;
+      statusBar.textContent = text;
     };
 
     switch (mode) {

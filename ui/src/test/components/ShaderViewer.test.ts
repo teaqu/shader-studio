@@ -167,9 +167,17 @@ vi.mock('../../lib/ShaderPipeline', () => {
   const MockShaderPipeline = class {
     private _shaderDebugManager: any;
     private _lastEvent: any = null;
+    private _compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null = null;
 
-    constructor(_transport: any, _engine: any, _locker: any, shaderDebugManager: any) {
+    constructor(
+      _transport: any,
+      _engine: any,
+      _locker: any,
+      shaderDebugManager: any,
+      compilationState?: { setResult(result: { success: boolean; errors?: string[] }): void },
+    ) {
       this._shaderDebugManager = shaderDebugManager;
+      this._compilationState = compilationState ?? null;
     }
 
     handleCursorPositionMessage(msg: any) {
@@ -197,6 +205,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
         }
         this._lastEvent = event;
       }
+      this._compilationState?.setResult({ success: true });
       return { success: true };
     }
 
@@ -219,6 +228,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
       if (this._shaderDebugManager) {
         this._shaderDebugManager.setShaderContext(config ?? null, '/test/shader.glsl', {});
       }
+    }
+
+    setCompilationState(compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null): void {
+      this._compilationState = compilationState;
     }
   };
 
@@ -3421,6 +3434,102 @@ describe('ShaderViewer', () => {
   });
 
   describe('handleEditorCodeChange', () => {
+    it('updates hot reload errors from the latest editor change without a one-keystroke delay', async () => {
+      vi.useFakeTimers();
+      const monaco = await import('monaco-editor');
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      const originalHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+      const contentChange = {
+        callback: null as (() => void) | null,
+      };
+      const mockEditor = {
+        dispose: vi.fn(),
+        getValue: vi.fn(() => ''),
+        setValue: vi.fn(),
+        focus: vi.fn(),
+        updateOptions: vi.fn(),
+        saveViewState: vi.fn(() => null),
+        restoreViewState: vi.fn(),
+        getPosition: vi.fn(),
+        setPosition: vi.fn(),
+        getScrollTop: vi.fn(() => 0),
+        setScrollTop: vi.fn(),
+        addCommand: vi.fn(() => 'cmd'),
+        executeEdits: vi.fn(),
+        hasTextFocus: vi.fn(() => false),
+        onDidChangeModelContent: vi.fn((cb: () => void) => {
+          contentChange.callback = cb;
+        }),
+        onDidScrollChange: vi.fn(),
+        onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+        onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+        getOption: vi.fn(() => 0),
+        getModel: vi.fn(() => ({
+          getLineMaxColumn: vi.fn(() => 80),
+          getLineCount: vi.fn(() => 1),
+          getLineContent: vi.fn(() => ''),
+        })),
+        deltaDecorations: vi.fn(() => []),
+        getVisibleRanges: vi.fn(() => []),
+      };
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+      ShaderPipeline.prototype.handleShaderMessage = vi.fn(async function (
+        this: {
+          _lastEvent?: MessageEvent;
+          _compilationState?: { setResult(result: { success: boolean; errors?: string[] }): void };
+        },
+        event: MessageEvent,
+      ) {
+        this._lastEvent = event;
+        const code = String(event.data.code ?? '');
+        const result = code.includes('BROKEN')
+          ? { success: false, errors: ['Hot reload compile error'] }
+          : { success: true, errors: [] };
+        this._compilationState?.setResult(result);
+        return result;
+      });
+
+      try {
+        const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+        await tick();
+        await loadShader();
+
+        debugPanelStore.setVisible(true);
+        debugPanelStore.setErrorsEnabled(true);
+        await tick();
+        await tick();
+
+        setEditorOverlayVisible(true);
+        await tick();
+        expect(contentChange.callback).toBeTruthy();
+
+        const pauseButton = screen.getByLabelText('Toggle pause');
+        mockEditor.getValue.mockReturnValue('void mainImage() { BROKEN }');
+        contentChange.callback?.();
+        await vi.advanceTimersByTimeAsync(30);
+        await Promise.resolve();
+        await tick();
+
+        expect(pauseButton).toHaveClass('error');
+        expect(screen.getAllByText('Hot reload compile error').length).toBeGreaterThan(0);
+        expect(container.querySelector('.errors-section')?.textContent).toContain('Hot reload compile error');
+
+        mockEditor.getValue.mockReturnValue('void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }');
+        contentChange.callback?.();
+        await vi.advanceTimersByTimeAsync(30);
+        await Promise.resolve();
+        await tick();
+
+        expect(pauseButton).not.toHaveClass('error');
+        expect(container.querySelector('.errors-section')?.textContent).not.toContain('Hot reload compile error');
+      } finally {
+        ShaderPipeline.prototype.handleShaderMessage = originalHandleShaderMessage;
+        vi.useRealTimers();
+      }
+    });
+
     it('should recompile main shader when Image buffer code changes', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();

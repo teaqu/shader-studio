@@ -27,6 +27,7 @@ function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugS
     debugError: null,
     debugNotice: null,
     isVariableInspectorEnabled: false,
+    isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
     ...overrides,
@@ -73,12 +74,14 @@ function createMockShaderDebugManager() {
     setLoopMaxIterations: vi.fn(),
     setInlineRenderingEnabled: vi.fn(),
     setVariableInspectorEnabled: vi.fn(),
+    setErrorsEnabled: vi.fn(),
     toggleLineLock: vi.fn(),
     toggleInlineRendering: vi.fn(),
     cycleNormalizeMode: vi.fn(),
     toggleStep: vi.fn(),
     setStepEdge: vi.fn(),
     toggleVariableInspector: vi.fn(),
+    toggleErrors: vi.fn(),
   } as unknown as ShaderDebugManager;
 }
 
@@ -102,6 +105,7 @@ describe('DebugPanel', () => {
     debugPanelStore.setLayoutSlot('test');
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setVariableInspectorEnabled(false);
+    debugPanelStore.setErrorsEnabled(false);
   });
 
   it('renders header with inspector and inline rendering buttons', () => {
@@ -683,6 +687,154 @@ describe('DebugPanel', () => {
   });
 
   // ----------------------------------------------------------------
+  // Errors section
+  // ----------------------------------------------------------------
+  describe('Errors', () => {
+    it('shows errors button in header', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState(),
+        getUniforms: mockGetUniforms,
+      });
+
+      const errorsBtn = container.querySelector('[aria-label="Toggle errors"]');
+      expect(errorsBtn).toBeTruthy();
+    });
+
+    it('errors button updates persisted store state', async () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState(),
+        getUniforms: mockGetUniforms,
+      });
+
+      const errorsBtn = container.querySelector('[aria-label="Toggle errors"]') as HTMLElement;
+      await fireEvent.pointerDown(errorsBtn);
+      await Promise.resolve();
+      let currentState = false;
+      const unsubscribe = debugPanelStore.subscribe((state) => {
+        currentState = state.isErrorsEnabled;
+      });
+      unsubscribe();
+      expect(currentState).toBe(true);
+    });
+
+    it('errors button shows active state when enabled', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: true }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const errorsBtn = container.querySelector('[aria-label="Toggle errors"]') as HTMLElement;
+      expect(errorsBtn.classList.contains('active')).toBe(true);
+    });
+
+    it('errors button shows inactive state when disabled', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: false }),
+        getUniforms: mockGetUniforms,
+      });
+
+      const errorsBtn = container.querySelector('[aria-label="Toggle errors"]') as HTMLElement;
+      expect(errorsBtn.classList.contains('active')).toBe(false);
+    });
+
+    it('shows errors section when errors toggle is on and errors are present', () => {
+      const { container, getByText } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: true }),
+        getUniforms: mockGetUniforms,
+        errors: ['error 0: syntax error', 'error 1: type mismatch'],
+      });
+
+      expect(getByText('Errors')).toBeInTheDocument();
+      expect(getByText('error 0: syntax error')).toBeInTheDocument();
+      expect(getByText('error 1: type mismatch')).toBeInTheDocument();
+    });
+
+    it('shows "No errors" hint when errors toggle is on but no errors exist', () => {
+      const { container, getByText } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: true }),
+        getUniforms: mockGetUniforms,
+        errors: [],
+      });
+
+      expect(getByText('Errors')).toBeInTheDocument();
+      expect(getByText('No errors')).toBeInTheDocument();
+    });
+
+    it('hides errors section when errors toggle is off', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: false }),
+        getUniforms: mockGetUniforms,
+        errors: ['some error'],
+      });
+
+      expect(container.querySelector('.errors-section')).toBeFalsy();
+    });
+
+    it('places errors section above variable inspector when both are enabled', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true, isErrorsEnabled: true }),
+        getUniforms: mockGetUniforms,
+        errors: ['an error'],
+      });
+
+      const errorsSection = container.querySelector('.errors-section');
+      const variablesSection = container.querySelector('.variables-section');
+      expect(errorsSection).toBeTruthy();
+      expect(variablesSection).toBeTruthy();
+      expect(errorsSection?.compareDocumentPosition(variablesSection as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
+    it('has no border on errors section when it is the only enabled section', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isInlineRenderingEnabled: false,
+          isVariableInspectorEnabled: false,
+          isErrorsEnabled: true,
+          functionContext: null,
+        }),
+        getUniforms: mockGetUniforms,
+        errors: ['an error'],
+      });
+
+      const errorsSection = container.querySelector('.errors-section');
+      expect(errorsSection?.classList.contains('has-border')).toBe(false);
+    });
+
+    it('has border on errors section when inline hint is above it', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isInlineRenderingEnabled: true,
+          isVariableInspectorEnabled: false,
+          isErrorsEnabled: true,
+          lineContent: null,
+          isActive: true,
+        }),
+        getUniforms: mockGetUniforms,
+        errors: ['an error'],
+      });
+
+      const errorsSection = container.querySelector('.errors-section');
+      expect(errorsSection?.classList.contains('has-border')).toBe(true);
+    });
+
+    it('has border on variable inspector when errors section is above it', () => {
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({
+          isInlineRenderingEnabled: false,
+          isVariableInspectorEnabled: true,
+          isErrorsEnabled: true,
+          functionContext: null,
+        }),
+        getUniforms: mockGetUniforms,
+        errors: ['an error'],
+      });
+
+      const variablesSection = container.querySelector('.variables-section');
+      expect(variablesSection?.classList.contains('has-border-top')).toBe(true);
+    });
+  });
+
+  // ----------------------------------------------------------------
   // Variable Inspector section
   // ----------------------------------------------------------------
   describe('Variable Inspector', () => {
@@ -705,7 +857,7 @@ describe('DebugPanel', () => {
       const headerButtons = Array.from(container.querySelectorAll('.debug-header button[aria-label]'));
       const labels = headerButtons.map((button) => button.getAttribute('aria-label'));
 
-      expect(labels.slice(0, 2)).toEqual(['Toggle inspector', 'Toggle variable inspector']);
+      expect(labels.slice(0, 3)).toEqual(['Toggle inspector', 'Toggle variable inspector', 'Toggle errors']);
     });
 
     it('variable inspector button updates persisted store state', async () => {

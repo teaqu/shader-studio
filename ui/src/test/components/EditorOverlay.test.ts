@@ -784,7 +784,7 @@ describe('EditorOverlay', () => {
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
       const { initVimMode } = await import('monaco-vim');
-      vi.mocked(initVimMode).mockImplementation((_editor: any, statusBar: HTMLElement | null) => {
+      vi.mocked(initVimMode).mockImplementation((_editor: any, statusBar?: HTMLElement | null) => {
         statusBar?.appendChild(document.createElement('span'));
         const promptNode = document.createElement('span');
         promptNode.dataset.testid = 'vim-prompt-node';

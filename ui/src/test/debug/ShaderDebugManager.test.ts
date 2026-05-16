@@ -19,6 +19,8 @@ describe('ShaderDebugManager - UI State', () => {
       expect(state.normalizeMode).toBe('off');
       expect(state.isStepEnabled).toBe(false);
       expect(state.stepEdge).toBe(0.5);
+      expect(state.isVariableInspectorEnabled).toBe(false);
+      expect(state.isErrorsEnabled).toBe(false);
     });
 
     it('should toggle enabled state', () => {
@@ -164,6 +166,40 @@ describe('ShaderDebugManager - UI State', () => {
       expect(result).not.toBeNull();
       expect(result).toContain('abs(d)'); // soft normalization
       expect(result).toContain('step('); // step post-processing
+    });
+  });
+
+  describe('Errors Toggle', () => {
+    it('should toggle errors enabled', () => {
+      expect(manager.getState().isErrorsEnabled).toBe(false);
+
+      manager.toggleErrors();
+      expect(manager.getState().isErrorsEnabled).toBe(true);
+
+      manager.toggleErrors();
+      expect(manager.getState().isErrorsEnabled).toBe(false);
+    });
+
+    it('should set errors enabled directly', () => {
+      manager.setErrorsEnabled(true);
+      expect(manager.getState().isErrorsEnabled).toBe(true);
+
+      manager.setErrorsEnabled(true);
+      expect(manager.getState().isErrorsEnabled).toBe(true);
+
+      manager.setErrorsEnabled(false);
+      expect(manager.getState().isErrorsEnabled).toBe(false);
+    });
+
+    it('should notify state callback when errors toggle changes', () => {
+      let callCount = 0;
+      manager.setStateCallback(() => callCount++);
+
+      manager.toggleErrors();
+      expect(callCount).toBe(1);
+
+      manager.toggleErrors();
+      expect(callCount).toBe(2);
     });
   });
 

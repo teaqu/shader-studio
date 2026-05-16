@@ -48,6 +48,7 @@ function makeMocks() {
     debugError: null,
     debugNotice: null,
     isVariableInspectorEnabled: false,
+    isErrorsEnabled: false,
     capturedVariables: [],
   };
 
@@ -277,7 +278,7 @@ function makeConcurrentMocks() {
       filePath: null, activeBufferName: 'Image', functionContext: null,
       isLineLocked: false, isInlineRenderingEnabled: true, normalizeMode: 'off' as const,
       isStepEnabled: false, stepEdge: 0.5, debugError: null, debugNotice: null,
-      isVariableInspectorEnabled: false, capturedVariables: [],
+      isVariableInspectorEnabled: false, isErrorsEnabled: false, capturedVariables: [],
     })),
     setShaderContext: vi.fn(),
     getDebugTarget: vi.fn((code: string, config: any) => ({ code, config: config ?? null, passName: 'Image' })),
@@ -347,5 +348,49 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     const codes = mocks.compileShaderPipeline.mock.calls.map((c: any[]) => c[0] as string);
     expect(codes.some((code) => code.includes('vec4(0.5)'))).toBe(false);
     expect(codes.some((code) => code.includes('vec4(0.0)'))).toBe(true);
+  });
+
+  it('updates compilation result state when a pending shader message finishes compiling', async () => {
+    const compilationState = {
+      latest: null as { success: boolean; errors?: string[] } | null,
+      setResult(result: { success: boolean; errors?: string[] }) {
+        this.latest = result;
+      },
+    };
+    const resolveCompileQueue: Array<() => void> = [];
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+
+    mocks.compileShaderPipeline.mockImplementation(((code: string) =>
+      new Promise<{ success: boolean; errors?: string[] }>((resolve) => {
+        resolveCompileQueue.push(() => resolve(
+          code.includes('BROKEN')
+            ? { success: false, errors: ['Pending compile error'] }
+            : { success: true },
+        ));
+      })) as any);
+
+    const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
+    void pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { BROKEN }'));
+
+    resolveCompileQueue.shift()?.();
+    await first;
+
+    await vi.waitFor(() => {
+      expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2);
+    });
+
+    resolveCompileQueue.shift()?.();
+    await vi.waitFor(() => {
+      expect(compilationState.latest).toEqual({
+        success: false,
+        errors: ['Pending compile error'],
+      });
+    });
   });
 });

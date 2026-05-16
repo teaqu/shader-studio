@@ -5,6 +5,7 @@ export interface DebugPanelState {
   isVariableInspectorEnabled: boolean;
   isInlineRenderingEnabled: boolean;
   isPixelInspectorEnabled: boolean;
+  isErrorsEnabled: boolean;
 }
 
 const STORAGE_KEY = "shader-studio-debug-panel-state";
@@ -13,6 +14,7 @@ const DEFAULT_STATE: DebugPanelState = {
   isVariableInspectorEnabled: false,
   isInlineRenderingEnabled: true,
   isPixelInspectorEnabled: true,
+  isErrorsEnabled: false,
 };
 
 function createDebugPanelStore() {
@@ -29,6 +31,7 @@ function createDebugPanelStore() {
         isVariableInspectorEnabled: state?.isVariableInspectorEnabled ?? defaultState.isVariableInspectorEnabled,
         isInlineRenderingEnabled: state?.isInlineRenderingEnabled ?? defaultState.isInlineRenderingEnabled,
         isPixelInspectorEnabled: state?.isPixelInspectorEnabled ?? defaultState.isPixelInspectorEnabled,
+        isErrorsEnabled: state?.isErrorsEnabled ?? defaultState.isErrorsEnabled,
       };
     },
   });
@@ -47,6 +50,8 @@ function createDebugPanelStore() {
       store.updateAndPersist((state) => ({ ...state, isInlineRenderingEnabled: enabled })),
     setPixelInspectorEnabled: (enabled: boolean) =>
       store.updateAndPersist((state) => ({ ...state, isPixelInspectorEnabled: enabled })),
+    setErrorsEnabled: (enabled: boolean) =>
+      store.updateAndPersist((state) => ({ ...state, isErrorsEnabled: enabled })),
   };
 }
 

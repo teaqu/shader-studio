@@ -24,6 +24,7 @@ describe('debugPanelStore', () => {
     expect(state.isVariableInspectorEnabled).toBe(false);
     expect(state.isInlineRenderingEnabled).toBe(true);
     expect(state.isPixelInspectorEnabled).toBe(true);
+    expect(state.isErrorsEnabled).toBe(false);
   });
 
   it('should not restore from localStorage on creation (deferred restore)', async () => {
@@ -42,6 +43,7 @@ describe('debugPanelStore', () => {
       isVariableInspectorEnabled: true,
       isInlineRenderingEnabled: false,
       isPixelInspectorEnabled: false,
+      isErrorsEnabled: true,
     }));
     const store = await importStore();
     store.setLayoutSlot('vscode:1');
@@ -50,6 +52,7 @@ describe('debugPanelStore', () => {
     expect(get(store).isVariableInspectorEnabled).toBe(true);
     expect(get(store).isInlineRenderingEnabled).toBe(false);
     expect(get(store).isPixelInspectorEnabled).toBe(false);
+    expect(get(store).isErrorsEnabled).toBe(true);
   });
 
   it('restoreFromStorage should handle invalid localStorage gracefully', async () => {
@@ -103,17 +106,19 @@ describe('debugPanelStore', () => {
     expect(stored.isVisible).toBe(false);
   });
 
-  it('should persist variable inspector, inline rendering, and pixel inspector toggles', async () => {
+  it('should persist variable inspector, inline rendering, pixel inspector, and errors toggles', async () => {
     const store = await importStore();
     store.setLayoutSlot('vscode:1');
     store.setVariableInspectorEnabled(true);
     store.setInlineRenderingEnabled(false);
     store.setPixelInspectorEnabled(false);
+    store.setErrorsEnabled(true);
 
     const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
     expect(stored.isVariableInspectorEnabled).toBe(true);
     expect(stored.isInlineRenderingEnabled).toBe(false);
     expect(stored.isPixelInspectorEnabled).toBe(false);
+    expect(stored.isErrorsEnabled).toBe(true);
   });
 
   it('restores and persists state independently per slot', async () => {
@@ -125,10 +130,12 @@ describe('debugPanelStore', () => {
     store.restoreFromStorage();
     expect(get(store).isVisible).toBe(false);
     expect(get(store).isVariableInspectorEnabled).toBe(false);
+    expect(get(store).isErrorsEnabled).toBe(false);
 
     store.setLayoutSlot('vscode:2');
     store.restoreFromStorage();
     expect(get(store).isVisible).toBe(true);
     expect(get(store).isVariableInspectorEnabled).toBe(true);
+    expect(get(store).isErrorsEnabled).toBe(false);
   });
 });

@@ -41,6 +41,7 @@
     getVariablePreview,
     resetVariablePreview,
   } from "../state/variablePreviewState.svelte";
+  import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
   import { audioStore, linearToPerceptualVolume } from "../stores/audioStore";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
@@ -87,6 +88,7 @@
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
   let audioVideoController = $state<AudioVideoController | undefined>(undefined);
+  const compilationState = new ShaderCompilationState();
   let lastAppliedVariablePreviewToken = 0;
   let pendingMessages: MessageEvent[] = [];
   let routerInitialized = false;
@@ -106,6 +108,7 @@
     stepEdge: 0.5,
     debugError: null,
     isVariableInspectorEnabled: false,
+    isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
   });
@@ -211,6 +214,15 @@
     } else if (initialized && variableCaptureManager && (!varInspectorEnabled || !debugEnabled)) {
       variableCaptureManager.stop();
     }
+  });
+
+  $effect(() => {
+    const result = compilationState.latest;
+    if (!result) {
+      return;
+    }
+
+    applyCompilationResult(result);
   });
 
   // Shared MenuBar props — two instances exist in different DOM positions for dockview layout
@@ -546,6 +558,15 @@
     handleExtensionCommand('manualCompile');
   }
 
+  async function handleEditorCodeChange(code: string) {
+    if (!editorOverlayManager) {
+      return;
+    }
+
+    await editorOverlayManager.handleEditorCodeChange(code);
+    await editorOverlayManager.compileCurrentCode();
+  }
+
   function handleExpandVarHistogram(varName: string) {
     if (!variableCaptureManager) {
       return;
@@ -670,6 +691,10 @@
     }
   }
 
+  function applyCompilationResult(result: CompilationResult) {
+    errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+  }
+
   async function handleMessage(event: MessageEvent): Promise<void> {
     const { type } = event.data;
 
@@ -716,7 +741,7 @@
           resolutionController.handleShaderLoadSucceeded();
         }
         if (result) {
-          errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+          applyCompilationResult(result);
           if (result.success && scriptInfo) {
             scriptInfo = { ...scriptInfo, uniforms: renderingEngine.getCustomUniformInfo() };
           }
@@ -778,7 +803,7 @@
         return;
       }
 
-      pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager);
+      pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager, compilationState);
       transport.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
       transport.postMessage({ type: 'refresh' });
 
@@ -1065,7 +1090,7 @@
           shaderCode={editorFileCode}
           shaderPath={editorFilePath}
           {transport}
-          onCodeChange={(code) => editorOverlayManager?.handleEditorCodeChange(code)}
+          onCodeChange={handleEditorCodeChange}
           compileMode={$compileModeStore.mode}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
@@ -1095,6 +1120,7 @@
         hasPixelSelected={hasPixelCapture}
         onCaptureSettingsChanged={notifyVariableCaptureManager}
         {customUniformValues}
+        {errors}
       />
     {/if}
   </div>

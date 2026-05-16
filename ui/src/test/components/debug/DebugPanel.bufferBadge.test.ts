@@ -26,6 +26,7 @@ function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugS
     stepEdge: 0.5,
     debugError: null,
     isVariableInspectorEnabled: false,
+    isErrorsEnabled: false,
     capturedVariables: [],
     activeBufferName: 'Image',
     ...overrides,
