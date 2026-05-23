@@ -114,7 +114,9 @@ export async function renameProfile(id: string, newName: string): Promise<void> 
 }
 
 export async function reorderProfiles(newOrder: Array<{ id: string; name: string }>): Promise<void> {
-  if (!_adapter) return;
+  if (!_adapter) {
+    return;
+  }
   _profileList = newOrder;
   await _adapter.writeIndex({ active: _activeProfile, order: newOrder });
 }

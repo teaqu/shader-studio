@@ -151,6 +151,7 @@
   let showFPSMenu = $state(false);
   let showOptionsMenu = $state(false);
   let showLayoutMenu = $state(false);
+  let showEditorMenu = $state(false);
   let confirmingSave = $state(false);
   let showProfileModal = $state(false);
   let fpsTriggerEl = $state<HTMLElement | null>(null);
@@ -169,6 +170,10 @@
   let layoutSubmenuEl = $state<HTMLElement | null>(null);
   let submenuPos = $state({ top: 0, left: 0 });
   let submenuVisible = $state(false);
+  let editorMenuTriggerEl = $state<HTMLElement | null>(null);
+  let editorSubmenuEl = $state<HTMLElement | null>(null);
+  let editorSubmenuPos = $state({ top: 0, left: 0 });
+  let editorSubmenuVisible = $state(false);
   let menuBarEl = $state<HTMLElement | null>(null);
   let menuBarWidth = $state(Infinity);
   let zoomLevel = $state(1.0);
@@ -195,7 +200,6 @@
 
   // Breakpoints matching the @container collapse rules — items shown in options menu when toolbar button is hidden
   const showDebugInOptions = $derived(menuBarWidth <= 430);
-  const showEditorInOptions = $derived(menuBarWidth <= 410);
   const showConfigInOptions = $derived(menuBarWidth <= 390);
   const showRecordInOptions = $derived(menuBarWidth <= 370);
   const showLockInOptions = $derived(menuBarWidth <= 340);
@@ -324,6 +328,7 @@
     showResolutionMenu = false;
     showFPSMenu = false;
     showLayoutMenu = false;
+    showEditorMenu = false;
   }
 
   function handleRecordingClick() {
@@ -467,13 +472,18 @@
     const inOptionsContainer = clickTarget.closest(".options-menu-container") || mouseDownTarget?.closest(".options-menu-container");
     const inOptionsPortal = optionsMenuEl && (optionsMenuEl.contains(clickTarget as Node) || optionsMenuEl.contains(mouseDownTarget as Node));
     const inLayoutSubmenu = layoutSubmenuEl && (layoutSubmenuEl.contains(clickTarget as Node) || layoutSubmenuEl.contains(mouseDownTarget as Node));
+    const inEditorSubmenu = editorSubmenuEl && (editorSubmenuEl.contains(clickTarget as Node) || editorSubmenuEl.contains(mouseDownTarget as Node));
     const inOptionsMenu = inOptionsContainer || inOptionsPortal;
 
     if (showLayoutMenu && !inOptionsMenu && !inLayoutSubmenu) {
       showLayoutMenu = false;
     }
 
-    if (showOptionsMenu && !inOptionsMenu && !inLayoutSubmenu) {
+    if (showEditorMenu && !inOptionsMenu && !inEditorSubmenu) {
+      showEditorMenu = false;
+    }
+
+    if (showOptionsMenu && !inOptionsMenu && !inLayoutSubmenu && !inEditorSubmenu) {
       showOptionsMenu = false;
     }
 
@@ -526,6 +536,18 @@
     if (showLayoutMenu && layoutSubmenuEl && layoutMenuTriggerEl) {
       submenuPos = computeMenuPos(layoutMenuTriggerEl, layoutSubmenuEl, 'left-of');
       submenuVisible = true;
+    }
+  });
+
+  $effect(() => {
+    if (!showEditorMenu) {
+      editorSubmenuVisible = false;
+    }
+  });
+  $effect(() => {
+    if (showEditorMenu && editorSubmenuEl && editorMenuTriggerEl) {
+      editorSubmenuPos = computeMenuPos(editorMenuTriggerEl, editorSubmenuEl, 'left-of');
+      editorSubmenuVisible = true;
     }
   });
 
@@ -621,16 +643,6 @@
         : "Enable debug mode"}
     >
       <i class="codicon codicon-bug"></i>
-    </button>
-    <button
-      class="collapse-editor toolbar-icon-button"
-      onclick={onToggleEditorOverlay}
-      aria-label="Toggle editor overlay"
-      class:active={isEditorOverlayVisible}
-      disabled={!hasShader}
-      title="Toggle editor overlay"
-    >
-      <i class="codicon codicon-code"></i>
     </button>
     <RecordingButton
       {hasShader}
@@ -888,32 +900,21 @@
         <span>Debug</span>
       </button>
     {/if}
-    {#if showEditorInOptions}
-      <button
-        class="options-menu-item"
-        onclick={() => {
-          onToggleEditorOverlay(); showOptionsMenu = false;
-        }}
-        aria-label="Toggle editor overlay"
-        class:active={isEditorOverlayVisible}
-        disabled={!hasShader}
-      >
+    <button
+      bind:this={editorMenuTriggerEl}
+      class="options-menu-item"
+      onclick={() => {
+        showEditorMenu = !showEditorMenu;
+      }}
+      aria-label="Open editor submenu"
+      style="width:100%;justify-content:space-between"
+    >
+      <div style="display:flex;align-items:center;gap:8px">
         <i class="codicon codicon-code"></i>
-        <span>Editor</span>
-      </button>
-    {/if}
-    {#if isEditorOverlayVisible}
-      <button
-        class="options-menu-item options-submenu-item"
-        onclick={() => {
-          onToggleVimMode();
-        }}
-        aria-label="Toggle vim mode"
-        class:active={isVimModeEnabled}
-      >
-        <span>Vim Mode</span>
-      </button>
-    {/if}
+        <span>Editor Overlay</span>
+      </div>
+      <i class="codicon codicon-chevron-right"></i>
+    </button>
     <button
       class="options-menu-item"
       onclick={handleRefresh}
@@ -1054,6 +1055,47 @@
         {/if}
       </button>
     </div>
+  </div>
+{/if}
+
+{#if showEditorMenu}
+  <div
+    use:portal
+    bind:this={editorSubmenuEl}
+    class="editor-submenu-portal"
+    style="top: {editorSubmenuPos.top}px; left: {editorSubmenuPos.left}px; visibility: {editorSubmenuVisible ? 'visible' : 'hidden'};"
+  >
+    <button
+      class="editor-submenu-item"
+      class:active={isEditorOverlayVisible}
+      onclick={() => {
+        onToggleEditorOverlay();
+      }}
+      aria-label="Enable editor overlay"
+      disabled={!hasShader}
+    >
+      {#if isEditorOverlayVisible}
+        <i class="codicon codicon-check"></i>
+      {:else}
+        <span class="check-placeholder"></span>
+      {/if}
+      Enable
+    </button>
+    <button
+      class="editor-submenu-item"
+      class:active={isVimModeEnabled}
+      onclick={() => {
+        onToggleVimMode();
+      }}
+      aria-label="Toggle vim mode"
+    >
+      {#if isVimModeEnabled}
+        <i class="codicon codicon-check"></i>
+      {:else}
+        <span class="check-placeholder"></span>
+      {/if}
+      Vim Mode
+    </button>
   </div>
 {/if}
 
@@ -1292,5 +1334,52 @@
 
   :global(.layout-submenu-portal .confirm-no:hover) {
     background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-activeSelectionBackground));
+  }
+
+  :global(.editor-submenu-portal) {
+    position: fixed;
+    background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+    border: 1px solid var(--vscode-panel-border, var(--vscode-editorWidget-border));
+    border-radius: 4px;
+    min-width: 160px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    z-index: 9999;
+    padding: 4px 0;
+    font-family: var(--vscode-font-family, sans-serif);
+    font-size: var(--vscode-font-size, 13px);
+  }
+
+  :global(.editor-submenu-portal .editor-submenu-item) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 12px;
+    background: none;
+    border: none;
+    color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    box-sizing: border-box;
+  }
+
+  :global(.editor-submenu-portal .editor-submenu-item:hover),
+  :global(.editor-submenu-portal .editor-submenu-item.active) {
+    background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  }
+
+  :global(.editor-submenu-portal .editor-submenu-item:disabled) {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  :global(.editor-submenu-portal .editor-submenu-item:disabled:hover) {
+    background: none;
+  }
+
+  :global(.editor-submenu-portal .check-placeholder) {
+    width: 16px;
+    display: inline-block;
   }
 </style>

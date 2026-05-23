@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, fireEvent, screen } from '@testing-library/svelte';
+import { render, fireEvent, screen, within } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import MenuBar from '../lib/components/MenuBar.svelte';
 import { currentTheme } from '../lib/stores/themeStore';
@@ -53,6 +53,22 @@ describe('MenuBar Component', () => {
       props: options.props ?? defaultProps,
       context: new Map([['resolution', mockResCtrl]]),
     });
+  }
+
+  async function openEditorSubmenu() {
+    const existingEditorButton = screen.queryByLabelText('Open editor submenu');
+    if (existingEditorButton) {
+      await fireEvent.click(existingEditorButton);
+      return document.body.querySelector('.editor-submenu-portal');
+    }
+
+    const optionsButton = screen.getByLabelText('Open options menu');
+    await fireEvent.click(optionsButton);
+
+    const editorButton = screen.getByLabelText('Open editor submenu');
+    await fireEvent.click(editorButton);
+
+    return document.body.querySelector('.editor-submenu-portal');
   }
 
   beforeEach(() => {
@@ -1106,47 +1122,51 @@ describe('MenuBar Component', () => {
   });
 
   describe('Editor Overlay in Options Menu', () => {
-    it('should show Editor option in options menu when toolbar is narrow', async () => {
-      // Editor appears when menuBarWidth <= 410 (editor button hidden from toolbar)
-      vi.stubGlobal('ResizeObserver', class {
-        private cb: ResizeObserverCallback;
-        constructor(cb: ResizeObserverCallback) {
-          this.cb = cb;
+    it('should render editor controls in the editor submenu', async () => {
+      renderMenuBar();
+
+      expect(screen.queryByLabelText('Toggle editor overlay')).not.toBeInTheDocument();
+
+      const editorMenu = await openEditorSubmenu();
+      expect(editorMenu).toBeInTheDocument();
+      expect(within(editorMenu as HTMLElement).getByRole('button', { name: 'Enable editor overlay' })).toBeInTheDocument();
+      expect(within(editorMenu as HTMLElement).getByRole('button', { name: 'Toggle vim mode' })).toBeInTheDocument();
+    });
+
+    it('should show Editor Overlay option in options menu', async () => {
+      renderMenuBar();
+
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+
+      expect(screen.getByLabelText('Open editor submenu')).toBeInTheDocument();
+      expect(screen.getByText('Editor Overlay')).toBeInTheDocument();
+    });
+
+    it('should not render an editor overlay button in the toolbar', () => {
+      const { container } = renderMenuBar({
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true,
+          hasShader: true
         }
-        observe(target: Element) {
-          this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
-        }
-        unobserve() {}
-        disconnect() {}
       });
-      renderMenuBar();
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(screen.getByText('Editor')).toBeInTheDocument();
-      vi.unstubAllGlobals();
+      expect(container.querySelector('.collapse-editor')).not.toBeInTheDocument();
     });
 
-    it('should not show Editor option in options menu when toolbar is wide', async () => {
-      renderMenuBar();
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      expect(screen.queryByText('Editor')).not.toBeInTheDocument();
-    });
-
-    it('should call onToggleEditorOverlay from main toolbar button', async () => {
+    it('should call onToggleEditorOverlay from the editor Enable menu item', async () => {
       const onToggleEditorOverlay = vi.fn();
       renderMenuBar({
         props: {
           ...defaultProps,
+          hasShader: true,
           onToggleEditorOverlay
         }
       });
 
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      const editorMenu = await openEditorSubmenu();
+      const editorButton = within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay');
       await fireEvent.click(editorButton);
 
       expect(onToggleEditorOverlay).toHaveBeenCalled();
@@ -1157,18 +1177,34 @@ describe('MenuBar Component', () => {
       renderMenuBar({
         props: {
           ...defaultProps,
+          hasShader: true,
           onToggleEditorOverlay
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
-      // Click the one inside the options menu (second one)
-      await fireEvent.click(editorButtons[editorButtons.length - 1]);
+      const editorMenu = await openEditorSubmenu();
+      await fireEvent.click(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay'));
 
       expect(onToggleEditorOverlay).toHaveBeenCalled();
+    });
+
+    it('should keep options and editor menus open when toggling editor overlay', async () => {
+      const onToggleEditorOverlay = vi.fn();
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          hasShader: true,
+          isEditorOverlayVisible: true,
+          onToggleEditorOverlay
+        }
+      });
+
+      const editorMenu = await openEditorSubmenu();
+      await fireEvent.click(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay'));
+
+      expect(onToggleEditorOverlay).toHaveBeenCalledTimes(1);
+      expect(document.body.querySelector('.options-menu-portal')).toBeInTheDocument();
+      expect(document.body.querySelector('.editor-submenu-portal')).toBeInTheDocument();
     });
 
     it('should show active state on editor button when overlay is visible', async () => {
@@ -1179,13 +1215,14 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      const editorMenu = await openEditorSubmenu();
+      const editorButton = within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay');
       expect(editorButton.classList.contains('active')).toBe(true);
     });
   });
 
   describe('Vim Mode Toggle', () => {
-    it('should show vim mode toggle in options menu when editor is visible', async () => {
+    it('should show vim mode toggle in editor submenu when editor is visible', async () => {
       renderMenuBar({
         props: {
           ...defaultProps,
@@ -1193,13 +1230,12 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
+      const editorMenu = await openEditorSubmenu();
 
-      expect(screen.getByText('Vim Mode')).toBeInTheDocument();
+      expect(within(editorMenu as HTMLElement).getByText('Vim Mode')).toBeInTheDocument();
     });
 
-    it('should not show vim mode toggle when editor is hidden', async () => {
+    it('should show vim mode toggle in editor submenu when editor is hidden', async () => {
       renderMenuBar({
         props: {
           ...defaultProps,
@@ -1207,10 +1243,9 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
+      const editorMenu = await openEditorSubmenu();
 
-      expect(screen.queryByText('Vim Mode')).not.toBeInTheDocument();
+      expect(within(editorMenu as HTMLElement).getByText('Vim Mode')).toBeInTheDocument();
     });
 
     it('should call onToggleVimMode when vim mode toggle is clicked', async () => {
@@ -1223,13 +1258,31 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
+      const editorMenu = await openEditorSubmenu();
 
-      const vimButton = screen.getByLabelText('Toggle vim mode');
+      const vimButton = within(editorMenu as HTMLElement).getByLabelText('Toggle vim mode');
       await fireEvent.click(vimButton);
 
       expect(onToggleVimMode).toHaveBeenCalledTimes(1);
+    });
+
+    it('should keep options and editor menus open when toggling vim mode', async () => {
+      const onToggleVimMode = vi.fn();
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          isEditorOverlayVisible: true,
+          onToggleVimMode
+        }
+      });
+
+      const editorMenu = await openEditorSubmenu();
+
+      await fireEvent.click(within(editorMenu as HTMLElement).getByLabelText('Toggle vim mode'));
+
+      expect(onToggleVimMode).toHaveBeenCalledTimes(1);
+      expect(document.body.querySelector('.options-menu-portal')).toBeInTheDocument();
+      expect(document.body.querySelector('.editor-submenu-portal')).toBeInTheDocument();
     });
 
     it('should show active state on vim mode toggle when enabled', async () => {
@@ -1241,10 +1294,9 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
+      const editorMenu = await openEditorSubmenu();
 
-      const vimButton = screen.getByLabelText('Toggle vim mode');
+      const vimButton = within(editorMenu as HTMLElement).getByLabelText('Toggle vim mode');
       expect(vimButton.classList.contains('active')).toBe(true);
     });
   });
@@ -1655,14 +1707,20 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Change resolution settings')).toBeDisabled();
     });
 
-    it('should disable editor overlay button when hasShader is false', () => {
+    it('should disable editor overlay menu item when hasShader is false', async () => {
       renderMenuBar({ props: { ...defaultProps, hasShader: false } });
-      expect(screen.getByLabelText('Toggle editor overlay')).toBeDisabled();
+
+      const editorMenu = await openEditorSubmenu();
+
+      expect(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay')).toBeDisabled();
     });
 
-    it('should enable editor overlay button when hasShader is true', () => {
+    it('should enable editor overlay menu item when hasShader is true', async () => {
       renderMenuBar({ props: { ...defaultProps, hasShader: true } });
-      expect(screen.getByLabelText('Toggle editor overlay')).not.toBeDisabled();
+
+      const editorMenu = await openEditorSubmenu();
+
+      expect(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay')).not.toBeDisabled();
     });
 
     it('should disable fork option when hasShader is false', async () => {
@@ -1713,8 +1771,8 @@ describe('MenuBar Component', () => {
       await fireEvent.click(optionsButton);
 
       // Shader-affecting items should be disabled
-      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
-      expect(editorButtons[editorButtons.length - 1]).toBeDisabled();
+      const editorMenu = await openEditorSubmenu();
+      expect(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay')).toBeDisabled();
 
       expect(screen.getByLabelText('Fork shader')).toBeDisabled();
 
@@ -1747,8 +1805,8 @@ describe('MenuBar Component', () => {
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
-      const editorButtons = screen.getAllByLabelText('Toggle editor overlay');
-      expect(editorButtons[editorButtons.length - 1]).not.toBeDisabled();
+      const editorMenu = await openEditorSubmenu();
+      expect(within(editorMenu as HTMLElement).getByLabelText('Enable editor overlay')).not.toBeDisabled();
 
       expect(screen.getByLabelText('Fork shader')).not.toBeDisabled();
 

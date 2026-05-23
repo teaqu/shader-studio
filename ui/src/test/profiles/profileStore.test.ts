@@ -6,7 +6,7 @@ const defaultData: ProfileData = {
   theme: 'dark', layout: null,
   configPanel: { isVisible: false },
   debugPanel: { isVisible: false, isVariableInspectorEnabled: false,
-    isInlineRenderingEnabled: true, isPixelInspectorEnabled: true },
+    isInlineRenderingEnabled: true, isPixelInspectorEnabled: true, isErrorsEnabled: false },
   performancePanel: { isVisible: false },
 };
 

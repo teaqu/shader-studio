@@ -15,6 +15,7 @@ export interface ProfileData {
     isVariableInspectorEnabled: boolean;
     isInlineRenderingEnabled: boolean;
     isPixelInspectorEnabled: boolean;
+    isErrorsEnabled: boolean;
   };
   performancePanel: {
     isVisible: boolean;
@@ -45,6 +46,7 @@ export function defaultProfileData(): ProfileData {
       isVariableInspectorEnabled: false,
       isInlineRenderingEnabled: true,
       isPixelInspectorEnabled: true,
+      isErrorsEnabled: false,
     },
     performancePanel: { isVisible: false },
   };

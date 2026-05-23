@@ -80,6 +80,7 @@ describe('FileProfileAdapter', () => {
         isVariableInspectorEnabled: false,
         isInlineRenderingEnabled: true,
         isPixelInspectorEnabled: true,
+        isErrorsEnabled: false,
       },
       performancePanel: { isVisible: false },
     } as ProfileData;

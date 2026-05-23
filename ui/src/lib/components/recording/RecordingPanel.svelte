@@ -85,67 +85,67 @@
 </script>
 
 <div class="recording-panel">
-<div class="tab-navigation">
-  <button class="tab-button" class:active={recordingTab === "screenshot"} onclick={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}><span class="tab-label">Screenshot</span></button>
-  <button class="tab-button" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}><span class="tab-label">Video</span></button>
-  <button class="tab-button" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}><span class="tab-label">GIF</span></button>
-</div>
+  <div class="tab-navigation">
+    <button class="tab-button" class:active={recordingTab === "screenshot"} onclick={() => (recordingTab = "screenshot")} disabled={recordingState.isRecording}><span class="tab-label">Screenshot</span></button>
+    <button class="tab-button" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}><span class="tab-label">Video</span></button>
+    <button class="tab-button" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}><span class="tab-label">GIF</span></button>
+  </div>
 
-{#if recordingState.isRecording}
-  <div class="recording-tab-content">
-    <div class="recording-tab-inner">
-      {#if recordingState.previewCanvas}
-        <div class="recording-preview">
-          <canvas
-            class="recording-preview-canvas"
-            width={recordingState.previewCanvas.width}
-            height={recordingState.previewCanvas.height}
-            use:mirrorCanvas={recordingState.previewCanvas}
-          ></canvas>
-        </div>
-      {/if}
-      <div class="recording-progress-section">
-        <div class="recording-progress-header">
-          <span class="recording-dot-inline"></span>
-          {#if recordingState.isFinalizing}
-            Encoding {recordingState.format?.toUpperCase()} ({recordingState.totalFrames} frames)...
-          {:else}
-            Recording {recordingState.format?.toUpperCase()}
-          {/if}
-        </div>
-        <div class="recording-progress-bar">
-          {#if recordingState.isFinalizing}
-            <div class="recording-progress-fill recording-progress-indeterminate"></div>
-          {:else}
-            <div class="recording-progress-fill" style="width: {recordingPercent}%"></div>
-          {/if}
-        </div>
-        {#if recordingState.isFinalizing}
-          <div class="recording-info-text">
-            {finalizingElapsed}s elapsed
-          </div>
-        {:else}
-          <div class="recording-info-text">
-            {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
+  {#if recordingState.isRecording}
+    <div class="recording-tab-content">
+      <div class="recording-tab-inner">
+        {#if recordingState.previewCanvas}
+          <div class="recording-preview">
+            <canvas
+              class="recording-preview-canvas"
+              width={recordingState.previewCanvas.width}
+              height={recordingState.previewCanvas.height}
+              use:mirrorCanvas={recordingState.previewCanvas}
+            ></canvas>
           </div>
         {/if}
-        <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+        <div class="recording-progress-section">
+          <div class="recording-progress-header">
+            <span class="recording-dot-inline"></span>
+            {#if recordingState.isFinalizing}
+              Encoding {recordingState.format?.toUpperCase()} ({recordingState.totalFrames} frames)...
+            {:else}
+              Recording {recordingState.format?.toUpperCase()}
+            {/if}
+          </div>
+          <div class="recording-progress-bar">
+            {#if recordingState.isFinalizing}
+              <div class="recording-progress-fill recording-progress-indeterminate"></div>
+            {:else}
+              <div class="recording-progress-fill" style="width: {recordingPercent}%"></div>
+            {/if}
+          </div>
+          {#if recordingState.isFinalizing}
+            <div class="recording-info-text">
+              {finalizingElapsed}s elapsed
+            </div>
+          {:else}
+            <div class="recording-info-text">
+              {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
+            </div>
+          {/if}
+          <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+        </div>
       </div>
     </div>
-  </div>
-{:else}
-  <div class="recording-tab-content">
-    <div class="recording-tab-inner">
-      {#if recordingTab === "screenshot"}
-        <ScreenshotTab {canvasWidth} {canvasHeight} {currentTime} {onScreenshot} />
-      {:else if recordingTab === "video"}
-        <VideoTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
-      {:else if recordingTab === "gif"}
-        <GifTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
-      {/if}
+  {:else}
+    <div class="recording-tab-content">
+      <div class="recording-tab-inner">
+        {#if recordingTab === "screenshot"}
+          <ScreenshotTab {canvasWidth} {canvasHeight} {currentTime} {onScreenshot} />
+        {:else if recordingTab === "video"}
+          <VideoTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+        {:else if recordingTab === "gif"}
+          <GifTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+        {/if}
+      </div>
     </div>
-  </div>
-{/if}
+  {/if}
 </div>
 
 <style>

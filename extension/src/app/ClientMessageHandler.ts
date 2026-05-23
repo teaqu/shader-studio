@@ -33,7 +33,8 @@ export class ClientMessageHandler {
     this.overlay = new OverlayPanelHandler();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? context.storageUri?.fsPath
-      ?? context.globalStorageUri.fsPath;
+      ?? context.globalStorageUri?.fsPath
+      ?? extensionPath;
     this.profileHandler = new ProfileMessageHandler(new ProfileFileService(workspaceRoot));
     this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger);
     this.nav = new NavigationHandler(glslFileTracker, getPanelColumns ?? (() => new Set()), this.logger);

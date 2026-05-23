@@ -11,6 +11,7 @@
   import "dockview-core/dist/styles/dockview.css";
   import type { Transport } from "../transport/MessageTransport";
   import { setCurrentLayout, getPendingRestore, clearPendingRestore } from "../state/layoutState.svelte";
+  import type { SerializedLayout } from "@shader-studio/types";
 
   const dispatch = createEventDispatcher<{
     ready: { api: DockviewApi; resetLayout: () => void; showPreview: () => void };
@@ -599,7 +600,7 @@
     const _ready = apiReady;
     const pending = getPendingRestore();
     if (pending && _ready && api) {
-      restoreFromData(pending as SerializedDockview);
+      restoreFromData(pending as unknown as SerializedDockview);
       clearPendingRestore();
     }
   });
@@ -625,7 +626,7 @@
       if (layoutReady) {
         internalDragActive = false;
         setDragActive(false);
-        setCurrentLayout(api!.toJSON());
+        setCurrentLayout(api!.toJSON() as unknown as SerializedLayout);
         checkPreviewAlone();
       }
     });

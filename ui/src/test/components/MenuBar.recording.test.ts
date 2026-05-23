@@ -68,7 +68,9 @@ describe('MenuBar Recording Integration', () => {
   it('should show Export option in options menu when toolbar is narrow', async () => {
     vi.stubGlobal('ResizeObserver', class {
       private cb: ResizeObserverCallback;
-      constructor(cb: ResizeObserverCallback) { this.cb = cb; }
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
       observe(target: Element) {
         this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
       }
@@ -95,7 +97,9 @@ describe('MenuBar Recording Integration', () => {
     const onToggleRecordingPanel = vi.fn();
     vi.stubGlobal('ResizeObserver', class {
       private cb: ResizeObserverCallback;
-      constructor(cb: ResizeObserverCallback) { this.cb = cb; }
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
       observe(target: Element) {
         this.cb([{ contentRect: { width: 300 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
       }

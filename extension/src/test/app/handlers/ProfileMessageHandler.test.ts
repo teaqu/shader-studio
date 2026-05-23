@@ -84,6 +84,7 @@ suite('ProfileMessageHandler Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };
@@ -131,6 +132,7 @@ suite('ProfileMessageHandler Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };

@@ -1884,6 +1884,7 @@ describe('ShaderViewer', () => {
       isVariableInspectorEnabled: true,
       isInlineRenderingEnabled: true,
       isPixelInspectorEnabled: true,
+      isErrorsEnabled: false,
     });
 
     render(ShaderViewer, { onInitialized: vi.fn() });
@@ -3896,12 +3897,20 @@ describe('ShaderViewer', () => {
   });
 
   describe('handleToggleEditorOverlay', () => {
-    it('should not toggle editor overlay via toolbar when no shader is active', async () => {
+    it('should not toggle editor overlay from the menu when no shader is active', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
 
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      const editorMenuButton = screen.getByLabelText('Open editor submenu');
+      await fireEvent.click(editorMenuButton);
+      await tick();
+
+      const editorButton = screen.getByLabelText('Enable editor overlay');
       expect(editorButton).toHaveAttribute('disabled');
 
       await fireEvent.click(editorButton);
@@ -3928,15 +3937,23 @@ describe('ShaderViewer', () => {
       });
       await tick();
 
-      // Find the editor overlay toggle button
-      const editorButton = screen.getByLabelText('Toggle editor overlay');
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      await tick();
+
+      const editorMenuButton = screen.getByLabelText('Open editor submenu');
+      await fireEvent.click(editorMenuButton);
+      await tick();
+
+      const editorButton = screen.getByLabelText('Enable editor overlay');
       await fireEvent.click(editorButton);
       await tick();
 
       await waitForEditorOverlay(container);
 
       // Toggle again to hide
-      await fireEvent.click(editorButton);
+      const hideEditorButton = screen.getByLabelText('Enable editor overlay');
+      await fireEvent.click(hideEditorButton);
       await tick();
 
       expect(container.querySelector('.editor-wrapper')).toBeFalsy();
@@ -3949,13 +3966,18 @@ describe('ShaderViewer', () => {
       await tick();
       await tick();
 
-      // Enable editor overlay first (vim mode button only appears when editor is visible)
+      // Enable editor overlay first so the vim toggle is exercised with the editor open.
       setEditorOverlayVisible(true);
       await tick();
 
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
+      await tick();
+
+      // Open editor submenu
+      const editorMenuButton = screen.getByLabelText('Open editor submenu');
+      await fireEvent.click(editorMenuButton);
       await tick();
 
       // Find the vim mode toggle (should now be visible)

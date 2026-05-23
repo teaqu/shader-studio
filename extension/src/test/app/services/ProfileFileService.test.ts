@@ -127,6 +127,7 @@ suite('ProfileFileService Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };
@@ -157,6 +158,7 @@ suite('ProfileFileService Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };
@@ -179,6 +181,7 @@ suite('ProfileFileService Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };
@@ -202,6 +205,7 @@ suite('ProfileFileService Test Suite', () => {
           isVariableInspectorEnabled: true,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: false,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: true },
       };
@@ -226,6 +230,7 @@ suite('ProfileFileService Test Suite', () => {
           isVariableInspectorEnabled: false,
           isInlineRenderingEnabled: true,
           isPixelInspectorEnabled: true,
+          isErrorsEnabled: false,
         },
         performancePanel: { isVisible: false },
       };
