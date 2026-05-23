@@ -673,6 +673,37 @@ describe('EditorOverlay', () => {
       expect(initVimMode).toHaveBeenCalled();
     });
 
+    it('should show normal mode immediately when vim is enabled after editor creation', async () => {
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockImplementation((_editor: any, statusBar?: HTMLElement | null) => {
+        const modeNode = document.createElement('span');
+        statusBar?.appendChild(modeNode);
+        setTimeout(() => {
+          modeNode.textContent = '';
+        }, 0);
+
+        return {
+          on: vi.fn(),
+          dispose: vi.fn(),
+          state: { keyMap: 'vim', vim: { insertMode: false, visualMode: false } },
+          constructor: { keyMap: { vim: {} } },
+        } as any;
+      });
+
+      const { container, rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, vimMode: false },
+      });
+
+      expect(container.querySelector('.vim-status-bar')).toBeNull();
+
+      await rerender({ ...defaultProps, vimMode: true });
+
+      const status = container.querySelector('.vim-status-bar') as HTMLDivElement;
+      expect(status).toBeTruthy();
+      await vi.runOnlyPendingTimersAsync();
+      expect(status.textContent).toContain('NORMAL');
+    });
+
     it('should not register vim diagnostic or hover key mappings', async () => {
       const { VimMode } = await import('monaco-vim');
       const vim = (VimMode as any).Vim;

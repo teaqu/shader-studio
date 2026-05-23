@@ -241,6 +241,11 @@
     vimStatusAttached = !!statusBarEl;
     syncVimStatus();
     syncCursorForMode();
+    setTimeout(() => {
+      if (vimModeInstance) {
+        syncVimStatus(vimCurrentMode);
+      }
+    }, 0);
   }
 
   function disableVim() {
