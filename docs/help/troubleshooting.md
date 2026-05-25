@@ -20,5 +20,6 @@ If the shader freezes or crashes:
 
 If panels have disappeared or the layout is broken:
 
-- Use **Menu → Layout → Reset Layout** in the preview toolbar
+- Use **Menu → Layout → Reset to Default** in the preview toolbar
+- Use **Menu → Layout → Restore Saved Layout** if you want to reload the active profile's saved arrangement instead
 - Or run **Shader Studio: Reset Layout** from the command palette

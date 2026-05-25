@@ -27,7 +27,7 @@
 
 
   import type { AudioVideoController } from "../AudioVideoController";
-  import { getActiveProfile, getProfileList, switchTo, saveProfile } from '../state/profileStore.svelte';
+  import { getActiveProfile, getProfileList, switchTo, saveProfile, restoreActiveProfile } from '../state/profileStore.svelte';
   import ProfileModal from './ProfileModal.svelte';
   import { portal } from '../actions/portal';
   import { computeMenuPos } from '../utils/menuPos';
@@ -1151,14 +1151,25 @@
     {/if}
     <button
       class="layout-submenu-item"
+      onclick={async () => {
+        await restoreActiveProfile(); showLayoutMenu = false; showOptionsMenu = false;
+      }}
+      aria-label="Restore saved layout"
+      disabled={!hasShader}
+    >
+      <i class="codicon codicon-history"></i>
+      Restore Saved Layout
+    </button>
+    <button
+      class="layout-submenu-item"
       onclick={() => {
         onResetLayout(); showLayoutMenu = false; showOptionsMenu = false;
       }}
-      aria-label="Reset layout"
+      aria-label="Reset default layout"
       disabled={!hasShader}
     >
       <i class="codicon codicon-debug-restart"></i>
-      Reset Layout
+      Reset to Default
     </button>
     <button
       class="layout-submenu-item"

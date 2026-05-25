@@ -1,7 +1,8 @@
 import type { SerializedLayout } from '@shader-studio/types';
 
 let _currentLayout = $state<SerializedLayout | null>(null);
-let _pendingRestore = $state<SerializedLayout | null>(null);
+let _pendingLayout = $state<SerializedLayout | null>(null);
+let _hasPendingLayout = $state(false);
 
 /** Called by DockviewLayout whenever the layout changes. */
 export function setCurrentLayout(layout: SerializedLayout): void {
@@ -15,15 +16,22 @@ export function getCurrentLayout(): SerializedLayout | null {
 
 /** Called by profileStore to trigger a layout restore in DockviewLayout. */
 export function requestRestore(layout: SerializedLayout | null): void {
-  _pendingRestore = layout;
+  _pendingLayout = layout;
+  _hasPendingLayout = true;
 }
 
-/** Called by DockviewLayout after it has applied the pending restore. */
-export function clearPendingRestore(): void {
-  _pendingRestore = null;
+/** Called by DockviewLayout after it has applied the pending layout. */
+export function clearPendingLayout(): void {
+  _pendingLayout = null;
+  _hasPendingLayout = false;
 }
 
 /** Read reactively in DockviewLayout's $effect. */
-export function getPendingRestore(): SerializedLayout | null {
-  return _pendingRestore;
+export function getPendingLayout(): SerializedLayout | null {
+  return _pendingLayout;
+}
+
+/** Distinguishes "restore default layout" from "no restore requested". */
+export function hasPendingLayout(): boolean {
+  return _hasPendingLayout;
 }

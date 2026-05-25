@@ -6,10 +6,20 @@ import { currentTheme } from '../lib/stores/themeStore';
 import { aspectRatioStore } from '../lib/stores/aspectRatioStore';
 import { resolutionStore } from '../lib/stores/resolutionStore';
 
+const profileStoreMock = vi.hoisted(() => ({
+  getActiveProfile: vi.fn(() => 'default'),
+  getProfileList: vi.fn(() => [{ id: 'default', name: 'Default' }]),
+  switchTo: vi.fn(),
+  saveProfile: vi.fn(),
+  restoreActiveProfile: vi.fn(),
+}));
+
 // Mock the transport factory
 vi.mock('../lib/transport/TransportFactory', () => ({
   isVSCodeEnvironment: vi.fn().mockReturnValue(false)
 }));
+
+vi.mock('../lib/state/profileStore.svelte', () => profileStoreMock);
 
 /** Create a minimal mock ResolutionSessionController for tests. */
 function createMockResCtrl() {
@@ -1758,7 +1768,7 @@ describe('MenuBar Component', () => {
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
 
-      expect(screen.queryByLabelText('Reset layout')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Reset default layout')).not.toBeInTheDocument();
 
       const layoutButton = screen.getByLabelText('Switch layout profile');
       await fireEvent.click(layoutButton);
@@ -1782,10 +1792,11 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Refresh shader')).toBeDisabled();
     });
 
-    it('should disable Reset layout in the layout submenu when hasShader is false', async () => {
+    it('should disable layout restore actions in the layout submenu when hasShader is false', async () => {
       await openLayoutSubmenu({ ...defaultProps, hasShader: false });
 
-      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
+      expect(screen.getByLabelText('Restore saved layout')).toBeDisabled();
+      expect(screen.getByLabelText('Reset default layout')).toBeDisabled();
     });
 
     it('should keep New Shader, Shader Explorer, and Snippet Library enabled when hasShader is false', async () => {
@@ -1816,10 +1827,28 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Refresh shader')).not.toBeDisabled();
     });
 
-    it('should enable Reset layout in the layout submenu when hasShader is true', async () => {
+    it('should enable layout restore actions in the layout submenu when hasShader is true', async () => {
       await openLayoutSubmenu({ ...defaultProps, hasShader: true });
 
-      expect(screen.getByLabelText('Reset layout')).not.toBeDisabled();
+      expect(screen.getByLabelText('Restore saved layout')).not.toBeDisabled();
+      expect(screen.getByLabelText('Reset default layout')).not.toBeDisabled();
+    });
+
+    it('should restore the active profile layout from the layout submenu', async () => {
+      await openLayoutSubmenu({ ...defaultProps, hasShader: true });
+
+      await fireEvent.click(screen.getByLabelText('Restore saved layout'));
+
+      expect(profileStoreMock.restoreActiveProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reset to default layout from the layout submenu', async () => {
+      const onResetLayout = vi.fn();
+      await openLayoutSubmenu({ ...defaultProps, hasShader: true, onResetLayout });
+
+      await fireEvent.click(screen.getByLabelText('Reset default layout'));
+
+      expect(onResetLayout).toHaveBeenCalledTimes(1);
     });
 
   });

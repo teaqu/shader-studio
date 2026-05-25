@@ -10,7 +10,7 @@
   } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
   import type { Transport } from "../transport/MessageTransport";
-  import { setCurrentLayout, getPendingRestore, clearPendingRestore } from "../state/layoutState.svelte";
+  import { setCurrentLayout, getPendingLayout, hasPendingLayout, clearPendingLayout } from "../state/layoutState.svelte";
   import type { SerializedLayout } from "@shader-studio/types";
 
   const dispatch = createEventDispatcher<{
@@ -511,7 +511,7 @@
     createDefaultLayout();
   }
 
-  function restoreFromData(data: SerializedDockview) {
+  function restoreFromData(data: SerializedDockview | null) {
     if (!api) {
       return;
     }
@@ -596,10 +596,11 @@
   $effect(() => {
     // apiReady is a reactive dep that ensures this effect re-runs after onMount sets up api.
     const _ready = apiReady;
-    const pending = getPendingRestore();
-    if (pending && _ready && api) {
-      restoreFromData(pending as unknown as SerializedDockview);
-      clearPendingRestore();
+    const hasLayoutRequest = hasPendingLayout();
+    const pendingLayout = getPendingLayout();
+    if (hasLayoutRequest && _ready && api) {
+      restoreFromData(pendingLayout as unknown as SerializedDockview | null);
+      clearPendingLayout();
     }
   });
 

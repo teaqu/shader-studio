@@ -14,6 +14,7 @@ vi.mock('../../lib/state/profileStore.svelte', () => ({
   getProfileList: vi.fn(() => [{ id: 'default', name: 'Default' }]),
   switchTo: vi.fn(),
   saveProfile: vi.fn().mockResolvedValue(undefined),
+  restoreActiveProfile: vi.fn().mockResolvedValue(undefined),
 }));
 
 /** Create a minimal mock ResolutionSessionController for tests. */
@@ -385,7 +386,7 @@ describe('MenuBar', () => {
       vi.unstubAllGlobals();
     });
 
-    it('shows Reset Layout only inside the layout submenu', async () => {
+    it('shows layout restore actions only inside the layout submenu', async () => {
       stubResizeObserver();
       renderMenuBar();
       await tick();
@@ -394,27 +395,30 @@ describe('MenuBar', () => {
       await fireEvent.click(optionsButton);
       await tick();
 
-      expect(screen.queryByLabelText('Reset layout')).toBeNull();
+      expect(screen.queryByLabelText('Restore saved layout')).toBeNull();
+      expect(screen.queryByLabelText('Reset default layout')).toBeNull();
 
       const layoutButton = screen.getByLabelText('Switch layout profile');
       await fireEvent.click(layoutButton);
       await tick();
 
-      const resetButton = screen.getByLabelText('Reset layout');
+      expect(screen.getByLabelText('Restore saved layout')).toBeTruthy();
+      const resetButton = screen.getByLabelText('Reset default layout');
       expect(resetButton).toBeTruthy();
 
       await fireEvent.click(resetButton);
       await tick();
 
       expect(defaultProps.onResetLayout).toHaveBeenCalledTimes(1);
-      expect(screen.queryByLabelText('Reset layout')).toBeNull();
+      expect(screen.queryByLabelText('Reset default layout')).toBeNull();
       expect(screen.queryByLabelText('Switch layout profile')).toBeNull();
     });
 
-    it('disables Reset Layout in the layout submenu when no shader is loaded', async () => {
+    it('disables layout restore actions in the layout submenu when no shader is loaded', async () => {
       await openLayoutSubmenu({ ...defaultProps, hasShader: false });
 
-      expect(screen.getByLabelText('Reset layout')).toBeDisabled();
+      expect(screen.getByLabelText('Restore saved layout')).toBeDisabled();
+      expect(screen.getByLabelText('Reset default layout')).toBeDisabled();
     });
 
     it('clicking Save current layout shows Are you sure confirmation', async () => {

@@ -239,14 +239,50 @@ describe('profileStore', () => {
   });
 
   it('init calls requestRestore when profile data has a non-null layout', async () => {
-    const { getPendingRestore, clearPendingRestore } = await import('../../lib/state/layoutState.svelte');
+    const { getPendingLayout, clearPendingLayout } = await import('../../lib/state/layoutState.svelte');
     const layoutData = { panels: { preview: { id: 'preview' } } } as any;
     const dataWithLayout: ProfileData = { ...defaultData, layout: layoutData };
     const adapter = makeAdapter({ readProfile: vi.fn().mockResolvedValue(dataWithLayout) });
     const { init } = await import('../../lib/state/profileStore.svelte');
     await init(adapter);
-    expect(getPendingRestore()).toEqual(layoutData);
-    clearPendingRestore();
+    expect(getPendingLayout()).toEqual(layoutData);
+    clearPendingLayout();
+  });
+
+  it('restoreActiveProfile re-reads and requests the saved active profile layout', async () => {
+    const { getPendingLayout, clearPendingLayout } = await import('../../lib/state/layoutState.svelte');
+    const layoutData = { panels: { preview: { id: 'preview' } } } as any;
+    const adapter = makeAdapter({
+      readProfile: vi.fn()
+        .mockResolvedValueOnce(defaultData)
+        .mockResolvedValueOnce({ ...defaultData, layout: layoutData }),
+    });
+    const { init, restoreActiveProfile } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+
+    await restoreActiveProfile();
+
+    expect(adapter.readProfile).toHaveBeenLastCalledWith('default');
+    expect(getPendingLayout()).toEqual(layoutData);
+    clearPendingLayout();
+  });
+
+  it('restoreActiveProfile requests a default layout restore when the active profile has no saved layout', async () => {
+    const { getPendingLayout, hasPendingLayout, clearPendingLayout } = await import('../../lib/state/layoutState.svelte');
+    const adapter = makeAdapter({
+      readProfile: vi.fn()
+        .mockResolvedValueOnce({ ...defaultData, layout: { panels: { old: {} } } })
+        .mockResolvedValueOnce(defaultData),
+    });
+    const { init, restoreActiveProfile } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    clearPendingLayout();
+
+    await restoreActiveProfile();
+
+    expect(hasPendingLayout()).toBe(true);
+    expect(getPendingLayout()).toBeNull();
+    clearPendingLayout();
   });
 
   it('uniqueSlug appends counter when base slug already exists', async () => {

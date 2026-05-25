@@ -30,14 +30,14 @@ function snapshotAll(): ProfileData {
   };
 }
 
-function applyAll(data: ProfileData): void {
+function applyAll(data: ProfileData, options: { restoreDefaultLayout?: boolean } = {}): void {
   if (!isVSCodeEnvironment()) {
     applyThemeProfile(data.theme);
   }
   applyConfigPanelProfile(data.configPanel);
   applyDebugPanelProfile(data.debugPanel);
   applyPerformancePanelProfile(data.performancePanel);
-  if (data.layout) {
+  if (data.layout || options.restoreDefaultLayout) {
     requestRestore(data.layout);
   }
 }
@@ -91,6 +91,17 @@ export async function saveProfile(): Promise<void> {
   await _adapter.writeIndex({ active: _activeProfile, order: _profileList });
 }
 
+export async function restoreActiveProfile(): Promise<void> {
+  if (!_adapter || !_initialized) {
+    return;
+  }
+  const data = await _adapter.readProfile(_activeProfile);
+  if (!data) {
+    return;
+  }
+  applyAll(data, { restoreDefaultLayout: true });
+}
+
 export async function saveAs(name: string): Promise<void> {
   if (!_adapter) {
     return;
@@ -139,4 +150,3 @@ export async function deleteProfile(id: string): Promise<void> {
     await _adapter.writeIndex({ active: _activeProfile, order: newOrder });
   }
 }
-

@@ -97,8 +97,9 @@ vi.mock('dockview-core/dist/styles/dockview.css', () => ({}));
 vi.mock('../../lib/state/layoutState.svelte', () => ({
   setCurrentLayout: vi.fn(),
   getCurrentLayout: vi.fn(() => null),
-  getPendingRestore: vi.fn(() => null),
-  clearPendingRestore: vi.fn(),
+  getPendingLayout: vi.fn(() => null),
+  hasPendingLayout: vi.fn(() => false),
+  clearPendingLayout: vi.fn(),
   requestRestore: vi.fn(),
 }));
 
@@ -137,7 +138,8 @@ describe('DockviewLayout', () => {
     addPanelListeners = [];
     panels.clear();
     vi.clearAllMocks();
-    vi.mocked(layoutState.getPendingRestore).mockReturnValue(null);
+    vi.mocked(layoutState.getPendingLayout).mockReturnValue(null);
+    vi.mocked(layoutState.hasPendingLayout).mockReturnValue(false);
   });
 
   function renderLayout(props: Record<string, any> = {}) {
@@ -525,25 +527,39 @@ describe('DockviewLayout', () => {
       );
     });
 
-    it('should apply pending restore from layoutState when getPendingRestore returns a layout', async () => {
+    it('should apply pending layout from layoutState when getPendingLayout returns a layout', async () => {
       const pendingLayout = {
         panels: { preview: { id: 'preview', component: 'preview', title: 'Preview' } },
         grid: { root: { type: 'leaf', data: { views: ['preview'] } } },
       };
-      vi.mocked(layoutState.getPendingRestore).mockReturnValue(pendingLayout as any);
+      vi.mocked(layoutState.getPendingLayout).mockReturnValue(pendingLayout as any);
+      vi.mocked(layoutState.hasPendingLayout).mockReturnValue(true);
       renderLayout();
       await tick();
 
       expect(mockApi.fromJSON).toHaveBeenCalledWith(pendingLayout);
-      expect(layoutState.clearPendingRestore).toHaveBeenCalled();
+      expect(layoutState.clearPendingLayout).toHaveBeenCalled();
     });
 
-    it('should not call fromJSON when getPendingRestore returns null', async () => {
-      vi.mocked(layoutState.getPendingRestore).mockReturnValue(null);
+    it('should not call fromJSON when getPendingLayout returns null', async () => {
+      vi.mocked(layoutState.getPendingLayout).mockReturnValue(null);
+      vi.mocked(layoutState.hasPendingLayout).mockReturnValue(false);
       renderLayout();
       await tick();
 
       expect(mockApi.fromJSON).not.toHaveBeenCalled();
+    });
+
+    it('should reset to the default layout when a pending layout is null', async () => {
+      vi.mocked(layoutState.getPendingLayout).mockReturnValue(null);
+      vi.mocked(layoutState.hasPendingLayout).mockReturnValue(true);
+      renderLayout();
+      await tick();
+
+      expect(mockApi.fromJSON).not.toHaveBeenCalled();
+      expect(mockApi.clear).toHaveBeenCalled();
+      expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview' }));
+      expect(layoutState.clearPendingLayout).toHaveBeenCalled();
     });
 
     it('ready.showPreview should add preview panel when missing', async () => {

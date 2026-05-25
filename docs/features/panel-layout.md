@@ -9,7 +9,7 @@ Shader Studio uses a dockable panel system. Panels (Preview, Debug, Config, Perf
 - **Drag the sash** (the divider between panels) to resize
 - **Tab headers** auto-hide when only one panel is in a group. To view the tabs again, move your mouse near the top of the panel and they will appear
 
-The current profile's layout is saved automatically. Use **Menu → Layout → Reset Layout** to return to the default arrangement.
+The current panel arrangement is tracked while you work, but it is only written to the active layout profile when you choose **Menu → Layout → Save current layout**.
 
 ## Layout profiles
 
@@ -21,7 +21,7 @@ Layout profiles let you save and switch between named panel arrangements. Each p
 - Performance panel visibility
 - Theme (in non-VS Code environments)
 
-Open the profile controls from **Menu → Layout**. The layout submenu shows the active profile, saved profiles, save/reset actions, and **Manage profiles**.
+Open the profile controls from **Menu → Layout**. The layout submenu shows the active profile, saved profiles, save/restore/reset actions, and **Manage profiles**.
 
 ## Managing profiles
 
@@ -38,6 +38,12 @@ At the bottom of the modal, enter a name and click **Save** to create a new prof
 ## Saving vs switching
 
 Switching profiles loads the saved panel arrangement. Your current layout is **not** automatically saved when you switch — unsaved changes are discarded. To preserve your current layout, save it first using **Menu → Layout → Save current layout** or create a new profile.
+
+## Restoring or resetting layout
+
+Use **Menu → Layout → Restore Saved Layout** to discard unsaved changes and reload the active profile's saved layout. If the active profile has no saved layout yet, Shader Studio falls back to the default arrangement.
+
+Use **Menu → Layout → Reset to Default** to rebuild the default panel arrangement directly. This does not overwrite the active profile until you save the current layout.
 
 ## Profile storage
 
