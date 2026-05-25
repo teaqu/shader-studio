@@ -76,18 +76,18 @@ describe('ShaderDebugManager — variable preview', () => {
     expect(modifiedCode).not.toContain('fragColor = vec4(vec3(myVar), 1.0);');
   });
 
-  it('does not start a preview while line lock is enabled', () => {
+  it('allows variable preview while line lock is enabled', () => {
     manager.updateDebugLine(3, '  float other = myVar * 2.0;', '/shaders/image.glsl');
     manager.toggleLineLock();
 
-    expect(startPreview('myVar', 'float')).toBe(false);
+    expect(startPreview('myVar', 'float')).toBe(true);
 
     const state = manager.getState();
     expect(state.isLineLocked).toBe(true);
     expect(state.currentLine).toBe(3);
 
     const modifiedCode = manager.modifyShaderForDebugging(IMAGE_CODE, state.currentLine!);
-    expect(modifiedCode).toContain('fragColor = vec4(vec3(other), 1.0);');
+    expect(modifiedCode).toContain('fragColor = vec4(vec3(myVar), 1.0);');
   });
 
   it('previews the hovered variable while inline line rendering is disabled', () => {

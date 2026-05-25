@@ -188,7 +188,6 @@ export class ShaderDebugManager {
     if (
       !this.state.isEnabled
       || !this.state.isActive
-      || this.state.isLineLocked
       || !Number.isInteger(request.debugLine)
       || request.debugLine < 0
       || request.varName.trim() === ''

@@ -1026,8 +1026,7 @@
     }
 
     const canPreview = initialized
-      && debugState.isEnabled
-      && !debugState.isLineLocked;
+      && debugState.isEnabled;
 
     if (!canPreview) {
       lastAppliedVariablePreviewToken = -1;

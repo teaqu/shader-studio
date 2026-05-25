@@ -5506,7 +5506,7 @@ describe('ShaderViewer', () => {
       expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
     });
 
-    it('does not preview mini previews while line lock is enabled', async () => {
+    it('previews mini previews while line lock is enabled', async () => {
       await setupWithVars();
 
       const lineLockButton = document.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
@@ -5518,29 +5518,30 @@ describe('ShaderViewer', () => {
 
       const preview = document.querySelector('.thumb-wrap') as HTMLElement;
       await fireEvent.mouseEnter(preview);
-      await tick();
-
-      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
-    });
-
-    it('starts previewing a hovered mini preview after line lock is disabled', async () => {
-      await setupWithVars();
-
-      const lineLockButton = document.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
-      expect(lineLockButton).toBeInTheDocument();
-      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
-      await tick();
-      vi.clearAllMocks();
-
-      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
-      await fireEvent.mouseEnter(preview);
-      await tick();
-      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
-
-      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
       await tick();
 
       expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
+    });
+
+    it('previews a hovered mini preview while locked without extra recompile on unlock', async () => {
+      await setupWithVars();
+
+      const lineLockButton = document.querySelector('[aria-label="Toggle line lock"]') as HTMLElement;
+      expect(lineLockButton).toBeInTheDocument();
+      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
+      await tick();
+      vi.clearAllMocks();
+
+      const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+      await fireEvent.mouseEnter(preview);
+      await tick();
+      expect(mockTriggerDebugRecompile).toHaveBeenCalledTimes(1);
+
+      vi.clearAllMocks();
+      await fireEvent.keyDown(lineLockButton, { key: 'Enter' });
+      await tick();
+
+      expect(mockTriggerDebugRecompile).not.toHaveBeenCalled();
     });
 
     it('does not require the declaration line to resolve to source text before previewing', async () => {
