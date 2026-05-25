@@ -6,6 +6,7 @@ import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { ThumbnailCache } from "./ThumbnailCache";
 import { TabGroupResolver } from "./TabGroupResolver";
+import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
 
 export class ShaderExplorerProvider {
   private logger: Logger;
@@ -13,12 +14,17 @@ export class ShaderExplorerProvider {
   private thumbnailCache: ThumbnailCache;
   private configProcessor: ShaderConfigProcessor;
   private tabGroupResolver: TabGroupResolver;
+  private gitMetadataProvider: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace">;
 
-  constructor(private context: vscode.ExtensionContext) {
+  constructor(
+    private context: vscode.ExtensionContext,
+    gitMetadataProvider?: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace">,
+  ) {
     this.logger = Logger.getInstance();
     this.thumbnailCache = new ThumbnailCache(context);
     this.configProcessor = new ShaderConfigProcessor();
     this.tabGroupResolver = new TabGroupResolver();
+    this.gitMetadataProvider = gitMetadataProvider ?? new ShaderGitMetadataProvider(context);
     context.subscriptions.push(this.tabGroupResolver);
   }
 
@@ -205,24 +211,52 @@ export class ShaderExplorerProvider {
         new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert}"),
         "**/node_modules/**",
       );
+      const shaderPaths = glslFiles.map(file => file.fsPath);
+      const gitMetadataResult = await this.gitMetadataProvider.getMetadataForWorkspace(
+        folder.uri.fsPath,
+        shaderPaths,
+      );
 
       for (const file of glslFiles) {
         const relativePath = vscode.workspace.asRelativePath(file);
         const fileName = path.basename(file.fsPath);
+        const repoRelativePath = gitMetadataResult
+          ? path.relative(gitMetadataResult.repoRoot, file.fsPath).replace(/\\/g, "/")
+          : undefined;
+        const gitMetadata = repoRelativePath
+          ? gitMetadataResult!.metadataByPath.get(repoRelativePath)
+          : undefined;
+        const isDirty = repoRelativePath
+          ? gitMetadataResult!.dirtyPaths.has(repoRelativePath)
+          : false;
 
         // Check if config file exists
         const configPath = this.getConfigPath(file.fsPath);
         const hasConfig = fs.existsSync(configPath);
 
         // Get file stats for timestamps
-        let modifiedTime: number | undefined;
-        let createdTime: number | undefined;
+        let filesystemModifiedTime: number | undefined;
+        let filesystemCreatedTime: number | undefined;
         try {
           const stats = fs.statSync(file.fsPath);
-          modifiedTime = stats.mtimeMs;
-          createdTime = stats.birthtimeMs;
+          filesystemModifiedTime = stats.mtimeMs;
+          filesystemCreatedTime = stats.birthtimeMs;
         } catch (e) {
           this.logger.warn(`Failed to get file stats for ${file.fsPath}`);
+        }
+
+        // Priority: git dirty (uncommitted) > git committed > filesystem
+        let modifiedTime: number | undefined;
+        let createdTime: number | undefined;
+        if (isDirty) {
+          modifiedTime = filesystemModifiedTime;
+          createdTime = gitMetadata?.createdTime ?? filesystemCreatedTime;
+        } else if (gitMetadata) {
+          modifiedTime = gitMetadata.modifiedTime ?? filesystemModifiedTime;
+          createdTime = gitMetadata.createdTime ?? filesystemCreatedTime;
+        } else {
+          modifiedTime = filesystemModifiedTime;
+          createdTime = filesystemCreatedTime;
         }
 
         shaders.push({

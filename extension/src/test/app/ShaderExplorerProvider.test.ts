@@ -281,6 +281,274 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const message = postMessageSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shadersUpdate');
     });
+
+    test('should prefer git timestamps when they are available', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/git-newer.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map([
+            ['shaders/git-newer.glsl', {
+              modifiedTime: 5_000,
+              createdTime: 4_000,
+            }],
+          ]),
+          dirtyPaths: new Set(),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) }
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({
+        mtimeMs: 1_000,
+        birthtimeMs: 2_000,
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 5_000);
+      assert.strictEqual(shader.createdTime, 4_000);
+    });
+
+    test('should prefer git updated timestamp even when filesystem modified time is later', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/fs-newer.frag');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map([
+            ['shaders/fs-newer.frag', {
+              modifiedTime: 1_000,
+              createdTime: 2_000,
+            }],
+          ]),
+          dirtyPaths: new Set(),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) }
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({
+        mtimeMs: 5_000,
+        birthtimeMs: 6_000,
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 1_000);
+      assert.strictEqual(shader.createdTime, 2_000);
+    });
+
+    test('should prefer git created timestamp even when filesystem birth time is later', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/cloned.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map([
+            ['shaders/cloned.glsl', {
+              modifiedTime: 2_000,
+              createdTime: 1_000,
+            }],
+          ]),
+          dirtyPaths: new Set(),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) }
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({
+        mtimeMs: 3_000,
+        birthtimeMs: 9_000,
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 2_000);
+      assert.strictEqual(shader.createdTime, 1_000);
+    });
+
+    test('should fall back to filesystem timestamps for untracked shaders', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/untracked.vert');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map(),
+          dirtyPaths: new Set(),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) }
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({
+        mtimeMs: 7_000,
+        birthtimeMs: 8_000,
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 7_000);
+      assert.strictEqual(shader.createdTime, 8_000);
+    });
+
+    test('dirty tracked file uses filesystem mtime and git createdTime', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/dirty.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map([
+            ['shaders/dirty.glsl', { modifiedTime: 1_000, createdTime: 500 }],
+          ]),
+          dirtyPaths: new Set(['shaders/dirty.glsl']),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 9_000, birthtimeMs: 8_000 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 9_000, 'dirty: filesystem mtime');
+      assert.strictEqual(shader.createdTime, 500, 'dirty: git createdTime');
+    });
+
+    test('dirty new file with no git history uses filesystem for both timestamps', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/new.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map(),
+          dirtyPaths: new Set(['shaders/new.glsl']),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 7_000, birthtimeMs: 3_000 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 7_000, 'new dirty: filesystem mtime');
+      assert.strictEqual(shader.createdTime, 3_000, 'new dirty: filesystem birthtime');
+    });
+
+    test('dirty file always uses filesystem mtime regardless of git committed time', async () => {
+      const fs = require('fs');
+      const workspaceRoot = '/workspace';
+      const shaderUri = vscode.Uri.file('/workspace/shaders/reverted.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub().resolves({
+          repoRoot: workspaceRoot,
+          metadataByPath: new Map([
+            ['shaders/reverted.glsl', { modifiedTime: 99_000, createdTime: 100 }],
+          ]),
+          dirtyPaths: new Set(['shaders/reverted.glsl']),
+        }),
+      };
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file(workspaceRoot) },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 5_000, birthtimeMs: 100 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.modifiedTime, 5_000, 'dirty always uses filesystem mtime');
+    });
+
+    test('should keep git metadata isolated across multiple workspaces', async () => {
+      const fs = require('fs');
+      const firstUri = vscode.Uri.file('/workspace-a/shader.glsl');
+      const secondUri = vscode.Uri.file('/workspace-b/shader.glsl');
+      const gitMetadataProvider = {
+        getMetadataForWorkspace: sandbox.stub(),
+      };
+      gitMetadataProvider.getMetadataForWorkspace
+        .withArgs('/workspace-a', ['/workspace-a/shader.glsl'])
+        .resolves({
+          repoRoot: '/workspace-a',
+          metadataByPath: new Map([
+            ['shader.glsl', { modifiedTime: 10_000, createdTime: 1_000 }],
+          ]),
+          dirtyPaths: new Set(),
+        });
+      gitMetadataProvider.getMetadataForWorkspace
+        .withArgs('/workspace-b', ['/workspace-b/shader.glsl'])
+        .resolves({
+          repoRoot: '/workspace-b',
+          metadataByPath: new Map([
+            ['shader.glsl', { modifiedTime: 20_000, createdTime: 2_000 }],
+          ]),
+          dirtyPaths: new Set(),
+        });
+      provider = new ShaderExplorerProvider(mockContext, gitMetadataProvider);
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace-a') },
+        { uri: vscode.Uri.file('/workspace-b') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const findFilesStub = sandbox.stub(vscode.workspace, 'findFiles');
+      findFilesStub.onFirstCall().resolves([firstUri]);
+      findFilesStub.onSecondCall().resolves([secondUri]);
+      sandbox.stub(fs, 'statSync').returns({
+        mtimeMs: 1_000,
+        birthtimeMs: 1_000,
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shaders = postMessageSpy.firstCall.args[0].shaders;
+      const first = shaders.find((shader: any) => shader.path === '/workspace-a/shader.glsl');
+      const second = shaders.find((shader: any) => shader.path === '/workspace-b/shader.glsl');
+      assert.strictEqual(first.modifiedTime, 10_000);
+      assert.strictEqual(second.modifiedTime, 20_000);
+    });
   });
 
   suite('Message Handling - requestShaderCode', () => {
