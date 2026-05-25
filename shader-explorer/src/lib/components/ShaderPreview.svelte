@@ -71,6 +71,7 @@
 
   // Hover rendering state
   let isHovering: boolean = $state(false);
+  let hoverVisible: boolean = $state(false); // only true after first render frame
   let hoverCanvas: HTMLCanvasElement | null = null;
   let hoverRenderingEngine: RenderingEngine | null = null;
   let hoverCanvasWrapper: HTMLDivElement | null = null;
@@ -243,24 +244,27 @@
     }
     
     isHovering = true;
-    
+
     // Create a completely new canvas for hover rendering
     hoverCanvas = document.createElement('canvas');
     hoverCanvas.width = width;
     hoverCanvas.height = height;
     hoverCanvas.className = 'shader-preview hover-canvas';
-    
+
     // Append the canvas to the wrapper
     hoverCanvasWrapper.appendChild(hoverCanvas);
-    
+
     try {
       // Create a completely new rendering engine and pipeline, start the render loop
       const { engine, result } = await createShaderRenderer(hoverCanvas, false);
       hoverRenderingEngine = engine;
-      
+
       if (result?.success) {
-        // Start the render loop for interactive preview
-        engine.startRenderLoop();
+        // Wait for first rendered frame before revealing the canvas to avoid black flash
+        await new Promise(r => requestAnimationFrame(r));
+        if (isHovering) {
+          hoverVisible = true;
+        }
       } else {
         console.error('Failed to compile shader on hover:', shader.name, result?.errors);
         cleanupHoverRendering();
@@ -279,6 +283,7 @@
   
   function cleanupHoverRendering() {
     isHovering = false;
+    hoverVisible = false;
     
     cleanupRenderer(hoverRenderingEngine, hoverCanvas);
     hoverRenderingEngine = null;
@@ -309,13 +314,13 @@
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
 >
-  <!-- Hover canvas wrapper - always present but only visible when hovering -->
-  <div 
-    bind:this={hoverCanvasWrapper} 
+  <!-- Hover canvas wrapper - only visible after first hover render completes -->
+  <div
+    bind:this={hoverCanvasWrapper}
     class="hover-canvas-wrapper"
-    class:visible={isHovering}
+    class:visible={hoverVisible}
   ></div>
-  
+
   {#if capturedImage}
     <img
       src={capturedImage}
@@ -330,11 +335,12 @@
       <div class="error-message">Compilation Failed</div>
     </div>
   {:else}
+    <div class="loading-placeholder"></div>
     <canvas
       bind:this={canvas}
       {width}
       {height}
-      class="shader-preview"
+      class="shader-preview loading-canvas"
     ></canvas>
   {/if}
 </div>
@@ -355,6 +361,19 @@
     object-fit: cover;
   }
   
+  .loading-placeholder {
+    width: 100%;
+    height: 100%;
+    background: var(--vscode-editor-background, #1e1e1e);
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .loading-canvas {
+    opacity: 0;
+  }
+
   .shader-error {
     width: 100%;
     height: 100%;
