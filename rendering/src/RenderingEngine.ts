@@ -41,6 +41,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private customUniformManager!: CustomUniformManager;
   private pendingCustomUniformValues: { name: string; type: string; value: number | number[] | boolean }[] | null = null;
   private currentConfig: ShaderConfig | null = null;
+  private compileQueue: Promise<void> = Promise.resolve();
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
@@ -145,6 +146,35 @@ export class RenderingEngine implements RenderingEngineInterface {
       }
     }
 
+    return this.enqueueCompilation(() => this.compileShaderPipelineNow(
+      code,
+      config,
+      path,
+      buffers,
+      customUniformDeclarations,
+      customUniformInfo,
+    ));
+  }
+
+  private enqueueCompilation(
+    task: () => Promise<CompilationResult | undefined>,
+  ): Promise<CompilationResult | undefined> {
+    const queuedTask = this.compileQueue.then(task, task);
+    this.compileQueue = queuedTask.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queuedTask;
+  }
+
+  private async compileShaderPipelineNow(
+    code: string,
+    config: ShaderConfig | null,
+    path: string,
+    buffers: Record<string, string>,
+    customUniformDeclarations?: string,
+    customUniformInfo?: { name: string; type: string }[],
+  ): Promise<CompilationResult | undefined> {
     // Load custom uniforms — prefer pre-evaluated declarations from extension host
     if (customUniformDeclarations && customUniformInfo) {
       this.customUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);

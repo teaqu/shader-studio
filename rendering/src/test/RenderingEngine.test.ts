@@ -122,6 +122,60 @@ describe("RenderingEngine", () => {
       expect(mockValidateConfig).not.toHaveBeenCalled();
       expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledTimes(1);
     });
+
+    it("should serialize overlapping shader compilations", async () => {
+      let resolveFirst!: (value: { success: boolean }) => void;
+      let resolveSecond!: (value: { success: boolean }) => void;
+      mockPipeline.compileShaderPipeline
+        .mockImplementationOnce(() => new Promise(resolve => {
+          resolveFirst = resolve;
+        }))
+        .mockImplementationOnce(() => new Promise(resolve => {
+          resolveSecond = resolve;
+        }));
+
+      const firstCompile = renderingEngine.compileShaderPipeline(
+        "void mainImage() { first(); }",
+        null,
+        "shader.glsl",
+        {},
+      );
+      const secondCompile = renderingEngine.compileShaderPipeline(
+        "void mainImage() { second(); }",
+        null,
+        "shader.glsl",
+        {},
+      );
+
+      await Promise.resolve();
+
+      expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledTimes(1);
+      expect(mockPipeline.compileShaderPipeline).toHaveBeenNthCalledWith(
+        1,
+        "void mainImage() { first(); }",
+        null,
+        "shader.glsl",
+        {},
+      );
+
+      resolveFirst({ success: true });
+
+      await vi.waitFor(() => {
+        expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledTimes(2);
+      });
+      expect(mockPipeline.compileShaderPipeline).toHaveBeenNthCalledWith(
+        2,
+        "void mainImage() { second(); }",
+        null,
+        "shader.glsl",
+        {},
+      );
+
+      resolveSecond({ success: true });
+
+      await expect(firstCompile).resolves.toEqual({ success: true });
+      await expect(secondCompile).resolves.toEqual({ success: true });
+    });
   });
 
   describe('Buffer Update Tests', () => {
