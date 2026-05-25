@@ -972,9 +972,6 @@
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
-      if (isLocked) {
-        configSelectedBuffer = state.bufferName;
-      }
     },
     onShaderCodeChanged: (code) => {
       currentShaderCode = code; 

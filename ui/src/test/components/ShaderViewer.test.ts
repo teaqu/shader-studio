@@ -5594,4 +5594,60 @@ describe('ShaderViewer', () => {
       expect(document.querySelector('.var-line')).not.toBeInTheDocument();
     });
   });
+
+  describe('locked mode config panel tab stability', () => {
+    it('should not reset config panel tab to Image when locked shader is re-sent', async () => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+
+      // Load shader with a BufferA pass
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {}, BufferA: { path: '/test/bufferA.glsl', inputs: {} } } },
+          pathMap: { Image: '/test/shader.glsl' },
+          bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+        },
+      });
+      await tick();
+
+      // Lock to this shader
+      const lockButton = screen.getByLabelText('Toggle lock');
+      await fireEvent.click(lockButton);
+      await tick();
+
+      // Open config panel and switch to the BufferA tab
+      configPanelStore.setVisible(true);
+      await tick();
+
+      await fireEvent.click(screen.getByText('BufferA'));
+      await tick();
+
+      const activeTabBefore = container.querySelector('.tab-button.active');
+      expect(activeTabBefore?.textContent?.trim()).toContain('BufferA');
+
+      // Simulate the locked shader being re-sent (e.g., the file was edited in VS Code)
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.5); }',
+          config: { passes: { Image: {}, BufferA: { path: '/test/bufferA.glsl', inputs: {} } } },
+          pathMap: { Image: '/test/shader.glsl' },
+          bufferPathMap: { BufferA: '/test/bufferA.glsl' },
+        },
+      });
+      await tick();
+
+      // Config panel must stay on BufferA — the locked shaderSource re-send must not flip it back to Image
+      const activeTabAfter = container.querySelector('.tab-button.active');
+      expect(activeTabAfter?.textContent?.trim()).toContain('BufferA');
+    });
+  });
 });
