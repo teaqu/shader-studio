@@ -6,10 +6,8 @@ export function createTransport(): Transport {
   const isVSCodeContext = typeof acquireVsCodeApi !== 'undefined';
 
   if (isVSCodeContext) {
-    console.log('Creating VSCode transport');
     return new VSCodeTransport();
   } else {
-    console.log('Creating WebSocket transport');
     return new WebSocketTransport();
   }
 }
@@ -17,4 +15,3 @@ export function createTransport(): Transport {
 export function isVSCodeEnvironment(): boolean {
   return typeof acquireVsCodeApi !== 'undefined';
 }
-

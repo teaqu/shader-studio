@@ -17,8 +17,6 @@ export class VideoTextureManager {
       return this.videoTextures[path];
     }
 
-    console.log(`Attempting to load video from path: ${path}`);
-
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       video.loop = true;
@@ -63,7 +61,6 @@ export class VideoTextureManager {
         video.removeEventListener('loadeddata', handleVideoCanPlay);
 
         try {
-          console.log(`Video ${path} can play: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration}s`);
           const texture = this.createTextureFromVideo(video, options);
           this.videoElements[path] = video;
           this.videoTextures[path] = texture;
@@ -81,10 +78,6 @@ export class VideoTextureManager {
       video.addEventListener('canplay', handleVideoCanPlay);
       video.addEventListener('loadeddata', handleVideoCanPlay);
       video.addEventListener('error', handleVideoError);
-
-      video.addEventListener('loadstart', () => {
-        console.log(`Starting to load video: ${path}`);
-      });
 
       video.src = path;
     });
@@ -137,7 +130,6 @@ export class VideoTextureManager {
     for (const [path, video] of Object.entries(this.videoElements)) {
       if (!video.paused) {
         video.pause();
-        console.log(`Paused video: ${path}`);
       }
     }
   }
@@ -145,9 +137,7 @@ export class VideoTextureManager {
   public resumeAll(): void {
     for (const [path, video] of Object.entries(this.videoElements)) {
       if (video.paused && !this.userPaused.has(path)) {
-        video.play().then(() => {
-          console.log(`Resumed video: ${path}`);
-        }).catch(error => {
+        video.play().catch(error => {
           console.warn(`Could not resume video ${path}:`, error);
         });
       }
@@ -180,7 +170,6 @@ export class VideoTextureManager {
     if (video) {
       video.muted = true;
       video.volume = 0;
-      console.log(`[VideoTexture] muteVideo ${path}`);
     }
   }
 
@@ -193,7 +182,6 @@ export class VideoTextureManager {
 
     video.muted = false;
     video.volume = Math.max(0, Math.min(1, volume));
-    console.log(`[VideoTexture] unmuteVideo ${path}`);
   }
 
   public setVideoVolume(path: string, volume: number): void {
@@ -287,25 +275,12 @@ export class VideoTextureManager {
       delete this.animationFrameIds[path];
     }
 
-    let frameCount = 0;
-
     const updateTexture = () => {
       if (video.readyState >= video.HAVE_CURRENT_DATA) {
         try {
           this.renderer.UpdateTextureFromImage(texture, video);
-          frameCount++;
-          
-          // Log first few frames for debugging
-          if (frameCount <= 3) {
-            console.log(`Video ${path} frame ${frameCount}: ${video.videoWidth}x${video.videoHeight}, readyState: ${video.readyState}, paused: ${video.paused}, currentTime: ${video.currentTime}`);
-          }
         } catch (error) {
           console.error(`Failed to update texture for video ${path}:`, error);
-        }
-      } else {
-        // Log if video isn't ready yet
-        if (frameCount <= 3) {
-          console.log(`Video ${path} not ready yet, readyState: ${video.readyState}, paused: ${video.paused}`);
         }
       }
       
@@ -318,16 +293,11 @@ export class VideoTextureManager {
     // Video should autoplay with autoplay=true, but ensure it plays
     const ensurePlaying = () => {
       if (video.paused) {
-        console.log(`Video ${path} is paused, attempting to play...`);
-        video.play().then(() => {
-          console.log(`Video ${path} started playing`);
-        }).catch(error => {
+        video.play().catch(error => {
           console.warn(`Could not autoplay video ${path}:`, error);
           // Set up user interaction fallback only if autoplay fails
           const handleUserInteraction = () => {
-            video.play().then(() => {
-              console.log(`Video ${path} started playing after user interaction`);
-            }).catch(e => {
+            video.play().catch(e => {
               console.error(`Still failed to play video ${path}:`, e);
             });
             document.removeEventListener('click', handleUserInteraction);
@@ -336,8 +306,6 @@ export class VideoTextureManager {
           document.addEventListener('click', handleUserInteraction, { once: true });
           document.addEventListener('keydown', handleUserInteraction, { once: true });
         });
-      } else {
-        console.log(`Video ${path} is already playing`);
       }
     };
 

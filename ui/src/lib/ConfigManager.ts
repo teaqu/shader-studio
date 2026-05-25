@@ -366,14 +366,11 @@ export class ConfigManager {
 
   getBufferList(): string[] {
     if (!this.config) {
-      console.log('getBufferList: no config available');
       return [];
     }
-    console.log('getBufferList: config is:', this.config);
     const result = Object.keys(this.config!.passes).filter(
       name => name !== 'Image'
     );
-    console.log('getBufferList: final result:', result);
     return result;
   }
 

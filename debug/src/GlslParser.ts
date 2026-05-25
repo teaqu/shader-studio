@@ -308,14 +308,7 @@ export class GlslParser {
     functionReturnType?: string,
     lines?: string[],
     lineIndex?: number,
-    log: boolean = true,
   ): VarInfo | null {
-    if (log) {
-      console.log('[ShaderDebug] === DETECT VARIABLE ===');
-      console.log('[ShaderDebug] Line:', lineContent);
-      console.log('[ShaderDebug] Available vars in scope:', Array.from(varTypes.keys()));
-    }
-
     let statementLines = lines;
     let statementLineContent = lineContent;
     if (lines) {
@@ -327,28 +320,16 @@ export class GlslParser {
     }
 
     const statement = GlslParser.getStatementInfo(statementLineContent, statementLines, lineIndex);
-    if (log && statement.startLine !== statement.endLine) {
-      console.log(
-        `[ShaderDebug] Multi-line statement detected (lines ${statement.startLine}-${statement.endLine}), combined:`,
-        statement.text
-      );
-    }
 
     switch (statement.kind) {
       case 'return':
         if (functionReturnType) {
-          if (log) {
-            console.log('[ShaderDebug] ✓ Matched return statement, type:', functionReturnType);
-          }
           return { name: '_dbgReturn', type: functionReturnType };
         }
         break;
 
       case 'declaration':
         if (statement.declaredVar) {
-          if (log) {
-            console.log(`[ShaderDebug] ✓ Matched declaration: ${statement.declaredVar.name} (${statement.declaredVar.type})`);
-          }
           return statement.declaredVar;
         }
         break;
@@ -357,12 +338,6 @@ export class GlslParser {
       case 'memberAssignment':
         if (statement.assignedVarName) {
           const varType = varTypes.get(statement.assignedVarName);
-          const kindLabel = statement.kind === 'memberAssignment' ? 'member assignment' : 'assignment';
-          if (log) {
-            console.log(
-              `[ShaderDebug] Trying ${kindLabel}: found var '${statement.assignedVarName}', type: ${varType || 'NOT IN SCOPE'}`
-            );
-          }
           if (varType) {
             if (
               statement.kind === 'memberAssignment' &&
@@ -370,15 +345,7 @@ export class GlslParser {
               statement.assignedExpression &&
               statement.assignedValueType
             ) {
-              if (log) {
-                console.log(
-                  `[ShaderDebug] ✓ Matched ${kindLabel} expression: ${statement.assignedExpression} (${statement.assignedValueType})`
-                );
-              }
               return { name: statement.assignedExpression, type: statement.assignedValueType };
-            }
-            if (log) {
-              console.log(`[ShaderDebug] ✓ Matched ${kindLabel}: ${statement.assignedVarName} (${varType})`);
             }
             return { name: statement.assignedVarName, type: varType };
           }
@@ -388,15 +355,7 @@ export class GlslParser {
       case 'variableExpression':
         if (statement.expressionVarName) {
           const varType = varTypes.get(statement.expressionVarName);
-          if (log) {
-            console.log(
-              `[ShaderDebug] Trying variable expression: found var '${statement.expressionVarName}', type: ${varType || 'NOT IN SCOPE'}`
-            );
-          }
           if (varType) {
-            if (log) {
-              console.log(`[ShaderDebug] ✓ Matched variable expression: ${statement.expressionVarName} (${varType})`);
-            }
             return { name: statement.expressionVarName, type: varType };
           }
         }
@@ -406,18 +365,12 @@ export class GlslParser {
         if (statement.callName && lines) {
           const returnType = GlslParser.findFunctionReturnType(lines, statement.callName);
           if (returnType && returnType !== 'void') {
-            if (log) {
-              console.log(`[ShaderDebug] ✓ Matched standalone function call: ${statement.callName}() returns ${returnType}`);
-            }
             return { name: '_dbgCall', type: returnType };
           }
         }
         break;
     }
 
-    if (log) {
-      console.log('[ShaderDebug] ✗ Could not detect variable/type');
-    }
     return null;
   }
 

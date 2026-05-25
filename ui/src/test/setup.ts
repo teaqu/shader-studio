@@ -31,6 +31,104 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
 
+if (typeof globalThis.ImageData === 'undefined') {
+  class MockImageData {
+    readonly data: Uint8ClampedArray;
+    readonly width: number;
+    readonly height: number;
+    readonly colorSpace = 'srgb';
+
+    constructor(dataOrWidth: Uint8ClampedArray | number, widthOrHeight: number, height?: number) {
+      if (typeof dataOrWidth === 'number') {
+        this.width = dataOrWidth;
+        this.height = widthOrHeight;
+        this.data = new Uint8ClampedArray(this.width * this.height * 4);
+      } else {
+        this.data = dataOrWidth;
+        this.width = widthOrHeight;
+        this.height = height ?? Math.floor(this.data.length / (this.width * 4));
+      }
+    }
+  }
+
+  globalThis.ImageData = MockImageData as unknown as typeof ImageData;
+}
+
+function createMockCanvasGradient(): CanvasGradient {
+  return {
+    addColorStop: vi.fn(),
+  } as unknown as CanvasGradient;
+}
+
+function createMockCanvasContext(): CanvasRenderingContext2D {
+  return {
+    arc: vi.fn(),
+    beginPath: vi.fn(),
+    bezierCurveTo: vi.fn(),
+    clearRect: vi.fn(),
+    clip: vi.fn(),
+    closePath: vi.fn(),
+    createLinearGradient: vi.fn(() => createMockCanvasGradient()),
+    createRadialGradient: vi.fn(() => createMockCanvasGradient()),
+    drawImage: vi.fn(),
+    fill: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    getImageData: vi.fn(() => new ImageData(1, 1)),
+    lineTo: vi.fn(),
+    measureText: vi.fn((text: string) => ({ width: text.length * 6 }) as TextMetrics),
+    moveTo: vi.fn(),
+    putImageData: vi.fn(),
+    rect: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    scale: vi.fn(),
+    setLineDash: vi.fn(),
+    stroke: vi.fn(),
+    strokeRect: vi.fn(),
+    fillStyle: '#000000',
+    font: '',
+    globalAlpha: 1,
+    lineWidth: 1,
+    strokeStyle: '#000000',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
+  } as unknown as CanvasRenderingContext2D;
+}
+
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    writable: true,
+    value: vi.fn((contextId: string) => {
+      if (contextId === '2d') {
+        return createMockCanvasContext();
+      }
+      return null;
+    }),
+  });
+}
+
+if (typeof HTMLMediaElement !== 'undefined') {
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(() => Promise.resolve()),
+  });
+
+  Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+
+  Object.defineProperty(HTMLMediaElement.prototype, 'load', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+}
+
 const monacoContributionLoadState = vi.hoisted(() => ({
   gotoError: 0,
   hover: 0,

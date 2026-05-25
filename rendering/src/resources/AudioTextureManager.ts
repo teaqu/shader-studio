@@ -363,7 +363,6 @@ export class AudioTextureManager {
           source.sourceNode = null;
         }
         source.playing = false;
-        console.log(`Paused audio: ${path}`);
       }
     }
   }
@@ -374,7 +373,6 @@ export class AudioTextureManager {
       if (this.initializing.has(path)) continue;
       if (!source.playing && !this.userPaused.has(path)) {
         this.startSourceNode(path, source, source.offsetTime);
-        console.log(`Resumed audio: ${path}`);
       }
     }
   }

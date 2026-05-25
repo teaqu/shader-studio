@@ -72,7 +72,6 @@
   function handleMessage(event: MessageEvent) {
     const message = event.data;
     if (message?.type === "workspaceFiles") {
-      console.log('AssetBrowser: Received workspaceFiles response with', message.payload?.files?.length, 'files');
       files = message.payload.files;
       loading = false;
       clearLoadingTimeout();
@@ -90,7 +89,6 @@
     loading = true;
     clearLoadingTimeout();
     if (postMessage) {
-      console.log('AssetBrowser: Sending requestWorkspaceFiles for extensions:', extensions, 'shaderPath:', shaderPath);
       postMessage({
         type: "requestWorkspaceFiles",
         payload: { extensions, shaderPath },

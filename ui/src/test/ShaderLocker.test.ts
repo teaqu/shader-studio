@@ -1,13 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ShaderLocker } from '../lib/ShaderLocker';
 
 describe('ShaderLocker', () => {
   let shaderLocker: ShaderLocker;
-  let consoleSpy: any;
 
   beforeEach(() => {
     shaderLocker = new ShaderLocker();
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
   });
 
   describe('when created', () => {
@@ -26,7 +24,6 @@ describe('ShaderLocker', () => {
 
       expect(shaderLocker.isLocked()).toBe(true);
       expect(shaderLocker.getLockedShaderPath()).toBe('test.glsl');
-      expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Locked to shader at path: test.glsl');
     });
 
     it('then should refuse to lock without shader path', () => {
@@ -34,20 +31,17 @@ describe('ShaderLocker', () => {
 
       expect(shaderLocker.isLocked()).toBe(false);
       expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
-      expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Cannot lock without a shader path');
     });
   });
 
   describe('when toggling lock from locked state', () => {
     it('then should unlock', () => {
       shaderLocker.toggleLock('test.glsl');
-      consoleSpy.mockClear();
 
       shaderLocker.toggleLock();
 
       expect(shaderLocker.isLocked()).toBe(false);
       expect(shaderLocker.getLockedShaderPath()).toBe(undefined);
-      expect(consoleSpy).toHaveBeenCalledWith('ShaderLocker: Unlocked');
     });
   });
 

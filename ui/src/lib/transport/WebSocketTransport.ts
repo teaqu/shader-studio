@@ -21,7 +21,6 @@ export class WebSocketTransport implements Transport {
   private getPort(): number {
     if (typeof window !== 'undefined' && (window as any).shaderViewConfig?.port) {
       const port = (window as any).shaderViewConfig.port;
-      console.log(`WebSocket: Using port from config: ${port}`);
       return port;
     }
 
@@ -31,11 +30,9 @@ export class WebSocketTransport implements Transport {
 
   private connect(): void {
     try {
-      console.log(`WebSocket: Attempting to connect to ${this.url}`);
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected successfully');
         this.connected = true;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -62,7 +59,6 @@ export class WebSocketTransport implements Transport {
       };
 
       this.ws.onclose = (event) => {
-        console.log(`WebSocket disconnected - Code: ${event.code}, Reason: ${event.reason || 'No reason'}, Clean: ${event.wasClean}`);
         this.connected = false;
 
         this.attemptReconnect();
@@ -89,7 +85,6 @@ export class WebSocketTransport implements Transport {
     }
 
     this.reconnectAttempts++;
-    console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;
@@ -103,8 +98,6 @@ export class WebSocketTransport implements Transport {
       type: 'clientInfo',
       userAgent: navigator.userAgent
     });
-
-    console.log(`WebSocket: Sent client info`);
   }
 
   postMessage(message: any): void {

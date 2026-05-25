@@ -30,7 +30,6 @@ describe('WebSocketTransport', () => {
   let originalWebSocket: any;
   let originalWindow: any;
   let originalNavigator: any;
-  let consoleLogSpy: any;
   let consoleWarnSpy: any;
   let consoleErrorSpy: any;
   let webSocketSpy: any;
@@ -60,7 +59,6 @@ describe('WebSocketTransport', () => {
     originalNavigator = global.navigator;
     vi.stubGlobal('navigator', { userAgent: 'test-agent' });
 
-    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
   });
@@ -70,10 +68,10 @@ describe('WebSocketTransport', () => {
     global.window = originalWindow;
     delete (global as any).shaderViewConfig;
     vi.unstubAllGlobals();
-    consoleLogSpy.mockRestore();
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   describe('Port Configuration', () => {
@@ -83,7 +81,6 @@ describe('WebSocketTransport', () => {
 
       const transport = new WebSocketTransport();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(`WebSocket: Using port from config: ${testPort}`);
       expect(webSocketSpy).toHaveBeenCalledWith(`ws://localhost:${testPort}`);
     });
 
@@ -100,7 +97,6 @@ describe('WebSocketTransport', () => {
 
       const transport = new WebSocketTransport();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(`WebSocket: Using port from config: ${testPort}`);
       expect(webSocketSpy).toHaveBeenCalledWith(`ws://localhost:${testPort}`);
     });
   });
@@ -114,7 +110,7 @@ describe('WebSocketTransport', () => {
       // Simulate open
       mockWs.onopen?.(new Event('open'));
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('WebSocket connected successfully');
+      expect(transport.isConnected()).toBe(true);
     });
 
     it('should send client info on connection open', () => {
@@ -125,7 +121,6 @@ describe('WebSocketTransport', () => {
       const sentData = JSON.parse(mockWs.send.mock.calls[0][0]);
       expect(sentData.type).toBe('clientInfo');
       expect(sentData.userAgent).toBe('test-agent');
-      expect(consoleLogSpy).toHaveBeenCalledWith('WebSocket: Sent client info');
     });
 
     it('should set connected=false and attempt reconnect on close', () => {
@@ -134,9 +129,7 @@ describe('WebSocketTransport', () => {
 
       mockWs.onclose?.(new CloseEvent('close', { code: 1000, reason: 'Normal' }));
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('WebSocket disconnected')
-      );
+      expect(transport.isConnected()).toBe(false);
     });
 
     it('should set connected=false on error', () => {
@@ -168,16 +161,11 @@ describe('WebSocketTransport', () => {
 
       mockWs.onclose?.(new CloseEvent('close'));
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Attempting to reconnect (1/5)')
-      );
+      vi.advanceTimersByTime(999);
+      expect(webSocketSpy).toHaveBeenCalledTimes(1);
 
-      // Advance past reconnect delay
-      vi.advanceTimersByTime(1000);
-
-      // Should have created a new WebSocket
+      vi.advanceTimersByTime(1);
       expect(webSocketSpy).toHaveBeenCalledTimes(2);
-      vi.useRealTimers();
     });
 
     it('should stop reconnecting after max attempts', () => {
@@ -196,29 +184,26 @@ describe('WebSocketTransport', () => {
       lastMockWs.onclose?.(new CloseEvent('close'));
 
       expect(consoleErrorSpy).toHaveBeenCalledWith('Max reconnection attempts reached');
-      vi.useRealTimers();
     });
 
     it('should use exponential backoff for reconnect delay', () => {
       vi.useFakeTimers();
       const { transport, mockWs } = createTransport();
 
-      // First disconnect - should reconnect in 1000ms
       mockWs.onclose?.(new CloseEvent('close'));
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('in 1000ms')
-      );
 
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(999);
+      expect(webSocketSpy).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(webSocketSpy).toHaveBeenCalledTimes(2);
 
-      // Second disconnect - should reconnect in 2000ms
       const ws2 = webSocketSpy.mock.results[webSocketSpy.mock.results.length - 1].value as MockWebSocket;
       ws2.onclose?.(new CloseEvent('close'));
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('in 2000ms')
-      );
 
-      vi.useRealTimers();
+      vi.advanceTimersByTime(1999);
+      expect(webSocketSpy).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(1);
+      expect(webSocketSpy).toHaveBeenCalledTimes(3);
     });
 
     it('should not start duplicate reconnect if one is pending', () => {
@@ -226,18 +211,14 @@ describe('WebSocketTransport', () => {
       const { transport, mockWs } = createTransport();
 
       mockWs.onclose?.(new CloseEvent('close'));
+      mockWs.onclose?.(new CloseEvent('close'));
 
-      // Try to trigger another reconnect before the first fires
-      // (calling attemptReconnect internally via another close won't double-fire
-      // because reconnectTimeout is already set)
       const callCountBefore = webSocketSpy.mock.calls.length;
-      vi.advanceTimersByTime(500); // Not enough time for first reconnect
-      expect(webSocketSpy.mock.calls.length).toBe(callCountBefore); // No new connection yet
+      vi.advanceTimersByTime(999);
+      expect(webSocketSpy.mock.calls.length).toBe(callCountBefore);
 
-      vi.advanceTimersByTime(500); // Now first reconnect fires
+      vi.advanceTimersByTime(1);
       expect(webSocketSpy.mock.calls.length).toBe(callCountBefore + 1);
-
-      vi.useRealTimers();
     });
   });
 
@@ -426,11 +407,6 @@ describe('WebSocketTransport', () => {
       // Trigger a disconnect to start reconnect timer
       mockWs.onclose?.(new CloseEvent('close'));
 
-      // Verify reconnect is pending
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Attempting to reconnect (1/5)')
-      );
-
       const callCountBefore = webSocketSpy.mock.calls.length;
 
       // Prevent MockWebSocket.close() from synchronously firing onclose
@@ -441,8 +417,6 @@ describe('WebSocketTransport', () => {
       // Advance time - the original reconnect timer should NOT fire
       vi.advanceTimersByTime(10000);
       expect(webSocketSpy.mock.calls.length).toBe(callCountBefore);
-
-      vi.useRealTimers();
     });
 
     it('should handle dispose when no WebSocket exists', () => {

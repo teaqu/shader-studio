@@ -39,12 +39,21 @@ describe('editorOverlayStore', () => {
   });
 
   it('should fall back to defaults on invalid localStorage', async () => {
-    localStorage.setItem(SLOT_KEY, 'not-json');
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.restoreFromStorage();
-    expect(s.getEditorOverlayVisible()).toBe(false);
-    expect(s.getVimMode()).toBe(false);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      localStorage.setItem(SLOT_KEY, 'not-json');
+      const s = await importState();
+      s.setLayoutSlot('vscode:1');
+      s.restoreFromStorage();
+      expect(s.getEditorOverlayVisible()).toBe(false);
+      expect(s.getVimMode()).toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to load editor overlay state from localStorage:',
+        expect.any(SyntaxError),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('toggleEditorOverlay should flip isVisible', async () => {

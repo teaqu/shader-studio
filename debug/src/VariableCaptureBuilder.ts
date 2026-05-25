@@ -93,7 +93,7 @@ export class VariableCaptureBuilder {
       if (returnTypeMatch && CAPTURABLE_TYPES.has(returnTypeMatch[1])) {
         const lineContent = lines[resolvedLine] || '';
         const varInfo = GlslParser.detectVariableAndType(
-          lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine, false
+          lineContent, varTypes, returnTypeMatch[1], lines, resolvedLine
         );
         if (varInfo && varInfo.name === '_dbgReturn') {
           result.push({ varName: '_dbgReturn', varType: returnTypeMatch[1], declarationLine: resolvedLine });

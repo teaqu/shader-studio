@@ -396,11 +396,6 @@ export class ShaderPipeline {
   }
 
   public refresh(path?: string): void {
-    console.log(
-      "MessageHandler: Refresh requested",
-      path ? `for shader: ${path}` : "(current)",
-    );
-
     const refreshMessage: RefreshMessage = {
       type: "refresh",
       payload: {

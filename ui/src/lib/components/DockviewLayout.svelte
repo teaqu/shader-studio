@@ -522,7 +522,6 @@
       return;
     }
     try {
-      console.log("[DockviewLayout] restoreFromData called, panels:", JSON.stringify(data?.panels ?? {}));
       programmaticRemoval = true;
       api.fromJSON(data);
       programmaticRemoval = false;
@@ -530,7 +529,6 @@
         api.clear();
         createDefaultLayout();
       }
-      console.log("[DockviewLayout] fromJSON succeeded, total panels:", api.panels.length);
       layoutReady = true;
     } catch (e) {
       programmaticRemoval = false;

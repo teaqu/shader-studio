@@ -29,7 +29,6 @@ export class ShaderDebugger {
 
     if (!varInfo && isFunctionEntryLine && functionInfo.name && functionInfo.name !== 'mainImage') {
       if (functionReturnType && functionReturnType !== 'void') {
-        console.log('[ShaderDebug] Path: full function execution (no variable on line)');
         return CodeGenerator.wrapFullFunctionForDebugging(
           lines,
           functionInfo,
@@ -41,12 +40,10 @@ export class ShaderDebugger {
         );
       }
 
-      console.log('[ShaderDebug] ❌ Void function entry line has no debuggable return value');
       return null;
     }
 
     if (!varInfo && GlslParser.shouldSurfaceCompileErrorForLine(resolvedLineContent, lines, resolvedLine)) {
-      console.log('[ShaderDebug] Selected line has invalid syntax; preserving original shader to surface compile error');
       return originalCode;
     }
 
@@ -61,14 +58,12 @@ export class ShaderDebugger {
         varInfo = this.detectVariableAndRewrite(fallbackLineContent, fallbackVarTypes, functionReturnType, lines, fallbackLine);
 
         if (varInfo) {
-          console.log('[ShaderDebug] Resolved to nearest debuggable line above:', fallbackLine);
           return this.buildDebugShader(lines, fallbackLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
         }
       }
     }
 
     if (!varInfo) {
-      console.log('[ShaderDebug] ❌ Could not detect variable/type');
       return null;
     }
 
@@ -92,7 +87,6 @@ export class ShaderDebugger {
     const { lines, resolvedLine, functionInfo, varTypes, functionReturnType } = ctx;
 
     if (!this.isVariableInScope(varInfo, varTypes, functionInfo, lines, resolvedLine, functionReturnType)) {
-      console.log('[ShaderDebug] ❌ Explicit variable is not in scope');
       return null;
     }
 
@@ -149,16 +143,9 @@ export class ShaderDebugger {
     varTypes: Map<string, string>;
     functionReturnType: string | undefined;
   } {
-    console.log('[ShaderDebug] === MODIFY SHADER ===');
-    console.log('[ShaderDebug] Debug line number:', debugLine);
-
     const lines = originalCode.split('\n');
 
-    console.log('[ShaderDebug] Cursor line content:', lineContent);
-    console.log('[ShaderDebug] Actual shader line:', lines[debugLine] || '<out of bounds>');
-
     const functionInfo = GlslParser.findEnclosingFunction(lines, debugLine);
-    console.log('[ShaderDebug] Function:', functionInfo.name || 'none');
 
     let resolvedLine = debugLine;
     let resolvedLineContent = lineContent;
@@ -167,7 +154,6 @@ export class ShaderDebugger {
     if (functionInfo.end >= 0 && debugLine === functionInfo.end) {
       resolvedLine = functionInfo.end - 1;
       resolvedLineContent = lines[resolvedLine] || '';
-      console.log('[ShaderDebug] Resolved closing brace to line:', resolvedLine);
     }
 
     const isFunctionEntryLine = this.isFunctionEntryLine(lines, resolvedLine, functionInfo);
@@ -178,10 +164,7 @@ export class ShaderDebugger {
         if (lastBodyLine >= 0) {
           resolvedLine = lastBodyLine;
           resolvedLineContent = lines[resolvedLine] || '';
-          console.log('[ShaderDebug] Resolved mainImage entry line to body line:', resolvedLine);
         }
-      } else {
-        console.log('[ShaderDebug] Function entry line detected; falling back to function result debug');
       }
     }
 
@@ -245,24 +228,17 @@ export class ShaderDebugger {
     normalizeMode: string,
     stepEdge: number | null,
   ): string {
-    console.log('[ShaderDebug] ✓ Detected:', varInfo.name, `(${varInfo.type})`);
-    console.log('[ShaderDebug] normalizeMode:', normalizeMode);
-
     let result: string;
 
     if (functionInfo.name === 'mainImage') {
-      console.log('[ShaderDebug] Path: mainImage truncation');
       result = this.truncateMainImage(lines, debugLine, functionInfo.start, varInfo, loopMaxIterations, normalizeMode, stepEdge);
     } else if (functionInfo.name) {
-      console.log('[ShaderDebug] Path: helper function wrapper');
       const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
       result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge);
     } else {
-      console.log('[ShaderDebug] Path: global scope wrapper');
       result = CodeGenerator.wrapGlobalScopeForDebugging(lines, varInfo, normalizeMode, stepEdge);
     }
 
-    console.log('[ShaderDebug] ✅ Success - Modified shader:\n', result);
     return result;
   }
 
@@ -297,8 +273,7 @@ export class ShaderDebugger {
         varTypes,
         varInfo.type,
         lines,
-        debugLine,
-        false,
+        debugLine
       );
       return detected?.name === '_dbgReturn';
     }
@@ -370,8 +345,7 @@ export class ShaderDebugger {
         candidateVarTypes,
         functionReturnType,
         lines,
-        candidate,
-        false,
+        candidate
       );
 
       if (candidateVarInfo) {

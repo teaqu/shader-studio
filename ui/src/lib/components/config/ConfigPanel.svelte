@@ -63,11 +63,9 @@
   });
 
   onMount(() => {
-    console.log("ConfigPanel component mounted");
     configManager = new ConfigManager(
       transport,
       (updatedConfig) => {
-        console.log("Config updated in component:", updatedConfig);
         config = updatedConfig;
         onConfigChange(updatedConfig);
       }
