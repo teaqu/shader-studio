@@ -6,7 +6,7 @@ import type { PiRenderer, PiShader } from "./types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "./util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
-import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
+import { assignInputSlots } from "./util/InputSlotAssigner";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
@@ -19,7 +19,6 @@ export class ShaderPipeline {
   private shaderPath = "";
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
-  private passSlotAssignments: Record<string, SlotAssignment[]> = {};
   private customUniformManager: CustomUniformManager | null = null;
 
   constructor(
@@ -83,7 +82,7 @@ export class ShaderPipeline {
       return compilation;
     }
 
-    if (!compilation.passShaders || !compilation.passSlotAssignments) {
+    if (!compilation.passShaders) {
       return {
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
@@ -94,7 +93,6 @@ export class ShaderPipeline {
       path,
       nextPasses,
       compilation.passShaders,
-      compilation.passSlotAssignments,
       pathChanged,
     );
 
@@ -163,10 +161,8 @@ export class ShaderPipeline {
     candidatePasses: Pass[],
   ): Promise<CompilationResult & {
     passShaders?: Record<string, PiShader>;
-    passSlotAssignments?: Record<string, SlotAssignment[]>;
   }> {
     const newPassShaders: Record<string, PiShader> = {};
-    const newPassSlotAssignments: Record<string, SlotAssignment[]> = {};
 
     // Extract common code if it exists
     const commonBufferPass = candidatePasses.find(pass => pass.name === "common");
@@ -189,7 +185,6 @@ export class ShaderPipeline {
       }
 
       const slotAssignments = assignInputSlots(pass.inputs);
-      newPassSlotAssignments[pass.name] = slotAssignments;
       const channelTypes = this.getChannelTypes(pass);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
@@ -231,7 +226,6 @@ export class ShaderPipeline {
     return {
       success: true,
       passShaders: newPassShaders,
-      passSlotAssignments: newPassSlotAssignments,
     };
   }
 
@@ -239,7 +233,6 @@ export class ShaderPipeline {
     path: string,
     nextPasses: Pass[],
     nextPassShaders: Record<string, PiShader>,
-    nextPassSlotAssignments: Record<string, SlotAssignment[]>,
     pathChanged: boolean,
   ): void {
     this.currentShaderRenderID++;
@@ -273,7 +266,6 @@ export class ShaderPipeline {
     this.shaderPath = path;
     this.passes = nextPasses;
     this.passShaders = nextPassShaders;
-    this.passSlotAssignments = nextPassSlotAssignments;
     this.bufferManager.setPassBuffers(nextPassBuffers);
   }
 
@@ -285,7 +277,6 @@ export class ShaderPipeline {
     this.currentShaderRenderID++;
     this.shaderPath = path;
     this.passes = nextPasses;
-    this.passSlotAssignments = {};
   }
 
   private async updateResources(): Promise<string[]> {
