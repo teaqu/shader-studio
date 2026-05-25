@@ -74,7 +74,7 @@ export class ShaderPipeline {
   ): Promise<CompilationResult> {
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
     const nextPasses = this.buildPasses(code, config, buffers);
-    const compilation = await this.compileShaders(nextPasses, pathChanged);
+    const compilation = await this.compileShaders(nextPasses);
 
     if (!compilation.success) {
       if (pathChanged) {
@@ -83,7 +83,7 @@ export class ShaderPipeline {
       return compilation;
     }
 
-    if (!compilation.passShaders || !compilation.passBuffers || !compilation.passSlotAssignments) {
+    if (!compilation.passShaders || !compilation.passSlotAssignments) {
       return {
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
@@ -94,7 +94,6 @@ export class ShaderPipeline {
       path,
       nextPasses,
       compilation.passShaders,
-      compilation.passBuffers,
       compilation.passSlotAssignments,
       pathChanged,
     );
@@ -162,17 +161,11 @@ export class ShaderPipeline {
 
   private async compileShaders(
     candidatePasses: Pass[],
-    pathChanged: boolean,
   ): Promise<CompilationResult & {
     passShaders?: Record<string, PiShader>;
-    passBuffers?: Record<string, any>;
     passSlotAssignments?: Record<string, SlotAssignment[]>;
   }> {
-    const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
-
     const newPassShaders: Record<string, PiShader> = {};
-    const newPassBuffers: Record<string, any> = {};
-    const createdPassBuffers: Record<string, any> = {};
     const newPassSlotAssignments: Record<string, SlotAssignment[]> = {};
 
     // Extract common code if it exists
@@ -188,7 +181,6 @@ export class ShaderPipeline {
       // Check if buffer pass has empty shader source (likely missing or invalid file)
       if (!pass.shaderSrc || pass.shaderSrc.trim() === "") {
         this.cleanupPartialShaders(newPassShaders);
-        this.bufferManager.cleanupBuffers(createdPassBuffers);
         const pathInfo = pass.path ? ` (path: "${pass.path}")` : "";
         return {
           success: false,
@@ -207,7 +199,6 @@ export class ShaderPipeline {
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
-        this.bufferManager.cleanupBuffers(createdPassBuffers);
 
         if (!shader) {
           return {
@@ -235,27 +226,11 @@ export class ShaderPipeline {
       }
 
       newPassShaders[pass.name] = shader;
-
-      if (pass.name !== "Image" && pass.name !== "common") {
-        if (!pathChanged && oldPassBuffers[pass.name]) {
-          newPassBuffers[pass.name] = oldPassBuffers[pass.name];
-          delete oldPassBuffers[pass.name];
-        } else {
-          const createdBuffer = this.bufferManager
-            .createPingPongBuffers(
-              this.canvas.width || 800,
-              this.canvas.height || 600,
-            );
-          newPassBuffers[pass.name] = createdBuffer;
-          createdPassBuffers[pass.name] = createdBuffer;
-        }
-      }
     }
 
     return {
       success: true,
       passShaders: newPassShaders,
-      passBuffers: newPassBuffers,
       passSlotAssignments: newPassSlotAssignments,
     };
   }
@@ -264,7 +239,6 @@ export class ShaderPipeline {
     path: string,
     nextPasses: Pass[],
     nextPassShaders: Record<string, PiShader>,
-    nextPassBuffers: Record<string, any>,
     nextPassSlotAssignments: Record<string, SlotAssignment[]>,
     pathChanged: boolean,
   ): void {
@@ -273,16 +247,28 @@ export class ShaderPipeline {
     if (pathChanged) {
       this.cleanup();
     } else {
-      const oldPassShaders = this.passShaders;
-      const oldPassBuffers = { ...this.bufferManager.getPassBuffers() };
-
-      this.cleanupShaders(oldPassShaders);
-
-      for (const name of Object.keys(nextPassBuffers)) {
-        delete oldPassBuffers[name];
-      }
-      this.bufferManager.cleanupBuffers(oldPassBuffers);
+      this.cleanupShaders(this.passShaders);
     }
+
+    // Allocate buffers synchronously from current state — no async window means no stale references.
+    const currentPassBuffers = this.bufferManager.getPassBuffers();
+    const nextPassBuffers: Record<string, any> = {};
+
+    for (const pass of nextPasses) {
+      if (pass.name === "Image" || pass.name === "common") continue;
+      nextPassBuffers[pass.name] = currentPassBuffers[pass.name]
+        ?? this.bufferManager.createPingPongBuffers(
+          this.canvas.width || 800,
+          this.canvas.height || 600,
+        );
+    }
+
+    // Clean up buffers for passes that no longer exist
+    const oldPassBuffers = { ...currentPassBuffers };
+    for (const name of Object.keys(nextPassBuffers)) {
+      delete oldPassBuffers[name];
+    }
+    this.bufferManager.cleanupBuffers(oldPassBuffers);
 
     this.shaderPath = path;
     this.passes = nextPasses;

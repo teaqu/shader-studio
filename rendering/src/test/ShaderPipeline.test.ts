@@ -1686,4 +1686,62 @@ describe("ShaderPipeline", () => {
             expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe("resize race condition", () => {
+        it("should not use a stale buffer reference when resize occurs during async compilation", async () => {
+            const shaderPath = "shader.glsl";
+            const config = {
+                version: "1.0",
+                passes: {
+                    Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+                    BufferA: { path: "buffer-a.glsl", inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+                },
+            } as any;
+
+            const buffer1 = { front: { mTex0: { mXres: 800, mYres: 600 } }, back: { mTex0: { mXres: 800, mYres: 600 } } };
+            const buffer2 = { front: { mTex0: { mXres: 400, mYres: 300 } }, back: { mTex0: { mXres: 400, mYres: 300 } } };
+
+            mockBufferManager.createPingPongBuffers.mockReturnValueOnce(buffer1);
+
+            // First compilation: creates buffer1 for BufferA
+            await shaderPipeline.compileShaderPipeline(
+                "void mainImage() {}",
+                config,
+                shaderPath,
+                { BufferA: "void mainImage() {}" },
+            );
+
+            expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
+                expect.objectContaining({ BufferA: buffer1 }),
+            );
+
+            // Second compilation: simulate resize deleting buffer1 and installing buffer2 during await
+            let resolveCompile!: (shader: any) => void;
+            mockShaderCompiler.compileShaderAsync.mockReturnValueOnce(
+                new Promise(resolve => { resolveCompile = resolve; }),
+            );
+
+            // Snapshot of buffers at compile-start: buffer1
+            mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer1 });
+
+            const compilePromise = shaderPipeline.compileShaderPipeline(
+                "void mainImage() {}",
+                config,
+                shaderPath,
+                { BufferA: "void mainImage() {}" },
+            );
+
+            // Simulate resize happening before compilation resolves: buffer1 is gone, buffer2 is current
+            mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer2 });
+
+            // Resolve the compilation
+            resolveCompile(createMockShader());
+            await compilePromise;
+
+            // applyCompiledPipeline should have used buffer2 (current), not buffer1 (stale/deleted)
+            expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
+                expect.objectContaining({ BufferA: buffer2 }),
+            );
+        });
+    });
 });
