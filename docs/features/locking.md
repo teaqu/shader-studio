@@ -15,6 +15,13 @@ Locking solves this. Once locked, you can freely open and edit any buffer file a
 3. Open any buffer file to edit it — the preview stays on the locked shader
 4. Click the <i class="codicon codicon-lock"></i> button again to unlock when you want the preview to follow your file selection again
 
+## Double-Clicking Buffer Tabs
+
+When locked, double-clicking a buffer tab in the config panel lets you navigate to that pass without unlocking:
+
+- If the editor overlay is open, the overlay switches to that pass's file
+- If the overlay is closed, that pass's file opens in the VS Code editor
+
 ## Next
 
 [Editor Overlay](editor-overlay.md) — edit shader code inline in the preview

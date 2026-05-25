@@ -19,7 +19,7 @@ Search inside the editor overlay is currently available in Vim mode with `/`. No
 
 When your shader has multiple passes — Image, BufferA, BufferB, Common, and so on — each appears as a tab along the top of the overlay. Click a tab to switch to that pass. Changes you make are saved back to the file automatically.
 
-**Double-click** a tab to open that file in the VS Code editor. Use [locked mode](locking.md) to keep the preview pinned while you do this.
+**Double-click** a buffer tab in the config panel to navigate to that pass. The behaviour depends on whether the shader is [locked](locking.md):
 
 ## Vim Mode
 
