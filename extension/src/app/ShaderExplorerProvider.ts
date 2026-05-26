@@ -8,6 +8,32 @@ import { ThumbnailCache } from "./ThumbnailCache";
 import { TabGroupResolver } from "./TabGroupResolver";
 import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
 
+interface ShaderExplorerFile {
+  name: string;
+  path: string;
+  relativePath: string;
+  configPath?: string;
+  hasConfig: boolean;
+  cachedThumbnail?: string | null;
+  modifiedTime?: number;
+  createdTime?: number;
+}
+
+interface ShaderSearchCacheEntry {
+  cacheKey: string;
+  text: string;
+}
+
+interface ShaderSearchMatch {
+  shader: ShaderExplorerFile;
+  rank: number;
+}
+
+interface ShaderSearchQuery {
+  include: string[];
+  exclude: string[];
+}
+
 export class ShaderExplorerProvider {
   private logger: Logger;
   private panel: vscode.WebviewPanel | undefined;
@@ -15,6 +41,10 @@ export class ShaderExplorerProvider {
   private configProcessor: ShaderConfigProcessor;
   private tabGroupResolver: TabGroupResolver;
   private gitMetadataProvider: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace">;
+  private shaderListCache: ShaderExplorerFile[] = [];
+  private shaderSearchTextCache = new Map<string, ShaderSearchCacheEntry>();
+  private latestSearchRequestId = 0;
+  private readonly shaderSearchConcurrency = 16;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -87,6 +117,10 @@ export class ShaderExplorerProvider {
           await this.sendShaderCode(message.path);
           break;
 
+        case "searchShaders":
+          await this.sendShaderSearchResults(message.query, message.requestId);
+          break;
+
         case "saveThumbnail":
           await this.saveThumbnail(message.path, message.thumbnail, message.modifiedTime);
           break;
@@ -122,12 +156,13 @@ export class ShaderExplorerProvider {
     }
 
     const shaders = await this.findAllShaders();
+    this.shaderListCache = shaders;
+    this.pruneShaderSearchCache(new Set(shaders.map(shader => shader.path)));
     this.logger.debug(`Found ${shaders.length} shaders`);
         
     // Add cached thumbnails to shader data (unless skipCache is true)
     const shadersWithThumbnails = shaders.map(shader => {
       if (skipCache) {
-        this.logger.debug(`Skipping cache for ${shader.name} (refresh requested)`);
         return {
           ...shader,
           cachedThumbnail: null,
@@ -135,11 +170,6 @@ export class ShaderExplorerProvider {
       }
             
       const thumbnail = this.thumbnailCache.getThumbnail(shader.path, shader.modifiedTime);
-      if (thumbnail) {
-        this.logger.debug(`Found cached thumbnail for ${shader.name} (${thumbnail.length} chars)`);
-      } else {
-        this.logger.debug(`No cached thumbnail for ${shader.name}`);
-      }
       return {
         ...shader,
         cachedThumbnail: thumbnail,
@@ -197,13 +227,222 @@ export class ShaderExplorerProvider {
     }
   }
 
-  private async findAllShaders(): Promise<any[]> {
+  private async sendShaderSearchResults(query: string, requestId?: number): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+
+    const searchRequestId = typeof requestId === "number"
+      ? requestId
+      : this.latestSearchRequestId + 1;
+    this.latestSearchRequestId = searchRequestId;
+
+    const normalizedQuery = typeof query === "string"
+      ? query.trim().toLowerCase()
+      : "";
+    const parsedQuery = this.parseShaderSearchQuery(normalizedQuery);
+    const shaders = this.shaderListCache.length > 0
+      ? this.shaderListCache
+      : await this.findAllShaders();
+
+    if (this.shaderListCache.length === 0) {
+      this.shaderListCache = shaders;
+      this.pruneShaderSearchCache(new Set(shaders.map(shader => shader.path)));
+    }
+
+    const matches = await this.collectShaderSearchMatches(
+      shaders,
+      parsedQuery,
+      searchRequestId,
+    );
+    if (!matches || !this.isLatestShaderSearch(searchRequestId)) {
+      return;
+    }
+
+    matches.sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
+      }
+      return a.shader.name.localeCompare(b.shader.name);
+    });
+
+    this.panel.webview.postMessage({
+      type: "shaderSearchResults",
+      query: query ?? "",
+      requestId: searchRequestId,
+      paths: matches.map(match => match.shader.path),
+    });
+  }
+
+  private async collectShaderSearchMatches(
+    shaders: ShaderExplorerFile[],
+    query: ShaderSearchQuery,
+    requestId: number,
+  ): Promise<ShaderSearchMatch[] | null> {
+    const matches: ShaderSearchMatch[] = [];
+    let nextIndex = 0;
+
+    const worker = async (): Promise<void> => {
+      while (this.isLatestShaderSearch(requestId)) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= shaders.length) {
+          return;
+        }
+
+        const shader = shaders[index];
+        const rank = await this.getShaderSearchRank(shader, query);
+        if (!this.isLatestShaderSearch(requestId)) {
+          return;
+        }
+
+        if (rank !== null) {
+          matches.push({ shader, rank });
+        }
+      }
+    };
+
+    const workerCount = Math.min(this.shaderSearchConcurrency, shaders.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+    return this.isLatestShaderSearch(requestId) ? matches : null;
+  }
+
+  private isLatestShaderSearch(requestId: number): boolean {
+    return requestId === this.latestSearchRequestId;
+  }
+
+  private async getShaderSearchRank(shader: ShaderExplorerFile, query: ShaderSearchQuery): Promise<number | null> {
+    if (query.include.length === 0 && query.exclude.length === 0) {
+      return 0;
+    }
+
+    const name = shader.name.toLowerCase();
+    const pathText = `${shader.relativePath} ${shader.path}`.toLowerCase();
+
+    if (query.exclude.some(term => name.includes(term) || pathText.includes(term))) {
+      return null;
+    }
+
+    let text: string | null = null;
+    const getText = async (): Promise<string> => {
+      text ??= await this.getShaderSearchText(shader);
+      return text;
+    };
+
+    for (const term of query.exclude) {
+      if ((await getText()).includes(term)) {
+        return null;
+      }
+    }
+
+    if (query.include.length === 0) {
+      return 0;
+    }
+
+    let worstRank = 0;
+    let rankSum = 0;
+    for (const term of query.include) {
+      const termRank = await this.getShaderSearchTermRank(term, name, pathText, getText);
+      if (termRank === null) {
+        return null;
+      }
+
+      worstRank = Math.max(worstRank, termRank);
+      rankSum += termRank;
+    }
+
+    return worstRank * 100 + rankSum;
+  }
+
+  private async getShaderSearchTermRank(
+    term: string,
+    name: string,
+    pathText: string,
+    getText: () => Promise<string>,
+  ): Promise<number | null> {
+    if (name.includes(term)) {
+      return 0;
+    }
+
+    if (pathText.includes(term)) {
+      return 1;
+    }
+
+    return (await getText()).includes(term) ? 2 : null;
+  }
+
+  private parseShaderSearchQuery(query: string): ShaderSearchQuery {
+    const include: string[] = [];
+    const exclude: string[] = [];
+    const tokenPattern = /(-?)"([^"]+)"|(-?)(\S+)/g;
+    for (const match of query.matchAll(tokenPattern)) {
+      const isExcluded = Boolean(match[1] || match[3]);
+      const term = (match[2] ?? match[4] ?? "").trim().toLowerCase();
+      if (!term || term === "-") {
+        continue;
+      }
+
+      (isExcluded ? exclude : include).push(term);
+    }
+
+    return { include, exclude };
+  }
+
+  private async getShaderSearchText(shader: ShaderExplorerFile): Promise<string> {
+    const openDocument = vscode.workspace.textDocuments.find(
+      document => document.uri.fsPath === shader.path,
+    );
+    const cacheKey = openDocument
+      ? `document:${openDocument.version}`
+      : `file:${shader.modifiedTime ?? "unknown"}`;
+    const cached = this.shaderSearchTextCache.get(shader.path);
+    if (cached && cached.cacheKey === cacheKey) {
+      return cached.text;
+    }
+
+    if (openDocument) {
+      const text = openDocument.getText().toLowerCase();
+      this.shaderSearchTextCache.set(shader.path, {
+        cacheKey,
+        text,
+      });
+      return text;
+    }
+
+    try {
+      const contents = await fs.promises.readFile(shader.path, "utf8");
+      const text = contents.toString().toLowerCase();
+      this.shaderSearchTextCache.set(shader.path, {
+        cacheKey,
+        text,
+      });
+      return text;
+    } catch (error) {
+      this.logger.warn(`Failed to read shader text for search: ${shader.path} (${error})`);
+      this.shaderSearchTextCache.set(shader.path, {
+        cacheKey,
+        text: "",
+      });
+      return "";
+    }
+  }
+
+  private pruneShaderSearchCache(activePaths: Set<string>): void {
+    for (const path of this.shaderSearchTextCache.keys()) {
+      if (!activePaths.has(path)) {
+        this.shaderSearchTextCache.delete(path);
+      }
+    }
+  }
+
+  private async findAllShaders(): Promise<ShaderExplorerFile[]> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) {
       return [];
     }
 
-    const shaders: any[] = [];
+    const shaders: ShaderExplorerFile[] = [];
 
     for (const folder of workspaceFolders) {
       // Find all .glsl, .frag, .vert shader files
@@ -397,12 +636,9 @@ export class ShaderExplorerProvider {
     const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
     const cspMatch = processedHtml.match(cspPattern);
         
-    console.log(`ShaderExplorerProvider: Webview CSP source: ${webview.cspSource}`);
-        
     if (cspMatch) {
       // Update existing CSP to include webview.cspSource
       const existingCsp = cspMatch[1];
-      console.log(`ShaderExplorerProvider: Found existing CSP: ${existingCsp}`);
             
       // Use the actual webview.cspSource for scripts and styles
       const scriptSrc = `script-src 'self' 'unsafe-inline' ${webview.cspSource}`;
@@ -428,7 +664,6 @@ export class ShaderExplorerProvider {
         cspPattern,
         `<meta http-equiv="Content-Security-Policy" content="${updatedCsp}">`
       );
-      console.log(`ShaderExplorerProvider: Updated CSP to: ${updatedCsp}`);
       this.logger.debug("Updated existing CSP for webview support");
       return finalHtml;
     } else {
@@ -450,13 +685,11 @@ export class ShaderExplorerProvider {
                                    `\n    ${newCsp}` + 
                                    processedHtml.slice(afterHeadIndex);
                     
-          console.log(`ShaderExplorerProvider: Added CSP after <head> tag`);
           return finalHtml;
         }
       }
             
       // Fallback: return original HTML if CSP injection fails
-      console.log(`ShaderExplorerProvider: Failed to inject CSP, using original`);
       return processedHtml;
     }
   }

@@ -12,7 +12,7 @@ Shader Explorer lets you browse, search, and preview all shader files in your wo
 
 ## Search and Sort
 
-- **Search** — type in the search bar to filter shaders by name or path (case-insensitive)
+- **Search** — type in the search bar to filter shaders by name, path, or shader source text (case-insensitive). Name matches are shown before path and source-text matches. Multiple terms are combined, quoted phrases match exactly, and terms prefixed with `-` are excluded, e.g. `ray sphere -buffer` or `"ray march"`.
 - **Sort by** — dropdown with options:
     - **Name** — alphabetical A–Z
     - **Updated** — most recently modified first

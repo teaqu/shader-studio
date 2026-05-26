@@ -1,4 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+    createShaderSearchScheduler,
+    getVisibleShadersForSearch,
+    isCurrentShaderSearchResult,
+    orderShadersBySearchPaths,
+} from '../shaderSearch';
+
+afterEach(() => {
+    vi.useRealTimers();
+});
 
 describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
     let mockVscodeApi: any;
@@ -126,8 +136,7 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
 
         // Simulate the debounced effect for card size changes
         function simulateCardSizeChange(newSize: number) {
-            // Use newSize for simulation
-            console.log(`Card size changed to: ${newSize}`);
+            void newSize;
 
             // Clear existing timeout
             if (debounceTimeout !== null) {
@@ -409,6 +418,99 @@ describe('ShaderExplorer - Search Functionality', () => {
         // Should still match because the spaces are included in the query
         // But shader1.glsl doesn't contain '  shader1  '
         expect(filtered).toHaveLength(0);
+    });
+});
+
+describe('ShaderExplorer - Extension Text Search Helpers', () => {
+    const shaders = [
+        {
+            path: '/workspace/shaders/clouds.glsl',
+            name: 'clouds.glsl',
+            relativePath: 'shaders/clouds.glsl',
+            hasConfig: false,
+            cachedThumbnail: 'data:image/png;base64,clouds',
+        },
+        {
+            path: '/workspace/shaders/noise.glsl',
+            name: 'noise.glsl',
+            relativePath: 'shaders/noise.glsl',
+            hasConfig: false,
+            cachedThumbnail: 'data:image/png;base64,noise',
+        },
+    ];
+
+    it('debounces text search requests to the extension', async () => {
+        vi.useFakeTimers();
+        const postMessage = vi.fn();
+        const scheduler = createShaderSearchScheduler(postMessage);
+
+        scheduler.schedule('n');
+        const requestId = scheduler.schedule('noise');
+        vi.advanceTimersByTime(149);
+        expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+            type: 'searchShaders',
+        }));
+
+        vi.advanceTimersByTime(1);
+        expect(postMessage).toHaveBeenCalledWith({
+            type: 'searchShaders',
+            query: 'noise',
+            requestId: 2,
+        });
+        expect(requestId).toBe(2);
+    });
+
+    it('rejects stale search results', () => {
+        expect(isCurrentShaderSearchResult({
+            type: 'shaderSearchResults',
+            query: 'cloud',
+            requestId: 1,
+            paths: ['/workspace/shaders/clouds.glsl'],
+        }, 2, 'noise')).toBe(false);
+
+        expect(isCurrentShaderSearchResult({
+            type: 'shaderSearchResults',
+            query: 'noise',
+            requestId: 2,
+            paths: ['/workspace/shaders/noise.glsl'],
+        }, 2, 'noise')).toBe(true);
+    });
+
+    it('applies ordered extension paths so title-priority ranking is preserved', () => {
+        const ordered = orderShadersBySearchPaths(shaders, [
+            '/workspace/shaders/noise.glsl',
+            '/workspace/shaders/clouds.glsl',
+        ]);
+
+        expect(ordered.map(shader => shader.name)).toEqual(['noise.glsl', 'clouds.glsl']);
+    });
+
+    it('keeps the current shader list visible while the first text search is pending', () => {
+        const visible = getVisibleShadersForSearch({
+            shaders,
+            search: '#test',
+            searchResultPaths: null,
+            hideFailedShaders: false,
+            failedShaderPaths: new Set(),
+            sortBy: 'name',
+            sortOrder: 'desc',
+        });
+
+        expect(visible.map(shader => shader.name)).toEqual(['clouds.glsl', 'noise.glsl']);
+    });
+
+    it('keeps previous search results visible while the next text search is pending', () => {
+        const visible = getVisibleShadersForSearch({
+            shaders,
+            search: '#test',
+            searchResultPaths: ['/workspace/shaders/noise.glsl'],
+            hideFailedShaders: false,
+            failedShaderPaths: new Set(),
+            sortBy: 'name',
+            sortOrder: 'asc',
+        });
+
+        expect(visible.map(shader => shader.name)).toEqual(['noise.glsl']);
     });
 });
 

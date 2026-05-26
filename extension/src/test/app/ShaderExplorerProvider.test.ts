@@ -609,6 +609,243 @@ suite('ShaderExplorerProvider Test Suite', () => {
     });
   });
 
+  suite('Message Handling - searchShaders', () => {
+    test('should search shader source text and return matching paths only', async () => {
+      const fs = require('fs');
+      const firstUri = vscode.Uri.file('/workspace/shaders/noise.glsl');
+      const secondUri = vscode.Uri.file('/workspace/shaders/plain.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([firstUri, secondUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async (...args: unknown[]) => {
+        const filePath = args[0] as string;
+        if (filePath === '/workspace/shaders/noise.glsl') {
+          return 'float fbm(vec2 p) { return 0.0; }';
+        }
+        return 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'fbm', requestId: 7 });
+
+      assert.ok(postMessageSpy.calledOnce);
+      const message = postMessageSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSearchResults');
+      assert.strictEqual(message.query, 'fbm');
+      assert.strictEqual(message.requestId, 7);
+      assert.deepStrictEqual(message.paths, ['/workspace/shaders/noise.glsl']);
+      assert.strictEqual(message.shaders, undefined, 'search should not send shader source text to the webview');
+    });
+
+    test('should search unsaved open shader document text', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/unsaved.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.workspace, 'textDocuments').value([
+        {
+          uri: shaderUri,
+          version: 5,
+          getText: () => '// #test\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {}',
+        },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      const readFileStub = sandbox.stub(fs.promises, 'readFile').resolves(
+        'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}',
+      );
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: '#test', requestId: 9 });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, ['/workspace/shaders/unsaved.glsl']);
+      assert.strictEqual(readFileStub.callCount, 0, 'open document text should avoid disk reads');
+    });
+
+    test('should rank shader name matches before source text matches', async () => {
+      const fs = require('fs');
+      const titleMatchUri = vscode.Uri.file('/workspace/shaders/noise.glsl');
+      const contentMatchUri = vscode.Uri.file('/workspace/shaders/clouds.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([contentMatchUri, titleMatchUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async (...args: unknown[]) => {
+        const filePath = args[0] as string;
+        if (filePath === '/workspace/shaders/clouds.glsl') {
+          return 'float noise(vec2 p) { return 0.0; }';
+        }
+        return 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'noise', requestId: 8 });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, [
+        '/workspace/shaders/noise.glsl',
+        '/workspace/shaders/clouds.glsl',
+      ]);
+    });
+
+    test('should require all positive query terms across title path and source text', async () => {
+      const fs = require('fs');
+      const mixedMatchUri = vscode.Uri.file('/workspace/shaders/ray.glsl');
+      const partialTitleUri = vscode.Uri.file('/workspace/shaders/ray-only.glsl');
+      const partialSourceUri = vscode.Uri.file('/workspace/shaders/plain.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([partialSourceUri, partialTitleUri, mixedMatchUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async (...args: unknown[]) => {
+        const filePath = args[0] as string;
+        if (filePath === '/workspace/shaders/ray.glsl') {
+          return 'float sphereDistance(vec3 p) { return length(p) - 1.0; }';
+        }
+        if (filePath === '/workspace/shaders/plain.glsl') {
+          return 'float sphereDistance(vec3 p) { return length(p) - 1.0; }';
+        }
+        return 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'ray sphere', requestId: 10 });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, [
+        '/workspace/shaders/ray.glsl',
+      ]);
+    });
+
+    test('should match quoted phrases exactly', async () => {
+      const fs = require('fs');
+      const phraseUri = vscode.Uri.file('/workspace/shaders/march.glsl');
+      const separatedUri = vscode.Uri.file('/workspace/shaders/separated.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([separatedUri, phraseUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async (...args: unknown[]) => {
+        const filePath = args[0] as string;
+        if (filePath === '/workspace/shaders/march.glsl') {
+          return 'float ray march(vec3 ro, vec3 rd) { return 0.0; }';
+        }
+        return 'float rayDistance = 0.0; float marchSteps = 64.0;';
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: '"ray march"', requestId: 11 });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, [
+        '/workspace/shaders/march.glsl',
+      ]);
+    });
+
+    test('should exclude shaders matching negative query terms', async () => {
+      const fs = require('fs');
+      const imageUri = vscode.Uri.file('/workspace/shaders/noise-image.glsl');
+      const bufferUri = vscode.Uri.file('/workspace/shaders/noise-buffer.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([bufferUri, imageUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').resolves('float noise(vec2 p) { return 0.0; }');
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'noise -buffer', requestId: 12 });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, [
+        '/workspace/shaders/noise-image.glsl',
+      ]);
+    });
+
+    test('should reuse cached shader text for repeated searches with the same modified time', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/cached.glsl');
+      const readFileStub = sandbox.stub(fs.promises, 'readFile').resolves(
+        'vec3 palette(float t) { return vec3(t); }',
+      );
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'palette', requestId: 1 });
+      await messageHandler({ type: 'searchShaders', query: 'vec3', requestId: 2 });
+
+      assert.strictEqual(readFileStub.callCount, 1);
+      assert.deepStrictEqual(postMessageSpy.secondCall.args[0].paths, ['/workspace/shaders/cached.glsl']);
+    });
+
+    test('should not post stale results when a newer search starts', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/fast.glsl');
+      let resolveSlowRead: ((value: string) => void) | undefined;
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async () => {
+        return new Promise<string>((resolve) => {
+          resolveSlowRead = resolve;
+        });
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      const staleSearch = messageHandler({ type: 'searchShaders', query: 'slow', requestId: 1 });
+      await new Promise(resolve => setImmediate(resolve));
+      await messageHandler({ type: 'searchShaders', query: 'fast', requestId: 2 });
+      resolveSlowRead?.('float slow = 1.0;');
+      await staleSearch;
+
+      assert.strictEqual(postMessageSpy.callCount, 1);
+      assert.strictEqual(postMessageSpy.firstCall.args[0].requestId, 2);
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].paths, ['/workspace/shaders/fast.glsl']);
+    });
+
+    test('should skip unreadable shader files without failing the search', async () => {
+      const fs = require('fs');
+      const readableUri = vscode.Uri.file('/workspace/shaders/readable.glsl');
+      const unreadableUri = vscode.Uri.file('/workspace/shaders/unreadable.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([readableUri, unreadableUri]);
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      sandbox.stub(fs.promises, 'readFile').callsFake(async (...args: unknown[]) => {
+        const filePath = args[0] as string;
+        if (filePath === '/workspace/shaders/unreadable.glsl') {
+          throw new Error('Permission denied');
+        }
+        return 'const float bloom = 1.0;';
+      });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'searchShaders', query: 'bloom', requestId: 3 });
+
+      const message = postMessageSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSearchResults');
+      assert.deepStrictEqual(message.paths, ['/workspace/shaders/readable.glsl']);
+    });
+  });
+
   suite('Message Handling - saveThumbnail', () => {
     test('should handle saveThumbnail message without error', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);

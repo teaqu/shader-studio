@@ -3,10 +3,19 @@
   import { shadersStore } from '../stores/shaderStore';
   import ShaderCard from './ShaderCard.svelte';
   import type { ShaderFile } from '../types/ShaderFile';
+  import {
+    createShaderSearchScheduler,
+    getVisibleShadersForSearch,
+    isCurrentShaderSearchResult,
+    type ShaderSearchResultsMessage,
+  } from '../shaderSearch';
 
   let vscode: any = $state(null);
   let shaders = $state<ShaderFile[]>([]);
   let search = $state('');
+  let searchResultPaths = $state<string[] | null>(null);
+  let activeSearchRequestId = $state(0);
+  let searchScheduler = $state<ReturnType<typeof createShaderSearchScheduler> | null>(null);
   let sortBy = $state<'name' | 'updated' | 'created'>('updated');
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
@@ -28,43 +37,15 @@
   });
 
 
-  let filteredShaders = $derived.by(() => {
-    let filtered: ShaderFile[];
-    
-    if (!search.trim()) {
-      filtered = [...shaders];
-    } else {
-      const query = search.toLowerCase();
-      filtered = shaders.filter(shader => 
-        shader.name.toLowerCase().includes(query) ||
-        shader.relativePath.toLowerCase().includes(query)
-      );
-    }
-
-    // Filter out failed shaders if hideFailedShaders is enabled
-    if (hideFailedShaders) {
-      filtered = filtered.filter(shader => !failedShaders.has(shader.path));
-    }
-
-    // Sort the filtered results
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      if (sortBy === 'name') {
-        comparison = a.name.localeCompare(b.name);
-      } else if (sortBy === 'updated') {
-        const aTime = a.modifiedTime || 0;
-        const bTime = b.modifiedTime || 0;
-        comparison = bTime - aTime;
-      } else if (sortBy === 'created') {
-        const aTime = a.createdTime || 0;
-        const bTime = b.createdTime || 0;
-        comparison = bTime - aTime;
-      }
-      return sortOrder === 'asc' ? -comparison : comparison;
-    });
-
-    return filtered;
-  });
+  let filteredShaders = $derived(getVisibleShadersForSearch({
+    shaders,
+    search,
+    searchResultPaths,
+    hideFailedShaders,
+    failedShaderPaths: failedShaders,
+    sortBy,
+    sortOrder,
+  }));
 
   let paginatedShaders = $derived.by(() => {
     const startIndex = (currentPage - 1) * pageSize;
@@ -81,6 +62,26 @@
     sortOrder;
     pageSize;
     currentPage = 1;
+  });
+
+  $effect(() => {
+    if (!searchScheduler || !stateRestored) {
+      return;
+    }
+
+    if (!search.trim()) {
+      activeSearchRequestId = 0;
+      searchResultPaths = null;
+      searchScheduler.dispose();
+      return;
+    }
+
+    const requestId = searchScheduler.schedule(search);
+    activeSearchRequestId = requestId ?? 0;
+
+    return () => {
+      searchScheduler?.dispose();
+    };
   });
 
   // Reset to page 1 if current page exceeds total pages
@@ -113,20 +114,19 @@
   }
 
   onMount(() => {
-    console.log('ShaderExplorer mounted');
     if (typeof acquireVsCodeApi !== 'undefined') {
       vscode = acquireVsCodeApi();
-      console.log('VS Code API acquired');
+      searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
       
       // Request shader list from extension
       vscode.postMessage({ type: 'requestShaders' });
-      console.log('Requested shaders from extension');
 
       // Listen for messages from extension
       window.addEventListener('message', handleMessage);
 
       return () => {
         window.removeEventListener('message', handleMessage);
+        searchScheduler?.dispose();
       };
     } else {
       console.error('acquireVsCodeApi is not available');
@@ -135,11 +135,9 @@
 
   function handleMessage(event: MessageEvent) {
     const message = event.data;
-    console.log('Received message:', message);
     
     switch (message.type) {
       case 'shadersUpdate':
-        console.log('Updating shaders:', message.shaders);
         shaders = message.shaders || [];
         shadersStore.set(shaders);
         
@@ -159,6 +157,22 @@
         }
         
         stateRestored = true;
+        if (search.trim() && searchScheduler) {
+          const requestId = searchScheduler.schedule(search);
+          activeSearchRequestId = requestId ?? 0;
+        }
+        break;
+
+      case 'shaderSearchResults':
+        if (
+          isCurrentShaderSearchResult(
+            message as ShaderSearchResultsMessage,
+            activeSearchRequestId,
+            search,
+          )
+        ) {
+          searchResultPaths = Array.isArray(message.paths) ? message.paths : [];
+        }
         break;
     }
   }

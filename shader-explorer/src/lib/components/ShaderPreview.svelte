@@ -3,6 +3,8 @@
   import type { ShaderFile } from '../types/ShaderFile';
   import { RenderingEngine } from '@shader-studio/rendering';
   import { renderQueue } from '../stores/shaderStore';
+  import { requestShaderCode } from '../shaderCodeRequest';
+  import { observeNearViewport } from '../shaderPreviewVisibility';
 
   let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, onCompilationFailed }: {
     shader: ShaderFile;
@@ -25,6 +27,9 @@
   let prevWidth: number = 0;
   let prevHeight: number = 0;
   let resizeTimeout: number | null = null;
+  let previewContainer: HTMLDivElement;
+  let hasStartedLoading = false;
+  let stopVisibilityObserver: (() => void) | null = null;
 
   // Re-render when dimensions change (card size slider)
   $effect(() => {
@@ -84,50 +89,52 @@
       capturedImage = shader.cachedThumbnail;
       compilationFailed = false;
     } else {
-      await loadShaderCode();
+      if (previewContainer) {
+        stopVisibilityObserver = observeNearViewport(previewContainer, () => {
+          void startLoading();
+        });
+      } else {
+        await startLoading();
+      }
     }
   });
 
-  async function loadShaderCode() {
+  async function startLoading() {
+    if (hasStartedLoading) {
+      return;
+    }
+
+    hasStartedLoading = true;
+    await loadShaderCode();
+  }
+
+  async function loadShaderCode({ renderThumbnail = true }: { renderThumbnail?: boolean } = {}) {
+    if (!vscodeApi) return;
+
+    if (renderThumbnail && canvas) {
+      await renderQueue.enqueue(queueId, async () => {
+        await fetchShaderCode();
+        await initializeRendering();
+      });
+      return;
+    }
+
+    await fetchShaderCode();
+  }
+
+  async function fetchShaderCode() {
     if (!vscodeApi || shaderCode) return;
 
     try {
-      // Return a promise that resolves when shader code is loaded
-      await new Promise<void>((resolve, reject) => {
-        vscodeApi.postMessage({
-          type: 'requestShaderCode',
-          path: shader.path
-        });
-
-        const handleMessage = async (event: MessageEvent) => {
-          const message = event.data;
-          if (message.type === 'shaderCode' && message.path === shader.path) {
-            window.removeEventListener('message', handleMessage);
-            
-            shaderCode = message.code;
-            shaderConfig = message.config || null;
-            shaderBuffers = message.buffers || {};
-            
-            resolve();
-          }
-        };
-
-        window.addEventListener('message', handleMessage);
-        
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          window.removeEventListener('message', handleMessage);
-          reject(new Error('Timeout loading shader code'));
-        }, 5000);
+      const response = await requestShaderCode({
+        vscodeApi,
+        path: shader.path,
+        target: window,
       });
-      
-      // Queue the rendering to avoid too many concurrent WebGL contexts
-      // Only if we're not just loading for hover (check if canvas exists)
-      if (canvas) {
-        await renderQueue.enqueue(queueId, async () => {
-          await initializeRendering();
-        });
-      }
+
+      shaderCode = response.code;
+      shaderConfig = response.config || null;
+      shaderBuffers = response.buffers;
     } catch (err) {
       console.error('Failed to load shader code:', err);
     }
@@ -194,7 +201,6 @@
         try {
           capturedImage = canvas.toDataURL('image/png');
           compilationFailed = false;
-          console.log('Captured image for shader:', shader.name, 'Image length:', capturedImage.length);
           
           // Save thumbnail to cache on extension side
           if (vscodeApi && capturedImage) {
@@ -235,7 +241,7 @@
     
     // Load shader code if not already loaded (e.g., when using cached thumbnail)
     if (!shaderCode) {
-      await loadShaderCode();
+      await loadShaderCode({ renderThumbnail: false });
       // Wait for shader code to be loaded
       if (!shaderCode) {
         console.error('Failed to load shader code for hover');
@@ -298,6 +304,8 @@
   }
 
   onDestroy(() => {
+    stopVisibilityObserver?.();
+
     // Remove from queue if still waiting
     if (queueId) {
       renderQueue.remove(queueId);
@@ -309,6 +317,7 @@
 </script>
 
 <div 
+  bind:this={previewContainer}
   class="shader-preview-container"
   role="presentation"
   onmouseenter={handleMouseEnter}
