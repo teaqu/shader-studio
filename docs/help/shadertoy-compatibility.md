@@ -25,6 +25,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 | `iDate` | `vec4` | Year, month, day, seconds since midnight |
 | `iSampleRate` | `float` | Audio sample rate (44100) |
 
+## Shader Studio Extensions
+
+These uniforms are provided by Shader Studio but are not part of the Shadertoy API:
+
+| Uniform | Type | Description |
+|---------|------|-------------|
+| `iCameraPos` | `vec3` | Camera position in world space (moved with WASD/QE) |
+| `iCameraDir` | `vec3` | Camera look direction (controlled with mouse or IJKL) |
+
 ## Supported Input Types
 
 | Type | Description |

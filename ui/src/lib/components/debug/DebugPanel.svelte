@@ -651,6 +651,8 @@
           <div class="uniform-row"><span class="uniform-name">iFrameRate</span><span class="uniform-value">{displayedUniforms.frameRate.toFixed(1)}</span></div>
           <div class="uniform-row"><span class="uniform-name">iDate</span><span class="uniform-value">{formatVec(displayedUniforms.date)}</span></div>
           <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{displayedUniforms.sampleRate}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iCameraPos</span><span class="uniform-value">{formatVec(displayedUniforms.cameraPos)}</span></div>
+          <div class="uniform-row"><span class="uniform-name">iCameraDir</span><span class="uniform-value">{formatVec(displayedUniforms.cameraDir)}</span></div>
           {#each customUniformEntries as [name, value], i}
             <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
           {/each}

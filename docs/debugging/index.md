@@ -43,6 +43,9 @@ The uniforms section is always visible at the bottom of the debug panel. It show
 | `iTimeDelta` | Seconds since last frame |
 | `iFrameRate` | Current frames per second |
 | `iDate` | Year, month, day, seconds since midnight |
+| `iSampleRate` | Audio sample rate |
+| `iCameraPos` | Camera position in world space (WASD/QE) |
+| `iCameraDir` | Camera look direction (mouse/IJKL) |
 
 If the shader has [script-driven uniforms](../help/config-file.md#script-driven-uniforms), they appear below the standard uniforms with their current values.
 
