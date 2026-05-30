@@ -196,6 +196,12 @@ export class CameraManager {
     return this.getForward();
   }
 
+  public reset(): void {
+    this.position = new Float32Array(3);
+    this.orientation = quat_identity();
+    this.accumulatedPitch = 0;
+  }
+
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) {

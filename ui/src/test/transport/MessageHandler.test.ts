@@ -18,6 +18,7 @@ const createMockTimeManager = () => ({
 const createMockRenderingEngine = () => ({
   compileShaderPipeline: vi.fn(),
   cleanup: vi.fn(),
+  resetTime: vi.fn(),
   getTimeManager: vi.fn().mockReturnValue(createMockTimeManager()),
   getCurrentConfig: vi.fn().mockReturnValue(null),
   isLockedShader: vi.fn().mockReturnValue(false),
@@ -209,7 +210,7 @@ describe("MessageHandler", () => {
 
     it("should call resetTime on render engine", () => {
       messageHandler.reset();
-      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
     });
 
     it("should call both cleanup and resetTime", async () => {
@@ -230,12 +231,12 @@ describe("MessageHandler", () => {
       await messageHandler.handleShaderMessage(shaderEvent);
 
       mockRenderingEngine.cleanup.mockClear();
-      mockRenderingEngine.getTimeManager().cleanup.mockClear();
+      mockRenderingEngine.resetTime.mockClear();
 
       messageHandler.reset(vi.fn());
 
       expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
-      expect(mockRenderingEngine.getTimeManager().cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
     });
   });
 

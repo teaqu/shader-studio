@@ -20,6 +20,7 @@ export interface RenderingEngine {
   getPasses(): any[];
   togglePause(): void;
   getTimeManager(): TimeManager;
+  resetTime(): void;
   startRenderLoop(): void;
   stopRenderLoop(): void;
   render(time?: number): void;

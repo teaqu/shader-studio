@@ -295,6 +295,7 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public resetTime(): void {
     this.shaderPipeline.resetTime();
+    this.cameraManager.reset();
   }
 
   /** Force-resume all audio, clearing user-paused state. Used on reset. */

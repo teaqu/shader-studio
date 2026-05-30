@@ -260,7 +260,7 @@ export class ShaderPipeline {
 
   public async reset(onReset?: () => void | Promise<void>): Promise<void> {
     this.cleanup();
-    this.renderEngine.getTimeManager().cleanup();
+    this.renderEngine.resetTime();
 
     if (this.lastEvent && onReset) {
       await onReset();
