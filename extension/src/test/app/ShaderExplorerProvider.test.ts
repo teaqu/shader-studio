@@ -287,6 +287,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/git-newer.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map([
@@ -322,6 +323,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/fs-newer.frag');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map([
@@ -357,6 +359,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/cloned.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map([
@@ -392,6 +395,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/untracked.vert');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map(),
@@ -422,6 +426,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/dirty.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map([
@@ -451,6 +456,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/new.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map(),
@@ -478,6 +484,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const workspaceRoot = '/workspace';
       const shaderUri = vscode.Uri.file('/workspace/shaders/reverted.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub().resolves({
           repoRoot: workspaceRoot,
           metadataByPath: new Map([
@@ -506,6 +513,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const firstUri = vscode.Uri.file('/workspace-a/shader.glsl');
       const secondUri = vscode.Uri.file('/workspace-b/shader.glsl');
       const gitMetadataProvider = {
+        clearCache: sandbox.stub(),
         getMetadataForWorkspace: sandbox.stub(),
       };
       gitMetadataProvider.getMetadataForWorkspace

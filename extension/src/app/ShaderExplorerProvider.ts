@@ -40,7 +40,7 @@ export class ShaderExplorerProvider {
   private thumbnailCache: ThumbnailCache;
   private configProcessor: ShaderConfigProcessor;
   private tabGroupResolver: TabGroupResolver;
-  private gitMetadataProvider: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace">;
+  private gitMetadataProvider: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace" | "clearCache">;
   private shaderListCache: ShaderExplorerFile[] = [];
   private shaderSearchTextCache = new Map<string, ShaderSearchCacheEntry>();
   private latestSearchRequestId = 0;
@@ -48,7 +48,7 @@ export class ShaderExplorerProvider {
 
   constructor(
     private context: vscode.ExtensionContext,
-    gitMetadataProvider?: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace">,
+    gitMetadataProvider?: Pick<ShaderGitMetadataProvider, "getMetadataForWorkspace" | "clearCache">,
   ) {
     this.logger = Logger.getInstance();
     this.thumbnailCache = new ThumbnailCache(context);
@@ -153,6 +153,10 @@ export class ShaderExplorerProvider {
   private async sendShaderList(skipCache: boolean = false): Promise<void> {
     if (!this.panel) {
       return;
+    }
+
+    if (skipCache) {
+      this.gitMetadataProvider.clearCache();
     }
 
     const shaders = await this.findAllShaders();

@@ -5,7 +5,6 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const CACHE_VERSION = 1;
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
 const SHADER_GLOBS = ["*.glsl", "*.frag", "*.vert"];
 
@@ -28,7 +27,6 @@ interface RepoCache {
 }
 
 interface CacheFile {
-  version: number;
   repos: Record<string, RepoCache>;
 }
 
@@ -70,16 +68,31 @@ export class ShaderGitMetadataProvider {
         metadata = await this.scanFullHistory(repoRoot);
       }
 
+      // Backfill metadata for uncommitted moves: if an untracked file has the same
+      // basename as a working-tree-deleted file, inherit the deleted file's metadata.
+      let statusOutput = "";
+      try {
+        statusOutput = await this.runGit(["-C", repoRoot, "status", "--porcelain"]);
+      } catch { /* ignore */ }
+
+      const deletedByBasename = ShaderGitMetadataProvider.parseDeletedShadersByBasename(statusOutput);
+      for (const currentPath of currentPaths) {
+        if (!metadata[currentPath]) {
+          const basename = currentPath.split("/").pop()!;
+          const deletedPath = deletedByBasename.get(basename);
+          if (deletedPath && metadata[deletedPath]) {
+            metadata[currentPath] = { ...metadata[deletedPath] };
+          }
+        }
+      }
+
       metadata = pruneMetadata(metadata, currentPaths);
-      cache.repos[repoRoot] = {
-        head,
-        metadata,
-      };
+      cache.repos[repoRoot] = { head, metadata };
       this.writeCache(cache);
 
       let dirtyPaths: Set<string>;
       try {
-        dirtyPaths = await this.getDirtyShaderPaths(repoRoot);
+        dirtyPaths = ShaderGitMetadataProvider.parseDirtyPaths(statusOutput);
       } catch {
         dirtyPaths = new Set();
       }
@@ -119,20 +132,78 @@ export class ShaderGitMetadataProvider {
       const existing = metadataByPath.get(normalizedPath) ?? {};
       if (mode === "modified") {
         if (existing.modifiedTime === undefined || currentCommitTime > existing.modifiedTime) {
-          metadataByPath.set(normalizedPath, {
-            ...existing,
-            modifiedTime: currentCommitTime,
-          });
+          metadataByPath.set(normalizedPath, { ...existing, modifiedTime: currentCommitTime });
         }
       } else if (existing.createdTime === undefined || currentCommitTime < existing.createdTime) {
-        metadataByPath.set(normalizedPath, {
-          ...existing,
-          createdTime: currentCommitTime,
-        });
+        metadataByPath.set(normalizedPath, { ...existing, createdTime: currentCommitTime });
       }
     }
 
     return metadataByPath;
+  }
+
+  public static parseGitLogCreated(output: string): Map<string, ShaderGitMetadata> {
+    const metadataByPath = new Map<string, ShaderGitMetadata>();
+    const renameMap = new Map<string, string>(); // old path → current path
+    let currentCommitTime: number | undefined;
+
+    for (const rawLine of output.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      if (line.startsWith("commit:")) {
+        const parsedTime = Number(line.slice("commit:".length));
+        currentCommitTime = Number.isFinite(parsedTime) ? parsedTime * 1000 : undefined;
+        continue;
+      }
+
+      if (currentCommitTime === undefined) {
+        continue;
+      }
+
+      const parts = line.split("\t");
+      const statusCode = parts[0];
+
+      if (statusCode.startsWith("R") && parts.length >= 3) {
+        const oldPath = normalizePath(parts[1]);
+        const newPath = normalizePath(parts[2]);
+        const currentPath = resolveCurrentPath(newPath, renameMap);
+        renameMap.set(oldPath, currentPath);
+      } else if (statusCode === "A" && parts.length >= 2) {
+        const addedPath = normalizePath(parts[1]);
+        const currentPath = resolveCurrentPath(addedPath, renameMap);
+        const existing = metadataByPath.get(currentPath) ?? {};
+        if (existing.createdTime === undefined || currentCommitTime < existing.createdTime) {
+          metadataByPath.set(currentPath, { ...existing, createdTime: currentCommitTime });
+        }
+      }
+    }
+
+    return metadataByPath;
+  }
+
+  public static parseDeletedShadersByBasename(output: string): Map<string, string> {
+    const deletedByBasename = new Map<string, string>();
+    for (const rawLine of output.split(/\r?\n/)) {
+      if (rawLine.length < 4) {
+        continue;
+      }
+      const xy = rawLine.slice(0, 2);
+      if (xy === "??" || !xy.includes("D")) {
+        continue;
+      }
+      const rawPath = rawLine.slice(3).trim();
+      const filePath = normalizePath(rawPath);
+      if (/\.(glsl|frag|vert)$/.test(filePath)) {
+        const basename = filePath.split("/").pop()!;
+        if (!deletedByBasename.has(basename)) {
+          deletedByBasename.set(basename, filePath);
+        }
+      }
+    }
+    return deletedByBasename;
   }
 
   public static parseDirtyPaths(output: string): Set<string> {
@@ -159,15 +230,8 @@ export class ShaderGitMetadataProvider {
     return dirtyPaths;
   }
 
-  private async getDirtyShaderPaths(repoRoot: string): Promise<Set<string>> {
-    const output = await this.runGit(["-C", repoRoot, "status", "--porcelain"]);
-    return ShaderGitMetadataProvider.parseDirtyPaths(output);
-  }
-
   private static async defaultGitRunner(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync("git", args, {
-      maxBuffer: MAX_GIT_BUFFER,
-    });
+    const { stdout } = await execFileAsync("git", args, { maxBuffer: MAX_GIT_BUFFER });
     return stdout.toString();
   }
 
@@ -182,28 +246,14 @@ export class ShaderGitMetadataProvider {
 
   private async scanFullHistory(repoRoot: string): Promise<Record<string, ShaderGitMetadata>> {
     const modifiedOutput = await this.runGit([
-      "-C",
-      repoRoot,
-      "log",
-      "--format=commit:%ct",
-      "--name-only",
-      "--",
-      ...SHADER_GLOBS,
+      "-C", repoRoot, "log", "--format=commit:%ct", "--name-only", "--", ...SHADER_GLOBS,
     ]);
     const createdOutput = await this.runGit([
-      "-C",
-      repoRoot,
-      "log",
-      "--format=commit:%ct",
-      "--name-only",
-      "--diff-filter=A",
-      "--",
-      ...SHADER_GLOBS,
+      "-C", repoRoot, "log", "--format=commit:%ct", "--name-status", "--diff-filter=AR", "--", ...SHADER_GLOBS,
     ]);
-
     return mergeMetadataMaps(
       ShaderGitMetadataProvider.parseGitLog(modifiedOutput, "modified"),
-      ShaderGitMetadataProvider.parseGitLog(createdOutput, "created"),
+      ShaderGitMetadataProvider.parseGitLogCreated(createdOutput),
     );
   }
 
@@ -212,30 +262,28 @@ export class ShaderGitMetadataProvider {
     cachedRepo: RepoCache,
   ): Promise<Record<string, ShaderGitMetadata>> {
     const metadata = { ...cachedRepo.metadata };
+    const range = `${cachedRepo.head}..HEAD`;
     const modifiedOutput = await this.runGit([
-      "-C",
-      repoRoot,
-      "log",
-      `${cachedRepo.head}..HEAD`,
-      "--format=commit:%ct",
-      "--name-only",
-      "--",
-      ...SHADER_GLOBS,
+      "-C", repoRoot, "log", range, "--format=commit:%ct", "--name-only", "--", ...SHADER_GLOBS,
     ]);
     const createdOutput = await this.runGit([
-      "-C",
-      repoRoot,
-      "log",
-      `${cachedRepo.head}..HEAD`,
-      "--format=commit:%ct",
-      "--name-only",
-      "--diff-filter=A",
-      "--",
-      ...SHADER_GLOBS,
+      "-C", repoRoot, "log", range, "--format=commit:%ct", "--name-status", "--diff-filter=AR", "--", ...SHADER_GLOBS,
     ]);
 
+    // Transfer cached metadata for any files renamed in the new commits
+    const renames = parseRenameMap(createdOutput);
+    for (const [oldPath, newPath] of renames) {
+      if (metadata[oldPath]) {
+        const existing = metadata[newPath] ?? {};
+        metadata[newPath] = {
+          createdTime: minimumDefined(existing.createdTime, metadata[oldPath].createdTime),
+          modifiedTime: maximumDefined(existing.modifiedTime, metadata[oldPath].modifiedTime),
+        };
+      }
+    }
+
     mergeIntoRecord(metadata, ShaderGitMetadataProvider.parseGitLog(modifiedOutput, "modified"));
-    mergeIntoRecord(metadata, ShaderGitMetadataProvider.parseGitLog(createdOutput, "created"));
+    mergeIntoRecord(metadata, ShaderGitMetadataProvider.parseGitLogCreated(createdOutput));
     return metadata;
   }
 
@@ -250,14 +298,23 @@ export class ShaderGitMetadataProvider {
     return currentPaths;
   }
 
+  public clearCache(): void {
+    try {
+      if (fs.existsSync(this.cacheFilePath)) {
+        fs.unlinkSync(this.cacheFilePath);
+      }
+    } catch (error) {
+      this.logGitMetadataWarning(error);
+    }
+  }
+
   private readCache(): CacheFile {
     try {
       if (!fs.existsSync(this.cacheFilePath)) {
         return createEmptyCache();
       }
-
       const parsed = JSON.parse(fs.readFileSync(this.cacheFilePath, "utf8")) as CacheFile;
-      if (parsed.version !== CACHE_VERSION || !parsed.repos) {
+      if (!parsed.repos) {
         return createEmptyCache();
       }
       return parsed;
@@ -284,10 +341,34 @@ export class ShaderGitMetadataProvider {
 }
 
 function createEmptyCache(): CacheFile {
-  return {
-    version: CACHE_VERSION,
-    repos: {},
-  };
+  return { repos: {} };
+}
+
+function parseRenameMap(output: string): Map<string, string> {
+  const renameMap = new Map<string, string>();
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("commit:")) {
+      continue;
+    }
+    const parts = line.split("\t");
+    if (parts[0].startsWith("R") && parts.length >= 3) {
+      const oldPath = normalizePath(parts[1]);
+      const newPath = normalizePath(parts[2]);
+      renameMap.set(oldPath, resolveCurrentPath(newPath, renameMap));
+    }
+  }
+  return renameMap;
+}
+
+function resolveCurrentPath(filePath: string, renameMap: Map<string, string>): string {
+  let current = filePath;
+  const visited = new Set<string>();
+  while (renameMap.has(current) && !visited.has(current)) {
+    visited.add(current);
+    current = renameMap.get(current)!;
+  }
+  return current;
 }
 
 function normalizePath(filePath: string): string {

@@ -89,6 +89,87 @@ suite('ShaderGitMetadataProvider Test Suite', () => {
     });
   });
 
+  suite('parseDeletedShadersByBasename', () => {
+    test('returns empty map for empty output', () => {
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename('');
+      assert.strictEqual(result.size, 0);
+    });
+
+    test('detects working-tree deleted shader', () => {
+      const output = ' D src/draw/circle.glsl\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.get('circle.glsl'), 'src/draw/circle.glsl');
+    });
+
+    test('detects staged deleted shader', () => {
+      const output = 'D  src/draw/circle.glsl\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.get('circle.glsl'), 'src/draw/circle.glsl');
+    });
+
+    test('ignores untracked files', () => {
+      const output = '?? src/2024/circle.glsl\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.size, 0);
+    });
+
+    test('ignores non-shader files', () => {
+      const output = ' D src/config.json\n D src/shader.md\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.size, 0);
+    });
+
+    test('includes .frag and .vert extensions', () => {
+      const output = ' D old/effect.frag\n D old/vert.vert\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.get('effect.frag'), 'old/effect.frag');
+      assert.strictEqual(result.get('vert.vert'), 'old/vert.vert');
+    });
+
+    test('first occurrence wins when basename collision', () => {
+      const output = ' D a/foo.glsl\n D b/foo.glsl\n';
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
+      assert.strictEqual(result.get('foo.glsl'), 'a/foo.glsl');
+    });
+  });
+
+  suite('getMetadataForWorkspace — uncommitted move backfill', () => {
+    const repoRoot = '/repo';
+    const workspaceRoot = '/repo';
+
+    test('transfers createdTime from deleted path to untracked path with same basename', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      sandbox.stub(fs, 'mkdirSync');
+      sandbox.stub(fs, 'writeFileSync');
+
+      const runGit = sandbox.stub();
+      runGit.withArgs(sinon.match((args: string[]) => args.includes('--show-toplevel')))
+        .resolves(`${repoRoot}\n`);
+      runGit.withArgs(sinon.match((args: string[]) => args.includes('rev-parse') && args.includes('HEAD')))
+        .resolves('abc123\n');
+      // modified log: old path has metadata
+      runGit.withArgs(sinon.match((args: string[]) => args.includes('log') && !args.includes('--diff-filter=AR')))
+        .resolves('commit:1000\nsrc/draw/circle.glsl\n');
+      // created log: old path was added in commit 500
+      runGit.withArgs(sinon.match((args: string[]) => args.includes('--diff-filter=AR')))
+        .resolves('commit:500\nA\tsrc/draw/circle.glsl\n');
+      // status: old path deleted, new path untracked
+      runGit.withArgs(sinon.match((args: string[]) => args.includes('status') && args.includes('--porcelain')))
+        .resolves(' D src/draw/circle.glsl\n?? src/2024/circle.glsl\n');
+
+      const provider = new ShaderGitMetadataProvider(mockContext as any, runGit);
+      // shaderPaths uses the NEW (moved) location
+      const result = await provider.getMetadataForWorkspace(workspaceRoot, ['/repo/src/2024/circle.glsl']);
+
+      assert.ok(result !== null);
+      const meta = result!.metadataByPath.get('src/2024/circle.glsl');
+      assert.ok(meta, 'should have metadata for new path');
+      assert.strictEqual(meta!.createdTime, 500_000,
+        'should inherit createdTime from deleted path via basename match');
+    });
+  });
+
   suite('getMetadataForWorkspace', () => {
     const repoRoot = '/repo';
     const workspaceRoot = '/repo';
@@ -162,6 +243,88 @@ suite('ShaderGitMetadataProvider Test Suite', () => {
 
       assert.ok(result !== null);
       assert.strictEqual(result!.dirtyPaths.size, 0);
+    });
+  });
+
+  suite('parseGitLogCreated', () => {
+    test('simple add — returns created time at added path', () => {
+      const output = 'commit:1000\nA\tshaders/foo.glsl\n';
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.strictEqual(result.get('shaders/foo.glsl')?.createdTime, 1_000_000);
+    });
+
+    test('rename then add — maps created time to current (renamed) path', () => {
+      // git log newest-first: rename happened in commit 2000, original add in commit 1000
+      const output = [
+        'commit:2000',
+        'R100\tshaders/foo.glsl\tshaders/bar/foo.glsl',
+        '',
+        'commit:1000',
+        'A\tshaders/foo.glsl',
+        '',
+      ].join('\n');
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.strictEqual(result.get('shaders/bar/foo.glsl')?.createdTime, 1_000_000,
+        'created time should trace through rename to original add');
+      assert.ok(!result.has('shaders/foo.glsl'),
+        'old path should not appear in result');
+    });
+
+    test('chained renames — traces through multiple renames to original add', () => {
+      const output = [
+        'commit:3000',
+        'R100\tshaders/b.glsl\tshaders/c.glsl',
+        '',
+        'commit:2000',
+        'R100\tshaders/a.glsl\tshaders/b.glsl',
+        '',
+        'commit:1000',
+        'A\tshaders/a.glsl',
+        '',
+      ].join('\n');
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.strictEqual(result.get('shaders/c.glsl')?.createdTime, 1_000_000,
+        'should trace through two renames to original add time');
+    });
+
+    test('no rename — file added directly at current path', () => {
+      const output = [
+        'commit:5000',
+        'A\tshaders/direct.frag',
+        '',
+      ].join('\n');
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.strictEqual(result.get('shaders/direct.frag')?.createdTime, 5_000_000);
+    });
+
+    test('multiple files with mixed adds and renames', () => {
+      const output = [
+        'commit:3000',
+        'R100\tshaders/old.glsl\tshaders/new.glsl',
+        '',
+        'commit:2000',
+        'A\tshaders/other.frag',
+        '',
+        'commit:1000',
+        'A\tshaders/old.glsl',
+        '',
+      ].join('\n');
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.strictEqual(result.get('shaders/new.glsl')?.createdTime, 1_000_000);
+      assert.strictEqual(result.get('shaders/other.frag')?.createdTime, 2_000_000);
+    });
+
+    test('normalizes backslashes in paths', () => {
+      const output = 'commit:1000\nA\tshaders\\sub\\file.glsl\n';
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.ok(result.has('shaders/sub/file.glsl'));
+    });
+
+    test('skips lines before first commit marker', () => {
+      const output = 'A\tshaders/orphan.glsl\ncommit:1000\nA\tshaders/foo.glsl\n';
+      const result = ShaderGitMetadataProvider.parseGitLogCreated(output);
+      assert.ok(!result.has('shaders/orphan.glsl'));
+      assert.ok(result.has('shaders/foo.glsl'));
     });
   });
 
