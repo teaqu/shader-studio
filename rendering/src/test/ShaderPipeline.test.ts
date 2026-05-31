@@ -195,7 +195,35 @@ describe("ShaderPipeline", () => {
             expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
         });
 
-        it("should force full cleanup on next compile after resetTime", async () => {
+        it("should reset the clock immediately when resetTime is called", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, "shader.glsl", {});
+            mockTimeManager.cleanup.mockClear();
+
+            shaderPipeline.resetTime();
+
+            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+        });
+
+        it("should clear resources and buffers on recompile after resetTime, without resetting clock again", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const shaderPath = "shader.glsl";
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+            shaderPipeline.resetTime();
+
+            mockResourceManager.cleanup.mockClear();
+            mockTimeManager.cleanup.mockClear();
+            mockBufferManager.dispose.mockClear();
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+
+            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+        });
+
+        it("should clear resources and buffers (but not reset time) after flagForceCleanupOnNextApply + recompile", async () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const shaderPath = "shader.glsl";
 
@@ -205,18 +233,18 @@ describe("ShaderPipeline", () => {
             mockTimeManager.cleanup.mockClear();
             mockBufferManager.dispose.mockClear();
 
-            shaderPipeline.resetTime();
-            // Cleanup should not happen yet — it's deferred to applyCompiledPipeline
+            shaderPipeline.flagForceCleanupOnNextApply();
             expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
 
-            // Recompile same shader — flag triggers full cleanup atomically
             await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
             expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
             expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+            // Config-triggered cleanup must never reset the shader clock
+            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
         });
 
-        it("should not force cleanup on second compile if resetTime was not called", async () => {
+        it("should not force cleanup on second compile if neither resetTime nor flagForceCleanupOnNextApply was called", async () => {
             const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
             const shaderPath = "shader.glsl";
 

@@ -247,9 +247,16 @@ export class ShaderPipeline {
   ): void {
     this.currentShaderRenderID++;
 
-    if (pathChanged || this.clearBuffersOnNextApply) {
-      this.clearBuffersOnNextApply = false;
+    if (pathChanged) {
       this.cleanup();
+    } else if (this.clearBuffersOnNextApply) {
+      this.clearBuffersOnNextApply = false;
+      // Free resources and buffers without resetting the clock — resetTime()
+      // already reset it for explicit resets; config-triggered forceCleanup
+      // should never touch the clock.
+      this.resourceManager.cleanup();
+      this.cleanupShaders();
+      this.bufferManager.dispose();
     } else {
       this.cleanupShaders(this.passShaders);
     }
