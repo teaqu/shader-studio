@@ -221,6 +221,12 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
+.menu-title:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 .menu-title.fixed-width {
   width: 8ch;
   text-align: left;
