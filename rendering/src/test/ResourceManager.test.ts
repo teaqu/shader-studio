@@ -472,6 +472,60 @@ describe("ResourceManager", () => {
     });
   });
 
+  describe("cubemap textures", () => {
+    it("should load cubemap texture successfully", async () => {
+      const mockTexture = createMockTexture();
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.loadCubemapFromCrossImage.mockResolvedValue(mockTexture);
+
+      const result = await resourceManager.loadCubemapTexture("cubemap.png", {
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      });
+
+      expect(result).toBe(mockTexture);
+      expect(cubemapManager.loadCubemapFromCrossImage).toHaveBeenCalledWith("cubemap.png", {
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      });
+    });
+
+    it("should return null when cubemap texture loading fails", async () => {
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.loadCubemapFromCrossImage.mockRejectedValue(new Error("load failed"));
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await resourceManager.loadCubemapTexture("missing.png");
+
+      expect(result).toBeNull();
+      expect(consoleSpy).toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
+    });
+
+    it("should return cubemap texture when available", () => {
+      const mockTexture = createMockTexture();
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.getCubemapTexture.mockReturnValue(mockTexture);
+
+      const result = resourceManager.getCubemapTexture("cubemap.png");
+
+      expect(result).toBe(mockTexture);
+      expect(cubemapManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
+    });
+
+    it("should return null when cubemap texture not found", () => {
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      cubemapManager.getCubemapTexture.mockReturnValue(undefined);
+
+      const result = resourceManager.getCubemapTexture("missing.png");
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe("cleanup", () => {
     it("should cleanup video texture manager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;

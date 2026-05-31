@@ -22,6 +22,7 @@ const createMockResourceManager = () => ({
     cleanup: vi.fn(),
     loadImageTexture: vi.fn(),
     loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
+    loadCubemapTexture: vi.fn().mockResolvedValue(null),
     loadAudioSource: vi.fn().mockResolvedValue({}),
     updateAudioLoopRegion: vi.fn(),
 });
@@ -192,6 +193,67 @@ describe("ShaderPipeline", () => {
             expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
             expect(mockBufferManager.dispose).not.toHaveBeenCalled();
             expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
+        });
+
+        it("should compile and load cubemap inputs as Cube channels", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
+            const config = {
+                version: "1.0",
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: "cubemap",
+                                path: "env-cross.png",
+                                filter: "linear",
+                                wrap: "clamp",
+                                vflip: true,
+                            },
+                        },
+                    },
+                },
+            } as const;
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+
+            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
+                shaderCode,
+                "",
+                [{ slot: 0, key: "iChannel0", isCustomName: false }],
+                ["Cube", "2D", "2D", "2D"],
+                undefined,
+            );
+            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("env-cross.png", {
+                filter: "linear",
+                wrap: "clamp",
+                vflip: true,
+            });
+        });
+
+        it("should use resolved_path when loading cubemap inputs", async () => {
+            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
+            const config = {
+                version: "1.0",
+                passes: {
+                    Image: {
+                        inputs: {
+                            iChannel0: {
+                                type: "cubemap",
+                                path: "env-cross.png",
+                                resolved_path: "vscode-webview://panel/env-cross.png",
+                            },
+                        },
+                    },
+                },
+            } as const;
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+
+            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("vscode-webview://panel/env-cross.png", {
+                filter: undefined,
+                wrap: undefined,
+                vflip: undefined,
+            });
         });
 
         it("should clear the current pipeline when a new shader path fails to compile", async () => {

@@ -4,7 +4,7 @@ import { VideoTextureManager } from "./resources/VideoTextureManager";
 import { CubemapTextureManager } from "./resources/CubemapTextureManager";
 import { AudioTextureManager } from "./resources/AudioTextureManager";
 import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
+import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
 
 export interface VideoLoadResult {
   texture: PiTexture | null;
@@ -39,6 +39,11 @@ export class ResourceManager {
 
   public getVideoTexture(path: string): PiTexture | null {
     const texture = this.videoTextureManager.getVideoTexture(path);
+    return texture ?? null;
+  }
+
+  public getCubemapTexture(path: string): PiTexture | null {
+    const texture = this.cubemapTextureManager.getCubemapTexture(path);
     return texture ?? null;
   }
 
@@ -95,6 +100,18 @@ export class ResourceManager {
         return { texture: defaultTexture, warning: warningMessage };
       }
       return { texture: null, warning: warningMessage };
+    }
+  }
+
+  public async loadCubemapTexture(
+    path: string,
+    opts: Partial<Pick<CubemapConfigInput, 'filter' | 'wrap' | 'vflip'>> = {},
+  ): Promise<PiTexture | null> {
+    try {
+      return await this.cubemapTextureManager.loadCubemapFromCrossImage(path, opts);
+    } catch (error) {
+      console.error(`Failed to load cubemap from ${path}:`, error);
+      return null;
     }
   }
 

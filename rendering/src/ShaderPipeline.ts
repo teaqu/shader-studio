@@ -152,8 +152,17 @@ export class ShaderPipeline {
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
   }
 
-  private getChannelTypes(pass: Pass): ChannelSamplerType[] {
-    const types: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
+  private getChannelTypes(pass: Pass, slotAssignments = assignInputSlots(pass.inputs)): ChannelSamplerType[] {
+    const channelCount = Math.max(4, slotAssignments.length);
+    const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
+
+    for (const { slot, key } of slotAssignments) {
+      const input = pass.inputs[key];
+      if (input?.type === 'cubemap') {
+        types[slot] = 'Cube';
+      }
+    }
+
     return types;
   }
 
@@ -185,7 +194,7 @@ export class ShaderPipeline {
       }
 
       const slotAssignments = assignInputSlots(pass.inputs);
-      const channelTypes = this.getChannelTypes(pass);
+      const channelTypes = this.getChannelTypes(pass, slotAssignments);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
@@ -302,6 +311,13 @@ export class ShaderPipeline {
           if (result.warning) {
             warnings.push(result.warning);
           }
+        } else if (input?.type === "cubemap" && input.path) {
+          const cubemapOptions = {
+            filter: input.filter,
+            wrap: input.wrap,
+            vflip: input.vflip
+          };
+          await this.resourceManager.loadCubemapTexture(input.resolved_path || input.path, cubemapOptions);
         } else if (input?.type === "audio" && input.path) {
           try {
             const audioLoadOptions = {

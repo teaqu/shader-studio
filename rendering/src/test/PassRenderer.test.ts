@@ -36,6 +36,7 @@ const createMockResourceManager = () => ({
   getDefaultTexture: vi.fn().mockReturnValue(createMockTexture(1, 1)),
   updateKeyboardTexture: vi.fn(),
   getImageTextureCache: vi.fn(),
+  getCubemapTexture: vi.fn(),
   getVideoTexture: vi.fn(),
   getAudioTexture: vi.fn(),
   getDesktopAudioTexture: vi.fn(),
@@ -287,6 +288,50 @@ describe("PassRenderer", () => {
 
       expect(mockResourceManager.getVideoTexture).toHaveBeenCalledWith("missing.mp4");
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
+    });
+
+    it("should handle cubemap input correctly", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: { type: "cubemap", path: "cubemap.png" }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockCubemapTexture = { ...createMockTexture(512, 512), mType: 2 };
+      mockResourceManager.getCubemapTexture.mockReturnValue(mockCubemapTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("cubemap.png");
+      expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_CUBE_MAP, mockCubemapTexture.mObjectID);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
+    });
+
+    it("should use resolved_path for cubemap textures", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          iChannel0: {
+            type: "cubemap",
+            path: "cubemap.png",
+            resolved_path: "vscode-webview://panel/cubemap.png"
+          }
+        }
+      };
+
+      const mockShader = createMockShader();
+      const mockCubemapTexture = { ...createMockTexture(512, 512), mType: 2 };
+      mockResourceManager.getCubemapTexture.mockReturnValue(mockCubemapTexture);
+
+      passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+
+      expect(mockResourceManager.getCubemapTexture).toHaveBeenCalledWith("vscode-webview://panel/cubemap.png");
+      expect(mockResourceManager.getCubemapTexture).not.toHaveBeenCalledWith("cubemap.png");
+      expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_CUBE_MAP, mockCubemapTexture.mObjectID);
     });
 
     it("should handle multiple video inputs on different channels", () => {

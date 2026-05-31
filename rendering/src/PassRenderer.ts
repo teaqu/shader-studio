@@ -175,6 +175,8 @@ export class PassRenderer {
       if (input.type === "texture" && input.path) {
         const imageCache = this.resourceManager.getImageTextureCache();
         textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
+      } else if (input.type === "cubemap" && input.path) {
+        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path) || this.resourceManager.getCubemapTexture(input.path);
       } else if (input.type === "keyboard") {
         if (!skipInputUpdates) {
           this.resourceManager.updateKeyboardTexture(
