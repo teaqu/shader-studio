@@ -630,13 +630,18 @@ describe("RenderingEngine", () => {
       const mockPipeline = {
         resetTime: vi.fn(),
       };
+      const mockCamera = { reset: vi.fn() };
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
         value: mockPipeline, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'cameraManager', {
+        value: mockCamera, writable: true, configurable: true,
       });
 
       renderingEngine.resetTime();
 
       expect(mockPipeline.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockCamera.reset).toHaveBeenCalledTimes(1);
     });
   });
 
