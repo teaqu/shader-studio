@@ -490,7 +490,6 @@
     max-width: 800px;
     width: 100%;
     max-height: 90vh;
-    min-height: 500px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -500,6 +499,7 @@
     padding: 16px 20px;
     border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
     background: var(--vscode-editor-background, #1e1e1e);
+    flex-shrink: 0;
   }
 
   .modal-header h2 {
@@ -607,6 +607,7 @@
     padding: 20px;
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
   }
 
   .modal-footer {
@@ -616,6 +617,7 @@
     gap: 8px;
     align-items: center;
     background: var(--vscode-editor-background, #1e1e1e);
+    flex-shrink: 0;
   }
 
   .tab-prompt {
