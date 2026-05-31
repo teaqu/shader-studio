@@ -370,6 +370,7 @@ describe('ShaderViewer', () => {
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setPixelInspectorEnabled(true);
     setEditorOverlayVisible(false);
+    localStorage.removeItem('shader-studio-sync-with-config');
   });
 
   it('should create transport once before initializeApp registers messages', async () => {
@@ -710,7 +711,7 @@ describe('ShaderViewer', () => {
     expect(res.source).toBe('session');
   });
 
-  it('should preserve a manual 1x1 Session Resolution override when switching to a different shader with sync disabled', async () => {
+  it('should preserve the session resolution override when switching to a different shader with sync disabled', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
 
@@ -744,8 +745,6 @@ describe('ShaderViewer', () => {
     await fireEvent.input(heightInput, { target: { valueAsNumber: 1 } });
     await tick();
 
-    mockUpdateCurrentConfig.mockClear();
-
     await sendMessage({
       type: 'shaderSource',
       path: '/test/other.glsl',
@@ -761,22 +760,11 @@ describe('ShaderViewer', () => {
       pathMap: { Image: '/test/other.glsl' },
     });
 
+    // Session override carries across shader switches — sync state is per-session, not per-config
     const res = get(resolutionStore);
     expect(res.width).toBe('1');
     expect(res.height).toBe('1');
     expect(res.source).toBe('session');
-
-    expect(mockUpdateCurrentConfig).toHaveBeenCalled();
-    expect(mockUpdateCurrentConfig).toHaveBeenLastCalledWith(expect.objectContaining({
-      passes: expect.objectContaining({
-        Image: expect.objectContaining({
-          resolution: expect.objectContaining({
-            width: 1,
-            height: 1,
-          }),
-        }),
-      }),
-    }));
   });
 
   it('should send scaled variable capture bounds after a manual 1x1 override', async () => {

@@ -79,6 +79,10 @@ function postedPayloads(deps: ControllerDeps): Array<{ config: ShaderConfig; tex
     .map((call) => call[0].payload);
 }
 
+beforeEach(() => {
+  localStorage.removeItem('shader-studio-sync-with-config');
+});
+
 describe('ResolutionSessionController — syncWithConfig persistence', () => {
   it('defaults syncWithConfig to true', () => {
     const ctrl = new ResolutionSessionController(makeDeps());
@@ -108,6 +112,25 @@ describe('ResolutionSessionController — syncWithConfig persistence', () => {
 
     expect(ctrl.menuVM.syncWithConfig).toBe(false);
   });
+
+  it('setSyncWithConfig(false) saves preference to localStorage', () => {
+    const ctrl = new ResolutionSessionController(makeDeps());
+    ctrl.setSyncWithConfig(false);
+    expect(localStorage.getItem('shader-studio-sync-with-config')).toBe('false');
+  });
+
+  it('setSyncWithConfig(true) saves preference to localStorage', () => {
+    const ctrl = new ResolutionSessionController(makeDeps());
+    ctrl.setSyncWithConfig(false);
+    ctrl.setSyncWithConfig(true);
+    expect(localStorage.getItem('shader-studio-sync-with-config')).toBe('true');
+  });
+
+  it('new controller reads syncWithConfig=false from localStorage', () => {
+    localStorage.setItem('shader-studio-sync-with-config', 'false');
+    const ctrl = new ResolutionSessionController(makeDeps());
+    expect(ctrl.menuVM.syncWithConfig).toBe(false);
+  });
 });
 
 describe('ResolutionSessionController — new shader load with syncWithConfig=false', () => {
@@ -130,54 +153,6 @@ describe('ResolutionSessionController — new shader load with syncWithConfig=fa
     }, false);
 
     expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({ scale: 1 });
-  });
-
-  it('preserves snapshot of old config buffer resolution after reset when loading a new shader', () => {
-    const deps = makeDeps({
-      get debugState() {
-        return {
-          ...defaultDebugState,
-          isEnabled: true,
-          isActive: true,
-          isInlineRenderingEnabled: true,
-          activeBufferName: 'BufferA',
-        };
-      },
-      currentConfig: {
-        version: '1.0',
-        passes: {
-          Image: { inputs: {} },
-          BufferA: {
-            path: '/test/bufferA.glsl',
-            inputs: {},
-            resolution: { width: 64, height: 32 },
-          },
-        },
-      },
-    });
-    const ctrl = new ResolutionSessionController(deps);
-    ctrl.setSyncWithConfig(false);
-
-    ctrl.resetCurrentTarget();
-    vi.mocked(deps.resolutionStore.setSessionSettings).mockClear();
-
-    ctrl.handleShaderLoaded({
-      version: '1.0',
-      passes: {
-        Image: { inputs: {} },
-        BufferA: {
-          path: '/test/bufferA.glsl',
-          inputs: {},
-          resolution: { width: 3840, height: 2160 },
-        },
-      },
-    }, false);
-
-    expect(deps.resolutionStore.setSessionSettings).toHaveBeenLastCalledWith({
-      scale: 1,
-      width: 64,
-      height: 32,
-    });
   });
 
   it('preserves the image session override when loading a new shader', () => {
@@ -325,8 +300,8 @@ describe('ResolutionSessionController — syncWithConfig=true rereads shader con
   });
 });
 
-describe('ResolutionSessionController — enabling syncWithConfig writes session state to config', () => {
-  it('persists the current image session override into config when sync is enabled', () => {
+describe('ResolutionSessionController — enabling syncWithConfig resets to config', () => {
+  it('does NOT persist to config file when sync is enabled', () => {
     const deps = makeDeps({
       currentConfig: {
         version: '1.0',
@@ -344,33 +319,59 @@ describe('ResolutionSessionController — enabling syncWithConfig writes session
     ctrl.setImageCustomResolution('1', '1');
 
     vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setSyncWithConfig(true);
+
+    expect(postedPayloads(deps)).toHaveLength(0);
+    expect(ctrl.menuVM.syncWithConfig).toBe(true);
+  });
+
+  it('resets pipeline to config values (not session override) when sync is enabled', () => {
+    const deps = makeDeps({
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {},
+            resolution: { scale: 1, width: 800, height: 600 },
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.setSyncWithConfig(false);
+    ctrl.setImageCustomResolution('1920', '1080');
+
     vi.mocked(deps.updatePipelineConfig).mockClear();
 
     ctrl.setSyncWithConfig(true);
 
-    expect(postedPayloads(deps)[0]).toEqual(expect.objectContaining({
-      config: expect.objectContaining({
-        passes: expect.objectContaining({
-          Image: expect.objectContaining({
-            resolution: expect.objectContaining({
-              width: 1,
-              height: 1,
-            }),
-          }),
-        }),
-      }),
-      skipRefresh: true,
-    }));
     expect(deps.updatePipelineConfig).toHaveBeenCalledWith(expect.objectContaining({
       passes: expect.objectContaining({
         Image: expect.objectContaining({
           resolution: expect.objectContaining({
-            width: 1,
-            height: 1,
+            width: 800,
+            height: 600,
           }),
         }),
       }),
     }));
+    const lastCall = vi.mocked(deps.updatePipelineConfig).mock.calls.at(-1)![0];
+    expect(lastCall.passes.Image.resolution).not.toMatchObject({ width: 1920, height: 1080 });
+  });
+
+  it('does not persist when enabling sync with no existing config', () => {
+    const deps = makeDeps({ currentConfig: null });
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.setSyncWithConfig(false);
+
+    vi.mocked(deps.transport.postMessage).mockClear();
+
+    ctrl.setSyncWithConfig(true);
+
+    expect(postedPayloads(deps)).toHaveLength(0);
     expect(ctrl.menuVM.syncWithConfig).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import type {
 import type { ShaderDebugState } from "../types/ShaderDebugState";
 import type { Transport } from "../transport/MessageTransport";
 import { persistConfig } from "../config/ConfigPersistence";
+import { getSyncWithConfigPreference, saveSyncWithConfigPreference } from "../stores/resolutionSyncStore";
 import {
   buildRuntimeConfig,
   createDefaultConfig,
@@ -52,7 +53,7 @@ export interface ControllerDeps {
 }
 
 export class ResolutionSessionController {
-  private _state = $state(createInitialResolutionSessionState());
+  private _state = $state({ ...createInitialResolutionSessionState(), syncWithConfig: getSyncWithConfigPreference() });
   // When sync is off and a different shader starts loading, defer re-applying
   // the session runtime override until that load has finished successfully.
   private shouldApplySessionRuntimeAfterShaderLoad = false;
@@ -125,12 +126,18 @@ export class ResolutionSessionController {
     this.shouldApplySessionRuntimeAfterShaderLoad = false;
 
     if (enabled) {
-      const syncedConfig = buildRuntimeConfig(this._state, this.deps.currentConfig);
       this._state.syncWithConfig = true;
       this._state.imageResolutionOverride = undefined;
       this._state.imageAspectOverride = undefined;
       this._state.bufferResolutionOverrides = {};
-      this.persistConfigUpdate(syncedConfig);
+      const config = this.deps.currentConfig;
+      if (config) {
+        this.deps.updatePipelineConfig(config);
+        this.deps.setShaderContext(config, this.deps.getShaderPath(), this.deps.getBufferPathMap());
+        this.deps.setEditorConfig(config);
+      }
+      this.syncStoresToCurrentTarget();
+      saveSyncWithConfigPreference(true);
       return;
     }
 
@@ -151,6 +158,7 @@ export class ResolutionSessionController {
     }
 
     this.syncStoresToCurrentTarget();
+    saveSyncWithConfigPreference(false);
   }
 
   public setAspectRatio(mode: AspectRatioMode): void {
