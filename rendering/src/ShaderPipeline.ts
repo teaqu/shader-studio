@@ -20,6 +20,7 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private customUniformManager: CustomUniformManager | null = null;
+  private clearBuffersOnNextApply = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -246,7 +247,8 @@ export class ShaderPipeline {
   ): void {
     this.currentShaderRenderID++;
 
-    if (pathChanged) {
+    if (pathChanged || this.clearBuffersOnNextApply) {
+      this.clearBuffersOnNextApply = false;
       this.cleanup();
     } else {
       this.cleanupShaders(this.passShaders);
@@ -352,6 +354,7 @@ export class ShaderPipeline {
 
   public resetTime(): void {
     this.timeManager.cleanup();
+    this.clearBuffersOnNextApply = true;
   }
 
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {

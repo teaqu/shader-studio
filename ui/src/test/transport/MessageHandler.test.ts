@@ -185,9 +185,10 @@ describe("MessageHandler", () => {
   });
 
   describe("when reset is called", () => {
-    it("should call cleanup", () => {
+    it("should call resetTime without calling cleanup", () => {
       messageHandler.reset();
-      expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
     });
 
     it("should call onReset callback when lastEvent exists", async () => {
@@ -196,7 +197,7 @@ describe("MessageHandler", () => {
       const onResetCallback = vi.fn();
       messageHandler.reset(onResetCallback);
 
-      expect(mockRenderingEngine.cleanup).toHaveBeenCalled();
+      expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
       expect(onResetCallback).toHaveBeenCalledTimes(1);
     });
 
@@ -213,7 +214,7 @@ describe("MessageHandler", () => {
       expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
     });
 
-    it("should call both cleanup and resetTime", async () => {
+    it("should call resetTime but not cleanup when a shader is loaded", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -235,7 +236,7 @@ describe("MessageHandler", () => {
 
       messageHandler.reset(vi.fn());
 
-      expect(mockRenderingEngine.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
       expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
     });
   });

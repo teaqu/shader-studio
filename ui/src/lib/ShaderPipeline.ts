@@ -259,7 +259,9 @@ export class ShaderPipeline {
   }
 
   public async reset(onReset?: () => void | Promise<void>): Promise<void> {
-    this.cleanup();
+    // resetTime() flags the render pipeline to clear buffers on the next atomic
+    // shader swap — no early cleanup() here to avoid a black flash while the
+    // async recompile runs.
     this.renderEngine.resetTime();
 
     if (this.lastEvent && onReset) {
@@ -271,10 +273,6 @@ export class ShaderPipeline {
       };
       this.transport.postMessage(errorMessage);
     }
-  }
-
-  private cleanup() {
-    this.renderEngine.cleanup();
   }
 
   public handleCursorPositionMessage(message: CursorPositionMessage): void {

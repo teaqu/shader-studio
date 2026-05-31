@@ -195,6 +195,41 @@ describe("ShaderPipeline", () => {
             expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
         });
 
+        it("should force full cleanup on next compile after resetTime", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const shaderPath = "shader.glsl";
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+
+            mockResourceManager.cleanup.mockClear();
+            mockTimeManager.cleanup.mockClear();
+            mockBufferManager.dispose.mockClear();
+
+            shaderPipeline.resetTime();
+            // Cleanup should not happen yet — it's deferred to applyCompiledPipeline
+            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+
+            // Recompile same shader — flag triggers full cleanup atomically
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+        });
+
+        it("should not force cleanup on second compile if resetTime was not called", async () => {
+            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            const shaderPath = "shader.glsl";
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+
+            mockResourceManager.cleanup.mockClear();
+            mockBufferManager.dispose.mockClear();
+
+            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+        });
+
         it("should compile and load cubemap inputs as Cube channels", async () => {
             const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
             const config = {
