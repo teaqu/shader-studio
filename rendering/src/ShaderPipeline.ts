@@ -357,6 +357,10 @@ export class ShaderPipeline {
     this.clearBuffersOnNextApply = true;
   }
 
+  public flagForceCleanupOnNextApply(): void {
+    this.clearBuffersOnNextApply = true;
+  }
+
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {
     const shadersToCleanup = shaders || this.passShaders;
 

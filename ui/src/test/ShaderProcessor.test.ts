@@ -40,6 +40,7 @@ describe('ShaderProcessor', () => {
       stopRenderLoop: vi.fn(),
       startRenderLoop: vi.fn(),
       cleanup: vi.fn(),
+      flagForceCleanupOnNextApply: vi.fn(),
       compileShaderPipeline: vi.fn().mockResolvedValue({
         success: true,
         warnings: [],
@@ -139,7 +140,7 @@ describe('ShaderProcessor', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should cleanup when forceCleanup is true', async () => {
+    it('should flag deferred cleanup (not immediate) when forceCleanup is true', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
@@ -150,7 +151,9 @@ describe('ShaderProcessor', () => {
 
       await shaderProcessor.processMainShaderCompilation(message, true);
 
-      expect(mockRenderEngine.cleanup).toHaveBeenCalled();
+      // Immediate cleanup is skipped to avoid black flash; deferred flag is set instead
+      expect(mockRenderEngine.cleanup).not.toHaveBeenCalled();
+      expect(mockRenderEngine.flagForceCleanupOnNextApply).toHaveBeenCalled();
     });
 
     it('should not cleanup when forceCleanup is false', async () => {
@@ -167,9 +170,7 @@ describe('ShaderProcessor', () => {
       expect(mockRenderEngine.cleanup).not.toHaveBeenCalled();
     });
 
-    it('should NOT reset time when forceCleanup is true (cleanup does not reset time)', async () => {
-      // cleanup() no longer calls TimeManager.cleanup() — time is preserved
-      // Only explicit reset via MessageHandler.reset() should reset time
+    it('should NOT reset time when forceCleanup is true', async () => {
       const mockResetTime = vi.fn();
       (mockRenderEngine as any).resetTime = mockResetTime;
 
@@ -183,7 +184,6 @@ describe('ShaderProcessor', () => {
 
       await shaderProcessor.processMainShaderCompilation(message, true);
 
-      expect(mockRenderEngine.cleanup).toHaveBeenCalled();
       expect(mockResetTime).not.toHaveBeenCalled();
     });
 

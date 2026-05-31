@@ -42,7 +42,7 @@ export class ShaderProcessor {
     this.shaderDebugManager.setImageShaderCode(code);
 
     if (forceCleanup) {
-      this.renderEngine.cleanup();
+      this.renderEngine.flagForceCleanupOnNextApply();
     }
 
     try {

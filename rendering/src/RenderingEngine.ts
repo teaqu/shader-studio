@@ -298,6 +298,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.cameraManager.reset();
   }
 
+  public flagForceCleanupOnNextApply(): void {
+    this.shaderPipeline.flagForceCleanupOnNextApply();
+  }
+
   /** Force-resume all audio, clearing user-paused state. Used on reset. */
   public resumeAllAudio(): void {
     this.resourceManager.forceResumeAllAudio();
