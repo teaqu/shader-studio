@@ -38,7 +38,7 @@ describe('ChannelConfigModal', () => {
         isOpen: false,
       });
 
-      expect(container.querySelector('.modal-overlay')).toBeFalsy();
+      expect(document.body.querySelector('.modal-overlay')).toBeFalsy();
     });
 
     it('should render modal when isOpen is true', () => {
@@ -67,9 +67,9 @@ describe('ChannelConfigModal', () => {
     it('should display modal as overlay', () => {
       const { container } = render(ChannelConfigModal, defaultProps());
 
-      const overlay = container.querySelector('.modal-overlay');
+      const overlay = document.body.querySelector('.modal-overlay');
       expect(overlay).toBeTruthy();
-      const modalContent = container.querySelector('.modal-content');
+      const modalContent = document.body.querySelector('.modal-content');
       expect(modalContent).toBeTruthy();
     });
   });
@@ -95,7 +95,7 @@ describe('ChannelConfigModal', () => {
     it('should call onClose when clicking modal backdrop', async () => {
       const { container } = render(ChannelConfigModal, defaultProps());
 
-      const overlay = container.querySelector('.modal-overlay');
+      const overlay = document.body.querySelector('.modal-overlay');
       await fireEvent.click(overlay!);
 
       expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -104,7 +104,7 @@ describe('ChannelConfigModal', () => {
     it('should not close when clicking modal content', async () => {
       const { container } = render(ChannelConfigModal, defaultProps());
 
-      const modalContent = container.querySelector('.modal-content');
+      const modalContent = document.body.querySelector('.modal-content');
       await fireEvent.click(modalContent!);
 
       expect(mockOnClose).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('ChannelConfigModal', () => {
       await fireEvent.click(miscTab);
 
       // Click keyboard card — use the .misc-card-label to find the right button
-      const labels = container.querySelectorAll('.misc-card-label');
+      const labels = document.body.querySelectorAll('.misc-card-label');
       const keyboardLabel = Array.from(labels).find(el => el.textContent === 'Keyboard');
       const keyboardButton = keyboardLabel?.closest('button');
       await fireEvent.click(keyboardButton!);
@@ -200,7 +200,7 @@ describe('ChannelConfigModal', () => {
 
       // Misc tab should be active with buffer cards
       // Click BufferB card — use .misc-card-label to find the right button
-      const labels = container.querySelectorAll('.misc-card-label');
+      const labels = document.body.querySelectorAll('.misc-card-label');
       const bufferBLabel = Array.from(labels).find(el => el.textContent === 'BufferB');
       const bufferBButton = bufferBLabel?.closest('button');
       await fireEvent.click(bufferBButton!);
@@ -501,13 +501,13 @@ describe('ChannelConfigModal', () => {
       });
 
       // Check buttons have accessible titles
-      const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
+      const pauseBtn = document.body.querySelector('.btn-control[title="Pause"]');
       expect(pauseBtn).toBeTruthy();
 
-      const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      const unmuteBtn = document.body.querySelector('.btn-control[title="Unmute"]');
       expect(unmuteBtn).toBeTruthy();
 
-      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      const resetBtn = document.body.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
     });
 
@@ -527,7 +527,7 @@ describe('ChannelConfigModal', () => {
       });
 
       // Mute/unmute button should contain a codicon, not emoji text
-      const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      const muteBtn = document.body.querySelector('.btn-control[title="Unmute"]');
       expect(muteBtn).toBeTruthy();
       expect(muteBtn!.querySelector('.codicon-mute')).toBeTruthy();
 
@@ -552,7 +552,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
-      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      const resetBtn = document.body.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
       expect(resetBtn!.querySelector('.codicon-debug-restart')).toBeTruthy();
     });
@@ -596,7 +596,7 @@ describe('ChannelConfigModal', () => {
       expect(miscTab.getAttribute('aria-selected')).toBe('true');
 
       // BufferC card should be selected — use .misc-card-label to find the right button
-      const labels = container.querySelectorAll('.misc-card-label');
+      const labels = document.body.querySelectorAll('.misc-card-label');
       const bufferCLabel = Array.from(labels).find(el => el.textContent === 'BufferC');
       const bufferCButton = bufferCLabel?.closest('button');
       expect(bufferCButton?.classList.contains('selected')).toBe(true);
@@ -895,13 +895,13 @@ describe('ChannelConfigModal', () => {
       });
 
       // Check buttons have accessible titles
-      const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
+      const pauseBtn = document.body.querySelector('.btn-control[title="Pause"]');
       expect(pauseBtn).toBeTruthy();
 
-      const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      const unmuteBtn = document.body.querySelector('.btn-control[title="Unmute"]');
       expect(unmuteBtn).toBeTruthy();
 
-      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      const resetBtn = document.body.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
     });
 
@@ -916,7 +916,7 @@ describe('ChannelConfigModal', () => {
         channelInput: audioInput,
       });
 
-      const controlsRow = container.querySelector('.video-controls .controls-row');
+      const controlsRow = document.body.querySelector('.video-controls .controls-row');
       expect(controlsRow).toBeFalsy();
     });
 
@@ -935,7 +935,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
-      const timer = container.querySelector('.video-timer');
+      const timer = document.body.querySelector('.video-timer');
       expect(timer).toBeTruthy();
       expect(timer!.textContent).toContain('1:05');
       expect(timer!.textContent).toContain('3:00');
@@ -956,7 +956,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
       });
 
-      const muteBtn = container.querySelector('.btn-control[title="Unmute"]');
+      const muteBtn = document.body.querySelector('.btn-control[title="Unmute"]');
       expect(muteBtn).toBeTruthy();
       expect(muteBtn!.querySelector('.codicon-mute')).toBeTruthy();
     });
@@ -981,7 +981,7 @@ describe('ChannelConfigModal', () => {
       });
 
       // Find the start handle
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       expect(startHandle).toBeTruthy();
 
       // Simulate mousedown on the start handle
@@ -1007,7 +1007,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       expect(startHandle).toBeTruthy();
 
       // Simulate drag: mousedown, mousemove, mouseup
@@ -1034,7 +1034,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       expect(startHandle).toBeTruthy();
 
       // Start drag
@@ -1062,7 +1062,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       expect(endHandle).toBeTruthy();
 
       // Start drag
@@ -1105,7 +1105,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       if (waveformEditor) {
         await fireEvent.mouseDown(waveformEditor, { clientX: 200 });
 
@@ -1132,7 +1132,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       if (waveformEditor) {
         // Start drag
         await fireEvent.mouseDown(waveformEditor, { clientX: 100 });
@@ -1167,7 +1167,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       if (waveformEditor) {
         await fireEvent.mouseDown(waveformEditor, { clientX: 100 });
         await fireEvent.mouseUp(window);
@@ -1206,7 +1206,7 @@ describe('ChannelConfigModal', () => {
       });
 
       // Click play button
-      const playBtn = container.querySelector('.btn-control[title="Play"]');
+      const playBtn = document.body.querySelector('.btn-control[title="Play"]');
       if (playBtn) {
         await fireEvent.click(playBtn);
 
@@ -1260,7 +1260,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         mockAudioControl.mockClear();
@@ -1295,7 +1295,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       if (waveformEditor) {
         await fireEvent.mouseDown(waveformEditor, { clientX: 200 });
 
@@ -1352,7 +1352,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         await fireEvent.mouseMove(window, { clientX: 150 });
@@ -1413,7 +1413,7 @@ describe('ChannelConfigModal', () => {
       });
 
       // Simulate selecting a different song via the path input
-      const pathInput = container.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
+      const pathInput = document.body.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
       if (pathInput) {
         mockAudioControl.mockClear();
         await fireEvent.input(pathInput, { target: { value: './song-b.mp3' } });
@@ -1447,7 +1447,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const pathInput = container.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
+      const pathInput = document.body.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
       if (pathInput) {
         mockAudioControl.mockClear();
         // Set to same path
@@ -1483,7 +1483,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         mockAudioControl.mockClear();
@@ -1519,7 +1519,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         mockOnSave.mockClear();
@@ -1585,12 +1585,12 @@ describe('ChannelConfigModal', () => {
       });
 
       // Drag start handle past the end handle position
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
 
         // Get the waveform container to calculate positioning
-        const waveformContainer = container.querySelector('.waveform-editor');
+        const waveformContainer = document.body.querySelector('.waveform-editor');
         if (waveformContainer) {
           const rect = waveformContainer.getBoundingClientRect();
           // Drag to 100% of the way (which would be past the end time)
@@ -1625,11 +1625,11 @@ describe('ChannelConfigModal', () => {
       });
 
       // Drag end handle before the start handle position
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       if (endHandle) {
         await fireEvent.mouseDown(endHandle);
 
-        const waveformContainer = container.querySelector('.waveform-editor');
+        const waveformContainer = document.body.querySelector('.waveform-editor');
         if (waveformContainer) {
           const rect = waveformContainer.getBoundingClientRect();
           // Drag to 0% (which is before start time)
@@ -1660,7 +1660,7 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn');
+      const renameBtn = document.body.querySelector('.rename-btn');
       expect(renameBtn).toBeTruthy();
     });
 
@@ -1671,10 +1671,10 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       expect(nameInput).toBeTruthy();
       expect(nameInput.value).toBe('iChannel0');
     });
@@ -1686,10 +1686,10 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       await fireEvent.input(nameInput, { target: { value: 'noiseMap' } });
       await fireEvent.keyDown(nameInput, { key: 'Enter' });
 
@@ -1703,15 +1703,15 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       await fireEvent.input(nameInput, { target: { value: '0invalid' } });
       await fireEvent.keyDown(nameInput, { key: 'Enter' });
 
       expect(mockOnRename).not.toHaveBeenCalled();
-      expect(container.textContent).toContain('Must be a valid GLSL identifier');
+      expect(document.body.textContent).toContain('Must be a valid GLSL identifier');
     });
 
     it('should show error for duplicate channel name', async () => {
@@ -1721,15 +1721,15 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0', 'noiseMap'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       await fireEvent.input(nameInput, { target: { value: 'noiseMap' } });
       await fireEvent.keyDown(nameInput, { key: 'Enter' });
 
       expect(mockOnRename).not.toHaveBeenCalled();
-      expect(container.textContent).toContain('Name already in use');
+      expect(document.body.textContent).toContain('Name already in use');
     });
 
     it('should cancel rename on Escape', async () => {
@@ -1739,15 +1739,15 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       await fireEvent.keyDown(nameInput, { key: 'Escape' });
 
       expect(mockOnRename).not.toHaveBeenCalled();
       // Name input should be hidden after cancel
-      expect(container.querySelector('.name-input')).toBeFalsy();
+      expect(document.body.querySelector('.name-input')).toBeFalsy();
     });
 
     it('should cancel rename when submitting same name', async () => {
@@ -1757,10 +1757,10 @@ describe('ChannelConfigModal', () => {
         existingChannelNames: ['iChannel0'],
       });
 
-      const renameBtn = container.querySelector('.rename-btn') as HTMLElement;
+      const renameBtn = document.body.querySelector('.rename-btn') as HTMLElement;
       await fireEvent.click(renameBtn);
 
-      const nameInput = container.querySelector('.name-input') as HTMLInputElement;
+      const nameInput = document.body.querySelector('.name-input') as HTMLInputElement;
       // Value is already 'iChannel0', just press Enter
       await fireEvent.keyDown(nameInput, { key: 'Enter' });
 
@@ -1828,13 +1828,13 @@ describe('ChannelConfigModal', () => {
       });
 
       // Waveform editor should be rendered with start/end handles
-      const startHandle = container.querySelector('.waveform-handle-start');
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       expect(startHandle).toBeTruthy();
       expect(endHandle).toBeTruthy();
 
       // Time labels should show the start and end times
-      const timeLabels = container.querySelectorAll('.waveform-time-label');
+      const timeLabels = document.body.querySelectorAll('.waveform-time-label');
       expect(timeLabels.length).toBeGreaterThanOrEqual(2);
       // First label should show start time formatted
       expect(timeLabels[0]?.textContent).toContain('0:10');
@@ -1861,7 +1861,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         await fireEvent.mouseMove(window, { clientX: 50 });
@@ -1895,7 +1895,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       if (endHandle) {
         await fireEvent.mouseDown(endHandle);
         await fireEvent.mouseMove(window, { clientX: 200 });
@@ -1931,7 +1931,7 @@ describe('ChannelConfigModal', () => {
 
       // In JSDOM, waveform container has zero-width getBoundingClientRect,
       // so dragging to position 0 produces NaN which removes startTime from config.
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         await fireEvent.mouseMove(window, { clientX: 0 });
@@ -1967,9 +1967,9 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Drag end handle to the far right — time would equal duration
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       if (endHandle) {
-        const waveformEditor = container.querySelector('.waveform-editor');
+        const waveformEditor = document.body.querySelector('.waveform-editor');
         const rect = waveformEditor?.getBoundingClientRect();
         await fireEvent.mouseDown(endHandle);
         await fireEvent.mouseMove(window, { clientX: rect ? rect.right : 1000 });
@@ -2004,11 +2004,11 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Waveform editor should exist without errors
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       expect(waveformEditor).toBeTruthy();
 
       // Component should still be functional — drag the start handle
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         await fireEvent.mouseMove(window, { clientX: 50 });
@@ -2042,7 +2042,7 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Perform a drag to create a pending loop region change
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         await fireEvent.mouseMove(window, { clientX: 100 });
@@ -2077,7 +2077,7 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Perform a drag to create pending changes
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       if (endHandle) {
         await fireEvent.mouseDown(endHandle);
         await fireEvent.mouseMove(window, { clientX: 200 });
@@ -2138,8 +2138,8 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Perform multiple drags
-      const startHandle = container.querySelector('.waveform-handle-start');
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
 
       if (startHandle && endHandle) {
         // First drag on start handle
@@ -2184,7 +2184,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const playBtn = container.querySelector('.btn-control[title="Play"]');
+      const playBtn = document.body.querySelector('.btn-control[title="Play"]');
       expect(playBtn).toBeTruthy();
     });
 
@@ -2203,7 +2203,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const playBtn = container.querySelector('.btn-control[title="Play"]');
+      const playBtn = document.body.querySelector('.btn-control[title="Play"]');
       expect(playBtn).toBeTruthy();
       await fireEvent.click(playBtn!);
 
@@ -2227,7 +2227,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
+      const pauseBtn = document.body.querySelector('.btn-control[title="Pause"]');
       expect(pauseBtn).toBeTruthy();
       await fireEvent.click(pauseBtn!);
 
@@ -2252,7 +2252,7 @@ describe('ChannelConfigModal', () => {
       });
 
       // When not muted, button title should be "Mute"
-      const muteBtn = container.querySelector('.btn-control[title="Mute"]');
+      const muteBtn = document.body.querySelector('.btn-control[title="Mute"]');
       expect(muteBtn).toBeTruthy();
       await fireEvent.click(muteBtn!);
 
@@ -2276,7 +2276,7 @@ describe('ChannelConfigModal', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
-      const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
+      const resetBtn = document.body.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
       await fireEvent.click(resetBtn!);
 
@@ -2306,9 +2306,9 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
-        const waveformEditor = container.querySelector('.waveform-editor');
+        const waveformEditor = document.body.querySelector('.waveform-editor');
         const rect = waveformEditor?.getBoundingClientRect();
 
         await fireEvent.mouseDown(startHandle);
@@ -2348,9 +2348,9 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       if (endHandle) {
-        const waveformEditor = container.querySelector('.waveform-editor');
+        const waveformEditor = document.body.querySelector('.waveform-editor');
         const rect = waveformEditor?.getBoundingClientRect();
 
         await fireEvent.mouseDown(endHandle);
@@ -2394,7 +2394,7 @@ describe('ChannelConfigModal', () => {
 
       const { container, rerender } = render(ChannelConfigModal, props);
 
-      const startHandle = container.querySelector('.waveform-handle-start');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         // Drag to far left
@@ -2432,8 +2432,8 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Both handles should be at the same position
-      const startHandle = container.querySelector('.waveform-handle-start');
-      const endHandle = container.querySelector('.waveform-handle-end');
+      const startHandle = document.body.querySelector('.waveform-handle-start');
+      const endHandle = document.body.querySelector('.waveform-handle-end');
       expect(startHandle).toBeTruthy();
       expect(endHandle).toBeTruthy();
 
@@ -2441,7 +2441,7 @@ describe('ChannelConfigModal', () => {
       if (startHandle) {
         await fireEvent.mouseDown(startHandle);
         // Drag rightward past endTime
-        const waveformEditor = container.querySelector('.waveform-editor');
+        const waveformEditor = document.body.querySelector('.waveform-editor');
         const rect = waveformEditor?.getBoundingClientRect();
         await fireEvent.mouseMove(window, { clientX: rect ? rect.right : 1000 });
         await fireEvent.mouseUp(window);
@@ -2578,18 +2578,18 @@ describe('ChannelConfigModal', () => {
       const { container, rerender } = render(ChannelConfigModal, props);
 
       // Waveform editor should exist for song-a
-      const waveformEditor = container.querySelector('.waveform-editor');
+      const waveformEditor = document.body.querySelector('.waveform-editor');
       expect(waveformEditor).toBeTruthy();
 
       // Change to a new song via path input
-      const pathInput = container.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
+      const pathInput = document.body.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
       if (pathInput) {
         await fireEvent.input(pathInput, { target: { value: './song-b.mp3' } });
 
         // After changing path, the canvas should still exist but waveformPeaks
         // would be null until the new song's waveform is loaded
         // The waveform editor area should still be present since the path is set
-        const waveformEditorAfter = container.querySelector('.waveform-editor');
+        const waveformEditorAfter = document.body.querySelector('.waveform-editor');
         expect(waveformEditorAfter).toBeTruthy();
       }
     });
@@ -2614,7 +2614,7 @@ describe('ChannelConfigModal', () => {
       const { container } = render(ChannelConfigModal, props);
 
       // Change song via path input
-      const pathInput = container.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
+      const pathInput = document.body.querySelector('input[placeholder*="audio"]') as HTMLInputElement;
       if (pathInput) {
         mockGetAudioState.mockClear();
         await fireEvent.input(pathInput, { target: { value: './song-b.mp3' } });

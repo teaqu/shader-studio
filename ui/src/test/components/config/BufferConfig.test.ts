@@ -427,7 +427,7 @@ describe('BufferConfig', () => {
       await tick();
 
       // Modal should be open - ChannelConfigModal with isOpen=true
-      const modal = container.querySelector('.modal-overlay');
+      const modal = document.body.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
@@ -450,7 +450,7 @@ describe('BufferConfig', () => {
       await fireEvent.keyDown(channelRow, { key: 'Enter' });
       await tick();
 
-      const modal = container.querySelector('.modal-overlay');
+      const modal = document.body.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
@@ -471,7 +471,7 @@ describe('BufferConfig', () => {
       await fireEvent.click(getByText('+ Add Channel'));
       await tick();
 
-      const modal = container.querySelector('.modal-overlay');
+      const modal = document.body.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
@@ -496,7 +496,7 @@ describe('BufferConfig', () => {
       await fireEvent.click(getByText('+ Add Channel'));
       await tick();
 
-      const modal = container.querySelector('.modal-overlay');
+      const modal = document.body.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
 
@@ -515,7 +515,7 @@ describe('BufferConfig', () => {
       await fireEvent.click(addBtn);
       await tick();
 
-      const modal = container.querySelector('.modal-overlay');
+      const modal = document.body.querySelector('.modal-overlay');
       expect(modal).not.toBeNull();
     });
   });
@@ -656,7 +656,7 @@ describe('BufferConfig', () => {
       await tick();
 
       // Modal should be open
-      expect(container.querySelector('.modal-overlay')).not.toBeNull();
+      expect(document.body.querySelector('.modal-overlay')).not.toBeNull();
 
       // Switch to Textures tab - this triggers selectTab -> autoSave -> onSave -> handleModalSave
       const texturesTab = getByText('Textures');
@@ -704,7 +704,7 @@ describe('BufferConfig', () => {
       expect(updatedConfig.inputs.iChannel0).toBeUndefined();
 
       // Modal should be closed
-      expect(container.querySelector('.modal-overlay')).toBeNull();
+      expect(document.body.querySelector('.modal-overlay')).toBeNull();
     });
   });
 
@@ -728,14 +728,14 @@ describe('BufferConfig', () => {
       const channelRow = getByText('iChannel0').closest('.channel-row')!;
       await fireEvent.click(channelRow);
       await tick();
-      expect(container.querySelector('.modal-overlay')).not.toBeNull();
+      expect(document.body.querySelector('.modal-overlay')).not.toBeNull();
 
       // Click Close
       const closeBtn = getByText('Close');
       await fireEvent.click(closeBtn);
       await tick();
 
-      expect(container.querySelector('.modal-overlay')).toBeNull();
+      expect(document.body.querySelector('.modal-overlay')).toBeNull();
     });
   });
 
@@ -888,7 +888,7 @@ describe('BufferConfig', () => {
         isImagePass: true,
       });
       await fireEvent.click(getByText('+ Add Channel'));
-      expect(container.querySelector('.modal-overlay')).toBeTruthy();
+      expect(document.body.querySelector('.modal-overlay')).toBeTruthy();
     });
   });
 

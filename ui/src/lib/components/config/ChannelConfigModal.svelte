@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
+  import { portal } from "../../actions/portal";
   import type { ConfigInput } from "@shader-studio/types";
   import MiscTab from "./tabs/MiscTab.svelte";
   import TextureTab from "./tabs/TextureTab.svelte";
@@ -325,6 +326,7 @@
 
 {#if isOpen}
   <div
+    use:portal
     class="modal-overlay"
     onclick={handleBackdropClick}
     onkeydown={handleKeyDown}
