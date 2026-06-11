@@ -1,12 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FileProfileAdapter } from '../../lib/profiles/FileProfileAdapter';
 import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 
 const defaultData: ProfileData = {
   theme: 'dark', layout: null,
   configPanel: { isVisible: false },
-  debugPanel: { isVisible: false, isVariableInspectorEnabled: false,
-    isInlineRenderingEnabled: true, isPixelInspectorEnabled: true, isErrorsEnabled: false },
+  debugPanel: {
+    isVisible: false, isVariableInspectorEnabled: false,
+    isInlineRenderingEnabled: true, isPixelInspectorEnabled: true, isErrorsEnabled: false,
+    normalizeMode: 'off', isStepEnabled: false, stepEdge: 0.5,
+  },
   performancePanel: { isVisible: false },
 };
 
@@ -283,6 +286,58 @@ describe('profileStore', () => {
     expect(hasPendingLayout()).toBe(true);
     expect(getPendingLayout()).toBeNull();
     clearPendingLayout();
+  });
+
+  it('auto-save triggers saveProfile after a store change', async () => {
+    vi.useFakeTimers();
+    const adapter = makeAdapter();
+    const { init } = await import('../../lib/state/profileStore.svelte');
+    const { debugPanelStore } = await import('../../lib/stores/debugPanelStore');
+    await init(adapter);
+    vi.mocked(adapter.writeProfile).mockClear();
+
+    debugPanelStore.setNormalizeMode('soft');
+    expect(adapter.writeProfile).not.toHaveBeenCalled(); // not yet — debounced
+
+    await vi.runAllTimersAsync();
+    expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.objectContaining({
+      debugPanel: expect.objectContaining({ normalizeMode: 'soft' }),
+    }));
+    vi.useRealTimers();
+  });
+
+  it('auto-save debounces rapid store changes into a single write', async () => {
+    vi.useFakeTimers();
+    const adapter = makeAdapter();
+    const { init } = await import('../../lib/state/profileStore.svelte');
+    const { debugPanelStore } = await import('../../lib/stores/debugPanelStore');
+    await init(adapter);
+    vi.mocked(adapter.writeProfile).mockClear();
+
+    debugPanelStore.setNormalizeMode('soft');
+    debugPanelStore.setStepEnabled(true);
+    debugPanelStore.setStepEdge(0.75);
+
+    await vi.runAllTimersAsync();
+    expect(adapter.writeProfile).toHaveBeenCalledTimes(1);
+    expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.objectContaining({
+      debugPanel: expect.objectContaining({
+        normalizeMode: 'soft', isStepEnabled: true, stepEdge: 0.75,
+      }),
+    }));
+    vi.useRealTimers();
+  });
+
+  it('auto-save does not fire from the initial store state on init', async () => {
+    vi.useFakeTimers();
+    const adapter = makeAdapter();
+    const { init } = await import('../../lib/state/profileStore.svelte');
+    await init(adapter);
+    vi.mocked(adapter.writeProfile).mockClear();
+
+    await vi.runAllTimersAsync();
+    expect(adapter.writeProfile).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it('uniqueSlug appends counter when base slug already exists', async () => {

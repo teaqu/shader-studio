@@ -313,10 +313,28 @@ export class ShaderDebugManager {
     this.onRecompileNeeded?.();
   }
 
+  public setNormalizeMode(mode: NormalizeMode): void {
+    if (this.state.normalizeMode === mode) {
+      return;
+    }
+    this.state.normalizeMode = mode;
+    this.notifyStateChange();
+    this.onRecompileNeeded?.();
+  }
+
   public cycleNormalizeMode(): void {
     const modes: NormalizeMode[] = ['off', 'soft', 'abs'];
     const currentIndex = modes.indexOf(this.state.normalizeMode);
     this.state.normalizeMode = modes[(currentIndex + 1) % modes.length];
+    this.notifyStateChange();
+    this.onRecompileNeeded?.();
+  }
+
+  public setStepEnabled(enabled: boolean): void {
+    if (this.state.isStepEnabled === enabled) {
+      return;
+    }
+    this.state.isStepEnabled = enabled;
     this.notifyStateChange();
     this.onRecompileNeeded?.();
   }
@@ -328,6 +346,9 @@ export class ShaderDebugManager {
   }
 
   public setStepEdge(edge: number): void {
+    if (this.state.stepEdge === edge) {
+      return;
+    }
     this.state.stepEdge = edge;
     this.notifyStateChange();
     this.onRecompileNeeded?.();

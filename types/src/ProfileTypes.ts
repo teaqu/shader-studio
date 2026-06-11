@@ -16,6 +16,9 @@ export interface ProfileData {
     isInlineRenderingEnabled: boolean;
     isPixelInspectorEnabled: boolean;
     isErrorsEnabled: boolean;
+    normalizeMode: 'off' | 'soft' | 'abs';
+    isStepEnabled: boolean;
+    stepEdge: number;
   };
   performancePanel: {
     isVisible: boolean;
@@ -47,6 +50,9 @@ export function defaultProfileData(): ProfileData {
       isInlineRenderingEnabled: true,
       isPixelInspectorEnabled: true,
       isErrorsEnabled: false,
+      normalizeMode: 'off' as const,
+      isStepEnabled: false,
+      stepEdge: 0.5,
     },
     performancePanel: { isVisible: false },
   };

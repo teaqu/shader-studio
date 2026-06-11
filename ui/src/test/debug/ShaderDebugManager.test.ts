@@ -100,6 +100,29 @@ describe('ShaderDebugManager - UI State', () => {
       expect(manager.getState().normalizeMode).toBe('off');
     });
 
+    it('setNormalizeMode sets mode directly', () => {
+      manager.setNormalizeMode('abs');
+      expect(manager.getState().normalizeMode).toBe('abs');
+      manager.setNormalizeMode('soft');
+      expect(manager.getState().normalizeMode).toBe('soft');
+      manager.setNormalizeMode('off');
+      expect(manager.getState().normalizeMode).toBe('off');
+    });
+
+    it('setNormalizeMode is a no-op when mode is already set', () => {
+      let callCount = 0;
+      manager.setStateCallback(() => callCount++);
+
+      manager.setNormalizeMode('off'); // already 'off'
+      expect(callCount).toBe(0);
+
+      manager.setNormalizeMode('soft');
+      expect(callCount).toBe(1);
+
+      manager.setNormalizeMode('soft'); // same value
+      expect(callCount).toBe(1);
+    });
+
     it('should toggle step independently', () => {
       expect(manager.getState().isStepEnabled).toBe(false);
 
@@ -110,9 +133,41 @@ describe('ShaderDebugManager - UI State', () => {
       expect(manager.getState().isStepEnabled).toBe(false);
     });
 
+    it('setStepEnabled sets state directly', () => {
+      manager.setStepEnabled(true);
+      expect(manager.getState().isStepEnabled).toBe(true);
+      manager.setStepEnabled(false);
+      expect(manager.getState().isStepEnabled).toBe(false);
+    });
+
+    it('setStepEnabled is a no-op when value is already set', () => {
+      let callCount = 0;
+      manager.setStateCallback(() => callCount++);
+
+      manager.setStepEnabled(false); // already false
+      expect(callCount).toBe(0);
+
+      manager.setStepEnabled(true);
+      expect(callCount).toBe(1);
+
+      manager.setStepEnabled(true); // same value
+      expect(callCount).toBe(1);
+    });
+
     it('should set step edge', () => {
       manager.setStepEdge(0.75);
       expect(manager.getState().stepEdge).toBe(0.75);
+    });
+
+    it('setStepEdge is a no-op when value is unchanged', () => {
+      let callCount = 0;
+      manager.setStateCallback(() => callCount++);
+
+      manager.setStepEdge(0.5); // default value, no change
+      expect(callCount).toBe(0);
+
+      manager.setStepEdge(0.3);
+      expect(callCount).toBe(1);
     });
 
     it('should notify state callback when step edge changes', () => {

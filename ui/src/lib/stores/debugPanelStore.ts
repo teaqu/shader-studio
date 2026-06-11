@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import type { NormalizeMode } from '../types/ShaderDebugState';
 
 export interface DebugPanelState {
   isVisible: boolean;
@@ -6,6 +7,9 @@ export interface DebugPanelState {
   isInlineRenderingEnabled: boolean;
   isPixelInspectorEnabled: boolean;
   isErrorsEnabled: boolean;
+  normalizeMode: NormalizeMode;
+  isStepEnabled: boolean;
+  stepEdge: number;
 }
 
 const DEFAULT_STATE: DebugPanelState = {
@@ -14,6 +18,9 @@ const DEFAULT_STATE: DebugPanelState = {
   isInlineRenderingEnabled: true,
   isPixelInspectorEnabled: true,
   isErrorsEnabled: false,
+  normalizeMode: 'off',
+  isStepEnabled: false,
+  stepEdge: 0.5,
 };
 
 const _store = writable<DebugPanelState>(DEFAULT_STATE);
@@ -30,6 +37,12 @@ export const debugPanelStore = {
     _store.update(s => ({ ...s, isPixelInspectorEnabled: enabled })),
   setErrorsEnabled: (enabled: boolean) =>
     _store.update(s => ({ ...s, isErrorsEnabled: enabled })),
+  setNormalizeMode: (mode: NormalizeMode) =>
+    _store.update(s => ({ ...s, normalizeMode: mode })),
+  setStepEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isStepEnabled: enabled })),
+  setStepEdge: (edge: number) =>
+    _store.update(s => ({ ...s, stepEdge: edge })),
 };
 
 export function snapshotDebugPanel(): DebugPanelState {
@@ -40,6 +53,6 @@ export function snapshotDebugPanel(): DebugPanelState {
   return state;
 }
 
-export function applyDebugPanelProfile(data: DebugPanelState): void {
-  _store.set(data);
+export function applyDebugPanelProfile(data: Partial<DebugPanelState> & Pick<DebugPanelState, 'isVisible' | 'isVariableInspectorEnabled' | 'isInlineRenderingEnabled' | 'isPixelInspectorEnabled' | 'isErrorsEnabled'>): void {
+  _store.set({ ...DEFAULT_STATE, ...data });
 }

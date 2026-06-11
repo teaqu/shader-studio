@@ -72,13 +72,21 @@
   let persistedInlineRenderingEnabled = $state(true);
   let persistedPixelInspectorEnabled = $state(true);
   let persistedErrorsEnabled = $state(false);
+  let persistedNormalizeMode = $state<import('../../types/ShaderDebugState').NormalizeMode>('off');
+  let persistedIsStepEnabled = $state(false);
+  let persistedStepEdge = $state(0.5);
   let debugPanelPrefsRestored = $state(false);
   let lastAppliedPersistedVariableInspectorEnabled = $state<boolean | null>(null);
   let lastAppliedPersistedInlineRenderingEnabled = $state<boolean | null>(null);
   let lastAppliedPersistedErrorsEnabled = $state<boolean | null>(null);
+  let lastAppliedPersistedNormalizeMode = $state<import('../../types/ShaderDebugState').NormalizeMode | null>(null);
+  let lastAppliedPersistedIsStepEnabled = $state<boolean | null>(null);
+  let lastAppliedPersistedStepEdge = $state<number | null>(null);
   let lastObservedDebugStateVariableInspectorEnabled = $state<boolean | null>(null);
   let lastObservedDebugStateInlineRenderingEnabled = $state<boolean | null>(null);
   let lastObservedDebugStateErrorsEnabled = $state<boolean | null>(null);
+  let lastObservedDebugStateNormalizeMode = $state<import('../../types/ShaderDebugState').NormalizeMode | null>(null);
+  let lastObservedDebugStateIsStepEnabled = $state<boolean | null>(null);
   let internalSampleSize = $state(32);
   let internalRefreshMode = $state<RefreshMode>('polling');
   let internalPollingMs = $state(500);
@@ -149,6 +157,9 @@
       persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
       persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
       persistedErrorsEnabled = state.isErrorsEnabled;
+      persistedNormalizeMode = state.normalizeMode;
+      persistedIsStepEnabled = state.isStepEnabled;
+      persistedStepEdge = state.stepEdge;
       debugPanelPrefsRestored = true;
     });
 
@@ -195,6 +206,21 @@
     if (lastAppliedPersistedErrorsEnabled !== persistedErrorsEnabled) {
       lastAppliedPersistedErrorsEnabled = persistedErrorsEnabled;
       shaderDebugManager.setErrorsEnabled?.(persistedErrorsEnabled);
+    }
+
+    if (lastAppliedPersistedNormalizeMode !== persistedNormalizeMode) {
+      lastAppliedPersistedNormalizeMode = persistedNormalizeMode;
+      shaderDebugManager.setNormalizeMode?.(persistedNormalizeMode);
+    }
+
+    if (lastAppliedPersistedIsStepEnabled !== persistedIsStepEnabled) {
+      lastAppliedPersistedIsStepEnabled = persistedIsStepEnabled;
+      shaderDebugManager.setStepEnabled?.(persistedIsStepEnabled);
+    }
+
+    if (lastAppliedPersistedStepEdge !== persistedStepEdge) {
+      lastAppliedPersistedStepEdge = persistedStepEdge;
+      shaderDebugManager.setStepEdge?.(persistedStepEdge);
     }
   });
 
@@ -246,6 +272,38 @@
     }
   });
 
+  $effect(() => {
+    if (!debugPanelPrefsRestored || !debugState) {
+      return;
+    }
+
+    if (lastObservedDebugStateNormalizeMode !== debugState.normalizeMode) {
+      lastObservedDebugStateNormalizeMode = debugState.normalizeMode;
+    } else {
+      return;
+    }
+
+    if (persistedNormalizeMode !== debugState.normalizeMode) {
+      debugPanelStore.setNormalizeMode(debugState.normalizeMode);
+    }
+  });
+
+  $effect(() => {
+    if (!debugPanelPrefsRestored || !debugState) {
+      return;
+    }
+
+    if (lastObservedDebugStateIsStepEnabled !== debugState.isStepEnabled) {
+      lastObservedDebugStateIsStepEnabled = debugState.isStepEnabled;
+    } else {
+      return;
+    }
+
+    if (persistedIsStepEnabled !== debugState.isStepEnabled) {
+      debugPanelStore.setStepEnabled(debugState.isStepEnabled);
+    }
+  });
+
   function handleLoopIterInput(loop: DebugLoopInfo, event: Event) {
     const value = (event.target as HTMLInputElement).value;
     if (value === '' || value === '0') {
@@ -262,6 +320,7 @@
     const value = parseFloat((event.target as HTMLInputElement).value);
     if (!isNaN(value)) {
       shaderDebugManager?.setStepEdge(value);
+      debugPanelStore.setStepEdge(value);
     }
   }
 
