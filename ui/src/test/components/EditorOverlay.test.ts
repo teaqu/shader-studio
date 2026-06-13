@@ -673,6 +673,25 @@ describe('EditorOverlay', () => {
       expect(initVimMode).toHaveBeenCalled();
     });
 
+    it('should enable vim when toggled on after the overlay is opened (editor created lazily)', async () => {
+      const { initVimMode } = await import('monaco-vim');
+      vi.mocked(initVimMode).mockClear();
+
+      // Mirror real usage: overlay starts hidden, so the editor (and the
+      // vim-toggle effect's dependency on `vimMode`) is created lazily on open.
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, isVisible: false, vimMode: false },
+      });
+      expect(initVimMode).not.toHaveBeenCalled();
+
+      // Open the overlay (creates the editor), then toggle vim on afterwards.
+      await rerender({ ...defaultProps, isVisible: true, vimMode: false });
+      expect(initVimMode).not.toHaveBeenCalled();
+
+      await rerender({ ...defaultProps, isVisible: true, vimMode: true });
+      expect(initVimMode).toHaveBeenCalled();
+    });
+
     it('should show normal mode immediately when vim is enabled after editor creation', async () => {
       const { initVimMode } = await import('monaco-vim');
       vi.mocked(initVimMode).mockImplementation((_editor: any, statusBar?: HTMLElement | null) => {

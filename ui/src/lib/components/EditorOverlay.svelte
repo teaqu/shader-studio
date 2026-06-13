@@ -540,17 +540,27 @@
   });
 
   $effect(() => {
-    if (editor) {
-      if (vimMode && !vimModeInstance) {
-        enableVim();
-      } else if (!vimMode && vimModeInstance) {
-        disableVim();
-      }
+    // Read reactive deps (vimMode, editorReady) unconditionally so the effect
+    // re-runs on toggle. `editor` is a plain let and can't be a dependency, so
+    // gate on editorReady ($state) which tracks the lazily-created editor.
+    const enabled = vimMode;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && !vimModeInstance) {
+      enableVim();
+    } else if (!enabled && vimModeInstance) {
+      disableVim();
     }
   });
 
   $effect(() => {
-    if (editor && vimMode && vimModeInstance && statusBarEl && !vimStatusAttached) {
+    const enabled = vimMode;
+    const statusBar = statusBarEl;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && vimModeInstance && statusBar && !vimStatusAttached) {
       vimModeInstance.dispose();
       vimModeInstance = null;
       enableVim();
