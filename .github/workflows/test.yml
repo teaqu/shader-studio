@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
@@ -39,21 +39,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browser
-        timeout-minutes: 15
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          NEEDRESTART_MODE: a
-        # Headless CI only launches chrome-headless-shell; downloading the full
-        # chromium binary is unnecessary and was hanging the job for 45m — the
-        # in-process hand-off from the chromium download to the next artifact
-        # stalls. Fetching only the headless shell sidesteps it. Retry + per-try
-        # timeout guard against transient CDN stalls.
-        run: |
-          for i in 1 2 3; do
-            timeout 240 npx playwright install --with-deps chromium-headless-shell && exit 0
-            echo "::warning::playwright install attempt $i stalled or failed; retrying" >&2
-          done
-          exit 1
+        run: npx playwright install --with-deps chromium
 
       - name: Run workspace Vitest suite
         run: npm test
