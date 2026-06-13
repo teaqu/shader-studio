@@ -41,9 +41,6 @@ extra_css:
   - https://unpkg.com/@vscode/codicons@0.0.36/dist/codicon.css
   - assets/stylesheets/home.css
 
-extra:
-  announcement: Docs are a work in progress for version 1.0. Many features described here are not yet in the latest release. You can build Shader Studio from <code>main</code> to try them now.
-
 extra_javascript:
   - assets/javascripts/external-links.js
 
