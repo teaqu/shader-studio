@@ -21,7 +21,10 @@ describe('ui vite config', () => {
       'production',
     );
 
-    expect(config.configFile).toBe(path.join(uiRoot, 'vite.config.ts'));
+    // Vite normalizes paths to forward slashes; normalize both sides so the
+    // comparison holds on Windows where path.join uses backslashes.
+    const toPosix = (p: string | undefined) => p?.replace(/\\/g, '/');
+    expect(toPosix(config.configFile)).toBe(toPosix(path.join(uiRoot, 'vite.config.ts')));
     expect(config.base).toBe('./');
   });
 });
