@@ -19,7 +19,7 @@ When loop mode is enabled, the slider range matches the selected loop duration. 
 
 Click the **loop button** to enable looping. When active, shader time wraps around at the end of the selected duration.
 
-### Duration Presets
+### Duration Presets and Custom Ranges
 
 Quick buttons to set the loop range:
 
@@ -31,11 +31,13 @@ Quick buttons to set the loop range:
 | **1m** | 60s | Longer sequences |
 | **2m** | 120s | Extended animations |
 
+Use the custom seconds input next to the presets for exact loop ranges, such as `2.2` seconds. Custom loop durations must be positive and only apply while loop mode is enabled.
+
 ## Playback Speed
 
-Adjust how fast time advances with the **speed slider** (0.25x to 4.0x in 0.25 increments).
+Adjust how fast time advances with the **speed slider** or preset buttons. The slider covers common speeds from 0.25x to 4.0x in 0.25 increments.
 
-### Speed Presets
+### Speed Presets and Custom Speeds
 
 | Preset | Use Case |
 |--------|----------|
@@ -44,6 +46,8 @@ Adjust how fast time advances with the **speed slider** (0.25x to 4.0x in 0.25 i
 | **1x** | Normal speed |
 | **2x** | Double speed — quickly preview long animations |
 | **4x** | Fast forward |
+
+Use the custom speed input next to the presets for exact multipliers, including values outside the slider range. For example, `0.01` runs time very slowly, `0` freezes playback, `12.5` previews much faster than the 4x preset, and `-1` runs time backward.
 
 ## Next
 

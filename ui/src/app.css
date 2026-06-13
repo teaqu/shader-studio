@@ -1312,6 +1312,25 @@ canvas {
   border-radius: 4px;
 }
 
+.custom-speed-input,
+.custom-time-input {
+  min-width: 4.2rem;
+  border: 1px solid transparent;
+}
+
+.custom-speed-input::placeholder,
+.custom-time-input::placeholder {
+  color: var(--vscode-descriptionForeground);
+}
+
+.custom-speed-input::-webkit-outer-spin-button,
+.custom-speed-input::-webkit-inner-spin-button,
+.custom-time-input::-webkit-outer-spin-button,
+.custom-time-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
 .speed-preset:hover {
   background-color: var(--vscode-list-hoverBackground);
 }

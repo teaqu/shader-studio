@@ -94,14 +94,31 @@ describe('TimeManager', () => {
   });
 
   describe('speed', () => {
-    it('should clamp speed to min 0.25', () => {
-      timeManager.setSpeed(0.1);
-      expect(timeManager.getSpeed()).toBe(0.25);
+    it('should allow custom speed below the slider range', () => {
+      timeManager.setSpeed(0.01);
+      expect(timeManager.getSpeed()).toBe(0.01);
     });
 
-    it('should clamp speed to max 4.0', () => {
+    it('should allow custom speed above the slider range', () => {
       timeManager.setSpeed(10);
-      expect(timeManager.getSpeed()).toBe(4.0);
+      expect(timeManager.getSpeed()).toBe(10);
+    });
+
+    it('should allow negative speed for reverse playback', () => {
+      timeManager.setSpeed(-1.5);
+      expect(timeManager.getSpeed()).toBe(-1.5);
+    });
+
+    it('should allow zero speed to freeze time', () => {
+      timeManager.setSpeed(0);
+      expect(timeManager.getSpeed()).toBe(0);
+    });
+
+    it('should preserve current time when changing speed to zero', () => {
+      timeManager.setTime(10);
+      timeManager.setSpeed(0);
+
+      expect(timeManager.getCurrentTime(performance.now())).toBeCloseTo(10, 0);
     });
 
     it('should preserve current time when changing speed', () => {
