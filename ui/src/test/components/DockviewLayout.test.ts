@@ -18,6 +18,7 @@ function makeMockPanel(id: string, groupPanelIds: string[] = [id], groupHeight =
     id,
     api: {
       id,
+      setActive: vi.fn(),
       group: {
         panels: groupPanelIds.map((pid) => ({ id: pid })),
         height: groupHeight,
@@ -827,6 +828,37 @@ describe('DockviewLayout', () => {
       const arg = mockApi.fromJSON.mock.calls[before][0];
       expect(arg.panels).toHaveProperty('debug');
       expect(arg.panels).toHaveProperty('config');
+    });
+
+    // ── Just-opened/reopened panel becomes the active tab ──
+
+    it('activates config when opened while debug is already present (eviction branch)', async () => {
+      // No config snapshot yet, debug already open → eviction branch.
+      const { rerender } = renderLayout({ showDebugPanel: true });
+      await tick();
+
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      // Re-adding debug within config would otherwise leave debug active.
+      expect(panels.get('config')?.api.setActive).toHaveBeenCalled();
+      expect(panels.get('debug')?.api.setActive).not.toHaveBeenCalled();
+    });
+
+    it('activates config when reopened from snapshot', async () => {
+      const { rerender } = renderLayout({ showDebugPanel: true, showConfigPanel: true });
+      await tick();
+
+      // Close config — saves snapshot (active tab in snapshot is debug).
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: false }));
+      await tick();
+
+      // Reopen config — restored via fromJSON, then config is re-activated.
+      await rerender(rerenderProps({ showDebugPanel: true, showConfigPanel: true }));
+      await tick();
+
+      expect(mockApi.fromJSON).toHaveBeenCalled();
+      expect(panels.get('config')?.api.setActive).toHaveBeenCalled();
     });
 
     // ── programmaticRemoval prevents spurious close events during fromJSON ──

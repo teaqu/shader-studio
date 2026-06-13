@@ -323,6 +323,9 @@
     }
 
     restoreFromData(snapshot);
+    // The snapshot preserves whichever tab was active when this panel was
+    // closed, so focus the just-reopened panel instead.
+    api.getPanel(panelId)?.api.setActive();
     return true;
   }
 
@@ -398,8 +401,13 @@
           title: sid === "performance" ? "Frame Times" : sid.charAt(0).toUpperCase() + sid.slice(1),
           renderer: "always",
           position: { referencePanel: "config", direction: "within" },
+          inactive: true,
         });
       }
+
+      // Re-adding the siblings above would otherwise leave the last one active;
+      // keep the just-opened config tab selected.
+      api.getPanel("config")?.api.setActive();
     } else {
       api.addPanel({
         id: "config",
