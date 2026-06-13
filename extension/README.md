@@ -1,165 +1,134 @@
 # Shader Studio
 
-A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders. See https://www.shadertoy.com for more information on the format and to see some cool shaders.
+A VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time preview inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects. See [shadertoy.com](https://www.shadertoy.com) for more on the format and some inspiration.
 
-Docs: https://teaqu.github.io/shader-studio/
+📖 **Full documentation: [teaqu.github.io/shader-studio](https://teaqu.github.io/shader-studio/)**
 
 ![screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/screenshot.png)
 ![shader explorer screenshot](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/shader-explorer.png)
 
 ## Quick Start
 
-1. Open any shadertoy style `.glsl` file in VS Code
-2. Click the SHA icon on the VS Code status bar to see the viewing options
+1. Open any Shadertoy-style `.glsl` file in VS Code (or run **Shader Studio: New Shader** from the Command Palette for a template).
+2. Click the <img src="https://teaqu.github.io/shader-studio/assets/shader-studio-icon.svg" width="14" height="14" style="vertical-align:middle;"> **Shader Studio** icon on the VS Code status bar to choose how to view your shader — as a panel, a separate window, or in the browser.
 
-![shader studio menu button](https://github.com/teaqu/shader-studio/blob/main/assets/sha-button.png?raw=true)
+You can launch as many panels, windows, or browser tabs as you want simultaneously. The in-app menu gives quick access to layout, the shader explorer, snippet library, and compile mode.
 
-You can launch as many panels, windows, or browser tabs as you want simultaneously.
+The preview updates in real time as you edit — by default it recompiles on every keystroke. The toolbar at the bottom gives quick access to every feature.
 
-![shader studio menu](https://github.com/teaqu/shader-studio/blob/main/assets/menu-options.png?raw=true)
+See the [Quick Start guide](https://teaqu.github.io/shader-studio/quick-start/) for a full walkthrough.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| [Live Preview](https://teaqu.github.io/shader-studio/quick-start/) | Edit GLSL and see the result instantly, in a panel, window, or browser |
+| [Buffers & Channels](https://teaqu.github.io/shader-studio/features/config-buffers/) | Multi-pass pipelines with textures, video, audio, cubemaps, buffers, and keyboard input |
+| [Visual Debugging](https://teaqu.github.io/shader-studio/debugging/) | Inspect what every line computes — pixel inspector, inline rendering, variable inspector |
+| [Time & Playback](https://teaqu.github.io/shader-studio/features/time-controls/) | Scrub, loop, pause, and change playback speed |
+| [Recording](https://teaqu.github.io/shader-studio/features/recording/) | Capture screenshots or record video and GIF directly from the preview |
+| [Resolution](https://teaqu.github.io/shader-studio/features/resolution/) | Scale the canvas, set custom dimensions, or change aspect ratio |
+| [Editor Overlay](https://teaqu.github.io/shader-studio/features/editor-overlay/) | Edit shader code inline over a full-screen preview |
+| [Shader Explorer](https://teaqu.github.io/shader-studio/features/shader-explorer/) | Browse and switch between your shaders |
+| [Snippet Library](https://teaqu.github.io/shader-studio/features/snippet-library/) | Insert common GLSL patterns — noise, SDFs, color utilities, and more |
+| [Compile Modes](https://teaqu.github.io/shader-studio/features/compile-modes/) | Compile on every keystroke, on save, or manually |
+| [Locking](https://teaqu.github.io/shader-studio/features/locking/) | Pin the preview to a shader while you edit buffer files |
+| [Performance](https://teaqu.github.io/shader-studio/features/performance/) | Cap the frame rate or open a detailed frame-time panel |
 
 ## Viewing Modes
 
 ### Panel
 
-This runs the shader within a panel in VS Code, allowing you to view your shader alongside your code.
+Runs the shader within a panel in VS Code, so you can view your shader alongside your code. Panels can be dragged, split, and resized; the layout saves automatically. See [Panel Layout](https://teaqu.github.io/shader-studio/features/panel-layout/).
 
 ### Web Browser
 
-For the best performance, it's recommended to use your web browser. Web browsers appear to have better GPU optimizations and can achieve higher priority rendering than observed in VS Code panels.
+For the best performance, run the preview in your web browser. Browsers tend to have better GPU optimizations and higher-priority rendering than VS Code panels. See [Open in Browser](https://teaqu.github.io/shader-studio/features/web-server/).
 
-## Runtime Config
+## Visual Config Editor
 
-If you click on the resolution on the menubar there are some options to change how the shader is displayed.
+The **Config** panel is a visual editor for setting up multi-pass pipelines and binding assets to your shader inputs — no manual uniform declarations or hand-written config required. Open it with the gear icon in the toolbar.
 
-<img src="https://github.com/teaqu/shader-studio/blob/main/assets/runtime-config.png?raw=true" alt="shader runtime config" width="250"/>
+![Visual config editor](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/docs/assets/images/config.png)
 
-## Time Controls
+A tab bar lets you add and switch between passes: `Image`, `BufferA`–`BufferD`, a shared `Common` pass, and a `Script` pass for driving custom uniforms. For each pass you get a channel grid (`iChannel0`–`iChannel15`) where you click a slot, pick an input type, and bind it visually:
 
-Click on the time display in the menu bar to access playback controls:
+- **Textures** — images, noise maps, lookup tables
+- **Video** — sampled like a texture, synced to play/pause
+- **Audio** — FFT spectrum and waveform data (matches Shadertoy's audio texture layout)
+- **Cubemaps** — cross-layout images bound as `samplerCube`
+- **Buffers** — the output of another pass, including self-reference for feedback loops
+- **Keyboard** — held, pressed, and toggle state per key
 
-<img src="https://github.com/teaqu/shader-studio/blob/main/assets/time-controls.png?raw=true" alt="time controls" width="250"/>
+The editor writes a `.sha.json` file next to your shader and keeps it in sync; you can also toggle to a raw JSON view if you prefer to edit it by hand.
 
-- **Time Scrubbing**: Use the slider to seek to any point in time within the current range
-- **Time Range Presets**: Quickly set the time range to 2π, 10s, 30s, 1m, or 2m (default: 1m)
-- **Loop Mode**: Toggle looping to repeat the shader from 0 to the selected time range
-- **Playback Speed**: Adjust shader speed from 0.25× to 4× (presets: 0.25×, 0.5×, 1×, 2×, 4×)
+See [Configure Buffers and Inputs](https://teaqu.github.io/shader-studio/features/config-buffers/) and [Channels](https://teaqu.github.io/shader-studio/features/channels/) for the full guides, and [my shaders repository](https://github.com/teaqu/shaders/tree/main/shadertoy) for examples.
 
-The time controls allow you to:
-- Scrub through your shader's animation to find the perfect moment
-- Loop a specific time range to focus on a particular animation segment
-- Slow down or speed up playback to observe shader behavior in detail
+## Visual Debugging
 
-## Configuration
-
-If you want to use buffers or include textures, you can do so by creating a corresponding `.sha.json` config file for your `.glsl` shader. See [my shaders repository](https://github.com/teaqu/shaders/tree/main/shadertoy) for examples using this format.
-
-The config file should be in the same directory as your shader with the naming convention: `shadername.sha.json`. You can also generate a config file using the command palette.
-
-![generate config](https://github.com/teaqu/shader-studio/blob/main/assets/generate-glsl-config.png?raw=true)
-
-The extension provides a visual editor for `.sha.json` files. Click the preview button (same as a markdown file) to open the visual editor:
-
-![Config UI View](https://github.com/teaqu/shader-studio/blob/main/assets/config-ui.png?raw=true)
-
-The passes are `Image`, `BufferA`, `BufferB`, `BufferC`, and `BufferD`.
-Each pass has inputs that are tied to uniforms `iChannel0`, `iChannel1`, `iChannel2`, and `iChannel3`. These channels can read from other buffers, keyboard input, or textures.
-
-### Example Configuration Format
-
-Here's an example of the configuration format.
-
-
-```json
-{
-  "version": "1.0",
-  "passes": {
-    "Image": {
-      "inputs": {
-        "iChannel0": {
-          "source": "BufferA",
-          "type": "buffer"
-        }
-      }
-    },
-    "BufferA": {
-      "path": "buffer_name.glsl",
-      "inputs": {
-        "iChannel0": {
-          "source": "BufferA",
-          "type": "buffer"
-        },
-        "iChannel1": {
-          "type": "keyboard"
-        }
-      }
-    }
-  }
-}
-```
-
-## Debug Mode (Experimental)
-
-Shader Studio includes an interactive debug mode that lets you visualize intermediate shader values by hovering over any line in your GLSL code.
+Enable debug mode with the bug icon in the toolbar to open a panel of tools for inspecting your shader while it runs:
 
 ![Debug Mode](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/assets/line-debug.png)
 
-### How to Use
+- **Pixel Inspector** — hover the canvas to read exact RGB, float, hex, fragCoord, and UV values
+- **Inline Rendering** — visualize the value of the variable on your current line across the whole screen
+- **Variable Inspector** — capture and inspect every variable in scope, sampled across the canvas or at a single pixel
+- **Normalize & Step** — remap value ranges and apply binary thresholds to make small variations visible
+- **Parameters & Loops** — control function arguments and cap loop iterations
 
-1. Click the arrow icon in the menu bar to enable debug mode
-2. Hover your cursor over any line in your shader code
-3. The canvas will update to show the value at that line
+Debug mode works inside `mainImage`, helper functions, and buffer passes. See [Debug Mode Overview](https://teaqu.github.io/shader-studio/debugging/).
 
-### Visualization
+### JavaScript Transpilation (Experimental)
 
-Debug mode automatically detects the type of value on each line and visualizes it:
+Shader Studio can transpile your GLSL into JavaScript (using [glsl-transpiler](https://github.com/stackgl/glsl-transpiler)) so you can step through it with the standard VS Code debugger, set breakpoints, and inspect variables. Run **Shader Studio: Transpile GLSL to JavaScript (for debugging)** from the Command Palette. See [JavaScript Transpilation](https://teaqu.github.io/shader-studio/help/transpilation/).
 
-- **`float`** → Grayscale (0.0 = black, 1.0 = white)
-- **`vec2`** → Red-Green channels (x → red, y → green)
-- **`vec3`** → Full RGB color
-- **`vec4`** → Full RGBA color
-- **`mat2`** → First two rows as vec4
+## Time Controls
 
-Debug mode works with many lines but not everything. Expect not all lines will work.
+Click the time display in the menu bar to access playback controls:
 
-## JavaScript Transpilation (Experimental)
+<img src="https://github.com/teaqu/shader-studio/blob/main/assets/time-controls.png?raw=true" alt="time controls" width="250"/>
 
-Shader Studio can also transpile your GLSL shader code into JavaScript (using https://github.com/stackgl/glsl-transpiler). This allows you to use the standard VS Code debugger to step through your shader code, inspect variables, and understand its execution flow.
+- **Time Scrubbing** — seek to any point within the current range
+- **Time Range Presets** — 2π, 10s, 30s, 1m, or 2m
+- **Loop Mode** — repeat the shader over the selected range
+- **Playback Speed** — 0.25× to 4×
 
-To use this feature, open a `.glsl` file and run the command "Shader Studio: Transpile GLSL to JavaScript (for debugging)" from the command palette. This will generate a `[shader-name].transpiled.js` file. You can then set breakpoints in this JavaScript file and start a debugging session (e.g., using Node.js).
-
-This can be used in conjunction with the pixel inspector. Get the values from that and then update the js uniforms.
-
-<img width="477" height="291" alt="image" src="https://github.com/user-attachments/assets/493ebc29-0ae5-49ca-95a9-cf8aac4ddace" />
+See [Time and Playback Controls](https://teaqu.github.io/shader-studio/features/time-controls/).
 
 ## Shadertoy Compatibility
 
-The aim is to support all Shadertoy features. Currently, the extension supports the following uniforms:
+Shader Studio aims to support the full Shadertoy feature set. Your shader must define a `mainImage` function.
 
-### Currently Supported
+### Supported Uniforms
 
-- `iTime` - shader playback time (in seconds)
-- `iTimeDelta` - render time (time since last frame, in seconds)
-- `iFrameRate` - shader frame rate (frames per second)
-- `iFrame` - shader playback frame number
-- `iMouse` - mouse pixel coordinates
-- `iResolution` - viewport resolution (in pixels)
-- `iChannel0-3` - input channels (textures, buffers, keyboard)
-- `iChannelResolution[4]` - channel resolution for each input (vec3: width, height, depth)
-- `iDate` - current date (year, month, day, time in seconds)
-- Video Inputs
-- Common Buffer
+| Uniform | Description |
+|---------|-------------|
+| `iTime` | Elapsed time in seconds |
+| `iTimeDelta` | Time since last frame in seconds |
+| `iFrameRate` | Frames per second |
+| `iFrame` | Frame counter |
+| `iMouse` | Mouse position (xy = current, zw = click) |
+| `iResolution` | Canvas dimensions |
+| `iChannel0–15` | Input channels (textures, video, audio, cubemaps, buffers, keyboard) |
+| `iChannelResolution[N]` | Resolution of each input channel |
+| `iChannelTime[N]` | Playback time for each audio/video channel |
+| `iDate` | Year, month, day, seconds since midnight |
+| `iSampleRate` | Audio sample rate |
+
+Shader Studio also adds non-Shadertoy uniforms `iCameraPos` and `iCameraDir` for a built-in WASD/mouse-controlled camera.
 
 ### Not Yet Supported
 
-- `iChannelTime[4]` - channel playback time (for video inputs)
-- `samplerCube iChannelX` - cubemap texture support
-- `iSampleRate` - sound sample rate (typically 44100)
-- Audio/sound inputs (including video audio)
-- Webcam inputs
-- Volume/microphone inputs
-- VR/AR inputs
+- Webcam input
+- Microphone / real-time audio input
+- VR/AR rendering modes
+
+See the full [Shadertoy Compatibility reference](https://teaqu.github.io/shader-studio/help/shadertoy-compatibility/).
+
+## Documentation
+
+The complete user guide lives at **[teaqu.github.io/shader-studio](https://teaqu.github.io/shader-studio/)**, including troubleshooting, keyboard shortcuts, and settings.
 
 ## Contributing
 
-Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/teaqu/shader-view) to report issues or submit pull requests.
+Found a bug or want to contribute? Visit the [GitHub repository](https://github.com/teaqu/shader-studio) to report issues or submit pull requests.
