@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { GlslFileTracker, isGlslDocument } from "./GlslFileTracker";
+import { GlslFileTracker, isShaderDocument } from "./GlslFileTracker";
 import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import type { ErrorMessage } from "@shader-studio/types";
@@ -55,7 +55,7 @@ export class CompileController {
   public handleTextDocumentChange(
     event: vscode.TextDocumentChangeEvent,
   ): void {
-    if (isGlslDocument(event.document)) {
+    if (isShaderDocument(event.document)) {
       this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
       if (this.compileMode === "hot") {
         this.performShaderDocumentUpdate(event.document);
@@ -76,7 +76,7 @@ export class CompileController {
       return;
     }
 
-    if (isGlslDocument(document)) {
+    if (isShaderDocument(document)) {
       this.glslFileTracker.setLastViewedGlslFile(document.uri.fsPath);
       const visibleEditor = visibleTextEditors.find(
         (editor) => editor.document.uri.fsPath === document.uri.fsPath,

@@ -19,5 +19,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.d.ts", "src/**/*.svelte", "../rendering/src/test/FrameRenderer.test.ts", "../rendering/src/test/ShaderPipeline.test.ts", "../rendering/src/test/BufferManager.test.ts", "../rendering/src/test/ShaderLocker.test.ts"],
-  "exclude": ["vendor/**", "node_modules/**"]
+  "exclude": ["vendor/**", "node_modules/**", "src/slang/**"]
 }

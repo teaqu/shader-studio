@@ -7,6 +7,8 @@ export { ShaderPipeline } from './ShaderPipeline';
 export { PassRenderer } from './PassRenderer';
 export { FrameRenderer } from './FrameRenderer';
 export { CustomUniformManager } from './CustomUniformManager';
+export { WebGPURenderingEngine } from './webgpu/WebGPURenderingEngine';
+export type { SlangAssetUrls } from './webgpu/WebGPURenderingEngine';
 export type { CustomUniform, CustomUniformType } from './CustomUniformManager';
 export { GlslParser, CodeGenerator, ShaderDebugger } from '@shader-studio/glsl-debug';
 export type { FunctionInfo, VarInfo, ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext } from '@shader-studio/glsl-debug';

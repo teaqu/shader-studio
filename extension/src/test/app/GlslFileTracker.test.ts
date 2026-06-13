@@ -1,7 +1,13 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { GlslFileTracker } from '../../app/GlslFileTracker';
+import {
+  GlslFileTracker,
+  isGlslDocument,
+  isSlangDocument,
+  isShaderDocument,
+  getShaderLanguage,
+} from '../../app/GlslFileTracker';
 
 suite('GlslFileTracker Test Suite', () => {
   let tracker: GlslFileTracker;
@@ -118,6 +124,30 @@ suite('GlslFileTracker Test Suite', () => {
     });
   });
 
+  suite('language detection helpers', () => {
+    test('isSlangDocument matches .slang files and the slang languageId', () => {
+      assert.strictEqual(isSlangDocument(createMockEditor('/test/a.slang', 'plaintext').document), true);
+      assert.strictEqual(isSlangDocument(createMockEditor('/test/a.frag', 'slang').document), true);
+      assert.strictEqual(isSlangDocument(createMockEditor('/test/a.glsl', 'glsl').document), false);
+    });
+
+    test('isShaderDocument accepts both GLSL and Slang', () => {
+      assert.strictEqual(isShaderDocument(createMockEditor('/test/a.glsl', 'glsl').document), true);
+      assert.strictEqual(isShaderDocument(createMockEditor('/test/a.slang', 'plaintext').document), true);
+      assert.strictEqual(isShaderDocument(createMockEditor('/test/a.ts', 'typescript').document), false);
+    });
+
+    test('isGlslDocument does not match .slang', () => {
+      assert.strictEqual(isGlslDocument(createMockEditor('/test/a.slang', 'plaintext').document), false);
+    });
+
+    test('getShaderLanguage returns slang for .slang and glsl otherwise', () => {
+      assert.strictEqual(getShaderLanguage('/test/a.slang'), 'slang');
+      assert.strictEqual(getShaderLanguage('/test/a.glsl'), 'glsl');
+      assert.strictEqual(getShaderLanguage('/test/a.frag'), 'glsl');
+    });
+  });
+
   suite('isGlslEditor', () => {
     setup(() => {
       mockGlobalState.get.withArgs('lastViewedGlslFile').returns(null);
@@ -128,6 +158,14 @@ suite('GlslFileTracker Test Suite', () => {
       const glslEditor = createMockEditor('/test/shader.frag', 'glsl');
 
       const result = tracker.isGlslEditor(glslEditor);
+
+      assert.strictEqual(result, true);
+    });
+
+    test('should return true for .slang files', () => {
+      const slangEditor = createMockEditor('/test/shader.slang', 'plaintext');
+
+      const result = tracker.isGlslEditor(slangEditor);
 
       assert.strictEqual(result, true);
     });

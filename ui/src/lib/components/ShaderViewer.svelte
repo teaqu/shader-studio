@@ -16,6 +16,9 @@
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
+  import { WebGPURenderingEngine } from "../../../../rendering/src/webgpu/WebGPURenderingEngine";
+  import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
+  import { getSlangAssetUrls } from "../slangAssets";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import type { PixelInspectorState } from "../types/PixelInspectorState";
   import { ShaderDebugManager } from "../ShaderDebugManager";
@@ -79,6 +82,16 @@
       return null;
     }
     return document.querySelector('meta[name="shader-studio-layout-slot"]')?.getAttribute("content") ?? null;
+  }
+
+  function getInitialShaderLanguage(): "glsl" | "slang" {
+    if (typeof document === "undefined") {
+      return "glsl";
+    }
+    const lang = document
+      .querySelector('meta[name="shader-studio-initial-language"]')
+      ?.getAttribute("content");
+    return lang === "slang" ? "slang" : "glsl";
   }
 
   function allocateWebLayoutSlot(): string {
@@ -146,7 +159,12 @@
   // Managers and controllers
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
-  let renderingEngine = $state<RenderingEngine>(undefined!);
+  let renderingEngine = $state<IRenderingEngine>(undefined!);
+  // The active rendering backend, chosen by shader language. Changing it remounts
+  // the canvas (a canvas's context mode is fixed once acquired) and rebuilds the engine.
+  let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
+  let appInitialized = false;
+  let pendingSwapMessage: MessageEvent | null = null;
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
@@ -415,7 +433,64 @@
     resetVariablePreview();
     lastAppliedVariablePreviewToken = 0;
     glCanvas = canvas;
-    await initializeApp();
+    if (!appInitialized) {
+      await initializeApp();
+    } else {
+      // Canvas was remounted because the shader language changed — rebuild the
+      // engine on the fresh canvas, then replay the message that triggered it.
+      const ok = setupRenderingEngine();
+      if (ok && pendingSwapMessage) {
+        const msg = pendingSwapMessage;
+        pendingSwapMessage = null;
+        await handleMessage(msg);
+      }
+    }
+  }
+
+  function createEngineForLanguage(language: "glsl" | "slang"): IRenderingEngine {
+    return language === "slang"
+      ? new WebGPURenderingEngine(getSlangAssetUrls())
+      : new RenderingEngine();
+  }
+
+  // Builds (or rebuilds) the rendering engine and the engine-bound managers for
+  // the current engineLanguage. Safe to call repeatedly; disposes the prior engine.
+  // Synchronous: engine.initialize() returns immediately (WebGPU device/compiler
+  // init happens in the background), so first-mount initialization stays in-tick.
+  function setupRenderingEngine(): boolean {
+    const wasPaused = renderingEngine?.getTimeManager?.()?.isPaused?.() ?? null;
+    try {
+      renderingEngine?.stopRenderLoop?.();
+      renderingEngine?.dispose?.();
+    } catch { /* prior engine already gone */ }
+
+    renderingEngine = createEngineForLanguage(engineLanguage);
+    try {
+      renderingEngine.initialize(glCanvas, true);
+    } catch (err) {
+      transport.postMessage({ type: 'error', payload: ['❌ Renderer initialization failed:', String(err)] });
+      addError("Failed to initialize renderer");
+      return false;
+    }
+
+    timeManager = renderingEngine.getTimeManager();
+    // setupRenderingEngine only runs after shaderDebugManager is created.
+    pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager!, compilationState);
+
+    if (appInitialized) {
+      // Swap: re-point managers that captured the engine/canvas eagerly, and
+      // carry the prior play/pause state onto the fresh engine.
+      pixelInspectorManager?.initialize(renderingEngine, timeManager, glCanvas);
+      pixelInspectorManager?.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
+      variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
+        shaderDebugManager?.setCapturedVariables(vars);
+      });
+      if (wasPaused) {
+        renderingEngine.togglePause();
+      }
+    }
+
+    return true;
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
@@ -822,6 +897,16 @@
     }
 
     if (type === 'shaderSource') {
+      // If the shader's language doesn't match the active engine, remount the
+      // canvas with the right backend (WebGL vs WebGPU) and replay this message.
+      const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
+      if (appInitialized && msgLanguage !== engineLanguage) {
+        renderingEngine?.stopRenderLoop?.();
+        pendingSwapMessage = event;
+        engineLanguage = msgLanguage;
+        return;
+      }
+
       handleShaderSource(event);
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
@@ -879,30 +964,22 @@
       });
 
       shaderLocker = new ShaderLocker();
-      renderingEngine = new RenderingEngine();
-
       shaderDebugManager = new ShaderDebugManager();
       shaderDebugManager.setStateCallback((s) => {
         debugState = s;
       });
 
-      try {
-        renderingEngine.initialize(glCanvas, true);
-      } catch (err) {
-        transport.postMessage({ type: 'error', payload: ['❌ Renderer initialization failed:', String(err)] });
-        addError("Failed to initialize renderer");
+      // Engine + pipeline (extracted so a language change can rebuild them).
+      if (!setupRenderingEngine()) {
         return;
       }
 
-      pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager, compilationState);
       transport.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
       transport.postMessage({ type: 'refresh' });
 
       editorOverlayManager = new EditorOverlayManager(
         transport, () => renderingEngine, editorOverlayCallbacks,
       );
-
-      timeManager = renderingEngine.getTimeManager();
 
       // AudioVideoController must be created after the engine is initialized
       // because it subscribes to audioStore which fires immediately,
@@ -955,6 +1032,7 @@
 
       initialized = true;
       routerInitialized = true;
+      appInitialized = true;
       for (const msg of pendingMessages) {
         await handleMessage(msg);
       }
@@ -1161,13 +1239,15 @@
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
-    <ShaderCanvas
-      {zoomLevel}
-      isInspectorActive={inspectorActive}
-      onCanvasReady={handleCanvasReady}
-      onCanvasResize={handleCanvasResize}
-      onCanvasClick={handleCanvasClick}
-    />
+    {#key engineLanguage}
+      <ShaderCanvas
+        {zoomLevel}
+        isInspectorActive={inspectorActive}
+        onCanvasReady={handleCanvasReady}
+        onCanvasResize={handleCanvasResize}
+        onCanvasClick={handleCanvasClick}
+      />
+    {/key}
     {#if !hasShader}
       <div class="no-active-shader-state">No active shader</div>
     {/if}

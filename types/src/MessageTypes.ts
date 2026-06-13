@@ -53,6 +53,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   config: any;
   path: string;
   buffers: Record<string, string>;
+  /** Shader source language. Defaults to "glsl" when absent. */
+  language?: "glsl" | "slang";
   forceCleanup?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;

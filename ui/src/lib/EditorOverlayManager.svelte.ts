@@ -1,5 +1,5 @@
 import type { Transport } from './transport/MessageTransport';
-import type { RenderingEngine } from '../../../rendering/src/RenderingEngine';
+import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { ShaderConfig } from '@shader-studio/types';
 import {
   getEditorOverlayVisible,

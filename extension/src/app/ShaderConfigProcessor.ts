@@ -70,7 +70,7 @@ export class ShaderConfigProcessor {
    * Get the config file path for a shader file.
    */
   public static getConfigPath(shaderPath: string): string {
-    return shaderPath.replace(/\.(glsl|frag)$/i, Constants.CONFIG_FILE_EXTENSION);
+    return shaderPath.replace(/\.(glsl|frag|slang)$/i, Constants.CONFIG_FILE_EXTENSION);
   }
 
   /**

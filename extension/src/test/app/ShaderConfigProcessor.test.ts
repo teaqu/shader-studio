@@ -196,6 +196,19 @@ suite('ShaderConfigProcessor Test Suite', () => {
     });
   });
 
+  suite('getConfigPath', () => {
+    test('derives the .sha.json path from .glsl and .frag shaders', () => {
+      assert.strictEqual(ShaderConfigProcessor.getConfigPath('/p/shader.glsl'), '/p/shader.sha.json');
+      assert.strictEqual(ShaderConfigProcessor.getConfigPath('/p/shader.frag'), '/p/shader.sha.json');
+    });
+
+    test('derives the .sha.json path from .slang shaders (not the .slang file itself)', () => {
+      const result = ShaderConfigProcessor.getConfigPath('/p/shader.slang');
+      assert.strictEqual(result, '/p/shader.sha.json');
+      assert.notStrictEqual(result, '/p/shader.slang');
+    });
+  });
+
   suite('constructor injection', () => {
     test('should use injected error handler for errors', () => {
       fsExistsSyncStub.returns(false);
