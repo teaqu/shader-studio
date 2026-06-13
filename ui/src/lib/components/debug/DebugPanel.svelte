@@ -71,6 +71,7 @@
   let persistedVariableInspectorEnabled = $state(false);
   let persistedInlineRenderingEnabled = $state(true);
   let persistedPixelInspectorEnabled = $state(true);
+  let persistedLoupeEnabled = $state(false);
   let persistedErrorsEnabled = $state(false);
   let persistedNormalizeMode = $state<import('../../types/ShaderDebugState').NormalizeMode>('off');
   let persistedIsStepEnabled = $state(false);
@@ -156,6 +157,7 @@
       persistedVariableInspectorEnabled = state.isVariableInspectorEnabled;
       persistedInlineRenderingEnabled = state.isInlineRenderingEnabled;
       persistedPixelInspectorEnabled = state.isPixelInspectorEnabled;
+      persistedLoupeEnabled = state.isLoupeEnabled;
       persistedErrorsEnabled = state.isErrorsEnabled;
       persistedNormalizeMode = state.normalizeMode;
       persistedIsStepEnabled = state.isStepEnabled;
@@ -368,6 +370,13 @@
     onToggleInspectorEnabled();
   }
 
+  function handleToggleLoupeEnabled() {
+    if (!debugState?.isEnabled) {
+      return;
+    }
+    debugPanelStore.setLoupeEnabled(!persistedLoupeEnabled);
+  }
+
   function handleToggleVariableInspector() {
     debugPanelStore.setVariableInspectorEnabled(!persistedVariableInspectorEnabled);
   }
@@ -479,6 +488,21 @@
       data-tooltip="Pixel Inspector{!debugState?.isEnabled ? ' (enable debug first)' : ''}"
     >
       <i class="codicon codicon-inspect"></i>
+    </button>
+    <button
+      class="header-btn has-tooltip"
+      class:active={persistedLoupeEnabled}
+      class:disabled={!isInspectorEnabled || !debugState?.isEnabled}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleLoupeEnabled)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleLoupeEnabled)}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation();
+      }}
+      disabled={!isInspectorEnabled || !debugState?.isEnabled}
+      aria-label="Toggle loupe zoom"
+      data-tooltip="Loupe Zoom{!isInspectorEnabled ? ' (enable inspector first)' : ''}"
+    >
+      <i class="codicon codicon-zoom-in"></i>
     </button>
     <button
       class="header-btn has-tooltip"
