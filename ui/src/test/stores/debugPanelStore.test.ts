@@ -18,6 +18,7 @@ describe('debugPanelStore', () => {
     expect(state.isVariableInspectorEnabled).toBe(false);
     expect(state.isInlineRenderingEnabled).toBe(true);
     expect(state.isPixelInspectorEnabled).toBe(true);
+    expect(state.isLoupeEnabled).toBe(false);
     expect(state.isErrorsEnabled).toBe(false);
     expect(state.normalizeMode).toBe('off');
     expect(state.isStepEnabled).toBe(false);
@@ -95,6 +96,20 @@ describe('debugPanelStore', () => {
     expect(get(debugPanelStore).stepEdge).toBe(0.75);
     debugPanelStore.setStepEdge(0.1);
     expect(get(debugPanelStore).stepEdge).toBe(0.1);
+  });
+
+  it('should default isLoupeEnabled to false', async () => {
+    const { debugPanelStore } = await importStore();
+    const state = get(debugPanelStore);
+    expect(state.isLoupeEnabled).toBe(false);
+  });
+
+  it('setLoupeEnabled updates the field', async () => {
+    const { debugPanelStore } = await importStore();
+    debugPanelStore.setLoupeEnabled(true);
+    expect(get(debugPanelStore).isLoupeEnabled).toBe(true);
+    debugPanelStore.setLoupeEnabled(false);
+    expect(get(debugPanelStore).isLoupeEnabled).toBe(false);
   });
 
   it('snapshotDebugPanel returns full state including new fields', async () => {
