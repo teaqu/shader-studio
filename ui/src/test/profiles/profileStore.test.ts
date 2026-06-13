@@ -288,25 +288,7 @@ describe('profileStore', () => {
     clearPendingLayout();
   });
 
-  it('auto-save triggers saveProfile after a store change', async () => {
-    vi.useFakeTimers();
-    const adapter = makeAdapter();
-    const { init } = await import('../../lib/state/profileStore.svelte');
-    const { debugPanelStore } = await import('../../lib/stores/debugPanelStore');
-    await init(adapter);
-    vi.mocked(adapter.writeProfile).mockClear();
-
-    debugPanelStore.setNormalizeMode('soft');
-    expect(adapter.writeProfile).not.toHaveBeenCalled(); // not yet — debounced
-
-    await vi.runAllTimersAsync();
-    expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.objectContaining({
-      debugPanel: expect.objectContaining({ normalizeMode: 'soft' }),
-    }));
-    vi.useRealTimers();
-  });
-
-  it('auto-save debounces rapid store changes into a single write', async () => {
+  it('does not auto-save when a panel store changes (explicit save only)', async () => {
     vi.useFakeTimers();
     const adapter = makeAdapter();
     const { init } = await import('../../lib/state/profileStore.svelte');
@@ -316,24 +298,6 @@ describe('profileStore', () => {
 
     debugPanelStore.setNormalizeMode('soft');
     debugPanelStore.setStepEnabled(true);
-    debugPanelStore.setStepEdge(0.75);
-
-    await vi.runAllTimersAsync();
-    expect(adapter.writeProfile).toHaveBeenCalledTimes(1);
-    expect(adapter.writeProfile).toHaveBeenCalledWith('default', expect.objectContaining({
-      debugPanel: expect.objectContaining({
-        normalizeMode: 'soft', isStepEnabled: true, stepEdge: 0.75,
-      }),
-    }));
-    vi.useRealTimers();
-  });
-
-  it('auto-save does not fire from the initial store state on init', async () => {
-    vi.useFakeTimers();
-    const adapter = makeAdapter();
-    const { init } = await import('../../lib/state/profileStore.svelte');
-    await init(adapter);
-    vi.mocked(adapter.writeProfile).mockClear();
 
     await vi.runAllTimersAsync();
     expect(adapter.writeProfile).not.toHaveBeenCalled();

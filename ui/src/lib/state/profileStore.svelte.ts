@@ -1,9 +1,9 @@
 import type { FileProfileAdapter } from '../profiles/FileProfileAdapter';
 import { slugify } from '@shader-studio/types';
 import type { ProfileIndex, ProfileData } from '@shader-studio/types';
-import { snapshotConfigPanel, applyConfigPanelProfile, configPanelStore } from '../stores/configPanelStore';
-import { snapshotDebugPanel, applyDebugPanelProfile, debugPanelStore } from '../stores/debugPanelStore';
-import { snapshotPerformancePanel, applyPerformancePanelProfile, performancePanelStore } from '../stores/performancePanelStore';
+import { snapshotConfigPanel, applyConfigPanelProfile } from '../stores/configPanelStore';
+import { snapshotDebugPanel, applyDebugPanelProfile } from '../stores/debugPanelStore';
+import { snapshotPerformancePanel, applyPerformancePanelProfile } from '../stores/performancePanelStore';
 import { snapshotTheme, applyThemeProfile } from '../stores/themeStore';
 import { getCurrentLayout, requestRestore } from './layoutState.svelte';
 import { isVSCodeEnvironment } from '../transport/TransportFactory';
@@ -12,26 +12,6 @@ let _activeProfile = $state<string>('default');
 let _profileList = $state<Array<{ id: string; name: string }>>([]);
 let _adapter: FileProfileAdapter | null = null;
 let _initialized = false;
-let _autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-let _autoSaveUnsubscribers: Array<() => void> = [];
-
-function scheduleAutoSave(): void {
-  if (_autoSaveTimer !== null) {
-    clearTimeout(_autoSaveTimer);
-  }
-  _autoSaveTimer = setTimeout(() => {
-    _autoSaveTimer = null;
-    void saveProfile();
-  }, 1000);
-}
-
-function skipFirst(fn: () => void): () => void {
-  let first = true;
-  return () => {
-    if (first) { first = false; return; }
-    fn();
-  };
-}
 
 export function getActiveProfile(): string {
   return _activeProfile; 
@@ -73,9 +53,6 @@ function uniqueSlug(base: string, existingIds: string[]): string {
 
 
 export async function init(adapter: FileProfileAdapter): Promise<void> {
-  for (const unsub of _autoSaveUnsubscribers) unsub();
-  _autoSaveUnsubscribers = [];
-
   _adapter = adapter;
   const index: ProfileIndex | null = await adapter.readIndex();
 
@@ -92,12 +69,6 @@ export async function init(adapter: FileProfileAdapter): Promise<void> {
   }
 
   _initialized = true;
-
-  // Auto-save whenever panel settings change. skipFirst() prevents the
-  // immediate synchronous subscriber fire from triggering a pointless write.
-  _autoSaveUnsubscribers.push(debugPanelStore.subscribe(skipFirst(scheduleAutoSave)));
-  _autoSaveUnsubscribers.push(configPanelStore.subscribe(skipFirst(scheduleAutoSave)));
-  _autoSaveUnsubscribers.push(performancePanelStore.subscribe(skipFirst(scheduleAutoSave)));
 }
 
 export async function switchTo(id: string): Promise<void> {
