@@ -163,6 +163,10 @@ vi.mock('../../../../rendering/src/RenderingEngine', () => {
   };
 });
 
+vi.mock('../../lib/slangAssets', () => ({
+  getSlangAssetUrls: () => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }),
+}));
+
 // Mock dependencies
 vi.mock('../../lib/ShaderPipeline', () => {
   const MockShaderPipeline = class {

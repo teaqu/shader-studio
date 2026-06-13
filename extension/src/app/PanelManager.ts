@@ -6,7 +6,7 @@ import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { Logger } from "./services/Logger";
-import { GlslFileTracker } from "./GlslFileTracker";
+import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
 import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import type { ShaderConfig } from "@shader-studio/types";
@@ -128,7 +128,10 @@ export class PanelManager {
     // Add panel to the shared webview transport
     this.webviewTransport.addPanel(panel);
 
-    this.setupWebviewHtml(panel, layoutSlot);
+    const initialLanguage = editor
+      ? getShaderLanguage(editor.document.uri.fsPath)
+      : "glsl";
+    this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
 
     if (editor) {
       void this.shaderProvider.sendShaderFromEditor(editor);
@@ -258,7 +261,11 @@ export class PanelManager {
     }
   }
 
-  private setupWebviewHtml(panel: vscode.WebviewPanel, layoutSlot: number): void {
+  private setupWebviewHtml(
+    panel: vscode.WebviewPanel,
+    layoutSlot: number,
+    initialLanguage: "glsl" | "slang" = "glsl",
+  ): void {
     const htmlPath = path.join(
       this.context.extensionPath,
       "ui-dist",
@@ -268,7 +275,7 @@ export class PanelManager {
 
     let processedHtml = rawHtml;
 
-    const layoutMeta = `<meta name="shader-studio-layout-slot" content="vscode:${layoutSlot}"><meta name="shader-studio-host-type" content="vscode">`;
+    const layoutMeta = `<meta name="shader-studio-layout-slot" content="vscode:${layoutSlot}"><meta name="shader-studio-host-type" content="vscode"><meta name="shader-studio-initial-language" content="${initialLanguage}">`;
     processedHtml = processedHtml.replace(/<head([^>]*)>/i, `<head$1>${layoutMeta}`);
 
     // Convert relative resource URLs to webview URIs

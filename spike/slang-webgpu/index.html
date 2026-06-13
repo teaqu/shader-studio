@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slang → WebGPU spike</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #14141a;
+        color: #e6e6e6;
+        display: grid;
+        grid-template-columns: 480px 1fr;
+        height: 100vh;
+      }
+      #left { padding: 16px; overflow: auto; border-right: 1px solid #2a2a35; }
+      #right { display: flex; align-items: center; justify-content: center; background: #0c0c10; }
+      canvas { width: 512px; height: 512px; background: #000; image-rendering: pixelated; }
+      h1 { font-size: 15px; margin: 0 0 12px; }
+      .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+      .ok { background: #143d2a; color: #5fe3a1; }
+      .bad { background: #44161a; color: #ff8a93; }
+      #log { white-space: pre-wrap; font-size: 12px; line-height: 1.5; margin: 12px 0; }
+      .step { color: #8a8a99; }
+      .step.done::before { content: "✓ "; color: #5fe3a1; }
+      .step.fail::before { content: "✗ "; color: #ff8a93; }
+      details { margin-top: 12px; }
+      pre { background: #0c0c10; padding: 10px; border-radius: 6px; overflow: auto; font-size: 11px; max-height: 320px; }
+    </style>
+  </head>
+  <body>
+    <div id="left">
+      <h1>Slang → WebGPU spike</h1>
+      <div>WebGPU: <span id="gpu" class="badge bad">checking…</span></div>
+      <div id="log"></div>
+      <details open><summary>Generated WGSL</summary><pre id="wgsl">—</pre></details>
+    </div>
+    <div id="right"><canvas id="c" width="512" height="512"></canvas></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -3,6 +3,7 @@ import { ShaderStudio } from "./app/ShaderStudio";
 
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
+import { openSlangSpikePanel } from "./app/SlangSpikePanel";
 
 let shaderExtension: ShaderStudio | undefined;
 
@@ -73,6 +74,13 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         vscode.window.showErrorMessage(`GLSL Transpile failed: ${err}`);
       }
+    })
+  );
+
+  // THROWAWAY dev-only: open the Slang→WebGPU spike in a real extension webview.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("shader-studio.openSlangSpike", () => {
+      openSlangSpikePanel(context);
     })
   );
 

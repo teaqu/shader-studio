@@ -36,7 +36,7 @@ export class GlslFileTracker {
   }
 
   public isGlslEditor(editor: vscode.TextEditor): boolean {
-    return isGlslDocument(editor.document);
+    return isShaderDocument(editor.document);
   }
 
 }
@@ -44,4 +44,17 @@ export class GlslFileTracker {
 export function isGlslDocument(document: vscode.TextDocument): boolean {
   return document.languageId === 'glsl' || document.languageId === 'frag'
         || document.fileName.endsWith('.glsl') || document.fileName.endsWith('.frag');
+}
+
+export function isSlangDocument(document: vscode.TextDocument): boolean {
+  return document.languageId === 'slang' || document.fileName.endsWith('.slang');
+}
+
+/** Any shader source we can preview (GLSL or Slang). */
+export function isShaderDocument(document: vscode.TextDocument): boolean {
+  return isGlslDocument(document) || isSlangDocument(document);
+}
+
+export function getShaderLanguage(filePath: string): 'glsl' | 'slang' {
+  return filePath.endsWith('.slang') ? 'slang' : 'glsl';
 }

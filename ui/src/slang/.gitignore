@@ -1,0 +1,2 @@
+# slang-wasm binary is large (~21MB) — not committed. Re-copy from spike/slang-webgpu/vendor/
+slang-wasm.wasm

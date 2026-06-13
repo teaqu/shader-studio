@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import { isGlslDocument } from "./GlslFileTracker";
+import { isShaderDocument, getShaderLanguage } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
@@ -35,7 +35,7 @@ export class ShaderProvider {
       return;
     }
     const doc = editor?.document;
-    if (!doc || !isGlslDocument(doc)) {
+    if (!doc || !isShaderDocument(doc)) {
       return;
     }
 
@@ -105,7 +105,7 @@ export class ShaderProvider {
     document: vscode.TextDocument,
     options?: { forceCleanup?: boolean },
   ): Promise<void> {
-    if (!this.messenger || !isGlslDocument(document)) {
+    if (!this.messenger || !isShaderDocument(document)) {
       return;
     }
 
@@ -405,6 +405,7 @@ export class ShaderProvider {
       config,
       path: shaderPath,
       buffers,
+      language: getShaderLanguage(shaderPath),
       forceCleanup: options?.forceCleanup,
       pathMap: this.buildPathMap(config, shaderPath),
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),

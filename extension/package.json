@@ -115,6 +115,10 @@
         "title": "Shader Studio: Transpile GLSL to JavaScript (for debugging)"
       },
       {
+        "command": "shader-studio.openSlangSpike",
+        "title": "Shader Studio: Open Slang Spike (dev)"
+      },
+      {
         "command": "shader-studio.toggleEditorOverlay",
         "title": "Shader Studio: Toggle Editor Overlay"
       },
@@ -199,11 +203,26 @@
         ],
         "configuration": "./glsl-language-configuration.json",
         "priority": "default"
+      },
+      {
+        "id": "slang",
+        "aliases": [
+          "Slang"
+        ],
+        "extensions": [
+          ".slang"
+        ],
+        "configuration": "./glsl-language-configuration.json"
       }
     ],
     "grammars": [
       {
         "language": "glsl",
+        "scopeName": "source.glsl",
+        "path": "./syntaxes/glsl.tmLanguage.json"
+      },
+      {
+        "language": "slang",
         "scopeName": "source.glsl",
         "path": "./syntaxes/glsl.tmLanguage.json"
       }
