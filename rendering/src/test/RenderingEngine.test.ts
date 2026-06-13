@@ -1196,4 +1196,35 @@ describe("RenderingEngine", () => {
       expect(count).toBeGreaterThan(history.length);
     });
   });
+
+  describe("render() running state preservation", () => {
+    beforeEach(() => {
+      mockFrameRenderer.isRunning = vi.fn();
+      mockFrameRenderer.setRunning = vi.fn();
+      mockFrameRenderer.render = vi.fn();
+    });
+
+    it("should not set running to false when loop is already running", () => {
+      // Simulate main RAF loop already running
+      mockFrameRenderer.isRunning.mockReturnValue(true);
+
+      renderingEngine.render(performance.now());
+
+      // Collect all setRunning calls
+      const calls = mockFrameRenderer.setRunning.mock.calls.map((c: [boolean]) => c[0]);
+      // Must not end with false — that would kill the RAF loop
+      expect(calls[calls.length - 1]).not.toBe(false);
+    });
+
+    it("should restore false running state after one-shot render when loop was stopped", () => {
+      // Simulate loop stopped (e.g. before first startRenderLoop call)
+      mockFrameRenderer.isRunning.mockReturnValue(false);
+
+      renderingEngine.render(performance.now());
+
+      const calls = mockFrameRenderer.setRunning.mock.calls.map((c: [boolean]) => c[0]);
+      // Should restore to false after the one-shot render
+      expect(calls[calls.length - 1]).toBe(false);
+    });
+  });
 });

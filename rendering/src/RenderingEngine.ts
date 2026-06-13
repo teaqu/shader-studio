@@ -350,9 +350,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public render(time: number = performance.now()): void {
     if (this.frameRenderer) {
+      const wasRunning = this.frameRenderer.isRunning();
       this.frameRenderer.setRunning(true);
       this.frameRenderer.render(time);
-      this.frameRenderer.setRunning(false);
+      this.frameRenderer.setRunning(wasRunning);
     }
   }
 
