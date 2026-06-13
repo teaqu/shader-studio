@@ -630,7 +630,7 @@
       disabled={!hasShader}
       title="Toggle shader configuration panel"
     >
-      <i class="codicon codicon-layers"></i>
+      <i class="codicon codicon-gear"></i>
     </button>
     <button
       class="collapse-debug toolbar-icon-button"
@@ -867,7 +867,7 @@
         class:active={isConfigPanelVisible}
         disabled={!hasShader}
       >
-        <i class="codicon codicon-layers"></i>
+        <i class="codicon codicon-gear"></i>
         <span>Config</span>
       </button>
     {/if}
