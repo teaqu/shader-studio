@@ -10,6 +10,7 @@
   import MenuBar from "./MenuBar.svelte";
   import PixelInspector from "./PixelInspector.svelte";
   import InspectorCrosshair from "./InspectorCrosshair.svelte";
+  import PixelInspectorLoupe from "./PixelInspectorLoupe.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
@@ -1291,6 +1292,15 @@
     canvasY={inspectorState.canvasPosition?.y ?? 0}
     canvasElement={glCanvas}
   />
+  {#if $debugPanelStore.isLoupeEnabled}
+    <PixelInspectorLoupe
+      isActive={inspectorState.isActive}
+      mouseX={inspectorState.mouseX}
+      mouseY={inspectorState.mouseY}
+      canvasElement={glCanvas}
+      canvasPosition={inspectorState.canvasPosition}
+    />
+  {/if}
 
 </div>
 

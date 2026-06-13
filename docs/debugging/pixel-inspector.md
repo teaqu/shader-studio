@@ -8,6 +8,12 @@ Toggle the pixel inspector with the <i class="codicon codicon-inspect"></i> butt
 
 ![Pixel inspector](../assets/images/pixel-mode.png)
 
+## Loupe
+
+The loupe is optional and can be toggled with the zoom-in button in the debug panel header. The pixel inspector must be enabled before the loupe control is available.
+
+When enabled, it shows a 120px circular view around the cursor at 8x magnification with crisp pixels, a center pixel highlight, and a crosshair. It uses the existing preview canvas, so it does not add extra GPU readback.
+
 ## Using
 
 - **Hover** over the preview canvas to see values at that pixel
