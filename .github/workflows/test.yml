@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
 
     steps:
@@ -39,7 +39,16 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 20
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
+        run: |
+          for i in 1 2 3; do
+            timeout 300 npx playwright install --with-deps chromium chromium-headless-shell && exit 0
+            echo "::warning::playwright install attempt $i stalled or failed; retrying" >&2
+          done
+          exit 1
 
       - name: Run workspace Vitest suite
         run: npm test
