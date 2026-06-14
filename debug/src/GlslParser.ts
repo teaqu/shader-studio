@@ -558,6 +558,50 @@ export class GlslParser {
       }
     }
 
+    const isMappableOriginal = (index: number) =>
+      originalToProcessed[index] === -1 &&
+      originalNorm[index] !== '' &&
+      !originalNorm[index].startsWith('#');
+    const isMappableProcessed = (index: number) =>
+      processedToOriginal[index] === -1 &&
+      processedNorm[index] !== '';
+
+    const anchors = [
+      { original: -1, processed: -1 },
+      ...originalToProcessed
+        .map((processed, original) => ({ original, processed }))
+        .filter(anchor => anchor.processed !== -1),
+      { original: originalNorm.length, processed: processedNorm.length },
+    ];
+
+    for (let anchorIndex = 0; anchorIndex < anchors.length - 1; anchorIndex++) {
+      const current = anchors[anchorIndex];
+      const next = anchors[anchorIndex + 1];
+      const originalCandidates: number[] = [];
+      const processedCandidates: number[] = [];
+
+      for (let originalLine = current.original + 1; originalLine < next.original; originalLine++) {
+        if (isMappableOriginal(originalLine)) {
+          originalCandidates.push(originalLine);
+        }
+      }
+
+      for (let processedLine = current.processed + 1; processedLine < next.processed; processedLine++) {
+        if (isMappableProcessed(processedLine)) {
+          processedCandidates.push(processedLine);
+        }
+      }
+
+      if (originalCandidates.length === processedCandidates.length) {
+        for (let candidateIndex = 0; candidateIndex < originalCandidates.length; candidateIndex++) {
+          const originalLine = originalCandidates[candidateIndex];
+          const processedLine = processedCandidates[candidateIndex];
+          originalToProcessed[originalLine] = processedLine;
+          processedToOriginal[processedLine] = originalLine;
+        }
+      }
+    }
+
     return { originalToProcessed, processedToOriginal };
   }
 

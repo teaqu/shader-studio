@@ -48,6 +48,20 @@ const signatureBraceNextLine = `void mainImage(out vec4 fragColor, in vec2 fragC
   fragColor = vec4(uv, 0.0, 1.0);
 }`;
 
+const withMacroInitializers = `#define gx 15.0
+#define gy 10.0
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+  vec2 uv = fragCoord / iResolution.xy;
+  vec2 uGrid = vec2(uv.x * gx, uv.y * gy);
+  vec2 grid = floor(uGrid);
+  vec2 gb = smoothstep(0.01, 0.03, fract(uGrid));
+  vec3 col = vec3(grid.x / gx, grid.y / gy, 1.0);
+  vec3 test = col;
+  fragColor = vec4(col * gb.x * gb.y, 1.0);
+}`;
+
 const helperWithOutParam = `float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {
   float tm = 0.0;
   p = ori + dir * tm;
@@ -200,6 +214,17 @@ describe("VariableCaptureBuilder.getAllInScopeVariables", () => {
     const names = vars.map(v => v.varName);
     expect(names).toContain("uv");
     expect(names).toContain("d");
+    expect(names).toContain("col");
+  });
+
+  it("should include variables whose initializers reference object-like macros", () => {
+    const fragColorLine = withMacroInitializers
+      .split("\n")
+      .findIndex(line => line.includes("fragColor ="));
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(withMacroInitializers, fragColorLine);
+    const names = vars.map(v => v.varName);
+
+    expect(names).toContain("uGrid");
     expect(names).toContain("col");
   });
 
