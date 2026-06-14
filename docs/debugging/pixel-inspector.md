@@ -12,7 +12,11 @@ Toggle the pixel inspector with the <i class="codicon codicon-inspect"></i> butt
 - **Click** to lock the inspector to a specific position so the values stay visible while you move the cursor elsewhere
 - **Click again** to unlock and resume following the cursor
 
-The zoom view shows a magnified 8× view of the pixels around the cursor with crisp pixel rendering. Click on any pixel in the zoom view to jump the inspector to that exact pixel.
+The zoom view shows a magnified view of the pixels around the cursor with crisp pixel rendering.
+
+- **Scroll** over the zoom view to change the zoom level (2×–30×). The current zoom briefly appears as an overlay label, then fades.
+- **Click** on any pixel in the zoom view to jump the inspector to that exact pixel.
+- **Drag** inside the zoom view to pan to adjacent pixels — drag right to see pixels to the left, like panning a map.
 
 The inspector updates in real time as the shader animates, so you can watch how values change at a fixed point.
 

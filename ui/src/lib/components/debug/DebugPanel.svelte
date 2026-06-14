@@ -618,7 +618,7 @@
 
   <div class="debug-content">
     {#if isErrorsOn}
-      <div class="section errors-section">
+      <div class="section errors-section" class:bordered={isInspectorEnabled}>
         <div class="section-label">Errors</div>
         {#if errors.length > 0}
           {#each errors as error}
@@ -1056,6 +1056,9 @@
 
   .errors-section {
     padding-top: 6px;
+  }
+
+  .errors-section.bordered {
     padding-bottom: 8px;
     border-bottom: 1px solid var(--vscode-panel-border);
   }
