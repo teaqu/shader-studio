@@ -29,10 +29,14 @@
   let positionY = $derived(mouseY - LOUPE_SIZE / 2);
 
   $effect(() => {
-    if (!canvasElement) return;
+    if (!canvasElement) {
+      return;
+    }
     const hide = isActive && !isLocked && canvasPosition !== null;
     canvasElement.style.cursor = hide ? 'none' : '';
-    return () => { canvasElement!.style.cursor = ''; };
+    return () => {
+      canvasElement!.style.cursor = '';
+    };
   });
 
   $effect(() => {

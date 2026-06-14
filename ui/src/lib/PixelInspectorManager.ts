@@ -76,7 +76,9 @@ export class PixelInspectorManager {
   }
 
   public lockToPosition(canvasX: number, canvasY: number): void {
-    if (!this.state.isEnabled || !this.state.isActive) return;
+    if (!this.state.isEnabled || !this.state.isActive) {
+      return;
+    }
     this.lastCanvasPosition = { x: canvasX, y: canvasY };
     this.state.isLocked = true;
     this.readPixelAtPosition(canvasX, canvasY);
