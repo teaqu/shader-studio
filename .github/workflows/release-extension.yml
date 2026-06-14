@@ -59,6 +59,9 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "vsix_path=${VSIX_PATH}" >> "${GITHUB_OUTPUT}"
 
+      - name: Build shared types
+        run: npm run build:types
+
       - name: Run workspace Vitest suite
         run: npm test
 
