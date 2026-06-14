@@ -32,6 +32,8 @@
   let menuPos = $state({ top: 0, left: 0 });
   let menuVisible = $state(false);
   let initializedTimeManager = $state<TimeManagerLike | undefined>(undefined);
+  let customScrubDuration = $state('60');
+  let customTimeSpeed = $state('1');
 
   const durationPresets = [Math.PI * 2, 10, 30, 60, 120];
   const speedPresets = [0.25, 0.5, 1, 2, 4];
@@ -47,6 +49,8 @@
     timeSpeed = timeManager?.getSpeed?.() ?? 1.0;
     loopEnabled = timeManager?.isLoopEnabled?.() ?? false;
     scrubDuration = timeManager?.getLoopDuration?.() ?? 60;
+    customTimeSpeed = String(timeSpeed);
+    customScrubDuration = String(scrubDuration);
   });
 
   $effect(() => {
@@ -106,7 +110,14 @@
 
   function handleCustomDurationInput(event: Event) {
     const target = event.target as HTMLInputElement;
-    handleScrubDurationSelect(parseFloat(target.value));
+    customScrubDuration = target.value;
+    handleScrubDurationSelect(parseFloat(customScrubDuration));
+  }
+
+  function handleCustomSpeedInput(event: Event) {
+    const target = event.target as HTMLInputElement;
+    customTimeSpeed = target.value;
+    handleSpeedSelect(parseFloat(customTimeSpeed));
   }
 
   function handleTimeScubStart() {
@@ -241,7 +252,7 @@
             placeholder="s"
             min="0.01"
             step="0.01"
-            value={scrubDuration}
+            value={customScrubDuration}
             oninput={handleCustomDurationInput}
             disabled={!loopEnabled}
           />
@@ -306,8 +317,8 @@
             aria-label="Custom speed multiplier"
             placeholder="×"
             step="0.01"
-            value={timeSpeed}
-            oninput={handleSpeedChange}
+            value={customTimeSpeed}
+            oninput={handleCustomSpeedInput}
           />
         </div>
       </div>
