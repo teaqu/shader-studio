@@ -7,6 +7,7 @@ export class TimeManager {
     private lastFrameTime = 0;
     private deltaTime = 0;
     private speedMultiplier = 1.0;
+    private zeroSpeedTime: number | null = null;
     private loopEnabled = false;
     private loopDuration = 60; // Default to 1 minute
 
@@ -40,6 +41,7 @@ export class TimeManager {
         this.frame = 0;
         this.lastFrameTime = currentTime;
         this.deltaTime = 0;
+        this.zeroSpeedTime = this.speedMultiplier === 0 ? 0 : null;
 
         if (this.paused) {
             this.lastRealTime = this.resetTime;
@@ -51,16 +53,15 @@ export class TimeManager {
     public getCurrentTime(currentFrameTime: number): number {
         const currentTime = currentFrameTime * 0.001;
 
-        let time = this.paused
-            ? (this.lastRealTime - this.resetTime) - this.pausedTime
-            : (currentTime - this.resetTime) - this.pausedTime;
-
-        // Apply speed multiplier
-        time *= this.speedMultiplier;
+        let time = this.zeroSpeedTime ?? (
+            this.paused
+                ? (this.lastRealTime - this.resetTime) - this.pausedTime
+                : (currentTime - this.resetTime) - this.pausedTime
+        ) * this.speedMultiplier;
 
         // Apply loop if enabled
         if (this.loopEnabled && this.loopDuration > 0) {
-            time = time % this.loopDuration;
+            time = ((time % this.loopDuration) + this.loopDuration) % this.loopDuration;
         }
 
         return time;
@@ -105,18 +106,29 @@ export class TimeManager {
     }
 
     public setSpeed(speed: number): void {
+        if (!Number.isFinite(speed)) {
+            return;
+        }
+
         // Preserve current time when changing speed
         const currentTime = performance.now() * 0.001;
         const currentShaderTime = this.getCurrentTime(currentTime * 1000);
 
-        // Update speed multiplier
-        const newSpeed = Math.max(0.25, Math.min(4.0, speed));
+        if (speed === 0) {
+            this.speedMultiplier = 0;
+            this.zeroSpeedTime = currentShaderTime;
+            if (this.paused) {
+                this.lastRealTime = currentTime;
+            }
+            return;
+        }
 
         // Adjust resetTime so current shader time stays the same
-        // currentShaderTime = (currentTime - resetTime - pausedTime) * newSpeed
-        // resetTime = currentTime - (currentShaderTime / newSpeed) - pausedTime
-        this.resetTime = currentTime - (currentShaderTime / newSpeed) - this.pausedTime;
-        this.speedMultiplier = newSpeed;
+        // currentShaderTime = (currentTime - resetTime - pausedTime) * speed
+        // resetTime = currentTime - (currentShaderTime / speed) - pausedTime
+        this.resetTime = currentTime - (currentShaderTime / speed) - this.pausedTime;
+        this.speedMultiplier = speed;
+        this.zeroSpeedTime = null;
 
         if (this.paused) {
             this.lastRealTime = currentTime;
@@ -145,11 +157,24 @@ export class TimeManager {
 
     public setTime(time: number): void {
         const currentTime = performance.now() * 0.001;
+        if (this.speedMultiplier === 0) {
+            this.zeroSpeedTime = time;
+            this.resetTime = currentTime;
+            this.pausedTime = 0;
+            this.lastFrameTime = currentTime;
+
+            if (this.paused) {
+                this.lastRealTime = currentTime;
+            }
+            return;
+        }
+
         // Adjust the time accounting for speed multiplier
         const adjustedTime = time / this.speedMultiplier;
         this.resetTime = currentTime - adjustedTime;
         this.pausedTime = 0;
         this.lastFrameTime = currentTime;
+        this.zeroSpeedTime = null;
 
         if (this.paused) {
             this.lastRealTime = currentTime;
@@ -174,6 +199,7 @@ export class TimeManager {
             lastFrameTime: this.lastFrameTime,
             deltaTime: this.deltaTime,
             speedMultiplier: this.speedMultiplier,
+            zeroSpeedTime: this.zeroSpeedTime,
             loopEnabled: this.loopEnabled,
             loopDuration: this.loopDuration,
         };
@@ -188,6 +214,7 @@ export class TimeManager {
         this.lastFrameTime = state.lastFrameTime;
         this.deltaTime = state.deltaTime;
         this.speedMultiplier = state.speedMultiplier;
+        this.zeroSpeedTime = state.zeroSpeedTime ?? null;
         this.loopEnabled = state.loopEnabled;
         this.loopDuration = state.loopDuration;
     }
@@ -202,6 +229,7 @@ export interface TimeManagerState {
     lastFrameTime: number;
     deltaTime: number;
     speedMultiplier: number;
+    zeroSpeedTime: number | null;
     loopEnabled: boolean;
     loopDuration: number;
 }

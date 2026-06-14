@@ -12,12 +12,14 @@ The header has buttons to toggle individual features:
 
 | Button | Description |
 |--------|-------------|
-| <i class="codicon codicon-inspect"></i> **Pixel Inspector** | Hover over the canvas to see RGB, float, hex, fragCoord, and UV values at the cursor position |
+| <i class="codicon codicon-error"></i> **Errors** | Show or hide shader compile errors |
+| <i class="codicon codicon-inspect"></i> **Pixel Inspector** | Show a zoom view and exact RGB, float, hex, fragCoord, and UV values for the pixel under the cursor ([more](pixel-inspector.md)) |
+| <i class="codicon codicon-symbol-variable"></i> **Variable Inspector** | Capture and inspect all variables in scope ([more](variable-inspector.md)) |
+| — | *divider* |
 | <i class="codicon codicon-eye"></i> **Inline Rendering** | Visualize the value of the variable on your current line by rewriting the shader output ([more](inline-rendering.md)) |
 | <i class="codicon codicon-lock"></i> / <i class="codicon codicon-unlock"></i> **Line Lock** | Freeze the debug view on the current line so moving the cursor elsewhere doesn't change it |
 | <i class="codicon codicon-graph-line"></i> **Normalize** | Remap value ranges to make small variations visible ([more](normalization.md)) |
 | <i class="codicon codicon-pulse"></i> **Step** | Apply a binary threshold to the output ([more](normalization.md#step-threshold)) |
-| <i class="codicon codicon-symbol-variable"></i> **Variable Inspector** | Capture and inspect all variables in scope ([more](variable-inspector.md)) |
 
 ## Features
 

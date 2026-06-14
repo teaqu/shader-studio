@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
+import shaderViewerSource from '../../lib/components/ShaderViewer.svelte?raw';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
 import { debugPanelStore } from '../../lib/stores/debugPanelStore';
@@ -450,6 +451,12 @@ describe('ShaderViewer', () => {
     });
 
     expect(container).toBeTruthy();
+  });
+
+  it('pixel inspector zoom is rendered inside DebugPanel via PixelInspectorSection', () => {
+    expect(shaderViewerSource).toContain('getInspectorState');
+    expect(shaderViewerSource).toContain('setInspectorState');
+    expect(shaderViewerSource).toContain('canvasElement={glCanvas}');
   });
 
   it('should update the active debugger size button after sample size changes', async () => {

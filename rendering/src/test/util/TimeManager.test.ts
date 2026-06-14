@@ -98,14 +98,49 @@ describe('TimeManager', () => {
             expect(time).toBeCloseTo(4.0, 1); // Should be 4 shader seconds
         });
 
-        it('should clamp speed to minimum 0.25', () => {
-            timeManager.setSpeed(0.1);
-            expect(timeManager.getSpeed()).toBe(0.25);
+        it('should allow custom speed below the slider range', () => {
+            timeManager.setSpeed(0.01);
+            expect(timeManager.getSpeed()).toBe(0.01);
         });
 
-        it('should clamp speed to maximum 4.0', () => {
+        it('should allow custom speed above the slider range', () => {
             timeManager.setSpeed(10.0);
-            expect(timeManager.getSpeed()).toBe(4.0);
+            expect(timeManager.getSpeed()).toBe(10.0);
+        });
+
+        it('should allow negative speed for reverse playback', () => {
+            timeManager.setSpeed(-1.5);
+            expect(timeManager.getSpeed()).toBe(-1.5);
+        });
+
+        it('should allow zero speed to freeze time', () => {
+            timeManager.setSpeed(0);
+            expect(timeManager.getSpeed()).toBe(0);
+
+            mockPerformanceNow += 5000;
+            const time = timeManager.getCurrentTime(mockPerformanceNow);
+            expect(time).toBeCloseTo(0, 1);
+        });
+
+        it('should preserve shader time when switching to zero speed', () => {
+            mockPerformanceNow += 3000;
+            timeManager.setSpeed(0);
+
+            mockPerformanceNow += 5000;
+            const time = timeManager.getCurrentTime(mockPerformanceNow);
+            expect(time).toBeCloseTo(3.0, 1);
+        });
+
+        it('should resume from frozen shader time when switching from zero speed', () => {
+            mockPerformanceNow += 3000;
+            timeManager.setSpeed(0);
+            mockPerformanceNow += 5000;
+
+            timeManager.setSpeed(2.0);
+            mockPerformanceNow += 1000;
+
+            const time = timeManager.getCurrentTime(mockPerformanceNow);
+            expect(time).toBeCloseTo(5.0, 1);
         });
 
         it('should apply speed even when paused', () => {
@@ -180,6 +215,16 @@ describe('TimeManager', () => {
             expect(time).toBeCloseTo(3.0, 1);
         });
 
+        it('should keep looped time positive with negative speed', () => {
+            timeManager.setSpeed(-1.0);
+            timeManager.setLoopEnabled(true);
+            timeManager.setLoopDuration(5.0);
+
+            mockPerformanceNow += 2000;
+            const time = timeManager.getCurrentTime(mockPerformanceNow);
+            expect(time).toBeCloseTo(3.0, 1);
+        });
+
         it('should clamp negative loop duration to 0', () => {
             timeManager.setLoopDuration(-5.0);
             expect(timeManager.getLoopDuration()).toBe(0);
@@ -216,6 +261,15 @@ describe('TimeManager', () => {
             mockPerformanceNow += 1000;
             time = timeManager.getCurrentTime(mockPerformanceNow);
             expect(time).toBeCloseTo(6.0, 1);
+        });
+
+        it('should set time while speed is zero', () => {
+            timeManager.setSpeed(0);
+            timeManager.setTime(4.0);
+
+            mockPerformanceNow += 1000;
+            const time = timeManager.getCurrentTime(mockPerformanceNow);
+            expect(time).toBeCloseTo(4.0, 1);
         });
 
         it('should allow scrubbing while paused', () => {

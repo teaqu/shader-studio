@@ -10,6 +10,12 @@ import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 import { getVariablePreview, resetVariablePreview } from '../../../lib/state/variablePreviewState.svelte';
+import { setInspectorState } from '../../../lib/state/pixelInspectorState.svelte';
+
+const DEFAULT_INSPECTOR_STATE = {
+  isEnabled: false, isActive: false, isLocked: false,
+  mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null,
+};
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -102,6 +108,7 @@ function createMockVariableCaptureManager() {
 describe('DebugPanel', () => {
   beforeEach(() => {
     resetVariablePreview();
+    setInspectorState({ ...DEFAULT_INSPECTOR_STATE });
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setErrorsEnabled(false);
@@ -380,6 +387,7 @@ describe('DebugPanel', () => {
     await fireEvent.pointerDown(inspectorBtn);
     expect(onToggleInspectorEnabled).toHaveBeenCalledOnce();
   });
+
 
   it('shows normalize button when inline rendering is on', () => {
     const { container } = render(DebugPanel, {
@@ -799,7 +807,7 @@ describe('DebugPanel', () => {
       expect(errorsSection?.classList.contains('has-border')).toBe(false);
     });
 
-    it('has border on errors section when inline hint is above it', () => {
+    it('errors section appears at top of debug content', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({
           isInlineRenderingEnabled: true,
@@ -813,7 +821,9 @@ describe('DebugPanel', () => {
       });
 
       const errorsSection = container.querySelector('.errors-section');
-      expect(errorsSection?.classList.contains('has-border')).toBe(true);
+      expect(errorsSection).toBeInTheDocument();
+      const debugContent = container.querySelector('.debug-content');
+      expect(debugContent?.firstElementChild).toBe(errorsSection);
     });
 
     it('has border on variable inspector when errors section is above it', () => {
@@ -847,7 +857,7 @@ describe('DebugPanel', () => {
       expect(varBtn).toBeTruthy();
     });
 
-    it('places variable inspector button next to pixel inspector button', () => {
+    it('places variable inspector button after pixel inspector controls', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState(),
         getUniforms: mockGetUniforms,
@@ -856,7 +866,11 @@ describe('DebugPanel', () => {
       const headerButtons = Array.from(container.querySelectorAll('.debug-header button[aria-label]'));
       const labels = headerButtons.map((button) => button.getAttribute('aria-label'));
 
-      expect(labels.slice(0, 3)).toEqual(['Toggle inspector', 'Toggle variable inspector', 'Toggle errors']);
+      expect(labels.slice(0, 3)).toEqual([
+        'Toggle errors',
+        'Toggle inspector',
+        'Toggle variable inspector',
+      ]);
     });
 
     it('variable inspector button updates persisted store state', async () => {
@@ -1064,7 +1078,6 @@ describe('DebugPanel', () => {
           debugState: makeDebugState({ isVariableInspectorEnabled: true }),
           getUniforms: mockGetUniforms,
           sampleSize: 32,
-          hasPixelSelected: false,
         },
       });
 
@@ -1074,29 +1087,30 @@ describe('DebugPanel', () => {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         sampleSize: 128,
-        hasPixelSelected: false,
       });
 
       expect(getCtrlButton(container, '128')).toHaveClass('active');
       expect(getCtrlButton(container, '32')).not.toHaveClass('active');
     });
 
-    it('hides sample size buttons when hasPixelSelected is true', () => {
+    it('hides sample size buttons when pixel is selected', () => {
+      setInspectorState({
+        ...DEFAULT_INSPECTOR_STATE,
+        isEnabled: true, isActive: true, canvasPosition: { x: 10, y: 10 },
+      });
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
-        hasPixelSelected: true,
       });
 
       expect(getCtrlButton(container, '16')).toBeUndefined();
       expect(getCtrlButton(container, '32')).toBeUndefined();
     });
 
-    it('shows sample size buttons when hasPixelSelected is false', () => {
+    it('shows sample size buttons when no pixel is selected', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
-        hasPixelSelected: false,
       });
 
       expect(getCtrlButton(container, '32')).toBeInTheDocument();
@@ -1121,7 +1135,6 @@ describe('DebugPanel', () => {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         variableCaptureManager: mockVarCapture,
-        hasPixelSelected: false,
       });
 
       await fireEvent.click(getCtrlButton(container, '128')!);

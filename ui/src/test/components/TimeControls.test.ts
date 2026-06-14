@@ -217,6 +217,45 @@ describe('TimeControls Component', () => {
       expect(mockTimeManager.setLoopDuration).toHaveBeenCalledWith(30);
     });
 
+    it('should update loop duration from a custom seconds input when loop is enabled', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customDurationInput = screen.getByLabelText('Custom loop duration in seconds') as HTMLInputElement;
+      await fireEvent.input(customDurationInput, { target: { value: '2.2' } });
+
+      expect(mockTimeManager.setLoopDuration).toHaveBeenCalledWith(2.2);
+
+      const scrubSlider = document.body.querySelector('.time-scrub-slider') as HTMLInputElement;
+      expect(scrubSlider.max).toBe('2.2');
+    });
+
+    it('should keep custom loop duration independent from preset selections', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customDurationInput = screen.getByLabelText('Custom loop duration in seconds') as HTMLInputElement;
+      await fireEvent.input(customDurationInput, { target: { value: '2.2' } });
+      await fireEvent.click(screen.getByText('30s'));
+
+      expect(customDurationInput.value).toBe('2.2');
+      expect(mockTimeManager.setLoopDuration).toHaveBeenLastCalledWith(30);
+    });
+
+    it('should ignore non-positive custom loop duration input', async () => {
+      mockTimeManager.isLoopEnabled.mockReturnValue(true);
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+      mockTimeManager.setLoopDuration.mockClear();
+
+      const customDurationInput = screen.getByLabelText('Custom loop duration in seconds') as HTMLInputElement;
+      await fireEvent.input(customDurationInput, { target: { value: '0' } });
+
+      expect(mockTimeManager.setLoopDuration).not.toHaveBeenCalled();
+    });
+
     it('should disable all duration preset buttons when loop is off', async () => {
       mockTimeManager.isLoopEnabled.mockReturnValue(false);
       render(TimeControls, { props: defaultProps });
@@ -289,6 +328,62 @@ describe('TimeControls Component', () => {
 
       const preset05x = screen.getByText('0.5×');
       expect(preset05x).toHaveClass('active');
+    });
+
+    it('should set a fractional custom speed below the slider range', async () => {
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customSpeedInput = screen.getByLabelText('Custom speed multiplier') as HTMLInputElement;
+      await fireEvent.input(customSpeedInput, { target: { value: '0.01' } });
+
+      expect(mockTimeManager.setSpeed).toHaveBeenCalledWith(0.01);
+      expect(screen.getByText('Speed: 0.01×')).toBeInTheDocument();
+    });
+
+    it('should set a custom speed above the slider range', async () => {
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customSpeedInput = screen.getByLabelText('Custom speed multiplier') as HTMLInputElement;
+      await fireEvent.input(customSpeedInput, { target: { value: '12.5' } });
+
+      expect(mockTimeManager.setSpeed).toHaveBeenCalledWith(12.5);
+      expect(screen.getByText('Speed: 12.50×')).toBeInTheDocument();
+    });
+
+    it('should set a negative custom speed for reverse playback', async () => {
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customSpeedInput = screen.getByLabelText('Custom speed multiplier') as HTMLInputElement;
+      await fireEvent.input(customSpeedInput, { target: { value: '-1.5' } });
+
+      expect(mockTimeManager.setSpeed).toHaveBeenCalledWith(-1.5);
+      expect(screen.getByText('Speed: -1.50×')).toBeInTheDocument();
+    });
+
+    it('should set zero custom speed to freeze playback', async () => {
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customSpeedInput = screen.getByLabelText('Custom speed multiplier') as HTMLInputElement;
+      await fireEvent.input(customSpeedInput, { target: { value: '0' } });
+
+      expect(mockTimeManager.setSpeed).toHaveBeenCalledWith(0);
+      expect(screen.getByText('Speed: 0.00×')).toBeInTheDocument();
+    });
+
+    it('should keep custom speed independent from preset selections', async () => {
+      render(TimeControls, { props: defaultProps });
+      await fireEvent.click(screen.getByText('3.14s'));
+
+      const customSpeedInput = screen.getByLabelText('Custom speed multiplier') as HTMLInputElement;
+      await fireEvent.input(customSpeedInput, { target: { value: '12.5' } });
+      await fireEvent.click(screen.getByText('2×'));
+
+      expect(customSpeedInput.value).toBe('12.5');
+      expect(mockTimeManager.setSpeed).toHaveBeenLastCalledWith(2.0);
     });
   });
 

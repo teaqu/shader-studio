@@ -8,8 +8,6 @@
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
-  import PixelInspector from "./PixelInspector.svelte";
-  import InspectorCrosshair from "./InspectorCrosshair.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
@@ -17,7 +15,7 @@
   import { RecordingManager } from "../RecordingManager";
   import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
   import { PixelInspectorManager } from "../PixelInspectorManager";
-  import type { PixelInspectorState } from "../types/PixelInspectorState";
+  import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
@@ -132,16 +130,7 @@
   let canvasHeight = $state(0);
   let zoomLevel = $state(1.0);
   let sessionResolutionRefreshScheduled = false;
-  let inspectorState = $state<PixelInspectorState>({
-    isEnabled: false,
-    isActive: false,
-    isLocked: false,
-    mouseX: 0,
-    mouseY: 0,
-    pixelRGB: null,
-    fragCoord: null,
-    canvasPosition: null,
-  });
+  const inspectorState = $derived(getInspectorState());
 
   // Managers and controllers
   let pipeline: ShaderPipeline;
@@ -262,17 +251,12 @@
   const varInspectorEnabled = $derived(debugState.isVariableInspectorEnabled);
   const debugEnabled = $derived(debugState.isEnabled);
 
-  // Extract inspectorState fields as stable primitives.
-  const inspectorEnabled = $derived(inspectorState.isEnabled);
-  const inspectorActive = $derived(inspectorState.isActive);
-  const inspectorLocked = $derived(inspectorState.isLocked);
+  // Stable pixel coordinates for the capture reactive block
   const inspectorCanvasX = $derived(inspectorState.canvasPosition?.x ?? null);
   const inspectorCanvasY = $derived(inspectorState.canvasPosition?.y ?? null);
-
-  // Derive whether we're currently in pixel capture mode
-  const hasPixelCapture = $derived((inspectorActive || inspectorLocked) && (inspectorCanvasX !== null));
-
-  // Stable pixel coordinates for the capture reactive block
+  const hasPixelCapture = $derived(
+    (inspectorState.isActive || inspectorState.isLocked) && inspectorCanvasX !== null
+  );
   const capturePixelX = $derived(hasPixelCapture ? inspectorCanvasX : null);
   const capturePixelY = $derived(hasPixelCapture ? inspectorCanvasY : null);
 
@@ -935,11 +919,10 @@
         },
       );
 
-      pixelInspectorManager = new PixelInspectorManager((s) => {
-        inspectorState = s; 
-      });
+      pixelInspectorManager = new PixelInspectorManager(setInspectorState);
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
       pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
+      registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
@@ -1163,7 +1146,7 @@
   <div class="dockview-panel-source" bind:this={previewEl}>
     <ShaderCanvas
       {zoomLevel}
-      isInspectorActive={inspectorActive}
+      isInspectorActive={inspectorState.isActive}
       onCanvasReady={handleCanvasReady}
       onCanvasResize={handleCanvasResize}
       onCanvasClick={handleCanvasClick}
@@ -1201,12 +1184,11 @@
         {getUniforms}
         {shaderDebugManager}
         {variableCaptureManager}
-        isInspectorEnabled={inspectorEnabled}
-        isInspectorActive={inspectorActive}
-        isInspectorLocked={inspectorLocked}
+        canvasElement={glCanvas}
+        {canvasWidth}
+        {canvasHeight}
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
-        hasPixelSelected={hasPixelCapture}
         onCaptureSettingsChanged={notifyVariableCaptureManager}
         {customUniformValues}
         {errors}
@@ -1275,22 +1257,6 @@
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />
   {/if}
-  <PixelInspector
-    isActive={inspectorState.isActive}
-    isLocked={inspectorState.isLocked}
-    mouseX={inspectorState.mouseX}
-    mouseY={inspectorState.mouseY}
-    rgb={inspectorState.pixelRGB}
-    fragCoord={inspectorState.fragCoord}
-    {canvasWidth}
-    {canvasHeight}
-  />
-  <InspectorCrosshair
-    isVisible={inspectorState.isLocked && inspectorState.canvasPosition !== null}
-    canvasX={inspectorState.canvasPosition?.x ?? 0}
-    canvasY={inspectorState.canvasPosition?.y ?? 0}
-    canvasElement={glCanvas}
-  />
 
 </div>
 

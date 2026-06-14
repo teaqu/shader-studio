@@ -10,17 +10,17 @@
   import type { VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
   import { debugPanelStore } from "../../stores/debugPanelStore";
-
-
+  import { getInspectorState } from "../../state/pixelInspectorState.svelte";
   import VariablesSection from "./VariablesSection.svelte";
+  import PixelInspectorSection from "./PixelInspectorSection.svelte";
 
   type DebugPanelProps = {
     debugState?: ShaderDebugState;
     getUniforms?: () => PassUniforms | null;
     uniforms?: PassUniforms | null;
-    isInspectorEnabled?: boolean;
-    isInspectorActive?: boolean;
-    isInspectorLocked?: boolean;
+    canvasElement?: HTMLCanvasElement | null;
+    canvasWidth?: number;
+    canvasHeight?: number;
     shaderDebugManager?: ShaderDebugManager;
     variableCaptureManager?: VariableCaptureManager;
     onToggleInspectorEnabled?: () => void;
@@ -30,7 +30,6 @@
     sampleSize?: number;
     refreshMode?: RefreshMode;
     pollingMs?: number;
-    hasPixelSelected?: boolean;
     customUniformValues?: Record<string, number | number[] | boolean>;
     isVariableCaptureLoading?: boolean;
     variableCaptureError?: string | null;
@@ -42,9 +41,9 @@
     debugState = undefined,
     getUniforms = () => null,
     uniforms = null,
-    isInspectorEnabled = false,
-    isInspectorActive = false,
-    isInspectorLocked = false,
+    canvasElement = null,
+    canvasWidth = 0,
+    canvasHeight = 0,
     shaderDebugManager = undefined,
     variableCaptureManager = undefined,
     onToggleInspectorEnabled = () => {},
@@ -54,13 +53,20 @@
     sampleSize: sampleSizeOverride = undefined,
     refreshMode: refreshModeOverride = undefined,
     pollingMs: pollingMsOverride = undefined,
-    hasPixelSelected = false,
     customUniformValues = {},
     isVariableCaptureLoading: variableCaptureLoadingOverride = undefined,
     variableCaptureError: variableCaptureErrorOverride = undefined,
     onCaptureSettingsChanged = () => {},
     errors = [],
   }: DebugPanelProps = $props();
+
+  const inspectorState = $derived(getInspectorState());
+  const isInspectorEnabled = $derived(inspectorState.isEnabled);
+  const isInspectorActive = $derived(inspectorState.isActive);
+  const isInspectorLocked = $derived(inspectorState.isLocked);
+  const hasPixelSelected = $derived(
+    (isInspectorActive || isInspectorLocked) && inspectorState.canvasPosition !== null
+  );
 
   let liveUniforms = $state<PassUniforms | null>(null);
   let uniformsHandle = $state<number | null>(null);
@@ -467,12 +473,25 @@
   <div class="debug-header">
     <button
       class="header-btn has-tooltip"
+      class:active={isErrorsOn}
+      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleErrors)}
+      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleErrors)}
+      onclick={(event) => {
+        event.preventDefault(); event.stopPropagation();
+      }}
+      aria-label="Toggle errors"
+      data-tooltip="Errors"
+    >
+      <i class="codicon codicon-error"></i>
+    </button>
+    <button
+      class="header-btn has-tooltip"
       class:active={isInspectorEnabled}
       class:disabled={!debugState?.isEnabled}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInspectorEnabled)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInspectorEnabled)}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       disabled={!debugState?.isEnabled}
       aria-label="Toggle inspector"
@@ -486,33 +505,21 @@
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleVariableInspector)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleVariableInspector)}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       aria-label="Toggle variable inspector"
       data-tooltip="Variable Inspector"
     >
       <i class="codicon codicon-symbol-variable"></i>
     </button>
-    <button
-      class="header-btn has-tooltip"
-      class:active={isErrorsOn}
-      onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleErrors)}
-      onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleErrors)}
-      onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
-      }}
-      aria-label="Toggle errors"
-      data-tooltip="Errors"
-    >
-      <i class="codicon codicon-error"></i>
-    </button>
+    <span class="header-divider"></span>
     <button
       class="header-btn has-tooltip"
       class:active={isInlineOn}
       onpointerdown={(event) => handleHeaderControlPointerDown(event, handleToggleInlineRendering)}
       onkeydown={(event) => handleHeaderControlKeydown(event, handleToggleInlineRendering)}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       aria-label="Toggle inline rendering"
       data-tooltip="Inline Rendering"
@@ -610,11 +617,24 @@
   </div>
 
   <div class="debug-content">
-    {#if isInlineOn && !hasVariable}
-      <div class="section hint-section">
-        <span class="hint-text">Place cursor on a GLSL line to inspect</span>
+    {#if isErrorsOn}
+      <div class="section errors-section">
+        <div class="section-label">Errors</div>
+        {#if errors.length > 0}
+          {#each errors as error}
+            <div class="error-row">
+              <span class="error-text">{error}</span>
+            </div>
+          {/each}
+        {:else}
+          <span class="hint-text">No errors</span>
+        {/if}
       </div>
     {/if}
+    {#if isInspectorEnabled}
+      <PixelInspectorSection {canvasElement} {canvasWidth} {canvasHeight} />
+    {/if}
+
     {#if isInlineOn || isVarInspectorOn}
       {#if showParams && ctx && ctx.parameters.length > 0}
         <div class="section">
@@ -668,20 +688,6 @@
 
     {/if}
 
-    {#if isErrorsOn}
-      <div class="section errors-section" class:has-border={hasContentAboveErrors}>
-        <div class="section-label">Errors</div>
-        {#if errors.length > 0}
-          {#each errors as error}
-            <div class="error-row">
-              <span class="error-text">{error}</span>
-            </div>
-          {/each}
-        {:else}
-          <span class="hint-text">No errors</span>
-        {/if}
-      </div>
-    {/if}
 
     {#if isVarInspectorOn}
       <VariablesSection
@@ -741,6 +747,14 @@
     gap: 4px;
     padding: 4px 8px;
     border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+  }
+
+  .header-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--vscode-panel-border);
+    margin: 0 2px;
     flex-shrink: 0;
   }
 
@@ -1042,10 +1056,8 @@
 
   .errors-section {
     padding-top: 6px;
-  }
-
-  .errors-section.has-border {
-    border-top: 1px solid var(--vscode-panel-border);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
   }
 
   .error-row {
