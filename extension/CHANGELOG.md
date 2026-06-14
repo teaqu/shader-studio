@@ -1,4 +1,7 @@
 # Change Log
+### 1.0.1
+- Fixed extension activation in published installs when the script bundler dependency is not present in the VSIX.
+
 ### 1.0.0
 - First stable release of Shader Studio.
 - Live Shadertoy-style GLSL previews in VS Code panels, external windows, and browsers.

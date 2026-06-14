@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "Live GLSL shader preview, editor, and visual debugger for Shadertoy-style shaders.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "teaqu",
   "repository": {
     "type": "git",

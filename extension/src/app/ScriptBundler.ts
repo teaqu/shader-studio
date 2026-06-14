@@ -1,5 +1,5 @@
 import * as path from "path";
-import * as esbuild from "esbuild";
+import type { BuildOptions } from "esbuild";
 import { Logger } from "./services/Logger";
 
 export interface BundleResult {
@@ -13,7 +13,8 @@ export class ScriptBundler {
 
   public async bundle(scriptPath: string, content?: string): Promise<BundleResult> {
     try {
-      const buildOptions: esbuild.BuildOptions = {
+      const esbuild = await import("esbuild");
+      const buildOptions: BuildOptions = {
         bundle: true,
         format: "iife",
         globalName: "__shaderUniforms",
