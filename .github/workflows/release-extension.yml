@@ -1,0 +1,167 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_open_vsx:
+        description: 'Publish the packaged extension to Open VSX'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Verify and Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      vsix_path: ${{ steps.meta.outputs.vsix_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Read release metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./extension/package.json').version")"
+          VSIX_PATH="shader-studio-${VERSION}.vsix"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" != "v${VERSION}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match extension version v${VERSION}." >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "vsix_path=${VSIX_PATH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run workspace Vitest suite
+        run: npm test
+
+      - name: Run rendering browser E2E tests
+        run: npm run test:e2e -w rendering
+
+      - name: Run UI type check
+        run: npm run check -w ui
+
+      - name: Run extension tests
+        run: xvfb-run -a npm test -w extension
+
+      - name: Package VSIX
+        working-directory: extension
+        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shader-studio-${{ steps.meta.outputs.version }}-vsix
+          path: ${{ steps.meta.outputs.vsix_path }}
+          if-no-files-found: error
+
+  publish-vscode:
+    name: Publish VS Code Marketplace and GitHub Release
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    environment:
+      name: extension-marketplaces
+    timeout-minutes: 20
+
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+
+      - name: Check publishing secret
+        shell: bash
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          test -n "${VSCE_PAT}" || (echo "Missing VSCE_PAT secret." >&2 && exit 1)
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --packagePath "${{ needs.package.outputs.vsix_path }}" --skip-duplicate
+
+      - name: Create checksum
+        run: sha256sum "${{ needs.package.outputs.vsix_path }}" > "${{ needs.package.outputs.vsix_path }}.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+          VSIX_PATH: ${{ needs.package.outputs.vsix_path }}
+        run: |
+          cat > release-notes.md <<EOF
+          Shader Studio ${VERSION}
+
+          Published to:
+          - VS Code Marketplace
+
+          Manual install:
+          - Download the attached ${VSIX_PATH}
+          - Run: code --install-extension ${VSIX_PATH}
+          EOF
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${VSIX_PATH}" "${VSIX_PATH}.sha256" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${VSIX_PATH}" "${VSIX_PATH}.sha256" \
+              --title "Shader Studio ${VERSION}" \
+              --notes-file release-notes.md \
+              --verify-tag
+          fi
+
+  publish-open-vsx:
+    name: Publish Open VSX
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_open_vsx
+    environment:
+      name: extension-marketplaces
+    timeout-minutes: 20
+
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+
+      - name: Check Open VSX publishing secret
+        shell: bash
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: test -n "${OVSX_PAT}" || (echo "Missing OVSX_PAT secret." >&2 && exit 1)
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish "${{ needs.package.outputs.vsix_path }}" --skip-duplicate

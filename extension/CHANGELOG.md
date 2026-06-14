@@ -1,4 +1,13 @@
 # Change Log
+### 1.0.0
+- First stable release of Shader Studio.
+- Live Shadertoy-style GLSL previews in VS Code panels, external windows, and browsers.
+- Visual configuration editor for multi-pass shaders with textures, video, audio, cubemaps, buffers, keyboard input, and common/script passes.
+- Visual debugging tools including pixel inspection, inline rendering, variable capture, normalization, loop controls, and parameter controls.
+- Monaco editor overlay with compile modes, shader locking, panel layout persistence, and profile management.
+- Shader Explorer, snippet library, time controls, recording, resolution controls, camera uniforms, and performance tooling.
+- Improved documentation, marketplace assets, and release packaging for VS Code Marketplace, Open VSX, and GitHub Releases.
+
 ### 0.2
 - Pixel Inspector
 

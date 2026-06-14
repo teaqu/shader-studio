@@ -1,8 +1,8 @@
 {
   "name": "shader-studio",
   "displayName": "Shader Studio",
-  "description": "GLSL shader viewer for shadertoy and shader toy shaders",
-  "version": "0.3.0",
+  "description": "Live GLSL shader preview, editor, and visual debugger for Shadertoy-style shaders.",
+  "version": "1.0.0",
   "publisher": "teaqu",
   "repository": {
     "type": "git",

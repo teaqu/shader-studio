@@ -5,12 +5,22 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { SnippetLibraryProvider } from '../../app/SnippetLibraryProvider';
+import { Logger } from '../../app/services/Logger';
 
 suite('SnippetLibraryProvider Test Suite', () => {
   let sandbox: sinon.SinonSandbox;
   let mockContext: any;
   setup(() => {
     sandbox = sinon.createSandbox();
+
+    const mockOutputChannel = {
+      info: sandbox.stub(),
+      debug: sandbox.stub(),
+      warn: sandbox.stub(),
+      error: sandbox.stub(),
+      dispose: sandbox.stub(),
+    } as any;
+    Logger.initialize(mockOutputChannel);
 
     mockContext = {
       extensionPath: '/fake/extension/path',
@@ -24,6 +34,7 @@ suite('SnippetLibraryProvider Test Suite', () => {
 
   teardown(() => {
     sandbox.restore();
+    (Logger as any).instance = undefined;
   });
 
   suite('Panel View Column', () => {

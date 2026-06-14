@@ -10,7 +10,7 @@ A VS Code extension for live previewing, editing, and debugging Shadertoy-style 
 ## Quick Start
 
 1. Open any Shadertoy-style `.glsl` file in VS Code (or run **Shader Studio: New Shader** from the Command Palette for a template).
-2. Click the <img src="https://teaqu.github.io/shader-studio/assets/shader-studio-icon.svg" width="14" height="14" style="vertical-align:middle;"> **Shader Studio** icon on the VS Code status bar to choose how to view your shader — as a panel, a separate window, or in the browser.
+2. Click the <img src="https://teaqu.github.io/shader-studio/assets/shader-studio-icon.png" width="14" height="14" style="vertical-align:middle;"> **Shader Studio** icon on the VS Code status bar to choose how to view your shader — as a panel, a separate window, or in the browser.
 
 You can launch as many panels, windows, or browser tabs as you want simultaneously.
 
