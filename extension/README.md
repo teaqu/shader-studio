@@ -1,6 +1,6 @@
 # Shader Studio
 
-A VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time preview inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects. See [shadertoy.com](https://www.shadertoy.com) for more on the format and some inspiration.
+A VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time preview inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects.
 
 📖 **Full documentation: [teaqu.github.io/shader-studio](https://teaqu.github.io/shader-studio/)**
 
