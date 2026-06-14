@@ -370,7 +370,6 @@ describe('ShaderViewer', () => {
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setPixelInspectorEnabled(true);
-    debugPanelStore.setLoupeEnabled(false);
     setEditorOverlayVisible(false);
     localStorage.removeItem('shader-studio-sync-with-config');
   });
@@ -454,15 +453,10 @@ describe('ShaderViewer', () => {
     expect(container).toBeTruthy();
   });
 
-  it('wires the pixel inspector loupe behind the debug panel store flag', () => {
-    expect(shaderViewerSource).toContain('import PixelInspectorLoupe from "./PixelInspectorLoupe.svelte";');
-    expect(shaderViewerSource).toContain('{#if $debugPanelStore.isLoupeEnabled}');
-    expect(shaderViewerSource).toContain('<PixelInspectorLoupe');
-    expect(shaderViewerSource).toContain('isActive={inspectorState.isActive}');
-    expect(shaderViewerSource).toContain('mouseX={inspectorState.mouseX}');
-    expect(shaderViewerSource).toContain('mouseY={inspectorState.mouseY}');
+  it('pixel inspector zoom is rendered inside DebugPanel via PixelInspectorSection', () => {
+    expect(shaderViewerSource).toContain('getInspectorState');
+    expect(shaderViewerSource).toContain('setInspectorState');
     expect(shaderViewerSource).toContain('canvasElement={glCanvas}');
-    expect(shaderViewerSource).toContain('canvasPosition={inspectorState.canvasPosition}');
   });
 
   it('should update the active debugger size button after sample size changes', async () => {

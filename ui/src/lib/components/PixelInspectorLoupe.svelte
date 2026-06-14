@@ -3,6 +3,7 @@
 <script lang="ts">
   interface Props {
     isActive?: boolean;
+    isLocked?: boolean;
     mouseX?: number;
     mouseY?: number;
     canvasElement?: HTMLCanvasElement | null;
@@ -12,10 +13,10 @@
   const LOUPE_SIZE = 120;
   const ZOOM = 8;
   const SRC_PIXELS = Math.ceil(LOUPE_SIZE / ZOOM);
-  const OFFSET_X = 20;
 
   let {
     isActive = false,
+    isLocked = false,
     mouseX = 0,
     mouseY = 0,
     canvasElement = null,
@@ -24,13 +25,15 @@
 
   let loupeCanvas = $state<HTMLCanvasElement | null>(null);
 
-  let positionX = $derived(
-    typeof window !== 'undefined' && mouseX + OFFSET_X + LOUPE_SIZE > window.innerWidth
-      ? mouseX - LOUPE_SIZE - OFFSET_X
-      : mouseX + OFFSET_X
-  );
+  let positionX = $derived(mouseX - LOUPE_SIZE / 2);
+  let positionY = $derived(mouseY - LOUPE_SIZE / 2);
 
-  let positionY = $derived(mouseY - LOUPE_SIZE - 12 < 0 ? mouseY + 20 : mouseY - LOUPE_SIZE - 12);
+  $effect(() => {
+    if (!canvasElement) return;
+    const hide = isActive && !isLocked && canvasPosition !== null;
+    canvasElement.style.cursor = hide ? 'none' : '';
+    return () => { canvasElement!.style.cursor = ''; };
+  });
 
   $effect(() => {
     if (!loupeCanvas || !canvasElement || !isActive || !canvasPosition) {
@@ -53,26 +56,32 @@
 
     const center = LOUPE_SIZE / 2;
     const pixelSize = ZOOM;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(center - pixelSize / 2, center - pixelSize / 2, pixelSize, pixelSize);
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(center - 10, center);
-    ctx.lineTo(center - pixelSize / 2 - 1, center);
-    ctx.moveTo(center + pixelSize / 2 + 1, center);
-    ctx.lineTo(center + 10, center);
-    ctx.moveTo(center, center - 10);
-    ctx.lineTo(center, center - pixelSize / 2 - 1);
-    ctx.moveTo(center, center + pixelSize / 2 + 1);
-    ctx.lineTo(center, center + 10);
-    ctx.stroke();
+    function drawIndicator(strokeStyle: string, lineWidth: number) {
+      ctx!.strokeStyle = strokeStyle;
+      ctx!.lineWidth = lineWidth;
+      // Center pixel highlight box
+      ctx!.strokeRect(center - pixelSize / 2, center - pixelSize / 2, pixelSize, pixelSize);
+      // Crosshair arms with gap around the box
+      ctx!.beginPath();
+      ctx!.moveTo(center - 10, center);
+      ctx!.lineTo(center - pixelSize / 2 - 1, center);
+      ctx!.moveTo(center + pixelSize / 2 + 1, center);
+      ctx!.lineTo(center + 10, center);
+      ctx!.moveTo(center, center - 10);
+      ctx!.lineTo(center, center - pixelSize / 2 - 1);
+      ctx!.moveTo(center, center + pixelSize / 2 + 1);
+      ctx!.lineTo(center, center + 10);
+      ctx!.stroke();
+    }
+
+    // Black outline first, then white on top — always visible on any background
+    drawIndicator('rgba(0, 0, 0, 0.75)', 3);
+    drawIndicator('rgba(255, 255, 255, 0.95)', 1);
   });
 </script>
 
-{#if isActive && canvasPosition !== null}
+{#if isActive && !isLocked && canvasPosition !== null}
   <div class="loupe" style="left: {positionX}px; top: {positionY}px;">
     <canvas bind:this={loupeCanvas} width={LOUPE_SIZE} height={LOUPE_SIZE}></canvas>
   </div>

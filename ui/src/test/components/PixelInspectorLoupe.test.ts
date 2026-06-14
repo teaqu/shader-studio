@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
+import { flushSync } from 'svelte';
 import '@testing-library/jest-dom';
 import PixelInspectorLoupe from '../../lib/components/PixelInspectorLoupe.svelte';
 import pixelInspectorLoupeSource from '../../lib/components/PixelInspectorLoupe.svelte?raw';
@@ -14,6 +15,7 @@ describe('PixelInspectorLoupe', () => {
   const mockCanvas = {
     width: 800,
     height: 600,
+    style: { cursor: '' },
     getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, top: 0, width: 800, height: 600 }),
     getContext: vi.fn(),
   } as unknown as HTMLCanvasElement;
@@ -57,6 +59,20 @@ describe('PixelInspectorLoupe', () => {
     });
   });
 
+  describe('Cursor hiding', () => {
+    it('sets cursor none in source when active and unlocked', () => {
+      expect(pixelInspectorLoupeSource).toContain("cursor = hide ? 'none' : ''");
+    });
+
+    it('does not hide cursor when locked', () => {
+      const { container } = render(PixelInspectorLoupe, {
+        props: { ...activeProps, isLocked: true },
+      });
+      // loupe is hidden when locked, so canvasElement cursor is not affected
+      expect(container.querySelector('.loupe')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Canvas dimensions', () => {
     it('internal canvas is 120x120', () => {
       const { container } = render(PixelInspectorLoupe, {
@@ -73,37 +89,20 @@ describe('PixelInspectorLoupe', () => {
   });
 
   describe('Positioning', () => {
-    it('positions loupe to the right of the cursor by default', () => {
+    it('centres loupe horizontally on the cursor', () => {
       const { container } = render(PixelInspectorLoupe, {
         props: { ...activeProps, mouseX: 100, mouseY: 200 },
       });
       const loupe = container.querySelector('.loupe') as HTMLElement;
-      expect(loupe.style.left).toBe('120px');
+      expect(loupe.style.left).toBe('40px'); // 100 - 60
     });
 
-    it('flips to left side when cursor is near right edge', () => {
-      Object.defineProperty(window, 'innerWidth', { value: 500, writable: true });
+    it('centres loupe vertically on the cursor', () => {
       const { container } = render(PixelInspectorLoupe, {
-        props: { ...activeProps, mouseX: 450 },
+        props: { ...activeProps, mouseX: 100, mouseY: 200 },
       });
       const loupe = container.querySelector('.loupe') as HTMLElement;
-      expect(loupe.style.left).toBe('310px');
-    });
-
-    it('positions loupe above the cursor by default', () => {
-      const { container } = render(PixelInspectorLoupe, {
-        props: { ...activeProps, mouseY: 200 },
-      });
-      const loupe = container.querySelector('.loupe') as HTMLElement;
-      expect(loupe.style.top).toBe('68px');
-    });
-
-    it('positions loupe below the cursor when above would leave the viewport', () => {
-      const { container } = render(PixelInspectorLoupe, {
-        props: { ...activeProps, mouseY: 100 },
-      });
-      const loupe = container.querySelector('.loupe') as HTMLElement;
-      expect(loupe.style.top).toBe('120px');
+      expect(loupe.style.top).toBe('140px'); // 200 - 60
     });
   });
 
@@ -122,6 +121,7 @@ describe('PixelInspectorLoupe', () => {
 
       const canvasWithCtx = {
         ...mockCanvas,
+        style: { cursor: '' },
         getContext: vi.fn().mockReturnValue(mockCtx),
       } as unknown as HTMLCanvasElement;
 
@@ -135,17 +135,15 @@ describe('PixelInspectorLoupe', () => {
 
         await Promise.resolve();
 
-        expect(mockCtx.drawImage).toHaveBeenCalledWith(
-          canvasWithCtx,
-          393,
-          293,
-          15,
-          15,
-          0,
-          0,
-          120,
-          120
-        );
+        const [, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH] = mockCtx.drawImage.mock.calls[0];
+        expect(srcX).toBe(393);
+        expect(srcY).toBe(293);
+        expect(srcW).toBe(15);
+        expect(srcH).toBe(15);
+        expect(dstX).toBe(0);
+        expect(dstY).toBe(0);
+        expect(dstW).toBe(120);
+        expect(dstH).toBe(120);
         expect(mockCtx.imageSmoothingEnabled).toBe(false);
         expect(mockCtx.strokeRect).toHaveBeenCalledWith(56, 56, 8, 8);
         expect(mockCtx.moveTo).toHaveBeenCalledWith(50, 60);

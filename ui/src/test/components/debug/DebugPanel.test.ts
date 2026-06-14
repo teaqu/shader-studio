@@ -10,6 +10,12 @@ import type { ShaderDebugManager } from '../../../lib/ShaderDebugManager';
 import type { VariableCaptureManager } from '../../../lib/VariableCaptureManager';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 import { getVariablePreview, resetVariablePreview } from '../../../lib/state/variablePreviewState.svelte';
+import { setInspectorState } from '../../../lib/state/pixelInspectorState.svelte';
+
+const DEFAULT_INSPECTOR_STATE = {
+  isEnabled: false, isActive: false, isLocked: false,
+  mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null,
+};
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
   return {
@@ -102,9 +108,9 @@ function createMockVariableCaptureManager() {
 describe('DebugPanel', () => {
   beforeEach(() => {
     resetVariablePreview();
+    setInspectorState({ ...DEFAULT_INSPECTOR_STATE });
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setVariableInspectorEnabled(false);
-    debugPanelStore.setLoupeEnabled(false);
     debugPanelStore.setErrorsEnabled(false);
   });
 
@@ -382,101 +388,6 @@ describe('DebugPanel', () => {
     expect(onToggleInspectorEnabled).toHaveBeenCalledOnce();
   });
 
-  it('renders a loupe toggle button', () => {
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: true }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: true,
-    });
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]');
-    expect(btn).toBeInTheDocument();
-  });
-
-  it('loupe toggle button updates persisted store state', async () => {
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: true }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: true,
-    });
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]') as HTMLElement;
-    await fireEvent.pointerDown(btn);
-    await Promise.resolve();
-
-    let currentState = false;
-    const unsubscribe = debugPanelStore.subscribe((state) => {
-      currentState = state.isLoupeEnabled;
-    });
-    unsubscribe();
-    expect(currentState).toBe(true);
-  });
-
-  it('loupe toggle button supports keyboard activation', async () => {
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: true }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: true,
-    });
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]') as HTMLElement;
-    await fireEvent.keyDown(btn, { key: 'Enter' });
-    await Promise.resolve();
-
-    let currentState = false;
-    const unsubscribe = debugPanelStore.subscribe((state) => {
-      currentState = state.isLoupeEnabled;
-    });
-    unsubscribe();
-    expect(currentState).toBe(true);
-  });
-
-  it('loupe toggle button shows active state when enabled', async () => {
-    debugPanelStore.setLoupeEnabled(true);
-
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: true }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: true,
-    });
-
-    await Promise.resolve();
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]') as HTMLElement;
-    expect(btn.classList.contains('active')).toBe(true);
-  });
-
-  it('loupe toggle button is disabled when inspector is disabled', () => {
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: true }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: false,
-    });
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]') as HTMLButtonElement;
-    expect(btn).toBeDisabled();
-    expect(btn.classList.contains('disabled')).toBe(true);
-    expect(btn.getAttribute('data-tooltip')).toBe('Loupe Zoom (enable inspector first)');
-  });
-
-  it('loupe toggle button does not update store state when debug mode is disabled', async () => {
-    const { container } = render(DebugPanel, {
-      debugState: makeDebugState({ isEnabled: false }),
-      getUniforms: mockGetUniforms,
-      isInspectorEnabled: true,
-    });
-
-    const btn = container.querySelector('[aria-label="Toggle loupe zoom"]') as HTMLElement;
-    await fireEvent.pointerDown(btn);
-    await Promise.resolve();
-
-    let currentState = true;
-    const unsubscribe = debugPanelStore.subscribe((state) => {
-      currentState = state.isLoupeEnabled;
-    });
-    unsubscribe();
-    expect(currentState).toBe(false);
-  });
 
   it('shows normalize button when inline rendering is on', () => {
     const { container } = render(DebugPanel, {
@@ -896,7 +807,7 @@ describe('DebugPanel', () => {
       expect(errorsSection?.classList.contains('has-border')).toBe(false);
     });
 
-    it('has border on errors section when inline hint is above it', () => {
+    it('errors section appears at top of debug content', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({
           isInlineRenderingEnabled: true,
@@ -910,7 +821,9 @@ describe('DebugPanel', () => {
       });
 
       const errorsSection = container.querySelector('.errors-section');
-      expect(errorsSection?.classList.contains('has-border')).toBe(true);
+      expect(errorsSection).toBeInTheDocument();
+      const debugContent = container.querySelector('.debug-content');
+      expect(debugContent?.firstElementChild).toBe(errorsSection);
     });
 
     it('has border on variable inspector when errors section is above it', () => {
@@ -953,11 +866,10 @@ describe('DebugPanel', () => {
       const headerButtons = Array.from(container.querySelectorAll('.debug-header button[aria-label]'));
       const labels = headerButtons.map((button) => button.getAttribute('aria-label'));
 
-      expect(labels.slice(0, 4)).toEqual([
-        'Toggle inspector',
-        'Toggle loupe zoom',
-        'Toggle variable inspector',
+      expect(labels.slice(0, 3)).toEqual([
         'Toggle errors',
+        'Toggle inspector',
+        'Toggle variable inspector',
       ]);
     });
 
@@ -1166,7 +1078,6 @@ describe('DebugPanel', () => {
           debugState: makeDebugState({ isVariableInspectorEnabled: true }),
           getUniforms: mockGetUniforms,
           sampleSize: 32,
-          hasPixelSelected: false,
         },
       });
 
@@ -1176,29 +1087,30 @@ describe('DebugPanel', () => {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         sampleSize: 128,
-        hasPixelSelected: false,
       });
 
       expect(getCtrlButton(container, '128')).toHaveClass('active');
       expect(getCtrlButton(container, '32')).not.toHaveClass('active');
     });
 
-    it('hides sample size buttons when hasPixelSelected is true', () => {
+    it('hides sample size buttons when pixel is selected', () => {
+      setInspectorState({
+        ...DEFAULT_INSPECTOR_STATE,
+        isEnabled: true, isActive: true, canvasPosition: { x: 10, y: 10 },
+      });
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
-        hasPixelSelected: true,
       });
 
       expect(getCtrlButton(container, '16')).toBeUndefined();
       expect(getCtrlButton(container, '32')).toBeUndefined();
     });
 
-    it('shows sample size buttons when hasPixelSelected is false', () => {
+    it('shows sample size buttons when no pixel is selected', () => {
       const { container } = render(DebugPanel, {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
-        hasPixelSelected: false,
       });
 
       expect(getCtrlButton(container, '32')).toBeInTheDocument();
@@ -1223,7 +1135,6 @@ describe('DebugPanel', () => {
         debugState: makeDebugState({ isVariableInspectorEnabled: true }),
         getUniforms: mockGetUniforms,
         variableCaptureManager: mockVarCapture,
-        hasPixelSelected: false,
       });
 
       await fireEvent.click(getCtrlButton(container, '128')!);
