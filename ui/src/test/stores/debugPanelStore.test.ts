@@ -18,6 +18,7 @@ describe('debugPanelStore', () => {
     expect(state.isVariableInspectorEnabled).toBe(false);
     expect(state.isInlineRenderingEnabled).toBe(true);
     expect(state.isPixelInspectorEnabled).toBe(true);
+    expect(state.isPixelMarkerEnabled).toBe(true);
     expect(state.isErrorsEnabled).toBe(false);
     expect(state.normalizeMode).toBe('off');
     expect(state.isStepEnabled).toBe(false);
@@ -61,6 +62,14 @@ describe('debugPanelStore', () => {
     const { debugPanelStore } = await importStore();
     debugPanelStore.setPixelInspectorEnabled(false);
     expect(get(debugPanelStore).isPixelInspectorEnabled).toBe(false);
+  });
+
+  it('setPixelMarkerEnabled updates the field', async () => {
+    const { debugPanelStore } = await importStore();
+    debugPanelStore.setPixelMarkerEnabled(false);
+    expect(get(debugPanelStore).isPixelMarkerEnabled).toBe(false);
+    debugPanelStore.setPixelMarkerEnabled(true);
+    expect(get(debugPanelStore).isPixelMarkerEnabled).toBe(true);
   });
 
   it('setErrorsEnabled updates the field', async () => {
@@ -112,6 +121,7 @@ describe('debugPanelStore', () => {
     expect(snap.isVariableInspectorEnabled).toBe(true);
     expect(snap.isInlineRenderingEnabled).toBe(true);
     expect(snap.isPixelInspectorEnabled).toBe(true);
+    expect(snap.isPixelMarkerEnabled).toBe(true);
     expect(snap.isErrorsEnabled).toBe(true);
     expect(snap.normalizeMode).toBe('soft');
     expect(snap.isStepEnabled).toBe(true);
@@ -125,6 +135,7 @@ describe('debugPanelStore', () => {
       isVariableInspectorEnabled: true,
       isInlineRenderingEnabled: false,
       isPixelInspectorEnabled: false,
+      isPixelMarkerEnabled: false,
       isErrorsEnabled: true,
       normalizeMode: 'abs',
       isStepEnabled: true,
@@ -136,6 +147,7 @@ describe('debugPanelStore', () => {
     expect(state.isVariableInspectorEnabled).toBe(true);
     expect(state.isInlineRenderingEnabled).toBe(false);
     expect(state.isPixelInspectorEnabled).toBe(false);
+    expect(state.isPixelMarkerEnabled).toBe(false);
     expect(state.isErrorsEnabled).toBe(true);
     expect(state.normalizeMode).toBe('abs');
     expect(state.isStepEnabled).toBe(true);
@@ -157,6 +169,7 @@ describe('debugPanelStore', () => {
     expect(state.normalizeMode).toBe('off');
     expect(state.isStepEnabled).toBe(false);
     expect(state.stepEdge).toBe(0.5);
+    expect(state.isPixelMarkerEnabled).toBe(true);
   });
 
   it('applyDebugPanelProfile can set isVisible false', async () => {

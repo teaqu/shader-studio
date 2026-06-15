@@ -6,6 +6,7 @@ export interface DebugPanelState {
   isVariableInspectorEnabled: boolean;
   isInlineRenderingEnabled: boolean;
   isPixelInspectorEnabled: boolean;
+  isPixelMarkerEnabled: boolean;
   isErrorsEnabled: boolean;
   normalizeMode: NormalizeMode;
   isStepEnabled: boolean;
@@ -17,6 +18,7 @@ const DEFAULT_STATE: DebugPanelState = {
   isVariableInspectorEnabled: false,
   isInlineRenderingEnabled: true,
   isPixelInspectorEnabled: true,
+  isPixelMarkerEnabled: true,
   isErrorsEnabled: false,
   normalizeMode: 'off',
   isStepEnabled: false,
@@ -35,6 +37,8 @@ export const debugPanelStore = {
     _store.update(s => ({ ...s, isInlineRenderingEnabled: enabled })),
   setPixelInspectorEnabled: (enabled: boolean) =>
     _store.update(s => ({ ...s, isPixelInspectorEnabled: enabled })),
+  setPixelMarkerEnabled: (enabled: boolean) =>
+    _store.update(s => ({ ...s, isPixelMarkerEnabled: enabled })),
   setErrorsEnabled: (enabled: boolean) =>
     _store.update(s => ({ ...s, isErrorsEnabled: enabled })),
   setNormalizeMode: (mode: NormalizeMode) =>

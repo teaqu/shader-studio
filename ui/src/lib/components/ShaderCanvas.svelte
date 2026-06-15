@@ -6,6 +6,7 @@
   } from "../stores/aspectRatioStore";
   import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
   import { AspectRatioCalculator } from "../util/AspectRatioCalculator";
+  import PixelCanvasMarker from "./PixelCanvasMarker.svelte";
 
   interface Props {
     zoomLevel?: number;
@@ -23,7 +24,8 @@
     isInspectorActive = false,
   }: Props = $props();
 
-  let glCanvas: HTMLCanvasElement;
+  let glCanvas: HTMLCanvasElement = $state(undefined!);
+  let containerEl: HTMLDivElement | null = $state(null);
   let currentAspectMode: AspectRatioMode = $state("16:9");
   let currentResolution: ResolutionState = $state({ scale: 1, forceBlackBackground: false, source: 'session' });
   let aspectRatioCalculator: AspectRatioCalculator;
@@ -128,13 +130,19 @@
   class:force-black-background={currentResolution.forceBlackBackground}
   role="button"
   tabindex="0"
+  bind:this={containerEl}
   onclick={handleClick}
   onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
 >
   <canvas bind:this={glCanvas} onmousedown={handleMouseDown}></canvas>
+  <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>
 
 <style>
+  .canvas-container {
+    position: relative;
+  }
+
   .canvas-container.force-black-background {
     background: #000;
   }

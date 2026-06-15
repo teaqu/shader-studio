@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { getInspectorState, requestLockAt } from '../../state/pixelInspectorState.svelte';
+  import { debugPanelStore } from '../../stores/debugPanelStore';
 
   interface Props {
     canvasElement?: HTMLCanvasElement | null;
@@ -23,6 +24,18 @@
   let zoomCanvas = $state<HTMLCanvasElement | null>(null);
   let showZoomLabel = $state(false);
   let zoomLabelTimer: ReturnType<typeof setTimeout> | null = null;
+  let showConfigMenu = $state(false);
+
+  function handleWindowClick(event: MouseEvent) {
+    if (!showConfigMenu) {
+      return;
+    }
+    const target = event.target as Element | null;
+    if (target?.closest('.config-btn, .config-menu')) {
+      return;
+    }
+    showConfigMenu = false;
+  }
 
   const inspector = $derived(getInspectorState());
 
@@ -185,6 +198,46 @@
   });
 </script>
 
+<div class="section-heading">
+  <div class="section-title">Pixel Inspector</div>
+  <div class="config">
+    <button
+      class="config-btn"
+      class:active={showConfigMenu}
+      type="button"
+      aria-label="Inspector settings"
+      aria-haspopup="menu"
+      aria-expanded={showConfigMenu}
+      title="Settings"
+      onclick={() => (showConfigMenu = !showConfigMenu)}
+    >
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm0 1.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"
+        />
+        <path
+          fill="currentColor"
+          d="M6.94 1.5a.75.75 0 0 0-.73.57l-.28 1.15a4.6 4.6 0 0 0-.9.52l-1.12-.4a.75.75 0 0 0-.9.34l-1.06 1.83a.75.75 0 0 0 .17.95l.9.75a4.7 4.7 0 0 0 0 1.04l-.9.75a.75.75 0 0 0-.17.95l1.06 1.83c.18.31.56.45.9.34l1.12-.4c.28.21.58.39.9.52l.28 1.15c.08.33.38.57.73.57h2.12a.75.75 0 0 0 .73-.57l.28-1.15c.32-.13.62-.31.9-.52l1.12.4c.34.11.72-.03.9-.34l1.06-1.83a.75.75 0 0 0-.17-.95l-.9-.75a4.7 4.7 0 0 0 0-1.04l.9-.75a.75.75 0 0 0 .17-.95l-1.06-1.83a.75.75 0 0 0-.9-.34l-1.12.4a4.6 4.6 0 0 0-.9-.52l-.28-1.15a.75.75 0 0 0-.73-.57H6.94Zm.59 1.5h.94l.23.96c.05.22.21.4.42.47.36.12.69.31.98.56.17.15.41.19.62.11l.94-.33.47.81-.76.63a.55.55 0 0 0-.19.59c.05.19.07.38.07.57s-.02.38-.07.57c-.05.22.02.45.19.59l.76.63-.47.81-.94-.33a.55.55 0 0 0-.62.11c-.29.25-.62.44-.98.56a.55.55 0 0 0-.42.47l-.23.96h-.94l-.23-.96a.55.55 0 0 0-.42-.47 3.1 3.1 0 0 1-.98-.56.55.55 0 0 0-.62-.11l-.94.33-.47-.81.76-.63c.17-.14.24-.37.19-.59a2.3 2.3 0 0 1 0-1.14c.05-.22-.02-.45-.19-.59l-.76-.63.47-.81.94.33c.21.08.45.04.62-.11.29-.25.62-.44.98-.56a.55.55 0 0 0 .42-.47l.23-.96Z"
+        />
+      </svg>
+    </button>
+
+    {#if showConfigMenu}
+      <div class="config-menu" role="menu">
+        <label class="marker-toggle">
+          <input
+            type="checkbox"
+            checked={$debugPanelStore.isPixelMarkerEnabled}
+            onchange={(e) => debugPanelStore.setPixelMarkerEnabled(e.currentTarget.checked)}
+          />
+          Marker on canvas
+        </label>
+      </div>
+    {/if}
+  </div>
+</div>
+
 <div class="pixel-inspector-section">
   <div class="canvas-wrapper">
     <canvas
@@ -227,7 +280,84 @@
   {/if}
 </div>
 
+<svelte:window onclick={handleWindowClick} />
+
 <style>
+  .marker-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .marker-toggle input {
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+    font-weight: 600;
+  }
+
+  .config {
+    position: relative;
+    display: flex;
+  }
+
+  .config-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    opacity: 0.7;
+    cursor: pointer;
+    transition: background 0.12s ease, opacity 0.12s ease;
+  }
+
+  .config-btn:hover,
+  .config-btn.active {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+  }
+
+  .config-btn svg {
+    display: block;
+  }
+
+  .config-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 2;
+    padding: 6px 8px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #252526));
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, #454545));
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+
   .pixel-inspector-section {
     display: flex;
     flex-direction: row;

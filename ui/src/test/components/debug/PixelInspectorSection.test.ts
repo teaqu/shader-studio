@@ -7,6 +7,8 @@ import {
   setInspectorState,
   registerLockAtHandler,
 } from '../../../lib/state/pixelInspectorState.svelte';
+import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
+import { get } from 'svelte/store';
 import type { PixelInspectorState } from '../../../lib/types/PixelInspectorState';
 
 const DEFAULT_STATE: PixelInspectorState = {
@@ -129,6 +131,68 @@ describe('PixelInspectorSection', () => {
       });
       const canvas = container.querySelector('canvas') as HTMLCanvasElement;
       expect(canvas.style.cursor).toBe('crosshair');
+    });
+  });
+
+  describe('canvas marker config menu', () => {
+    beforeEach(() => {
+      debugPanelStore.setPixelMarkerEnabled(true);
+    });
+
+    function renderSection() {
+      return render(PixelInspectorSection, {
+        canvasElement: makeCanvas(),
+        canvasWidth: 400,
+        canvasHeight: 300,
+      });
+    }
+
+    it('hides the marker toggle until the config button is clicked', async () => {
+      const { queryByLabelText, getByLabelText } = renderSection();
+      expect(queryByLabelText(/marker on canvas/i)).toBeNull();
+
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      expect(queryByLabelText(/marker on canvas/i)).toBeTruthy();
+    });
+
+    it('renders the toggle reflecting the store state (on by default)', async () => {
+      const { getByLabelText } = renderSection();
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      const checkbox = getByLabelText(/marker on canvas/i) as HTMLInputElement;
+      expect(checkbox.checked).toBe(true);
+    });
+
+    it('reflects a disabled store state', async () => {
+      debugPanelStore.setPixelMarkerEnabled(false);
+      const { getByLabelText } = renderSection();
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      const checkbox = getByLabelText(/marker on canvas/i) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+    });
+
+    it('updates the store when toggled off', async () => {
+      const { getByLabelText } = renderSection();
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      const checkbox = getByLabelText(/marker on canvas/i) as HTMLInputElement;
+      await fireEvent.click(checkbox);
+      expect(get(debugPanelStore).isPixelMarkerEnabled).toBe(false);
+    });
+
+    it('closes the menu when clicking outside', async () => {
+      const { getByLabelText, queryByLabelText } = renderSection();
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      expect(queryByLabelText(/marker on canvas/i)).toBeTruthy();
+
+      await fireEvent.click(document.body);
+      expect(queryByLabelText(/marker on canvas/i)).toBeNull();
+    });
+
+    it('keeps the menu open when interacting with the toggle', async () => {
+      const { getByLabelText, queryByLabelText } = renderSection();
+      await fireEvent.click(getByLabelText(/inspector settings/i));
+      const checkbox = getByLabelText(/marker on canvas/i) as HTMLInputElement;
+      await fireEvent.click(checkbox);
+      expect(queryByLabelText(/marker on canvas/i)).toBeTruthy();
     });
   });
 
