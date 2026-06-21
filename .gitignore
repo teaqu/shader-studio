@@ -29,6 +29,9 @@ coverage/
 !.github/workflows/
 !.github/workflows/docs.yml
 !.github/workflows/release-extension.yml
+!.github/scripts/
+!.github/scripts/publish-open-vsx.sh
+!.github/scripts/test-publish-open-vsx.sh
 
 # Logs
 logs

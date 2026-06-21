@@ -30,10 +30,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -79,7 +79,7 @@ jobs:
         run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shader-studio-${{ steps.meta.outputs.version }}-vsix
           path: ${{ steps.meta.outputs.vsix_path }}
@@ -98,10 +98,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: shader-studio-${{ needs.package.outputs.version }}-vsix
 
@@ -156,8 +156,11 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download VSIX artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: shader-studio-${{ needs.package.outputs.version }}-vsix
 
@@ -170,4 +173,4 @@ jobs:
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx --yes ovsx publish "${{ needs.package.outputs.vsix_path }}" --skip-duplicate
+        run: bash .github/scripts/publish-open-vsx.sh "${{ needs.package.outputs.vsix_path }}"
