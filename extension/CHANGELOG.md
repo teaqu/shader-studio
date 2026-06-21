@@ -1,4 +1,7 @@
 # Change Log
+### 1.0.2
+- Added a toggleable canvas marker for the locked pixel inspector position, with the preference persisted across sessions.
+
 ### 1.0.1
 - Fixed extension activation in published installs when the script bundler dependency is not present in the VSIX.
 
