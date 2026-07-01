@@ -59,7 +59,7 @@ The preview updates in real time as you edit. The toolbar at the bottom gives qu
 - [**Time**](features/time-controls.md) — scrub, loop, and control playback speed
 - **FPS** — click to set frame rate limit or open [Frame Times](features/performance.md)
 - [**Resolution**](features/resolution.md) — click to change scale, aspect ratio, zoom, or set a custom resolution
-- <i class="codicon codicon-bug"></i> [**Debug**](workflows/debug-shaders.md) — enable line-by-line visual debugging
+- <i class="codicon codicon-bug"></i> [**Debug**](debugging/index.md) — enable line-by-line visual debugging
 - <i class="codicon codicon-code"></i> [**Editor**](features/editor-overlay.md) — toggle inline code editing overlay
 - <i class="codicon codicon-gear"></i> [**Config**](features/config-buffers.md) — set up buffers, inputs, and uniforms
 - <i class="codicon codicon-device-camera"></i> [**Record**](features/recording.md) — take a screenshot or record video/GIF
@@ -119,4 +119,3 @@ See [Locking](features/locking.md) for more info.
 
 - [Setup Channels and Buffers](features/config-buffers.md) — configure buffer passes, inputs, and uniforms
 - [Debugging Overview](debugging/index.md) — learn how to use debug mode to visualize shader variables
-
