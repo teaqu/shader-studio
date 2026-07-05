@@ -84,9 +84,13 @@ export interface SlangWrapOptions {
 }
 
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
-  return channels
+  return [...channels]
     .sort((a, b) => a.slot - b.slot)
     .map((channel, index) => {
+      // Bindings are position-based over the slot-sorted array (not derived
+      // from the slot number), so sparse slots pack densely from binding 1.
+      // Bind-group creation must use the same position-over-sorted-array
+      // scheme when attaching textures/samplers.
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
@@ -107,5 +111,8 @@ float4 ${helperName}(float2 uv)
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
-  return `${PRELUDE}\n${channelPrelude}\n#line 1\n${commonCode}${userSource}\n${ENTRY_POINTS}`;
+  // `#line 1` renumbers the line that follows it, so it must sit directly
+  // above the user source (after commonCode) to keep user diagnostics on the
+  // user's real line numbers.
+  return `${PRELUDE}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
 }

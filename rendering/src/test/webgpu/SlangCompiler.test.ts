@@ -219,4 +219,53 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 helper(float2 c) { return float4(c, 0, 1); }");
     expect(wrapped.indexOf("float4 helper")).toBeLessThan(wrapped.indexOf("mainImage(float2 c) { return helper"));
   });
+
+  it("places #line 1 immediately before the user source so commonCode does not shift diagnostics", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    const commonCode =
+      "float4 helperA(float2 c) { return float4(c, 0, 1); }\nfloat4 helperB(float2 c) { return helperA(c); }";
+    const userSource = "float4 mainImage(float2 c) { return helperB(c); }";
+    compiler.compileImagePass(userSource, { commonCode });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    // #line 1 renumbers the NEXT line, so it must sit directly above the user
+    // source — after commonCode — or every user diagnostic is offset by the
+    // commonCode line count.
+    expect(wrapped).toContain(`#line 1\n${userSource}`);
+    // commonCode must be newline-separated from what follows, not concatenated.
+    expect(wrapped.indexOf("helperB(float2 c)")).toBeLessThan(wrapped.indexOf("#line 1"));
+  });
+
+  it("assigns position-based bindings for sparse channel slots", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    // A pass using only slot 2 still gets the first binding pair (1/2),
+    // not slot-derived numbers (5/6). Task 6 bind groups rely on this.
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", {
+      channels: [{ slot: 2, key: "iChannel2" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel2;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel2Sampler;");
+    expect(wrapped).not.toContain("vk::binding(5");
+    expect(wrapped).not.toContain("vk::binding(6");
+    expect(wrapped).toContain("float4 sampleIChannel2(float2 uv)");
+  });
+
+  it("does not mutate the caller's channels array", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    const channels = [
+      { slot: 1, key: "iChannel1" },
+      { slot: 0, key: "iChannel0" },
+    ];
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { channels });
+
+    expect(channels.map((c) => c.slot)).toEqual([1, 0]);
+  });
 });
