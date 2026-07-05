@@ -379,6 +379,36 @@ describe('ShaderProcessor', () => {
       expect(result.errors).toEqual([`Shader compilation error: ${error}`]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
+
+    it('passes Slang buffer sources through to the rendering engine', async () => {
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        language: 'slang',
+        code: 'float4 mainImage(float2 c) { return float4(0); }',
+        config: {
+          version: '1',
+          passes: {
+            Image: { inputs: { iChannel0: { type: 'buffer', source: 'BufferA' } } },
+            BufferA: { path: 'buffer-a.slang', inputs: {} },
+          },
+        },
+        path: 'image.slang',
+        buffers: {
+          BufferA: 'float4 mainImage(float2 c) { return float4(1); }',
+        },
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        undefined,
+        undefined,
+      );
+    });
   });
 
   describe('processCommonBufferUpdate', () => {
