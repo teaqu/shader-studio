@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    setupFiles: ['./src/test/setup.ts'],
     pool: 'vmThreads',
     poolOptions: { vmThreads: { maxThreads: 4 } },
     exclude: [...configDefaults.exclude, 'src/test/e2e/**', '**/*.e2e.test.*'],
