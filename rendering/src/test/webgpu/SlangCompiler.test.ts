@@ -136,4 +136,87 @@ describe("SlangCompiler", () => {
     const result = compiler.compileImagePass("x");
     expect(result.success).toBe(false);
   });
+
+  it("wraps pass source with channel texture and sampler bindings", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iChannel0.Sample(iChannel0Sampler, c); }", {
+      passName: "Image",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]");
+    expect(wrapped).toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]");
+    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
+  });
+
+  it("numbers bindings sequentially for multiple channels, sorted by slot", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    // Channels passed out of slot order; wrapper must sort by slot before
+    // assigning sequential binding numbers.
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", {
+      channels: [
+        { slot: 1, key: "iChannel1" },
+        { slot: 0, key: "iChannel0" },
+      ],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]");
+    expect(wrapped).toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]");
+    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("[[vk::binding(3, 0)]]");
+    expect(wrapped).toContain("Texture2D<float4> iChannel1;");
+    expect(wrapped).toContain("[[vk::binding(4, 0)]]");
+    expect(wrapped).toContain("SamplerState iChannel1Sampler;");
+
+    // iChannel0's declaration must precede iChannel1's, confirming sort order.
+    expect(wrapped.indexOf("Texture2D<float4> iChannel0;")).toBeLessThan(
+      wrapped.indexOf("Texture2D<float4> iChannel1;"),
+    );
+  });
+
+  it("emits no channel bindings when channels is an empty array", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", {
+      channels: [],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("vk::binding(1");
+    expect(wrapped).not.toContain("Texture2D");
+  });
+
+  it("emits no channel bindings when options are omitted entirely", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("Texture2D");
+    expect(wrapped).not.toContain("SamplerState");
+  });
+
+  it("injects commonCode before the user source", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return helper(c); }", {
+      commonCode: "float4 helper(float2 c) { return float4(c, 0, 1); }",
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 helper(float2 c) { return float4(c, 0, 1); }");
+    expect(wrapped.indexOf("float4 helper")).toBeLessThan(wrapped.indexOf("mainImage(float2 c) { return helper"));
+  });
 });

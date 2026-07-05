@@ -7,11 +7,14 @@ import {
   wrapSlangImageSource,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
+  type SlangWrapOptions,
 } from "./SlangPrelude";
 
 export type SlangCompileResult =
   | { success: true; wgsl: string }
   | { success: false; errors: string[] };
+
+export type SlangCompileOptions = SlangWrapOptions;
 
 /**
  * Compiles user `.slang` image-shader source to WGSL via slang-wasm.
@@ -27,7 +30,10 @@ export class SlangCompiler {
   constructor(private slang: SlangModuleApi) {}
 
   /** Compile a single image pass. Never throws — failures come back as errors. */
-  public compileImagePass(userSource: string): SlangCompileResult {
+  public compileImagePass(
+    userSource: string,
+    options: SlangCompileOptions = {},
+  ): SlangCompileResult {
     let globalSession: SlangGlobalSession;
     let target: number;
     try {
@@ -41,7 +47,7 @@ export class SlangCompiler {
       return { success: false, errors: [this.lastError("Slang: failed to create session")] };
     }
 
-    const wrapped = wrapSlangImageSource(userSource);
+    const wrapped = wrapSlangImageSource(userSource, options);
     const module = session.loadModuleFromSource(wrapped, "image", "/image.slang");
     if (!module) {
       return { success: false, errors: [this.lastError("Slang: failed to compile module")] };

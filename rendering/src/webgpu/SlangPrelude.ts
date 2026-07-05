@@ -72,7 +72,40 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 }
 `;
 
+export interface SlangChannelBinding {
+  slot: number;
+  key: string;
+}
+
+export interface SlangWrapOptions {
+  passName?: string;
+  commonCode?: string;
+  channels?: SlangChannelBinding[];
+}
+
+function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
+  return channels
+    .sort((a, b) => a.slot - b.slot)
+    .map((channel, index) => {
+      const textureBinding = 1 + index * 2;
+      const samplerBinding = textureBinding + 1;
+      const helperName = `sampleIChannel${channel.slot}`;
+      return `[[vk::binding(${textureBinding}, 0)]]
+Texture2D<float4> ${channel.key};
+[[vk::binding(${samplerBinding}, 0)]]
+SamplerState ${channel.key}Sampler;
+float4 ${helperName}(float2 uv)
+{
+    return ${channel.key}.Sample(${channel.key}Sampler, uv);
+}
+`;
+    })
+    .join("\n");
+}
+
 /** Wrap a user image-shader source into a full, compilable Slang module. */
-export function wrapSlangImageSource(userSource: string): string {
-  return `${PRELUDE}\n#line 1\n${userSource}\n${ENTRY_POINTS}`;
+export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
+  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const channelPrelude = buildChannelPrelude(options.channels);
+  return `${PRELUDE}\n${channelPrelude}\n#line 1\n${commonCode}${userSource}\n${ENTRY_POINTS}`;
 }
