@@ -14,7 +14,6 @@ import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { packShaderToyUniforms } from "./uniforms";
-import { SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
 import { buildSlangPassGraph, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline } from "./SlangPassPipeline";
 
@@ -38,9 +37,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private initError: string | null = null;
 
   private compiler: SlangCompiler | null = null;
-  private pipeline: GPURenderPipeline | null = null;
-  private uniformBuffer: GPUBuffer | null = null;
-  private bindGroup: GPUBindGroup | null = null;
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -116,6 +112,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextPipelines = new Map<string, SlangPassPipeline>();
     const errors: string[] = [];
     for (const pass of graph.passes) {
+      let pipeline: SlangPassPipeline | undefined;
       try {
         const compiled = this.compiler.compileImagePass(pass.source, {
           passName: pass.name,
@@ -126,7 +123,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
           continue;
         }
-        const pipeline = new SlangPassPipeline(this.device, this.format, {
+        pipeline = new SlangPassPipeline(this.device, this.format, {
           name: pass.name,
           width: pass.width,
           height: pass.height,
@@ -137,6 +134,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors.push(...wgslErrors);
         nextPipelines.set(pass.name, pipeline);
       } catch (error) {
+        // rebuild() may throw mid-way through constructing GPU resources;
+        // dispose whatever this pipeline managed to create before re-throwing
+        // as a compile error.
+        pipeline?.dispose();
         errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
@@ -156,76 +157,62 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
   }
 
-  private shaderModule: GPUShaderModule | null = null;
-
-  private buildPipeline(wgsl: string): void {
-    const device = this.device!;
-    const module = device.createShaderModule({ code: wgsl });
-    this.shaderModule = module;
-
-    this.pipeline = device.createRenderPipeline({
-      layout: "auto",
-      vertex: { module, entryPoint: SLANG_ENTRY_VERTEX },
-      fragment: { module, entryPoint: SLANG_ENTRY_FRAGMENT, targets: [{ format: this.format }] },
-      primitive: { topology: "triangle-list" },
-    });
-
-    this.uniformBuffer = device.createBuffer({
-      size: SHADERTOY_UNIFORM_SIZE,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    this.bindGroup = device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
-  }
-
-  private async collectShaderErrors(): Promise<string[]> {
-    if (!this.shaderModule?.getCompilationInfo) return [];
-    const info = await this.shaderModule.getCompilationInfo();
-    return info.messages
-      .filter((m) => m.type === "error")
-      .map((m) => `WGSL L${m.lineNum}:${m.linePos} ${m.message}`);
-  }
-
   render(time: number = performance.now()): void {
-    if (!this.device || !this.context || !this.pipeline || !this.bindGroup || !this.uniformBuffer) {
+    if (!this.device || !this.context || this.passGraph.length === 0) {
       return;
     }
-    const canvas = this.canvas!;
 
     this.timeManager.updateFrame(time);
     this.fps.updateFrame(time);
 
-    const shaderTime = this.timeManager.getCurrentTime(time);
-    const data = packShaderToyUniforms({
-      width: canvas.width,
-      height: canvas.height,
-      time: shaderTime,
-      timeDelta: this.timeManager.getDeltaTime(),
-      frameRate: this.fps.getRawFPS(),
-      frame: this.timeManager.getFrame(),
-      mouse: this.mouseManager.getMouse(),
-    });
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
-
     const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.context.getCurrentTexture().createView(),
+    const shaderTime = this.timeManager.getCurrentTime(time);
+
+    for (const pass of this.passGraph) {
+      const pipeline = this.passPipelines.get(pass.name);
+      if (!pipeline?.getPipeline() || !pipeline.getBindGroup() || !pipeline.getUniformBuffer()) {
+        continue;
+      }
+
+      const data = packShaderToyUniforms({
+        width: pass.width,
+        height: pass.height,
+        time: shaderTime,
+        timeDelta: this.timeManager.getDeltaTime(),
+        frameRate: this.fps.getRawFPS(),
+        frame: this.timeManager.getFrame(),
+        mouse: this.mouseManager.getMouse(),
+      });
+      this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
+
+      const targetView = pass.output === "canvas"
+        ? this.context.getCurrentTexture().createView()
+        : pipeline.getCurrentOutputView();
+      if (!targetView) {
+        continue;
+      }
+
+      const renderPass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: targetView,
           clearValue: { r: 0, g: 0, b: 0, a: 1 },
           loadOp: "clear",
           storeOp: "store",
-        },
-      ],
-    });
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.draw(3);
-    pass.end();
+        }],
+      });
+      renderPass.setPipeline(pipeline.getPipeline()!);
+      renderPass.setBindGroup(0, pipeline.getBindGroup()!);
+      renderPass.draw(3);
+      renderPass.end();
+    }
+
     this.device.queue.submit([encoder.finish()]);
+
+    for (const pass of this.passGraph) {
+      if (pass.output === "texture") {
+        this.passPipelines.get(pass.name)?.swap();
+      }
+    }
 
     this.timeManager.incrementFrame();
   }

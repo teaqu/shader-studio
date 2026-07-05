@@ -247,16 +247,25 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).compiler = compiler;
     (engine as any).format = "bgra8unorm";
 
-    const result = await engine.compileShaderPipeline(
-      "float4 mainImage(float2 c) { return float4(0); }",
-      null,
-      "/image.slang",
-      {},
-    );
+    const disposeSpy = vi.spyOn(SlangPassPipeline.prototype, "dispose");
+    try {
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+        {},
+      );
 
-    expect(result?.success).toBe(false);
-    expect(result?.errors).toEqual(["Image: device lost"]);
-    expect(engine.getPasses()).toEqual([]);
+      expect(result?.success).toBe(false);
+      expect(result?.errors).toEqual(["Image: device lost"]);
+      expect(engine.getPasses()).toEqual([]);
+      // The pipeline instance was constructed before rebuild() threw mid-way
+      // through building it; it must still be disposed to release any
+      // partially-created GPU resources.
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disposeSpy.mockRestore();
+    }
   });
 
   it("disposes already-built pipelines when a later pass fails to compile", async () => {
@@ -345,5 +354,198 @@ describe("WebGPURenderingEngine", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.warnings?.[0]).toMatch(/unsupported/i);
+  });
+
+  it("renders buffer passes before Image and swaps buffer textures once per frame", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const calls: string[] = [];
+    const bufferPipeline = {
+      getPipeline: () => ({ label: "buffer-pipeline" }),
+      getBindGroup: () => ({ label: "buffer-bind-group" }),
+      getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      swap: vi.fn(() => calls.push("swap:BufferA")),
+    };
+    const imagePipeline = {
+      getPipeline: () => ({ label: "image-pipeline" }),
+      getBindGroup: () => ({ label: "image-bind-group" }),
+      getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+      swap: vi.fn(),
+    };
+
+    (engine as any).device = {
+      queue: {
+        writeBuffer: vi.fn(),
+        submit: vi.fn(),
+      },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass: vi.fn((descriptor) => {
+          calls.push(descriptor.colorAttachments[0].view.label ?? "canvas");
+          return {
+            setPipeline: vi.fn(),
+            setBindGroup: vi.fn(),
+            draw: vi.fn(),
+            end: vi.fn(),
+          };
+        }),
+        finish: vi.fn(() => ({})),
+      })),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+    };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(calls).toEqual(["buffer-current-view", "canvas", "swap:BufferA"]);
+  });
+
+  it("never calls swap() on the canvas (Image) pass", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const bufferPipeline = {
+      getPipeline: () => ({ label: "buffer-pipeline" }),
+      getBindGroup: () => ({ label: "buffer-bind-group" }),
+      getUniformBuffer: () => ({ label: "buffer-uniform" }),
+      getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      swap: vi.fn(),
+    };
+    const imagePipeline = {
+      getPipeline: () => ({ label: "image-pipeline" }),
+      getBindGroup: () => ({ label: "image-bind-group" }),
+      getUniformBuffer: () => ({ label: "image-uniform" }),
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+      swap: vi.fn(),
+    };
+
+    (engine as any).device = {
+      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass: vi.fn(() => ({
+          setPipeline: vi.fn(),
+          setBindGroup: vi.fn(),
+          draw: vi.fn(),
+          end: vi.fn(),
+        })),
+        finish: vi.fn(() => ({})),
+      })),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+    };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(bufferPipeline.swap).toHaveBeenCalledTimes(1);
+    expect(imagePipeline.swap).not.toHaveBeenCalled();
+  });
+
+  it("render() with a populated pass graph but no compiled pipelines is a safe no-op", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const writeBuffer = vi.fn();
+    const beginRenderPass = vi.fn();
+    const getCurrentTexture = vi.fn();
+    (engine as any).device = {
+      queue: { writeBuffer, submit: vi.fn() },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass,
+        finish: vi.fn(() => ({})),
+      })),
+    };
+    (engine as any).context = { getCurrentTexture };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).passGraph = [
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    // No entry in passPipelines for "Image" -> render() must skip it entirely
+    // rather than crashing on a missing pipeline.
+    (engine as any).passPipelines = new Map();
+
+    expect(() => engine.render(0)).not.toThrow();
+    expect(writeBuffer).not.toHaveBeenCalled();
+    expect(beginRenderPass).not.toHaveBeenCalled();
+    expect(getCurrentTexture).not.toHaveBeenCalled();
+  });
+
+  it("writes a distinct uniform buffer per pass with each pass's own resolution", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const writeBuffer = vi.fn();
+    const bufferUniform = { label: "buffer-uniform" };
+    const imageUniform = { label: "image-uniform" };
+    const bufferPipeline = {
+      getPipeline: () => ({ label: "buffer-pipeline" }),
+      getBindGroup: () => ({ label: "buffer-bind-group" }),
+      getUniformBuffer: () => bufferUniform,
+      getCurrentOutputView: () => ({ label: "buffer-current-view" }),
+      getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      swap: vi.fn(),
+    };
+    const imagePipeline = {
+      getPipeline: () => ({ label: "image-pipeline" }),
+      getBindGroup: () => ({ label: "image-bind-group" }),
+      getUniformBuffer: () => imageUniform,
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+      swap: vi.fn(),
+    };
+
+    (engine as any).device = {
+      queue: { writeBuffer, submit: vi.fn() },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass: vi.fn(() => ({
+          setPipeline: vi.fn(),
+          setBindGroup: vi.fn(),
+          draw: vi.fn(),
+          end: vi.fn(),
+        })),
+        finish: vi.fn(() => ({})),
+      })),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+    };
+    (engine as any).canvas = { width: 640, height: 480 };
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 64, height: 32, output: "texture", channels: [] },
+      { name: "Image", width: 640, height: 480, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(writeBuffer).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = writeBuffer.mock.calls;
+    expect(firstCall[0]).toBe(bufferUniform);
+    expect(secondCall[0]).toBe(imageUniform);
+
+    const firstResolution = new Float32Array(firstCall[2] as ArrayBuffer, 0, 2);
+    const secondResolution = new Float32Array(secondCall[2] as ArrayBuffer, 0, 2);
+    expect(Array.from(firstResolution)).toEqual([64, 32]);
+    expect(Array.from(secondResolution)).toEqual([640, 480]);
   });
 });
