@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
+import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
 function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; linePos: number; message: string }> = []) {
   const bindGroupLayout = {};
@@ -11,7 +12,7 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
       getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
     })),
     createRenderPipeline: vi.fn(() => pipeline),
-    createBuffer: vi.fn(() => ({ label: "uniform-buffer" })),
+    createBuffer: vi.fn(() => ({ label: "uniform-buffer", destroy: vi.fn() })),
     createSampler: vi.fn(() => ({ label: "sampler" })),
     createBindGroup: vi.fn(() => ({ label: "bind-group" })),
     createTexture: vi.fn(() => ({
@@ -256,6 +257,97 @@ describe("SlangPassPipeline", () => {
 
     const lastCall = device.createTexture.mock.calls[device.createTexture.mock.calls.length - 1][0];
     expect(lastCall.size).toEqual({ width: 640, height: 360 });
+  });
+
+  it("destroys the uniform buffer on dispose()", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+    const uniformBuffer = device.createBuffer.mock.results[0].value;
+
+    pass.dispose();
+
+    expect(uniformBuffer.destroy).toHaveBeenCalledTimes(1);
+    expect(pass.getUniformBuffer()).toBeNull();
+  });
+
+  it("destroys the old uniform buffer when rebuild replaces it", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+    const firstBuffer = device.createBuffer.mock.results[0].value;
+
+    await pass.rebuild("// wgsl v2");
+
+    expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
+    const secondBuffer = device.createBuffer.mock.results[1].value;
+    expect(pass.getUniformBuffer()).toBe(secondBuffer);
+    expect(secondBuffer.destroy).not.toHaveBeenCalled();
+  });
+
+  it("dispose() before any rebuild is a safe no-op", () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+    });
+
+    expect(() => pass.dispose()).not.toThrow();
+  });
+
+  it("passes the exact WGSL source to createShaderModule", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+    });
+
+    const wgsl = "// the exact wgsl source\nfn main() {}";
+    await pass.rebuild(wgsl);
+
+    expect(device.createShaderModule).toHaveBeenCalledWith({ code: wgsl });
+  });
+
+  it("configures the render pipeline with the Slang entry points and constructor format", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "rgba16float", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
+    expect(pipelineDescriptor.layout).toBe("auto");
+    expect(pipelineDescriptor.vertex.module).toBe(device.createShaderModule.mock.results[0].value);
+    expect(pipelineDescriptor.vertex.entryPoint).toBe(SLANG_ENTRY_VERTEX);
+    expect(pipelineDescriptor.fragment.module).toBe(device.createShaderModule.mock.results[0].value);
+    expect(pipelineDescriptor.fragment.entryPoint).toBe(SLANG_ENTRY_FRAGMENT);
+    expect(pipelineDescriptor.fragment.targets).toEqual([{ format: "rgba16float" }]);
+    expect(pipelineDescriptor.primitive).toEqual({ topology: "triangle-list" });
   });
 
   it("maps compilation errors to formatted messages and filters out non-error messages", async () => {

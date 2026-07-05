@@ -26,6 +26,7 @@ export class SlangPassPipeline {
 
   async rebuild(wgsl: string): Promise<string[]> {
     this.destroyTextures();
+    this.destroyUniformBuffer();
     this.shaderModule = this.device.createShaderModule({ code: wgsl });
     this.pipeline = this.device.createRenderPipeline({
       layout: "auto",
@@ -87,6 +88,7 @@ export class SlangPassPipeline {
 
   dispose(): void {
     this.destroyTextures();
+    this.destroyUniformBuffer();
   }
 
   private createOutputTexture(): GPUTexture {
@@ -95,6 +97,11 @@ export class SlangPassPipeline {
       format: this.format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
+  }
+
+  private destroyUniformBuffer(): void {
+    this.uniformBuffer?.destroy?.();
+    this.uniformBuffer = null;
   }
 
   private destroyTextures(): void {
