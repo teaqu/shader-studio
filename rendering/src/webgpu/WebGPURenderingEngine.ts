@@ -108,7 +108,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
     });
-    this.currentConfig = config;
 
     if (graph.errors.length > 0) {
       return { success: false, errors: graph.errors, warnings: graph.warnings };
@@ -117,25 +116,29 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextPipelines = new Map<string, SlangPassPipeline>();
     const errors: string[] = [];
     for (const pass of graph.passes) {
-      const compiled = this.compiler.compileImagePass(pass.source, {
-        passName: pass.name,
-        commonCode: graph.commonCode,
-        channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
-      });
-      if (!compiled.success) {
-        errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
-        continue;
+      try {
+        const compiled = this.compiler.compileImagePass(pass.source, {
+          passName: pass.name,
+          commonCode: graph.commonCode,
+          channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+        });
+        if (!compiled.success) {
+          errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+          continue;
+        }
+        const pipeline = new SlangPassPipeline(this.device, this.format, {
+          name: pass.name,
+          width: pass.width,
+          height: pass.height,
+          output: pass.output,
+          channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+        });
+        const wgslErrors = await pipeline.rebuild(compiled.wgsl);
+        errors.push(...wgslErrors);
+        nextPipelines.set(pass.name, pipeline);
+      } catch (error) {
+        errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      const pipeline = new SlangPassPipeline(this.device, this.format, {
-        name: pass.name,
-        width: pass.width,
-        height: pass.height,
-        output: pass.output,
-        channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
-      });
-      const wgslErrors = await pipeline.rebuild(compiled.wgsl);
-      errors.push(...wgslErrors);
-      nextPipelines.set(pass.name, pipeline);
     }
 
     if (errors.length > 0) {

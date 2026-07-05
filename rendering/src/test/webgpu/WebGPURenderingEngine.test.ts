@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { TimeManager } from "../../util/TimeManager";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
@@ -219,6 +220,92 @@ describe("WebGPURenderingEngine", () => {
     expect(disposeSpies).toHaveLength(2);
     for (const spy of disposeSpies) {
       expect(spy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("resolves to a failure naming the pass when pipeline creation throws", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => {
+        throw new Error("device lost");
+      }),
+      createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+    };
+    const compiler = {
+      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      null,
+      "/image.slang",
+      {},
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.errors).toEqual(["Image: device lost"]);
+    expect(engine.getPasses()).toEqual([]);
+  });
+
+  it("disposes already-built pipelines when a later pass fails to compile", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+    };
+    const compiler = {
+      compileImagePass: vi
+        .fn()
+        .mockReturnValueOnce({ success: true, wgsl: "// wgsl" }) // BufferA builds fine
+        .mockReturnValueOnce({ success: false, errors: ["bad shader"] }), // Image fails
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const disposeSpy = vi.spyOn(SlangPassPipeline.prototype, "dispose");
+    try {
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        {
+          version: "1",
+          passes: {
+            Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+            BufferA: { path: "buffer-a.slang", inputs: {} },
+          },
+        },
+        "/image.slang",
+        { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.errors).toEqual(["Image: bad shader"]);
+      // The BufferA pipeline was fully built before Image failed; it must be disposed.
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+      expect(engine.getPasses()).toEqual([]);
+    } finally {
+      disposeSpy.mockRestore();
     }
   });
 
