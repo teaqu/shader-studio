@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PassRenderer } from "../PassRenderer";
-import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
-import type { Pass } from "../models";
+import { PassRenderer } from "../../webgl/PassRenderer";
+import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
+import type { Pass } from "../../models";
 
 const createMockRenderer = () => ({
   CreateTexture: vi.fn(),

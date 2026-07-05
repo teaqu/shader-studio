@@ -1,27 +1,27 @@
-import { piRenderer } from "../../vendor/pilibs/src/piRenderer";
-import { piCreateGlContext } from "../../vendor/pilibs/src/piWebUtils";
+import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
+import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "./ResourceManager";
 import { BufferManager } from "./BufferManager";
-import { TimeManager } from "./util/TimeManager";
-import { KeyboardManager } from "./input/KeyboardManager";
-import { MouseManager } from "./input/MouseManager";
-import { CameraManager } from "./input/CameraManager";
+import { TimeManager } from "../util/TimeManager";
+import { KeyboardManager } from "../input/KeyboardManager";
+import { MouseManager } from "../input/MouseManager";
+import { CameraManager } from "../input/CameraManager";
 import { ShaderPipeline } from "./ShaderPipeline";
 import { PassRenderer } from "./PassRenderer";
 import { FrameRenderer } from "./FrameRenderer";
-import { FPSCalculator } from "./util/FPSCalculator";
-import { ConfigValidator } from "./util/ConfigValidator";
-import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "./types";
+import { FPSCalculator } from "../util/FPSCalculator";
+import { ConfigValidator } from "../util/ConfigValidator";
+import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "../types";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
-import type { CompilationResult } from "./models";
+import type { CompilationResult } from "../models";
 import { CustomUniformManager } from "./CustomUniformManager";
-import { VariableCapturer } from "./capture/VariableCapturer";
-import type { CaptureCompileContext, CaptureUniforms } from "./capture/VariableCapturer";
-import { assignInputSlots } from "./util/InputSlotAssigner";
+import { VariableCapturer } from "../capture/VariableCapturer";
+import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 import type { ChannelSamplerType } from "./ShaderCompiler";
-import type { PiTexture } from "./types/piRenderer";
+import type { PiTexture } from "../types/piRenderer";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -373,7 +373,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.frameRenderer.getFrameTimeCount();
   }
 
-  public getUniforms(): import("./models").PassUniforms {
+  public getUniforms(): import("../models").PassUniforms {
     return this.frameRenderer.getUniforms();
   }
 

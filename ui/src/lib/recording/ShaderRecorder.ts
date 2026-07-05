@@ -1,4 +1,4 @@
-import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
+import { RenderingEngine } from "../../../../rendering/src/webgl/RenderingEngine";
 import { GifEncoderWrapper } from "./GifEncoder";
 import { VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";

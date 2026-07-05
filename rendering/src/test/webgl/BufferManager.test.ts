@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { BufferManager } from "../BufferManager";
-import type { PiRenderer } from '../types/piRenderer';
+import { BufferManager } from "../../webgl/BufferManager";
+import type { PiRenderer } from '../../types/piRenderer';
 
 // Mock renderer implementation
 const createMockRenderer = (): PiRenderer => {

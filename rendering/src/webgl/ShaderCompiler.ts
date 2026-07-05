@@ -1,5 +1,5 @@
-import type { PiRenderer, PiShader } from "./types/piRenderer";
-import type { SlotAssignment } from "./util/InputSlotAssigner";
+import type { PiRenderer, PiShader } from "../types/piRenderer";
+import type { SlotAssignment } from "../util/InputSlotAssigner";
 
 export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 

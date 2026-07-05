@@ -72,7 +72,7 @@ const mockGetTimeManager = vi.fn(() => ({
   setDeltaTime: mockSetDeltaTime,
 }));
 
-vi.mock('../../../../rendering/src/RenderingEngine', () => ({
+vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => ({
   RenderingEngine: vi.fn(() => ({
     initialize: mockInitialize,
     handleCanvasResize: mockHandleCanvasResize,

@@ -53,7 +53,7 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockCreateTransport
   return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig };
 });
 
-vi.mock('../../../../rendering/src/RenderingEngine', () => {
+vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
     private _canvas = { width: 800, height: 600 };
     initialize() {}
@@ -2648,7 +2648,7 @@ describe('ShaderViewer', () => {
 
     // Track togglePause calls via the mock
     const togglePauseCalls: string[] = [];
-    const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+    const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
     const origTogglePause = RenderingEngine.prototype.togglePause;
     RenderingEngine.prototype.togglePause = function() {
       paused = !paused;
@@ -2974,7 +2974,7 @@ describe('ShaderViewer', () => {
     await loadShader();
     await tick();
 
-    const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+    const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
     return new RenderingEngine();
   }
 
@@ -3323,7 +3323,7 @@ describe('ShaderViewer', () => {
 
   describe('handleFpsLimitChange', () => {
     it('should call renderingEngine.setFPSLimit when FPS limit changes', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const setFPSLimitSpy = vi.fn();
       RenderingEngine.prototype.setFPSLimit = setFPSLimitSpy;
 
@@ -3574,7 +3574,7 @@ describe('ShaderViewer', () => {
     });
 
     it('should call updateBufferAndRecompile for non-Image buffer code changes', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const updateSpy = vi.fn().mockResolvedValue({ success: true });
       RenderingEngine.prototype.updateBufferAndRecompile = updateSpy;
 
@@ -3603,7 +3603,7 @@ describe('ShaderViewer', () => {
     });
 
     it('should show errors when buffer recompile fails', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const updateSpy = vi.fn().mockResolvedValue({ success: false, errors: ['Compile error in buffer'] });
       RenderingEngine.prototype.updateBufferAndRecompile = updateSpy;
 
@@ -3747,7 +3747,7 @@ describe('ShaderViewer', () => {
   describe('pending messages buffer', () => {
     it('should buffer and replay messages that arrive during initialization', async () => {
       // Delay RenderingEngine.initialize to simulate slow init
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origInit = RenderingEngine.prototype.initialize;
       let resolveInit: (() => void) | null = null;
       RenderingEngine.prototype.initialize = function() {
@@ -3787,7 +3787,7 @@ describe('ShaderViewer', () => {
 
   describe('initialization failure', () => {
     it('should add error when renderer initialization throws', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origInit = RenderingEngine.prototype.initialize;
       RenderingEngine.prototype.initialize = vi.fn().mockImplementation(() => {
         throw new Error('WebGL not supported');
@@ -3806,7 +3806,7 @@ describe('ShaderViewer', () => {
     });
 
     it('should add error when initialization throws at a higher level', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origInit = RenderingEngine.prototype.initialize;
       RenderingEngine.prototype.initialize = vi.fn().mockImplementation(() => {
         throw new Error('Async init failed');
@@ -4424,7 +4424,7 @@ describe('ShaderViewer', () => {
 
       // The handleVideoControl function blocks unmute when audioMuted is true.
       // Verify this by checking the audioStore state is reflected in the component.
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const engine = new RenderingEngine();
       expect(engine).toBeTruthy();
     });
@@ -4440,7 +4440,7 @@ describe('ShaderViewer', () => {
       audioStore.setMuted(false);
       await tick();
 
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const engine = new RenderingEngine();
       expect(engine).toBeTruthy();
     });
@@ -4448,7 +4448,7 @@ describe('ShaderViewer', () => {
 
   describe('handleAudioControl actions', () => {
     it('should handle seek action format', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4462,7 +4462,7 @@ describe('ShaderViewer', () => {
     });
 
     it('should handle loopRegion action format', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4478,7 +4478,7 @@ describe('ShaderViewer', () => {
 
   describe('handleGetVideoState', () => {
     it('should return video state when engine exists', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4496,7 +4496,7 @@ describe('ShaderViewer', () => {
 
   describe('handleGetAudioState', () => {
     it('should return audio state when engine exists', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4514,7 +4514,7 @@ describe('ShaderViewer', () => {
 
   describe('handleGetAudioFFT', () => {
     it('should return FFT data when engine exists', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4831,7 +4831,7 @@ describe('ShaderViewer', () => {
 
   describe('handleFpsLimitChange via menu', () => {
     it('should change FPS limit when selecting from FPS menu', async () => {
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const setFPSLimitSpy = vi.fn();
       RenderingEngine.prototype.setFPSLimit = setFPSLimitSpy;
 
@@ -5095,7 +5095,7 @@ describe('ShaderViewer', () => {
     // Helper: set up config panel on the Script tab with 2 uniforms declared
     async function setupWithUniforms(messageHandler: (e: any) => Promise<void>, container: Element) {
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
       const origGetCustomUniformInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
 
@@ -5199,7 +5199,7 @@ describe('ShaderViewer', () => {
 
       // Send a new shaderSource — should wipe uniformTimestamps
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
-      const { RenderingEngine } = await import('../../../../rendering/src/RenderingEngine');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origHandle = ShaderPipeline.prototype.handleShaderMessage;
       const origGetInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
       ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });

@@ -2,13 +2,13 @@ import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
 import type { ResourceManager } from "./ResourceManager";
-import type { Pass, PassUniforms } from "./models";
-import type { TimeManager } from "./util/TimeManager";
-import type { KeyboardManager } from "./input/KeyboardManager";
-import type { MouseManager } from "./input/MouseManager";
-import type { CameraManager } from "./input/CameraManager";
+import type { Pass, PassUniforms } from "../models";
+import type { TimeManager } from "../util/TimeManager";
+import type { KeyboardManager } from "../input/KeyboardManager";
+import type { MouseManager } from "../input/MouseManager";
+import type { CameraManager } from "../input/CameraManager";
 import type { CustomUniformManager, CustomUniform } from "./CustomUniformManager";
-import { FPSCalculator } from "./util/FPSCalculator";
+import { FPSCalculator } from "../util/FPSCalculator";
 
 export class FrameRenderer {
   private running = false;

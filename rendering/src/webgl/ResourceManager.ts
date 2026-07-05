@@ -1,10 +1,10 @@
-import type { PiRenderer, PiTexture } from "./types/piRenderer";
-import { TextureCache } from "./resources/TextureCache";
-import { VideoTextureManager } from "./resources/VideoTextureManager";
-import { CubemapTextureManager } from "./resources/CubemapTextureManager";
-import { AudioTextureManager } from "./resources/AudioTextureManager";
-import { ShaderKeyboardInput } from "./resources/ShaderKeyboardInput";
-import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "./models/ShaderConfig";
+import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import { TextureCache } from "../resources/TextureCache";
+import { VideoTextureManager } from "../resources/VideoTextureManager";
+import { CubemapTextureManager } from "../resources/CubemapTextureManager";
+import { AudioTextureManager } from "../resources/AudioTextureManager";
+import { ShaderKeyboardInput } from "../resources/ShaderKeyboardInput";
+import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "../models/ShaderConfig";
 
 export interface VideoLoadResult {
   texture: PiTexture | null;

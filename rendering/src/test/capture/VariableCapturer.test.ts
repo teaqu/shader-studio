@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { VariableCapturer } from "../../capture/VariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
-import type { ShaderCompiler } from "../../ShaderCompiler";
+import type { ShaderCompiler } from "../../webgl/ShaderCompiler";
 import type { PiShader } from "../../types/piRenderer";
 
 const createMockGl = () => {

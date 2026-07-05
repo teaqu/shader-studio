@@ -1,11 +1,11 @@
 import type { ResourceManager } from "./ResourceManager";
 import type { BufferManager } from "./BufferManager";
-import type { Pass, PassUniforms } from "./models";
-import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "./types/piRenderer";
-import type { KeyboardManager } from "./input/KeyboardManager";
+import type { Pass, PassUniforms } from "../models";
+import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "../types/piRenderer";
+import type { KeyboardManager } from "../input/KeyboardManager";
 import type { CustomUniform } from "./CustomUniformManager";
-import { assignInputSlots, type SlotAssignment } from "./util/InputSlotAssigner";
-import { bindTextures } from "./util/TextureBinder";
+import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
+import { bindTextures } from "../util/TextureBinder";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;

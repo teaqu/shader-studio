@@ -1,4 +1,4 @@
-import type { ShaderCompiler, ChannelSamplerType } from '../ShaderCompiler';
+import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';

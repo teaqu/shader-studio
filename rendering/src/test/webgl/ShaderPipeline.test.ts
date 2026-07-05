@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ShaderPipeline } from "../ShaderPipeline";
-import type { ShaderCompiler } from "../ShaderCompiler";
-import type { ResourceManager } from "../ResourceManager";
-import type { PiRenderer, PiShader } from "../types/piRenderer";
-import type { BufferManager } from "../BufferManager";
-import type { TimeManager } from "../util/TimeManager";
+import { ShaderPipeline } from "../../webgl/ShaderPipeline";
+import type { ShaderCompiler } from "../../webgl/ShaderCompiler";
+import type { ResourceManager } from "../../webgl/ResourceManager";
+import type { PiRenderer, PiShader } from "../../types/piRenderer";
+import type { BufferManager } from "../../webgl/BufferManager";
+import type { TimeManager } from "../../util/TimeManager";
 
 const createMockCanvas = () => ({
     width: 800,

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FrameRenderer } from "../FrameRenderer";
+import { FrameRenderer } from "../../webgl/FrameRenderer";
 
 // Mock dependencies
-vi.mock("../util/TimeManager");
-vi.mock("../input/KeyboardManager");
-vi.mock("../input/MouseManager");
-vi.mock("../ShaderPipeline");
-vi.mock("../BufferManager");
-vi.mock("../PassRenderer");
-vi.mock("../util/FPSCalculator");
+vi.mock("../../util/TimeManager");
+vi.mock("../../input/KeyboardManager");
+vi.mock("../../input/MouseManager");
+vi.mock("../../webgl/ShaderPipeline");
+vi.mock("../../webgl/BufferManager");
+vi.mock("../../webgl/PassRenderer");
+vi.mock("../../util/FPSCalculator");
 
 describe("FrameRenderer", () => {
   let frameRenderer: FrameRenderer;

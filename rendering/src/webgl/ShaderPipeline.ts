@@ -1,12 +1,12 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "./ResourceManager";
-import { ShaderErrorFormatter } from "./util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "./models";
-import type { PiRenderer, PiShader } from "./types/piRenderer";
+import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
+import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
+import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
-import type { TimeManager } from "./util/TimeManager";
+import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
-import { assignInputSlots } from "./util/InputSlotAssigner";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;

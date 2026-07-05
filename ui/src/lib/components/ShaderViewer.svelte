@@ -13,7 +13,7 @@
   import DebugPanel from "./debug/DebugPanel.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
-  import { RenderingEngine } from "../../../../rendering/src/RenderingEngine";
+  import { RenderingEngine } from "../../../../rendering/src/webgl/RenderingEngine";
   import { WebGPURenderingEngine } from "../../../../rendering/src/webgpu/WebGPURenderingEngine";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
   import { getSlangAssetUrls } from "../slangAssets";

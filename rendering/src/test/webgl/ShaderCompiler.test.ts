@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ShaderCompiler } from "../ShaderCompiler";
-import type { PiRenderer, PiShader } from "../types/piRenderer";
+import { ShaderCompiler } from "../../webgl/ShaderCompiler";
+import type { PiRenderer, PiShader } from "../../types/piRenderer";
 
 const createMockRenderer = () => ({
   CreateShader: vi.fn(),

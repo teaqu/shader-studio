@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RenderingEngine } from "../../RenderingEngine";
+import { RenderingEngine } from "../../webgl/RenderingEngine";
 
 describe("RenderingEngine readPixel e2e", () => {
   it("should read white from a 1x1 canvas rendering vec4(1.0, 1.0, 1.0, 0.0)", async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CustomUniformManager } from "../CustomUniformManager";
+import { CustomUniformManager } from "../../webgl/CustomUniformManager";
 
 describe("CustomUniformManager", () => {
   let manager: CustomUniformManager;

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RenderingEngine } from "../RenderingEngine";
-import { ConfigValidator } from "../util/ConfigValidator";
+import { RenderingEngine } from "../../webgl/RenderingEngine";
+import { ConfigValidator } from "../../util/ConfigValidator";
 import type { ShaderConfig } from "@shader-studio/types";
 
 // Mock the ConfigValidator
-vi.mock("../util/ConfigValidator", () => ({
+vi.mock("../../util/ConfigValidator", () => ({
   ConfigValidator: {
     validateConfig: vi.fn()
   }

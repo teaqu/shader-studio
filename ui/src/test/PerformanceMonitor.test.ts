@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PerformanceMonitor, type PerformanceData } from '../lib/PerformanceMonitor';
-import type { RenderingEngine } from '../../../rendering/src/RenderingEngine';
+import type { RenderingEngine } from '../../../rendering/src/webgl/RenderingEngine';
 
 describe('PerformanceMonitor', () => {
   let monitor: PerformanceMonitor;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ResourceManager } from "../ResourceManager";
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import { ResourceManager } from "../../webgl/ResourceManager";
+import type { PiRenderer, PiTexture } from "../../types/piRenderer";
 
 // Mock video element helper
 const createMockVideoElement = (options: {
@@ -37,7 +37,7 @@ const createMockVideoElement = (options: {
 };
 
 // Mock the dependencies
-vi.mock("../resources/TextureCache", () => ({
+vi.mock("../../resources/TextureCache", () => ({
   TextureCache: vi.fn().mockImplementation(function() {
     return {
       getImageTextureCache: vi.fn().mockReturnValue({}),
@@ -50,7 +50,7 @@ vi.mock("../resources/TextureCache", () => ({
   }),
 }));
 
-vi.mock("../resources/VideoTextureManager", () => ({
+vi.mock("../../resources/VideoTextureManager", () => ({
   VideoTextureManager: vi.fn().mockImplementation(function() {
     return {
       loadVideoTexture: vi.fn(),
@@ -75,7 +75,7 @@ vi.mock("../resources/VideoTextureManager", () => ({
   }),
 }));
 
-vi.mock("../resources/CubemapTextureManager", () => ({
+vi.mock("../../resources/CubemapTextureManager", () => ({
   CubemapTextureManager: vi.fn().mockImplementation(function() {
     return {
       getCubemapTexture: vi.fn().mockReturnValue(null),
@@ -85,7 +85,7 @@ vi.mock("../resources/CubemapTextureManager", () => ({
   }),
 }));
 
-vi.mock("../resources/AudioTextureManager", () => ({
+vi.mock("../../resources/AudioTextureManager", () => ({
   AudioTextureManager: vi.fn().mockImplementation(function() {
     return {
       loadAudioSource: vi.fn(),
@@ -118,7 +118,7 @@ vi.mock("../resources/AudioTextureManager", () => ({
   }),
 }));
 
-vi.mock("../resources/ShaderKeyboardInput", () => ({
+vi.mock("../../resources/ShaderKeyboardInput", () => ({
   ShaderKeyboardInput: vi.fn().mockImplementation(function() {
     return {
       getKeyboardTexture: vi.fn().mockReturnValue(null),
