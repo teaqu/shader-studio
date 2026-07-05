@@ -192,6 +192,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      pipeline.rebuildBindGroup(this.getChannelResources(pass));
+
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
           view: targetView,
@@ -215,6 +217,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     this.timeManager.incrementFrame();
+  }
+
+  private getChannelResources(pass: RenderPassNode): Array<{ slot: number; textureView: GPUTextureView }> {
+    const resources: Array<{ slot: number; textureView: GPUTextureView }> = [];
+    for (const channel of pass.channels) {
+      const source = this.passPipelines.get(channel.source);
+      const textureView = channel.readFrom === "previous-frame"
+        ? source?.getPreviousOutputView()
+        : source?.getCurrentOutputView();
+      if (textureView) {
+        resources.push({ slot: channel.slot, textureView });
+      }
+    }
+    return resources;
   }
 
   startRenderLoop(): void {

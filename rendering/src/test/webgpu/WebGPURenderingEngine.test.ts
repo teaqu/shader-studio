@@ -365,6 +365,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(() => calls.push("swap:BufferA")),
     };
     const imagePipeline = {
@@ -373,6 +374,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => ({ label: "image-uniform" }),
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
     };
 
@@ -420,6 +422,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => ({ label: "buffer-uniform" }),
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
     };
     const imagePipeline = {
@@ -428,6 +431,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => ({ label: "image-uniform" }),
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
     };
 
@@ -500,6 +504,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => bufferUniform,
       getCurrentOutputView: () => ({ label: "buffer-current-view" }),
       getPreviousOutputView: () => ({ label: "buffer-previous-view" }),
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
     };
     const imagePipeline = {
@@ -508,6 +513,7 @@ describe("WebGPURenderingEngine", () => {
       getUniformBuffer: () => imageUniform,
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
+      rebuildBindGroup: vi.fn(),
       swap: vi.fn(),
     };
 
@@ -547,5 +553,173 @@ describe("WebGPURenderingEngine", () => {
     const secondResolution = new Float32Array(secondCall[2] as ArrayBuffer, 0, 2);
     expect(Array.from(firstResolution)).toEqual([64, 32]);
     expect(Array.from(secondResolution)).toEqual([640, 480]);
+  });
+
+  function renderablePipeline(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      getPipeline: () => ({ label: "pipeline" }),
+      getBindGroup: () => ({ label: "bind-group" }),
+      getUniformBuffer: () => ({ label: "uniform" }),
+      getCurrentOutputView: () => ({ label: "current-view" }),
+      getPreviousOutputView: () => ({ label: "previous-view" }),
+      rebuildBindGroup: vi.fn(),
+      swap: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  function stubDeviceAndContext(engine: WebGPURenderingEngine) {
+    (engine as any).device = {
+      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass: vi.fn(() => ({
+          setPipeline: vi.fn(),
+          setBindGroup: vi.fn(),
+          draw: vi.fn(),
+          end: vi.fn(),
+        })),
+        finish: vi.fn(() => ({})),
+      })),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+    };
+    (engine as any).canvas = { width: 320, height: 180 };
+  }
+
+  it("passes the source pipeline's previous-frame view for a self-feedback buffer channel", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      {
+        name: "BufferA",
+        width: 320,
+        height: 180,
+        output: "texture",
+        // Self-feedback: BufferA reads its own previous frame.
+        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
+      },
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
+      { slot: 0, textureView: { label: "bufferA-previous" } },
+    ]);
+  });
+
+  it("passes the source pipeline's current-frame view for an Image channel", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
+      { slot: 0, textureView: { label: "bufferA-current" } },
+    ]);
+  });
+
+  it("omits a channel resource when its source pipeline does not exist, without throwing", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        // BufferA was never compiled (e.g. removed from config) -> defensive skip.
+        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+
+    expect(() => engine.render(1000)).not.toThrow();
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([]);
+  });
+
+  it("rebuilds the bind group every frame so channel views stay current across swaps", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    let bufferViewToggle = false;
+    const bufferPipeline = renderablePipeline({
+      getPreviousOutputView: () => (bufferViewToggle ? { label: "swapped-view" } : { label: "initial-view" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(1, [
+      { slot: 0, textureView: { label: "initial-view" } },
+    ]);
+
+    bufferViewToggle = true;
+    engine.render(1016);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(2, [
+      { slot: 0, textureView: { label: "swapped-view" } },
+    ]);
   });
 });

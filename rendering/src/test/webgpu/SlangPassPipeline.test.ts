@@ -382,4 +382,89 @@ describe("SlangPassPipeline", () => {
 
     expect(errors).toEqual([]);
   });
+
+  it("adds channel texture and sampler entries after the uniform binding", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    await pass.rebuild("// wgsl");
+    pass.rebuildBindGroup([{ slot: 0, textureView: { label: "buffer-view" } as unknown as GPUTextureView }]);
+
+    const entries = (device.createBindGroup as any).mock.calls.at(-1)[0].entries;
+    expect(entries.map((entry: { binding: number }) => entry.binding)).toEqual([0, 1, 2]);
+  });
+
+  it("binds a lone slot-2 channel densely at bindings 1/2, not at its slot number", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 2, key: "iChannel2" }],
+    });
+
+    await pass.rebuild("// wgsl");
+    const textureView = { label: "buffer-view" } as unknown as GPUTextureView;
+    pass.rebuildBindGroup([{ slot: 2, textureView }]);
+
+    const call = (device.createBindGroup as any).mock.calls.at(-1)[0];
+    expect(call.entries).toEqual([
+      { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
+      { binding: 1, resource: textureView },
+      { binding: 2, resource: expect.anything() },
+    ]);
+  });
+
+  it("rebuildBindGroup is a safe no-op before rebuild has ever run", () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    expect(() => pass.rebuildBindGroup([{ slot: 0, textureView: {} as GPUTextureView }])).not.toThrow();
+    expect(device.createBindGroup).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the bind group with the sampler shared across multiple channel slots", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [
+        { slot: 0, key: "iChannel0" },
+        { slot: 1, key: "iChannel1" },
+      ],
+    });
+
+    await pass.rebuild("// wgsl");
+    const viewA = { label: "view-a" } as unknown as GPUTextureView;
+    const viewB = { label: "view-b" } as unknown as GPUTextureView;
+    // Pass resources out of slot order to verify rebuildBindGroup sorts by slot.
+    pass.rebuildBindGroup([
+      { slot: 1, textureView: viewB },
+      { slot: 0, textureView: viewA },
+    ]);
+
+    const entries = (device.createBindGroup as any).mock.calls.at(-1)[0].entries;
+    expect(entries).toEqual([
+      { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
+      { binding: 1, resource: viewA },
+      { binding: 2, resource: expect.anything() },
+      { binding: 3, resource: viewB },
+      { binding: 4, resource: expect.anything() },
+    ]);
+  });
 });

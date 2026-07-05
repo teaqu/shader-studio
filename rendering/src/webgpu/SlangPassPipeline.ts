@@ -9,6 +9,11 @@ export interface SlangPassPipelineDescriptor {
   channels: Array<{ slot: number; key: string }>;
 }
 
+export interface SlangChannelResource {
+  slot: number;
+  textureView: GPUTextureView;
+}
+
 export class SlangPassPipeline {
   private shaderModule: GPUShaderModule | null = null;
   private pipeline: GPURenderPipeline | null = null;
@@ -55,6 +60,24 @@ export class SlangPassPipeline {
 
   updateDescriptor(descriptor: SlangPassPipelineDescriptor): void {
     this.descriptor = descriptor;
+  }
+
+  rebuildBindGroup(resources: SlangChannelResource[]): void {
+    if (!this.pipeline || !this.uniformBuffer) {
+      return;
+    }
+    const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
+    const sorted = [...resources].sort((a, b) => a.slot - b.slot);
+    for (let index = 0; index < sorted.length; index++) {
+      const textureBinding = 1 + index * 2;
+      const samplerBinding = textureBinding + 1;
+      entries.push({ binding: textureBinding, resource: sorted[index].textureView });
+      entries.push({ binding: samplerBinding, resource: this.sampler! });
+    }
+    this.bindGroup = this.device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries,
+    });
   }
 
   getPipeline(): GPURenderPipeline | null {
