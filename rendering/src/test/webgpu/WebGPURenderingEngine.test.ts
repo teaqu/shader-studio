@@ -80,4 +80,183 @@ describe("WebGPURenderingEngine", () => {
     await engine.compileShaderPipeline("x", config, "/a.slang", {});
     expect(engine.getCurrentConfig()).toBe(config);
   });
+
+  it("compiles configured Slang buffer and image passes", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+    };
+    const compiler = {
+      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.slang", inputs: {} },
+        },
+      },
+      "/image.slang",
+      { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
+    expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+    expect(compiler.compileImagePass).toHaveBeenNthCalledWith(1, expect.stringContaining("float4(1)"), {
+      passName: "BufferA",
+      commonCode: "",
+      channels: [],
+    });
+    expect(compiler.compileImagePass).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
+      passName: "Image",
+      commonCode: "",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+  });
+
+  it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(),
+      createRenderPipeline: vi.fn(),
+      createBuffer: vi.fn(),
+      createSampler: vi.fn(),
+      createBindGroup: vi.fn(),
+      createTexture: vi.fn(),
+    };
+    const compiler = { compileImagePass: vi.fn() };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.slang", inputs: {} },
+        },
+      },
+      "/image.slang",
+      {}, // BufferA source missing -> pass graph reports an error
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.errors?.[0]).toMatch(/BufferA/);
+    expect(compiler.compileImagePass).not.toHaveBeenCalled();
+    expect(device.createShaderModule).not.toHaveBeenCalled();
+    expect(engine.getPasses()).toEqual([]);
+  });
+
+  it("disposes discarded pass pipelines on recompile", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+    };
+    const compiler = {
+      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const config = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+      },
+    };
+    const buffers = { BufferA: "float4 mainImage(float2 c) { return float4(1); }" };
+
+    await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      config,
+      "/image.slang",
+      buffers,
+    );
+    const firstPipelines = (engine as any).passPipelines as Map<string, { dispose: () => void }>;
+    expect(firstPipelines.size).toBe(2);
+    const disposeSpies = [...firstPipelines.values()].map((pipeline) => vi.spyOn(pipeline, "dispose"));
+
+    await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(2); }",
+      config,
+      "/image.slang",
+      buffers,
+    );
+
+    expect(disposeSpies).toHaveLength(2);
+    for (const spy of disposeSpies) {
+      expect(spy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("propagates pass graph warnings into a successful compile result", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+    };
+    const compiler = {
+      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "texture", source: "foo" } } },
+        },
+      },
+      "/image.slang",
+      {},
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.warnings?.[0]).toMatch(/unsupported/i);
+  });
 });

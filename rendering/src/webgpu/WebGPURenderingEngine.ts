@@ -15,6 +15,8 @@ import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { packShaderToyUniforms } from "./uniforms";
 import { SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
+import { buildSlangPassGraph, type RenderPassNode } from "./SlangPassGraph";
+import { SlangPassPipeline } from "./SlangPassPipeline";
 
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -39,6 +41,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
+
+  private passGraph: RenderPassNode[] = [];
+  private passPipelines = new Map<string, SlangPassPipeline>();
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
@@ -96,24 +101,56 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: [`WebGPU init failed: ${this.initError ?? "device unavailable"}`] };
     }
 
-    const compiled = this.compiler.compileImagePass(code);
-    if (!compiled.success) {
-      return { success: false, errors: compiled.errors };
+    const graph = buildSlangPassGraph({
+      imageCode: code,
+      config,
+      buffers: _buffers,
+      canvasWidth: this.canvas?.width ?? 1,
+      canvasHeight: this.canvas?.height ?? 1,
+    });
+    this.currentConfig = config;
+
+    if (graph.errors.length > 0) {
+      return { success: false, errors: graph.errors, warnings: graph.warnings };
     }
 
-    try {
-      this.buildPipeline(compiled.wgsl);
-    } catch (e) {
-      return { success: false, errors: [e instanceof Error ? e.message : String(e)] };
+    const nextPipelines = new Map<string, SlangPassPipeline>();
+    const errors: string[] = [];
+    for (const pass of graph.passes) {
+      const compiled = this.compiler.compileImagePass(pass.source, {
+        passName: pass.name,
+        commonCode: graph.commonCode,
+        channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+      });
+      if (!compiled.success) {
+        errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+        continue;
+      }
+      const pipeline = new SlangPassPipeline(this.device, this.format, {
+        name: pass.name,
+        width: pass.width,
+        height: pass.height,
+        output: pass.output,
+        channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+      });
+      const wgslErrors = await pipeline.rebuild(compiled.wgsl);
+      errors.push(...wgslErrors);
+      nextPipelines.set(pass.name, pipeline);
     }
 
-    // Surface WGSL compile diagnostics rather than silently rendering black.
-    const wgslErrors = await this.collectShaderErrors();
-    if (wgslErrors.length > 0) {
-      return { success: false, errors: wgslErrors };
+    if (errors.length > 0) {
+      for (const pipeline of nextPipelines.values()) {
+        pipeline.dispose();
+      }
+      return { success: false, errors, warnings: graph.warnings };
     }
 
-    return { success: true };
+    for (const pipeline of this.passPipelines.values()) {
+      pipeline.dispose();
+    }
+    this.passGraph = graph.passes;
+    this.passPipelines = nextPipelines;
+    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
   }
 
   private shaderModule: GPUShaderModule | null = null;
@@ -279,7 +316,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   // ---- Not yet supported in the Slang/WebGPU path (M1) ----
 
   getPasses(): unknown[] {
-    return [];
+    return this.passGraph;
   }
 
   flagForceCleanupOnNextApply(): void {
