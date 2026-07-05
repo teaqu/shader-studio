@@ -658,29 +658,80 @@ describe("WebGPURenderingEngine", () => {
     ]);
   });
 
-  it("omits a channel resource when its source pipeline does not exist, without throwing", () => {
+  it("skips a pass entirely when any of its channel sources is unresolvable", () => {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
+    const writeBuffer = (engine as any).device.queue.writeBuffer as ReturnType<typeof vi.fn>;
 
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
     const imagePipeline = renderablePipeline({
       getCurrentOutputView: () => null,
       getPreviousOutputView: () => null,
     });
 
     (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
       {
         name: "Image",
         width: 320,
         height: 180,
         output: "canvas",
-        // BufferA was never compiled (e.g. removed from config) -> defensive skip.
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+        // Image was compiled expecting TWO channels (bindings 1/2 and 3/4).
+        // BufferB never compiled -> binding the lone survivor positionally
+        // would mis-bind it, so the whole pass must be skipped this frame.
+        channels: [
+          { slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+          { slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
+        ],
       },
     ];
-    (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+    const getCurrentTexture = vi.spyOn((engine as any).context, "getCurrentTexture");
 
     expect(() => engine.render(1000)).not.toThrow();
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([]);
+
+    // The Image pass is skipped entirely: no bind group rebuild, no uniform
+    // write, no render pass begun on the canvas.
+    expect(imagePipeline.rebuildBindGroup).not.toHaveBeenCalled();
+    expect(getCurrentTexture).not.toHaveBeenCalled();
+    expect(writeBuffer).toHaveBeenCalledTimes(1);
+    // The buffer pass with no channels still renders normally.
+    const encoder = ((engine as any).device.createCommandEncoder as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(encoder.beginRenderPass).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rebuild the bind group for channel-less passes on any frame", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    const bufferPipeline = renderablePipeline();
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+    engine.render(1016);
+
+    // The uniform-only bind group built by rebuild() stays valid; per-frame
+    // rebuilds would only churn GPU bind group allocations.
+    expect(bufferPipeline.rebuildBindGroup).not.toHaveBeenCalled();
+    expect(imagePipeline.rebuildBindGroup).not.toHaveBeenCalled();
   });
 
   it("rebuilds the bind group every frame so channel views stay current across swaps", () => {

@@ -418,7 +418,7 @@ describe("SlangPassPipeline", () => {
     expect(call.entries).toEqual([
       { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
       { binding: 1, resource: textureView },
-      { binding: 2, resource: expect.anything() },
+      { binding: 2, resource: (device.createSampler as any).mock.results[0].value },
     ]);
   });
 
@@ -459,12 +459,18 @@ describe("SlangPassPipeline", () => {
     ]);
 
     const entries = (device.createBindGroup as any).mock.calls.at(-1)[0].entries;
+    const sampler = (device.createSampler as any).mock.results[0].value;
     expect(entries).toEqual([
       { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
       { binding: 1, resource: viewA },
-      { binding: 2, resource: expect.anything() },
+      { binding: 2, resource: sampler },
       { binding: 3, resource: viewB },
-      { binding: 4, resource: expect.anything() },
+      { binding: 4, resource: sampler },
     ]);
+    // Both sampler entries are the SAME sampler instance created by rebuild().
+    const samplerA = entries.find((entry: { binding: number }) => entry.binding === 2).resource;
+    const samplerB = entries.find((entry: { binding: number }) => entry.binding === 4).resource;
+    expect(samplerA).toBe(samplerB);
+    expect(samplerA).toBe(sampler);
   });
 });

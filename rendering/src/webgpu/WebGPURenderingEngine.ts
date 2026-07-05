@@ -174,6 +174,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      // All-or-nothing: the pass's WGSL was compiled against its full channel
+      // list, so if any channel source is unresolvable this frame, binding the
+      // survivors positionally would mis-bind them. Skip the pass entirely.
+      const channelResources = this.getChannelResources(pass);
+      if (channelResources === null) {
+        continue;
+      }
+
       const data = packShaderToyUniforms({
         width: pass.width,
         height: pass.height,
@@ -192,7 +200,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
-      pipeline.rebuildBindGroup(this.getChannelResources(pass));
+      if (channelResources.length > 0) {
+        pipeline.rebuildBindGroup(channelResources);
+      }
 
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
@@ -219,16 +229,25 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.timeManager.incrementFrame();
   }
 
-  private getChannelResources(pass: RenderPassNode): Array<{ slot: number; textureView: GPUTextureView }> {
+  /**
+   * Resolve every channel of a pass to a texture view. Returns null if ANY
+   * channel is unresolvable (missing source pipeline or view): the pass's
+   * shader was compiled against the full channel list, so a partial bind
+   * group would attach surviving channels at the wrong bindings.
+   */
+  private getChannelResources(
+    pass: RenderPassNode,
+  ): Array<{ slot: number; textureView: GPUTextureView }> | null {
     const resources: Array<{ slot: number; textureView: GPUTextureView }> = [];
     for (const channel of pass.channels) {
       const source = this.passPipelines.get(channel.source);
       const textureView = channel.readFrom === "previous-frame"
         ? source?.getPreviousOutputView()
         : source?.getCurrentOutputView();
-      if (textureView) {
-        resources.push({ slot: channel.slot, textureView });
+      if (!textureView) {
+        return null;
       }
+      resources.push({ slot: channel.slot, textureView });
     }
     return resources;
   }
