@@ -3,6 +3,9 @@
 // Convention: define `mainImage` returning the pixel colour. The globals
 // iResolution (float3), iTime, iTimeDelta, iFrameRate, iFrame and iMouse
 // (float4) are available, with the same meaning as ShaderToy.
+//
+// Multi-pass Slang buffers use the same config shape as GLSL.
+// A pass can sample a configured buffer input with sampleIChannel0(uv).
 
 float4 mainImage(float2 fragCoord)
 {
