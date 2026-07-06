@@ -107,7 +107,7 @@ describe("buildSlangPassGraph", () => {
         Image: {
           inputs: {
             iChannel0: { type: "texture", path: "noise.png" },
-            iChannel1: { type: "buffer", source: "MissingBuffer" },
+            iChannel1: { type: "buffer", source: "BufferB" },
           },
         },
         BufferA: { path: "buffer-a.slang", inputs: {} },
@@ -123,8 +123,42 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
-    expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"MissingBuffer\"");
+    expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"BufferB\"");
     expect(graph.warnings).toContain("Image: iChannel0 uses unsupported Slang/WebGPU input type \"texture\"");
+  });
+
+  it("errors when a channel's buffer source is not a buffer pass name", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            // "common" is a configured pass but not renderable, and "Image"
+            // is renderable but not a buffer: neither can feed a channel.
+            iChannel0: { type: "buffer", source: "common" },
+            iChannel1: { type: "buffer", source: "Image" },
+          },
+        },
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+        common: { path: "common.slang", inputs: {} },
+      },
+    };
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: { BufferA: imageCode, common: "float shared() { return 1.0; }" },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toContain(
+      "Image: iChannel0 source \"common\" is not a buffer pass (must be BufferA-BufferD)",
+    );
+    expect(graph.errors).toContain(
+      "Image: iChannel1 source \"Image\" is not a buffer pass (must be BufferA-BufferD)",
+    );
+    expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
   });
 
   it("uses fixed width/height resolution for buffer passes", () => {

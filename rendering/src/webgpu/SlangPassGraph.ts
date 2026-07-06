@@ -25,6 +25,12 @@ export interface BuildSlangPassGraphOptions {
 
 const RENDERABLE_PASS_NAMES: RenderPassName[] = ["BufferA", "BufferB", "BufferC", "BufferD", "Image"];
 
+// Only buffer passes render to textures a channel can sample. "Image" and
+// "common" are configured passes too, so a configured-names check alone would
+// let them through and the pass would silently skip every frame at render
+// time (its channel source never resolves to a texture view).
+const BUFFER_PASS_NAMES = new Set<string>(["BufferA", "BufferB", "BufferC", "BufferD"]);
+
 export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): RenderPassGraph {
   const canvasWidth = Math.max(1, Math.round(options.canvasWidth));
   const canvasHeight = Math.max(1, Math.round(options.canvasHeight));
@@ -161,6 +167,13 @@ function resolveChannels(options: {
 
     if (input.type !== "buffer") {
       options.warnings.push(`${options.passName}: ${key} uses unsupported Slang/WebGPU input type "${input.type}"`);
+      continue;
+    }
+
+    if (!BUFFER_PASS_NAMES.has(input.source)) {
+      options.errors.push(
+        `${options.passName}: ${key} source "${input.source}" is not a buffer pass (must be BufferA-BufferD)`,
+      );
       continue;
     }
 
