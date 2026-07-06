@@ -157,7 +157,12 @@ export class ShaderRecorder {
     });
     this.activeGifEncoder = encoder;
 
-    const gl = canvas.getContext("webgl2")!;
+    const gl = canvas.getContext("webgl2");
+    if (!gl) {
+      // A Slang/WebGPU canvas has no WebGL context; fail with a clear
+      // message instead of an opaque TypeError further down.
+      throw new Error("Recording is not supported for Slang shaders yet");
+    }
 
     for (let i = 0; i < totalFrames; i++) {
       if (this.cancelled) {

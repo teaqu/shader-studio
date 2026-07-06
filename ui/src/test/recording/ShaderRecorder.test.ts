@@ -317,6 +317,37 @@ describe('ShaderRecorder', () => {
     });
   });
 
+  describe('gif recording without a WebGL context', () => {
+    it('fails with a clear error instead of crashing when webgl2 is unavailable', async () => {
+      // A WebGPU (Slang) canvas returns null from getContext("webgl2");
+      // the recorder must surface a clear error, not an opaque TypeError.
+      vi.spyOn(document, 'createElement').mockReturnValue({
+        width: 0,
+        height: 0,
+        style: { position: '', left: '', top: '', pointerEvents: '' },
+        remove: vi.fn(),
+        getContext: vi.fn(() => null),
+      } as any);
+
+      const config: RecordingConfig = {
+        format: 'gif',
+        duration: 0.1,
+        startTime: 0,
+        fps: 10,
+        width: 800,
+        height: 600,
+      };
+
+      const p = recorder.record(config, shaderInfo);
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow('Recording is not supported for Slang shaders yet');
+      // The offscreen engine is still cleaned up through the finally path.
+      expect(mockDispose).toHaveBeenCalled();
+      expect(mockReset).toHaveBeenCalled();
+    });
+  });
+
   describe('cancel', () => {
     it('should stop recording when cancel is called', async () => {
       // We need to test cancellation mid-recording
