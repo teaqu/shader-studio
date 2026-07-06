@@ -174,7 +174,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     for (const pass of this.passGraph) {
       const pipeline = this.passPipelines.get(pass.name);
-      if (!pipeline?.getPipeline() || !pipeline.getBindGroup() || !pipeline.getUniformBuffer()) {
+      if (!pipeline?.getPipeline() || !pipeline.getUniformBuffer()) {
         continue;
       }
 
@@ -183,6 +183,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // survivors positionally would mis-bind them. Skip the pass entirely.
       const channelResources = this.getChannelResources(pass);
       if (channelResources === null) {
+        continue;
+      }
+
+      // Channel passes have no bind group until the first rebuildBindGroup:
+      // their explicit layout requires the channel texture/sampler entries,
+      // so it must be (re)built before the bind-group presence check.
+      if (channelResources.length > 0) {
+        pipeline.rebuildBindGroup(channelResources);
+      }
+      const bindGroup = pipeline.getBindGroup();
+      if (!bindGroup) {
         continue;
       }
 
@@ -204,10 +215,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
-      if (channelResources.length > 0) {
-        pipeline.rebuildBindGroup(channelResources);
-      }
-
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
           view: targetView,
@@ -217,7 +224,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }],
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
-      renderPass.setBindGroup(0, pipeline.getBindGroup()!);
+      renderPass.setBindGroup(0, bindGroup);
       renderPass.draw(3);
       renderPass.end();
     }

@@ -14,11 +14,18 @@ export interface SlangChannelResource {
   textureView: GPUTextureView;
 }
 
+// Buffer (texture-output) passes render to float textures so feedback state
+// is not clamped to [0,1] or quantized to 8 bits by the canvas format —
+// matching the WebGL engine's float buffer textures. rgba16float is
+// filterable and renderable without any optional device features.
+export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
+
 export class SlangPassPipeline {
   private shaderModule: GPUShaderModule | null = null;
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
+  private bindGroupLayout: GPUBindGroupLayout | null = null;
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
   private textureIndex = 0;
@@ -33,10 +40,22 @@ export class SlangPassPipeline {
     this.destroyTextures();
     this.destroyUniformBuffer();
     this.shaderModule = this.device.createShaderModule({ code: wgsl });
+    // An explicit layout (instead of layout:"auto") covers every DECLARED
+    // channel binding. With "auto", a shader that declares a channel but
+    // never statically uses it gets a layout without those bindings, and the
+    // bind group we build (which always supplies them) fails validation,
+    // silently dropping every draw.
+    this.bindGroupLayout = this.device.createBindGroupLayout({
+      entries: this.buildBindGroupLayoutEntries(),
+    });
     this.pipeline = this.device.createRenderPipeline({
-      layout: "auto",
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
       vertex: { module: this.shaderModule, entryPoint: SLANG_ENTRY_VERTEX },
-      fragment: { module: this.shaderModule, entryPoint: SLANG_ENTRY_FRAGMENT, targets: [{ format: this.format }] },
+      fragment: {
+        module: this.shaderModule,
+        entryPoint: SLANG_ENTRY_FRAGMENT,
+        targets: [{ format: this.targetFormat() }],
+      },
       primitive: { topology: "triangle-list" },
     });
     this.uniformBuffer = this.device.createBuffer({
@@ -47,10 +66,15 @@ export class SlangPassPipeline {
     if (this.descriptor.output === "texture") {
       this.textures = [this.createOutputTexture(), this.createOutputTexture()];
     }
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
+    if (this.descriptor.channels.length === 0) {
+      // Channel passes cannot build a valid bind group yet (the explicit
+      // layout requires their texture/sampler entries); rebuildBindGroup
+      // creates it each frame once channel views are resolved.
+      this.bindGroup = this.device.createBindGroup({
+        layout: this.bindGroupLayout,
+        entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+      });
+    }
 
     const info = await this.shaderModule.getCompilationInfo?.();
     return (info?.messages ?? [])
@@ -79,7 +103,7 @@ export class SlangPassPipeline {
   }
 
   rebuildBindGroup(resources: SlangChannelResource[]): void {
-    if (!this.pipeline || !this.uniformBuffer) {
+    if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout) {
       return;
     }
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
@@ -91,7 +115,7 @@ export class SlangPassPipeline {
       entries.push({ binding: samplerBinding, resource: this.sampler! });
     }
     this.bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
+      layout: this.bindGroupLayout,
       entries,
     });
   }
@@ -130,10 +154,42 @@ export class SlangPassPipeline {
     this.destroyUniformBuffer();
   }
 
+  /**
+   * Bind group layout entries matching the prelude's binding contract:
+   * binding 0 = uniforms; then, over the slot-sorted channel array, texture
+   * at 1+index*2 and sampler at 2+index*2.
+   */
+  private buildBindGroupLayoutEntries(): GPUBindGroupLayoutEntry[] {
+    const entries: GPUBindGroupLayoutEntry[] = [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: "uniform" },
+    }];
+    const sorted = [...this.descriptor.channels].sort((a, b) => a.slot - b.slot);
+    for (let index = 0; index < sorted.length; index++) {
+      entries.push({
+        binding: 1 + index * 2,
+        visibility: GPUShaderStage.FRAGMENT,
+        texture: { sampleType: "float" },
+      });
+      entries.push({
+        binding: 2 + index * 2,
+        visibility: GPUShaderStage.FRAGMENT,
+        sampler: { type: "filtering" },
+      });
+    }
+    return entries;
+  }
+
+  /** Render target format: float for buffer feedback, canvas format otherwise. */
+  private targetFormat(): GPUTextureFormat {
+    return this.descriptor.output === "texture" ? BUFFER_TEXTURE_FORMAT : this.format;
+  }
+
   private createOutputTexture(): GPUTexture {
     return this.device.createTexture({
       size: { width: this.descriptor.width, height: this.descriptor.height },
-      format: this.format,
+      format: this.targetFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
   }

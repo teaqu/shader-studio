@@ -20,6 +20,14 @@ if (typeof globalThis.GPUBufferUsage === 'undefined') {
   };
 }
 
+if (typeof globalThis.GPUShaderStage === 'undefined') {
+  (globalThis as unknown as { GPUShaderStage: typeof GPUShaderStage }).GPUShaderStage = {
+    VERTEX: 0x1,
+    FRAGMENT: 0x2,
+    COMPUTE: 0x4
+  };
+}
+
 if (typeof globalThis.GPUTextureUsage === 'undefined') {
   (globalThis as unknown as { GPUTextureUsage: typeof GPUTextureUsage }).GPUTextureUsage = {
     COPY_SRC: 0x01,

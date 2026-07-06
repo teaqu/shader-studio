@@ -88,6 +88,8 @@ describe("WebGPURenderingEngine", () => {
     const device = {
       createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({})),
       createSampler: vi.fn(() => ({})),
       createBindGroup: vi.fn(() => ({})),
@@ -175,6 +177,8 @@ describe("WebGPURenderingEngine", () => {
     const device = {
       createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({})),
       createSampler: vi.fn(() => ({})),
       createBindGroup: vi.fn(() => ({})),
@@ -231,6 +235,8 @@ describe("WebGPURenderingEngine", () => {
       createRenderPipeline: vi.fn(() => {
         throw new Error("device lost");
       }),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
       createBindGroup: vi.fn(() => ({})),
@@ -274,6 +280,8 @@ describe("WebGPURenderingEngine", () => {
     const device = {
       createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
       createBindGroup: vi.fn(() => ({})),
@@ -324,6 +332,8 @@ describe("WebGPURenderingEngine", () => {
     const device = {
       createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
       createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
       createBuffer: vi.fn(() => ({})),
       createSampler: vi.fn(() => ({})),
       createBindGroup: vi.fn(() => ({})),
@@ -951,6 +961,46 @@ describe("WebGPURenderingEngine", () => {
     // rebuilds would only churn GPU bind group allocations.
     expect(bufferPipeline.rebuildBindGroup).not.toHaveBeenCalled();
     expect(imagePipeline.rebuildBindGroup).not.toHaveBeenCalled();
+  });
+
+  it("draws a channel pass whose bind group only exists after rebuildBindGroup", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    // With explicit layouts, channel passes get NO bind group at rebuild()
+    // time; the first one is created by rebuildBindGroup during render().
+    let imageBindGroup: unknown = null;
+    const bufferPipeline = renderablePipeline();
+    const imagePipeline = renderablePipeline({
+      getBindGroup: () => imageBindGroup,
+      rebuildBindGroup: vi.fn(() => {
+        imageBindGroup = { label: "image-bind-group" };
+      }),
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledTimes(1);
+    const encoder = ((engine as any).device.createCommandEncoder as ReturnType<typeof vi.fn>).mock.results[0].value;
+    // Both the buffer pass and the Image pass drew this frame.
+    expect(encoder.beginRenderPass).toHaveBeenCalledTimes(2);
   });
 
   it("rebuilds the bind group every frame so channel views stay current across swaps", () => {

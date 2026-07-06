@@ -3,15 +3,16 @@ import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
 function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; linePos: number; message: string }> = []) {
-  const bindGroupLayout = {};
   const pipeline = {
-    getBindGroupLayout: vi.fn(() => bindGroupLayout),
+    getBindGroupLayout: vi.fn(() => ({})),
   };
   return {
     createShaderModule: vi.fn(() => ({
       getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
     })),
     createRenderPipeline: vi.fn(() => pipeline),
+    createBindGroupLayout: vi.fn(() => ({ label: "bind-group-layout" })),
+    createPipelineLayout: vi.fn(() => ({ label: "pipeline-layout" })),
     createBuffer: vi.fn(() => ({ label: "uniform-buffer", destroy: vi.fn() })),
     createSampler: vi.fn(() => ({ label: "sampler" })),
     createBindGroup: vi.fn(() => ({ label: "bind-group" })),
@@ -22,6 +23,8 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
   } as unknown as GPUDevice & {
     createShaderModule: ReturnType<typeof vi.fn>;
     createRenderPipeline: ReturnType<typeof vi.fn>;
+    createBindGroupLayout: ReturnType<typeof vi.fn>;
+    createPipelineLayout: ReturnType<typeof vi.fn>;
     createBuffer: ReturnType<typeof vi.fn>;
     createSampler: ReturnType<typeof vi.fn>;
     createTexture: ReturnType<typeof vi.fn>;
@@ -100,7 +103,7 @@ describe("SlangPassPipeline", () => {
     expect(pass.getUniformBuffer()).toBe(device.createBuffer.mock.results[0].value);
   });
 
-  it("wires the bind group to binding 0 with the uniform buffer via the pipeline's auto layout", async () => {
+  it("wires the bind group to binding 0 with the uniform buffer via the explicit layout", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "Image",
@@ -112,14 +115,139 @@ describe("SlangPassPipeline", () => {
 
     await pass.rebuild("// wgsl");
 
-    const pipelineResult = device.createRenderPipeline.mock.results[0].value;
-    expect(pipelineResult.getBindGroupLayout).toHaveBeenCalledWith(0);
-
     const bindGroupCall = device.createBindGroup.mock.calls[0][0];
-    expect(bindGroupCall.layout).toBe(pipelineResult.getBindGroupLayout.mock.results[0].value);
+    expect(bindGroupCall.layout).toBe(device.createBindGroupLayout.mock.results[0].value);
     expect(bindGroupCall.entries).toEqual([
       { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
     ]);
+  });
+
+  it("creates an explicit bind group layout covering the uniform and every declared channel", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [
+        { slot: 0, key: "iChannel0" },
+        { slot: 1, key: "iChannel1" },
+      ],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    // With layout:"auto" a shader that declares but never statically uses a
+    // channel would get a layout WITHOUT those bindings, and the bind group
+    // (which always supplies them) would silently fail validation. The
+    // explicit layout is derived from the descriptor instead.
+    expect(device.createBindGroupLayout).toHaveBeenCalledWith({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: "uniform" },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+      ],
+    });
+  });
+
+  it("creates the render pipeline with the explicit pipeline layout, not \"auto\"", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createPipelineLayout).toHaveBeenCalledWith({
+      bindGroupLayouts: [device.createBindGroupLayout.mock.results[0].value],
+    });
+    const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
+    expect(pipelineDescriptor.layout).toBe(device.createPipelineLayout.mock.results[0].value);
+    expect(pipelineDescriptor.layout).not.toBe("auto");
+  });
+
+  it("does not create a bind group at rebuild time for a pass with channels", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    // The explicit layout declares channel bindings, so a uniform-only bind
+    // group would be invalid; the full one is built per frame by
+    // rebuildBindGroup once channel views are known.
+    expect(device.createBindGroup).not.toHaveBeenCalled();
+    expect(pass.getBindGroup()).toBeNull();
+  });
+
+  it("rebuildBindGroup builds the bind group against the explicit layout", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    await pass.rebuild("// wgsl");
+    pass.rebuildBindGroup([{ slot: 0, textureView: { label: "view" } as unknown as GPUTextureView }]);
+
+    const call = device.createBindGroup.mock.calls.at(-1)![0];
+    expect(call.layout).toBe(device.createBindGroupLayout.mock.results[0].value);
+    const pipelineResult = device.createRenderPipeline.mock.results[0].value;
+    expect(pipelineResult.getBindGroupLayout).not.toHaveBeenCalled();
+  });
+
+  it("creates buffer pass ping-pong textures and render targets in rgba16float", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    // Feedback state must not be clamped/quantized by the canvas format.
+    const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
+    expect(pipelineDescriptor.fragment.targets).toEqual([{ format: "rgba16float" }]);
+    for (const [descriptor] of device.createTexture.mock.calls) {
+      expect(descriptor.format).toBe("rgba16float");
+    }
+  });
+
+  it("keeps the canvas format for canvas-output passes", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
+    expect(pipelineDescriptor.fragment.targets).toEqual([{ format: "bgra8unorm" }]);
   });
 
   it("creates a linear-filtering sampler on rebuild", async () => {
@@ -424,7 +552,7 @@ describe("SlangPassPipeline", () => {
     await pass.rebuild("// wgsl");
 
     const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
-    expect(pipelineDescriptor.layout).toBe("auto");
+    expect(pipelineDescriptor.layout).toBe(device.createPipelineLayout.mock.results[0].value);
     expect(pipelineDescriptor.vertex.module).toBe(device.createShaderModule.mock.results[0].value);
     expect(pipelineDescriptor.vertex.entryPoint).toBe(SLANG_ENTRY_VERTEX);
     expect(pipelineDescriptor.fragment.module).toBe(device.createShaderModule.mock.results[0].value);
