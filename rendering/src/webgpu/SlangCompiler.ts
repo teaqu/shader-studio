@@ -48,7 +48,10 @@ export class SlangCompiler {
     }
 
     const wrapped = wrapSlangImageSource(userSource, options);
-    const module = session.loadModuleFromSource(wrapped, "image", "/image.slang");
+    // Name the module after the pass so Slang diagnostics cite the right
+    // file (e.g. /buffera.slang) rather than always claiming /image.slang.
+    const moduleName = (options.passName ?? "image").toLowerCase();
+    const module = session.loadModuleFromSource(wrapped, moduleName, `/${moduleName}.slang`);
     if (!module) {
       return { success: false, errors: [this.lastError("Slang: failed to compile module")] };
     }

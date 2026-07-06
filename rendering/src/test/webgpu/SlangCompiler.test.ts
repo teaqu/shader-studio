@@ -18,7 +18,7 @@ function makeFakeSlang(opts: {
   linkNull?: boolean;
   wgsl?: string;
   lastError?: string;
-  onLoad?: (source: string) => void;
+  onLoad?: (source: string, name?: string, path?: string) => void;
 } = {}): SlangModuleApi {
   const wgsl = opts.wgsl ?? "// wgsl output";
   const linked = {
@@ -36,8 +36,8 @@ function makeFakeSlang(opts: {
     getTargetCode: () => "",
   };
   const session = {
-    loadModuleFromSource: (source: string) => {
-      opts.onLoad?.(source);
+    loadModuleFromSource: (source: string, name?: string, path?: string) => {
+      opts.onLoad?.(source, name, path);
       return opts.moduleNull ? null : module;
     },
     createCompositeComponentType: () => (opts.compositeNull ? null : composite),
@@ -269,6 +269,26 @@ describe("SlangCompiler", () => {
     expect(wrapped).not.toContain("vk::binding(5");
     expect(wrapped).not.toContain("vk::binding(6");
     expect(wrapped).toContain("float4 sampleIChannel2(float2 uv)");
+  });
+
+  it("names the compiled module after the pass so diagnostics cite the right file", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", {
+      passName: "BufferA",
+    });
+
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/buffera.slang");
+  });
+
+  it("defaults the module name to image when no pass name is given", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
+
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/image.slang");
   });
 
   it("does not mutate the caller's channels array", () => {

@@ -23,10 +23,13 @@ export interface SlangAssetUrls {
 }
 
 /**
- * WebGPU/Slang counterpart to the WebGL RenderingEngine. M1 scope: a single
- * image pass driven by the ShaderToy-style Slang convention (iTime, iResolution,
- * iMouse, iFrame). Buffers, textures, capture and debugging are out of scope and
- * their interface methods no-op or throw a clear "not supported" error.
+ * WebGPU/Slang counterpart to the WebGL RenderingEngine. Supports multi-pass
+ * rendering driven by the ShaderToy-style Slang convention (iTime,
+ * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
+ * textures that other passes sample via iChannelN, and the Image pass renders
+ * to the canvas. Textures/media inputs, capture and debugging are not yet
+ * supported and their interface methods no-op or throw a clear "not
+ * supported" error.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
   private canvas: HTMLCanvasElement | null = null;
