@@ -100,7 +100,10 @@ Texture2D<float4> ${channel.key};
 SamplerState ${channel.key}Sampler;
 float4 ${helperName}(float2 uv)
 {
-    return ${channel.key}.Sample(${channel.key}Sampler, uv);
+    // uv comes from the Y-flipped fragCoord (bottom-left origin, GL-style),
+    // but WebGPU textures put v=0 at the top row, so flip v back to sample
+    // the texel the caller expects.
+    return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
 }
 `;
     })

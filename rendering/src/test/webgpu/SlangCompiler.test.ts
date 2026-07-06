@@ -238,6 +238,21 @@ describe("SlangCompiler", () => {
     expect(wrapped.indexOf("helperB(float2 c)")).toBeLessThan(wrapped.indexOf("#line 1"));
   });
 
+  it("samples channel textures with flipped v to match the bottom-left fragCoord origin", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(c); }", {
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    // The fragment entry flips fragCoord to a bottom-left origin, so uv
+    // computed from it is GL-style (v=0 at the bottom). WebGPU textures put
+    // v=0 at the TOP row, so the generated helper must flip v when sampling.
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("iChannel0.Sample(iChannel0Sampler, float2(uv.x, 1.0 - uv.y))");
+  });
+
   it("assigns position-based bindings for sparse channel slots", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
