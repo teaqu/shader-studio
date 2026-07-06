@@ -40,6 +40,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
+  private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
@@ -87,10 +88,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
   async compileShaderPipeline(
     code: string,
     config: ShaderConfig | null,
-    _path: string,
-    _buffers: Record<string, string> = {},
+    path: string,
+    buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
     this.currentConfig = config;
+    // Remember the inputs so updateBufferAndRecompile can re-run this compile
+    // with a single buffer's content patched.
+    this.lastCompile = { code, path, buffers: { ...buffers } };
     if (this.ready) await this.ready;
 
     if (this.initError || !this.device || !this.compiler) {
@@ -100,7 +104,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const graph = buildSlangPassGraph({
       imageCode: code,
       config,
-      buffers: _buffers,
+      buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
     });
@@ -365,18 +369,35 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.device = null;
   }
 
-  // ---- Not yet supported in the Slang/WebGPU path (M1) ----
+  /**
+   * Patch a single buffer's source and re-run the last compile. The compile
+   * path swaps pipelines atomically, so a failed recompile keeps the previous
+   * working pipelines rendering.
+   */
+  async updateBufferAndRecompile(
+    bufferName: string,
+    bufferContent: string,
+  ): Promise<CompilationResult | undefined> {
+    if (!this.lastCompile) {
+      return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
+    }
+    this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
+    return this.compileShaderPipeline(
+      this.lastCompile.code,
+      this.currentConfig,
+      this.lastCompile.path,
+      this.lastCompile.buffers,
+    );
+  }
 
-  getPasses(): unknown[] {
+  getPasses(): RenderPassNode[] {
     return this.passGraph;
   }
 
-  flagForceCleanupOnNextApply(): void {
-    // Single-pass M1 has no persistent buffers to clear.
-  }
+  // ---- Not yet supported in the Slang/WebGPU path ----
 
-  async updateBufferAndRecompile(): Promise<CompilationResult | undefined> {
-    return { success: false, errors: ["Buffers are not supported for Slang shaders yet"] };
+  flagForceCleanupOnNextApply(): void {
+    // Buffer feedback state is recreated on recompile; nothing extra to clear.
   }
 
   getFrameTimeHistory(): number[] {

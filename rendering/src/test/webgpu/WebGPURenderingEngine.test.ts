@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import type { ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { TimeManager } from "../../util/TimeManager";
@@ -555,46 +556,51 @@ describe("WebGPURenderingEngine", () => {
     expect(Array.from(secondResolution)).toEqual([640, 480]);
   });
 
-  describe("handleCanvasResize", () => {
-    function fullDevice() {
-      return {
-        createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
-        createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
-        createBindGroupLayout: vi.fn(() => ({})),
-        createPipelineLayout: vi.fn(() => ({})),
-        createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
-        createSampler: vi.fn(() => ({})),
-        createBindGroup: vi.fn(() => ({})),
-        createTexture: vi.fn(() => ({
-          createView: vi.fn(() => ({})),
-          destroy: vi.fn(),
+  function fullDevice() {
+    return {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
+      createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      createCommandEncoder: vi.fn(() => ({
+        beginRenderPass: vi.fn(() => ({
+          setPipeline: vi.fn(),
+          setBindGroup: vi.fn(),
+          draw: vi.fn(),
+          end: vi.fn(),
         })),
-        queue: { writeBuffer: vi.fn(), submit: vi.fn() },
-        createCommandEncoder: vi.fn(() => ({
-          beginRenderPass: vi.fn(() => ({
-            setPipeline: vi.fn(),
-            setBindGroup: vi.fn(),
-            draw: vi.fn(),
-            end: vi.fn(),
-          })),
-          finish: vi.fn(() => ({})),
-        })),
-      };
-    }
+        finish: vi.fn(() => ({})),
+      })),
+    };
+  }
 
+  function stubEngineInternals(engine: WebGPURenderingEngine) {
+    const device = fullDevice();
+    const compiler = { compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })) };
+    const canvas = { width: 320, height: 180 };
+
+    (engine as any).canvas = canvas;
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+    (engine as any).context = {
+      getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+    };
+    return { device, compiler, canvas };
+  }
+
+  describe("handleCanvasResize", () => {
     async function compiledEngine() {
       const engine = new WebGPURenderingEngine(assets);
-      const device = fullDevice();
-      const compiler = { compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })) };
-      const canvas = { width: 320, height: 180 };
-
-      (engine as any).canvas = canvas;
-      (engine as any).device = device;
-      (engine as any).compiler = compiler;
-      (engine as any).format = "bgra8unorm";
-      (engine as any).context = {
-        getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
-      };
+      const { device, canvas } = stubEngineInternals(engine);
 
       const result = await engine.compileShaderPipeline(
         "float4 mainImage(float2 c) { return float4(0); }",
@@ -675,6 +681,96 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).canvas = { width: 320, height: 180 };
       expect(() => engine.handleCanvasResize(640, 360)).not.toThrow();
       expect((engine as any).canvas.width).toBe(640);
+    });
+  });
+
+  describe("updateBufferAndRecompile", () => {
+    const bufferConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+      },
+    };
+
+    async function compiledEngine() {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        bufferConfig,
+        "/image.slang",
+        { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+      );
+      expect(result?.success).toBe(true);
+      return { engine, device, compiler };
+    }
+
+    it("recompiles the pipeline with the patched buffer content and returns success", async () => {
+      const { engine, compiler } = await compiledEngine();
+      compiler.compileImagePass.mockClear();
+
+      const result = await engine.updateBufferAndRecompile(
+        "BufferA",
+        "float4 mainImage(float2 c) { return float4(9); }",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+      expect(compiler.compileImagePass).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("float4(9)"),
+        expect.objectContaining({ passName: "BufferA" }),
+      );
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+    });
+
+    it("keeps the previous pipelines when the recompile fails", async () => {
+      const { engine, compiler } = await compiledEngine();
+      const pipelinesBefore = new Map((engine as any).passPipelines as Map<string, unknown>);
+      compiler.compileImagePass.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      const result = await engine.updateBufferAndRecompile("BufferA", "broken {");
+
+      expect(result?.success).toBe(false);
+      expect(result?.errors?.[0]).toMatch(/syntax error/);
+      expect((engine as any).passPipelines).toEqual(pipelinesBefore);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+    });
+
+    it("uses the updated content on subsequent updates too", async () => {
+      const { engine, compiler } = await compiledEngine();
+
+      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(7); }");
+      compiler.compileImagePass.mockClear();
+      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(8); }");
+
+      expect(compiler.compileImagePass).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("float4(8)"),
+        expect.objectContaining({ passName: "BufferA" }),
+      );
+    });
+
+    it("handles an unknown buffer name by recompiling without error", async () => {
+      const { engine } = await compiledEngine();
+
+      // The pass graph ignores buffers that no configured pass references.
+      const result = await engine.updateBufferAndRecompile("BufferZ", "float4 mainImage(float2 c) { return float4(0); }");
+
+      expect(result?.success).toBe(true);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+    });
+
+    it("returns a clear failure when no shader has been compiled yet", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+
+      const result = await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(0); }");
+
+      expect(result?.success).toBe(false);
+      expect(result?.errors?.[0]).toMatch(/compil/i);
     });
   });
 
