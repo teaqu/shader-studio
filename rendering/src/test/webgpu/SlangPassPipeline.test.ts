@@ -259,6 +259,89 @@ describe("SlangPassPipeline", () => {
     expect(lastCall.size).toEqual({ width: 640, height: 360 });
   });
 
+  it("resize() recreates ping-pong textures at the new size without recompiling", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+    const firstTextures = device.createTexture.mock.results.map((r) => r.value);
+
+    pass.resize(640, 360);
+
+    for (const texture of firstTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+    expect(device.createTexture).toHaveBeenCalledTimes(4);
+    const newCalls = device.createTexture.mock.calls.slice(2);
+    for (const [descriptor] of newCalls) {
+      expect(descriptor.size).toEqual({ width: 640, height: 360 });
+    }
+    // No shader/pipeline recompilation happened.
+    expect(device.createShaderModule).toHaveBeenCalledTimes(1);
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("resize() with an unchanged size does not recreate textures", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    pass.resize(320, 180);
+
+    expect(device.createTexture).toHaveBeenCalledTimes(2);
+    for (const result of device.createTexture.mock.results) {
+      expect(result.value.destroy).not.toHaveBeenCalled();
+    }
+  });
+
+  it("resize() on a canvas pass updates the descriptor without creating textures", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(() => pass.resize(640, 360)).not.toThrow();
+    expect(device.createTexture).not.toHaveBeenCalled();
+  });
+
+  it("resize() before rebuild is safe and the next rebuild uses the new size", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    pass.resize(640, 360);
+    await pass.rebuild("// wgsl");
+
+    expect(device.createTexture).toHaveBeenCalledTimes(2);
+    for (const [descriptor] of device.createTexture.mock.calls) {
+      expect(descriptor.size).toEqual({ width: 640, height: 360 });
+    }
+  });
+
   it("destroys the uniform buffer on dispose()", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

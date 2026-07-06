@@ -62,6 +62,22 @@ export class SlangPassPipeline {
     this.descriptor = descriptor;
   }
 
+  /**
+   * Change the pass's output size without recompiling the shader module.
+   * Texture passes get fresh ping-pong textures at the new size (feedback
+   * state is necessarily reset); canvas passes only track the new size.
+   */
+  resize(width: number, height: number): void {
+    if (this.descriptor.width === width && this.descriptor.height === height) {
+      return;
+    }
+    this.descriptor = { ...this.descriptor, width, height };
+    if (this.descriptor.output === "texture" && this.textures.length > 0) {
+      this.destroyTextures();
+      this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+    }
+  }
+
   rebuildBindGroup(resources: SlangChannelResource[]): void {
     if (!this.pipeline || !this.uniformBuffer) {
       return;

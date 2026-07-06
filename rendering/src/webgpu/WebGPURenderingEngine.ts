@@ -14,7 +14,7 @@ import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { packShaderToyUniforms } from "./uniforms";
-import { buildSlangPassGraph, type RenderPassNode } from "./SlangPassGraph";
+import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline } from "./SlangPassPipeline";
 
 export interface SlangAssetUrls {
@@ -278,6 +278,33 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
+      this.applyPassResolutions();
+    }
+  }
+
+  /**
+   * Recompute each pass's resolution against the current canvas size — the
+   * same way buildSlangPassGraph does at compile time — and resize the
+   * matching pipelines so iResolution, the fragCoord Y-flip and buffer
+   * texture sizes all stay correct without a recompile.
+   */
+  private applyPassResolutions(): void {
+    if (!this.canvas || this.passGraph.length === 0) return;
+    const canvasWidth = Math.max(1, this.canvas.width);
+    const canvasHeight = Math.max(1, this.canvas.height);
+    for (const pass of this.passGraph) {
+      const resolution = resolvePassResolution({
+        passName: pass.name,
+        passConfig: this.currentConfig?.passes?.[pass.name],
+        canvasWidth,
+        canvasHeight,
+        // Resolution settings were already validated at compile time; a
+        // resize cannot introduce new config errors.
+        errors: [],
+      });
+      pass.width = resolution.width;
+      pass.height = resolution.height;
+      this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);
     }
   }
 

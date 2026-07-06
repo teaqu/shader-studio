@@ -555,6 +555,129 @@ describe("WebGPURenderingEngine", () => {
     expect(Array.from(secondResolution)).toEqual([640, 480]);
   });
 
+  describe("handleCanvasResize", () => {
+    function fullDevice() {
+      return {
+        createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+        createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+        createBindGroupLayout: vi.fn(() => ({})),
+        createPipelineLayout: vi.fn(() => ({})),
+        createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+        createSampler: vi.fn(() => ({})),
+        createBindGroup: vi.fn(() => ({})),
+        createTexture: vi.fn(() => ({
+          createView: vi.fn(() => ({})),
+          destroy: vi.fn(),
+        })),
+        queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+        createCommandEncoder: vi.fn(() => ({
+          beginRenderPass: vi.fn(() => ({
+            setPipeline: vi.fn(),
+            setBindGroup: vi.fn(),
+            draw: vi.fn(),
+            end: vi.fn(),
+          })),
+          finish: vi.fn(() => ({})),
+        })),
+      };
+    }
+
+    async function compiledEngine() {
+      const engine = new WebGPURenderingEngine(assets);
+      const device = fullDevice();
+      const compiler = { compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })) };
+      const canvas = { width: 320, height: 180 };
+
+      (engine as any).canvas = canvas;
+      (engine as any).device = device;
+      (engine as any).compiler = compiler;
+      (engine as any).format = "bgra8unorm";
+      (engine as any).context = {
+        getCurrentTexture: () => ({ createView: () => ({ label: "canvas" }) }),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        {
+          version: "1",
+          passes: {
+            Image: { inputs: {} },
+            BufferA: { path: "buffer-a.slang", inputs: {}, resolution: { scale: 0.5 } },
+            BufferB: { path: "buffer-b.slang", inputs: {}, resolution: { width: 256, height: 128 } },
+          },
+        },
+        "/image.slang",
+        {
+          BufferA: "float4 mainImage(float2 c) { return float4(1); }",
+          BufferB: "float4 mainImage(float2 c) { return float4(2); }",
+        },
+      );
+      expect(result?.success).toBe(true);
+      return { engine, device, canvas };
+    }
+
+    it("recomputes per-pass resolutions so the next render packs the new sizes", async () => {
+      const { engine, device, canvas } = await compiledEngine();
+
+      engine.handleCanvasResize(640, 360);
+      engine.render(1000);
+
+      expect(canvas.width).toBe(640);
+      expect(canvas.height).toBe(360);
+      const writeBuffer = device.queue.writeBuffer;
+      expect(writeBuffer).toHaveBeenCalledTimes(3);
+      const resolutions = writeBuffer.mock.calls.map((call) =>
+        Array.from(new Float32Array(call[2] as ArrayBuffer, 0, 2)));
+      // BufferA (scale 0.5) tracks the canvas; BufferB is fixed; Image is the canvas.
+      expect(resolutions).toEqual([
+        [320, 180],
+        [256, 128],
+        [640, 360],
+      ]);
+    });
+
+    it("recreates scaled buffer textures at the new size and destroys the old ones", async () => {
+      const { engine, device } = await compiledEngine();
+      // Compile created 2 ping-pong textures each for BufferA then BufferB.
+      expect(device.createTexture).toHaveBeenCalledTimes(4);
+      const bufferATextures = device.createTexture.mock.results.slice(0, 2).map((r) => r.value);
+      const bufferBTextures = device.createTexture.mock.results.slice(2, 4).map((r) => r.value);
+
+      engine.handleCanvasResize(640, 360);
+
+      // BufferA (scale 0.5) went 160x90 -> 320x180: two new textures, old destroyed.
+      expect(device.createTexture).toHaveBeenCalledTimes(6);
+      for (const call of device.createTexture.mock.calls.slice(4)) {
+        expect(call[0].size).toEqual({ width: 320, height: 180 });
+      }
+      for (const texture of bufferATextures) {
+        expect(texture.destroy).toHaveBeenCalledTimes(1);
+      }
+      // BufferB has a fixed resolution: its textures are untouched.
+      for (const texture of bufferBTextures) {
+        expect(texture.destroy).not.toHaveBeenCalled();
+      }
+    });
+
+    it("does nothing to passes when the size is unchanged", async () => {
+      const { engine, device } = await compiledEngine();
+
+      engine.handleCanvasResize(320, 180);
+
+      expect(device.createTexture).toHaveBeenCalledTimes(4);
+      for (const result of device.createTexture.mock.results) {
+        expect(result.value.destroy).not.toHaveBeenCalled();
+      }
+    });
+
+    it("is a safe no-op before any compile", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      (engine as any).canvas = { width: 320, height: 180 };
+      expect(() => engine.handleCanvasResize(640, 360)).not.toThrow();
+      expect((engine as any).canvas.width).toBe(640);
+    });
+  });
+
   function renderablePipeline(overrides: Partial<Record<string, unknown>> = {}) {
     return {
       getPipeline: () => ({ label: "pipeline" }),

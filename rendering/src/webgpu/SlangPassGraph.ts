@@ -107,9 +107,15 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   return { passes, commonCode, warnings, errors };
 }
 
-function resolvePassResolution(options: {
+/**
+ * Resolve a pass's render resolution from its config (fixed width/height,
+ * canvas-relative scale, or the canvas size when unconfigured). Exported so
+ * the engine can recompute pass sizes on canvas resize exactly the way
+ * buildSlangPassGraph does at compile time.
+ */
+export function resolvePassResolution(options: {
   passName: RenderPassName;
-  passConfig: ShaderConfig["passes"][string];
+  passConfig: ShaderConfig["passes"][string] | undefined;
   canvasWidth: number;
   canvasHeight: number;
   errors: string[];
