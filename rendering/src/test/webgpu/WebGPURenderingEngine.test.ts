@@ -75,6 +75,14 @@ describe("WebGPURenderingEngine", () => {
     expect(() => engine.createVariableCapturer()).toThrow(/not supported/i);
   });
 
+  it("dispose() disposes the compiler", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compiler = { compile: vi.fn(), dispose: vi.fn() };
+    (engine as any).compiler = compiler;
+    engine.dispose();
+    expect(compiler.dispose).toHaveBeenCalled();
+  });
+
   it("remembers the config from the last compile", async () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());
@@ -99,7 +107,8 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl" })),
+      dispose: vi.fn(),
     };
 
     (engine as any).canvas = { width: 320, height: 180 };
@@ -122,13 +131,13 @@ describe("WebGPURenderingEngine", () => {
 
     expect(result?.success).toBe(true);
     expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
-    expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
-    expect(compiler.compileImagePass).toHaveBeenNthCalledWith(1, expect.stringContaining("float4(1)"), {
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+    expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.stringContaining("float4(1)"), {
       passName: "BufferA",
       commonCode: "",
       channels: [],
     });
-    expect(compiler.compileImagePass).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
+    expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
       channels: [{ slot: 0, key: "iChannel0" }],
@@ -145,7 +154,7 @@ describe("WebGPURenderingEngine", () => {
       createBindGroup: vi.fn(),
       createTexture: vi.fn(),
     };
-    const compiler = { compileImagePass: vi.fn() };
+    const compiler = { compile: vi.fn(async () => ({ success: false, errors: [] })), dispose: vi.fn() };
 
     (engine as any).canvas = { width: 320, height: 180 };
     (engine as any).device = device;
@@ -167,7 +176,7 @@ describe("WebGPURenderingEngine", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.errors?.[0]).toMatch(/BufferA/);
-    expect(compiler.compileImagePass).not.toHaveBeenCalled();
+    expect(compiler.compile).not.toHaveBeenCalled();
     expect(device.createShaderModule).not.toHaveBeenCalled();
     expect(engine.getPasses()).toEqual([]);
   });
@@ -188,7 +197,8 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      dispose: vi.fn(),
     };
 
     (engine as any).canvas = { width: 320, height: 180 };
@@ -250,7 +260,8 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      dispose: vi.fn(),
     };
 
     (engine as any).canvas = { width: 320, height: 180 };
@@ -295,10 +306,11 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compileImagePass: vi
+      compile: vi
         .fn()
         .mockReturnValueOnce({ success: true, wgsl: "// wgsl" }) // BufferA builds fine
         .mockReturnValueOnce({ success: false, errors: ["bad shader"] }), // Image fails
+      dispose: vi.fn(),
     };
 
     (engine as any).canvas = { width: 320, height: 180 };
@@ -347,7 +359,8 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      dispose: vi.fn(),
     };
 
     (engine as any).canvas = { width: 320, height: 180 };
@@ -598,7 +611,7 @@ describe("WebGPURenderingEngine", () => {
 
   function stubEngineInternals(engine: WebGPURenderingEngine) {
     const device = fullDevice();
-    const compiler = { compileImagePass: vi.fn(() => ({ success: true, wgsl: "// wgsl" })) };
+    const compiler = { compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })), dispose: vi.fn() };
     const canvas = { width: 320, height: 180 };
 
     (engine as any).canvas = canvas;
@@ -723,7 +736,7 @@ describe("WebGPURenderingEngine", () => {
 
     it("recompiles the pipeline with the patched buffer content and returns success", async () => {
       const { engine, compiler } = await compiledEngine();
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
 
       const result = await engine.updateBufferAndRecompile(
         "BufferA",
@@ -733,8 +746,8 @@ describe("WebGPURenderingEngine", () => {
       expect(result?.success).toBe(true);
       // Only BufferA's content changed; the per-pass compile cache reuses
       // Image's unchanged pipeline instead of recompiling it.
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1);
-      expect(compiler.compileImagePass).toHaveBeenNthCalledWith(
+      expect(compiler.compile).toHaveBeenCalledTimes(1);
+      expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(9)"),
         expect.objectContaining({ passName: "BufferA" }),
@@ -745,7 +758,7 @@ describe("WebGPURenderingEngine", () => {
     it("keeps the previous pipelines when the recompile fails", async () => {
       const { engine, compiler } = await compiledEngine();
       const pipelinesBefore = new Map((engine as any).passPipelines as Map<string, unknown>);
-      compiler.compileImagePass.mockReturnValue({ success: false, errors: ["syntax error"] });
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
 
       const result = await engine.updateBufferAndRecompile("BufferA", "broken {");
 
@@ -759,10 +772,10 @@ describe("WebGPURenderingEngine", () => {
       const { engine, compiler } = await compiledEngine();
 
       await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(7); }");
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
       await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(8); }");
 
-      expect(compiler.compileImagePass).toHaveBeenNthCalledWith(
+      expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(8)"),
         expect.objectContaining({ passName: "BufferA" }),
@@ -1068,13 +1081,13 @@ describe("WebGPURenderingEngine", () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
       const firstGen = new Map((engine as any).passPipelines);
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
 
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
       const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
 
       expect(result?.success).toBe(true);
-      expect(compiler.compileImagePass).not.toHaveBeenCalled();
+      expect(compiler.compile).not.toHaveBeenCalled();
       expect((engine as any).passPipelines.get("Image")).toBe(firstGen.get("Image"));
       expect((engine as any).passPipelines.get("BufferA")).toBe(firstGen.get("BufferA"));
     });
@@ -1087,11 +1100,11 @@ describe("WebGPURenderingEngine", () => {
       const imageDispose = vi.spyOn(firstImage, "dispose");
       const bufferDispose = vi.spyOn(firstBufferA, "dispose");
 
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
 
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1);
-      expect(compiler.compileImagePass.mock.calls[0][0]).toBe("buf v2");
+      expect(compiler.compile).toHaveBeenCalledTimes(1);
+      expect(compiler.compile.mock.calls[0][0]).toBe("buf v2");
       expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
       expect(imageDispose).not.toHaveBeenCalled();
       expect(bufferDispose).toHaveBeenCalledTimes(1);
@@ -1103,12 +1116,12 @@ describe("WebGPURenderingEngine", () => {
         BufferA: "buf",
         common: "float k(){return 1.0;}",
       });
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", {
         BufferA: "buf",
         common: "float k(){return 2.0;}",
       });
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
     });
 
     it("keeps reused pipelines alive when the changed pass fails to compile", async () => {
@@ -1118,7 +1131,7 @@ describe("WebGPURenderingEngine", () => {
       const firstBufferA = (engine as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
 
-      compiler.compileImagePass.mockImplementation((src: string) =>
+      compiler.compile.mockImplementation((src: string) =>
         src === "buf broken" ? { success: false, errors: ["bad"] } : { success: true, wgsl: "wgsl" });
       const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf broken" });
 
@@ -1138,13 +1151,13 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
 
       expect(resizeSpy).toHaveBeenCalledWith(640, 360);
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2); // only the first compile's two calls
+      expect(compiler.compile).toHaveBeenCalledTimes(2); // only the first compile's two calls
     });
 
     it("recompiles a pass whose channel layout changed", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
-      compiler.compileImagePass.mockClear();
+      compiler.compile.mockClear();
 
       const rewired: ShaderConfig = {
         version: "1",
@@ -1155,7 +1168,7 @@ describe("WebGPURenderingEngine", () => {
       };
       await engine.compileShaderPipeline("img", rewired, "/s.slang", { BufferA: "buf" });
 
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1); // Image only
+      expect(compiler.compile).toHaveBeenCalledTimes(1); // Image only
     });
   });
 });

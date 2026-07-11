@@ -13,6 +13,7 @@ import { MouseManager } from "../input/MouseManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
+import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import { packShaderToyUniforms } from "./uniforms";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline } from "./SlangPassPipeline";
@@ -20,6 +21,8 @@ import { SlangPassPipeline } from "./SlangPassPipeline";
 export interface SlangAssetUrls {
   scriptUrl: string;
   wasmUrl: string;
+  /** URL of the compiled slangCompileWorker chunk; absent → main-thread compile. */
+  workerUrl?: string;
 }
 
 /**
@@ -39,7 +42,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private ready: Promise<void> | null = null;
   private initError: string | null = null;
 
-  private compiler: SlangCompiler | null = null;
+  private compiler: AsyncSlangCompiler | null = null;
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -82,11 +85,28 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.context!.configure({ device, format: this.format, alphaMode: "opaque" });
 
-      const slang = await loadSlangModule(this.slangAssets.scriptUrl, this.slangAssets.wasmUrl);
-      this.compiler = new SlangCompiler(slang);
+      this.compiler = await this.createCompiler();
     } catch (e) {
       this.initError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  /** Prefer a worker-hosted compiler; fall back to main-thread slang-wasm. */
+  private async createCompiler(): Promise<AsyncSlangCompiler> {
+    const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
+    if (workerUrl && typeof Worker !== "undefined") {
+      try {
+        return await WorkerSlangCompiler.create(
+          () => new Worker(workerUrl, { type: "module" }),
+          scriptUrl,
+          wasmUrl,
+        );
+      } catch (e) {
+        console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
+      }
+    }
+    const slang = await loadSlangModule(scriptUrl, wasmUrl);
+    return new MainThreadSlangCompiler(new SlangCompiler(slang));
   }
 
   async compileShaderPipeline(
@@ -133,7 +153,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       let pipeline: SlangPassPipeline | undefined;
       try {
-        const compiled = this.compiler.compileImagePass(pass.source, {
+        const compiled = await this.compiler.compile(pass.source, {
           passName: pass.name,
           commonCode: graph.commonCode,
           channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
@@ -417,6 +437,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.stopRenderLoop();
+    this.compiler?.dispose();
+    this.compiler = null;
     this.device?.destroy?.();
     this.device = null;
   }
