@@ -215,11 +215,15 @@ describe("WebGPURenderingEngine", () => {
     expect(firstPipelines.size).toBe(2);
     const disposeSpies = [...firstPipelines.values()].map((pipeline) => vi.spyOn(pipeline, "dispose"));
 
+    // Change BOTH the image code and the buffer content: with the per-pass
+    // compile cache, a pass whose content is unchanged is reused instead of
+    // disposed, so this must actually edit every pass to still exercise
+    // "discard + dispose" for all of them.
     await engine.compileShaderPipeline(
       "float4 mainImage(float2 c) { return float4(2); }",
       config,
       "/image.slang",
-      buffers,
+      { BufferA: "float4 mainImage(float2 c) { return float4(3); }" },
     );
 
     expect(disposeSpies).toHaveLength(2);
@@ -727,7 +731,9 @@ describe("WebGPURenderingEngine", () => {
       );
 
       expect(result?.success).toBe(true);
-      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+      // Only BufferA's content changed; the per-pass compile cache reuses
+      // Image's unchanged pipeline instead of recompiling it.
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1);
       expect(compiler.compileImagePass).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(9)"),
@@ -1041,5 +1047,115 @@ describe("WebGPURenderingEngine", () => {
     expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(2, [
       { slot: 0, textureView: { label: "swapped-view" } },
     ]);
+  });
+
+  describe("per-pass compile cache", () => {
+    const twoPassConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "a.slang", inputs: {} },
+      },
+    };
+
+    function cachedSetup() {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      return { engine, device, compiler };
+    }
+
+    it("skips recompiling when nothing changed and reuses the same pipelines", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+      const firstGen = new Map((engine as any).passPipelines);
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+
+      compiler.compileImagePass.mockClear();
+      const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+
+      expect(result?.success).toBe(true);
+      expect(compiler.compileImagePass).not.toHaveBeenCalled();
+      expect((engine as any).passPipelines.get("Image")).toBe(firstGen.get("Image"));
+      expect((engine as any).passPipelines.get("BufferA")).toBe(firstGen.get("BufferA"));
+    });
+
+    it("recompiles only the edited pass and disposes only its predecessor", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+      const firstImage = (engine as any).passPipelines.get("Image");
+      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const imageDispose = vi.spyOn(firstImage, "dispose");
+      const bufferDispose = vi.spyOn(firstBufferA, "dispose");
+
+      compiler.compileImagePass.mockClear();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
+
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1);
+      expect(compiler.compileImagePass.mock.calls[0][0]).toBe("buf v2");
+      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
+      expect(imageDispose).not.toHaveBeenCalled();
+      expect(bufferDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("recompiles every pass when common code changes", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", {
+        BufferA: "buf",
+        common: "float k(){return 1.0;}",
+      });
+      compiler.compileImagePass.mockClear();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", {
+        BufferA: "buf",
+        common: "float k(){return 2.0;}",
+      });
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps reused pipelines alive when the changed pass fails to compile", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+      const firstImage = (engine as any).passPipelines.get("Image");
+      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const imageDispose = vi.spyOn(firstImage, "dispose");
+
+      compiler.compileImagePass.mockImplementation((src: string) =>
+        src === "buf broken" ? { success: false, errors: ["bad"] } : { success: true, wgsl: "wgsl" });
+      const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf broken" });
+
+      expect(result?.success).toBe(false);
+      expect(imageDispose).not.toHaveBeenCalled();
+      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
+      expect((engine as any).passPipelines.get("BufferA")).toBe(firstBufferA);
+    });
+
+    it("resizes reused pipelines to the new graph dimensions on success", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+      const image = (engine as any).passPipelines.get("Image");
+      const resizeSpy = vi.spyOn(image, "resize");
+
+      (engine as any).canvas = { width: 640, height: 360 };
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+
+      expect(resizeSpy).toHaveBeenCalledWith(640, 360);
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(2); // only the first compile's two calls
+    });
+
+    it("recompiles a pass whose channel layout changed", async () => {
+      const { engine, compiler } = cachedSetup();
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+      compiler.compileImagePass.mockClear();
+
+      const rewired: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "a.slang", inputs: {} },
+        },
+      };
+      await engine.compileShaderPipeline("img", rewired, "/s.slang", { BufferA: "buf" });
+
+      expect(compiler.compileImagePass).toHaveBeenCalledTimes(1); // Image only
+    });
   });
 });

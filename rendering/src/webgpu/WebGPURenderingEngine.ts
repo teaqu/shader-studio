@@ -43,6 +43,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
+  private passKeys = new Map<string, string>();
   private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
 
   private timeManager = new TimeManager();
@@ -117,8 +118,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     const nextPipelines = new Map<string, SlangPassPipeline>();
+    const nextKeys = new Map<string, string>();
     const errors: string[] = [];
     for (const pass of graph.passes) {
+      const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
+      const existing = this.passPipelines.get(pass.name);
+      if (existing && this.passKeys.get(pass.name) === key) {
+        // Unchanged pass: carry the live pipeline into the next generation.
+        // Resize (if the canvas changed) is deferred to the success block so
+        // this loop stays mutation-free while a later pass can still fail.
+        nextPipelines.set(pass.name, existing);
+        nextKeys.set(pass.name, key);
+        continue;
+      }
       let pipeline: SlangPassPipeline | undefined;
       try {
         const compiled = this.compiler.compileImagePass(pass.source, {
@@ -140,6 +152,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const wgslErrors = await pipeline.rebuild(compiled.wgsl);
         errors.push(...wgslErrors);
         nextPipelines.set(pass.name, pipeline);
+        nextKeys.set(pass.name, key);
       } catch (error) {
         // rebuild() may throw mid-way through constructing GPU resources;
         // dispose whatever this pipeline managed to create before re-throwing
@@ -150,18 +163,47 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     if (errors.length > 0) {
-      for (const pipeline of nextPipelines.values()) {
-        pipeline.dispose();
+      // Dispose only pipelines built THIS attempt; carried-over pipelines are
+      // still installed in this.passPipelines and actively rendering, so they
+      // must survive a failed recompile untouched.
+      for (const [name, pipeline] of nextPipelines) {
+        if (pipeline !== this.passPipelines.get(name)) {
+          pipeline.dispose();
+        }
       }
       return { success: false, errors, warnings: graph.warnings };
     }
 
-    for (const pipeline of this.passPipelines.values()) {
-      pipeline.dispose();
+    // Success: resize carried-over pipelines to the new graph dimensions
+    // (width/height don't affect the cache key, so a canvas resize alone
+    // wouldn't have recompiled them), then dispose replaced/removed
+    // pipelines and swap in the new generation atomically.
+    for (const pass of graph.passes) {
+      const pipeline = nextPipelines.get(pass.name);
+      if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
+        pipeline.resize(pass.width, pass.height);
+      }
+    }
+    for (const [name, pipeline] of this.passPipelines) {
+      if (nextPipelines.get(name) !== pipeline) {
+        pipeline.dispose();
+      }
     }
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;
+    this.passKeys = nextKeys;
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+  }
+
+  /**
+   * A pass's compiled WGSL depends only on its source, the common code, and
+   * its channel layout (slot + key). Width/height are texture concerns
+   * handled by resize() without recompiling, so they're deliberately excluded
+   * from the key.
+   */
+  private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
+    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}`).join(",");
+    return JSON.stringify([pass.source, commonCode, channels]);
   }
 
   render(time: number = performance.now()): void {
