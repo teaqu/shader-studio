@@ -48,6 +48,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
   private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
+  /**
+   * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
+   * serialized upstream (BufferUpdater is fire-and-forget, worker compiles
+   * can take seconds), so an older attempt can finish after a newer one
+   * already installed its pipelines. Comparing the captured generation
+   * against this counter right before the install swap lets a late-arriving
+   * older attempt detect it's been superseded and bail instead of clobbering
+   * the newer, already-live pipelines.
+   */
+  private compileGeneration = 0;
+  private disposed = false;
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
@@ -115,6 +126,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
+    if (this.disposed) {
+      return { success: false, errors: ["Engine disposed"] };
+    }
+    // Captured synchronously (before any await) so concurrent calls made in
+    // the same tick still get distinct, call-order-correct generations.
+    const generation = ++this.compileGeneration;
     this.currentConfig = config;
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
@@ -194,6 +211,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors, warnings: graph.warnings };
     }
 
+    if (generation !== this.compileGeneration || this.disposed) {
+      // A newer compileShaderPipeline call (or dispose()) already landed
+      // while this attempt was awaiting the compiler/worker. Installing now
+      // would clobber the newer, already-live pipelines with stale ones, so
+      // drop this attempt: dispose only the pipelines built THIS attempt
+      // (carried-over ones are — or were — still installed and must survive
+      // untouched).
+      for (const [name, pipeline] of nextPipelines) {
+        if (pipeline !== this.passPipelines.get(name)) {
+          pipeline.dispose();
+        }
+      }
+      return { success: false, errors: ["Superseded by a newer compile"] };
+    }
+
     // Success: resize carried-over pipelines to the new graph dimensions
     // (width/height don't affect the cache key, so a canvas resize alone
     // wouldn't have recompiled them), then dispose replaced/removed
@@ -212,6 +244,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
+    // Correct any canvas resize that landed mid-compile immediately, rather
+    // than leaving passes stale until the next resize/recompile.
+    this.applyPassResolutions();
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
   }
 
@@ -436,9 +471,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stopRenderLoop();
     this.compiler?.dispose();
     this.compiler = null;
+    for (const pipeline of this.passPipelines.values()) {
+      pipeline.dispose();
+    }
+    this.passPipelines.clear();
+    this.passKeys.clear();
+    this.passGraph = [];
     this.device?.destroy?.();
     this.device = null;
   }

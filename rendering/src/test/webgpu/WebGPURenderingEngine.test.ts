@@ -1171,4 +1171,134 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledTimes(1); // Image only
     });
   });
+
+  describe("concurrent compiles (generation guard)", () => {
+    const twoPassConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "a.slang", inputs: {} },
+      },
+    };
+
+    it("drops a stale compile that resolves after a newer one already installed", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+
+      // Baseline compile: establishes the per-pass cache for both passes.
+      await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-base" });
+      const baselineImage = (engine as any).passPipelines.get("Image");
+
+      const disposeSpy = vi.spyOn(SlangPassPipeline.prototype, "dispose");
+
+      // Compile A (older edit): its BufferA compile blocks on a controllable
+      // promise. Compile B (newer edit) is issued and completes fully before
+      // A is released.
+      let releaseA: (() => void) | undefined;
+      const blockedA = new Promise<{ success: true; wgsl: string }>((resolve) => {
+        releaseA = () => resolve({ success: true, wgsl: "wgsl-A" });
+      });
+      compiler.compile.mockImplementation((src: string) => {
+        if (src === "buf-A") return blockedA;
+        if (src === "buf-B") return Promise.resolve({ success: true, wgsl: "wgsl-B" });
+        return Promise.resolve({ success: true, wgsl: "wgsl-base" });
+      });
+
+      const resultAPromise = engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-A" });
+      const resultB = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-B" });
+
+      expect(resultB?.success).toBe(true);
+      const installedAfterB_BufferA = (engine as any).passPipelines.get("BufferA");
+      const installedAfterB_Image = (engine as any).passPipelines.get("Image");
+      // Image was unchanged across all three compiles, so it's the same
+      // carried-over pipeline throughout.
+      expect(installedAfterB_Image).toBe(baselineImage);
+
+      releaseA!();
+      const resultA = await resultAPromise;
+
+      expect(resultA).toEqual({ success: false, errors: ["Superseded by a newer compile"] });
+      // The installed pipelines are still B's — A's late arrival didn't
+      // clobber them.
+      expect((engine as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
+      expect((engine as any).passPipelines.get("Image")).toBe(baselineImage);
+      // A's own freshly-built BufferA pipeline (not the installed one, and
+      // not the shared carried-over Image pipeline) was disposed.
+      expect(disposeSpy.mock.instances).not.toContain(installedAfterB_BufferA);
+      expect(disposeSpy.mock.instances).not.toContain(baselineImage);
+      // Exactly two disposals happened: the baseline BufferA pipeline
+      // (replaced when B installed) and A's own fresh BufferA pipeline
+      // (discarded as superseded).
+      expect(disposeSpy).toHaveBeenCalledTimes(2);
+
+      disposeSpy.mockRestore();
+    });
+
+    it("applies a canvas resize that lands mid-compile once the compile completes", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+
+      let releaseCompile: (() => void) | undefined;
+      const blocked = new Promise<{ success: true; wgsl: string }>((resolve) => {
+        releaseCompile = () => resolve({ success: true, wgsl: "wgsl" });
+      });
+      compiler.compile.mockImplementation(() => blocked);
+
+      const compilePromise = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+
+      // The resize lands while the compile is still in flight, before any
+      // pipeline exists to resize.
+      engine.handleCanvasResize(640, 360);
+      releaseCompile!();
+      const result = await compilePromise;
+
+      expect(result?.success).toBe(true);
+      const imagePass = engine.getPasses().find((pass) => pass.name === "Image");
+      expect(imagePass?.width).toBe(640);
+      expect(imagePass?.height).toBe(360);
+    });
+  });
+
+  describe("dispose()", () => {
+    it("returns 'Engine disposed' for any compile attempted after dispose()", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+
+      engine.dispose();
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+        {},
+      );
+
+      expect(result).toEqual({ success: false, errors: ["Engine disposed"] });
+    });
+
+    it("disposes installed pass pipelines and clears the pass graph/keys", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+      const pipeline = (engine as any).passPipelines.get("Image");
+      const disposeSpy = vi.spyOn(pipeline, "dispose");
+
+      engine.dispose();
+
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+      expect((engine as any).passPipelines.size).toBe(0);
+      expect((engine as any).passKeys.size).toBe(0);
+      expect(engine.getPasses()).toEqual([]);
+    });
+  });
 });
