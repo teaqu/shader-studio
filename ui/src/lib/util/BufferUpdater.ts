@@ -53,6 +53,13 @@ export class BufferUpdater {
       
       this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent)
         .then(result => {
+          if (result?.superseded) {
+            // A newer update raced past this one; its own completion path
+            // owns the messaging and the render loop restart. Posting the
+            // stale "error" here would leave a banner stuck over a shader
+            // that is rendering fine.
+            return;
+          }
           if (!result?.success) {
             const errorMessage: ErrorMessage = {
               type: "error",

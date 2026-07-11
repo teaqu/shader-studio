@@ -270,6 +270,31 @@ describe('ShaderProcessor', () => {
       expect(mockRenderEngine.render).not.toHaveBeenCalled();
     });
 
+    it('should preserve superseded main compile results without starting the render loop', async () => {
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result).toEqual({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
+      expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
+    });
+
     it('should return warnings when compilation succeeds with warnings', async () => {
       const warnings = ['Warning 1', 'Warning 2'];
       (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
@@ -436,6 +461,25 @@ describe('ShaderProcessor', () => {
 
       expect(result.success).toBe(false);
       expect(result.errors).toEqual([errorMessage]);
+      expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
+    });
+
+    it('should preserve superseded common buffer update results', async () => {
+      (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
+
+      const code = 'float common() { return 1.0; }';
+
+      const result = await shaderProcessor.processCommonBufferUpdate(code);
+
+      expect(result).toEqual({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
     });
 

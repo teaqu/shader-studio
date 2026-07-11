@@ -393,4 +393,33 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       });
     });
   });
+
+  it('does not report a superseded shader compile as a visible error', async () => {
+    const compilationState = {
+      latest: null as { success: boolean; errors?: string[] } | null,
+      setResult(result: { success: boolean; errors?: string[] }) {
+        this.latest = result;
+      },
+    };
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+    mocks.compileShaderPipeline.mockResolvedValueOnce({
+      success: false,
+      errors: ['Superseded by a newer compile'],
+      superseded: true,
+    } as any);
+
+    const result = await pipeline.handleShaderMessage(
+      makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'),
+    );
+
+    expect(result).toBeUndefined();
+    expect(compilationState.latest).toBeNull();
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
 });

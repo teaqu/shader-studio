@@ -138,7 +138,7 @@ export class ShaderPipeline {
   private async processMainShaderCompilation(
     message: ShaderSourceMessage,
     event: MessageEvent
-  ): Promise<CompilationResult> {
+  ): Promise<CompilationResult | undefined> {
     this.lastEvent = event;
 
     this.shaderDebugManager.setShaderContext(
@@ -159,10 +159,18 @@ export class ShaderPipeline {
       void this.handleShaderMessage(pending);
     }
 
+    if (result.superseded) {
+      return undefined;
+    }
+
     return result;
   }
 
-  private handleCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+  private handleCompilationResult(result: CompilationResult): void {
+    if (result.superseded) {
+      return;
+    }
+
     this.compilationState?.setResult(result);
     this.reportCompilationResult(result);
   }

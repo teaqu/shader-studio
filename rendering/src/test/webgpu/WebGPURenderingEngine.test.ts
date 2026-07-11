@@ -1190,48 +1190,52 @@ describe("WebGPURenderingEngine", () => {
       const baselineImage = (engine as any).passPipelines.get("Image");
 
       const disposeSpy = vi.spyOn(SlangPassPipeline.prototype, "dispose");
+      try {
+        // Compile A (older edit): its BufferA compile blocks on a controllable
+        // promise. Compile B (newer edit) is issued and completes fully before
+        // A is released.
+        let releaseA: (() => void) | undefined;
+        const blockedA = new Promise<{ success: true; wgsl: string }>((resolve) => {
+          releaseA = () => resolve({ success: true, wgsl: "wgsl-A" });
+        });
+        compiler.compile.mockImplementation((src: string) => {
+          if (src === "buf-A") return blockedA;
+          if (src === "buf-B") return Promise.resolve({ success: true, wgsl: "wgsl-B" });
+          return Promise.resolve({ success: true, wgsl: "wgsl-base" });
+        });
 
-      // Compile A (older edit): its BufferA compile blocks on a controllable
-      // promise. Compile B (newer edit) is issued and completes fully before
-      // A is released.
-      let releaseA: (() => void) | undefined;
-      const blockedA = new Promise<{ success: true; wgsl: string }>((resolve) => {
-        releaseA = () => resolve({ success: true, wgsl: "wgsl-A" });
-      });
-      compiler.compile.mockImplementation((src: string) => {
-        if (src === "buf-A") return blockedA;
-        if (src === "buf-B") return Promise.resolve({ success: true, wgsl: "wgsl-B" });
-        return Promise.resolve({ success: true, wgsl: "wgsl-base" });
-      });
+        const resultAPromise = engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-A" });
+        const resultB = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-B" });
 
-      const resultAPromise = engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-A" });
-      const resultB = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf-B" });
+        expect(resultB?.success).toBe(true);
+        const installedAfterB_BufferA = (engine as any).passPipelines.get("BufferA");
+        const installedAfterB_Image = (engine as any).passPipelines.get("Image");
+        // Image was unchanged across all three compiles, so it's the same
+        // carried-over pipeline throughout.
+        expect(installedAfterB_Image).toBe(baselineImage);
 
-      expect(resultB?.success).toBe(true);
-      const installedAfterB_BufferA = (engine as any).passPipelines.get("BufferA");
-      const installedAfterB_Image = (engine as any).passPipelines.get("Image");
-      // Image was unchanged across all three compiles, so it's the same
-      // carried-over pipeline throughout.
-      expect(installedAfterB_Image).toBe(baselineImage);
+        releaseA!();
+        const resultA = await resultAPromise;
 
-      releaseA!();
-      const resultA = await resultAPromise;
-
-      expect(resultA).toEqual({ success: false, errors: ["Superseded by a newer compile"] });
-      // The installed pipelines are still B's — A's late arrival didn't
-      // clobber them.
-      expect((engine as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
-      expect((engine as any).passPipelines.get("Image")).toBe(baselineImage);
-      // A's own freshly-built BufferA pipeline (not the installed one, and
-      // not the shared carried-over Image pipeline) was disposed.
-      expect(disposeSpy.mock.instances).not.toContain(installedAfterB_BufferA);
-      expect(disposeSpy.mock.instances).not.toContain(baselineImage);
-      // Exactly two disposals happened: the baseline BufferA pipeline
-      // (replaced when B installed) and A's own fresh BufferA pipeline
-      // (discarded as superseded).
-      expect(disposeSpy).toHaveBeenCalledTimes(2);
-
-      disposeSpy.mockRestore();
+        // The superseded flag lets callers (BufferUpdater, ShaderPipeline)
+        // silently discard this result instead of surfacing it as a
+        // user-facing error banner over a shader that's rendering fine.
+        expect(resultA).toEqual({ success: false, errors: ["Superseded by a newer compile"], superseded: true });
+        // The installed pipelines are still B's; A's late arrival didn't
+        // clobber them.
+        expect((engine as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
+        expect((engine as any).passPipelines.get("Image")).toBe(baselineImage);
+        // A's own freshly-built BufferA pipeline (not the installed one, and
+        // not the shared carried-over Image pipeline) was disposed.
+        expect(disposeSpy.mock.instances).not.toContain(installedAfterB_BufferA);
+        expect(disposeSpy.mock.instances).not.toContain(baselineImage);
+        // Exactly two disposals happened: the baseline BufferA pipeline
+        // (replaced when B installed) and A's own fresh BufferA pipeline
+        // (discarded as superseded).
+        expect(disposeSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        disposeSpy.mockRestore();
+      }
     });
 
     it("applies a canvas resize that lands mid-compile once the compile completes", async () => {
@@ -1277,7 +1281,7 @@ describe("WebGPURenderingEngine", () => {
         {},
       );
 
-      expect(result).toEqual({ success: false, errors: ["Engine disposed"] });
+      expect(result).toEqual({ success: false, errors: ["Engine disposed"], superseded: true });
     });
 
     it("disposes installed pass pipelines and clears the pass graph/keys", async () => {

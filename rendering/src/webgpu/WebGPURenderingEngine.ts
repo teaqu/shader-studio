@@ -127,7 +127,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
-      return { success: false, errors: ["Engine disposed"] };
+      return { success: false, errors: ["Engine disposed"], superseded: true };
     }
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
@@ -223,7 +223,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           pipeline.dispose();
         }
       }
-      return { success: false, errors: ["Superseded by a newer compile"] };
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
     // Success: resize carried-over pipelines to the new graph dimensions

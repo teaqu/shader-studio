@@ -6,6 +6,7 @@ export interface CompilationResult {
   success: boolean;
   errors?: string[];
   warnings?: string[];
+  superseded?: true;
 }
 
 export class ShaderProcessor {
@@ -59,6 +60,10 @@ export class ShaderProcessor {
       );
 
       // Handle compilation failure
+      if (result?.superseded) {
+        return this.supersededResult(result.errors);
+      }
+
       if (!result?.success) {
         // If debug mode compilation failed, try original code
         if (codeToCompile !== code) {
@@ -146,6 +151,10 @@ export class ShaderProcessor {
       customUniformInfo,
     );
 
+    if (result?.superseded) {
+      return this.supersededResult(result.errors);
+    }
+
     if (!result?.success) {
       return {
         success: false,
@@ -176,6 +185,10 @@ export class ShaderProcessor {
   public async processCommonBufferUpdate(code: string): Promise<CompilationResult> {
     try {
       const result = await this.renderEngine.updateBufferAndRecompile('common', code);
+
+      if (result?.superseded) {
+        return this.supersededResult(result.errors);
+      }
 
       if (!result?.success) {
         return {
@@ -222,7 +235,7 @@ export class ShaderProcessor {
     let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
 
     // If failed and modified code was used, try original
-    if (!result.success && codeToCompile !== this.imageShaderCode) {
+    if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
@@ -235,5 +248,13 @@ export class ShaderProcessor {
     }
 
     return result;
+  }
+
+  private supersededResult(errors?: string[]): CompilationResult {
+    return {
+      success: false,
+      errors: errors || ["Superseded by a newer compile"],
+      superseded: true,
+    };
   }
 }

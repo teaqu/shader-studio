@@ -122,6 +122,28 @@ describe('BufferUpdater', () => {
     });
   });
 
+  it('should post no message at all for a superseded compile result', async () => {
+    // A superseded result means a newer buffer update raced past this one;
+    // surfacing it as an error banner would stick over a shader that is
+    // rendering fine. The newer update's own completion path owns the
+    // messaging and the render loop restart.
+    (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
+      success: false,
+      errors: ['Superseded by a newer compile'],
+      superseded: true,
+    });
+
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, '');
+
+    await vi.waitFor(() => {
+      expect(mockRenderEngine.updateBufferAndRecompile).toHaveBeenCalled();
+    });
+
+    expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    // startRenderLoop stays success-only; the newer update restarts it.
+    expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
+  });
+
   it('should handle unknown compilation errors', async () => {
     (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({ success: false });
 
