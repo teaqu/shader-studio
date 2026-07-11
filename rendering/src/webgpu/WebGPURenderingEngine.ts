@@ -107,8 +107,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
     if (workerUrl && typeof Worker !== "undefined") {
       try {
+        const workerScriptUrl = await this.createWorkerScriptUrl(workerUrl);
         return await WorkerSlangCompiler.create(
-          () => new Worker(workerUrl, { type: "module" }),
+          () => new Worker(workerScriptUrl, { type: "module" }),
           scriptUrl,
           wasmUrl,
         );
@@ -118,6 +119,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     const slang = await loadSlangModule(scriptUrl, wasmUrl);
     return new MainThreadSlangCompiler(new SlangCompiler(slang));
+  }
+
+  private async createWorkerScriptUrl(workerUrl: string): Promise<string> {
+    const response = await fetch(workerUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to load Slang worker (${response.status})`);
+    }
+    const source = await response.text();
+    return URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
   }
 
   async compileShaderPipeline(
