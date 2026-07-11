@@ -684,4 +684,62 @@ describe("SlangPassPipeline", () => {
     expect(samplerA).toBe(samplerB);
     expect(samplerA).toBe(sampler);
   });
+
+  describe("async pipeline creation", () => {
+    it("prefers createRenderPipelineAsync when the device provides it", async () => {
+      const device = fakeDevice();
+      const asyncPipeline = { label: "async-pipeline" };
+      (device as any).createRenderPipelineAsync = vi.fn(async () => asyncPipeline);
+
+      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+        name: "Image",
+        width: 800,
+        height: 600,
+        output: "canvas",
+        channels: [],
+      });
+      const errors = await pass.rebuild("// wgsl");
+
+      expect(errors).toEqual([]);
+      expect((device as any).createRenderPipelineAsync).toHaveBeenCalledTimes(1);
+      expect(device.createRenderPipeline).not.toHaveBeenCalled();
+      expect(pass.getPipeline()).toBe(asyncPipeline);
+    });
+
+    it("maps an async creation rejection to a pass-prefixed error instead of throwing", async () => {
+      const device = fakeDevice();
+      (device as any).createRenderPipelineAsync = vi.fn(async () => {
+        throw new Error("pipeline validation failed");
+      });
+
+      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+        name: "BufferA",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [],
+      });
+      const errors = await pass.rebuild("// wgsl");
+
+      expect(errors).toEqual(["BufferA: pipeline validation failed"]);
+      expect(pass.getPipeline()).toBeNull();
+      expect(device.createBuffer).not.toHaveBeenCalled(); // no resources built after failure
+    });
+
+    it("falls back to synchronous createRenderPipeline when async is unavailable", async () => {
+      const device = fakeDevice(); // no createRenderPipelineAsync
+      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+        name: "Image",
+        width: 800,
+        height: 600,
+        output: "canvas",
+        channels: [],
+      });
+      const errors = await pass.rebuild("// wgsl");
+
+      expect(errors).toEqual([]);
+      expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+      expect(pass.getPipeline()).not.toBeNull();
+    });
+  });
 });

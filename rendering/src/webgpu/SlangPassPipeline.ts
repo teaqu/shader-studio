@@ -48,7 +48,7 @@ export class SlangPassPipeline {
     this.bindGroupLayout = this.device.createBindGroupLayout({
       entries: this.buildBindGroupLayoutEntries(),
     });
-    this.pipeline = this.device.createRenderPipeline({
+    const pipelineDescriptor: GPURenderPipelineDescriptor = {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
       vertex: { module: this.shaderModule, entryPoint: SLANG_ENTRY_VERTEX },
       fragment: {
@@ -57,7 +57,20 @@ export class SlangPassPipeline {
         targets: [{ format: this.targetFormat() }],
       },
       primitive: { topology: "triangle-list" },
-    });
+    };
+    if (this.device.createRenderPipelineAsync) {
+      // WebGPU's off-thread pipeline compile (the KHR_parallel_shader_compile
+      // analogue). A rejection is a validation failure — report it as a
+      // compile error rather than letting it reject the whole compile.
+      try {
+        this.pipeline = await this.device.createRenderPipelineAsync(pipelineDescriptor);
+      } catch (error) {
+        this.pipeline = null;
+        return [`${this.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`];
+      }
+    } else {
+      this.pipeline = this.device.createRenderPipeline(pipelineDescriptor);
+    }
     this.uniformBuffer = this.device.createBuffer({
       size: SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
