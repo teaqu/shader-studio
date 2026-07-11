@@ -54,6 +54,11 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
       else entry.resolve({ success: false, errors: [msg.ok ? "Slang worker returned no result" : msg.error] });
     };
     this.worker.onerror = () => {
+      // A crashed worker never recovers: mark it dead so future compile()
+      // calls fail fast instead of posting into a worker that will never
+      // reply, which would otherwise wedge the caller (e.g.
+      // ShaderProcessor.isProcessing) forever.
+      this.disposed = true;
       this.failAllPending("Slang worker crashed");
     };
   }
@@ -87,7 +92,8 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
 
   compile(source: string, options: SlangCompileOptions): Promise<SlangCompileResult> {
     if (this.disposed) {
-      return Promise.resolve({ success: false, errors: ["Slang worker disposed"] });
+      // Accurate whether disposed via dispose() or a prior worker crash.
+      return Promise.resolve({ success: false, errors: ["Slang worker unavailable"] });
     }
     const id = this.nextId++;
     return new Promise<SlangCompileResult>((resolve) => {
@@ -98,7 +104,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
 
   dispose(): void {
     this.disposed = true;
-    this.failAllPending("Slang worker disposed");
+    this.failAllPending("Slang worker unavailable");
     this.worker.terminate();
   }
 
