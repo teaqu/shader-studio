@@ -988,10 +988,10 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       const messageHandler = setupMessageHandler(mockPanel);
-      await messageHandler({ type: 'openConfig', path: '/test/shader.sv.json' });
+      await messageHandler({ type: 'openConfig', path: '/test/shader.sha.json' });
 
       assert.ok(openTextDocumentStub.calledOnce);
-      assert.strictEqual(openTextDocumentStub.firstCall.args[0], '/test/shader.sv.json');
+      assert.strictEqual(openTextDocumentStub.firstCall.args[0], '/test/shader.sha.json');
       assert.ok(showTextDocumentStub.calledOnce);
     });
 
@@ -1001,7 +1001,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       const messageHandler = setupMessageHandler(mockPanel);
-      await messageHandler({ type: 'openConfig', path: '/test/shader.sv.json' });
+      await messageHandler({ type: 'openConfig', path: '/test/shader.sha.json' });
 
       assert.ok(showErrorMessageStub.calledOnce);
       assert.ok(showErrorMessageStub.firstCall.args[0].includes('Failed to open config'));

@@ -1442,7 +1442,7 @@ describe('ShaderExplorer - Shader Selection', () => {
             path: '/test/shader.glsl',
             name: 'shader.glsl',
             relativePath: 'test/shader.glsl',
-            configPath: '/test/shader.sv.json',
+            configPath: '/test/shader.sha.json',
         };
         const openFilesOnSelect = true;
 
