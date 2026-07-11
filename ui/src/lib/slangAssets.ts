@@ -10,5 +10,10 @@ import type { SlangAssetUrls } from "../../../rendering/src/webgpu/WebGPURenderi
  * to main-thread compilation if constructing the worker fails (e.g. CSP).
  */
 export function getSlangAssetUrls(): SlangAssetUrls {
-  return { scriptUrl: slangScriptUrl, wasmUrl: slangWasmUrl, workerUrl: slangWorkerUrl };
+  return {
+    scriptUrl: slangScriptUrl,
+    wasmUrl: slangWasmUrl,
+    workerUrl: slangWorkerUrl,
+    debugTimings: true,
+  };
 }

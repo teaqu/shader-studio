@@ -23,6 +23,23 @@ export interface SlangAssetUrls {
   wasmUrl: string;
   /** URL of the compiled slangCompileWorker chunk; absent → main-thread compile. */
   workerUrl?: string;
+  /** Emit Slang timing diagnostics to the webview console. */
+  debugTimings?: boolean;
+}
+
+interface WorkerScriptUrl {
+  url: string;
+  fetchMs: number;
+  blobMs: number;
+}
+
+interface PassTiming {
+  name: string;
+  cacheHit: boolean;
+  totalMs?: number;
+  slangMs?: number;
+  pipelineMs?: number;
+  errorCount?: number;
 }
 
 /**
@@ -105,29 +122,51 @@ export class WebGPURenderingEngine implements RenderingEngine {
   /** Prefer a worker-hosted compiler; fall back to main-thread slang-wasm. */
   private async createCompiler(): Promise<AsyncSlangCompiler> {
     const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
+    const startedAt = this.now();
     if (workerUrl && typeof Worker !== "undefined") {
       try {
-        const workerScriptUrl = await this.createWorkerScriptUrl(workerUrl);
-        return await WorkerSlangCompiler.create(
-          () => new Worker(workerScriptUrl, { type: "module" }),
+        const workerScript = await this.createWorkerScriptUrl(workerUrl);
+        const initStartedAt = this.now();
+        const compiler = await WorkerSlangCompiler.create(
+          () => new Worker(workerScript.url, { type: "module" }),
           scriptUrl,
           wasmUrl,
         );
+        this.logSlangPerf("worker setup", {
+          mode: "worker",
+          workerUrl,
+          fetchMs: this.ms(workerScript.fetchMs),
+          blobMs: this.ms(workerScript.blobMs),
+          initMs: this.ms(this.now() - initStartedAt),
+          totalMs: this.ms(this.now() - startedAt),
+        });
+        return compiler;
       } catch (e) {
         console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
       }
     }
+    const mainThreadStartedAt = this.now();
     const slang = await loadSlangModule(scriptUrl, wasmUrl);
+    this.logSlangPerf("worker setup", {
+      mode: "main-thread",
+      workerUrl: workerUrl ?? null,
+      loadSlangMs: this.ms(this.now() - mainThreadStartedAt),
+      totalMs: this.ms(this.now() - startedAt),
+    });
     return new MainThreadSlangCompiler(new SlangCompiler(slang));
   }
 
-  private async createWorkerScriptUrl(workerUrl: string): Promise<string> {
+  private async createWorkerScriptUrl(workerUrl: string): Promise<WorkerScriptUrl> {
+    const fetchStartedAt = this.now();
     const response = await fetch(workerUrl);
     if (!response.ok) {
       throw new Error(`Failed to load Slang worker (${response.status})`);
     }
     const source = await response.text();
-    return URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    const fetchMs = this.now() - fetchStartedAt;
+    const blobStartedAt = this.now();
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    return { url, fetchMs, blobMs: this.now() - blobStartedAt };
   }
 
   async compileShaderPipeline(
@@ -139,6 +178,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
     }
+    const startedAt = this.now();
+    let readyMs = 0;
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
@@ -146,12 +187,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
     this.lastCompile = { code, path, buffers: { ...buffers } };
-    if (this.ready) await this.ready;
+    if (this.ready) {
+      const readyStartedAt = this.now();
+      await this.ready;
+      readyMs = this.now() - readyStartedAt;
+    }
 
     if (this.initError || !this.device || !this.compiler) {
       return { success: false, errors: [`WebGPU init failed: ${this.initError ?? "device unavailable"}`] };
     }
 
+    const graphStartedAt = this.now();
     const graph = buildSlangPassGraph({
       imageCode: code,
       config,
@@ -159,15 +205,28 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
     });
+    const graphMs = this.now() - graphStartedAt;
 
     if (graph.errors.length > 0) {
+      this.logCompileTiming("failed", {
+        path,
+        generation,
+        startedAt,
+        readyMs,
+        graphMs,
+        passTimings: [],
+        graph,
+        errors: graph.errors,
+      });
       return { success: false, errors: graph.errors, warnings: graph.warnings };
     }
 
     const nextPipelines = new Map<string, SlangPassPipeline>();
     const nextKeys = new Map<string, string>();
+    const passTimings: PassTiming[] = [];
     const errors: string[] = [];
     for (const pass of graph.passes) {
+      const passStartedAt = this.now();
       const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
@@ -176,17 +235,31 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // this loop stays mutation-free while a later pass can still fail.
         nextPipelines.set(pass.name, existing);
         nextKeys.set(pass.name, key);
+        passTimings.push({
+          name: pass.name,
+          cacheHit: true,
+          totalMs: this.ms(this.now() - passStartedAt),
+        });
         continue;
       }
       let pipeline: SlangPassPipeline | undefined;
       try {
+        const slangStartedAt = this.now();
         const compiled = await this.compiler.compile(pass.source, {
           passName: pass.name,
           commonCode: graph.commonCode,
           channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
         });
+        const slangMs = this.now() - slangStartedAt;
         if (!compiled.success) {
           errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+          passTimings.push({
+            name: pass.name,
+            cacheHit: false,
+            slangMs: this.ms(slangMs),
+            totalMs: this.ms(this.now() - passStartedAt),
+            errorCount: compiled.errors.length,
+          });
           continue;
         }
         pipeline = new SlangPassPipeline(this.device, this.format, {
@@ -196,8 +269,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
           output: pass.output,
           channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
         });
+        const pipelineStartedAt = this.now();
         const wgslErrors = await pipeline.rebuild(compiled.wgsl);
+        const pipelineMs = this.now() - pipelineStartedAt;
         errors.push(...wgslErrors);
+        passTimings.push({
+          name: pass.name,
+          cacheHit: false,
+          slangMs: this.ms(slangMs),
+          pipelineMs: this.ms(pipelineMs),
+          totalMs: this.ms(this.now() - passStartedAt),
+          errorCount: wgslErrors.length,
+        });
         nextPipelines.set(pass.name, pipeline);
         nextKeys.set(pass.name, key);
       } catch (error) {
@@ -206,6 +289,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // as a compile error.
         pipeline?.dispose();
         errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
+        passTimings.push({
+          name: pass.name,
+          cacheHit: false,
+          totalMs: this.ms(this.now() - passStartedAt),
+          errorCount: 1,
+        });
       }
     }
 
@@ -218,6 +307,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
           pipeline.dispose();
         }
       }
+      this.logCompileTiming("failed", {
+        path,
+        generation,
+        startedAt,
+        readyMs,
+        graphMs,
+        passTimings,
+        graph,
+        errors,
+      });
       return { success: false, errors, warnings: graph.warnings };
     }
 
@@ -233,6 +332,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
           pipeline.dispose();
         }
       }
+      this.logCompileTiming("superseded", {
+        path,
+        generation,
+        startedAt,
+        readyMs,
+        graphMs,
+        passTimings,
+        graph,
+        errors: ["Superseded by a newer compile"],
+      });
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
@@ -257,7 +366,63 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
+    this.logCompileTiming("success", {
+      path,
+      generation,
+      startedAt,
+      readyMs,
+      graphMs,
+      passTimings,
+      graph,
+      errors,
+    });
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+  }
+
+  private logCompileTiming(
+    status: "success" | "failed" | "superseded",
+    details: {
+      path: string;
+      generation: number;
+      startedAt: number;
+      readyMs: number;
+      graphMs: number;
+      passTimings: PassTiming[];
+      graph: { passes: RenderPassNode[]; warnings: string[] };
+      errors: string[];
+    },
+  ): void {
+    const cacheHits = details.passTimings.filter((pass) => pass.cacheHit).length;
+    this.logSlangPerf("compile", {
+      status,
+      path: details.path,
+      generation: details.generation,
+      totalMs: this.ms(this.now() - details.startedAt),
+      readyMs: this.ms(details.readyMs),
+      graphMs: this.ms(details.graphMs),
+      passCount: details.graph.passes.length,
+      cacheHits,
+      compiledPasses: details.passTimings
+        .filter((pass) => !pass.cacheHit)
+        .map((pass) => pass.name),
+      passes: details.passTimings,
+      warningCount: details.graph.warnings.length,
+      errorCount: details.errors.length,
+    });
+  }
+
+  private logSlangPerf(event: string, data: Record<string, unknown>): void {
+    if (this.slangAssets.debugTimings) {
+      console.info(`[SlangPerf] ${event}`, data);
+    }
+  }
+
+  private now(): number {
+    return performance.now();
+  }
+
+  private ms(value: number): number {
+    return Number(value.toFixed(2));
   }
 
   /**

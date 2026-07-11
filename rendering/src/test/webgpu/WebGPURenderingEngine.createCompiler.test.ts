@@ -78,6 +78,34 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     expect(mainThreadCtor).not.toHaveBeenCalled();
   });
 
+  it("logs worker setup timings when Slang timing debug is enabled", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const fakeCompiler = { compile: vi.fn(), dispose: vi.fn() };
+    workerCreate.mockResolvedValue(fakeCompiler);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      const engine = new WebGPURenderingEngine({
+        scriptUrl: "s.js",
+        wasmUrl: "s.wasm",
+        workerUrl: "worker.js",
+        debugTimings: true,
+      });
+      await (engine as unknown as { createCompiler(): Promise<unknown> }).createCompiler();
+
+      expect(infoSpy).toHaveBeenCalledWith("[SlangPerf] worker setup", expect.objectContaining({
+        mode: "worker",
+        workerUrl: "worker.js",
+        fetchMs: expect.any(Number),
+        blobMs: expect.any(Number),
+        initMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      }));
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
   it("(b) falls back to the main-thread compiler and warns when WorkerSlangCompiler.create() rejects", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     const initError = new Error("worker init failed");

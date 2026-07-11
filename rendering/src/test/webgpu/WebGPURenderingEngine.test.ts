@@ -1170,6 +1170,37 @@ describe("WebGPURenderingEngine", () => {
 
       expect(compiler.compile).toHaveBeenCalledTimes(1); // Image only
     });
+
+    it("logs cache hits and per-pass timings when Slang timing debug is enabled", async () => {
+      const engine = new WebGPURenderingEngine({ ...assets, debugTimings: true });
+      const { compiler } = stubEngineInternals(engine);
+      const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+      try {
+        await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
+        compiler.compile.mockClear();
+        infoSpy.mockClear();
+
+        const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
+
+        expect(result?.success).toBe(true);
+        expect(infoSpy).toHaveBeenCalledWith("[SlangPerf] compile", expect.objectContaining({
+          status: "success",
+          path: "/s.slang",
+          generation: expect.any(Number),
+          totalMs: expect.any(Number),
+          graphMs: expect.any(Number),
+          passCount: 2,
+          cacheHits: 1,
+          compiledPasses: ["BufferA"],
+          passes: expect.arrayContaining([
+            expect.objectContaining({ name: "BufferA", cacheHit: false, slangMs: expect.any(Number), pipelineMs: expect.any(Number) }),
+            expect.objectContaining({ name: "Image", cacheHit: true }),
+          ]),
+        }));
+      } finally {
+        infoSpy.mockRestore();
+      }
+    });
   });
 
   describe("concurrent compiles (generation guard)", () => {
