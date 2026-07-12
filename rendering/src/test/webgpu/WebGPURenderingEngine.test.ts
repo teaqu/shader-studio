@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
@@ -127,6 +127,163 @@ describe("WebGPURenderingEngine", () => {
 
     const device = (engine as any).device;
     expect(device.queue.submit).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects an invalid config with a validation error before compiling", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    engine.initialize(noWebGpuCanvas());
+    // Missing `passes` — ConfigValidator must reject this like WebGL does.
+    const invalidConfig = { version: "1.0" } as ShaderConfig;
+    const result = await engine.compileShaderPipeline("float4 mainImage(float2 c){return float4(1);}", invalidConfig, "/a.slang", {});
+    expect(result?.success).toBe(false);
+    expect(result?.errors?.[0]).toMatch(/Invalid shader configuration/);
+  });
+
+  describe("duplicate frame parity with WebGL", () => {
+    it("drops duplicate frames with zero delta time (VS Code multi-panel rendering)", () => {
+      const { engine } = pausableEngine();
+      const device = (engine as any).device;
+
+      engine.render(1000);
+      engine.render(1016);
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+
+      engine.render(1016); // duplicate timestamp → deltaTime === 0
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+      expect(engine.getTimeManager().getFrame()).toBe(2);
+
+      engine.render(1033); // normal frame renders again
+      expect(device.queue.submit).toHaveBeenCalledTimes(3);
+      expect(engine.getTimeManager().getFrame()).toBe(3);
+    });
+
+    it("does not drop frame 0 even with zero delta time (new shader load)", () => {
+      const { engine } = pausableEngine();
+      const device = (engine as any).device;
+
+      engine.render(0);
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /** Engine with a BufferA→Image pass graph, stubbed device, and a controllable mouse. */
+  function pausableEngine() {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    const mouse = { value: [0, 0, 0, 0] as number[] };
+    (engine as any).mouseManager = {
+      getMouse: vi.fn(() => Float32Array.from(mouse.value)),
+      setupEventListeners: vi.fn(),
+      setEnabled: vi.fn(),
+    };
+
+    return { engine, bufferPipeline, imagePipeline, mouse };
+  }
+
+  /** Uniform payloads written during the most recent render call. */
+  function lastFrameUniformWrites(engine: WebGPURenderingEngine, passCount: number): Float32Array[] {
+    const calls = ((engine as any).device.queue.writeBuffer as ReturnType<typeof vi.fn>).mock.calls;
+    return calls.slice(-passCount).map((call) => new Float32Array(call[2] as ArrayBuffer));
+  }
+
+  describe("pause parity with WebGL", () => {
+    // Mirrors the WebGL FrameRenderer pause contract: while paused, buffer
+    // passes stop advancing, iFrame freezes, and uniforms (mouse included)
+    // stay at the values captured when the pause began.
+
+    it("skips buffer passes and their swap while paused (image pass still renders)", () => {
+      const { engine, bufferPipeline } = pausableEngine();
+
+      engine.render(1000); // frame 0, running
+      engine.render(1016); // frame 1, running
+      expect(bufferPipeline.swap).toHaveBeenCalledTimes(2);
+
+      engine.togglePause();
+      engine.render(1033);
+      engine.render(1050);
+
+      // Buffer pass no longer renders or swaps, but frames still submit
+      // (image pass keeps drawing, e.g. for resize).
+      expect(bufferPipeline.swap).toHaveBeenCalledTimes(2);
+      const device = (engine as any).device;
+      expect(device.queue.submit).toHaveBeenCalledTimes(4);
+    });
+
+    it("still renders buffer passes on frame 0 while paused (new shader loaded paused)", () => {
+      const { engine, bufferPipeline } = pausableEngine();
+
+      engine.togglePause();
+      engine.render(1000);
+
+      expect(bufferPipeline.swap).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not increment iFrame while paused", () => {
+      const { engine } = pausableEngine();
+
+      engine.render(1000);
+      engine.render(1016);
+      expect(engine.getTimeManager().getFrame()).toBe(2);
+
+      engine.togglePause();
+      engine.render(1033);
+      engine.render(1050);
+      expect(engine.getTimeManager().getFrame()).toBe(2);
+    });
+
+    it("freezes mouse uniforms at the values captured when the pause began", () => {
+      const { engine, mouse } = pausableEngine();
+
+      mouse.value = [10, 20, 0, 0];
+      engine.render(1000);
+
+      engine.togglePause();
+      mouse.value = [50, 60, 0, 0];
+      engine.render(1016); // pause entry: captures current mouse
+
+      mouse.value = [99, 88, 0, 0];
+      engine.render(1033); // must still use the frozen mouse
+
+      const [imageUniforms] = lastFrameUniformWrites(engine, 1);
+      expect([imageUniforms[4], imageUniforms[5]]).toEqual([50, 60]);
+    });
+
+    it("uses live mouse values again after unpausing", () => {
+      const { engine, mouse } = pausableEngine();
+
+      engine.render(1000);
+      engine.togglePause();
+      mouse.value = [50, 60, 0, 0];
+      engine.render(1016);
+
+      engine.togglePause(); // unpause
+      mouse.value = [70, 80, 0, 0];
+      engine.render(1033);
+
+      const writes = lastFrameUniformWrites(engine, 2);
+      for (const uniforms of writes) {
+        expect([uniforms[4], uniforms[5]]).toEqual([70, 80]);
+      }
+    });
   });
 
   it("exposes a TimeManager and the expected uniform shape", () => {
@@ -453,7 +610,7 @@ describe("WebGPURenderingEngine", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "texture", source: "foo" } } },
+          Image: { inputs: { iChannel0: { type: "texture", path: "foo.png" } } },
         },
       },
       "/image.slang",
@@ -840,6 +997,154 @@ describe("WebGPURenderingEngine", () => {
 
       expect(engine.getFrameTimeHistory()).toEqual([34, 34]);
       expect(engine.getFrameTimeCount()).toBe(2);
+    });
+
+    it("renders the first frame with an FPS limit enabled (lastRenderedAt starts null)", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(5000);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders about half the frames with a 30fps limit on 60Hz input (drift-corrected)", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      const frames = 120;
+      for (let i = 0; i < frames; i++) {
+        engine.render(1000 + i * (1000 / 60));
+      }
+
+      const rendered = vi.mocked(device.queue.submit).mock.calls.length;
+      expect(rendered).toBeGreaterThanOrEqual(frames / 2 - 2);
+      expect(rendered).toBeLessThanOrEqual(frames / 2 + 2);
+    });
+
+    it("snaps to current time after a large gap instead of rapid-firing to catch up", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.render(11000); // tab backgrounded for 10s
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+
+      // Immediately after the gap the interval applies again: too-soon
+      // frames are still skipped rather than rapid-fired.
+      engine.render(11005);
+      engine.render(11010);
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+    });
+
+    it("applies an FPS limit change mid-stream", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.render(1010); // skipped at 30fps
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+
+      engine.setFPSLimit(60);
+      engine.render(1020); // 20ms since last rendered — allowed at 60fps
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+    });
+
+    it("ignores large frame deltas (>= 500ms, tab backgrounding) in the history", async () => {
+      const { engine } = await compiledEngine();
+
+      engine.render(1000);
+      engine.render(1016);
+      engine.render(2016); // 1000ms delta — ignored
+      engine.render(2032);
+
+      expect(engine.getFrameTimeHistory()).toEqual([16, 16]);
+      expect(engine.getFrameTimeCount()).toBe(2);
+    });
+
+    it("resets the frame-time baseline while paused so unpausing records no spike", async () => {
+      const { engine } = await compiledEngine();
+
+      engine.render(1000);
+      engine.render(1016);
+      expect(engine.getFrameTimeCount()).toBe(1);
+
+      engine.togglePause();
+      engine.render(1032);
+
+      engine.togglePause(); // unpause much later
+      engine.render(9000);
+      expect(engine.getFrameTimeCount()).toBe(1); // no 8s spike recorded
+
+      engine.render(9016);
+      expect(engine.getFrameTimeHistory()).toEqual([16, 16]);
+    });
+
+    it("caps the history at 3600 entries while the count keeps growing", async () => {
+      const { engine } = await compiledEngine();
+
+      const frames = 3700;
+      for (let i = 0; i <= frames; i++) {
+        engine.render(1000 + i * 16);
+      }
+
+      expect(engine.getFrameTimeHistory()).toHaveLength(3600);
+      expect(engine.getFrameTimeCount()).toBe(frames);
+    });
+  });
+
+  describe("render loop", () => {
+    function rafStubbedEngine() {
+      const { engine } = pausableEngine();
+      const rafCallbacks: FrameRequestCallback[] = [];
+      let nextRafId = 1;
+      vi.stubGlobal("requestAnimationFrame", vi.fn((cb: FrameRequestCallback) => {
+        rafCallbacks.push(cb);
+        return nextRafId++;
+      }));
+      vi.stubGlobal("cancelAnimationFrame", vi.fn());
+      const fireFrame = (time: number) => {
+        const cb = rafCallbacks.shift();
+        cb?.(time);
+      };
+      return { engine, fireFrame };
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("renders on each animation frame once started", () => {
+      const { engine, fireFrame } = rafStubbedEngine();
+      const device = (engine as any).device;
+
+      engine.startRenderLoop();
+      fireFrame(1000);
+      fireFrame(1016);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not start a second loop when already running", () => {
+      const { engine } = rafStubbedEngine();
+
+      engine.startRenderLoop();
+      engine.startRenderLoop();
+
+      expect(vi.mocked(requestAnimationFrame)).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops rendering after stopRenderLoop", () => {
+      const { engine, fireFrame } = rafStubbedEngine();
+      const device = (engine as any).device;
+
+      engine.startRenderLoop();
+      fireFrame(1000);
+      engine.stopRenderLoop();
+      fireFrame(1016);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(cancelAnimationFrame)).toHaveBeenCalled();
     });
   });
 

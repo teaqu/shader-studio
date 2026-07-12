@@ -15,7 +15,8 @@ import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
-import { packShaderToyUniforms } from "./uniforms";
+import { packShaderToyUniforms, type ShaderToyUniformInput } from "./uniforms";
+import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline } from "./SlangPassPipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
@@ -129,6 +130,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private frameTimeCount = 0;
   private previousFrameTimestamp: number | null = null;
   private static readonly MAX_FRAME_TIME_HISTORY = 3600;
+
+  // WebGL pause parity (see FrameRenderer): while paused, per-frame uniform
+  // inputs are frozen at the values captured when the pause began, so mouse
+  // movement can't keep driving a "paused" shader.
+  private pausedUniformInput: Omit<ShaderToyUniformInput, "width" | "height"> | null = null;
 
   constructor(private slangAssets: SlangAssetUrls) {}
 
@@ -278,6 +284,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
     }
+    // WebGL parity: the config is remembered even when invalid, but an
+    // invalid one fails the compile before any Slang work starts.
+    this.currentConfig = config;
+    if (config) {
+      const validation = ConfigValidator.validateConfig(config);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          errors: [`Invalid shader configuration: ${validation.errors.join(", ")}`],
+        };
+      }
+    }
     const startedAt = this.now();
     let readyMs = 0;
     // Captured synchronously (before any await) so concurrent calls made in
@@ -291,7 +309,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       hasDevice: Boolean(this.device),
       hasCompiler: Boolean(this.compiler),
     });
-    this.currentConfig = config;
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
     this.lastCompile = { code, path, buffers: { ...buffers } };
@@ -614,16 +631,56 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return;
     }
 
+    const isPaused = !capture && this.timeManager.isPaused();
+
     if (!capture) {
       this.timeManager.updateFrame(time);
-      this.fps.updateFrame(time);
+
+      // Skip duplicate frames from VS Code multi-panel rendering (but allow
+      // the first frame, whose delta is synthetic anyway) — WebGL parity.
+      if (this.timeManager.getDeltaTime() === 0 && this.timeManager.getFrame() !== 0) {
+        return;
+      }
+
+      if (!isPaused) {
+        this.fps.updateFrame(time);
+      }
     }
 
+    // WebGL pause parity: freeze the per-frame uniform inputs at the values
+    // captured when the pause began, so e.g. mouse movement can't keep
+    // driving a "paused" shader.
+    if (isPaused && this.pausedUniformInput === null) {
+      this.pausedUniformInput = {
+        time: this.timeManager.getCurrentTime(time),
+        timeDelta: this.timeManager.getDeltaTime(),
+        frameRate: this.fps.getRawFPS(),
+        frame: this.timeManager.getFrame(),
+        mouse: Array.from(this.mouseManager.getMouse()),
+      };
+    } else if (!isPaused) {
+      this.pausedUniformInput = null;
+    }
+
+    const frameInput = this.pausedUniformInput ?? {
+      time: this.timeManager.getCurrentTime(time),
+      timeDelta: this.timeManager.getDeltaTime(),
+      frameRate: this.fps.getRawFPS(),
+      frame: this.timeManager.getFrame(),
+      mouse: this.mouseManager.getMouse(),
+    };
+
+    // While paused, buffer passes stop advancing. Frame 0 is the exception:
+    // a shader loaded while paused still renders its first buffer state.
+    const skipBufferPasses = isPaused && this.timeManager.getFrame() > 0;
+
     const encoder = this.device.createCommandEncoder();
-    const shaderTime = this.timeManager.getCurrentTime(time);
     let canvasTexture: GPUTexture | null = null;
 
     for (const pass of this.passGraph) {
+      if (skipBufferPasses && pass.output === "texture") {
+        continue;
+      }
       const pipeline = this.passPipelines.get(pass.name);
       if (!pipeline?.getPipeline() || !pipeline.getUniformBuffer()) {
         continue;
@@ -651,11 +708,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const data = packShaderToyUniforms({
         width: pass.width,
         height: pass.height,
-        time: shaderTime,
-        timeDelta: this.timeManager.getDeltaTime(),
-        frameRate: this.fps.getRawFPS(),
-        frame: this.timeManager.getFrame(),
-        mouse: this.mouseManager.getMouse(),
+        ...frameInput,
       });
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
 
@@ -684,15 +737,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.device.queue.submit([encoder.finish()]);
     this.resolveInspectorReadback();
 
-    for (const pass of this.passGraph) {
-      if (pass.output === "texture") {
-        this.passPipelines.get(pass.name)?.swap();
+    if (!skipBufferPasses) {
+      for (const pass of this.passGraph) {
+        if (pass.output === "texture") {
+          this.passPipelines.get(pass.name)?.swap();
+        }
       }
     }
 
     if (!capture) {
       this.recordFrameTime(time);
-      this.timeManager.incrementFrame();
+      if (!isPaused) {
+        this.timeManager.incrementFrame();
+      }
     }
   }
 
