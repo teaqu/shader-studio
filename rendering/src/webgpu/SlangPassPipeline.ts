@@ -12,6 +12,8 @@ export interface SlangPassPipelineDescriptor {
 export interface SlangChannelResource {
   slot: number;
   textureView: GPUTextureView;
+  /** Channel-specific sampler (texture/keyboard inputs); shared linear when absent (buffer inputs). */
+  sampler?: GPUSampler;
 }
 
 // Buffer (texture-output) passes render to float textures so feedback state
@@ -125,7 +127,7 @@ export class SlangPassPipeline {
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       entries.push({ binding: textureBinding, resource: sorted[index].textureView });
-      entries.push({ binding: samplerBinding, resource: this.sampler! });
+      entries.push({ binding: samplerBinding, resource: sorted[index].sampler ?? this.sampler! });
     }
     this.bindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayout,

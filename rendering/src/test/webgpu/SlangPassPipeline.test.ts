@@ -685,6 +685,37 @@ describe("SlangPassPipeline", () => {
     expect(samplerA).toBe(sampler);
   });
 
+  it("binds a channel's own sampler when provided, shared sampler otherwise", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 8,
+      height: 8,
+      output: "canvas",
+      channels: [
+        { slot: 0, key: "iChannel0" },
+        { slot: 1, key: "iChannel1" },
+      ],
+    });
+
+    await pass.rebuild("stub wgsl");
+    const ownSampler = { own: true } as unknown as GPUSampler;
+    const view0 = { v: 0 } as unknown as GPUTextureView;
+    const view1 = { v: 1 } as unknown as GPUTextureView;
+    pass.rebuildBindGroup([
+      { slot: 1, textureView: view1 }, // buffer-style: shared sampler
+      { slot: 0, textureView: view0, sampler: ownSampler }, // texture-style: own sampler
+    ]);
+
+    const entries = (device.createBindGroup as any).mock.calls.at(-1)[0].entries;
+    // slot-sorted: bindings 1/2 are slot 0, bindings 3/4 are slot 1
+    expect(entries[1]).toEqual({ binding: 1, resource: view0 });
+    expect(entries[2]).toEqual({ binding: 2, resource: ownSampler });
+    expect(entries[3]).toEqual({ binding: 3, resource: view1 });
+    expect(entries[4].binding).toBe(4);
+    expect(entries[4].resource).not.toBe(ownSampler); // shared linear sampler
+  });
+
   describe("async pipeline creation", () => {
     it("prefers createRenderPipelineAsync when the device provides it", async () => {
       const device = fakeDevice();
