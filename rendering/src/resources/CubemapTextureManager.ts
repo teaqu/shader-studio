@@ -1,4 +1,4 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 import type { CubemapConfigInput } from "../models/ShaderConfig";
 
 /**
@@ -19,19 +19,19 @@ const FACE_POSITIONS: [number, number][] = [
   [3, 1], // -Z (GL_TEXTURE_CUBE_MAP_NEGATIVE_Z)
 ];
 
-export class CubemapTextureManager {
-  private readonly cubemapCache: Record<string, PiTexture> = {};
+export class CubemapTextureManager<T> {
+  private readonly cubemapCache: Record<string, T> = {};
 
-  constructor(private readonly renderer: PiRenderer) {}
+  constructor(private readonly backend: TextureBackend<T>) {}
 
-  public getCubemapTexture(path: string): PiTexture | null {
+  public getCubemapTexture(path: string): T | null {
     return this.cubemapCache[path] ?? null;
   }
 
   public async loadCubemapFromCrossImage(
     url: string,
     options: Partial<Pick<CubemapConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
-  ): Promise<PiTexture> {
+  ): Promise<T> {
     // Return cached if already loaded
     if (this.cubemapCache[url]) {
       return this.cubemapCache[url];
@@ -44,14 +44,13 @@ export class CubemapTextureManager {
     const wrap = this.getWrapFromOptions(options.wrap);
     const vflip = options.vflip ?? false;
 
-    const texture = this.renderer.CreateTextureFromImage(
-      this.renderer.TEXTYPE.CUBEMAP,
-      faces as any,
-      this.renderer.TEXFMT.C4I8,
+    const texture = this.backend.createTextureFromImage(faces, {
+      type: "cubemap",
+      format: "rgba8",
       filter,
       wrap,
       vflip,
-    );
+    });
 
     if (!texture) {
       throw new Error(`Failed to create cubemap texture from ${url}`);
@@ -85,7 +84,7 @@ export class CubemapTextureManager {
 
   public cleanup(): void {
     for (const key in this.cubemapCache) {
-      this.renderer.DestroyTexture(this.cubemapCache[key]);
+      this.backend.destroyTexture(this.cubemapCache[key]);
       delete this.cubemapCache[key];
     }
   }
@@ -100,20 +99,20 @@ export class CubemapTextureManager {
     });
   }
 
-  private getFilterFromOptions(filter?: string): any {
+  private getFilterFromOptions(filter?: string): TextureFilter {
     switch (filter) {
-      case "linear": return this.renderer.FILTER.LINEAR;
-      case "nearest": return this.renderer.FILTER.NONE;
+      case "linear": return "linear";
+      case "nearest": return "nearest";
       case "mipmap":
-      default: return this.renderer.FILTER.MIPMAP;
+      default: return "mipmap";
     }
   }
 
-  private getWrapFromOptions(wrap?: string): any {
+  private getWrapFromOptions(wrap?: string): TextureWrap {
     switch (wrap) {
-      case "repeat": return this.renderer.TEXWRP.REPEAT;
+      case "repeat": return "repeat";
       case "clamp":
-      default: return this.renderer.TEXWRP.CLAMP;
+      default: return "clamp";
     }
   }
 }

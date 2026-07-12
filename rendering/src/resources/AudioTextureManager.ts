@@ -1,11 +1,11 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { TextureBackend } from "./TextureBackend";
 
-interface AudioSource {
+interface AudioSource<T> {
   buffer: AudioBuffer;
   sourceNode: AudioBufferSourceNode | null;
   analyser: AnalyserNode;
   gainNode: GainNode;
-  texture: PiTexture;
+  texture: T;
   freqData: Uint8Array;
   waveData: Uint8Array;
   playing: boolean;
@@ -14,9 +14,9 @@ interface AudioSource {
   duration: number;
 }
 
-export class AudioTextureManager {
+export class AudioTextureManager<T> {
   private audioContext: AudioContext | null = null;
-  private readonly audioSources: Record<string, AudioSource> = {};
+  private readonly audioSources: Record<string, AudioSource<T>> = {};
   private readonly audioLoopRegions: Record<string, { startTime: number; endTime?: number }> = {};
   private readonly initializing: Set<string> = new Set();
   private readonly textureWidth = 512;
@@ -25,7 +25,7 @@ export class AudioTextureManager {
   // Per-audio user-initiated pause tracking
   private readonly userPaused: Set<string> = new Set();
 
-  constructor(private readonly renderer: PiRenderer) {}
+  constructor(private readonly backend: TextureBackend<T>) {}
 
   private autoResumeCleanup: (() => void) | null = null;
 
@@ -43,7 +43,9 @@ export class AudioTextureManager {
    * this ensures audio starts on the very first click/keypress in the webview.
    */
   private setupAutoResume(): void {
-    if (!this.audioContext || typeof document === 'undefined') return;
+    if (!this.audioContext || typeof document === 'undefined') {
+      return;
+    }
 
     const resume = () => {
       if (this.audioContext && this.audioContext.state === 'suspended') {
@@ -85,15 +87,19 @@ export class AudioTextureManager {
   }
 
   /** Start (or restart) an AudioBufferSourceNode for the given source */
-  private startSourceNode(path: string, source: AudioSource, offset: number): void {
+  private startSourceNode(path: string, source: AudioSource<T>, offset: number): void {
     // Stop existing node
     if (source.sourceNode) {
-      try { source.sourceNode.stop(); } catch { /* already stopped */ }
+      try {
+        source.sourceNode.stop(); 
+      } catch { /* already stopped */ }
       source.sourceNode.disconnect();
     }
 
     const ctx = this.audioContext;
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     const node = ctx.createBufferSource();
     node.buffer = source.buffer;
@@ -118,7 +124,7 @@ export class AudioTextureManager {
     source.playing = true;
   }
 
-  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<PiTexture> {
+  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<T> {
     if (this.audioSources[path]) {
       return this.audioSources[path].texture;
     }
@@ -141,15 +147,15 @@ export class AudioTextureManager {
     gainNode.connect(ctx.destination);
 
     // Create 512x2 C1I8 texture (row 0 = FFT, row 1 = waveform)
-    const texture = this.renderer.CreateTexture(
-      this.renderer.TEXTYPE.T2D,
-      this.textureWidth,
-      this.textureHeight,
-      this.renderer.TEXFMT.C1I8,
-      this.renderer.FILTER.LINEAR,
-      this.renderer.TEXWRP.CLAMP,
-      null,
-    );
+    const texture = this.backend.createTexture({
+      type: "2d",
+      width: this.textureWidth,
+      height: this.textureHeight,
+      format: "r8",
+      filter: "linear",
+      wrap: "clamp",
+      data: null,
+    });
 
     if (!texture) {
       this.initializing.delete(path);
@@ -176,7 +182,7 @@ export class AudioTextureManager {
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 
-      const source: AudioSource = {
+      const source: AudioSource<T> = {
         buffer: audioBuffer,
         sourceNode: null,
         analyser,
@@ -204,7 +210,7 @@ export class AudioTextureManager {
     return texture;
   }
 
-  public getAudioTexture(path: string): PiTexture | null {
+  public getAudioTexture(path: string): T | null {
     return this.audioSources[path]?.texture ?? null;
   }
 
@@ -214,7 +220,9 @@ export class AudioTextureManager {
       // Record current position before stopping
       source.offsetTime = this.getPlaybackTime(path);
       if (source.sourceNode) {
-        try { source.sourceNode.stop(); } catch { /* already stopped */ }
+        try {
+          source.sourceNode.stop(); 
+        } catch { /* already stopped */ }
         source.sourceNode.disconnect();
         source.sourceNode = null;
       }
@@ -272,8 +280,12 @@ export class AudioTextureManager {
   /** Get the current playback time for an audio source */
   private getPlaybackTime(path: string): number {
     const source = this.audioSources[path];
-    if (!source) return 0;
-    if (!source.playing || !this.audioContext) return source.offsetTime;
+    if (!source) {
+      return 0;
+    }
+    if (!source.playing || !this.audioContext) {
+      return source.offsetTime;
+    }
 
     const elapsed = this.audioContext.currentTime - source.startedAt;
     const region = this.audioLoopRegions[path];
@@ -281,13 +293,17 @@ export class AudioTextureManager {
     const regionEnd = region?.endTime ?? source.duration;
     const regionLen = regionEnd - regionStart;
 
-    if (regionLen <= 0) return source.offsetTime + elapsed;
+    if (regionLen <= 0) {
+      return source.offsetTime + elapsed;
+    }
     return regionStart + ((source.offsetTime - regionStart + elapsed) % regionLen);
   }
 
   public seekAudio(path: string, time: number): void {
     const source = this.audioSources[path];
-    if (!source) return;
+    if (!source) {
+      return;
+    }
 
     if (source.playing) {
       // Restart from new position
@@ -358,7 +374,9 @@ export class AudioTextureManager {
       if (source.playing) {
         source.offsetTime = this.getPlaybackTime(path);
         if (source.sourceNode) {
-          try { source.sourceNode.stop(); } catch { /* already stopped */ }
+          try {
+            source.sourceNode.stop(); 
+          } catch { /* already stopped */ }
           source.sourceNode.disconnect();
           source.sourceNode = null;
         }
@@ -370,7 +388,9 @@ export class AudioTextureManager {
   public resumeAll(): void {
     for (const [path, source] of Object.entries(this.audioSources)) {
       // Skip audio still initializing
-      if (this.initializing.has(path)) continue;
+      if (this.initializing.has(path)) {
+        continue;
+      }
       if (!source.playing && !this.userPaused.has(path)) {
         this.startSourceNode(path, source, source.offsetTime);
       }
@@ -381,7 +401,9 @@ export class AudioTextureManager {
   public forceResumeAll(): void {
     this.userPaused.clear();
     for (const [path, source] of Object.entries(this.audioSources)) {
-      if (this.initializing.has(path)) continue;
+      if (this.initializing.has(path)) {
+        continue;
+      }
       if (!source.playing) {
         this.startSourceNode(path, source, source.offsetTime);
       }
@@ -390,7 +412,9 @@ export class AudioTextureManager {
 
   public syncAllToTime(shaderTime: number): void {
     for (const [path, source] of Object.entries(this.audioSources)) {
-      if (this.initializing.has(path)) continue;
+      if (this.initializing.has(path)) {
+        continue;
+      }
       if (source.duration && isFinite(source.duration)) {
         const region = this.audioLoopRegions[path];
         const start = region?.startTime ?? 0;
@@ -409,15 +433,19 @@ export class AudioTextureManager {
 
   public removeAudioSource(path: string): void {
     const source = this.audioSources[path];
-    if (!source) return;
+    if (!source) {
+      return;
+    }
 
     if (source.sourceNode) {
-      try { source.sourceNode.stop(); } catch { /* already stopped */ }
+      try {
+        source.sourceNode.stop(); 
+      } catch { /* already stopped */ }
       source.sourceNode.disconnect();
     }
     source.analyser.disconnect();
     source.gainNode.disconnect();
-    this.renderer.DestroyTexture(source.texture);
+    this.backend.destroyTexture(source.texture);
     delete this.audioSources[path];
     delete this.audioLoopRegions[path];
     this.initializing.delete(path);
@@ -443,7 +471,7 @@ export class AudioTextureManager {
 
   private updateAudioTexture(
     analyser: AnalyserNode,
-    texture: PiTexture,
+    texture: T,
     freqData: Uint8Array,
     waveData: Uint8Array,
   ): void {
@@ -451,9 +479,9 @@ export class AudioTextureManager {
     analyser.getByteTimeDomainData(waveData);
 
     // Row 0: frequency data
-    this.renderer.UpdateTexture(texture, 0, 0, this.textureWidth, 1, freqData);
+    this.backend.updateTexture(texture, 0, 0, this.textureWidth, 1, freqData);
     // Row 1: waveform data
-    this.renderer.UpdateTexture(texture, 0, 1, this.textureWidth, 1, waveData);
+    this.backend.updateTexture(texture, 0, 1, this.textureWidth, 1, waveData);
   }
 
   public cleanup(): void {

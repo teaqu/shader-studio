@@ -1,25 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CubemapTextureManager } from '../../resources/CubemapTextureManager';
-import type { PiRenderer, PiTexture } from '../../types/piRenderer';
+import type { TextureBackend } from '../../resources/TextureBackend';
 
-function createMockRenderer(): PiRenderer {
+interface FakeTex { id: number }
+
+function mockBackend() {
+  let next = 1;
   return {
-    TEXTYPE: { T2D: 0, T3D: 1, CUBEMAP: 2 },
-    TEXFMT: { C4I8: 0, C1I8: 1, C1F16: 2, C4F16: 3, C1F32: 4, C4F32: 5, Z16: 6, Z24: 7, Z32: 8 },
-    FILTER: { NONE: 0, LINEAR: 1, MIPMAP: 2, NONE_MIPMAP: 3 },
-    TEXWRP: { CLAMP: 0, REPEAT: 1 },
-    CreateTextureFromImage: vi.fn().mockReturnValue({
-      mObjectID: {} as WebGLTexture,
-      mXres: 256,
-      mYres: 256,
-      mFormat: 0,
-      mType: 2,
-      mFilter: 2,
-      mWrap: 0,
-      mVFlip: false,
-    } as PiTexture),
-    DestroyTexture: vi.fn(),
-  } as unknown as PiRenderer;
+    createTexture: vi.fn((): FakeTex => ({ id: next++ })),
+    createTextureFromImage: vi.fn((): FakeTex => ({ id: next++ })),
+    createMipmaps: vi.fn(),
+    updateTexture: vi.fn(),
+    updateTextureFromImage: vi.fn(),
+    destroyTexture: vi.fn(),
+  } satisfies TextureBackend<FakeTex>;
 }
 
 function mockCanvasContext() {
@@ -31,12 +25,12 @@ function mockCanvasContext() {
 }
 
 describe('CubemapTextureManager', () => {
-  let manager: CubemapTextureManager;
-  let mockRenderer: PiRenderer;
+  let manager: CubemapTextureManager<FakeTex>;
+  let backend: TextureBackend<FakeTex>;
 
   beforeEach(() => {
-    mockRenderer = createMockRenderer();
-    manager = new CubemapTextureManager(mockRenderer);
+    backend = mockBackend();
+    manager = new CubemapTextureManager(backend);
   });
 
   afterEach(() => {
@@ -89,8 +83,8 @@ describe('CubemapTextureManager', () => {
   describe('cleanup', () => {
     it('should destroy all cached textures', () => {
       mockCanvasContext();
-      const mockTexture = { mObjectID: {} } as PiTexture;
-      (mockRenderer.CreateTextureFromImage as any).mockReturnValue(mockTexture);
+      const mockTexture: FakeTex = { id: 999 };
+      (backend.createTextureFromImage as any).mockReturnValue(mockTexture);
 
       // Load a cubemap by simulating the internal flow
       const mockImage = document.createElement('canvas');

@@ -1,17 +1,17 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 import type { VideoConfigInput } from "../models/ShaderConfig";
 
-export class VideoTextureManager {
+export class VideoTextureManager<T> {
   private readonly videoElements: Record<string, HTMLVideoElement> = {};
-  private readonly videoTextures: Record<string, PiTexture> = {};
+  private readonly videoTextures: Record<string, T> = {};
   private readonly animationFrameIds: Record<string, number> = {};
 
-  constructor(private readonly renderer: PiRenderer) {}
+  constructor(private readonly backend: TextureBackend<T>) {}
 
   public async loadVideoTexture(
     path: string,
     options: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
-  ): Promise<PiTexture> {
+  ): Promise<T> {
     // Check if video is already loaded
     if (this.videoTextures[path]) {
       return this.videoTextures[path];
@@ -47,7 +47,9 @@ export class VideoTextureManager {
       let resolved = false;
       const handleVideoCanPlay = () => {
         // Guard against multiple fires (canplay + loadeddata both registered)
-        if (resolved) return;
+        if (resolved) {
+          return;
+        }
 
         // Check if video has valid dimensions
         if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -83,7 +85,7 @@ export class VideoTextureManager {
     });
   }
 
-  public getVideoTexture(path: string): PiTexture | undefined {
+  public getVideoTexture(path: string): T | undefined {
     return this.videoTextures[path];
   }
 
@@ -113,7 +115,7 @@ export class VideoTextureManager {
     // Destroy texture
     const texture = this.videoTextures[path];
     if (texture) {
-      this.renderer.DestroyTexture(texture);
+      this.backend.destroyTexture(texture);
       delete this.videoTextures[path];
     }
   }
@@ -239,26 +241,27 @@ export class VideoTextureManager {
 
   public isVideoMuted(path: string): boolean {
     const video = this.videoElements[path];
-    if (video) return video.muted;
+    if (video) {
+      return video.muted;
+    }
     return true;
   }
 
   private createTextureFromVideo(
     video: HTMLVideoElement,
     options: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>>
-  ): PiTexture {
+  ): T {
     const filter = this.getFilterFromOptions(options.filter);
     const wrap = this.getWrapFromOptions(options.wrap);
     const vflip = options.vflip ?? true;
 
-    const texture = this.renderer.CreateTextureFromImage(
-      this.renderer.TEXTYPE.T2D,
-      video,
-      this.renderer.TEXFMT.C4I8,
+    const texture = this.backend.createTextureFromImage(video, {
+      type: "2d",
+      format: "rgba8",
       filter,
       wrap,
       vflip,
-    );
+    });
 
     if (!texture) {
       throw new Error("Failed to create texture from video");
@@ -267,7 +270,7 @@ export class VideoTextureManager {
     return texture;
   }
 
-  private playVideoAndUpdateTexture(path: string, video: HTMLVideoElement, texture: PiTexture): void {
+  private playVideoAndUpdateTexture(path: string, video: HTMLVideoElement, texture: T): void {
     // Cancel any existing rAF loop for this path to prevent duplicates
     const existingId = this.animationFrameIds[path];
     if (existingId) {
@@ -278,7 +281,7 @@ export class VideoTextureManager {
     const updateTexture = () => {
       if (video.readyState >= video.HAVE_CURRENT_DATA) {
         try {
-          this.renderer.UpdateTextureFromImage(texture, video);
+          this.backend.updateTextureFromImage(texture, video);
         } catch (error) {
           console.error(`Failed to update texture for video ${path}:`, error);
         }
@@ -316,25 +319,25 @@ export class VideoTextureManager {
     updateTexture();
   }
 
-  private getFilterFromOptions(filter?: string): any {
+  private getFilterFromOptions(filter?: string): TextureFilter {
     switch (filter) {
       case "linear":
       default:
-        return this.renderer.FILTER.LINEAR;
+        return "linear";
       case "nearest":
-        return this.renderer.FILTER.NONE;
+        return "nearest";
       case "mipmap":
-        return this.renderer.FILTER.MIPMAP;
+        return "mipmap";
     }
   }
 
-  private getWrapFromOptions(wrap?: string): any {
+  private getWrapFromOptions(wrap?: string): TextureWrap {
     switch (wrap) {
       case "clamp":
       default:
-        return this.renderer.TEXWRP.CLAMP;
+        return "clamp";
       case "repeat":
-        return this.renderer.TEXWRP.REPEAT;
+        return "repeat";
     }
   }
 }

@@ -1,45 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { AudioTextureManager } from "../../resources/AudioTextureManager";
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
+import type { TextureBackend } from "../../resources/TextureBackend";
 
-const createMockTexture = (id = 1): PiTexture => ({
-  mObjectID: { id },
-  mXres: 512,
-  mYres: 2,
-  mFormat: 1,
-  mType: 0,
-  mFilter: 1,
-  mWrap: 0,
-  mVFlip: true,
-});
+interface FakeTex { id: number }
 
-const createMockRenderer = (): PiRenderer => {
+const createMockTexture = (id = 1): FakeTex => ({ id });
+
+function mockBackend() {
   let textureId = 0;
   return {
-    FILTER: { LINEAR: 1, NONE: 0, MIPMAP: 2 },
-    TEXFMT: { C1I8: 2, C4I8: 1 },
-    TEXTYPE: { T2D: 0, T3D: 2 },
-    TEXWRP: { CLAMP: 0, REPEAT: 1 },
-
-    CreateTexture: vi.fn(() => createMockTexture(++textureId)),
-    UpdateTexture: vi.fn(),
-    DestroyTexture: vi.fn(),
-    CreateTextureFromImage: vi.fn(),
-    UpdateTextureFromImage: vi.fn(),
-    CreateRenderTarget: vi.fn(),
-    CreateShader: vi.fn(),
-    DestroyRenderTarget: vi.fn(),
-    DestroyShader: vi.fn(),
-    SetRenderTarget: vi.fn(),
-    SetViewport: vi.fn(),
-    AttachShader: vi.fn(),
-    SetShaderTextureUnit: vi.fn(),
-    AttachTextures: vi.fn(),
-    GetAttribLocation: vi.fn(() => 0),
-    DrawUnitQuad_XY: vi.fn(),
-    Flush: vi.fn(),
-  } as unknown as PiRenderer;
-};
+    createTexture: vi.fn((): FakeTex => createMockTexture(++textureId)),
+    createTextureFromImage: vi.fn((): FakeTex => createMockTexture(++textureId)),
+    createMipmaps: vi.fn(),
+    updateTexture: vi.fn(),
+    updateTextureFromImage: vi.fn(),
+    destroyTexture: vi.fn(),
+  } satisfies TextureBackend<FakeTex>;
+}
 
 const createMockAnalyser = () => ({
   fftSize: 0,
@@ -48,7 +25,9 @@ const createMockAnalyser = () => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   getByteFrequencyData: vi.fn((arr: Uint8Array) => {
-    for (let i = 0; i < arr.length; i++) arr[i] = i % 256;
+    for (let i = 0; i < arr.length; i++) {
+      arr[i] = i % 256;
+    }
   }),
   getByteTimeDomainData: vi.fn(),
 });
@@ -92,13 +71,13 @@ const createMockAudioContext = () => ({
 });
 
 describe("AudioTextureManager", () => {
-  let mockRenderer: PiRenderer;
-  let manager: AudioTextureManager;
+  let backend: TextureBackend<FakeTex>;
+  let manager: AudioTextureManager<FakeTex>;
   let mockAudioContext: ReturnType<typeof createMockAudioContext>;
   let originalAudioContext: typeof AudioContext;
 
   beforeEach(() => {
-    mockRenderer = createMockRenderer();
+    backend = mockBackend();
     mockAudioContext = createMockAudioContext();
 
     originalAudioContext = globalThis.AudioContext;
@@ -119,7 +98,7 @@ describe("AudioTextureManager", () => {
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
     } as Response);
 
-    manager = new AudioTextureManager(mockRenderer);
+    manager = new AudioTextureManager(backend);
 
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -659,7 +638,7 @@ describe("AudioTextureManager", () => {
       expect(manager.getAudioTexture("shaderA-music.mp3")).toBeNull();
 
       // Re-create manager for new shader (simulates new compilation)
-      manager = new AudioTextureManager(mockRenderer);
+      manager = new AudioTextureManager(backend);
 
       // Load audio for shader B
       await manager.loadAudioSource("shaderB-drums.mp3");
@@ -753,7 +732,7 @@ describe("AudioTextureManager", () => {
         resume = mockResume;
       };
 
-      const freshManager = new AudioTextureManager(mockRenderer);
+      const freshManager = new AudioTextureManager(backend);
       // Trigger AudioContext creation
       await freshManager.loadAudioSource("test.mp3");
       await freshManager.resumeAudioContext();
@@ -777,7 +756,7 @@ describe("AudioTextureManager", () => {
         resume = mockResume;
       };
 
-      const freshManager = new AudioTextureManager(mockRenderer);
+      const freshManager = new AudioTextureManager(backend);
       await freshManager.loadAudioSource("test.mp3");
       await freshManager.resumeAudioContext();
 
@@ -786,7 +765,7 @@ describe("AudioTextureManager", () => {
     });
 
     it("should be a no-op if no AudioContext exists", async () => {
-      const freshManager = new AudioTextureManager(mockRenderer);
+      const freshManager = new AudioTextureManager(backend);
       // Don't load any audio (no AudioContext created)
       await freshManager.resumeAudioContext();
       // Should not throw

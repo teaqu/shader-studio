@@ -1,56 +1,51 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { VideoTextureManager } from "../../resources/VideoTextureManager";
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
+import type { TextureBackend } from "../../resources/TextureBackend";
 
-// Mock renderer implementation
-const createMockRenderer = (): PiRenderer => {
+interface FakeTex {
+  id: object;
+  width: number;
+  height: number;
+  format: string;
+  filter: string;
+  wrap: string;
+  vflip: boolean;
+}
+
+// Mock backend implementation
+function mockBackend() {
   const mockTextures = new Map<any, any>();
 
   return {
-    FILTER: { LINEAR: 1, NONE: 0, MIPMAP: 2 },
-    TEXFMT: { C4I8: 1 },
-    TEXTYPE: { T2D: 0 },
-    TEXWRP: { CLAMP: 0, REPEAT: 1 },
+    createTexture: vi.fn(),
 
-    CreateTextureFromImage: vi.fn((type, image, format, filter, wrap, vflip) => {
-      const texture = {
-        mObjectID: {},
-        mXres: (image as HTMLVideoElement).videoWidth || 640,
-        mYres: (image as HTMLVideoElement).videoHeight || 480,
-        mFormat: format,
-        mType: type,
-        mFilter: filter,
-        mWrap: wrap,
-        mVFlip: vflip
+    createTextureFromImage: vi.fn((image, opts) => {
+      const texture: FakeTex = {
+        id: {},
+        width: (image as HTMLVideoElement).videoWidth || 640,
+        height: (image as HTMLVideoElement).videoHeight || 480,
+        format: opts.format,
+        filter: opts.filter,
+        wrap: opts.wrap,
+        vflip: opts.vflip,
       };
-      mockTextures.set(texture.mObjectID, texture);
+      mockTextures.set(texture.id, texture);
       return texture;
     }),
 
-    UpdateTextureFromImage: vi.fn((texture, image) => {
+    createMipmaps: vi.fn(),
+
+    updateTexture: vi.fn(),
+
+    updateTextureFromImage: vi.fn((texture, image) => {
       // Simulate texture update
     }),
 
-    DestroyTexture: vi.fn((texture) => {
-      mockTextures.delete(texture.mObjectID);
+    destroyTexture: vi.fn((texture) => {
+      mockTextures.delete(texture?.id);
     }),
-
-    // Other required methods (not used in VideoTextureManager)
-    CreateTexture: vi.fn(),
-    CreateRenderTarget: vi.fn(),
-    CreateShader: vi.fn(),
-    DestroyRenderTarget: vi.fn(),
-    DestroyShader: vi.fn(),
-    SetRenderTarget: vi.fn(),
-    SetViewport: vi.fn(),
-    AttachShader: vi.fn(),
-    SetShaderTextureUnit: vi.fn(),
-    AttachTextures: vi.fn(),
-    GetAttribLocation: vi.fn(() => 0),
-    DrawUnitQuad_XY: vi.fn(),
-    Flush: vi.fn(),
-  } as unknown as PiRenderer;
-};
+  } satisfies TextureBackend<FakeTex>;
+}
 
 // Mock HTMLVideoElement
 const createMockVideoElement = (options: {
@@ -89,14 +84,14 @@ const createMockVideoElement = (options: {
 };
 
 describe("VideoTextureManager", () => {
-  let mockRenderer: PiRenderer;
-  let videoManager: VideoTextureManager;
+  let backend: TextureBackend<FakeTex>;
+  let videoManager: VideoTextureManager<FakeTex>;
   let originalCreateElement: typeof document.createElement;
   let mockVideo: ReturnType<typeof createMockVideoElement>;
 
   beforeEach(() => {
-    mockRenderer = createMockRenderer();
-    videoManager = new VideoTextureManager(mockRenderer);
+    backend = mockBackend();
+    videoManager = new VideoTextureManager(backend);
     mockVideo = createMockVideoElement();
 
     // Mock document.createElement for video elements
@@ -132,7 +127,7 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
@@ -154,7 +149,7 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
@@ -163,7 +158,7 @@ describe("VideoTextureManager", () => {
       const texture2 = await videoManager.loadVideoTexture("test-video.mp4");
 
       expect(texture1).toBe(texture2);
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledTimes(1);
+      expect(backend.createTextureFromImage).toHaveBeenCalledTimes(1);
     });
 
     it("should reject when video fails to load", async () => {
@@ -175,7 +170,7 @@ describe("VideoTextureManager", () => {
       const errorHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'error'
       )?.[1];
-      
+
       if (errorHandler) {
         errorHandler();
       }
@@ -191,20 +186,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        mockRenderer.FILTER.LINEAR,
-        expect.anything(),
-        expect.anything()
+        expect.objectContaining({ filter: "linear" }),
       );
     });
 
@@ -216,20 +207,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        mockRenderer.TEXWRP.CLAMP,
-        expect.anything()
+        expect.objectContaining({ wrap: "clamp" }),
       );
     });
 
@@ -241,20 +228,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        false
+        expect.objectContaining({ vflip: false }),
       );
     });
 
@@ -264,20 +247,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        true
+        expect.objectContaining({ vflip: true }),
       );
     });
   });
@@ -294,7 +273,7 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
@@ -318,7 +297,7 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
@@ -371,43 +350,43 @@ describe("VideoTextureManager", () => {
 
       expect(mockVideo.pause).toHaveBeenCalled();
       expect(mockVideo2.pause).toHaveBeenCalled();
-      expect(mockRenderer.DestroyTexture).toHaveBeenCalledTimes(2);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(2);
     });
   });
 
   describe("pause and resume functionality", () => {
     it("should pause all playing videos", () => {
-      const mockRenderer = createMockRenderer();
-      const videoManager = new VideoTextureManager(mockRenderer);
-      
+      const backend = mockBackend();
+      const videoManager = new VideoTextureManager(backend);
+
       // Set up videos with different pause states
       const playingVideo = createMockVideoElement({ paused: false });
       const pausedVideo = createMockVideoElement({ paused: true });
-      
+
       (videoManager as any).videoElements['playing.mp4'] = playingVideo;
       (videoManager as any).videoElements['paused.mp4'] = pausedVideo;
-      
+
       videoManager.pauseAll();
-      
+
       expect(playingVideo.pause).toHaveBeenCalled();
       expect(pausedVideo.pause).not.toHaveBeenCalled();
     });
 
     it("should resume all paused videos", async () => {
-      const mockRenderer = createMockRenderer();
-      const videoManager = new VideoTextureManager(mockRenderer);
-      
+      const backend = mockBackend();
+      const videoManager = new VideoTextureManager(backend);
+
       // Set up paused videos
       const pausedVideo1 = createMockVideoElement({ paused: true });
       const pausedVideo2 = createMockVideoElement({ paused: true });
       const playingVideo = createMockVideoElement({ paused: false });
-      
+
       (videoManager as any).videoElements['paused1.mp4'] = pausedVideo1;
       (videoManager as any).videoElements['paused2.mp4'] = pausedVideo2;
       (videoManager as any).videoElements['playing.mp4'] = playingVideo;
-      
+
       videoManager.resumeAll();
-      
+
       await vi.waitFor(() => {
         expect(pausedVideo1.play).toHaveBeenCalled();
         expect(pausedVideo2.play).toHaveBeenCalled();
@@ -416,18 +395,18 @@ describe("VideoTextureManager", () => {
     });
 
     it("should handle resume failures gracefully", async () => {
-      const mockRenderer = createMockRenderer();
-      const videoManager = new VideoTextureManager(mockRenderer);
-      
+      const backend = mockBackend();
+      const videoManager = new VideoTextureManager(backend);
+
       // Set up a video that fails to play
       const failingVideo = createMockVideoElement({ paused: true });
       failingVideo.play.mockRejectedValue(new Error('Play failed'));
-      
+
       (videoManager as any).videoElements['failing.mp4'] = failingVideo;
-      
+
       // Should not throw
       expect(() => videoManager.resumeAll()).not.toThrow();
-      
+
       await vi.waitFor(() => {
         expect(failingVideo.play).toHaveBeenCalled();
       });
@@ -441,20 +420,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        mockRenderer.FILTER.LINEAR,
-        expect.anything(),
-        expect.anything()
+        expect.objectContaining({ filter: "linear" }),
       );
     });
 
@@ -466,20 +441,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        mockRenderer.FILTER.NONE,
-        expect.anything(),
-        expect.anything()
+        expect.objectContaining({ filter: "nearest" }),
       );
     });
   });
@@ -662,7 +633,7 @@ describe("VideoTextureManager", () => {
       await loadPromise;
 
       // Texture should only be created once, not twice
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledTimes(1);
+      expect(backend.createTextureFromImage).toHaveBeenCalledTimes(1);
       // Only one rAF loop should start
       expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
     });
@@ -692,20 +663,16 @@ describe("VideoTextureManager", () => {
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
         (call: any[]) => call[0] === 'canplay'
       )?.[1];
-      
+
       if (canplayHandler) {
         canplayHandler();
       }
 
       await loadPromise;
 
-      expect(mockRenderer.CreateTextureFromImage).toHaveBeenCalledWith(
+      expect(backend.createTextureFromImage).toHaveBeenCalledWith(
         expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        mockRenderer.TEXWRP.CLAMP,
-        expect.anything()
+        expect.objectContaining({ wrap: "clamp" }),
       );
     });
   });
