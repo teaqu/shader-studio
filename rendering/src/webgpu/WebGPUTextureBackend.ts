@@ -117,19 +117,133 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
     return this.device.createSampler(desc);
   }
 
-  // Task 9 fills these in:
   createTextureFromImage(
-    _image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[],
-    _opts: ImageTextureOptions,
+    image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[],
+    opts: ImageTextureOptions,
   ): WebGPUTextureHandle | null {
-    throw new Error("Not implemented yet (Task 9)");
+    if (opts.type === "cubemap" || Array.isArray(image)) {
+      throw new Error("Cubemap textures are not supported by the WebGPU engine yet");
+    }
+    const width = "naturalWidth" in image ? image.naturalWidth || image.width : image.videoWidth;
+    const height = "naturalHeight" in image ? image.naturalHeight || image.height : image.videoHeight;
+    const mip = opts.filter === "mipmap";
+    const texture = this.device.createTexture({
+      size: { width, height },
+      format: "rgba8unorm",
+      mipLevelCount: mip ? mipLevelCountFor(width, height) : 1,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    const handle: WebGPUTextureHandle = {
+      texture,
+      view: texture.createView(),
+      sampler: this.createSampler(opts.filter, opts.wrap),
+      width,
+      height,
+      format: opts.format,
+      vflip: opts.vflip,
+    };
+    this.uploadImage(handle, image, opts.format);
+    if (mip) {
+      this.createMipmaps(handle);
+    }
+    return handle;
   }
 
-  createMipmaps(_tex: WebGPUTextureHandle): void {
-    // filled in Task 9 (blit downsample chain); harmless no-op until then
+  updateTextureFromImage(tex: WebGPUTextureHandle, image: HTMLImageElement | HTMLVideoElement): void {
+    this.uploadImage(tex, image, "rgba8");
   }
 
-  updateTextureFromImage(_tex: WebGPUTextureHandle, _image: HTMLImageElement | HTMLVideoElement): void {
-    throw new Error("Not implemented yet (Task 9)");
+  private uploadImage(handle: WebGPUTextureHandle, image: HTMLImageElement | HTMLVideoElement, format: "rgba8" | "r8"): void {
+    // copyExternalImageToTexture rejects HTMLImageElement; route through a 2d canvas.
+    const canvas = document.createElement("canvas");
+    canvas.width = handle.width;
+    canvas.height = handle.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to create 2d canvas for texture upload");
+    }
+    ctx.drawImage(image as CanvasImageSource, 0, 0, handle.width, handle.height);
+    if (format === "r8") {
+      const pixels = ctx.getImageData(0, 0, handle.width, handle.height).data;
+      this.device.queue.writeTexture(
+        { texture: handle.texture },
+        imageToGrayscaleRgba8(pixels, handle.width, handle.height, handle.vflip),
+        { bytesPerRow: handle.width * 4 },
+        { width: handle.width, height: handle.height },
+      );
+      return;
+    }
+    this.device.queue.copyExternalImageToTexture(
+      { source: canvas, flipY: handle.vflip },
+      { texture: handle.texture },
+      { width: handle.width, height: handle.height },
+    );
   }
+
+  private static readonly MIP_BLIT_WGSL = /* wgsl */ `
+struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+@vertex fn vs(@builtin(vertex_index) i: u32) -> VSOut {
+  var verts = array(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VSOut;
+  out.pos = vec4f(verts[i], 0.0, 1.0);
+  out.uv = verts[i] * vec2f(0.5, -0.5) + vec2f(0.5, 0.5);
+  return out;
+}
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var srcSampler: sampler;
+@fragment fn fs(in: VSOut) -> @location(0) vec4f {
+  return textureSample(src, srcSampler, in.uv);
+}
+`;
+
+  createMipmaps(tex: WebGPUTextureHandle): void {
+    const levels = mipLevelCountFor(tex.width, tex.height);
+    if (levels <= 1) {
+      return;
+    }
+    if (!this.mipPipeline) {
+      const module = this.device.createShaderModule({ code: WebGPUTextureBackend.MIP_BLIT_WGSL });
+      this.mipPipeline = this.device.createRenderPipeline({
+        layout: "auto",
+        vertex: { module, entryPoint: "vs" },
+        fragment: { module, entryPoint: "fs", targets: [{ format: "rgba8unorm" }] },
+        primitive: { topology: "triangle-list" },
+      });
+      this.mipSampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
+    }
+    const encoder = this.device.createCommandEncoder();
+    for (let level = 1; level < levels; level++) {
+      const srcView = tex.texture.createView({ baseMipLevel: level - 1, mipLevelCount: 1 });
+      const dstView = tex.texture.createView({ baseMipLevel: level, mipLevelCount: 1 });
+      const bindGroup = this.device.createBindGroup({
+        layout: this.mipPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: srcView },
+          { binding: 1, resource: this.mipSampler! },
+        ],
+      });
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{ view: dstView, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
+      });
+      pass.setPipeline(this.mipPipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.draw(3);
+      pass.end();
+    }
+    this.device.queue.submit([encoder.finish()]);
+  }
+}
+
+export function imageToGrayscaleRgba8(pixels: Uint8ClampedArray, width: number, height: number, flipY: boolean): Uint8Array {
+  const out = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const srcRow = flipY ? height - 1 - y : y;
+    for (let x = 0; x < width; x++) {
+      const v = pixels[(srcRow * width + x) * 4]; // GL's RGBA->LUMINANCE conversion takes red
+      const o = (y * width + x) * 4;
+      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255;
+    }
+  }
+  return out;
 }
