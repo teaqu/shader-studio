@@ -1,8 +1,9 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
-import type { ResourceManager } from "./ResourceManager";
+import type { ResourceManager } from "../resources/ResourceManager";
 import type { Pass, PassUniforms } from "../models";
+import type { PiTexture } from "../types/piRenderer";
 import type { TimeManager } from "../util/TimeManager";
 import type { KeyboardManager } from "../input/KeyboardManager";
 import type { MouseManager } from "../input/MouseManager";
@@ -30,7 +31,7 @@ export class FrameRenderer {
   private shaderPipeline: ShaderPipeline;
   private bufferManager: BufferManager;
   private passRenderer: PassRenderer;
-  private resourceManager: ResourceManager;
+  private resourceManager: ResourceManager<PiTexture>;
   private cameraManager: CameraManager;
   private glCanvas: HTMLCanvasElement;
   private sampleRate: number = 44100;
@@ -45,7 +46,7 @@ export class FrameRenderer {
     pipeline: ShaderPipeline,
     bufferManager: BufferManager,
     passRenderer: PassRenderer,
-    resourceManager: ResourceManager,
+    resourceManager: ResourceManager<PiTexture>,
     glCanvas: HTMLCanvasElement,
     fpsCalculator: FPSCalculator,
   ) {
@@ -109,7 +110,9 @@ export class FrameRenderer {
 
     for (let i = 0; i < 4; i++) {
       const input = pass.inputs[`iChannel${i}`];
-      if (!input) continue;
+      if (!input) {
+        continue;
+      }
 
       if (input.type === 'video' && input.path) {
         const path = input.resolved_path || input.path;
@@ -254,7 +257,9 @@ export class FrameRenderer {
         if (frameDelta < 500) {
           this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
           this.frameTimeHead = (this.frameTimeHead + 1) % FrameRenderer.MAX_HISTORY;
-          if (this.frameTimeLen < FrameRenderer.MAX_HISTORY) this.frameTimeLen++;
+          if (this.frameTimeLen < FrameRenderer.MAX_HISTORY) {
+            this.frameTimeLen++;
+          }
           this.frameTimeCount++;
         }
       }
@@ -331,7 +336,9 @@ export class FrameRenderer {
   }
 
   public getFrameTimeHistory(): number[] {
-    if (this.frameTimeLen === 0) return [];
+    if (this.frameTimeLen === 0) {
+      return [];
+    }
     // Linearize the circular buffer into chronological order
     const start = (this.frameTimeHead - this.frameTimeLen + FrameRenderer.MAX_HISTORY) % FrameRenderer.MAX_HISTORY;
     if (start + this.frameTimeLen <= FrameRenderer.MAX_HISTORY) {

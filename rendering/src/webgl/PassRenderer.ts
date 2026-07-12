@@ -1,4 +1,4 @@
-import type { ResourceManager } from "./ResourceManager";
+import type { ResourceManager } from "../resources/ResourceManager";
 import type { BufferManager } from "./BufferManager";
 import type { Pass, PassUniforms } from "../models";
 import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "../types/piRenderer";
@@ -9,7 +9,7 @@ import { bindTextures } from "../util/TextureBinder";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
-  private resourceManager: ResourceManager;
+  private resourceManager: ResourceManager<PiTexture>;
   private bufferManager: BufferManager;
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
@@ -17,7 +17,7 @@ export class PassRenderer {
 
   constructor(
     canvas: HTMLCanvasElement,
-    resourceManager: ResourceManager,
+    resourceManager: ResourceManager<PiTexture>,
     bufferManager: BufferManager,
     renderer: PiRenderer,
     keyboardManager: KeyboardManager,
@@ -44,7 +44,9 @@ export class PassRenderer {
     customUniforms?: CustomUniform[],
     skipInputUpdates: boolean = false,
   ): void {
-    if (!shader) return;
+    if (!shader) {
+      return;
+    }
 
     const slotAssignments = assignInputSlots(passConfig.inputs);
     const textureBindings = this.getTextureBindings(passConfig, slotAssignments, skipInputUpdates);

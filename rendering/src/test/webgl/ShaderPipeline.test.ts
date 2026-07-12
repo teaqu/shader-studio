@@ -1,1872 +1,1874 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ShaderPipeline } from "../../webgl/ShaderPipeline";
 import type { ShaderCompiler } from "../../webgl/ShaderCompiler";
-import type { ResourceManager } from "../../webgl/ResourceManager";
-import type { PiRenderer, PiShader } from "../../types/piRenderer";
+import type { ResourceManager } from "../../resources/ResourceManager";
+import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
 import type { BufferManager } from "../../webgl/BufferManager";
 import type { TimeManager } from "../../util/TimeManager";
 
 const createMockCanvas = () => ({
-    width: 800,
-    height: 600,
-    getContext: vi.fn(),
+  width: 800,
+  height: 600,
+  getContext: vi.fn(),
 }) as unknown as HTMLCanvasElement;
 
 const createMockShaderCompiler = () => ({
-    compileShader: vi.fn(),
-    compileShaderAsync: vi.fn(),
-    wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0, commonCodeLineCount: 0 }),
+  compileShader: vi.fn(),
+  compileShaderAsync: vi.fn(),
+  wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0, commonCodeLineCount: 0 }),
 });
 
 const createMockResourceManager = () => ({
-    cleanup: vi.fn(),
-    loadImageTexture: vi.fn(),
-    loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
-    loadCubemapTexture: vi.fn().mockResolvedValue(null),
-    loadAudioSource: vi.fn().mockResolvedValue({}),
-    updateAudioLoopRegion: vi.fn(),
+  cleanup: vi.fn(),
+  loadImageTexture: vi.fn(),
+  loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
+  loadCubemapTexture: vi.fn().mockResolvedValue(null),
+  loadAudioSource: vi.fn().mockResolvedValue({}),
+  updateAudioLoopRegion: vi.fn(),
 });
 
 const createMockRenderer = () => ({
-    DestroyShader: vi.fn(),
+  DestroyShader: vi.fn(),
 });
 
 const createMockBufferManager = () => ({
-    getPassBuffers: vi.fn().mockReturnValue({}),
-    setPassBuffers: vi.fn(),
-    dispose: vi.fn(),
-    cleanupBuffers: vi.fn(),
-    createPingPongBuffers: vi.fn(),
+  getPassBuffers: vi.fn().mockReturnValue({}),
+  setPassBuffers: vi.fn(),
+  dispose: vi.fn(),
+  cleanupBuffers: vi.fn(),
+  createPingPongBuffers: vi.fn(),
 });
 
 const createMockTimeManager = () => ({
-    cleanup: vi.fn(),
-    reset: vi.fn(),
-    getTime: vi.fn(),
-    getDeltaTime: vi.fn(),
+  cleanup: vi.fn(),
+  reset: vi.fn(),
+  getTime: vi.fn(),
+  getDeltaTime: vi.fn(),
 });
 
 const createMockShader = () => ({
-    mResult: true,
-    mInfo: "",
+  mResult: true,
+  mInfo: "",
 }) as unknown as PiShader;
 
 describe("ShaderPipeline", () => {
-    let shaderPipeline: ShaderPipeline;
-    let mockCanvas: HTMLCanvasElement;
-    let mockShaderCompiler: ReturnType<typeof createMockShaderCompiler>;
-    let mockResourceManager: ReturnType<typeof createMockResourceManager>;
-    let mockRenderer: ReturnType<typeof createMockRenderer>;
-    let mockBufferManager: ReturnType<typeof createMockBufferManager>;
-    let mockTimeManager: ReturnType<typeof createMockTimeManager>;
+  let shaderPipeline: ShaderPipeline;
+  let mockCanvas: HTMLCanvasElement;
+  let mockShaderCompiler: ReturnType<typeof createMockShaderCompiler>;
+  let mockResourceManager: ReturnType<typeof createMockResourceManager>;
+  let mockRenderer: ReturnType<typeof createMockRenderer>;
+  let mockBufferManager: ReturnType<typeof createMockBufferManager>;
+  let mockTimeManager: ReturnType<typeof createMockTimeManager>;
 
-    beforeEach(() => {
-        mockCanvas = createMockCanvas();
-        mockShaderCompiler = createMockShaderCompiler();
-        mockResourceManager = createMockResourceManager();
-        mockRenderer = createMockRenderer();
-        mockBufferManager = createMockBufferManager();
-        mockTimeManager = createMockTimeManager();
+  beforeEach(() => {
+    mockCanvas = createMockCanvas();
+    mockShaderCompiler = createMockShaderCompiler();
+    mockResourceManager = createMockResourceManager();
+    mockRenderer = createMockRenderer();
+    mockBufferManager = createMockBufferManager();
+    mockTimeManager = createMockTimeManager();
 
-        shaderPipeline = new ShaderPipeline(
-            mockCanvas,
+    shaderPipeline = new ShaderPipeline(
+      mockCanvas,
             mockShaderCompiler as unknown as ShaderCompiler,
-            mockResourceManager as unknown as ResourceManager,
+            mockResourceManager as unknown as ResourceManager<PiTexture>,
             mockRenderer as unknown as PiRenderer,
             mockBufferManager as unknown as BufferManager,
             mockTimeManager as unknown as TimeManager,
-        );
+    );
 
-        mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
-        vi.spyOn(console, "log").mockImplementation(() => { });
-        vi.spyOn(console, "error").mockImplementation(() => { });
+    mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+    vi.spyOn(console, "log").mockImplementation(() => { });
+    vi.spyOn(console, "error").mockImplementation(() => { });
+  });
+
+  describe("when compiling shader pipeline with different shader files", () => {
+    it("should cleanup when shader path changes", async () => {
+      const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const firstShaderPath = "shader1.glsl";
+
+      await shaderPipeline.compileShaderPipeline(
+        firstShaderCode,
+        null,
+        firstShaderPath,
+        {}
+      );
+
+      expect(shaderPipeline.getShaderPath()).toBe(firstShaderPath);
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
+
+      const secondShaderCode = "void mainImage() { gl_FragColor = vec4(0.5); }";
+      const secondShaderPath = "shader2.glsl";
+
+      await shaderPipeline.compileShaderPipeline(
+        secondShaderCode,
+        null,
+        secondShaderPath,
+        {}
+      );
+
+      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
     });
 
-    describe("when compiling shader pipeline with different shader files", () => {
-        it("should cleanup when shader path changes", async () => {
-            const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const firstShaderPath = "shader1.glsl";
+    it("should not cleanup when shader code changes but path stays same", async () => {
+      const shaderPath = "shader.glsl";
+      const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
 
-            await shaderPipeline.compileShaderPipeline(
-                firstShaderCode,
-                null,
-                firstShaderPath,
-                {}
-            );
+      await shaderPipeline.compileShaderPipeline(
+        firstShaderCode,
+        null,
+        shaderPath,
+        {}
+      );
 
-            expect(shaderPipeline.getShaderPath()).toBe(firstShaderPath);
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
+      const modifiedShaderCode = "void mainImage() { gl_FragColor = vec4(0.5); }";
 
-            const secondShaderCode = "void mainImage() { gl_FragColor = vec4(0.5); }";
-            const secondShaderPath = "shader2.glsl";
+      await shaderPipeline.compileShaderPipeline(
+        modifiedShaderCode,
+        null,
+        shaderPath,
+        {}
+      );
 
-            await shaderPipeline.compileShaderPipeline(
-                secondShaderCode,
-                null,
-                secondShaderPath,
-                {}
-            );
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+      expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
+    });
 
-            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
-            expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
-        });
+    it("should not cleanup when same shader is processed again", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
 
-        it("should not cleanup when shader code changes but path stays same", async () => {
-            const shaderPath = "shader.glsl";
-            const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      await shaderPipeline.compileShaderPipeline(
+        shaderCode,
+        null,
+        shaderPath,
+        {}
+      );
 
-            await shaderPipeline.compileShaderPipeline(
-                firstShaderCode,
-                null,
-                shaderPath,
-                {}
-            );
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
+      await shaderPipeline.compileShaderPipeline(
+        shaderCode,
+        null,
+        shaderPath,
+        {}
+      );
 
-            const modifiedShaderCode = "void mainImage() { gl_FragColor = vec4(0.5); }";
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+      expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
+    });
 
-            await shaderPipeline.compileShaderPipeline(
-                modifiedShaderCode,
-                null,
-                shaderPath,
-                {}
-            );
+    it("should not cleanup on first shader load", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
 
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
-            expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
-        });
+      expect(shaderPipeline.getShaderPath()).toBe("");
 
-        it("should not cleanup when same shader is processed again", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const shaderPath = "shader.glsl";
+      await shaderPipeline.compileShaderPipeline(
+        shaderCode,
+        null,
+        shaderPath,
+        {}
+      );
 
-            await shaderPipeline.compileShaderPipeline(
-                shaderCode,
-                null,
-                shaderPath,
-                {}
-            );
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+      expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
+    });
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
+    it("should reset the clock immediately when resetTime is called", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, "shader.glsl", {});
+      mockTimeManager.cleanup.mockClear();
 
-            await shaderPipeline.compileShaderPipeline(
-                shaderCode,
-                null,
-                shaderPath,
-                {}
-            );
+      shaderPipeline.resetTime();
 
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
-            expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
-        });
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+    });
 
-        it("should not cleanup on first shader load", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const shaderPath = "shader.glsl";
+    it("should clear resources and buffers on recompile after resetTime, without resetting clock again", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
 
-            expect(shaderPipeline.getShaderPath()).toBe("");
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      shaderPipeline.resetTime();
 
-            await shaderPipeline.compileShaderPipeline(
-                shaderCode,
-                null,
-                shaderPath,
-                {}
-            );
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
-            expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
-        });
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-        it("should reset the clock immediately when resetTime is called", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, "shader.glsl", {});
-            mockTimeManager.cleanup.mockClear();
+      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+    });
 
-            shaderPipeline.resetTime();
+    it("should clear resources and buffers (but not reset time) after flagForceCleanupOnNextApply + recompile", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
 
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-        });
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-        it("should clear resources and buffers on recompile after resetTime, without resetting clock again", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const shaderPath = "shader.glsl";
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
-            shaderPipeline.resetTime();
+      shaderPipeline.flagForceCleanupOnNextApply();
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      // Config-triggered cleanup must never reset the shader clock
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+    });
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+    it("should not force cleanup on second compile if neither resetTime nor flagForceCleanupOnNextApply was called", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
 
-            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-        });
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-        it("should clear resources and buffers (but not reset time) after flagForceCleanupOnNextApply + recompile", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const shaderPath = "shader.glsl";
+      mockResourceManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
+      expect(mockBufferManager.dispose).not.toHaveBeenCalled();
+    });
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
-
-            shaderPipeline.flagForceCleanupOnNextApply();
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
-            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
-            // Config-triggered cleanup must never reset the shader clock
-            expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
-        });
-
-        it("should not force cleanup on second compile if neither resetTime nor flagForceCleanupOnNextApply was called", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const shaderPath = "shader.glsl";
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
-
-            mockResourceManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
-            expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-            expect(mockBufferManager.dispose).not.toHaveBeenCalled();
-        });
-
-        it("should compile and load cubemap inputs as Cube channels", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
-            const config = {
-                version: "1.0",
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: {
-                                type: "cubemap",
-                                path: "env-cross.png",
-                                filter: "linear",
-                                wrap: "clamp",
-                                vflip: true,
-                            },
-                        },
-                    },
-                },
-            } as const;
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
-
-            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
-                shaderCode,
-                "",
-                [{ slot: 0, key: "iChannel0", isCustomName: false }],
-                ["Cube", "2D", "2D", "2D"],
-                undefined,
-            );
-            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("env-cross.png", {
+    it("should compile and load cubemap inputs as Cube channels", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "cubemap",
+                path: "env-cross.png",
                 filter: "linear",
                 wrap: "clamp",
                 vflip: true,
-            });
-        });
+              },
+            },
+          },
+        },
+      } as const;
 
-        it("should use resolved_path when loading cubemap inputs", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
-            const config = {
-                version: "1.0",
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: {
-                                type: "cubemap",
-                                path: "env-cross.png",
-                                resolved_path: "vscode-webview://panel/env-cross.png",
-                            },
-                        },
-                    },
-                },
-            } as const;
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
+        shaderCode,
+        "",
+        [{ slot: 0, key: "iChannel0", isCustomName: false }],
+        ["Cube", "2D", "2D", "2D"],
+        undefined,
+      );
+      expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("env-cross.png", {
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      });
+    });
 
-            expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("vscode-webview://panel/env-cross.png", {
-                filter: undefined,
-                wrap: undefined,
-                vflip: undefined,
-            });
-        });
+    it("should use resolved_path when loading cubemap inputs", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iChannel0, vec3(1.0, 0.0, 0.0)); }";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "cubemap",
+                path: "env-cross.png",
+                resolved_path: "vscode-webview://panel/env-cross.png",
+              },
+            },
+          },
+        },
+      } as const;
 
-        it("should clear the current pipeline when a new shader path fails to compile", async () => {
-            const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const firstShaderPath = "working_shader.glsl";
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {});
 
-            await shaderPipeline.compileShaderPipeline(
-                firstShaderCode,
-                null,
-                firstShaderPath,
-                {}
-            );
+      expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("vscode-webview://panel/env-cross.png", {
+        filter: undefined,
+        wrap: undefined,
+        vflip: undefined,
+      });
+    });
 
-            expect(shaderPipeline.getShaderPath()).toBe(firstShaderPath);
+    it("should clear the current pipeline when a new shader path fails to compile", async () => {
+      const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const firstShaderPath = "working_shader.glsl";
 
-            mockResourceManager.cleanup.mockClear();
-            mockTimeManager.cleanup.mockClear();
-            mockBufferManager.dispose.mockClear();
+      await shaderPipeline.compileShaderPipeline(
+        firstShaderCode,
+        null,
+        firstShaderPath,
+        {}
+      );
 
-            mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(null);
+      expect(shaderPipeline.getShaderPath()).toBe(firstShaderPath);
 
-            const failingShaderCode = "void mainImage() { SYNTAX_ERROR; }";
-            const secondShaderPath = "broken_shader.glsl";
+      mockResourceManager.cleanup.mockClear();
+      mockTimeManager.cleanup.mockClear();
+      mockBufferManager.dispose.mockClear();
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                failingShaderCode,
-                null,
-                secondShaderPath,
-                {}
-            );
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(null);
 
-            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      const failingShaderCode = "void mainImage() { SYNTAX_ERROR; }";
+      const secondShaderPath = "broken_shader.glsl";
 
-            expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
-            expect(result.success).toBe(false);
-        });
+      const result = await shaderPipeline.compileShaderPipeline(
+        failingShaderCode,
+        null,
+        secondShaderPath,
+        {}
+      );
 
-        it("should preserve the last good passes and shaders when recompilation fails", async () => {
-            const initialShader = createMockShader();
-            mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(initialShader);
+      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
 
-            await shaderPipeline.compileShaderPipeline(
-                "void mainImage() { gl_FragColor = vec4(1.0); }",
-                null,
-                "working_shader.glsl",
-                {}
-            );
+      expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
+      expect(result.success).toBe(false);
+    });
 
-            expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
-            expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+    it("should preserve the last good passes and shaders when recompilation fails", async () => {
+      const initialShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(initialShader);
 
-            const nextImageShader = createMockShader();
-            mockShaderCompiler.compileShaderAsync
-                .mockReturnValueOnce(nextImageShader)
-                .mockReturnValueOnce(null);
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage() { gl_FragColor = vec4(1.0); }",
+        null,
+        "working_shader.glsl",
+        {}
+      );
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                "void mainImage() { gl_FragColor = vec4(0.0); }",
+      expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
+      expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+
+      const nextImageShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync
+        .mockReturnValueOnce(nextImageShader)
+        .mockReturnValueOnce(null);
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "void mainImage() { gl_FragColor = vec4(0.0); }",
                 {
-                    passes: {
-                        Image: { inputs: {} },
-                        BufferA: { path: "buffer-a.glsl", inputs: {} },
-                    }
+                  passes: {
+                    Image: { inputs: {} },
+                    BufferA: { path: "buffer-a.glsl", inputs: {} },
+                  }
                 } as any,
                 "working_shader.glsl",
                 { BufferA: "void mainImage() { SYNTAX_ERROR; }" }
-            );
+      );
 
-            expect(result.success).toBe(false);
-            expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
-            expect(shaderPipeline.getPassShaders()).toEqual({ Image: initialShader });
-            expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
-            expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
-        });
+      expect(result.success).toBe(false);
+      expect(shaderPipeline.getPassShader("Image")).toBe(initialShader);
+      expect(shaderPipeline.getPassShaders()).toEqual({ Image: initialShader });
+      expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
+    });
+  });
+
+  describe("buildPasses", () => {
+    it("should create Image pass when no config is provided", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+            
+      // Access private method for testing
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, null, {});
+            
+      expect(passes).toHaveLength(1);
+      expect(passes[0]).toEqual({
+        name: "Image",
+        shaderSrc: shaderCode,
+        inputs: {},
+        path: undefined,
+      });
     });
 
-    describe("buildPasses", () => {
-        it("should create Image pass when no config is provided", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+    it("should create passes from config", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          BufferA: { inputs: {} },
+          BufferB: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+        BufferB: "void main() { gl_FragColor = vec4(0.3); }",
+      };
             
-            // Access private method for testing
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, null, {});
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(1);
-            expect(passes[0]).toEqual({
-                name: "Image",
-                shaderSrc: shaderCode,
-                inputs: {},
-                path: undefined,
-            });
-        });
+      expect(passes).toHaveLength(2);
+      expect(passes[0]).toEqual({
+        name: "BufferA",
+        shaderSrc: buffers.BufferA,
+        inputs: {},
+        path: undefined,
+      });
+      expect(passes[1]).toEqual({
+        name: "BufferB",
+        shaderSrc: buffers.BufferB,
+        inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+        path: undefined,
+      });
+    });
 
-        it("should create passes from config", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    BufferA: { inputs: {} },
-                    BufferB: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-                BufferB: "void main() { gl_FragColor = vec4(0.3); }",
-            };
+    it("should include Image pass with main shader code when in config", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { inputs: {} },
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
             
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(2);
-            expect(passes[0]).toEqual({
-                name: "BufferA",
-                shaderSrc: buffers.BufferA,
-                inputs: {},
-                path: undefined,
-            });
-            expect(passes[1]).toEqual({
-                name: "BufferB",
-                shaderSrc: buffers.BufferB,
-                inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
-                path: undefined,
-            });
-        });
+      expect(passes).toHaveLength(2);
+      expect(passes[0]).toEqual({
+        name: "Image",
+        shaderSrc: shaderCode,
+        inputs: {},
+        path: undefined,
+      });
+      expect(passes[1]).toEqual({
+        name: "BufferA",
+        shaderSrc: buffers.BufferA,
+        inputs: {},
+        path: undefined,
+      });
+    });
 
-        it("should include Image pass with main shader code when in config", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: { inputs: {} },
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
+    it("should skip common buffer when it has no meaningful content", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          common: { inputs: {} },
+          BufferA: { inputs: {} },
+        }
+      };
+      const buffers = {
+        common: "/* Just a comment */\n// Another comment\n   \n",
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
             
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(2);
-            expect(passes[0]).toEqual({
-                name: "Image",
-                shaderSrc: shaderCode,
-                inputs: {},
-                path: undefined,
-            });
-            expect(passes[1]).toEqual({
-                name: "BufferA",
-                shaderSrc: buffers.BufferA,
-                inputs: {},
-                path: undefined,
-            });
-        });
+      expect(passes).toHaveLength(1);
+      expect(passes[0].name).toBe("BufferA");
+    });
 
-        it("should skip common buffer when it has no meaningful content", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    common: { inputs: {} },
-                    BufferA: { inputs: {} },
-                }
-            };
-            const buffers = {
-                common: "/* Just a comment */\n// Another comment\n   \n",
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
+    it("should include common buffer when it has meaningful content", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          common: { inputs: {} },
+          BufferA: { inputs: {} },
+        }
+      };
+      const buffers = {
+        common: "vec4 commonFunction(vec4 color) { return color * 0.5; }",
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
             
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(1);
-            expect(passes[0].name).toBe("BufferA");
-        });
+      expect(passes).toHaveLength(2);
+      expect(passes[0].name).toBe("common");
+      expect(passes[0].shaderSrc).toBe(buffers.common);
+      expect(passes[1].name).toBe("BufferA");
+    });
 
-        it("should include common buffer when it has meaningful content", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    common: { inputs: {} },
-                    BufferA: { inputs: {} },
-                }
-            };
-            const buffers = {
-                common: "vec4 commonFunction(vec4 color) { return color * 0.5; }",
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
-            
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
-            
-            expect(passes).toHaveLength(2);
-            expect(passes[0].name).toBe("common");
-            expect(passes[0].shaderSrc).toBe(buffers.common);
-            expect(passes[1].name).toBe("BufferA");
-        });
-
-        it("should handle common buffer with mixed content (comments + code)", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    common: { inputs: {} },
-                }
-            };
-            const buffers = {
-                common: `
+    it("should handle common buffer with mixed content (comments + code)", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          common: { inputs: {} },
+        }
+      };
+      const buffers = {
+        common: `
                     /* This is a common utility function */
                     vec4 commonUtility(vec4 color) {
                         return color * 0.8;
                     }
                     // Another comment
                 `,
-            };
+      };
             
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(1);
-            expect(passes[0].name).toBe("common");
-            expect(passes[0].shaderSrc).toBe(buffers.common);
-        });
+      expect(passes).toHaveLength(1);
+      expect(passes[0].name).toBe("common");
+      expect(passes[0].shaderSrc).toBe(buffers.common);
+    });
 
-        it("should skip buffer pass with empty path and no shader source", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {},
-                    BufferA: { path: '', inputs: {} },
-                }
-            };
-            const buffers = {};
+    it("should skip buffer pass with empty path and no shader source", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {},
+          BufferA: { path: '', inputs: {} },
+        }
+      };
+      const buffers = {};
 
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
 
-            expect(passes).toHaveLength(1);
-            expect(passes[0].name).toBe("Image");
-        });
+      expect(passes).toHaveLength(1);
+      expect(passes[0].name).toBe("Image");
+    });
 
-        it("should skip buffer pass with no path and no shader source", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {},
-                    BufferA: { inputs: {} },
-                }
-            };
-            const buffers = {};
+    it("should skip buffer pass with no path and no shader source", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {},
+          BufferA: { inputs: {} },
+        }
+      };
+      const buffers = {};
 
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
 
-            expect(passes).toHaveLength(1);
-            expect(passes[0].name).toBe("Image");
-        });
+      expect(passes).toHaveLength(1);
+      expect(passes[0].name).toBe("Image");
+    });
 
-        it("should use empty string for missing buffer code when path exists", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    BufferA: { path: 'a.glsl', inputs: {} },
-                    BufferB: { path: 'b.glsl', inputs: {} },
-                    common: { inputs: {} },
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-                // BufferB and common are missing from buffers
-            };
+    it("should use empty string for missing buffer code when path exists", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          BufferA: { path: 'a.glsl', inputs: {} },
+          BufferB: { path: 'b.glsl', inputs: {} },
+          common: { inputs: {} },
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+        // BufferB and common are missing from buffers
+      };
 
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
 
-            expect(passes).toHaveLength(2); // BufferA and BufferB (common is filtered out due to empty content)
+      expect(passes).toHaveLength(2); // BufferA and BufferB (common is filtered out due to empty content)
 
-            const bufferAPass = passes.find((p: any) => p.name === "BufferA");
-            const bufferBPass = passes.find((p: any) => p.name === "BufferB");
+      const bufferAPass = passes.find((p: any) => p.name === "BufferA");
+      const bufferBPass = passes.find((p: any) => p.name === "BufferB");
 
-            expect(bufferAPass?.shaderSrc).toBe("void main() { gl_FragColor = vec4(0.5); }");
-            expect(bufferBPass?.shaderSrc).toBe(""); // Missing buffer code gets empty string but path exists
-        });
+      expect(bufferAPass?.shaderSrc).toBe("void main() { gl_FragColor = vec4(0.5); }");
+      expect(bufferBPass?.shaderSrc).toBe(""); // Missing buffer code gets empty string but path exists
+    });
 
-        it("should preserve buffer inputs from config", () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    BufferA: { 
-                        inputs: { 
-                            iChannel0: { type: "texture", path: "texture.jpg" },
-                            iChannel1: { type: "keyboard" }
-                        } 
-                    },
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
+    it("should preserve buffer inputs from config", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          BufferA: { 
+            inputs: { 
+              iChannel0: { type: "texture", path: "texture.jpg" },
+              iChannel1: { type: "keyboard" }
+            } 
+          },
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
             
-            const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
-            const passes = buildPasses(shaderCode, config, buffers);
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
             
-            expect(passes).toHaveLength(1);
-            expect(passes[0].inputs).toEqual({
-                iChannel0: { type: "texture", path: "texture.jpg" },
-                iChannel1: { type: "keyboard" }
-            });
-        });
+      expect(passes).toHaveLength(1);
+      expect(passes[0].inputs).toEqual({
+        iChannel0: { type: "texture", path: "texture.jpg" },
+        iChannel1: { type: "keyboard" }
+      });
+    });
 
-        it("should compile shaders with common buffer code included", async () => {
-            const shaderCode = `
+    it("should compile shaders with common buffer code included", async () => {
+      const shaderCode = `
                 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                     vec2 uv = fragCoord.xy / iResolution.xy;
                     vec3 col = commonFunction(vec4(uv, 0.5, 1.0)).rgb;
                     fragColor = vec4(col, 1.0);
                 }
             `;
-            const config = {
-                version: "1.0",
-                passes: {
-                    common: { inputs: {} },
-                    Image: { inputs: {} },
-                }
-            } as any;
-            const buffers = {
-                common: `
+      const config = {
+        version: "1.0",
+        passes: {
+          common: { inputs: {} },
+          Image: { inputs: {} },
+        }
+      } as any;
+      const buffers = {
+        common: `
                     vec4 commonFunction(vec4 color) {
                         return color * 0.8;
                     }
                 `,
-            };
+      };
             
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", buffers);
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", buffers);
             
-            expect(result.success).toBe(true);
-            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
-                expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
-                expect.stringContaining("commonFunction"),
-                expect.any(Array),
-                expect.any(Array),
-                undefined,
-            );
-        });
+      expect(result.success).toBe(true);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
+        expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
+        expect.stringContaining("commonFunction"),
+        expect.any(Array),
+        expect.any(Array),
+        undefined,
+      );
+    });
+  });
+
+  describe("error handling for missing buffer files", () => {
+    it("should return error when buffer pass has empty shader source", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "buffer-a.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        BufferA: "" // Empty buffer content
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
+                config as any,
+                "shader.glsl",
+                buffers
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors![0]).toContain("BufferA");
+      expect(result.errors![0]).toContain("not found or is empty");
+      expect(result.errors![0]).toContain("buffer-a.glsl");
     });
 
-    describe("error handling for missing buffer files", () => {
-        it("should return error when buffer pass has empty shader source", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: { path: "buffer-a.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                BufferA: "" // Empty buffer content
-            };
+    it("should return error when buffer pass has only whitespace", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferB: { path: "buffer-b.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        BufferB: "   \n\t  " // Only whitespace
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            expect(result.success).toBe(false);
-            expect(result.errors).toBeDefined();
-            expect(result.errors![0]).toContain("BufferA");
-            expect(result.errors![0]).toContain("not found or is empty");
-            expect(result.errors![0]).toContain("buffer-a.glsl");
-        });
+      expect(result.success).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors![0]).toContain("BufferB");
+      expect(result.errors![0]).toContain("not found or is empty");
+      expect(result.errors![0]).toContain("buffer-b.glsl");
+    });
 
-        it("should return error when buffer pass has only whitespace", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferB: { path: "buffer-b.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                BufferB: "   \n\t  " // Only whitespace
-            };
+    it("should return error when buffer is missing from buffers object", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "buffer-a.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        // BufferA is missing
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            expect(result.success).toBe(false);
-            expect(result.errors).toBeDefined();
-            expect(result.errors![0]).toContain("BufferB");
-            expect(result.errors![0]).toContain("not found or is empty");
-            expect(result.errors![0]).toContain("buffer-b.glsl");
-        });
+      expect(result.success).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors![0]).toContain("BufferA");
+      expect(result.errors![0]).toContain("not found or is empty");
+    });
 
-        it("should return error when buffer is missing from buffers object", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: { path: "buffer-a.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                // BufferA is missing
-            };
+    it("should succeed when all buffers have valid content", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "buffer-a.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }"
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            expect(result.success).toBe(false);
-            expect(result.errors).toBeDefined();
-            expect(result.errors![0]).toContain("BufferA");
-            expect(result.errors![0]).toContain("not found or is empty");
-        });
+      expect(result.success).toBe(true);
+    });
 
-        it("should succeed when all buffers have valid content", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: { path: "buffer-a.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }"
-            };
+    it("should include path in error message when buffer is empty", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferC: { path: "path/to/buffer-c.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        BufferC: ""
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            expect(result.success).toBe(true);
-        });
+      expect(result.success).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors![0]).toContain("path/to/buffer-c.glsl");
+      expect(result.errors![0]).toContain("Please check that the file exists");
+    });
 
-        it("should include path in error message when buffer is empty", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferC: { path: "path/to/buffer-c.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                BufferC: ""
-            };
+    it("should handle multiple missing buffers by reporting the first one", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          BufferB: { path: "buffer-b.glsl", inputs: {} }
+        }
+      };
+      const buffers = {
+        BufferA: "", // Empty
+        BufferB: "" // Also empty
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            expect(result.success).toBe(false);
-            expect(result.errors).toBeDefined();
-            expect(result.errors![0]).toContain("path/to/buffer-c.glsl");
-            expect(result.errors![0]).toContain("Please check that the file exists");
-        });
+      expect(result.success).toBe(false);
+      // Should fail on first buffer encountered
+      expect(result.errors).toBeDefined();
+      expect(result.errors![0]).toContain("Buffer");
+      expect(result.errors![0]).toContain("not found or is empty");
+    });
 
-        it("should handle multiple missing buffers by reporting the first one", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: { path: "buffer-a.glsl", inputs: {} },
-                    BufferB: { path: "buffer-b.glsl", inputs: {} }
-                }
-            };
-            const buffers = {
-                BufferA: "", // Empty
-                BufferB: "" // Also empty
-            };
+    it("should not error on empty Image pass (uses main code)", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} }
+        }
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
-                config as any,
-                "shader.glsl",
-                buffers
-            );
-
-            expect(result.success).toBe(false);
-            // Should fail on first buffer encountered
-            expect(result.errors).toBeDefined();
-            expect(result.errors![0]).toContain("Buffer");
-            expect(result.errors![0]).toContain("not found or is empty");
-        });
-
-        it("should not error on empty Image pass (uses main code)", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} }
-                }
-            };
-
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 {}
-            );
+      );
 
-            expect(result.success).toBe(true);
-        });
+      expect(result.success).toBe(true);
+    });
 
-        it("should not validate common buffer as it can be empty", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    common: { inputs: {} }
-                }
-            };
-            const buffers = {
-                common: "" // Common can be empty
-            };
+    it("should not validate common buffer as it can be empty", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          common: { inputs: {} }
+        }
+      };
+      const buffers = {
+        common: "" // Common can be empty
+      };
 
-            const result = await shaderPipeline.compileShaderPipeline(
-                shaderCode,
+      const result = await shaderPipeline.compileShaderPipeline(
+        shaderCode,
                 config as any,
                 "shader.glsl",
                 buffers
-            );
+      );
 
-            // Should succeed because common buffer is filtered out when empty
-            expect(result.success).toBe(true);
-        });
+      // Should succeed because common buffer is filtered out when empty
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("cleanup", () => {
+    it("should call cleanup on all managed components", () => {
+      shaderPipeline.cleanup();
+
+      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("video input handling", () => {
+    it("should load video texture when pass has video input", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        { filter: undefined, wrap: undefined, vflip: undefined }
+      );
     });
 
-    describe("cleanup", () => {
-        it("should call cleanup on all managed components", () => {
-            shaderPipeline.cleanup();
+    it("should load video texture with filter options", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { 
+                type: "video", 
+                path: "video.mp4",
+                filter: "linear"
+              }
+            }
+          }
+        }
+      };
 
-            expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-            expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
-        });
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        { filter: "linear", wrap: undefined, vflip: undefined }
+      );
     });
 
-    describe("video input handling", () => {
-        it("should load video texture when pass has video input", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" }
-                        }
-                    }
-                }
-            };
+    it("should load video texture with wrap options", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { 
+                type: "video", 
+                path: "video.mp4",
+                wrap: "clamp"
+              }
+            }
+          }
+        }
+      };
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                { filter: undefined, wrap: undefined, vflip: undefined }
-            );
-        });
-
-        it("should load video texture with filter options", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { 
-                                type: "video", 
-                                path: "video.mp4",
-                                filter: "linear"
-                            }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                { filter: "linear", wrap: undefined, vflip: undefined }
-            );
-        });
-
-        it("should load video texture with wrap options", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { 
-                                type: "video", 
-                                path: "video.mp4",
-                                wrap: "clamp"
-                            }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                { filter: undefined, wrap: "clamp", vflip: undefined }
-            );
-        });
-
-        it("should load video texture with vflip option", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { 
-                                type: "video", 
-                                path: "video.mp4",
-                                vflip: false
-                            }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                { filter: undefined, wrap: undefined, vflip: false }
-            );
-        });
-
-        it("should load video texture with all options", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { 
-                                type: "video", 
-                                path: "video.mp4",
-                                filter: "nearest",
-                                wrap: "repeat",
-                                vflip: true
-                            }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                { filter: "nearest", wrap: "repeat", vflip: true }
-            );
-        });
-
-        it("should load multiple video textures from different channels", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video1.mp4" },
-                            iChannel1: { type: "video", path: "video2.mp4" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledTimes(2);
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video1.mp4",
-                expect.any(Object)
-            );
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video2.mp4",
-                expect.any(Object)
-            );
-        });
-
-        it("should load video textures from buffer passes", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: {
-                        path: "buffer-a.glsl",
-                        inputs: {
-                            iChannel0: { type: "video", path: "buffer-video.mp4" }
-                        }
-                    }
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
-
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "buffer-video.mp4",
-                expect.any(Object)
-            );
-        });
-
-        it("should handle mixed texture and video inputs", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg" },
-                            iChannel1: { type: "video", path: "video.mp4" },
-                            iChannel2: { type: "keyboard" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                expect.any(Object)
-            );
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                expect.any(Object)
-            );
-        });
-
-        it("should not load video texture when path is missing", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video" } // No path
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadVideoTexture).not.toHaveBeenCalled();
-        });
-
-        it("should return warnings from video loading failures", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" }
-                        }
-                    }
-                }
-            };
-
-            // Mock video loading to return a warning
-            mockResourceManager.loadVideoTexture.mockResolvedValue({
-                texture: null,
-                warning: "Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser."
-            });
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toBeDefined();
-            expect(result.warnings).toHaveLength(1);
-            expect(result.warnings![0]).toContain("Video is not loading");
-        });
-
-        it("should return multiple warnings from multiple video loading failures", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video1.mp4" },
-                            iChannel1: { type: "video", path: "video2.mp4" }
-                        }
-                    }
-                }
-            };
-
-            // Mock video loading to return warnings for both
-            mockResourceManager.loadVideoTexture
-                .mockResolvedValueOnce({
-                    texture: null,
-                    warning: "Video is not loading: video1.mp4."
-                })
-                .mockResolvedValueOnce({
-                    texture: null,
-                    warning: "Video is not loading: video2.mp4."
-                });
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toBeDefined();
-            expect(result.warnings).toHaveLength(2);
-            expect(result.warnings![0]).toContain("video1.mp4");
-            expect(result.warnings![1]).toContain("video2.mp4");
-        });
-
-        it("should not include warnings when video loads successfully", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" }
-                        }
-                    }
-                }
-            };
-
-            // Mock successful video loading (no warning)
-            mockResourceManager.loadVideoTexture.mockResolvedValue({
-                texture: {},
-                warning: undefined
-            });
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toBeUndefined();
-        });
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        { filter: undefined, wrap: "clamp", vflip: undefined }
+      );
     });
 
-    describe("video mute behavior", () => {
-        it("should only call loadVideoTexture without any mute control during resource loading", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" }
-                        }
-                    }
-                }
-            };
+    it("should load video texture with vflip option", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { 
+                type: "video", 
+                path: "video.mp4",
+                vflip: false
+              }
+            }
+          }
+        }
+      };
 
-            mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            // Videos start muted by default (via VideoTextureManager)
-            // Pipeline should only call loadVideoTexture, no mute/unmute methods
-            expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
-                "video.mp4",
-                expect.any(Object)
-            );
-        });
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        { filter: undefined, wrap: undefined, vflip: false }
+      );
     });
 
-    describe("texture input handling", () => {
-        it("should load texture with default options when none specified", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg" }
-                        }
-                    }
-                }
-            };
+    it("should load video texture with all options", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { 
+                type: "video", 
+                path: "video.mp4",
+                filter: "nearest",
+                wrap: "repeat",
+                vflip: true
+              }
+            }
+          }
+        }
+      };
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: undefined }
-            );
-        });
-
-        it("should load texture with filter option", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg", filter: "linear" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: "linear", wrap: undefined, vflip: undefined, grayscale: undefined }
-            );
-        });
-
-        it("should load texture with wrap option", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg", wrap: "clamp" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: undefined, wrap: "clamp", vflip: undefined, grayscale: undefined }
-            );
-        });
-
-        it("should load texture with vflip option", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg", vflip: false }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: undefined, wrap: undefined, vflip: false, grayscale: undefined }
-            );
-        });
-
-        it("should load texture with grayscale option true", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg", grayscale: true }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: true }
-            );
-        });
-
-        it("should load texture with grayscale option false", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image.jpg", grayscale: false }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: undefined, wrap: undefined, vflip: undefined, grayscale: false }
-            );
-        });
-
-        it("should load texture with all options including grayscale", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { 
-                                type: "texture", 
-                                path: "image.jpg",
-                                filter: "nearest",
-                                wrap: "repeat",
-                                vflip: true,
-                                grayscale: true
-                            }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image.jpg",
-                { filter: "nearest", wrap: "repeat", vflip: true, grayscale: true }
-            );
-        });
-
-        it("should load multiple textures with different grayscale options", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "color.jpg", grayscale: false },
-                            iChannel1: { type: "texture", path: "gray.jpg", grayscale: true }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(2);
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "color.jpg",
-                expect.objectContaining({ grayscale: false })
-            );
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "gray.jpg",
-                expect.objectContaining({ grayscale: true })
-            );
-        });
-
-        it("should load texture from buffer pass with grayscale option", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: {
-                        path: "buffer-a.glsl",
-                        inputs: {
-                            iChannel0: { type: "texture", path: "buffer-texture.jpg", grayscale: true }
-                        }
-                    }
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "buffer-texture.jpg",
-                expect.objectContaining({ grayscale: true })
-            );
-        });
-
-        it("should not load texture when path is missing", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", grayscale: true } // No path
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadImageTexture).not.toHaveBeenCalled();
-        });
-
-        it("should handle mixed grayscale and non-grayscale textures across multiple passes", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "image-color.jpg", grayscale: false }
-                        }
-                    },
-                    BufferA: {
-                        inputs: {
-                            iChannel0: { type: "texture", path: "buffer-gray.jpg", grayscale: true },
-                            iChannel1: { type: "texture", path: "buffer-color.jpg" } // undefined grayscale
-                        }
-                    }
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
-
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(3);
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "image-color.jpg",
-                expect.objectContaining({ grayscale: false })
-            );
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "buffer-gray.jpg",
-                expect.objectContaining({ grayscale: true })
-            );
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
-                "buffer-color.jpg",
-                expect.objectContaining({ grayscale: undefined })
-            );
-        });
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        { filter: "nearest", wrap: "repeat", vflip: true }
+      );
     });
 
-    describe("slot assignments", () => {
-        it("should pass slot assignments to compileShader", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                version: "1",
-                passes: {
-                    Image: {
-                        inputs: {
-                            myTexture: { type: "texture" as const, path: "tex.png" },
-                        }
-                    }
-                }
-            };
+    it("should load multiple video textures from different channels", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video1.mp4" },
+              iChannel1: { type: "video", path: "video2.mp4" }
+            }
+          }
+        }
+      };
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
-                expect.any(String),
-                "",
-                [{ slot: 0, key: "myTexture", isCustomName: true }],
-                expect.any(Array),
-                undefined,
-            );
-        });
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledTimes(2);
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video1.mp4",
+        expect.any(Object)
+      );
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video2.mp4",
+        expect.any(Object)
+      );
     });
 
-    describe("audio input handling", () => {
-        it("should load audio source when pass has audio input", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3" }
-                        }
-                    }
-                }
-            };
+    it("should load video textures from buffer passes", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: {
+            path: "buffer-a.glsl",
+            inputs: {
+              iChannel0: { type: "video", path: "buffer-video.mp4" }
+            }
+          }
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
 
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
-                startTime: undefined,
-                endTime: undefined,
-            }));
-        });
-
-        it("should not load audio when path is missing", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadAudioSource).not.toHaveBeenCalled();
-        });
-
-        it("should return warning when audio loading fails", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "bad.mp3" }
-                        }
-                    }
-                }
-            };
-
-            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toHaveLength(1);
-            expect(result.warnings![0]).toContain("Audio loading failed");
-        });
-
-        it("should use resolved_path when available", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("/full/path/music.mp3", expect.objectContaining({
-                startTime: undefined,
-                endTime: undefined,
-            }));
-        });
-
-        it("should pass startTime and endTime to loadAudioSource when specified", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3", startTime: 5.0, endTime: 30.0 }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
-                startTime: 5.0,
-                endTime: 30.0,
-            }));
-        });
-
-        it("should call updateAudioLoopRegion after loading audio", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", undefined, undefined);
-        });
-
-        it("should call updateAudioLoopRegion with startTime and endTime", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3", startTime: 2.5, endTime: 15.0 }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", 2.5, 15.0);
-        });
-
-        it("should use resolved_path for updateAudioLoopRegion", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3", startTime: 1.0 }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("/full/path/music.mp3", 1.0, undefined);
-        });
-
-        it("should pass audio input timing options to loadAudioSource", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3" }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
-                startTime: undefined,
-                endTime: undefined,
-            });
-        });
-
-        it("should pass startTime/endTime from input config", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "music.mp3", startTime: 2.0, endTime: 10.0 }
-                        }
-                    }
-                }
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
-                startTime: 2.0,
-                endTime: 10.0,
-            });
-        });
-
-        it("should load audio from buffer passes", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: { inputs: {} },
-                    BufferA: {
-                        path: "buffer-a.glsl",
-                        inputs: {
-                            iChannel0: { type: "audio", path: "buffer-audio.mp3" }
-                        }
-                    }
-                }
-            };
-            const buffers = {
-                BufferA: "void main() { gl_FragColor = vec4(0.5); }",
-            };
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
-
-            expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith(
-                "buffer-audio.mp3",
-                expect.objectContaining({ startTime: undefined, endTime: undefined })
-            );
-        });
-
-        it("should not call updateAudioLoopRegion when audio loading fails", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "audio", path: "bad.mp3", startTime: 5.0 }
-                        }
-                    }
-                }
-            };
-
-            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
-
-            await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(mockResourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
-        });
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "buffer-video.mp4",
+        expect.any(Object)
+      );
     });
 
-    describe("warning aggregation from mixed resource loading", () => {
-        it("should aggregate warnings from both video and audio loading failures", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" },
-                            iChannel1: { type: "audio", path: "bad-audio.mp3" }
-                        }
-                    }
-                }
-            };
+    it("should handle mixed texture and video inputs", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg" },
+              iChannel1: { type: "video", path: "video.mp4" },
+              iChannel2: { type: "keyboard" }
+            }
+          }
+        }
+      };
 
-            mockResourceManager.loadVideoTexture.mockResolvedValue({
-                texture: null,
-                warning: "Video is not loading: video.mp4."
-            });
-            mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toHaveLength(2);
-            expect(result.warnings![0]).toContain("video.mp4");
-            expect(result.warnings![1]).toContain("Audio loading failed");
-        });
-
-        it("should combine compile warnings with resource warnings", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" }
-                        }
-                    }
-                }
-            };
-
-            // Simulate compile warnings by making compileShaders return warnings
-            // The mock shader compiler returns success, so we test resource warnings only
-            mockResourceManager.loadVideoTexture.mockResolvedValue({
-                texture: null,
-                warning: "Video is not loading: video.mp4."
-            });
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toBeDefined();
-            expect(result.warnings!.some(w => w.includes("video.mp4"))).toBe(true);
-        });
-
-        it("should return no warnings when all resources load successfully", async () => {
-            const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
-            const config = {
-                passes: {
-                    Image: {
-                        inputs: {
-                            iChannel0: { type: "video", path: "video.mp4" },
-                            iChannel1: { type: "audio", path: "music.mp3" },
-                            iChannel2: { type: "texture", path: "image.jpg" }
-                        }
-                    }
-                }
-            };
-
-            mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
-            mockResourceManager.loadAudioSource.mockResolvedValue({});
-
-            const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
-
-            expect(result.success).toBe(true);
-            expect(result.warnings).toBeUndefined();
-        });
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        expect.any(Object)
+      );
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        expect.any(Object)
+      );
     });
 
-    describe("updateResources with custom-named inputs", () => {
-        it("should load textures for custom-named inputs", async () => {
-            const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
-            const config = {
-                version: "1",
-                passes: {
-                    Image: {
-                        inputs: {
-                            noiseMap: { type: "texture" as const, path: "noise.png" },
-                            colorMap: { type: "texture" as const, path: "color.png" },
-                        }
-                    }
-                }
-            };
+    it("should not load video texture when path is missing", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video" } // No path
+            }
+          }
+        }
+      };
 
-            await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
 
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("noise.png", expect.any(Object));
-            expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("color.png", expect.any(Object));
-        });
+      expect(mockResourceManager.loadVideoTexture).not.toHaveBeenCalled();
     });
 
-    describe("resetTime", () => {
-        it("should call timeManager.cleanup when resetTime is called", () => {
-            shaderPipeline.resetTime();
-            expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-        });
+    it("should return warnings from video loading failures", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" }
+            }
+          }
+        }
+      };
+
+      // Mock video loading to return a warning
+      mockResourceManager.loadVideoTexture.mockResolvedValue({
+        texture: null,
+        warning: "Video is not loading: video.mp4. If using in a VS Code panel, try opening Shader Studio in its own window or browser."
+      });
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings![0]).toContain("Video is not loading");
     });
 
-    describe("resize race condition", () => {
-        it("should not use a stale buffer reference when resize occurs during async compilation", async () => {
-            const shaderPath = "shader.glsl";
-            const config = {
-                version: "1.0",
-                passes: {
-                    Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-                    BufferA: { path: "buffer-a.glsl", inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-                },
-            } as any;
+    it("should return multiple warnings from multiple video loading failures", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video1.mp4" },
+              iChannel1: { type: "video", path: "video2.mp4" }
+            }
+          }
+        }
+      };
 
-            const buffer1 = { front: { mTex0: { mXres: 800, mYres: 600 } }, back: { mTex0: { mXres: 800, mYres: 600 } } };
-            const buffer2 = { front: { mTex0: { mXres: 400, mYres: 300 } }, back: { mTex0: { mXres: 400, mYres: 300 } } };
-
-            mockBufferManager.createPingPongBuffers.mockReturnValueOnce(buffer1);
-
-            // First compilation: creates buffer1 for BufferA
-            await shaderPipeline.compileShaderPipeline(
-                "void mainImage() {}",
-                config,
-                shaderPath,
-                { BufferA: "void mainImage() {}" },
-            );
-
-            expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
-                expect.objectContaining({ BufferA: buffer1 }),
-            );
-
-            // Second compilation: simulate resize deleting buffer1 and installing buffer2 during await
-            let resolveCompile!: (shader: any) => void;
-            mockShaderCompiler.compileShaderAsync.mockReturnValueOnce(
-                new Promise(resolve => { resolveCompile = resolve; }),
-            );
-
-            // Snapshot of buffers at compile-start: buffer1
-            mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer1 });
-
-            const compilePromise = shaderPipeline.compileShaderPipeline(
-                "void mainImage() {}",
-                config,
-                shaderPath,
-                { BufferA: "void mainImage() {}" },
-            );
-
-            // Simulate resize happening before compilation resolves: buffer1 is gone, buffer2 is current
-            mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer2 });
-
-            // Resolve the compilation
-            resolveCompile(createMockShader());
-            await compilePromise;
-
-            // applyCompiledPipeline should have used buffer2 (current), not buffer1 (stale/deleted)
-            expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
-                expect.objectContaining({ BufferA: buffer2 }),
-            );
+      // Mock video loading to return warnings for both
+      mockResourceManager.loadVideoTexture
+        .mockResolvedValueOnce({
+          texture: null,
+          warning: "Video is not loading: video1.mp4."
+        })
+        .mockResolvedValueOnce({
+          texture: null,
+          warning: "Video is not loading: video2.mp4."
         });
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings![0]).toContain("video1.mp4");
+      expect(result.warnings![1]).toContain("video2.mp4");
     });
+
+    it("should not include warnings when video loads successfully", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" }
+            }
+          }
+        }
+      };
+
+      // Mock successful video loading (no warning)
+      mockResourceManager.loadVideoTexture.mockResolvedValue({
+        texture: {},
+        warning: undefined
+      });
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toBeUndefined();
+    });
+  });
+
+  describe("video mute behavior", () => {
+    it("should only call loadVideoTexture without any mute control during resource loading", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" }
+            }
+          }
+        }
+      };
+
+      mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      // Videos start muted by default (via VideoTextureManager)
+      // Pipeline should only call loadVideoTexture, no mute/unmute methods
+      expect(mockResourceManager.loadVideoTexture).toHaveBeenCalledWith(
+        "video.mp4",
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe("texture input handling", () => {
+    it("should load texture with default options when none specified", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: undefined, wrap: undefined, vflip: undefined, grayscale: undefined }
+      );
+    });
+
+    it("should load texture with filter option", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg", filter: "linear" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: "linear", wrap: undefined, vflip: undefined, grayscale: undefined }
+      );
+    });
+
+    it("should load texture with wrap option", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg", wrap: "clamp" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: undefined, wrap: "clamp", vflip: undefined, grayscale: undefined }
+      );
+    });
+
+    it("should load texture with vflip option", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg", vflip: false }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: undefined, wrap: undefined, vflip: false, grayscale: undefined }
+      );
+    });
+
+    it("should load texture with grayscale option true", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg", grayscale: true }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: undefined, wrap: undefined, vflip: undefined, grayscale: true }
+      );
+    });
+
+    it("should load texture with grayscale option false", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image.jpg", grayscale: false }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: undefined, wrap: undefined, vflip: undefined, grayscale: false }
+      );
+    });
+
+    it("should load texture with all options including grayscale", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { 
+                type: "texture", 
+                path: "image.jpg",
+                filter: "nearest",
+                wrap: "repeat",
+                vflip: true,
+                grayscale: true
+              }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image.jpg",
+        { filter: "nearest", wrap: "repeat", vflip: true, grayscale: true }
+      );
+    });
+
+    it("should load multiple textures with different grayscale options", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "color.jpg", grayscale: false },
+              iChannel1: { type: "texture", path: "gray.jpg", grayscale: true }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(2);
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "color.jpg",
+        expect.objectContaining({ grayscale: false })
+      );
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "gray.jpg",
+        expect.objectContaining({ grayscale: true })
+      );
+    });
+
+    it("should load texture from buffer pass with grayscale option", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: {
+            path: "buffer-a.glsl",
+            inputs: {
+              iChannel0: { type: "texture", path: "buffer-texture.jpg", grayscale: true }
+            }
+          }
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "buffer-texture.jpg",
+        expect.objectContaining({ grayscale: true })
+      );
+    });
+
+    it("should not load texture when path is missing", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", grayscale: true } // No path
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).not.toHaveBeenCalled();
+    });
+
+    it("should handle mixed grayscale and non-grayscale textures across multiple passes", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "image-color.jpg", grayscale: false }
+            }
+          },
+          BufferA: {
+            inputs: {
+              iChannel0: { type: "texture", path: "buffer-gray.jpg", grayscale: true },
+              iChannel1: { type: "texture", path: "buffer-color.jpg" } // undefined grayscale
+            }
+          }
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledTimes(3);
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "image-color.jpg",
+        expect.objectContaining({ grayscale: false })
+      );
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "buffer-gray.jpg",
+        expect.objectContaining({ grayscale: true })
+      );
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith(
+        "buffer-color.jpg",
+        expect.objectContaining({ grayscale: undefined })
+      );
+    });
+  });
+
+  describe("slot assignments", () => {
+    it("should pass slot assignments to compileShader", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const config = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              myTexture: { type: "texture" as const, path: "tex.png" },
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
+        expect.any(String),
+        "",
+        [{ slot: 0, key: "myTexture", isCustomName: true }],
+        expect.any(Array),
+        undefined,
+      );
+    });
+  });
+
+  describe("audio input handling", () => {
+    it("should load audio source when pass has audio input", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
+        startTime: undefined,
+        endTime: undefined,
+      }));
+    });
+
+    it("should not load audio when path is missing", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).not.toHaveBeenCalled();
+    });
+
+    it("should return warning when audio loading fails", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "bad.mp3" }
+            }
+          }
+        }
+      };
+
+      mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings![0]).toContain("Audio loading failed");
+    });
+
+    it("should use resolved_path when available", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("/full/path/music.mp3", expect.objectContaining({
+        startTime: undefined,
+        endTime: undefined,
+      }));
+    });
+
+    it("should pass startTime and endTime to loadAudioSource when specified", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3", startTime: 5.0, endTime: 30.0 }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", expect.objectContaining({
+        startTime: 5.0,
+        endTime: 30.0,
+      }));
+    });
+
+    it("should call updateAudioLoopRegion after loading audio", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", undefined, undefined);
+    });
+
+    it("should call updateAudioLoopRegion with startTime and endTime", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3", startTime: 2.5, endTime: 15.0 }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.mp3", 2.5, 15.0);
+    });
+
+    it("should use resolved_path for updateAudioLoopRegion", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3", resolved_path: "/full/path/music.mp3", startTime: 1.0 }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("/full/path/music.mp3", 1.0, undefined);
+    });
+
+    it("should pass audio input timing options to loadAudioSource", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3" }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
+        startTime: undefined,
+        endTime: undefined,
+      });
+    });
+
+    it("should pass startTime/endTime from input config", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "music.mp3", startTime: 2.0, endTime: 10.0 }
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith("music.mp3", {
+        startTime: 2.0,
+        endTime: 10.0,
+      });
+    });
+
+    it("should load audio from buffer passes", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: { inputs: {} },
+          BufferA: {
+            path: "buffer-a.glsl",
+            inputs: {
+              iChannel0: { type: "audio", path: "buffer-audio.mp3" }
+            }
+          }
+        }
+      };
+      const buffers = {
+        BufferA: "void main() { gl_FragColor = vec4(0.5); }",
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", buffers);
+
+      expect(mockResourceManager.loadAudioSource).toHaveBeenCalledWith(
+        "buffer-audio.mp3",
+        expect.objectContaining({ startTime: undefined, endTime: undefined })
+      );
+    });
+
+    it("should not call updateAudioLoopRegion when audio loading fails", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "audio", path: "bad.mp3", startTime: 5.0 }
+            }
+          }
+        }
+      };
+
+      mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("warning aggregation from mixed resource loading", () => {
+    it("should aggregate warnings from both video and audio loading failures", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" },
+              iChannel1: { type: "audio", path: "bad-audio.mp3" }
+            }
+          }
+        }
+      };
+
+      mockResourceManager.loadVideoTexture.mockResolvedValue({
+        texture: null,
+        warning: "Video is not loading: video.mp4."
+      });
+      mockResourceManager.loadAudioSource.mockRejectedValueOnce(new Error("Load failed"));
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings![0]).toContain("video.mp4");
+      expect(result.warnings![1]).toContain("Audio loading failed");
+    });
+
+    it("should combine compile warnings with resource warnings", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" }
+            }
+          }
+        }
+      };
+
+      // Simulate compile warnings by making compileShaders return warnings
+      // The mock shader compiler returns success, so we test resource warnings only
+      mockResourceManager.loadVideoTexture.mockResolvedValue({
+        texture: null,
+        warning: "Video is not loading: video.mp4."
+      });
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings!.some(w => w.includes("video.mp4"))).toBe(true);
+    });
+
+    it("should return no warnings when all resources load successfully", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "video.mp4" },
+              iChannel1: { type: "audio", path: "music.mp3" },
+              iChannel2: { type: "texture", path: "image.jpg" }
+            }
+          }
+        }
+      };
+
+      mockResourceManager.loadVideoTexture.mockResolvedValue({ texture: {}, warning: undefined });
+      mockResourceManager.loadAudioSource.mockResolvedValue({});
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toBeUndefined();
+    });
+  });
+
+  describe("updateResources with custom-named inputs", () => {
+    it("should load textures for custom-named inputs", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const config = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              noiseMap: { type: "texture" as const, path: "noise.png" },
+              colorMap: { type: "texture" as const, path: "color.png" },
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {});
+
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("noise.png", expect.any(Object));
+      expect(mockResourceManager.loadImageTexture).toHaveBeenCalledWith("color.png", expect.any(Object));
+    });
+  });
+
+  describe("resetTime", () => {
+    it("should call timeManager.cleanup when resetTime is called", () => {
+      shaderPipeline.resetTime();
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("resize race condition", () => {
+    it("should not use a stale buffer reference when resize occurs during async compilation", async () => {
+      const shaderPath = "shader.glsl";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.glsl", inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        },
+      } as any;
+
+      const buffer1 = { front: { mTex0: { mXres: 800, mYres: 600 } }, back: { mTex0: { mXres: 800, mYres: 600 } } };
+      const buffer2 = { front: { mTex0: { mXres: 400, mYres: 300 } }, back: { mTex0: { mXres: 400, mYres: 300 } } };
+
+      mockBufferManager.createPingPongBuffers.mockReturnValueOnce(buffer1);
+
+      // First compilation: creates buffer1 for BufferA
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage() {}",
+        config,
+        shaderPath,
+        { BufferA: "void mainImage() {}" },
+      );
+
+      expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ BufferA: buffer1 }),
+      );
+
+      // Second compilation: simulate resize deleting buffer1 and installing buffer2 during await
+      let resolveCompile!: (shader: any) => void;
+      mockShaderCompiler.compileShaderAsync.mockReturnValueOnce(
+        new Promise(resolve => {
+          resolveCompile = resolve; 
+        }),
+      );
+
+      // Snapshot of buffers at compile-start: buffer1
+      mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer1 });
+
+      const compilePromise = shaderPipeline.compileShaderPipeline(
+        "void mainImage() {}",
+        config,
+        shaderPath,
+        { BufferA: "void mainImage() {}" },
+      );
+
+      // Simulate resize happening before compilation resolves: buffer1 is gone, buffer2 is current
+      mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer2 });
+
+      // Resolve the compilation
+      resolveCompile(createMockShader());
+      await compilePromise;
+
+      // applyCompiledPipeline should have used buffer2 (current), not buffer1 (stale/deleted)
+      expect(mockBufferManager.setPassBuffers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ BufferA: buffer2 }),
+      );
+    });
+  });
 });

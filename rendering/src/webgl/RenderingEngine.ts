@@ -1,7 +1,8 @@
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
-import { ResourceManager } from "./ResourceManager";
+import { ResourceManager } from "../resources/ResourceManager";
+import { WebGLTextureBackend } from "./WebGLTextureBackend";
 import { BufferManager } from "./BufferManager";
 import { TimeManager } from "../util/TimeManager";
 import { KeyboardManager } from "../input/KeyboardManager";
@@ -29,7 +30,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private renderer!: PiRenderer;
 
   private shaderCompiler!: ShaderCompiler;
-  private resourceManager!: ResourceManager;
+  private resourceManager!: ResourceManager<PiTexture>;
   private bufferManager!: BufferManager;
   private timeManager!: TimeManager;
   private keyboardManager!: KeyboardManager;
@@ -55,7 +56,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.renderer = piRenderer();
     this.renderer.Initialize(this.gl);
     this.shaderCompiler = new ShaderCompiler(this.renderer, this.gl);
-    this.resourceManager = new ResourceManager(this.renderer);
+    this.resourceManager = new ResourceManager(new WebGLTextureBackend(this.renderer));
     this.bufferManager = new BufferManager(this.renderer);
     this.timeManager = new TimeManager();
     this.keyboardManager = new KeyboardManager();
@@ -490,7 +491,9 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public getCustomUniformInfo(): { name: string; type: string }[] {
-    if (!this.customUniformManager?.hasUniforms()) return [];
+    if (!this.customUniformManager?.hasUniforms()) {
+      return [];
+    }
     return this.customUniformManager.getUniformInfo();
   }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ResourceManager } from "../../webgl/ResourceManager";
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
+import { ResourceManager } from "../../resources/ResourceManager";
+import type { TextureBackend } from "../../resources/TextureBackend";
+import type { PiTexture } from "../../types/piRenderer";
 
 // Mock video element helper
 const createMockVideoElement = (options: {
@@ -128,29 +129,15 @@ vi.mock("../../resources/ShaderKeyboardInput", () => ({
   }),
 }));
 
-const createMockRenderer = (): PiRenderer => {
+const createMockBackend = (): TextureBackend<PiTexture> => {
   return {
-    FILTER: { LINEAR: 1, NONE: 0, MIPMAP: 2 },
-    TEXFMT: { C4I8: 1 },
-    TEXTYPE: { T2D: 0 },
-    TEXWRP: { CLAMP: 0, REPEAT: 1 },
-    CreateTextureFromImage: vi.fn(),
-    UpdateTextureFromImage: vi.fn(),
-    DestroyTexture: vi.fn(),
-    CreateTexture: vi.fn(),
-    CreateRenderTarget: vi.fn(),
-    CreateShader: vi.fn(),
-    DestroyRenderTarget: vi.fn(),
-    DestroyShader: vi.fn(),
-    SetRenderTarget: vi.fn(),
-    SetViewport: vi.fn(),
-    AttachShader: vi.fn(),
-    SetShaderTextureUnit: vi.fn(),
-    AttachTextures: vi.fn(),
-    GetAttribLocation: vi.fn(() => 0),
-    DrawUnitQuad_XY: vi.fn(),
-    Flush: vi.fn(),
-  } as unknown as PiRenderer;
+    createTexture: vi.fn(),
+    createTextureFromImage: vi.fn(),
+    createMipmaps: vi.fn(),
+    updateTexture: vi.fn(),
+    updateTextureFromImage: vi.fn(),
+    destroyTexture: vi.fn(),
+  };
 };
 
 const createMockTexture = (): PiTexture => ({
@@ -165,13 +152,13 @@ const createMockTexture = (): PiTexture => ({
 });
 
 describe("ResourceManager", () => {
-  let mockRenderer: PiRenderer;
-  let resourceManager: ResourceManager;
+  let mockBackend: TextureBackend<PiTexture>;
+  let resourceManager: ResourceManager<PiTexture>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRenderer = createMockRenderer();
-    resourceManager = new ResourceManager(mockRenderer);
+    mockBackend = createMockBackend();
+    resourceManager = new ResourceManager(mockBackend);
   });
 
   describe("loadImageTexture", () => {

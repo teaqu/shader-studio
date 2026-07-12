@@ -1,7 +1,7 @@
 export { RenderingEngine } from './webgl/RenderingEngine';
 export { ShaderCompiler } from './webgl/ShaderCompiler';
 export type { ChannelSamplerType } from './webgl/ShaderCompiler';
-export { ResourceManager } from './webgl/ResourceManager';
+export { ResourceManager } from './resources/ResourceManager';
 export { BufferManager } from './webgl/BufferManager';
 export { ShaderPipeline } from './webgl/ShaderPipeline';
 export { PassRenderer } from './webgl/PassRenderer';

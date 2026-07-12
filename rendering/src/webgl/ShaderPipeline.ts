@@ -1,8 +1,8 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
-import type { ResourceManager } from "./ResourceManager";
+import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
-import type { PiRenderer, PiShader } from "../types/piRenderer";
+import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
@@ -11,7 +11,7 @@ import { assignInputSlots } from "../util/InputSlotAssigner";
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
   private shaderCompiler: ShaderCompiler;
-  private resourceManager: ResourceManager;
+  private resourceManager: ResourceManager<PiTexture>;
   private renderer: PiRenderer;
   private bufferManager: BufferManager;
   private timeManager: TimeManager;
@@ -25,7 +25,7 @@ export class ShaderPipeline {
   constructor(
     canvas: HTMLCanvasElement,
     shaderCompiler: ShaderCompiler,
-    resourceManager: ResourceManager,
+    resourceManager: ResourceManager<PiTexture>,
     renderer: PiRenderer,
     bufferManager: BufferManager,
     timeManager: TimeManager
@@ -266,7 +266,9 @@ export class ShaderPipeline {
     const nextPassBuffers: Record<string, any> = {};
 
     for (const pass of nextPasses) {
-      if (pass.name === "Image" || pass.name === "common") continue;
+      if (pass.name === "Image" || pass.name === "common") {
+        continue;
+      }
       nextPassBuffers[pass.name] = currentPassBuffers[pass.name]
         ?? this.bufferManager.createPingPongBuffers(
           this.canvas.width || 800,

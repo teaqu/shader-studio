@@ -1,48 +1,48 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
-import { TextureCache } from "../resources/TextureCache";
-import { VideoTextureManager } from "../resources/VideoTextureManager";
-import { CubemapTextureManager } from "../resources/CubemapTextureManager";
-import { AudioTextureManager } from "../resources/AudioTextureManager";
-import { ShaderKeyboardInput } from "../resources/ShaderKeyboardInput";
+import type { TextureBackend } from "./TextureBackend";
+import { TextureCache } from "./TextureCache";
+import { VideoTextureManager } from "./VideoTextureManager";
+import { CubemapTextureManager } from "./CubemapTextureManager";
+import { AudioTextureManager } from "./AudioTextureManager";
+import { ShaderKeyboardInput } from "./ShaderKeyboardInput";
 import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "../models/ShaderConfig";
 
-export interface VideoLoadResult {
-  texture: PiTexture | null;
+export interface VideoLoadResult<T> {
+  texture: T | null;
   warning?: string;
 }
 
-export class ResourceManager {
-  private readonly textureCache: TextureCache;
-  private readonly videoTextureManager: VideoTextureManager;
-  private readonly cubemapTextureManager: CubemapTextureManager;
-  private readonly audioTextureManager: AudioTextureManager;
-  private readonly keyboardInput: ShaderKeyboardInput;
+export class ResourceManager<T> {
+  private readonly textureCache: TextureCache<T>;
+  private readonly videoTextureManager: VideoTextureManager<T>;
+  private readonly cubemapTextureManager: CubemapTextureManager<T>;
+  private readonly audioTextureManager: AudioTextureManager<T>;
+  private readonly keyboardInput: ShaderKeyboardInput<T>;
   private audioDefaults: { muted?: boolean; volume?: number } = {};
 
   constructor(
-    private readonly renderer: PiRenderer,
+    private readonly backend: TextureBackend<T>,
   ) {
-    this.textureCache = new TextureCache(renderer);
-    this.videoTextureManager = new VideoTextureManager(renderer);
-    this.cubemapTextureManager = new CubemapTextureManager(renderer);
-    this.audioTextureManager = new AudioTextureManager(renderer);
-    this.keyboardInput = new ShaderKeyboardInput(renderer);
+    this.textureCache = new TextureCache(backend);
+    this.videoTextureManager = new VideoTextureManager(backend);
+    this.cubemapTextureManager = new CubemapTextureManager(backend);
+    this.audioTextureManager = new AudioTextureManager(backend);
+    this.keyboardInput = new ShaderKeyboardInput(backend);
   }
 
-  public getImageTextureCache(): Record<string, PiTexture> {
+  public getImageTextureCache(): Record<string, T> {
     return this.textureCache.getImageTextureCache();
   }
 
-  public getKeyboardTexture(): PiTexture | null {
+  public getKeyboardTexture(): T | null {
     return this.keyboardInput.getKeyboardTexture();
   }
 
-  public getVideoTexture(path: string): PiTexture | null {
+  public getVideoTexture(path: string): T | null {
     const texture = this.videoTextureManager.getVideoTexture(path);
     return texture ?? null;
   }
 
-  public getCubemapTexture(path: string): PiTexture | null {
+  public getCubemapTexture(path: string): T | null {
     const texture = this.cubemapTextureManager.getCubemapTexture(path);
     return texture ?? null;
   }
@@ -51,14 +51,14 @@ export class ResourceManager {
     return this.videoTextureManager.getVideoElement(path);
   }
 
-  public getDefaultTexture(): PiTexture | null {
+  public getDefaultTexture(): T | null {
     return this.textureCache.getDefaultTexture();
   }
 
   public async loadImageTexture(
-    path: string, 
+    path: string,
     opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {}
-  ): Promise<PiTexture | null> {
+  ): Promise<T | null> {
     const cachedTexture = this.textureCache.removeCachedTexture(path);
     
     if (cachedTexture) {
@@ -83,9 +83,9 @@ export class ResourceManager {
   }
 
   public async loadVideoTexture(
-    path: string, 
+    path: string,
     opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
-  ): Promise<VideoLoadResult> {
+  ): Promise<VideoLoadResult<T>> {
     try {
       const texture = await this.videoTextureManager.loadVideoTexture(path, opts);
       return { texture };
@@ -106,7 +106,7 @@ export class ResourceManager {
   public async loadCubemapTexture(
     path: string,
     opts: Partial<Pick<CubemapConfigInput, 'filter' | 'wrap' | 'vflip'>> = {},
-  ): Promise<PiTexture | null> {
+  ): Promise<T | null> {
     try {
       return await this.cubemapTextureManager.loadCubemapFromCrossImage(path, opts);
     } catch (error) {
@@ -124,7 +124,7 @@ export class ResourceManager {
   }
 
   // Audio methods
-  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<PiTexture> {
+  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<T> {
     return this.audioTextureManager.loadAudioSource(path, {
       ...this.audioDefaults,
       ...options,
@@ -143,7 +143,7 @@ export class ResourceManager {
     this.audioTextureManager.updateLoopRegion(path, startTime, endTime);
   }
 
-  public getAudioTexture(path: string): PiTexture | null {
+  public getAudioTexture(path: string): T | null {
     return this.audioTextureManager.getAudioTexture(path);
   }
 
@@ -177,7 +177,9 @@ export class ResourceManager {
 
   public getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
     const duration = this.audioTextureManager.getAudioDuration(path);
-    if (duration === 0 && !this.audioTextureManager.getAudioTexture(path)) return null;
+    if (duration === 0 && !this.audioTextureManager.getAudioTexture(path)) {
+      return null;
+    }
     return {
       paused: this.audioTextureManager.isAudioPaused(path),
       muted: this.audioTextureManager.isAudioMuted(path),
@@ -211,7 +213,9 @@ export class ResourceManager {
   }
 
   public cleanup(): void {
-    if (!this.renderer) return;
+    if (!this.backend) {
+      return;
+    }
 
     this.textureCache.cleanup();
     this.videoTextureManager.cleanup();
@@ -252,7 +256,9 @@ export class ResourceManager {
 
   public getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
     const video = this.videoTextureManager.getVideoElement(path);
-    if (!video) return null;
+    if (!video) {
+      return null;
+    }
     return {
       paused: this.videoTextureManager.isVideoPaused(path),
       muted: this.videoTextureManager.isVideoMuted(path),
