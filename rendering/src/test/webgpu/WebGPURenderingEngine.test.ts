@@ -43,6 +43,60 @@ describe("WebGPURenderingEngine", () => {
     expect(result?.errors?.[0]).toMatch(/WebGPU init failed/);
   });
 
+  it("reports a clear failure if compile is called before initialize", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const result = await engine.compileShaderPipeline("float4 mainImage(float2 c){return float4(1);}", null, "/a.slang", {});
+    expect(result?.success).toBe(false);
+    expect(result?.errors?.[0]).toMatch(/engine was not initialized/);
+  });
+
+  it("logs WebGPU initialization timing boundaries when Slang timing debug is enabled", async () => {
+    const context = { configure: vi.fn() };
+    const device = {};
+    const adapter = { requestDevice: vi.fn(async () => device) };
+    const canvas = {
+      width: 800,
+      height: 600,
+      getContext: vi.fn(() => context),
+      addEventListener: vi.fn(),
+    } as unknown as HTMLCanvasElement;
+    const engine = new WebGPURenderingEngine({ ...assets, debugTimings: true });
+    const compiler = { compile: vi.fn(), dispose: vi.fn() };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => adapter),
+        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+      },
+    });
+    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler").mockResolvedValue(compiler);
+
+    try {
+      engine.initialize(canvas);
+      await (engine as unknown as { ready: Promise<void> }).ready;
+
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] init start", {
+        canvasWidth: 800,
+        canvasHeight: 600,
+      });
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] adapter request start", {});
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] device request start", {});
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] context configure", expect.objectContaining({
+        format: "bgra8unorm",
+      }));
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] compiler create start", {});
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] init complete", expect.objectContaining({
+        adapterMs: expect.any(Number),
+        deviceMs: expect.any(Number),
+        compilerMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      }));
+    } finally {
+      logSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("render() is a safe no-op before a pipeline exists", () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());
@@ -1174,16 +1228,21 @@ describe("WebGPURenderingEngine", () => {
     it("logs cache hits and per-pass timings when Slang timing debug is enabled", async () => {
       const engine = new WebGPURenderingEngine({ ...assets, debugTimings: true });
       const { compiler } = stubEngineInternals(engine);
-      const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       try {
         await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
         compiler.compile.mockClear();
-        infoSpy.mockClear();
+        logSpy.mockClear();
 
         const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
 
         expect(result?.success).toBe(true);
-        expect(infoSpy).toHaveBeenCalledWith("[SlangPerf] compile", expect.objectContaining({
+        expect(logSpy).toHaveBeenCalledWith("[SlangPerf] compile requested", expect.objectContaining({
+          path: "/s.slang",
+          hasDevice: true,
+          hasCompiler: true,
+        }));
+        expect(logSpy).toHaveBeenCalledWith("[SlangPerf] compile", expect.objectContaining({
           status: "success",
           path: "/s.slang",
           generation: expect.any(Number),
@@ -1198,7 +1257,7 @@ describe("WebGPURenderingEngine", () => {
           ]),
         }));
       } finally {
-        infoSpy.mockRestore();
+        logSpy.mockRestore();
       }
     });
   });

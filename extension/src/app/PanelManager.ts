@@ -313,12 +313,10 @@ export class PanelManager {
         : `${updatedCsp}; ${workerSrc}`;
       // Allow WASM compilation (needed for gifski-wasm GIF encoder)
       // and unsafe-eval (needed for custom uniform script evaluation via new Function())
-      if (!updatedCsp.includes('wasm-unsafe-eval')) {
-        updatedCsp = updatedCsp.replace(/script-src[^;]*/, (match) => `${match} 'wasm-unsafe-eval'`);
-      }
-      if (!updatedCsp.includes('unsafe-eval')) {
-        updatedCsp = updatedCsp.replace(/script-src[^;]*/, (match) => `${match} 'unsafe-eval'`);
-      }
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', panel.webview.cspSource);
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', 'blob:');
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'wasm-unsafe-eval'");
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'unsafe-eval'");
       updatedCsp = updatedCsp.includes('connect-src')
         ? updatedCsp.replace(/connect-src[^;]*/, connectSrc)
         : `${updatedCsp}; ${connectSrc}`;
@@ -332,7 +330,7 @@ export class PanelManager {
     } else {
       // Add CSP inside <head> tag properly - use nonce-based approach like working example
       const nonce = 'abc123'; // In production, generate a random nonce
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
+      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${panel.webview.cspSource} blob: 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src ${panel.webview.cspSource} data:; media-src ${panel.webview.cspSource} blob:; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} blob:; font-src ${panel.webview.cspSource};">`;
 
       // Handle both <!doctype html> and <html> cases
       const doctypeMatch = processedHtml.match(/<!doctype html>/i);
@@ -388,6 +386,21 @@ export class PanelManager {
 
     panel.webview.html = processedHtml;
     this.logger.debug("Webview HTML set with resource URIs and video CSP");
+  }
+
+  private ensureCspToken(csp: string, directive: string, token: string): string {
+    const directivePattern = new RegExp(`${directive}[^;]*`);
+    const match = csp.match(directivePattern);
+    if (!match) {
+      return `${csp}; ${directive} ${token}`;
+    }
+
+    const tokens = match[0].split(/\s+/);
+    if (tokens.includes(token)) {
+      return csp;
+    }
+
+    return csp.replace(directivePattern, (directiveValue) => `${directiveValue} ${token}`);
   }
 
   public dispose(): void {

@@ -27,7 +27,7 @@ export interface SlangAssetUrls {
   debugTimings?: boolean;
 }
 
-interface WorkerScriptUrl {
+interface BlobAssetUrl {
   url: string;
   fetchMs: number;
   blobMs: number;
@@ -40,6 +40,30 @@ interface PassTiming {
   slangMs?: number;
   pipelineMs?: number;
   errorCount?: number;
+}
+
+const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
+
+class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
+  constructor(
+    private readonly inner: AsyncSlangCompiler,
+    private readonly objectUrls: string[],
+  ) {}
+
+  compile(source: string, options: Parameters<AsyncSlangCompiler["compile"]>[1]): Promise<ReturnType<AsyncSlangCompiler["compile"]> extends Promise<infer T> ? T : never> {
+    return this.inner.compile(source, options);
+  }
+
+  dispose(): void {
+    this.inner.dispose();
+    this.revokeObjectUrls();
+  }
+
+  private revokeObjectUrls(): void {
+    for (const url of this.objectUrls) {
+      URL.revokeObjectURL(url);
+    }
+  }
 }
 
 /**
@@ -87,6 +111,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
   constructor(private slangAssets: SlangAssetUrls) {}
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
+    const initStartedAt = this.now();
+    this.logSlangPerf("init start", {
+      canvasWidth: glCanvas.width,
+      canvasHeight: glCanvas.height,
+    });
     this.canvas = glCanvas;
     let ctx: GPUCanvasContext | null = null;
     try {
@@ -96,26 +125,49 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     if (!ctx) {
       this.initError = "WebGPU is not available in this runtime (no webgpu context)";
+      this.logSlangPerf("init failed", {
+        reason: this.initError,
+        totalMs: this.ms(this.now() - initStartedAt),
+      });
       return;
     }
     this.context = ctx;
     this.mouseManager.setupEventListeners(glCanvas);
-    this.ready = this.initDevice();
+    this.ready = this.initDevice(initStartedAt);
   }
 
-  private async initDevice(): Promise<void> {
+  private async initDevice(initStartedAt = this.now()): Promise<void> {
     try {
       if (!navigator.gpu) throw new Error("navigator.gpu is undefined");
+      const adapterStartedAt = this.now();
+      this.logSlangPerf("adapter request start", {});
       const adapter = await navigator.gpu.requestAdapter();
+      const adapterMs = this.now() - adapterStartedAt;
       if (!adapter) throw new Error("requestAdapter() returned null");
+      const deviceStartedAt = this.now();
+      this.logSlangPerf("device request start", {});
       const device = await adapter.requestDevice();
+      const deviceMs = this.now() - deviceStartedAt;
       this.device = device;
       this.format = navigator.gpu.getPreferredCanvasFormat();
+      this.logSlangPerf("context configure", { format: this.format });
       this.context!.configure({ device, format: this.format, alphaMode: "opaque" });
 
+      const compilerStartedAt = this.now();
+      this.logSlangPerf("compiler create start", {});
       this.compiler = await this.createCompiler();
+      this.logSlangPerf("init complete", {
+        adapterMs: this.ms(adapterMs),
+        deviceMs: this.ms(deviceMs),
+        compilerMs: this.ms(this.now() - compilerStartedAt),
+        totalMs: this.ms(this.now() - initStartedAt),
+      });
     } catch (e) {
       this.initError = e instanceof Error ? e.message : String(e);
+      this.logSlangPerf("init failed", {
+        reason: this.initError,
+        totalMs: this.ms(this.now() - initStartedAt),
+      });
     }
   }
 
@@ -124,28 +176,46 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
     const startedAt = this.now();
     if (workerUrl && typeof Worker !== "undefined") {
+      const objectUrls: string[] = [];
       try {
-        const workerScript = await this.createWorkerScriptUrl(workerUrl);
+        this.logSlangPerf("worker fetch start", { workerUrl });
+        const workerScript = await this.createBlobAssetUrl(workerUrl, "text/javascript", "text");
+        objectUrls.push(workerScript.url);
+        const slangScript = await this.createBlobAssetUrl(scriptUrl, "text/javascript", "text");
+        objectUrls.push(slangScript.url);
+        const slangWasm = await this.createBlobAssetUrl(wasmUrl, "application/wasm", "binary");
+        objectUrls.push(slangWasm.url);
+        this.logSlangPerf("worker fetch complete", {
+          workerUrl,
+          fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
+          blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
+        });
         const initStartedAt = this.now();
+        this.logSlangPerf("worker init start", { workerUrl });
         const compiler = await WorkerSlangCompiler.create(
           () => new Worker(workerScript.url, { type: "module" }),
-          scriptUrl,
-          wasmUrl,
+          slangScript.url,
+          slangWasm.url,
+          SLANG_WORKER_INIT_TIMEOUT_MS,
+          (status) => this.logSlangPerf("worker status", { workerUrl, ...status }),
         );
         this.logSlangPerf("worker setup", {
           mode: "worker",
           workerUrl,
-          fetchMs: this.ms(workerScript.fetchMs),
-          blobMs: this.ms(workerScript.blobMs),
+          initTimeoutMs: SLANG_WORKER_INIT_TIMEOUT_MS,
+          fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
+          blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
           initMs: this.ms(this.now() - initStartedAt),
           totalMs: this.ms(this.now() - startedAt),
         });
-        return compiler;
+        return new RevokingAsyncSlangCompiler(compiler, objectUrls);
       } catch (e) {
+        for (const url of objectUrls) URL.revokeObjectURL(url);
         console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
       }
     }
     const mainThreadStartedAt = this.now();
+    this.logSlangPerf("main-thread setup start", { workerUrl: workerUrl ?? null });
     const slang = await loadSlangModule(scriptUrl, wasmUrl);
     this.logSlangPerf("worker setup", {
       mode: "main-thread",
@@ -156,16 +226,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return new MainThreadSlangCompiler(new SlangCompiler(slang));
   }
 
-  private async createWorkerScriptUrl(workerUrl: string): Promise<WorkerScriptUrl> {
+  private async createBlobAssetUrl(resourceUrl: string, mimeType: string, mode: "text" | "binary"): Promise<BlobAssetUrl> {
     const fetchStartedAt = this.now();
-    const response = await fetch(workerUrl);
+    const response = await fetch(resourceUrl);
     if (!response.ok) {
-      throw new Error(`Failed to load Slang worker (${response.status})`);
+      throw new Error(`Failed to load Slang worker asset (${response.status})`);
     }
-    const source = await response.text();
+    const source = mode === "text" ? await response.text() : await response.arrayBuffer();
     const fetchMs = this.now() - fetchStartedAt;
     const blobStartedAt = this.now();
-    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    const url = URL.createObjectURL(new Blob([source], { type: mimeType }));
     return { url, fetchMs, blobMs: this.now() - blobStartedAt };
   }
 
@@ -183,18 +253,30 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
+    this.logSlangPerf("compile requested", {
+      path,
+      generation,
+      hasReady: Boolean(this.ready),
+      hasContext: Boolean(this.context),
+      hasDevice: Boolean(this.device),
+      hasCompiler: Boolean(this.compiler),
+    });
     this.currentConfig = config;
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
     this.lastCompile = { code, path, buffers: { ...buffers } };
     if (this.ready) {
       const readyStartedAt = this.now();
+      this.logSlangPerf("compile waiting for init", { path, generation });
       await this.ready;
       readyMs = this.now() - readyStartedAt;
+      this.logSlangPerf("compile init ready", { path, generation, readyMs: this.ms(readyMs) });
     }
 
     if (this.initError || !this.device || !this.compiler) {
-      return { success: false, errors: [`WebGPU init failed: ${this.initError ?? "device unavailable"}`] };
+      const reason = this.initError ?? this.describeUnavailableInitState();
+      this.logSlangPerf("compile unavailable", { path, generation, reason });
+      return { success: false, errors: [`WebGPU init failed: ${reason}`] };
     }
 
     const graphStartedAt = this.now();
@@ -413,7 +495,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private logSlangPerf(event: string, data: Record<string, unknown>): void {
     if (this.slangAssets.debugTimings) {
-      console.info(`[SlangPerf] ${event}`, data);
+      console.log(`[SlangPerf] ${event}`, data);
     }
   }
 
@@ -423,6 +505,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private ms(value: number): number {
     return Number(value.toFixed(2));
+  }
+
+  private describeUnavailableInitState(): string {
+    if (!this.ready && !this.context && !this.device && !this.compiler) {
+      return "engine was not initialized";
+    }
+
+    return [
+      "device unavailable",
+      `ready=${Boolean(this.ready)}`,
+      `context=${Boolean(this.context)}`,
+      `device=${Boolean(this.device)}`,
+      `compiler=${Boolean(this.compiler)}`,
+    ].join(" ");
   }
 
   /**

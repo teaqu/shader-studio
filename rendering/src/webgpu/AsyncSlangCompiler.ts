@@ -26,6 +26,15 @@ type WorkerResponse =
   | { id: number; ok: true; result?: SlangCompileResult }
   | { id: number; ok: false; error: string };
 
+export type WorkerStatus = {
+  type: "status";
+  label: string;
+  id?: number;
+  detail?: string;
+};
+
+type WorkerMessage = WorkerResponse | WorkerStatus;
+
 type Pending = {
   resolve: (result: SlangCompileResult) => void;
   isInit: boolean;
@@ -39,9 +48,16 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   private pending = new Map<number, Pending>();
   private disposed = false;
 
-  private constructor(private readonly worker: Worker) {
-    this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+  private constructor(
+    private readonly worker: Worker,
+    private readonly onStatus?: (status: WorkerStatus) => void,
+  ) {
+    this.worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
       const msg = event.data;
+      if (isWorkerStatus(msg)) {
+        this.onStatus?.(msg);
+        return;
+      }
       const entry = this.pending.get(msg.id);
       if (!entry) return;
       this.pending.delete(msg.id);
@@ -50,8 +66,13 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
         else entry.initReject!(new Error(msg.error));
         return;
       }
-      if (msg.ok && msg.result) entry.resolve(msg.result);
-      else entry.resolve({ success: false, errors: [msg.ok ? "Slang worker returned no result" : msg.error] });
+      if (!msg.ok) {
+        entry.resolve({ success: false, errors: [msg.error] });
+      } else if (msg.result) {
+        entry.resolve(msg.result);
+      } else {
+        entry.resolve({ success: false, errors: ["Slang worker returned no result"] });
+      }
     };
     this.worker.onerror = () => {
       // A crashed worker never recovers: mark it dead so future compile()
@@ -68,9 +89,10 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     scriptUrl: string,
     wasmUrl: string,
     initTimeoutMs = 30000,
+    onStatus?: (status: WorkerStatus) => void,
   ): Promise<WorkerSlangCompiler> {
     const worker = workerFactory();
-    const instance = new WorkerSlangCompiler(worker);
+    const instance = new WorkerSlangCompiler(worker, onStatus);
     const id = instance.nextId++;
     try {
       await new Promise<void>((resolve, reject) => {
@@ -115,4 +137,8 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     }
     this.pending.clear();
   }
+}
+
+function isWorkerStatus(message: WorkerMessage): message is WorkerStatus {
+  return "type" in message && message.type === "status";
 }

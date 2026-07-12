@@ -64,6 +64,20 @@ describe("WorkerSlangCompiler", () => {
     expect(worker.terminate).toHaveBeenCalled();
   });
 
+  it("reports worker status messages while initializing", async () => {
+    const worker = fakeWorker();
+    const onStatus = vi.fn();
+    const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm", 30000, onStatus);
+
+    worker.emit({ type: "status", label: "boot" });
+    worker.emit({ type: "status", label: "init-received", id: worker.posted[0].id });
+    worker.emit({ id: worker.posted[0].id, ok: true });
+    await createPromise;
+
+    expect(onStatus).toHaveBeenCalledWith({ type: "status", label: "boot" });
+    expect(onStatus).toHaveBeenCalledWith({ type: "status", label: "init-received", id: worker.posted[0].id });
+  });
+
   it("rejects create() when the worker factory throws", async () => {
     await expect(
       WorkerSlangCompiler.create(() => { throw new Error("no Worker"); }, "s.js", "s.wasm"),

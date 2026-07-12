@@ -10,12 +10,22 @@ type CompileMessage = { id: number; type: "compile"; source: string; options: Sl
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let compiler: SlangCompiler | null = null;
 
+function postStatus(label: string, id?: number, detail?: string): void {
+  scope.postMessage({ type: "status", label, id, detail });
+}
+
+postStatus("boot");
+
 scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
   const message = event.data;
   try {
     if (message.type === "init") {
+      postStatus("init-received", message.id);
+      postStatus("load-slang-start", message.id);
       const slang = await loadSlangModule(message.scriptUrl, message.wasmUrl);
+      postStatus("load-slang-complete", message.id);
       compiler = new SlangCompiler(slang);
+      postStatus("compiler-created", message.id);
       scope.postMessage({ id: message.id, ok: true });
       return;
     }
@@ -30,5 +40,6 @@ scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     });
+    postStatus("error", message.id, error instanceof Error ? error.message : String(error));
   }
 };

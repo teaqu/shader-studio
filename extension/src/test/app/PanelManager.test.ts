@@ -393,6 +393,7 @@ suite('PanelManager Test Suite', () => {
       // Should contain media-src and connect-src with webview.cspSource and blob:
       assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should add media-src to existing CSP');
       assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src to existing CSP');
+      assert.match(html, /script-src[^;]*\bblob:/, 'Should allow blob module scripts');
       assert.ok(html.includes('Content-Security-Policy'), 'Should preserve CSP meta tag');
     });
 
@@ -425,7 +426,7 @@ suite('PanelManager Test Suite', () => {
       assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should include media-src in new CSP');
       assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should include connect-src in new CSP');
       assert.ok(html.includes('nonce-abc123'), 'Should use nonce-based CSP');
-      assert.ok(html.includes('script-src vscode-resource: \'nonce-abc123\''), 'Should include script-src with nonce');
+      assert.ok(html.includes('script-src vscode-resource: blob: \'nonce-abc123\''), 'Should include script-src with nonce and blob scripts');
     });
 
     test('should handle CSP addition when no head tag exists', () => {

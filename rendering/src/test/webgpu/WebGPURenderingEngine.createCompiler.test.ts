@@ -40,12 +40,17 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     mainThreadCtor.mockClear();
     loadSlangModuleMock.mockClear();
     slangCompilerCtor.mockClear();
-    vi.stubGlobal("fetch", vi.fn(async () => ({
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
       ok: true,
       status: 200,
-      text: async () => "self.onmessage = () => {}",
+      text: async () => `source:${url}`,
+      arrayBuffer: async () => new ArrayBuffer(8),
     })));
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:slang-worker");
+    vi.spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:slang-worker")
+      .mockReturnValueOnce("blob:slang-js")
+      .mockReturnValueOnce("blob:slang-wasm");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -53,27 +58,40 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     vi.unstubAllGlobals();
   });
 
-  it("(a) loads the emitted worker chunk into a blob worker when a workerUrl is configured", async () => {
+  it("(a) loads the worker and Slang assets into blob URLs when a workerUrl is configured", async () => {
     vi.stubGlobal("Worker", FakeWorker);
-    const fakeCompiler = { compile: vi.fn(), dispose: vi.fn() };
+    const fakeCompiler = { compile: vi.fn(async () => ({ success: true })), dispose: vi.fn() };
     workerCreate.mockResolvedValue(fakeCompiler);
 
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm", workerUrl: "worker.js" });
-    const compiler = await (engine as unknown as { createCompiler(): Promise<unknown> }).createCompiler();
+    const compiler = await (engine as unknown as { createCompiler(): Promise<{
+      compile(source: string, options: unknown): Promise<unknown>;
+      dispose(): void;
+    }> }).createCompiler();
 
-    expect(compiler).toBe(fakeCompiler);
     expect(workerCreate).toHaveBeenCalledTimes(1);
-    const [factory, scriptUrl, wasmUrl] = workerCreate.mock.calls[0];
-    expect(scriptUrl).toBe("s.js");
-    expect(wasmUrl).toBe("s.wasm");
+    const [factory, scriptUrl, wasmUrl, initTimeoutMs, onStatus] = workerCreate.mock.calls[0];
+    expect(scriptUrl).toBe("blob:slang-js");
+    expect(wasmUrl).toBe("blob:slang-wasm");
+    expect(initTimeoutMs).toBe(1500);
+    expect(onStatus).toEqual(expect.any(Function));
     expect(fetch).toHaveBeenCalledWith("worker.js");
-    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(fetch).toHaveBeenCalledWith("s.js");
+    expect(fetch).toHaveBeenCalledWith("s.wasm");
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(3);
     // VS Code webviews reject Worker(vscode-resource-url), so the factory
     // must construct from a same-origin blob URL instead.
     const worker = factory();
     expect(worker).toBeInstanceOf(FakeWorker);
     expect(worker.url).toBe("blob:slang-worker");
     expect(worker.options).toEqual({ type: "module" });
+    await compiler.compile("source", {});
+    expect(fakeCompiler.compile).toHaveBeenCalledWith("source", {});
+    compiler.dispose();
+    expect(fakeCompiler.dispose).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:slang-worker");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:slang-js");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:slang-wasm");
     expect(loadSlangModuleMock).not.toHaveBeenCalled();
     expect(mainThreadCtor).not.toHaveBeenCalled();
   });
@@ -81,8 +99,11 @@ describe("WebGPURenderingEngine.createCompiler", () => {
   it("logs worker setup timings when Slang timing debug is enabled", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     const fakeCompiler = { compile: vi.fn(), dispose: vi.fn() };
-    workerCreate.mockResolvedValue(fakeCompiler);
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    workerCreate.mockImplementation(async (_factory, _scriptUrl, _wasmUrl, _timeoutMs, onStatus) => {
+      onStatus?.({ type: "status", label: "boot" });
+      return fakeCompiler;
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
       const engine = new WebGPURenderingEngine({
@@ -93,7 +114,14 @@ describe("WebGPURenderingEngine.createCompiler", () => {
       });
       await (engine as unknown as { createCompiler(): Promise<unknown> }).createCompiler();
 
-      expect(infoSpy).toHaveBeenCalledWith("[SlangPerf] worker setup", expect.objectContaining({
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] worker fetch start", { workerUrl: "worker.js" });
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] worker init start", { workerUrl: "worker.js" });
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] worker status", {
+        workerUrl: "worker.js",
+        type: "status",
+        label: "boot",
+      });
+      expect(logSpy).toHaveBeenCalledWith("[SlangPerf] worker setup", expect.objectContaining({
         mode: "worker",
         workerUrl: "worker.js",
         fetchMs: expect.any(Number),
@@ -102,7 +130,7 @@ describe("WebGPURenderingEngine.createCompiler", () => {
         totalMs: expect.any(Number),
       }));
     } finally {
-      infoSpy.mockRestore();
+      logSpy.mockRestore();
     }
   });
 
@@ -128,6 +156,25 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     }
   });
 
+  it("still attempts the worker for VS Code webview resource URLs", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const fakeCompiler = { compile: vi.fn(), dispose: vi.fn() };
+    workerCreate.mockResolvedValue(fakeCompiler);
+
+    const engine = new WebGPURenderingEngine({
+      scriptUrl: "s.js",
+      wasmUrl: "s.wasm",
+      workerUrl: "https://file+.vscode-resource.vscode-cdn.net/Users/test/extension/ui-dist/assets/slangCompileWorker.js",
+    });
+    await (engine as unknown as { createCompiler(): Promise<unknown> }).createCompiler();
+
+    expect(workerCreate).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("https://file+.vscode-resource.vscode-cdn.net/Users/test/extension/ui-dist/assets/slangCompileWorker.js");
+    expect(fetch).toHaveBeenCalledWith("s.js");
+    expect(fetch).toHaveBeenCalledWith("s.wasm");
+    expect(loadSlangModuleMock).not.toHaveBeenCalled();
+  });
+
   it("falls back to the main-thread compiler when the emitted worker chunk cannot be fetched", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     vi.mocked(fetch).mockResolvedValueOnce({
@@ -144,7 +191,7 @@ describe("WebGPURenderingEngine.createCompiler", () => {
       expect(fetch).toHaveBeenCalledWith("missing-worker.js");
       expect(workerCreate).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy.mock.calls[0][1]).toEqual(new Error("Failed to load Slang worker (404)"));
+      expect(warnSpy.mock.calls[0][1]).toEqual(new Error("Failed to load Slang worker asset (404)"));
       expect(loadSlangModuleMock).toHaveBeenCalledWith("s.js", "s.wasm");
       expect(compiler).toEqual({ kind: "main-thread", inner: { kind: "slang-compiler", slang: { slangModule: true } } });
     } finally {

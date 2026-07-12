@@ -14,6 +14,5 @@ export function getSlangAssetUrls(): SlangAssetUrls {
     scriptUrl: slangScriptUrl,
     wasmUrl: slangWasmUrl,
     workerUrl: slangWorkerUrl,
-    debugTimings: true,
   };
 }
