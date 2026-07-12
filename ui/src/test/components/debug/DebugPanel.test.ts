@@ -1156,6 +1156,30 @@ describe('DebugPanel', () => {
       expect(mockVarCapture.changePollingMs).toHaveBeenCalledWith(1000, false);
     });
 
+    it('rebinds variable capture callbacks when the manager instance changes', async () => {
+      const firstManager = createMockVariableCaptureManager();
+      const secondManager = createMockVariableCaptureManager();
+      const { rerender } = render(DebugPanel, {
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        variableCaptureManager: firstManager,
+      });
+
+      expect(firstManager.setErrorCallback).toHaveBeenCalledOnce();
+      expect(firstManager.setLoadingStateCallback).toHaveBeenCalledOnce();
+      expect(firstManager.setSampleSettingsCallback).toHaveBeenCalledOnce();
+
+      await rerender({
+        debugState: makeDebugState({ isVariableInspectorEnabled: true }),
+        getUniforms: mockGetUniforms,
+        variableCaptureManager: secondManager,
+      });
+
+      expect(secondManager.setErrorCallback).toHaveBeenCalledOnce();
+      expect(secondManager.setLoadingStateCallback).toHaveBeenCalledOnce();
+      expect(secondManager.setSampleSettingsCallback).toHaveBeenCalledOnce();
+    });
+
     it('onExpandVarHistogram callback propagates from VariablesSection', async () => {
       const onExpandVarHistogram = vi.fn();
       const { container } = render(DebugPanel, {

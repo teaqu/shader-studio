@@ -14,11 +14,15 @@ export class CaptureDecoder {
       case 'bool':
         return [rgba[0]];
       case 'vec2':
+      case 'float2':
         return [rgba[0], rgba[1]];
       case 'vec3':
+      case 'float3':
         return [rgba[0], rgba[1], rgba[2]];
       case 'vec4':
       case 'mat2':
+      case 'float4':
+      case 'float2x2':
         return [rgba[0], rgba[1], rgba[2], rgba[3]];
       default:
         return [rgba[0]];

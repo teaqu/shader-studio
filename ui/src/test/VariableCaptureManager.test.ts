@@ -173,6 +173,7 @@ describe('VariableCaptureManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
 
     rafCallbacks = [];
     rafCallbackIds = [];
@@ -231,6 +232,31 @@ describe('VariableCaptureManager', () => {
   afterEach(() => {
     manager.dispose();
     vi.restoreAllMocks();
+  });
+
+  // ----------------------------------------------------------------
+  // Session settings
+  // ----------------------------------------------------------------
+
+  describe('Session settings', () => {
+    it('hydrates sample size and refresh settings from the previous manager instance', () => {
+      manager.changeSampleSize(128);
+      manager.changeRefreshMode('manual', false);
+      manager.changePollingMs(1000, false);
+      manager.changeRefreshMode('realtime', true);
+      manager.changePollingMs(250, true);
+      manager.dispose();
+
+      const nextManager = new VariableCaptureManager(mockRenderingEngine, onUpdate);
+
+      expect(nextManager.sampleSize).toBe(128);
+      expect(nextManager.getActiveRefreshMode(false)).toBe('manual');
+      expect(nextManager.getActivePollingMs(false)).toBe(1000);
+      expect(nextManager.getActiveRefreshMode(true)).toBe('realtime');
+      expect(nextManager.getActivePollingMs(true)).toBe(250);
+
+      nextManager.dispose();
+    });
   });
 
   // ----------------------------------------------------------------
@@ -422,6 +448,7 @@ describe('VariableCaptureManager', () => {
         false, // grid mode → captureCoordUniform=false
         gridWidth,
         gridHeight,
+        'glsl',
       );
     });
 
@@ -440,6 +467,7 @@ describe('VariableCaptureManager', () => {
         true, // pixel mode → captureCoordUniform=true
         expect.any(Number),
         expect.any(Number),
+        'glsl',
       );
     });
   });
@@ -601,6 +629,7 @@ describe('VariableCaptureManager', () => {
         false,
         BASE_GRID.gridWidth,
         BASE_GRID.gridHeight,
+        'glsl',
       );
       expect(mockIssueCaptureGrid).toHaveBeenCalledWith(
         [

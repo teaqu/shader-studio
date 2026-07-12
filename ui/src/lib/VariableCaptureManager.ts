@@ -1,10 +1,15 @@
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
-import type { VariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
+import type { IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
+import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
 import type { ConfigInput } from '@shader-studio/types';
 
-const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
+const CAPTURABLE_TYPES = new Set([
+  'float', 'int', 'bool',
+  'vec2', 'vec3', 'vec4', 'mat2',
+  'float2', 'float3', 'float4', 'float2x2',
+]);
 const MAX_EMPTY_COLLECTION_FRAMES = 120;
 
 export interface ColorFrequency {
@@ -13,6 +18,77 @@ export interface ColorFrequency {
 }
 
 export type RefreshMode = 'polling' | 'manual' | 'realtime' | 'pause';
+
+const SESSION_SETTINGS_KEY = 'shader-studio.variable-capture.settings';
+
+interface CaptureSessionSettings {
+  sampleSize: number;
+  gridRefreshMode: RefreshMode;
+  gridPollingMs: number;
+  pixelRefreshMode: RefreshMode;
+  pixelPollingMs: number;
+}
+
+const DEFAULT_SESSION_SETTINGS: CaptureSessionSettings = {
+  sampleSize: 32,
+  gridRefreshMode: 'polling',
+  gridPollingMs: 500,
+  pixelRefreshMode: 'polling',
+  pixelPollingMs: 500,
+};
+
+function isRefreshMode(value: unknown): value is RefreshMode {
+  return value === 'polling' || value === 'manual' || value === 'realtime' || value === 'pause';
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function getSessionStorage(): Storage | null {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readSessionSettings(): CaptureSessionSettings {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return { ...DEFAULT_SESSION_SETTINGS };
+  }
+
+  try {
+    const raw = storage.getItem(SESSION_SETTINGS_KEY);
+    if (!raw) {
+      return { ...DEFAULT_SESSION_SETTINGS };
+    }
+    const parsed = JSON.parse(raw) as Partial<CaptureSessionSettings>;
+    return {
+      sampleSize: positiveNumber(parsed.sampleSize, DEFAULT_SESSION_SETTINGS.sampleSize),
+      gridRefreshMode: isRefreshMode(parsed.gridRefreshMode) ? parsed.gridRefreshMode : DEFAULT_SESSION_SETTINGS.gridRefreshMode,
+      gridPollingMs: positiveNumber(parsed.gridPollingMs, DEFAULT_SESSION_SETTINGS.gridPollingMs),
+      pixelRefreshMode: isRefreshMode(parsed.pixelRefreshMode) ? parsed.pixelRefreshMode : DEFAULT_SESSION_SETTINGS.pixelRefreshMode,
+      pixelPollingMs: positiveNumber(parsed.pixelPollingMs, DEFAULT_SESSION_SETTINGS.pixelPollingMs),
+    };
+  } catch {
+    return { ...DEFAULT_SESSION_SETTINGS };
+  }
+}
+
+function writeSessionSettings(settings: CaptureSessionSettings): void {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(SESSION_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Best effort only; capture controls still work with instance-local state.
+  }
+}
 
 export interface CapturedVariable {
   varName: string;
@@ -169,7 +245,7 @@ export function computeGridDimensions(
 }
 
 export class VariableCaptureManager {
-  private capturer: VariableCapturer | null = null;
+  private capturer: IVariableCapturer | null = null;
   private dirty = false;
   private rafHandle: number | null = null;
   private loopRunning = false;
@@ -205,7 +281,14 @@ export class VariableCaptureManager {
   constructor(
     private renderingEngine: RenderingEngine,
     private onUpdate: (vars: CapturedVariable[]) => void,
-  ) {}
+  ) {
+    const settings = readSessionSettings();
+    this._sampleSize = settings.sampleSize;
+    this._gridRefreshMode = settings.gridRefreshMode;
+    this._gridPollingMs = settings.gridPollingMs;
+    this._pixelRefreshMode = settings.pixelRefreshMode;
+    this._pixelPollingMs = settings.pixelPollingMs;
+  }
 
   private setPollTimeout(callback: () => void, ms: number): number {
     return window.setTimeout(callback, ms);
@@ -248,6 +331,7 @@ export class VariableCaptureManager {
 
   changeSampleSize(size: number): void {
     this._sampleSize = size;
+    this.persistSessionSettings();
     this.onSampleSettingsChanged?.();
   }
 
@@ -257,6 +341,7 @@ export class VariableCaptureManager {
     } else {
       this._gridRefreshMode = mode;
     }
+    this.persistSessionSettings();
     this.onSampleSettingsChanged?.();
   }
 
@@ -266,6 +351,7 @@ export class VariableCaptureManager {
     } else {
       this._gridPollingMs = ms;
     }
+    this.persistSessionSettings();
     this.onSampleSettingsChanged?.();
   }
 
@@ -283,6 +369,21 @@ export class VariableCaptureManager {
   notifyStateChange(params: CaptureParams): void {
     this.captureRequestId += 1;
     this.lastParams = params;
+    // If a loop is already running when a new state change arrives, that's
+    // expected for polling/realtime — but flag it so a runaway (loopRunning
+    // stuck true while ticks climb) is visible in the log stream.
+    captureDiagEvent('notifyStateChange', {
+      refreshMode: params.refreshMode,
+      loopAlreadyRunning: this.loopRunning ? 1 : 0,
+      // These are the params that decide vars/pixel-mode — watch for them
+      // oscillating between rapid re-triggers.
+      debugLine: params.debugLine,
+      pixelX: params.pixelX,
+      pixelY: params.pixelY,
+      sampleSize: params.sampleSize,
+      codeLen: params.code.length,
+      requestId: this.captureRequestId,
+    });
     // Cancel any stale poll timeout so old intervals don't conflict with new params
     this.clearPollTimeout();
     if (this.collecting) {
@@ -342,9 +443,19 @@ export class VariableCaptureManager {
 
   private captureLoop(_timestamp: number): void {
     if (this.disposed) {
-      this.loopRunning = false; return; 
+      this.loopRunning = false; return;
     }
     this.rafHandle = null;
+    captureCounters.loopTicks++;
+    captureDiagTick('manager.loop', {
+      dirty: this.dirty ? 1 : 0,
+      collecting: this.collecting ? 1 : 0,
+      issuing: this.issuing ? 1 : 0,
+      pendingResults: this.pendingResults.length,
+      expectedCount: this.expectedCount,
+      emptyCollectFrames: this.emptyCollectFrames,
+      expandedVars: this.expandedVars.size,
+    });
 
     // Always try to collect pending results first
     if (this.collecting && this.capturer) {
@@ -429,6 +540,16 @@ export class VariableCaptureManager {
     return requestId === this.captureRequestId && !this.disposed;
   }
 
+  private persistSessionSettings(): void {
+    writeSessionSettings({
+      sampleSize: this._sampleSize,
+      gridRefreshMode: this._gridRefreshMode,
+      gridPollingMs: this._gridPollingMs,
+      pixelRefreshMode: this._pixelRefreshMode,
+      pixelPollingMs: this._pixelPollingMs,
+    });
+  }
+
   private cancelCurrentCollection(): void {
     this.capturer?.cancelPendingCaptures();
     this.collecting = false;
@@ -443,6 +564,7 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
+    captureCounters.issueCalls++;
 
     if (!this.capturer) {
       try {
@@ -458,7 +580,9 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
-    this.capturer.setCompileContext(this.renderingEngine.getVariableCaptureCompileContext(params.code));
+    this.capturer.setCompileContext(
+      this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName),
+    );
     this.capturer.clearLastError();
     this.emitErrorState(null);
 
@@ -492,6 +616,12 @@ export class VariableCaptureManager {
       if (!this.isCurrentRequest(requestId)) {
         return;
       }
+      captureDiagEvent('EMPTY-EXIT vars.length===0 (→ "No variables in scope")', {
+        resolvedLine,
+        codeLen: params.code.length,
+        codeHead: params.code.slice(0, 40),
+        language: this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
+      });
       this.emitErrorState(null);
       this.finishCollection([]);
       return;
@@ -522,6 +652,7 @@ export class VariableCaptureManager {
       isPixelMode,
       gridWidth,
       gridHeight,
+      this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
     );
 
     if (selectorShader) {
@@ -540,6 +671,12 @@ export class VariableCaptureManager {
       if (!this.isCurrentRequest(requestId)) {
         return;
       }
+      captureDiagEvent('EMPTY-EXIT selectorShader===null (→ "No variables in scope")', {
+        resolvedLine,
+        isPixelMode,
+        varNames: vars.map(v => `${v.varName}:${v.varType}`).join(','),
+        language: this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
+      });
       this.emitErrorState(null);
       this.finishCollection([]);
       return;
@@ -592,6 +729,12 @@ export class VariableCaptureManager {
 
     if (issued === 0) {
       const captureError = this.capturer.getLastError();
+      captureDiagEvent('EMPTY-EXIT issued===0 (→ error shown)', {
+        isPixelMode,
+        captureError: captureError ?? '(none)',
+        varCount: vars.length,
+        language: this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
+      });
       this.clearPollTimeout();
       this.lastParams = null;
       this.emitErrorState(captureError ? `Failed to capture variables:\n${captureError}` : 'Failed to capture variables');
@@ -620,6 +763,8 @@ export class VariableCaptureManager {
   private decodeAndUpdate(
     results: Array<{ varName: string; varType: string; rgba: Float32Array }>
   ): void {
+    captureCounters.decodeCalls++;
+    const decodeStartedAt = performance.now();
     const isPixelMode = this.lastCaptureMode === 'pixel';
     const capturedVars: CapturedVariable[] = [];
 
@@ -721,6 +866,18 @@ export class VariableCaptureManager {
     }
 
     this.emitErrorState(null);
+    const decodeMs = performance.now() - decodeStartedAt;
+    if (decodeMs > 8) {
+      // Long synchronous decode on the main thread — a jank suspect.
+      captureDiagEvent('slow decode (main-thread)', {
+        decodeMs: Math.round(decodeMs * 100) / 100,
+        varCount: results.length,
+        mode: this.lastCaptureMode,
+        gridW: this.lastGridWidth,
+        gridH: this.lastGridHeight,
+        expandedVars: this.expandedVars.size,
+      });
+    }
     this.finishCollection(capturedVars);
   }
 

@@ -3,11 +3,12 @@ import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
-  VariableCapturer,
+  IVariableCapturer,
   CaptureUniforms,
   CaptureCompileContext,
   CaptureCustomUniform,
 } from "../capture/VariableCapturer";
+import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 import { TimeManager } from "../util/TimeManager";
 import { MouseManager } from "../input/MouseManager";
 import { FPSCalculator } from "../util/FPSCalculator";
@@ -17,6 +18,7 @@ import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler }
 import { packShaderToyUniforms } from "./uniforms";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline } from "./SlangPassPipeline";
+import { sharedSlangWgslCache } from "./SlangWgslCache";
 
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -36,6 +38,7 @@ interface BlobAssetUrl {
 interface PassTiming {
   name: string;
   cacheHit: boolean;
+  wgslCacheHit?: boolean;
   totalMs?: number;
   slangMs?: number;
   pipelineMs?: number;
@@ -43,6 +46,7 @@ interface PassTiming {
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
+const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
@@ -71,9 +75,9 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
  * rendering driven by the ShaderToy-style Slang convention (iTime,
  * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
  * textures that other passes sample via iChannelN, and the Image pass renders
- * to the canvas. Textures/media inputs, capture and debugging are not yet
- * supported and their interface methods no-op or throw a clear "not
- * supported" error.
+ * to the canvas. Inline Slang debugging, pixel inspection (async readback),
+ * and variable capture are supported; texture/media inputs and audio/video
+ * remain unimplemented and their interface methods no-op.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -100,6 +104,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
    */
   private compileGeneration = 0;
   private disposed = false;
+
+  // Pixel inspector readback. WebGPU readback is async, so readPixel()
+  // records the wanted coordinate and returns the last resolved pixel;
+  // render() encodes a 1×1 copy of the canvas texture each frame while a
+  // coordinate is requested and no mapping is in flight.
+  private inspectorTarget: { x: number; y: number } | null = null;
+  private inspectorPixel: { r: number; g: number; b: number; a: number } | null = null;
+  private inspectorReadbackBuffer: GPUBuffer | null = null;
+  private inspectorReadbackPending = false;
+  private inspectorCopyEncoded = false;
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
@@ -159,7 +173,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device = device;
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
-      this.context!.configure({ device, format: this.format, alphaMode: "opaque" });
+      // COPY_SRC lets the pixel inspector read back from the canvas texture.
+      const RENDER_ATTACHMENT = globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10;
+      const COPY_SRC = globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01;
+      this.context!.configure({
+        device,
+        format: this.format,
+        alphaMode: "opaque",
+        usage: RENDER_ATTACHMENT | COPY_SRC,
+      });
 
       const compilerStartedAt = this.now();
       this.logSlangPerf("compiler create start", {});
@@ -334,23 +356,31 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       let pipeline: SlangPassPipeline | undefined;
       try {
-        const slangStartedAt = this.now();
-        const compiled = await this.compiler.compile(pass.source, {
-          passName: pass.name,
-          commonCode: graph.commonCode,
-          channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
-        });
-        const slangMs = this.now() - slangStartedAt;
-        if (!compiled.success) {
-          errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
-          passTimings.push({
-            name: pass.name,
-            cacheHit: false,
-            slangMs: this.ms(slangMs),
-            totalMs: this.ms(this.now() - passStartedAt),
-            errorCount: compiled.errors.length,
+        let wgsl = sharedSlangWgslCache.get(key);
+        const wgslCacheHit = wgsl !== null;
+        let slangMs = 0;
+        if (!wgsl) {
+          const slangStartedAt = this.now();
+          const compiled = await this.compiler.compile(pass.source, {
+            passName: pass.name,
+            commonCode: graph.commonCode,
+            channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
           });
-          continue;
+          slangMs = this.now() - slangStartedAt;
+          if (!compiled.success) {
+            errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+            passTimings.push({
+              name: pass.name,
+              cacheHit: false,
+              wgslCacheHit: false,
+              slangMs: this.ms(slangMs),
+              totalMs: this.ms(this.now() - passStartedAt),
+              errorCount: compiled.errors.length,
+            });
+            continue;
+          }
+          wgsl = compiled.wgsl;
+          sharedSlangWgslCache.set(key, wgsl);
         }
         pipeline = new SlangPassPipeline(this.device, this.format, {
           name: pass.name,
@@ -360,12 +390,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
           channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
         });
         const pipelineStartedAt = this.now();
-        const wgslErrors = await pipeline.rebuild(compiled.wgsl);
+        const wgslErrors = await pipeline.rebuild(wgsl);
         const pipelineMs = this.now() - pipelineStartedAt;
         errors.push(...wgslErrors);
         passTimings.push({
           name: pass.name,
           cacheHit: false,
+          wgslCacheHit,
           slangMs: this.ms(slangMs),
           pipelineMs: this.ms(pipelineMs),
           totalMs: this.ms(this.now() - passStartedAt),
@@ -482,23 +513,54 @@ export class WebGPURenderingEngine implements RenderingEngine {
       errors: string[];
     },
   ): void {
+    const totalMs = this.ms(this.now() - details.startedAt);
     const cacheHits = details.passTimings.filter((pass) => pass.cacheHit).length;
+    const passSummary = details.passTimings
+      .map((pass) => {
+        if (pass.cacheHit) {
+          return `${pass.name}:cache ${pass.totalMs ?? 0}ms`;
+        }
+        const pieces = [`${pass.name}:compile ${pass.totalMs ?? 0}ms`];
+        if (pass.wgslCacheHit) {
+          pieces.push("wgsl-cache");
+        } else if (pass.slangMs !== undefined) {
+          pieces.push(`slang ${pass.slangMs}ms`);
+        }
+        if (pass.pipelineMs !== undefined) {
+          pieces.push(`pipeline ${pass.pipelineMs}ms`);
+        }
+        if (pass.errorCount !== undefined && pass.errorCount > 0) {
+          pieces.push(`errors ${pass.errorCount}`);
+        }
+        return pieces.join(" ");
+      })
+      .join(" | ");
+    const readyMs = this.ms(details.readyMs);
+    const compileWorkMs = this.ms(Math.max(0, totalMs - details.readyMs));
     this.logSlangPerf("compile", {
       status,
       path: details.path,
       generation: details.generation,
-      totalMs: this.ms(this.now() - details.startedAt),
-      readyMs: this.ms(details.readyMs),
+      totalMs,
+      readyMs,
+      compileWorkMs,
       graphMs: this.ms(details.graphMs),
       passCount: details.graph.passes.length,
       cacheHits,
       compiledPasses: details.passTimings
         .filter((pass) => !pass.cacheHit)
         .map((pass) => pass.name),
+      passSummary,
       passes: details.passTimings,
       warningCount: details.graph.warnings.length,
       errorCount: details.errors.length,
     });
+    if (this.slangAssets.debugTimings) {
+      console.log(
+        "[SlangPerf] compile summary",
+        `${status} ${details.path} total=${totalMs}ms ready=${readyMs}ms work=${compileWorkMs}ms passes=${details.graph.passes.length} cacheHits=${cacheHits} :: ${passSummary}`,
+      );
+    }
   }
 
   private logSlangPerf(event: string, data: Record<string, unknown>): void {
@@ -530,14 +592,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   /**
-   * A pass's compiled WGSL depends only on its source, the common code, and
-   * its channel layout (slot + key). Width/height are texture concerns
-   * handled by resize() without recompiling, so they're deliberately excluded
-   * from the key.
+   * A pass's compiled WGSL depends on its compile options: pass name, source,
+   * common code, cache key version, and channel layout (slot + key).
+   * Width/height are texture concerns handled by resize() without recompiling,
+   * so they're deliberately excluded from the key.
    */
   private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}`).join(",");
-    return JSON.stringify([pass.source, commonCode, channels]);
+    return JSON.stringify([SLANG_WGSL_CACHE_KEY_VERSION, pass.name, pass.source, commonCode, channels]);
   }
 
   render(time: number = performance.now()): void {
@@ -553,6 +615,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     const encoder = this.device.createCommandEncoder();
     const shaderTime = this.timeManager.getCurrentTime(time);
+    let canvasTexture: GPUTexture | null = null;
 
     for (const pass of this.passGraph) {
       const pipeline = this.passPipelines.get(pass.name);
@@ -591,7 +654,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
 
       const targetView = pass.output === "canvas"
-        ? this.context.getCurrentTexture().createView()
+        ? (canvasTexture = this.context.getCurrentTexture()).createView()
         : pipeline.getCurrentOutputView();
       if (!targetView) {
         continue;
@@ -611,7 +674,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       renderPass.end();
     }
 
+    this.encodeInspectorCopy(encoder, canvasTexture);
     this.device.queue.submit([encoder.finish()]);
+    this.resolveInspectorReadback();
 
     for (const pass of this.passGraph) {
       if (pass.output === "texture") {
@@ -795,6 +860,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.stopRenderLoop();
     this.compiler?.dispose();
     this.compiler = null;
+    this.inspectorReadbackBuffer?.destroy?.();
+    this.inspectorReadbackBuffer = null;
+    this.inspectorTarget = null;
+    this.inspectorPixel = null;
     for (const pipeline of this.passPipelines.values()) {
       pipeline.dispose();
     }
@@ -856,17 +925,114 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.lastRenderedAt = null;
   }
 
-  readPixel(): { r: number; g: number; b: number; a: number } | null {
-    // WebGPU readback is async; the sync inspector contract is M5.
-    return null;
+  readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
+    if (!this.canvas || !this.device) {
+      return null;
+    }
+    const clampedX = Math.min(Math.max(Math.floor(x), 0), this.canvas.width - 1);
+    const clampedY = Math.min(Math.max(Math.floor(y), 0), this.canvas.height - 1);
+    this.inspectorTarget = { x: clampedX, y: clampedY };
+    return this.inspectorPixel;
   }
 
-  createVariableCapturer(): VariableCapturer {
-    throw new Error("Variable capture is not supported for Slang shaders");
+  /**
+   * Encodes a 1×1 copy of the canvas texture at the inspector coordinate.
+   * Must be called with the frame's encoder before submit; the buffer is
+   * mapped after submit via resolveInspectorReadback().
+   */
+  private encodeInspectorCopy(encoder: GPUCommandEncoder, canvasTexture: GPUTexture | null): void {
+    this.inspectorCopyEncoded = false;
+    if (!this.inspectorTarget || this.inspectorReadbackPending || !canvasTexture || !this.device) {
+      return;
+    }
+
+    if (!this.inspectorReadbackBuffer) {
+      // GPUBufferUsage may be absent outside a browser; use the spec values.
+      const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
+      const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+      // bytesPerRow must be 256-aligned even for a 1×1 copy.
+      this.inspectorReadbackBuffer = this.device.createBuffer({
+        size: 256,
+        usage: MAP_READ | COPY_DST,
+      });
+    }
+
+    encoder.copyTextureToBuffer(
+      { texture: canvasTexture, origin: { x: this.inspectorTarget.x, y: this.inspectorTarget.y } },
+      { buffer: this.inspectorReadbackBuffer, bytesPerRow: 256 },
+      { width: 1, height: 1 },
+    );
+    this.inspectorCopyEncoded = true;
   }
 
-  getVariableCaptureCompileContext(): CaptureCompileContext {
-    return { commonCode: "" };
+  /** Maps the readback buffer after submit and caches the decoded pixel. */
+  private resolveInspectorReadback(): void {
+    const buffer = this.inspectorReadbackBuffer;
+    if (!this.inspectorCopyEncoded || !buffer) {
+      return;
+    }
+    this.inspectorCopyEncoded = false;
+    this.inspectorReadbackPending = true;
+    const MAP_READ_MODE = globalThis.GPUMapMode?.READ ?? 0x0001;
+    buffer.mapAsync(MAP_READ_MODE)
+      .then(() => {
+        const bytes = new Uint8Array(buffer.getMappedRange(0, 4)).slice();
+        buffer.unmap();
+        this.inspectorReadbackPending = false;
+        this.inspectorPixel = this.format === "bgra8unorm"
+          ? { r: bytes[2], g: bytes[1], b: bytes[0], a: bytes[3] }
+          : { r: bytes[0], g: bytes[1], b: bytes[2], a: bytes[3] };
+      })
+      .catch(() => {
+        this.inspectorReadbackPending = false;
+      });
+  }
+
+  createVariableCapturer(): IVariableCapturer {
+    if (!this.device || !this.compiler) {
+      throw new Error("Variable capture requires an initialized WebGPU engine");
+    }
+    return new WebGPUVariableCapturer(
+      this.device,
+      this.compiler,
+      this.getVariableCaptureCompileContext(),
+      () => {
+        const pass = this.passGraph.find((p) => p.name === "Image") ?? this.passGraph[0];
+        return pass ? this.getChannelResources(pass) : [];
+      },
+    );
+  }
+
+  getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext {
+    const graph = this.getVariableCapturePassGraph();
+    const targetPass = (passName
+      ? graph.find((pass) => pass.name === passName)
+      : undefined) ?? (code
+      ? graph.find((pass) => pass.source === code)
+      : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
+    const commonCode = this.lastCompile?.buffers?.common ?? "";
+    return {
+      commonCode,
+      slangChannels: targetPass?.channels.map(({ slot, key }) => ({ slot, key })) ?? [],
+    };
+  }
+
+  private getVariableCapturePassGraph(): RenderPassNode[] {
+    if (this.passGraph.length > 0 || !this.lastCompile) {
+      return this.passGraph;
+    }
+
+    return buildSlangPassGraph({
+      imageCode: this.lastCompile.code,
+      config: this.currentConfig,
+      buffers: this.lastCompile.buffers,
+      canvasWidth: this.canvas?.width ?? 1,
+      canvasHeight: this.canvas?.height ?? 1,
+    }).passes;
+  }
+
+  getShaderLanguage(): "glsl" | "slang" {
+    return "slang";
   }
 
   getCaptureUniforms(): CaptureUniforms {

@@ -154,6 +154,7 @@
   let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
+  let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
@@ -414,6 +415,13 @@
   });
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
+    const canvasReadyAt = performance.now();
+    console.info('[ShaderSwitchTiming] canvas ready', {
+      engineLanguage,
+      appInitialized,
+      hasPendingSwap: pendingSwapMessage !== null,
+      totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((canvasReadyAt - pendingSwapStartedAt) * 100) / 100,
+    });
     resetVariablePreview();
     lastAppliedVariablePreviewToken = 0;
     glCanvas = canvas;
@@ -422,11 +430,31 @@
     } else {
       // Canvas was remounted because the shader language changed — rebuild the
       // engine on the fresh canvas, then replay the message that triggered it.
+      const setupStartedAt = performance.now();
       const ok = setupRenderingEngine();
+      console.info('[ShaderSwitchTiming] remount engine setup complete', {
+        engineLanguage,
+        ok,
+        setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
+        totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
+      });
       if (ok && pendingSwapMessage) {
         const msg = pendingSwapMessage;
         pendingSwapMessage = null;
+        const replayStartedAt = performance.now();
+        console.info('[ShaderSwitchTiming] replay pending shaderSource start', {
+          engineLanguage,
+          path: msg.data?.path ?? null,
+          language: msg.data?.language ?? null,
+        });
         await handleMessage(msg);
+        console.info('[ShaderSwitchTiming] replay pending shaderSource complete', {
+          engineLanguage,
+          path: msg.data?.path ?? null,
+          replayMs: Math.round((performance.now() - replayStartedAt) * 100) / 100,
+          totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
+        });
+        pendingSwapStartedAt = null;
       }
     }
   }
@@ -442,7 +470,16 @@
   // Synchronous: engine.initialize() returns immediately (WebGPU device/compiler
   // init happens in the background), so first-mount initialization stays in-tick.
   function setupRenderingEngine(): boolean {
+    const setupStartedAt = performance.now();
+    const previousLanguage = renderingEngine?.getShaderLanguage?.() ?? null;
+    console.info('[ShaderSwitchTiming] setupRenderingEngine start', {
+      engineLanguage,
+      previousLanguage,
+      appInitialized,
+    });
     const wasPaused = renderingEngine?.getTimeManager?.()?.isPaused?.() ?? null;
+    variableCaptureManager?.dispose();
+    variableCaptureManager = undefined;
     try {
       renderingEngine?.stopRenderLoop?.();
       renderingEngine?.dispose?.();
@@ -452,6 +489,11 @@
     try {
       renderingEngine.initialize(glCanvas, true);
     } catch (err) {
+      console.info('[ShaderSwitchTiming] setupRenderingEngine failed', {
+        engineLanguage,
+        setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
+        error: err instanceof Error ? err.message : String(err),
+      });
       transport.postMessage({ type: 'error', payload: ['❌ Renderer initialization failed:', String(err)] });
       addError("Failed to initialize renderer");
       return false;
@@ -459,6 +501,7 @@
 
     timeManager = renderingEngine.getTimeManager();
     // setupRenderingEngine only runs after shaderDebugManager is created.
+    shaderDebugManager!.setLanguage(engineLanguage);
     pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager!, compilationState);
 
     if (appInitialized) {
@@ -474,6 +517,10 @@
       }
     }
 
+    console.info('[ShaderSwitchTiming] setupRenderingEngine initialized', {
+      engineLanguage,
+      setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
+    });
     return true;
   }
 
@@ -884,9 +931,23 @@
       // If the shader's language doesn't match the active engine, remount the
       // canvas with the right backend (WebGL vs WebGPU) and replay this message.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
+      const shaderMessageStartedAt = performance.now();
+      console.info('[ShaderSwitchTiming] shaderSource received', {
+        path: event.data.path ?? null,
+        language: msgLanguage,
+        engineLanguage,
+        appInitialized,
+        requiresBackendSwap: appInitialized && msgLanguage !== engineLanguage,
+      });
       if (appInitialized && msgLanguage !== engineLanguage) {
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
+        pendingSwapStartedAt = shaderMessageStartedAt;
+        console.info('[ShaderSwitchTiming] backend swap scheduled', {
+          from: engineLanguage,
+          to: msgLanguage,
+          path: event.data.path ?? null,
+        });
         engineLanguage = msgLanguage;
         return;
       }
@@ -894,6 +955,12 @@
       handleShaderSource(event);
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
+        console.info('[ShaderSwitchTiming] shaderSource pipeline complete', {
+          path: event.data.path ?? null,
+          language: msgLanguage,
+          success: result?.success ?? null,
+          totalMs: Math.round((performance.now() - shaderMessageStartedAt) * 100) / 100,
+        });
         if (result?.success === false) {
           resolutionController.handleShaderLoadFailed();
         } else {

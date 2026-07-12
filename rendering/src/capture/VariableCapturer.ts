@@ -27,6 +27,8 @@ export interface CaptureCompileContext {
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
+  /** Slang/WebGPU path: channel bindings of the captured pass. */
+  slangChannels?: Array<{ slot: number; key: string }>;
 }
 
 interface PendingCapture {
@@ -37,11 +39,49 @@ interface PendingCapture {
   dataSize: number;
 }
 
-interface CaptureRequest {
+export interface CaptureRequest {
   varName: string;
   varType: string;
   captureShader: string;
   selectorIndex?: number;
+}
+
+export interface CaptureResult {
+  varName: string;
+  varType: string;
+  rgba: Float32Array;
+}
+
+/**
+ * The capture surface VariableCaptureManager drives. Implemented by the
+ * WebGL VariableCapturer (PBO/fence readback) and the WebGPU
+ * WebGPUVariableCapturer (buffer-mapping readback).
+ */
+export interface IVariableCapturer {
+  setCompileContext(context: CaptureCompileContext): void;
+  setCustomUniforms(declarations: string, uniforms: CaptureCustomUniform[]): void;
+  setInputBindings(inputConfig: Record<string, ConfigInput>): void;
+  clearLastError(): void;
+  getLastError(): string | null;
+  issueCaptureAtPixel(
+    captures: CaptureRequest[],
+    pixelX: number,
+    pixelY: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    uniforms: CaptureUniforms,
+    shouldContinue?: () => boolean,
+  ): Promise<number>;
+  issueCaptureGrid(
+    captures: CaptureRequest[],
+    uniforms: CaptureUniforms,
+    gridWidth: number,
+    gridHeight: number,
+    shouldContinue?: () => boolean,
+  ): Promise<number>;
+  collectResults(): CaptureResult[];
+  cancelPendingCaptures(): void;
+  dispose(): void;
 }
 
 interface ShaderCacheEntry {
@@ -55,7 +95,7 @@ const SHADER_CACHE_MAX = 20;
 const FLOAT_BYTES = 4;
 const RGBA_CHANNELS = 4;
 
-export class VariableCapturer {
+export class VariableCapturer implements IVariableCapturer {
   private static nextCaptureRequestId = 1;
   private pendingCaptures: PendingCapture[] = [];
   private shaderCache = new Map<string, ShaderCacheEntry>();

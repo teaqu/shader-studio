@@ -182,14 +182,20 @@ describe('VariableCaptureManager — buffer capture', () => {
     it('passes buffer code to getVariableCaptureCompileContext', async () => {
       manager.notifyStateChange({ ...BASE_PARAMS, code: BUFFER_A_CODE });
       await flushRAF();
-      expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(BUFFER_A_CODE);
+      expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(BUFFER_A_CODE, undefined);
     });
 
     it('getVariableCaptureCompileContext is called with whatever code is in params', async () => {
       const customCode = 'float sdf(vec2 p, float r) { return length(p) - r; }';
       manager.notifyStateChange({ ...BASE_PARAMS, code: customCode });
       await flushRAF();
-      expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(customCode);
+      expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(customCode, undefined);
+    });
+
+    it('passes the active buffer name to getVariableCaptureCompileContext', async () => {
+      manager.notifyStateChange({ ...BASE_PARAMS, code: BUFFER_A_CODE, activeBufferName: 'BufferA' });
+      await flushRAF();
+      expect(mockRenderingEngine.getVariableCaptureCompileContext).toHaveBeenCalledWith(BUFFER_A_CODE, 'BufferA');
     });
   });
 

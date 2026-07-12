@@ -119,10 +119,14 @@ interface ParsedDocument {
   functions: ParsedFunctionInfo[];
 }
 
+// Type keywords recognized as declaration specifiers. Covers both the GLSL
+// dialect (vecN/matN) and the Slang dialect (floatN/floatNxN) — the two never
+// collide, so one shared superset keeps the parser dialect-agnostic.
 const GLSL_TYPES = new Set([
   'void',
   'float',
   'int',
+  'uint',
   'bool',
   'vec2',
   'vec3',
@@ -131,6 +135,12 @@ const GLSL_TYPES = new Set([
   'mat3',
   'mat4',
   'sampler2D',
+  'float2',
+  'float3',
+  'float4',
+  'float2x2',
+  'float3x3',
+  'float4x4',
 ]);
 
 const CONTROL_FLOW_KEYWORDS = new Set(['if', 'for', 'while', 'switch']);
@@ -776,7 +786,7 @@ export class GlslParser {
   }
 
   private static findEnclosingFunctionLegacy(lines: string[], lineNum: number): FunctionInfo {
-    const functionDeclPattern = /(?:void|float|int|bool|vec2|vec3|vec4|mat2|mat3|mat4|sampler2D)\s+(\w+)\s*\(/;
+    const functionDeclPattern = /(?:void|float2x2|float3x3|float4x4|float[234]|float|int|uint|bool|vec[234]|mat[234]|sampler2D)\s+(\w+)\s*\(/;
 
     const currentLine = lines[lineNum] ?? '';
     const currentMatch = currentLine.match(functionDeclPattern);
@@ -925,7 +935,7 @@ export class GlslParser {
   private static findFunctionReturnTypeLegacy(lines: string[], funcName: string): string | null {
     for (let i = 0; i < lines.length; i++) {
       const signature = GlslParser.getFullFunctionSignature(lines, i);
-      const match = signature.match(new RegExp(`^\\s*(float|vec[234]|mat[234]|void|int|bool|sampler2D)\\s+${funcName}\\s*\\(`));
+      const match = signature.match(new RegExp(`^\\s*(float2x2|float3x3|float4x4|float[234]|float|vec[234]|mat[234]|void|int|uint|bool|sampler2D)\\s+${funcName}\\s*\\(`));
       if (match) {
         return match[1];
       }

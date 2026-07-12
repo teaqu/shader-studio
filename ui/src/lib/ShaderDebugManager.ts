@@ -1,5 +1,5 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
-import { ShaderDebugger } from "@shader-studio/glsl-debug";
+import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
 
@@ -62,6 +62,15 @@ export class ShaderDebugManager {
   private bufferPathMap: Record<string, string> = {}; // bufferName → filePath
   private bufferCodes: Record<string, string> = {};
   private variablePreview: VariablePreviewState | null = null;
+  private language: ShaderDialect = 'glsl';
+
+  public setLanguage(language: ShaderDialect): void {
+    this.language = language;
+  }
+
+  public getLanguage(): ShaderDialect {
+    return this.language;
+  }
 
   public setShaderContext(
     config: ShaderConfig | null,
@@ -446,6 +455,7 @@ export class ShaderDebugManager {
       originalCode,
       this.state.normalizeMode,
       stepEdge,
+      this.language,
     );
   }
 
@@ -474,6 +484,7 @@ export class ShaderDebugManager {
         this.customParameters,
         effectiveState.normalizeMode,
         effectiveState.isStepEnabled ? effectiveState.stepEdge : null,
+        this.language,
       );
       shouldReportMissingVariable = true;
     } else if (effectiveState.isInlineRenderingEnabled) {
@@ -485,6 +496,7 @@ export class ShaderDebugManager {
         this.customParameters,
         effectiveState.normalizeMode,
         effectiveState.isStepEnabled ? effectiveState.stepEdge : null,
+        this.language,
       );
       shouldReportMissingVariable = true;
     } else {
@@ -518,7 +530,7 @@ export class ShaderDebugManager {
     }
 
     try {
-      return ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
+      return ShaderDebugger.extractFunctionContext(codeToAnalyse, line, this.language);
     } catch {
       return null;
     }

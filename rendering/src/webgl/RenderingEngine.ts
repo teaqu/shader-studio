@@ -392,6 +392,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.timeManager;
   }
 
+  public getShaderLanguage(): "glsl" | "slang" {
+    return "glsl";
+  }
+
   public createVariableCapturer(): VariableCapturer {
     const gl = this.glCanvas!.getContext('webgl2')!;
     return new VariableCapturer(
@@ -402,15 +406,17 @@ export class RenderingEngine implements RenderingEngineInterface {
     );
   }
 
-  public getVariableCaptureCompileContext(code?: string): CaptureCompileContext {
+  public getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext {
     const passes = this.shaderPipeline.getPasses();
     const commonPass = passes.find(pass => pass.name === "common");
     const commonPassCode = commonPass?.shaderSrc ?? '';
     // When capturing the common pass itself, avoid injecting common code again
     // into the temporary capture shader or GLSL symbols will be defined twice.
-    const isCapturingCommonPass = !!(code && commonPass && commonPass.shaderSrc === code);
+    const isCapturingCommonPass = passName === "common" || !!(code && commonPass && commonPass.shaderSrc === code);
 
-    const targetPass = (code
+    const targetPass = (passName
+      ? passes.find(pass => pass.name === passName && pass.name !== "common")
+      : undefined) || (code
       ? passes.find(pass => pass.name !== "common" && pass.shaderSrc === code)
       : undefined) || passes.find(pass => pass.name === "Image") || passes.find(pass => pass.name !== "common");
 

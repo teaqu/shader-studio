@@ -81,7 +81,65 @@ export interface SlangWrapOptions {
   passName?: string;
   commonCode?: string;
   channels?: SlangChannelBinding[];
+  /**
+   * Variable-capture mode: adds the capture uniform block (selector index,
+   * capture coordinate, grid size) and swaps the fragment entry for one that
+   * remaps fragCoord before calling mainImage — Slang parameters are
+   * immutable, so the remap cannot be injected into the user body like GLSL.
+   */
+  captureMode?: boolean;
 }
+
+// Capture uniform block layout (bytes): coordGrid float4 @0
+// (xy = capture coord in ShaderToy fragCoord space, zw = grid size),
+// varIndex int @16, isPixelMode int @20, padding to 32.
+export const DBG_CAPTURE_UNIFORM_SIZE = 32;
+export const DBG_CAPTURE_OFFSETS = {
+  coordGrid: 0,
+  varIndex: 16,
+  isPixelMode: 20,
+} as const;
+
+function buildCapturePrelude(captureBinding: number): string {
+  return `// ---- shader-studio Slang capture prelude (generated) ----
+struct DbgCaptureUniforms
+{
+    float4 coordGrid;
+    int varIndex;
+    int isPixelMode;
+    int2 _dbgPad;
+};
+
+[[vk::binding(${captureBinding}, 0)]]
+ConstantBuffer<DbgCaptureUniforms> _dbgCapU;
+
+#define _dbgVarIndex (_dbgCapU.varIndex)
+`;
+}
+
+// The capture fragment entry renders either a 1×1 pixel probe (isPixelMode:
+// mainImage gets the exact requested fragCoord) or an N×M grid whose texels
+// spread over the full canvas. Texture row 0 maps to fragCoord.y≈0 (bottom of
+// the canvas in ShaderToy space), so the readback buffer has the same
+// bottom-to-top row order as WebGL's readPixels and decodes identically.
+const CAPTURE_ENTRY_POINTS = `
+// ---- shader-studio Slang capture entry points (generated) ----
+[shader("vertex")]
+float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
+{
+    float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
+    return float4(verts[vertexID], 0, 1);
+}
+
+[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
+{
+    float2 coord = _dbgCapU.isPixelMode != 0
+        ? _dbgCapU.coordGrid.xy
+        : fragCoord.xy / _dbgCapU.coordGrid.zw * _st.resolution.xy;
+    return mainImage(coord);
+}
+`;
 
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
   return [...channels]
@@ -114,6 +172,12 @@ float4 ${helperName}(float2 uv)
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
+  if (options.captureMode) {
+    // Capture uniforms bind right after the channel texture/sampler pairs.
+    const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
+    const capturePrelude = buildCapturePrelude(captureBinding);
+    return `${PRELUDE}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+  }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.

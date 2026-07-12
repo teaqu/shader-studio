@@ -172,24 +172,25 @@
     return unsubscribe;
   });
 
-  onMount(() => {
-    if (!variableCaptureManager) {
+  $effect(() => {
+    const manager = variableCaptureManager;
+    if (!manager) {
       return;
     }
 
-    internalSampleSize = variableCaptureManager.sampleSize;
-    internalRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelSelected);
-    internalPollingMs = variableCaptureManager.getActivePollingMs(hasPixelSelected);
-    variableCaptureManager.setLoadingStateCallback((isLoading) => {
+    internalSampleSize = manager.sampleSize;
+    internalRefreshMode = manager.getActiveRefreshMode(hasPixelSelected);
+    internalPollingMs = manager.getActivePollingMs(hasPixelSelected);
+    manager.setLoadingStateCallback((isLoading) => {
       internalVariableCaptureLoading = isLoading;
     });
-    variableCaptureManager.setErrorCallback((error) => {
+    manager.setErrorCallback((error) => {
       internalVariableCaptureError = error;
     });
-    variableCaptureManager.setSampleSettingsCallback(() => {
-      internalSampleSize = variableCaptureManager.sampleSize;
-      internalRefreshMode = variableCaptureManager.getActiveRefreshMode(hasPixelSelected);
-      internalPollingMs = variableCaptureManager.getActivePollingMs(hasPixelSelected);
+    manager.setSampleSettingsCallback(() => {
+      internalSampleSize = manager.sampleSize;
+      internalRefreshMode = manager.getActiveRefreshMode(hasPixelSelected);
+      internalPollingMs = manager.getActivePollingMs(hasPixelSelected);
       onCaptureSettingsChanged();
     });
   });

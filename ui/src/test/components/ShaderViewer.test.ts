@@ -163,6 +163,119 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   };
 });
 
+vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
+  const MockWebGPURenderingEngine = class {
+    private _canvas = { width: 800, height: 600 };
+    initialize() {}
+    handleCanvasResize(width: number, height: number) {
+      this._canvas = { width: Math.round(width), height: Math.round(height) };
+    }
+    togglePause() {}
+    stopRenderLoop() {}
+    startRenderLoop() {}
+    getCurrentFPS() {
+      return 60.0;
+    }
+    getUniforms() {
+      return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] };
+    }
+    getTimeManager() {
+      return mockTimeManager;
+    }
+    dispose() {}
+    readPixel() {
+      return { r: 255, g: 128, b: 64, a: 255 };
+    }
+    render() {}
+    updateBufferAndRecompile() {
+      return Promise.resolve({ success: true });
+    }
+    cleanup() {}
+    compileShaderPipeline() {
+      return Promise.resolve({ success: true });
+    }
+    getPasses() {
+      return [];
+    }
+    setInputEnabled(...args: any[]) {
+      return mockSetInputEnabled(...args);
+    }
+    setGlobalVolume(...args: any[]) {
+      return mockSetGlobalVolume(...args);
+    }
+    resumeAudioContext() {
+      return Promise.resolve();
+    }
+    resumeAllAudio() {}
+    controlAudio() {}
+    seekAudio() {}
+    updateAudioLoopRegion() {}
+    controlVideo() {}
+    getAudioState() {
+      return null;
+    }
+    getVideoState() {
+      return null;
+    }
+    getAudioFFTData() {
+      return null;
+    }
+    getFrameTimeHistory() {
+      return [];
+    }
+    getFrameTimeCount() {
+      return 0;
+    }
+    createVariableCapturer() {
+      return {
+        setCustomUniforms() {},
+        setCompileContext() {},
+        clearLastError() {},
+        getLastError() {
+          return null;
+        },
+        issueCaptureAtPixel() {
+          return 0;
+        },
+        issueCaptureGrid() {
+          return 0;
+        },
+        collectResults() {
+          return [];
+        },
+        dispose() {},
+      };
+    }
+    getVariableCaptureCompileContext() {
+      return { commonCode: '', slangChannels: [] };
+    }
+    getCaptureUniforms() {
+      return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] };
+    }
+    getCustomUniformDeclarations() {
+      return '';
+    }
+    getCurrentCustomUniforms() {
+      return [];
+    }
+    getCustomUniformInfo() {
+      return [];
+    }
+    getCanvas() {
+      return this._canvas;
+    }
+    setCustomUniformValues() {}
+    updateCustomUniformValues() {}
+    getShaderLanguage() {
+      return 'slang';
+    }
+  };
+
+  return {
+    WebGPURenderingEngine: MockWebGPURenderingEngine
+  };
+});
+
 vi.mock('../../lib/slangAssets', () => ({
   getSlangAssetUrls: () => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }),
 }));
@@ -254,6 +367,7 @@ const { mockVCMFactory } = vi.hoisted(() => {
     _sampleSettingsCallback: null as (() => void) | null,
     _lastNotifyParams: null as any,
     _notifyCalls: [] as any[],
+    _instances: [] as Array<{ disposed: boolean; notifyCalls: any[] }>,
     sampleSize: 32,
     refreshMode: 'polling',
     pollingMs: 500,
@@ -268,6 +382,7 @@ const { mockVCMFactory } = vi.hoisted(() => {
       this._sampleSettingsCallback = null;
       this._lastNotifyParams = null;
       this._notifyCalls = [];
+      this._instances = [];
       this.sampleSize = 32;
       this.refreshMode = 'polling';
       this.pollingMs = 500;
@@ -278,8 +393,12 @@ const { mockVCMFactory } = vi.hoisted(() => {
 
 vi.mock('../../lib/VariableCaptureManager', () => ({
   VariableCaptureManager: class {
+    private _instance: { disposed: boolean; notifyCalls: any[] };
+
     constructor(_engine: any, cb: (vars: any[]) => void) {
       mockVCMFactory._callback = cb;
+      this._instance = { disposed: false, notifyCalls: [] };
+      mockVCMFactory._instances.push(this._instance);
     }
     get sampleSize() {
       return mockVCMFactory.sampleSize; 
@@ -290,12 +409,13 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
     notifyStateChange(params: any) {
       mockVCMFactory._lastNotifyParams = params;
       mockVCMFactory._notifyCalls.push(params);
+      this._instance.notifyCalls.push(params);
     }
     stop() {
       mockVCMFactory._lastNotifyParams = null;
     }
     dispose() {
-      mockVCMFactory.reset(); 
+      this._instance.disposed = true;
     }
     changeSampleSize(size: number) {
       mockVCMFactory.sampleSize = size;
@@ -547,6 +667,33 @@ describe('ShaderViewer', () => {
     expect(mockVCMFactory._lastNotifyParams?.inputConfig).toEqual({
       iChannel0: { type: 'texture', path: 'noise.png' },
     });
+  });
+
+  it('should dispose the old variable capture manager when shader language swaps backend', async () => {
+    render(ShaderViewer, {
+      onInitialized: vi.fn()
+    });
+
+    await tick();
+    await loadShader();
+
+    expect(mockVCMFactory._instances).toHaveLength(1);
+    expect(mockVCMFactory._instances[0].disposed).toBe(false);
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/test/shader.slang',
+      code: 'float4 mainImage(float2 fragCoord) { float x = 1.0; return float4(x); }',
+      config: { passes: { Image: {} } },
+      pathMap: { Image: '/test/shader.slang' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mockVCMFactory._instances).toHaveLength(2);
+    });
+    expect(mockVCMFactory._instances[0].disposed).toBe(true);
+    expect(mockVCMFactory._instances[1].disposed).toBe(false);
   });
 
   it('should apply Image Config Resolution to the session stores on shader load', async () => {

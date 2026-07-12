@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
+import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
@@ -17,6 +18,10 @@ function noWebGpuCanvas(): HTMLCanvasElement {
 const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 
 describe("WebGPURenderingEngine", () => {
+  beforeEach(() => {
+    sharedSlangWgslCache.clear();
+  });
+
   it("initializes without throwing when WebGPU is unavailable", () => {
     const engine = new WebGPURenderingEngine(assets);
     expect(() => engine.initialize(noWebGpuCanvas())).not.toThrow();
@@ -120,13 +125,13 @@ describe("WebGPURenderingEngine", () => {
     expect(engine.getPasses()).toEqual([]);
     expect(engine.getCustomUniformInfo()).toEqual([]);
     expect(engine.getCustomUniformDeclarations()).toBe("");
-    expect(engine.readPixel()).toBeNull();
+    expect(engine.readPixel(0, 0)).toBeNull();
     expect(engine.getAudioFFTData()).toBeNull();
   });
 
-  it("throws a clear error if variable capture is attempted", () => {
+  it("throws a clear error if variable capture is attempted before the device is ready", () => {
     const engine = new WebGPURenderingEngine(assets);
-    expect(() => engine.createVariableCapturer()).toThrow(/not supported/i);
+    expect(() => engine.createVariableCapturer()).toThrow(/initialized/i);
   });
 
   it("dispose() disposes the compiler", () => {
@@ -1183,6 +1188,105 @@ describe("WebGPURenderingEngine", () => {
       return { engine, device, compiler };
     }
 
+    it("reuses compiled WGSL across fresh engine instances", async () => {
+      const first = cachedSetup();
+      const second = cachedSetup();
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "cache-buffer-a.slang", inputs: {} },
+        },
+      };
+
+      await first.engine.compileShaderPipeline(
+        "img cache cross instance",
+        config,
+        "/cache-cross-instance.slang",
+        { BufferA: "buf cache cross instance" },
+      );
+      await second.engine.compileShaderPipeline(
+        "img cache cross instance",
+        config,
+        "/cache-cross-instance.slang",
+        { BufferA: "buf cache cross instance" },
+      );
+
+      expect(first.compiler.compile).toHaveBeenCalledTimes(2);
+      expect(second.compiler.compile).not.toHaveBeenCalled();
+      expect((second.engine as any).passPipelines.get("Image")).toBeTruthy();
+      expect((second.engine as any).passPipelines.get("BufferA")).toBeTruthy();
+    });
+
+    it("does not reuse a failed Slang compile across fresh engine instances", async () => {
+      const first = cachedSetup();
+      const second = cachedSetup();
+      first.compiler.compile.mockImplementation((source: string) =>
+        source === "buf cache failure"
+          ? { success: false, errors: ["bad buffer"] }
+          : { success: true, wgsl: "// wgsl" });
+
+      const failed = await first.engine.compileShaderPipeline(
+        "img cache failure",
+        twoPassConfig,
+        "/cache-failure.slang",
+        { BufferA: "buf cache failure" },
+      );
+      const recovered = await second.engine.compileShaderPipeline(
+        "img cache failure",
+        twoPassConfig,
+        "/cache-failure.slang",
+        { BufferA: "buf cache failure" },
+      );
+
+      expect(failed?.success).toBe(false);
+      expect(recovered?.success).toBe(true);
+      expect(second.compiler.compile).toHaveBeenCalledWith("buf cache failure", expect.objectContaining({
+        passName: "BufferA",
+      }));
+    });
+
+    it("does not reuse compiled WGSL across fresh engine instances when common code changed", async () => {
+      const first = cachedSetup();
+      const second = cachedSetup();
+      await first.engine.compileShaderPipeline("img common cache", twoPassConfig, "/common-cache.slang", {
+        BufferA: "buf common cache",
+        common: "float k(){ return 1.0; }",
+      });
+
+      await second.engine.compileShaderPipeline("img common cache", twoPassConfig, "/common-cache.slang", {
+        BufferA: "buf common cache",
+        common: "float k(){ return 2.0; }",
+      });
+
+      expect(second.compiler.compile).toHaveBeenCalledTimes(2);
+    });
+
+    it("reuses only passes whose channel layout matches across fresh engine instances", async () => {
+      const first = cachedSetup();
+      const second = cachedSetup();
+      const rewired: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "a.slang", inputs: {} },
+        },
+      };
+
+      await first.engine.compileShaderPipeline("img channel cache", twoPassConfig, "/channel-cache.slang", {
+        BufferA: "buf channel cache",
+      });
+      await second.engine.compileShaderPipeline("img channel cache", rewired, "/channel-cache.slang", {
+        BufferA: "buf channel cache",
+      });
+
+      expect(second.compiler.compile).toHaveBeenCalledTimes(1);
+      expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
+        passName: "Image",
+        channels: [{ slot: 1, key: "iChannel1" }],
+      }));
+    });
+
     it("skips recompiling when nothing changed and reuses the same pipelines", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
@@ -1303,11 +1407,16 @@ describe("WebGPURenderingEngine", () => {
           passCount: 2,
           cacheHits: 1,
           compiledPasses: ["BufferA"],
+          passSummary: expect.stringContaining("BufferA"),
           passes: expect.arrayContaining([
             expect.objectContaining({ name: "BufferA", cacheHit: false, slangMs: expect.any(Number), pipelineMs: expect.any(Number) }),
             expect.objectContaining({ name: "Image", cacheHit: true }),
           ]),
         }));
+        expect(logSpy).toHaveBeenCalledWith(
+          "[SlangPerf] compile summary",
+          expect.stringContaining("BufferA"),
+        );
       } finally {
         logSpy.mockRestore();
       }

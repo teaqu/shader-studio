@@ -3,4 +3,6 @@ export type { FunctionInfo, VarInfo } from './GlslParser';
 export { CodeGenerator } from './CodeGenerator';
 export { ShaderDebugger } from './ShaderDebugger';
 export { VariableCaptureBuilder } from './VariableCaptureBuilder';
-export type { ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext, CaptureVarInfo } from './types';
+export { getDebugDialect } from './dialects';
+export type { DebugDialectAdapter } from './dialects';
+export type { ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext, CaptureVarInfo, ShaderDialect } from './types';

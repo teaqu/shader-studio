@@ -1,10 +1,16 @@
 import { GlslParser } from './GlslParser';
 import { CodeGenerator } from './CodeGenerator';
 import { ShaderDebugger } from './ShaderDebugger';
-import type { CaptureVarInfo } from './types';
+import type { CaptureVarInfo, ShaderDialect } from './types';
+import { getDebugDialect } from './dialects';
 
-// Types capturable by the variable inspector (mat2 fits in RGBA, mat3/mat4 excluded)
-const CAPTURABLE_TYPES = new Set(['float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2']);
+// Types capturable by the variable inspector (mat2 fits in RGBA, mat3/mat4
+// excluded). Covers both GLSL and Slang type names.
+const CAPTURABLE_TYPES = new Set([
+  'float', 'int', 'bool',
+  'vec2', 'vec3', 'vec4', 'mat2',
+  'float2', 'float3', 'float4', 'float2x2',
+]);
 
 const DEFAULT_GRID_SIZE = 64;
 
@@ -88,7 +94,7 @@ export class VariableCaptureBuilder {
     if (debugLine !== -1 && functionInfo.start >= 0 && result.length < 15) {
       const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
       const returnTypeMatch = funcLine.match(
-        /^\s*(float|vec2|vec3|vec4|int|bool|mat2)\s+\w+\s*\(/
+        /^\s*(float2x2|float[234]|float|vec[234]|int|bool|mat2)\s+\w+\s*\(/
       );
       if (returnTypeMatch && CAPTURABLE_TYPES.has(returnTypeMatch[1])) {
         const lineContent = lines[resolvedLine] || '';
@@ -125,8 +131,10 @@ export class VariableCaptureBuilder {
     captureCoordUniform: boolean,
     gridWidth: number = DEFAULT_GRID_SIZE,
     gridHeight: number = DEFAULT_GRID_SIZE,
+    dialect: ShaderDialect = 'glsl',
   ): string | null {
     if (vars.length === 0) return null;
+    const dialectAdapter = getDebugDialect(dialect);
 
     const lines = code.split('\n');
 
@@ -157,7 +165,10 @@ export class VariableCaptureBuilder {
         if (!isGlobal) return null;
       }
 
-      let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars);
+      let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars, dialect);
+      if (!dialectAdapter.needsCaptureCoordInjection) {
+        return shader;
+      }
       if (captureCoordUniform) {
         shader = VariableCaptureBuilder.injectCaptureCoord(shader);
       } else {
@@ -174,8 +185,12 @@ export class VariableCaptureBuilder {
         vars,
         loopMaxIterations,
         _customParameters,
+        dialect,
       );
       if (shader === null) return null;
+      if (!dialectAdapter.needsCaptureCoordInjection) {
+        return shader;
+      }
       if (captureCoordUniform) {
         shader = VariableCaptureBuilder.injectCaptureCoord(shader);
       } else {
@@ -186,8 +201,12 @@ export class VariableCaptureBuilder {
 
     const varTypes = GlslParser.buildVariableTypeMap(lines, resolvedLine, functionInfo);
     const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
+    const hasReturnCapture = dialectAdapter.mainImageReturnsValue && vars.some(v => v.varName === '_dbgReturn');
     for (const captureVar of vars) {
       if (VariableCaptureBuilder.isExternalCaptureVar(captureVar)) {
+        continue;
+      }
+      if (hasReturnCapture && captureVar.varName === '_dbgReturn') {
         continue;
       }
       const isLocal = varTypes.get(captureVar.varName) === captureVar.varType;
@@ -202,6 +221,20 @@ export class VariableCaptureBuilder {
     truncationEnd = CodeGenerator.extendForPreprocessorConditionals(lines, functionInfo.start, truncationEnd);
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
+
+    // Slang mainImage returns its color; capturing the return line means
+    // rewriting `return X;` into a `_dbgReturn` declaration the selector
+    // output can reference (mirrors ShaderDebugger.truncateMainImage).
+    if (hasReturnCapture) {
+      const returnVar = vars.find(v => v.varName === '_dbgReturn')!;
+      const returnRange = CodeGenerator.findReturnRange(truncatedLines, resolvedLine, truncationEnd);
+      if (returnRange) {
+        truncatedLines[returnRange.start] = truncatedLines[returnRange.start].replace(
+          /\breturn\b/,
+          `${returnVar.varType} ${returnVar.varName} =`,
+        );
+      }
+    }
     const { lines: shadowedLines, vars: outputVars } = VariableCaptureBuilder.insertSelectorShadows(
       truncatedLines,
       lines,
@@ -213,10 +246,15 @@ export class VariableCaptureBuilder {
     const closedLines = CodeGenerator.closeOpenBraces(withCappedLoops, functionInfo.start);
     const originalLength = withCappedLoops.length;
     const result = closedLines.slice(0, originalLength);
-    result.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(outputVars));
+    result.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(outputVars, dialect));
     result.push(...closedLines.slice(originalLength));
 
-    let shader = `uniform int _dbgVarIndex;\n${result.join('\n')}`;
+    if (!dialectAdapter.needsCaptureCoordInjection) {
+      return result.join('\n');
+    }
+
+    const selectorDeclaration = dialectAdapter.captureSelectorDeclaration();
+    let shader = selectorDeclaration ? `${selectorDeclaration}\n${result.join('\n')}` : result.join('\n');
     if (captureCoordUniform) {
       shader = VariableCaptureBuilder.injectCaptureCoord(shader);
     } else {
@@ -228,7 +266,9 @@ export class VariableCaptureBuilder {
   private static wrapGlobalScopeForMultiCapture(
     lines: string[],
     vars: CaptureVarInfo[],
+    dialect: ShaderDialect = 'glsl',
   ): string {
+    const dialectAdapter = getDebugDialect(dialect);
     const mainImageStart = VariableCaptureBuilder.findMainImageStart(lines);
     const mainImageEnd = mainImageStart >= 0
       ? VariableCaptureBuilder.findFunctionEnd(lines, mainImageStart)
@@ -241,14 +281,17 @@ export class VariableCaptureBuilder {
       ]
       : [...lines];
 
-    return [
-      'uniform int _dbgVarIndex;',
+    const result = [
       ...preservedLines,
       '',
-      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
-      ...VariableCaptureBuilder.generateSelectorCaptureOutput(vars),
+      dialectAdapter.mainImageWrapperOpen(),
+      ...VariableCaptureBuilder.generateSelectorCaptureOutput(vars, dialect),
       '}',
-    ].join('\n');
+    ];
+    const selectorDeclaration = dialectAdapter.captureSelectorDeclaration();
+    return selectorDeclaration
+      ? [selectorDeclaration, ...result].join('\n')
+      : result.join('\n');
   }
 
   private static wrapFunctionForMultiCapture(
@@ -258,6 +301,7 @@ export class VariableCaptureBuilder {
     vars: CaptureVarInfo[],
     loopMaxIterations: Map<number, number>,
     customParameters: Map<number, string>,
+    dialect: ShaderDialect = 'glsl',
   ): string | null {
     const returnType = VariableCaptureBuilder.getFunctionReturnType(lines, functionInfo.start);
     if (returnType === null) return null;
@@ -359,13 +403,13 @@ export class VariableCaptureBuilder {
       const outputVar = outputVars[outputVarIndex++];
       result.push(`  _dbgCaptured${index} = ${outputVar.varName};`);
     }
-    const defaultReturn = VariableCaptureBuilder.generateDefaultReturn(returnType);
+    const defaultReturn = VariableCaptureBuilder.generateDefaultReturn(returnType, dialect);
     if (defaultReturn) {
       result.push(`  ${defaultReturn}`);
     }
     result.push(...closedLines.slice(originalLength));
 
-    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
+    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo, dialect);
     const defaultArgs = params.args ? params.args.split(', ') : [];
     const args = defaultArgs.map((arg, index) => {
       const custom = customParameters.get(index);
@@ -374,19 +418,23 @@ export class VariableCaptureBuilder {
     let setup = [...params.setup];
     const anyArgUsesUv = args.some(arg => arg === 'uv' || arg.includes('uv'));
     if (!anyArgUsesUv) {
-      setup = setup.filter(s => !s.includes('vec2 uv'));
+      setup = setup.filter(s => !s.includes(' uv = '));
     }
 
     const wrapper: string[] = [];
-    wrapper.push('uniform int _dbgVarIndex;');
+    const dialectAdapter = getDebugDialect(dialect);
+    const selectorDeclaration = dialectAdapter.captureSelectorDeclaration();
+    if (selectorDeclaration) {
+      wrapper.push(selectorDeclaration);
+    }
     wrapper.push(...preservedSource);
     wrapper.push('');
     for (let index = 0; index < vars.length; index++) {
-      wrapper.push(`${vars[index].varType} _dbgCaptured${index};`);
+      wrapper.push(dialectAdapter.moduleCaptureDeclaration(vars[index].varType, `_dbgCaptured${index}`));
     }
     wrapper.push(...result);
     wrapper.push('');
-    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    wrapper.push(dialectAdapter.mainImageWrapperOpen());
     if (setup.length > 0) {
       wrapper.push(...setup);
     }
@@ -394,7 +442,7 @@ export class VariableCaptureBuilder {
     wrapper.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(vars.map((captureVar, index) => ({
       ...captureVar,
       varName: `_dbgCaptured${index}`,
-    }))));
+    })), dialect));
     wrapper.push('}');
 
     return wrapper.join('\n');
@@ -519,18 +567,22 @@ export class VariableCaptureBuilder {
     return CodeGenerator.extendForMultiLine(lines, declarationLine);
   }
 
-  private static generateSelectorCaptureOutput(vars: CaptureVarInfo[]): string[] {
+  private static generateSelectorCaptureOutput(vars: CaptureVarInfo[], dialect: ShaderDialect = 'glsl'): string[] {
+    const dialectAdapter = getDebugDialect(dialect);
     const lines: string[] = [];
     for (let index = 0; index < vars.length; index++) {
       const captureVar = vars[index];
       lines.push(`  if (_dbgVarIndex == ${index}) {`);
-      lines.push(...CodeGenerator.generateCaptureOutputForVar(captureVar.varType, captureVar.varName)
+      lines.push(...CodeGenerator.generateCaptureOutputForVar(captureVar.varType, captureVar.varName, dialect)
         .split('\n')
         .map(line => `  ${line}`));
-      lines.push('    return;');
+      const selectorReturn = dialectAdapter.selectorReturnAfterOutput();
+      if (selectorReturn) {
+        lines.push(selectorReturn);
+      }
       lines.push('  }');
     }
-    lines.push('  fragColor = vec4(0.0);');
+    lines.push(dialectAdapter.selectorFallbackStatement());
     return lines;
   }
 
@@ -584,31 +636,8 @@ export class VariableCaptureBuilder {
     return match?.[1] ?? null;
   }
 
-  private static generateDefaultReturn(returnType: string): string | null {
-    switch (returnType) {
-      case 'void':
-        return null;
-      case 'float':
-        return 'return 0.0;';
-      case 'vec2':
-        return 'return vec2(0.0);';
-      case 'vec3':
-        return 'return vec3(0.0);';
-      case 'vec4':
-        return 'return vec4(0.0);';
-      case 'int':
-        return 'return 0;';
-      case 'bool':
-        return 'return false;';
-      case 'mat2':
-        return 'return mat2(0.0);';
-      case 'mat3':
-        return 'return mat3(0.0);';
-      case 'mat4':
-        return 'return mat4(0.0);';
-      default:
-        return null;
-    }
+  private static generateDefaultReturn(returnType: string, dialect: ShaderDialect = 'glsl'): string | null {
+    return getDebugDialect(dialect).defaultReturnStatement(CodeGenerator.canonicalType(returnType));
   }
 
   /**
@@ -695,8 +724,10 @@ export class VariableCaptureBuilder {
   }
 
   private static findMainImageStart(lines: string[]): number {
+    // Matches both GLSL (void mainImage) and Slang (float4 mainImage); the
+    // two signatures never coexist in one source.
     for (let i = 0; i < lines.length; i++) {
-      if (/void\s+mainImage\s*\(/.test(lines[i])) {
+      if (/(?:void|float4)\s+mainImage\s*\(/.test(lines[i])) {
         return i;
       }
     }

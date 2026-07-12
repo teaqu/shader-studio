@@ -1,7 +1,7 @@
 import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
-import type { VariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
+import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -32,8 +32,10 @@ export interface RenderingEngine {
   getUniforms(): import("../models").PassUniforms;
   cleanup(): void;
   readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null;
-  createVariableCapturer(): VariableCapturer;
-  getVariableCaptureCompileContext(code?: string): CaptureCompileContext;
+  createVariableCapturer(): IVariableCapturer;
+  getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext;
+  /** Shader source dialect the engine renders ('glsl' for WebGL, 'slang' for WebGPU). */
+  getShaderLanguage(): "glsl" | "slang";
   getCaptureUniforms(): CaptureUniforms;
   resumeAudioContext(): Promise<void>;
   resumeAllAudio(): void;
