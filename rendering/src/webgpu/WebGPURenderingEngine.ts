@@ -107,6 +107,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private currentConfig: ShaderConfig | null = null;
   private running = false;
   private rafId: number | null = null;
+  private fpsLimit = 0;
+  private lastRenderedAt: number | null = null;
+  private frameTimeBuffer: number[] = new Array(3600);
+  private frameTimeHead = 0;
+  private frameTimeLen = 0;
+  private frameTimeCount = 0;
+  private previousFrameTimestamp: number | null = null;
+  private static readonly MAX_FRAME_TIME_HISTORY = 3600;
 
   constructor(private slangAssets: SlangAssetUrls) {}
 
@@ -536,6 +544,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.device || !this.context || this.passGraph.length === 0) {
       return;
     }
+    if (!this.shouldRenderFrame(time)) {
+      return;
+    }
 
     this.timeManager.updateFrame(time);
     this.fps.updateFrame(time);
@@ -608,7 +619,45 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
     }
 
+    this.recordFrameTime(time);
     this.timeManager.incrementFrame();
+  }
+
+  private shouldRenderFrame(time: number): boolean {
+    if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
+      const minFrameInterval = 1000 / this.fpsLimit;
+      const elapsed = time - this.lastRenderedAt;
+      if (elapsed < minFrameInterval * 0.9) {
+        return false;
+      }
+
+      this.lastRenderedAt += minFrameInterval;
+      if (this.lastRenderedAt < time - minFrameInterval) {
+        this.lastRenderedAt = time;
+      }
+      return true;
+    }
+
+    this.lastRenderedAt = time;
+    return true;
+  }
+
+  private recordFrameTime(time: number): void {
+    if (this.timeManager.isPaused()) {
+      this.previousFrameTimestamp = null;
+      return;
+    }
+
+    if (this.previousFrameTimestamp !== null) {
+      const frameDelta = time - this.previousFrameTimestamp;
+      if (frameDelta < 500) {
+        this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
+        this.frameTimeHead = (this.frameTimeHead + 1) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
+        if (this.frameTimeLen < WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) this.frameTimeLen++;
+        this.frameTimeCount++;
+      }
+    }
+    this.previousFrameTimestamp = time;
   }
 
   /**
@@ -788,15 +837,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   getFrameTimeHistory(): number[] {
-    return [];
+    if (this.frameTimeLen === 0) return [];
+    const start = (
+      this.frameTimeHead - this.frameTimeLen + WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY
+    ) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
+    if (start + this.frameTimeLen <= WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) {
+      return this.frameTimeBuffer.slice(start, start + this.frameTimeLen);
+    }
+    return this.frameTimeBuffer.slice(start).concat(this.frameTimeBuffer.slice(0, this.frameTimeHead));
   }
 
   getFrameTimeCount(): number {
-    return 0;
+    return this.frameTimeCount;
   }
 
-  setFPSLimit(_limit: number): void {
-    // Not implemented for M1; render loop runs at rAF cadence.
+  setFPSLimit(limit: number): void {
+    this.fpsLimit = limit;
+    this.lastRenderedAt = null;
   }
 
   readPixel(): { r: number; g: number; b: number; a: number } | null {

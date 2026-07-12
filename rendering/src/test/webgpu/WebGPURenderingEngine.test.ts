@@ -765,6 +765,58 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
+  describe("frame pacing and frame times", () => {
+    async function compiledEngine() {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+      expect(result?.success).toBe(true);
+      vi.mocked(device.queue.submit).mockClear();
+      return { engine, device };
+    }
+
+    it("skips renders when the FPS limit interval has not elapsed", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.render(1010);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(engine.getTimeManager().getFrame()).toBe(1);
+    });
+
+    it("renders every frame when the FPS limit is disabled", async () => {
+      const { engine, device } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.setFPSLimit(0);
+      engine.render(1010);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+      expect(engine.getTimeManager().getFrame()).toBe(2);
+    });
+
+    it("records chronological frame times for rendered frames only", async () => {
+      const { engine } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.render(1010);
+      engine.render(1034);
+      engine.render(1068);
+
+      expect(engine.getFrameTimeHistory()).toEqual([34, 34]);
+      expect(engine.getFrameTimeCount()).toBe(2);
+    });
+  });
+
   describe("updateBufferAndRecompile", () => {
     const bufferConfig: ShaderConfig = {
       version: "1",
