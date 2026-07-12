@@ -1,17 +1,17 @@
-import type { PiRenderer, PiTexture } from "../types/piRenderer";
+import type { TextureBackend } from "./TextureBackend";
 
-export class ShaderKeyboardInput {
+export class ShaderKeyboardInput<T> {
   private static readonly KEYBOARD_SIZE = 256;
   private static readonly KEYBOARD_LAYERS = 3;
 
-  private keyboardTexture: PiTexture | null = null;
+  private keyboardTexture: T | null = null;
   private readonly keyboardBuffer = new Uint8Array(
     ShaderKeyboardInput.KEYBOARD_SIZE * ShaderKeyboardInput.KEYBOARD_LAYERS
   );
 
-  constructor(private readonly renderer: PiRenderer) {}
+  constructor(private readonly backend: TextureBackend<T>) {}
 
-  public getKeyboardTexture(): PiTexture | null {
+  public getKeyboardTexture(): T | null {
     return this.keyboardTexture;
   }
 
@@ -21,7 +21,7 @@ export class ShaderKeyboardInput {
     keyToggled: Uint8Array,
   ): void {
     this.updateKeyboardBuffer(keyHeld, keyPressed, keyToggled);
-    
+
     if (!this.keyboardTexture) {
       this.createKeyboardTexture();
     } else {
@@ -31,7 +31,7 @@ export class ShaderKeyboardInput {
 
   public cleanup(): void {
     if (this.keyboardTexture) {
-      this.renderer.DestroyTexture(this.keyboardTexture);
+      this.backend.destroyTexture(this.keyboardTexture);
       this.keyboardTexture = null;
     }
   }
@@ -47,20 +47,20 @@ export class ShaderKeyboardInput {
   }
 
   private createKeyboardTexture(): void {
-    this.keyboardTexture = this.renderer.CreateTexture(
-      this.renderer.TEXTYPE.T2D,
-      ShaderKeyboardInput.KEYBOARD_SIZE,
-      ShaderKeyboardInput.KEYBOARD_LAYERS,
-      this.renderer.TEXFMT.C1I8,
-      this.renderer.FILTER.NONE,
-      this.renderer.TEXWRP.CLAMP,
-      this.keyboardBuffer,
-    );
+    this.keyboardTexture = this.backend.createTexture({
+      type: "2d",
+      width: ShaderKeyboardInput.KEYBOARD_SIZE,
+      height: ShaderKeyboardInput.KEYBOARD_LAYERS,
+      format: "r8",
+      filter: "nearest",
+      wrap: "clamp",
+      data: this.keyboardBuffer,
+    });
   }
 
   private updateExistingKeyboardTexture(): void {
     if (this.keyboardTexture) {
-      this.renderer.UpdateTexture(
+      this.backend.updateTexture(
         this.keyboardTexture,
         0,
         0,

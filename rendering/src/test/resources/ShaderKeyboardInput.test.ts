@@ -1,53 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ShaderKeyboardInput } from "../../resources/ShaderKeyboardInput";
-import type { PiRenderer, PiTexture } from "../../types/piRenderer";
+import type { TextureBackend } from "../../resources/TextureBackend";
 
-const createMockTexture = (id = 1): PiTexture => ({
-  mObjectID: { id } as any,
-  mXres: 256,
-  mYres: 3,
-  mFormat: 2,
-  mType: 0,
-  mFilter: 0,
-  mWrap: 0,
-  mVFlip: false,
-});
+interface FakeTex { id: number }
 
-const createMockRenderer = (): PiRenderer => {
-  let textureId = 0;
+function mockBackend() {
+  let next = 1;
   return {
-    FILTER: { LINEAR: 1, NONE: 0, MIPMAP: 2 },
-    TEXFMT: { C1I8: 2, C4I8: 1 },
-    TEXTYPE: { T2D: 0, T3D: 2 },
-    TEXWRP: { CLAMP: 0, REPEAT: 1 },
-
-    CreateTexture: vi.fn(() => createMockTexture(++textureId)),
-    UpdateTexture: vi.fn(),
-    DestroyTexture: vi.fn(),
-    CreateTextureFromImage: vi.fn(),
-    UpdateTextureFromImage: vi.fn(),
-    CreateRenderTarget: vi.fn(),
-    CreateShader: vi.fn(),
-    DestroyRenderTarget: vi.fn(),
-    DestroyShader: vi.fn(),
-    SetRenderTarget: vi.fn(),
-    SetViewport: vi.fn(),
-    AttachShader: vi.fn(),
-    SetShaderTextureUnit: vi.fn(),
-    AttachTextures: vi.fn(),
-    GetAttribLocation: vi.fn(() => 0),
-    DrawUnitQuad_XY: vi.fn(),
-    Flush: vi.fn(),
-  } as unknown as PiRenderer;
-};
+    createTexture: vi.fn((): FakeTex => ({ id: next++ })),
+    createTextureFromImage: vi.fn((): FakeTex => ({ id: next++ })),
+    createMipmaps: vi.fn(),
+    updateTexture: vi.fn(),
+    updateTextureFromImage: vi.fn(),
+    destroyTexture: vi.fn(),
+  } satisfies TextureBackend<FakeTex>;
+}
 
 describe("ShaderKeyboardInput", () => {
-  let renderer: PiRenderer;
-  let keyboardInput: ShaderKeyboardInput;
+  let backend: TextureBackend<FakeTex>;
+  let keyboardInput: ShaderKeyboardInput<FakeTex>;
 
   beforeEach(() => {
-    renderer = createMockRenderer();
-    keyboardInput = new ShaderKeyboardInput(renderer);
+    backend = mockBackend();
+    keyboardInput = new ShaderKeyboardInput(backend);
   });
 
   describe("initial state", () => {
@@ -64,16 +39,10 @@ describe("ShaderKeyboardInput", () => {
 
       keyboardInput.updateKeyboardTexture(held, pressed, toggled);
 
-      expect(renderer.CreateTexture).toHaveBeenCalledTimes(1);
-      expect(renderer.CreateTexture).toHaveBeenCalledWith(
-        renderer.TEXTYPE.T2D,
-        256, // KEYBOARD_SIZE
-        3, // KEYBOARD_LAYERS
-        renderer.TEXFMT.C1I8,
-        renderer.FILTER.NONE,
-        renderer.TEXWRP.CLAMP,
-        expect.any(Uint8Array),
-      );
+      expect(backend.createTexture).toHaveBeenCalledTimes(1);
+      const call = (backend.createTexture as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call).toMatchObject({ type: "2d", width: 256, height: 3, format: "r8", filter: "nearest", wrap: "clamp" });
+      expect(call.data).toBeInstanceOf(Uint8Array);
       expect(keyboardInput.getKeyboardTexture()).not.toBeNull();
     });
 
@@ -88,10 +57,11 @@ describe("ShaderKeyboardInput", () => {
       // Second call updates
       keyboardInput.updateKeyboardTexture(held, pressed, toggled);
 
-      expect(renderer.CreateTexture).toHaveBeenCalledTimes(1);
-      expect(renderer.UpdateTexture).toHaveBeenCalledTimes(1);
-      expect(renderer.UpdateTexture).toHaveBeenCalledWith(
-        expect.any(Object),
+      expect(backend.createTexture).toHaveBeenCalledTimes(1);
+      expect(backend.updateTexture).toHaveBeenCalledTimes(1);
+      const tex = keyboardInput.getKeyboardTexture();
+      expect(backend.updateTexture).toHaveBeenCalledWith(
+        tex,
         0,
         0,
         256,
@@ -111,7 +81,8 @@ describe("ShaderKeyboardInput", () => {
 
       keyboardInput.updateKeyboardTexture(held, pressed, toggled);
 
-      const buffer = vi.mocked(renderer.CreateTexture).mock.calls[0][6] as Uint8Array;
+      const call = (backend.createTexture as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const buffer = call.data as Uint8Array;
 
       // Row 0: held (indices 0-255)
       expect(buffer[65]).toBe(255);
@@ -132,7 +103,7 @@ describe("ShaderKeyboardInput", () => {
       held[70] = 255;
       keyboardInput.updateKeyboardTexture(held, pressed, toggled);
 
-      expect(renderer.UpdateTexture).toHaveBeenCalledTimes(1);
+      expect(backend.updateTexture).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -146,7 +117,7 @@ describe("ShaderKeyboardInput", () => {
 
       const texture = keyboardInput.getKeyboardTexture();
       expect(texture).not.toBeNull();
-      expect(texture!.mObjectID).toBeDefined();
+      expect(texture!.id).toBeDefined();
     });
   });
 
@@ -160,14 +131,14 @@ describe("ShaderKeyboardInput", () => {
 
       keyboardInput.cleanup();
 
-      expect(renderer.DestroyTexture).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
       expect(keyboardInput.getKeyboardTexture()).toBeNull();
     });
 
     it("should be safe to call cleanup when no texture exists", () => {
       keyboardInput.cleanup();
 
-      expect(renderer.DestroyTexture).not.toHaveBeenCalled();
+      expect(backend.destroyTexture).not.toHaveBeenCalled();
     });
 
     it("should be safe to call cleanup multiple times", () => {
@@ -180,7 +151,7 @@ describe("ShaderKeyboardInput", () => {
       keyboardInput.cleanup();
       keyboardInput.cleanup();
 
-      expect(renderer.DestroyTexture).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
     });
 
     it("should allow creating new texture after cleanup", () => {
@@ -193,7 +164,7 @@ describe("ShaderKeyboardInput", () => {
 
       keyboardInput.updateKeyboardTexture(held, pressed, toggled);
 
-      expect(renderer.CreateTexture).toHaveBeenCalledTimes(2);
+      expect(backend.createTexture).toHaveBeenCalledTimes(2);
       expect(keyboardInput.getKeyboardTexture()).not.toBeNull();
     });
   });
