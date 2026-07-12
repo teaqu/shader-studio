@@ -801,6 +801,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
   ): Array<{ slot: number; textureView: GPUTextureView }> | null {
     const resources: Array<{ slot: number; textureView: GPUTextureView }> = [];
     for (const channel of pass.channels) {
+      // TEMPORARY bridge: only buffer channels resolve to texture views today.
+      // Task 12 adds texture/keyboard resource resolution.
+      if (channel.kind !== "buffer") {
+        return null;
+      }
       const source = this.passPipelines.get(channel.source);
       const textureView = channel.readFrom === "previous-frame"
         ? source?.getPreviousOutputView()

@@ -70,7 +70,7 @@ describe("buildSlangPassGraph", () => {
       height: 180,
     });
     expect(graph.passes[1].channels).toEqual([
-      { slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
     ]);
   });
 
@@ -96,7 +96,7 @@ describe("buildSlangPassGraph", () => {
 
     expect(graph.errors).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "BufferA")?.channels).toEqual([
-      { slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" },
+      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" },
     ]);
   });
 
@@ -106,7 +106,7 @@ describe("buildSlangPassGraph", () => {
       passes: {
         Image: {
           inputs: {
-            iChannel0: { type: "texture", path: "noise.png" },
+            iChannel0: { type: "audio", path: "noise.mp3" },
             iChannel1: { type: "buffer", source: "BufferB" },
           },
         },
@@ -124,7 +124,7 @@ describe("buildSlangPassGraph", () => {
 
     expect(graph.errors).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
     expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"BufferB\"");
-    expect(graph.warnings).toContain("Image: iChannel0 uses unsupported Slang/WebGPU input type \"texture\"");
+    expect(graph.warnings).toContain("Image: iChannel0 uses unsupported Slang/WebGPU input type \"audio\"");
   });
 
   it("errors when a channel's buffer source is not a buffer pass name", () => {
@@ -334,8 +334,8 @@ describe("buildSlangPassGraph", () => {
 
     expect(graph.errors).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([
-      { slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
-      { slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
+      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+      { kind: "buffer", slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
     ]);
   });
 
@@ -359,5 +359,81 @@ describe("buildSlangPassGraph", () => {
     expect(graph.errors).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "BufferA")?.path).toBe("buffer-a.slang");
     expect(graph.passes.find((pass) => pass.name === "Image")?.path).toBeUndefined();
+  });
+});
+
+describe("texture and keyboard channels", () => {
+  const imageCode = "float4 mainImage(float2 c){return float4(1);}";
+
+  it("resolves a texture input with resolved_path preferred over path", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: {
+        iChannel0: { type: "texture", path: "img.png", resolved_path: "/abs/img.png", filter: "linear", wrap: "clamp", vflip: false, grayscale: true },
+      } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0].channels).toEqual([{
+      kind: "texture", slot: 0, key: "iChannel0", path: "/abs/img.png",
+      filter: "linear", wrap: "clamp", vflip: false, grayscale: true,
+    }]);
+  });
+
+  it("falls back to path when resolved_path is absent", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "img.png" } } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.passes[0].channels[0]).toMatchObject({ kind: "texture", path: "img.png" });
+  });
+
+  it("errors when a texture input has no path", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "" } } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.errors).toEqual(["Image: iChannel0 texture input is missing a path"]);
+  });
+
+  it("resolves a keyboard input", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: { iChannel1: { type: "keyboard" } } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.passes[0].channels).toEqual([{ kind: "keyboard", slot: 1, key: "iChannel1" }]);
+  });
+
+  it("still warns on audio/video/cubemap inputs", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: { iChannel0: { type: "audio", path: "a.mp3" } } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.warnings[0]).toMatch(/unsupported Slang\/WebGPU input type "audio"/);
+    expect(graph.passes[0].channels).toEqual([]);
+  });
+
+  it("sorts mixed channel kinds by slot", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: {
+        BufferA: { path: "a.slang" },
+        Image: { inputs: {
+          iChannel2: { type: "keyboard" },
+          iChannel0: { type: "texture", path: "t.png" },
+          iChannel1: { type: "buffer", source: "BufferA" },
+        } },
+      } },
+      buffers: { BufferA: "float4 mainImage(float2 c){return float4(0);}" },
+      canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.passes.map(p => p.name)).toEqual(["BufferA", "Image"]);
+    expect(graph.passes[1].channels.map(c => [c.kind, c.slot])).toEqual([
+      ["texture", 0], ["buffer", 1], ["keyboard", 2],
+    ]);
   });
 });

@@ -610,7 +610,7 @@ describe("WebGPURenderingEngine", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "texture", path: "foo.png" } } },
+          Image: { inputs: { iChannel0: { type: "audio", path: "foo.mp3" } } },
         },
       },
       "/image.slang",
@@ -1292,7 +1292,7 @@ describe("WebGPURenderingEngine", () => {
         height: 180,
         output: "texture",
         // Self-feedback: BufferA reads its own previous frame.
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
+        channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
       },
       { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
     ];
@@ -1328,7 +1328,7 @@ describe("WebGPURenderingEngine", () => {
         width: 320,
         height: 180,
         output: "canvas",
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+        channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
       },
     ];
     (engine as any).passPipelines = new Map([
@@ -1368,8 +1368,8 @@ describe("WebGPURenderingEngine", () => {
         // BufferB never compiled -> binding the lone survivor positionally
         // would mis-bind it, so the whole pass must be skipped this frame.
         channels: [
-          { slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
-          { slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
+          { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+          { kind: "buffer", slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
         ],
       },
     ];
@@ -1443,7 +1443,7 @@ describe("WebGPURenderingEngine", () => {
         width: 320,
         height: 180,
         output: "canvas",
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+        channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
       },
     ];
     (engine as any).passPipelines = new Map([
@@ -1479,7 +1479,7 @@ describe("WebGPURenderingEngine", () => {
         width: 320,
         height: 180,
         output: "canvas",
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
+        channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
       },
     ];
     (engine as any).passPipelines = new Map([

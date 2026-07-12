@@ -165,6 +165,30 @@ function resolveChannels(options: {
       continue;
     }
 
+    if (input.type === "texture") {
+      const path = input.resolved_path || input.path;
+      if (!path) {
+        options.errors.push(`${options.passName}: ${key} texture input is missing a path`);
+        continue;
+      }
+      channels.push({
+        kind: "texture",
+        slot,
+        key,
+        path,
+        filter: input.filter,
+        wrap: input.wrap,
+        vflip: input.vflip,
+        grayscale: input.grayscale,
+      });
+      continue;
+    }
+
+    if (input.type === "keyboard") {
+      channels.push({ kind: "keyboard", slot, key });
+      continue;
+    }
+
     if (input.type !== "buffer") {
       options.warnings.push(`${options.passName}: ${key} uses unsupported Slang/WebGPU input type "${input.type}"`);
       continue;
@@ -183,6 +207,7 @@ function resolveChannels(options: {
     }
 
     channels.push({
+      kind: "buffer",
       slot,
       key,
       source: input.source,
