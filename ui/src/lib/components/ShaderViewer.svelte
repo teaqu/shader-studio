@@ -13,10 +13,8 @@
   import DebugPanel from "./debug/DebugPanel.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
-  import { RenderingEngine } from "../../../../rendering/src/webgl/RenderingEngine";
-  import { WebGPURenderingEngine } from "../../../../rendering/src/webgpu/WebGPURenderingEngine";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
-  import { getSlangAssetUrls } from "../slangAssets";
+  import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
@@ -457,12 +455,6 @@
         pendingSwapStartedAt = null;
       }
     }
-  }
-
-  function createEngineForLanguage(language: "glsl" | "slang"): IRenderingEngine {
-    return language === "slang"
-      ? new WebGPURenderingEngine(getSlangAssetUrls())
-      : new RenderingEngine();
   }
 
   // Builds (or rebuilds) the rendering engine and the engine-bound managers for
@@ -1050,6 +1042,7 @@
             config: currentConfig,
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
+            language: engineLanguage,
           };
         },
         (blob, defaultName, filters) => {

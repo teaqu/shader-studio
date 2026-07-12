@@ -108,6 +108,27 @@ describe("WebGPURenderingEngine", () => {
     expect(() => engine.render(0)).not.toThrow();
   });
 
+  it("renderForCapture renders one frame even when FPS pacing would skip render()", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+    (engine as any).passGraph = [
+      { name: "Image", width: 320, height: 180, output: "canvas", channels: [] },
+    ];
+    (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+    engine.setFPSLimit(1);
+
+    engine.render(1000);
+    engine.render(1001);
+    engine.renderForCapture();
+
+    const device = (engine as any).device;
+    expect(device.queue.submit).toHaveBeenCalledTimes(2);
+  });
+
   it("exposes a TimeManager and the expected uniform shape", () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());

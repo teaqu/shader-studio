@@ -71,6 +71,12 @@ const mockGetTimeManager = vi.fn(() => ({
   setFrame: mockSetFrame,
   setDeltaTime: mockSetDeltaTime,
 }));
+const mockWebGPUInitialize = vi.fn();
+const mockWebGPUHandleCanvasResize = vi.fn();
+const mockWebGPUCompileShaderPipeline = vi.fn(() => Promise.resolve({ success: true }));
+const mockWebGPURenderForCapture = vi.fn();
+const mockWebGPUDispose = vi.fn();
+const mockGetSlangAssetUrls = vi.fn(() => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }));
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => ({
   RenderingEngine: vi.fn(() => ({
@@ -83,6 +89,21 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => ({
   })),
 }));
 
+vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => ({
+  WebGPURenderingEngine: vi.fn(() => ({
+    initialize: mockWebGPUInitialize,
+    handleCanvasResize: mockWebGPUHandleCanvasResize,
+    compileShaderPipeline: mockWebGPUCompileShaderPipeline,
+    renderForCapture: mockWebGPURenderForCapture,
+    dispose: mockWebGPUDispose,
+    getTimeManager: mockGetTimeManager,
+  })),
+}));
+
+vi.mock('../../lib/slangAssets', () => ({
+  getSlangAssetUrls: () => mockGetSlangAssetUrls(),
+}));
+
 import { ShaderRecorder, type RecordingConfig, type ShaderInfo, type ScreenshotConfig } from '../../lib/recording/ShaderRecorder';
 import { VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
 import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
@@ -92,6 +113,14 @@ const shaderInfo: ShaderInfo = {
   config: null,
   path: '/test/shader.glsl',
   buffers: {},
+};
+
+const slangShaderInfo: ShaderInfo = {
+  code: 'float4 mainImage(float2 uv) { return float4(1.0); }',
+  config: null,
+  path: '/test/shader.slang',
+  buffers: {},
+  language: 'slang',
 };
 
 describe('ShaderRecorder', () => {
@@ -142,6 +171,24 @@ describe('ShaderRecorder', () => {
         shaderInfo.path,
         shaderInfo.buffers,
       );
+    });
+
+    it('should use a WebGPU offscreen engine for Slang screenshots', async () => {
+      const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
+
+      await recorder.captureScreenshot(config, slangShaderInfo);
+
+      expect(mockGetSlangAssetUrls).toHaveBeenCalled();
+      expect(mockInitialize).not.toHaveBeenCalled();
+      expect(mockWebGPUInitialize).toHaveBeenCalledWith(expect.anything(), true);
+      expect(mockWebGPUHandleCanvasResize).toHaveBeenCalledWith(800, 600);
+      expect(mockWebGPUCompileShaderPipeline).toHaveBeenCalledWith(
+        slangShaderInfo.code,
+        slangShaderInfo.config,
+        slangShaderInfo.path,
+        slangShaderInfo.buffers,
+      );
+      expect(mockWebGPURenderForCapture).toHaveBeenCalled();
     });
 
     it('should render at specified time', async () => {
@@ -260,6 +307,24 @@ describe('ShaderRecorder', () => {
       expect(VideoEncoderWrapper).not.toHaveBeenCalled();
     });
 
+    it('should use a WebGPU offscreen engine for Slang videos', async () => {
+      const p = recorder.record(baseConfig, slangShaderInfo);
+      await vi.runAllTimersAsync();
+      await p;
+
+      expect(mockGetSlangAssetUrls).toHaveBeenCalled();
+      expect(mockInitialize).not.toHaveBeenCalled();
+      expect(mockWebGPUInitialize).toHaveBeenCalledWith(expect.anything(), true);
+      expect(mockWebGPUCompileShaderPipeline).toHaveBeenCalledWith(
+        slangShaderInfo.code,
+        slangShaderInfo.config,
+        slangShaderInfo.path,
+        slangShaderInfo.buffers,
+      );
+      expect(mockWebGPURenderForCapture).toHaveBeenCalled();
+      expect(mockWebGPUDispose).toHaveBeenCalled();
+    });
+
     it('should render correct number of frames', async () => {
       await rec({ ...baseConfig, duration: 1, fps: 10 });
 
@@ -318,9 +383,38 @@ describe('ShaderRecorder', () => {
   });
 
   describe('gif recording without a WebGL context', () => {
-    it('fails with a clear error instead of crashing when webgl2 is unavailable', async () => {
+    const gifConfig: RecordingConfig = {
+      format: 'gif',
+      duration: 0.1,
+      startTime: 0,
+      fps: 10,
+      width: 800,
+      height: 600,
+    };
+
+    it('captures frames through a 2D canvas copy when webgl2 is unavailable', async () => {
       // A WebGPU (Slang) canvas returns null from getContext("webgl2");
-      // the recorder must surface a clear error, not an opaque TypeError.
+      // the recorder must fall back to drawing the canvas into a 2D context.
+      const drawImage = vi.fn();
+      const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray(800 * 600 * 4), width: 800, height: 600 }));
+      vi.spyOn(document, 'createElement').mockReturnValue({
+        width: 0,
+        height: 0,
+        style: { position: '', left: '', top: '', pointerEvents: '' },
+        remove: vi.fn(),
+        getContext: vi.fn((type: string) => (type === '2d' ? { drawImage, getImageData } : null)),
+      } as any);
+
+      const p = recorder.record(gifConfig, slangShaderInfo);
+      await vi.runAllTimersAsync();
+      await p;
+
+      expect(drawImage).toHaveBeenCalled();
+      expect(getImageData).toHaveBeenCalledWith(0, 0, 800, 600);
+      expect(mockWebGPURenderForCapture).toHaveBeenCalled();
+    });
+
+    it('fails with a clear error when neither webgl2 nor 2d contexts are available', async () => {
       vi.spyOn(document, 'createElement').mockReturnValue({
         width: 0,
         height: 0,
@@ -329,19 +423,10 @@ describe('ShaderRecorder', () => {
         getContext: vi.fn(() => null),
       } as any);
 
-      const config: RecordingConfig = {
-        format: 'gif',
-        duration: 0.1,
-        startTime: 0,
-        fps: 10,
-        width: 800,
-        height: 600,
-      };
-
-      const p = recorder.record(config, shaderInfo);
+      const p = recorder.record(gifConfig, shaderInfo);
       p.catch(() => {});
       await vi.runAllTimersAsync();
-      await expect(p).rejects.toThrow('Recording is not supported for Slang shaders yet');
+      await expect(p).rejects.toThrow('Failed to capture GIF frame');
       // The offscreen engine is still cleaned up through the finally path.
       expect(mockDispose).toHaveBeenCalled();
       expect(mockReset).toHaveBeenCalled();

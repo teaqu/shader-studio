@@ -603,15 +603,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   render(time: number = performance.now()): void {
+    this.renderFrame(time, false);
+  }
+
+  private renderFrame(time: number, capture: boolean): void {
     if (!this.device || !this.context || this.passGraph.length === 0) {
       return;
     }
-    if (!this.shouldRenderFrame(time)) {
+    if (!capture && !this.shouldRenderFrame(time)) {
       return;
     }
 
-    this.timeManager.updateFrame(time);
-    this.fps.updateFrame(time);
+    if (!capture) {
+      this.timeManager.updateFrame(time);
+      this.fps.updateFrame(time);
+    }
 
     const encoder = this.device.createCommandEncoder();
     const shaderTime = this.timeManager.getCurrentTime(time);
@@ -684,8 +690,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
     }
 
-    this.recordFrameTime(time);
-    this.timeManager.incrementFrame();
+    if (!capture) {
+      this.recordFrameTime(time);
+      this.timeManager.incrementFrame();
+    }
   }
 
   private shouldRenderFrame(time: number): boolean {
@@ -1051,7 +1059,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   renderForCapture(): void {
-    // No-op for M1.
+    this.renderFrame(performance.now(), true);
   }
 
   // ---- Audio/video (no resources in M1) ----

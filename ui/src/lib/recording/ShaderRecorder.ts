@@ -1,7 +1,8 @@
-import { RenderingEngine } from "../../../../rendering/src/webgl/RenderingEngine";
+import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import { GifEncoderWrapper } from "./GifEncoder";
 import { VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";
+import { createEngineForLanguage } from "../engineFactory";
 import type { ScreenshotConfig, RecordingConfig, ShaderInfo } from "./types";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
@@ -11,7 +12,7 @@ export class ShaderRecorder {
   private offscreenEngine: RenderingEngine | null = null;
   private activeGifEncoder: GifEncoderWrapper | null = null;
 
-  private createOffscreenEngine(width: number, height: number): { canvas: HTMLCanvasElement; engine: RenderingEngine } {
+  private createOffscreenEngine(width: number, height: number, language: ShaderInfo["language"]): { canvas: HTMLCanvasElement; engine: RenderingEngine } {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -22,7 +23,7 @@ export class ShaderRecorder {
     canvas.style.pointerEvents = "none";
     document.body.appendChild(canvas);
 
-    const engine = new RenderingEngine();
+    const engine = createEngineForLanguage(language);
     engine.initialize(canvas, true);
     engine.handleCanvasResize(width, height);
 
@@ -39,7 +40,7 @@ export class ShaderRecorder {
     config: ScreenshotConfig,
     shaderInfo: ShaderInfo,
   ): Promise<Blob> {
-    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height);
+    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, shaderInfo.language);
 
     try {
       const result = await engine.compileShaderPipeline(
@@ -92,7 +93,7 @@ export class ShaderRecorder {
       height = height % 2 === 0 ? height : height + 1;
     }
 
-    const { canvas, engine } = this.createOffscreenEngine(width, height);
+    const { canvas, engine } = this.createOffscreenEngine(width, height, shaderInfo.language);
     this.offscreenEngine = engine;
 
     try {
@@ -157,13 +158,6 @@ export class ShaderRecorder {
     });
     this.activeGifEncoder = encoder;
 
-    const gl = canvas.getContext("webgl2");
-    if (!gl) {
-      // A Slang/WebGPU canvas has no WebGL context; fail with a clear
-      // message instead of an opaque TypeError further down.
-      throw new Error("Recording is not supported for Slang shaders yet");
-    }
-
     for (let i = 0; i < totalFrames; i++) {
       if (this.cancelled) {
         throw new Error("Recording cancelled");
@@ -175,19 +169,7 @@ export class ShaderRecorder {
       tm.setDeltaTime(dt);
       renderingEngine.renderForCapture();
 
-      // Read pixels from WebGL
-      const pixels = new Uint8Array(width * height * 4);
-      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-
-      // WebGL reads bottom-up, flip vertically
-      const flipped = new Uint8ClampedArray(width * height * 4);
-      for (let y = 0; y < height; y++) {
-        const srcRow = (height - 1 - y) * width * 4;
-        const dstRow = y * width * 4;
-        flipped.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
-      }
-
-      const imageData = new ImageData(new Uint8ClampedArray(flipped), width, height);
+      const imageData = this.captureGifFrame(canvas, width, height);
       encoder.addFrame(imageData);
 
       recordingStore.updateProgress(i + 1, totalFrames);
@@ -205,6 +187,34 @@ export class ShaderRecorder {
 
     const bytes = await encoder.finish();
     return new Blob([bytes], { type: "image/gif" });
+  }
+
+  private captureGifFrame(canvas: HTMLCanvasElement, width: number, height: number): ImageData {
+    const gl = canvas.getContext("webgl2");
+    if (gl) {
+      const pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      // WebGL reads bottom-up, flip vertically.
+      const flipped = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y++) {
+        const srcRow = (height - 1 - y) * width * 4;
+        const dstRow = y * width * 4;
+        flipped.set(pixels.subarray(srcRow, srcRow + width * 4), dstRow);
+      }
+
+      return new ImageData(flipped, width, height);
+    }
+
+    const copyCanvas = document.createElement("canvas");
+    copyCanvas.width = width;
+    copyCanvas.height = height;
+    const ctx = copyCanvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to capture GIF frame");
+    }
+    ctx.drawImage(canvas, 0, 0, width, height);
+    return ctx.getImageData(0, 0, width, height);
   }
 
   private async recordVideo(

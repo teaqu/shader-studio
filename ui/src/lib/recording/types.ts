@@ -24,6 +24,7 @@ export interface ShaderInfo {
   config: ShaderConfig | null;
   path: string;
   buffers: Record<string, string>;
+  language?: "glsl" | "slang";
 }
 
 export type OnScreenshot = (config: ScreenshotConfig) => void;
