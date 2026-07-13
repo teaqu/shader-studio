@@ -107,6 +107,7 @@ export class FrameRenderer {
   private getPassUniforms(pass: Pass, baseUniforms: PassUniforms): PassUniforms {
     const channelTime = [0, 0, 0, 0];
     const channelLoaded = [0, 0, 0, 0];
+    const passResolution = this.getPassResolution(pass, baseUniforms);
 
     for (let i = 0; i < 4; i++) {
       const input = pass.inputs[`iChannel${i}`];
@@ -142,9 +143,28 @@ export class FrameRenderer {
 
     return {
       ...baseUniforms,
+      res: passResolution,
       channelTime,
       channelLoaded,
     };
+  }
+
+  private getPassResolution(pass: Pass, baseUniforms: PassUniforms): Float32Array {
+    if (pass.name === "Image" || pass.name === "common") {
+      return new Float32Array(baseUniforms.res);
+    }
+
+    const buffers = this.bufferManager.getPassBuffers()[pass.name];
+    const texture = buffers?.back?.mTex0 ?? buffers?.front?.mTex0;
+    if (!texture) {
+      return new Float32Array(baseUniforms.res);
+    }
+
+    return new Float32Array([
+      texture.mXres,
+      texture.mYres,
+      texture.mXres / texture.mYres,
+    ]);
   }
 
   /**

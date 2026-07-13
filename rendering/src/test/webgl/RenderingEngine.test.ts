@@ -428,6 +428,153 @@ describe("RenderingEngine", () => {
       expect(mockPipeline.getPass).toHaveBeenCalledWith("Image");
       expect(mockFrameRenderer.renderSinglePass).not.toHaveBeenCalled();
     });
+
+    it("resizes each buffer pass using its configured resolution", () => {
+      const canvas = { width: 320, height: 180 };
+      const imagePass = { name: "Image", shaderSrc: "void mainImage() {}", inputs: {} };
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {},
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          BufferB: { path: "buffer-b.glsl", resolution: { scale: 0.5 }, inputs: {} },
+          BufferC: { path: "buffer-c.glsl", resolution: { width: 64, height: 32 }, inputs: {} },
+        },
+      };
+      const mockBufferManager = { resizeBuffers: vi.fn() };
+      const mockPipeline = { getPass: vi.fn().mockReturnValue(imagePass) };
+      mockFrameRenderer.isRunning = vi.fn().mockReturnValue(false);
+      mockFrameRenderer.renderSinglePass = vi.fn();
+
+      Object.defineProperty(renderingEngine, "currentConfig", {
+        value: config, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: canvas, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "bufferManager", {
+        value: mockBufferManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      renderingEngine.handleCanvasResize(160, 90);
+
+      expect(mockBufferManager.resizeBuffers).toHaveBeenCalledWith(160, 90, {
+        BufferA: { width: 160, height: 90 },
+        BufferB: { width: 80, height: 45 },
+        BufferC: { width: 64, height: 32 },
+      });
+    });
+
+    it("clamps canvas and buffer pass sizes to WebGL render limits", () => {
+      const canvas = { width: 320, height: 180 };
+      const imagePass = { name: "Image", shaderSrc: "void mainImage() {}", inputs: {} };
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {},
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          BufferB: { path: "buffer-b.glsl", resolution: { scale: 0.5 }, inputs: {} },
+          BufferC: { path: "buffer-c.glsl", resolution: { width: 10_000, height: 5_000 }, inputs: {} },
+        },
+      };
+      const gl = {
+        MAX_TEXTURE_SIZE: 0x0D33,
+        MAX_RENDERBUFFER_SIZE: 0x84E8,
+        MAX_VIEWPORT_DIMS: 0x0D3A,
+        getParameter: vi.fn((param: number) => {
+          if (param === 0x0D33) {
+            return 16_384;
+          }
+          if (param === 0x84E8) {
+            return 12_288;
+          }
+          if (param === 0x0D3A) {
+            return [8_192, 4_096];
+          }
+          return undefined;
+        }),
+      };
+      const mockBufferManager = { resizeBuffers: vi.fn() };
+      const mockPipeline = { getPass: vi.fn().mockReturnValue(imagePass) };
+      mockFrameRenderer.isRunning = vi.fn().mockReturnValue(false);
+      mockFrameRenderer.renderSinglePass = vi.fn();
+
+      Object.defineProperty(renderingEngine, "currentConfig", {
+        value: config, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: canvas, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "gl", {
+        value: gl, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "bufferManager", {
+        value: mockBufferManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      renderingEngine.handleCanvasResize(12_000, 9_000);
+
+      expect(canvas).toEqual({ width: 8_192, height: 4_096 });
+      expect(mockBufferManager.resizeBuffers).toHaveBeenCalledWith(8_192, 4_096, {
+        BufferA: { width: 8_192, height: 4_096 },
+        BufferB: { width: 4_096, height: 2_048 },
+        BufferC: { width: 8_192, height: 4_096 },
+      });
+    });
+
+    it("uses the actual WebGL drawing buffer size when the browser clamps the default framebuffer", () => {
+      const canvas = { width: 320, height: 180 };
+      const imagePass = { name: "Image", shaderSrc: "void mainImage() {}", inputs: {} };
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          Image: {},
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          BufferB: { path: "buffer-b.glsl", resolution: { scale: 0.5 }, inputs: {} },
+        },
+      };
+      const gl = {
+        drawingBufferWidth: 6_448,
+        drawingBufferHeight: 8_192,
+      };
+      const mockBufferManager = { resizeBuffers: vi.fn() };
+      const mockPipeline = { getPass: vi.fn().mockReturnValue(imagePass) };
+      mockFrameRenderer.isRunning = vi.fn().mockReturnValue(false);
+      mockFrameRenderer.renderSinglePass = vi.fn();
+
+      Object.defineProperty(renderingEngine, "currentConfig", {
+        value: config, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: canvas, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "gl", {
+        value: gl, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "renderLimits", {
+        value: { maxWidth: 16_384, maxHeight: 16_384 }, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "bufferManager", {
+        value: mockBufferManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      renderingEngine.handleCanvasResize(6_448, 10_192);
+
+      expect(canvas).toEqual({ width: 6_448, height: 8_192 });
+      expect(mockBufferManager.resizeBuffers).toHaveBeenCalledWith(6_448, 8_192, {
+        BufferA: { width: 6_448, height: 8_192 },
+        BufferB: { width: 3_224, height: 4_096 },
+      });
+    });
   });
 
   describe("video sync on compilation", () => {

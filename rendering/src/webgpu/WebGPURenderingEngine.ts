@@ -51,6 +51,7 @@ interface PassTiming {
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 1;
+const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
@@ -90,6 +91,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private format: GPUTextureFormat = "bgra8unorm";
   private ready: Promise<void> | null = null;
   private initError: string | null = null;
+  private maxTextureDimension2D = DEFAULT_MAX_TEXTURE_DIMENSION_2D;
 
   private compiler: AsyncSlangCompiler | null = null;
   private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
@@ -185,9 +187,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       const deviceStartedAt = this.now();
       this.logSlangPerf("device request start", {});
-      const device = await adapter.requestDevice();
+      const deviceDescriptor = this.buildDeviceDescriptor(adapter);
+      const device = deviceDescriptor
+        ? await adapter.requestDevice(deviceDescriptor)
+        : await adapter.requestDevice();
       const deviceMs = this.now() - deviceStartedAt;
       this.device = device;
+      this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
+      this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
@@ -217,6 +224,53 @@ export class WebGPURenderingEngine implements RenderingEngine {
         totalMs: this.ms(this.now() - initStartedAt),
       });
     }
+  }
+
+  private buildDeviceDescriptor(adapter: GPUAdapter): GPUDeviceDescriptor | undefined {
+    const adapterLimit = adapter.limits?.maxTextureDimension2D;
+    if (
+      typeof adapterLimit === "number" &&
+      Number.isFinite(adapterLimit) &&
+      adapterLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D
+    ) {
+      return {
+        requiredLimits: {
+          maxTextureDimension2D: adapterLimit,
+        },
+      };
+    }
+    return undefined;
+  }
+
+  private resolveDeviceTextureLimit(device: GPUDevice): number {
+    const deviceLimit = device.limits?.maxTextureDimension2D;
+    if (typeof deviceLimit === "number" && Number.isFinite(deviceLimit) && deviceLimit > 0) {
+      return Math.floor(deviceLimit);
+    }
+    return DEFAULT_MAX_TEXTURE_DIMENSION_2D;
+  }
+
+  private clampDimensionToTextureLimit(value: number): number {
+    const rounded = Math.round(value);
+    if (!Number.isFinite(rounded)) {
+      return 1;
+    }
+    return Math.min(Math.max(1, rounded), this.maxTextureDimension2D);
+  }
+
+  private clampCanvasToTextureLimit(): void {
+    if (!this.canvas) {
+      return;
+    }
+    this.canvas.width = this.clampDimensionToTextureLimit(this.canvas.width);
+    this.canvas.height = this.clampDimensionToTextureLimit(this.canvas.height);
+  }
+
+  private clampResolutionToTextureLimit(resolution: { width: number; height: number }): { width: number; height: number } {
+    return {
+      width: this.clampDimensionToTextureLimit(resolution.width),
+      height: this.clampDimensionToTextureLimit(resolution.height),
+    };
   }
 
   /** Prefer a worker-hosted compiler; fall back to main-thread slang-wasm. */
@@ -345,6 +399,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.forceCleanupOnNextApply = false;
     }
 
+    this.clampCanvasToTextureLimit();
     const graphStartedAt = this.now();
     const graph = buildSlangPassGraph({
       imageCode: code,
@@ -367,6 +422,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors: graph.errors,
       });
       return { success: false, errors: graph.errors, warnings: graph.warnings };
+    }
+    for (const pass of graph.passes) {
+      const resolution = this.clampResolutionToTextureLimit(pass);
+      pass.width = resolution.width;
+      pass.height = resolution.height;
     }
 
     // WebGL parity (ShaderPipeline.updateResources): texture inputs are loaded
@@ -912,8 +972,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.canvas) {
       return;
     }
-    const w = Math.round(width);
-    const h = Math.round(height);
+    const w = this.clampDimensionToTextureLimit(width);
+    const h = this.clampDimensionToTextureLimit(height);
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
@@ -934,7 +994,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const canvasWidth = Math.max(1, this.canvas.width);
     const canvasHeight = Math.max(1, this.canvas.height);
     for (const pass of this.passGraph) {
-      const resolution = pass.output === "canvas"
+      const unclampedResolution = pass.output === "canvas"
         ? { width: canvasWidth, height: canvasHeight }
         : resolvePassResolution({
           passName: pass.name,
@@ -945,6 +1005,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           // resize cannot introduce new config errors.
           errors: [],
         });
+      const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
       pass.width = resolution.width;
       pass.height = resolution.height;
       this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);

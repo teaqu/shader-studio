@@ -1141,6 +1141,35 @@ describe("FrameRenderer", () => {
       expect(passUniforms.channelLoaded[1]).toBe(0);
     });
 
+    it("should use the target buffer size for buffer pass iResolution", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      const halfResBuffer = {
+        front: { mTex0: { mXres: 400, mYres: 300 } },
+        back: { mTex0: { mXres: 400, mYres: 300 } },
+      };
+      mockBufferManager.getPassBuffers.mockReturnValue({
+        BufferB: halfResBuffer,
+      });
+
+      const mockPasses = [
+        { name: "BufferB", shaderSrc: "shader", inputs: {} },
+      ];
+      const mockPassShaders = { BufferB: { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      const resolution = Array.from(passUniforms.res);
+      expect(resolution.slice(0, 2)).toEqual([400, 300]);
+      expect(resolution[2]).toBeCloseTo(400 / 300);
+    });
+
     it("should set channelLoaded for keyboard inputs", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);

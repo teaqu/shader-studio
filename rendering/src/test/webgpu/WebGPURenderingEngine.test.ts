@@ -111,6 +111,46 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
+  it("requests the adapter's higher 2D texture limit when available", async () => {
+    const context = { configure: vi.fn() };
+    const device = {
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      queue: { writeTexture: vi.fn() },
+      limits: { maxTextureDimension2D: 16384 },
+    };
+    const adapter = {
+      limits: { maxTextureDimension2D: 16384 },
+      requestDevice: vi.fn(async () => device),
+    };
+    const canvas = {
+      width: 800,
+      height: 600,
+      getContext: vi.fn(() => context),
+      addEventListener: vi.fn(),
+    } as unknown as HTMLCanvasElement;
+    const engine = new WebGPURenderingEngine(assets);
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => adapter),
+        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+      },
+    });
+    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
+      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
+
+    try {
+      engine.initialize(canvas);
+      await (engine as unknown as { ready: Promise<void> }).ready;
+
+      expect(adapter.requestDevice).toHaveBeenCalledWith({
+        requiredLimits: { maxTextureDimension2D: 16384 },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("render() is a safe no-op before a pipeline exists", () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());
@@ -919,6 +959,19 @@ describe("WebGPURenderingEngine", () => {
       return { engine, device, canvas };
     }
 
+    it("creates buffer textures using each buffer pass resolution at compile time", async () => {
+      const { device } = await compiledEngine();
+
+      // Compile created 2 ping-pong textures each for BufferA then BufferB.
+      expect(device.createTexture).toHaveBeenCalledTimes(4);
+      expect(device.createTexture.mock.calls.map((call) => call[0].size)).toEqual([
+        { width: 160, height: 90 },
+        { width: 160, height: 90 },
+        { width: 256, height: 128 },
+        { width: 256, height: 128 },
+      ]);
+    });
+
     it("recomputes per-pass resolutions so the next render packs the new sizes", async () => {
       const { engine, device, canvas } = await compiledEngine();
 
@@ -998,6 +1051,30 @@ describe("WebGPURenderingEngine", () => {
       expect(device.createTexture).toHaveBeenCalledTimes(4);
       for (const result of device.createTexture.mock.results) {
         expect(result.value.destroy).not.toHaveBeenCalled();
+      }
+    });
+
+    it("clamps oversized canvas and scaled pass resolutions to the device 2D texture limit", async () => {
+      const { engine, device, canvas } = await compiledEngine();
+      (device as any).limits = { maxTextureDimension2D: 8192 };
+
+      engine.handleCanvasResize(6448, 10192);
+      engine.render(1000);
+
+      expect(canvas.width).toBe(6448);
+      expect(canvas.height).toBe(8192);
+      const writeBuffer = device.queue.writeBuffer;
+      expect(writeBuffer).toHaveBeenCalledTimes(3);
+      const resolutions = writeBuffer.mock.calls.map((call) =>
+        Array.from(new Float32Array(call[2] as ArrayBuffer, 0, 2)));
+      expect(resolutions).toEqual([
+        [3224, 4096],
+        [256, 128],
+        [6448, 8192],
+      ]);
+      for (const call of device.createTexture.mock.calls.slice(4)) {
+        expect(call[0].size.width).toBeLessThanOrEqual(8192);
+        expect(call[0].size.height).toBeLessThanOrEqual(8192);
       }
     });
 

@@ -1812,6 +1812,88 @@ describe("ShaderPipeline", () => {
     });
   });
 
+  describe("buffer pass resolutions", () => {
+    it("allocates ping-pong buffers using each buffer pass resolution", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "buffer", source: "BufferA" },
+              iChannel1: { type: "buffer", source: "BufferB" },
+            },
+          },
+          BufferA: {
+            path: "buffer-a.glsl",
+            inputs: {},
+          },
+          BufferB: {
+            path: "buffer-b.glsl",
+            resolution: { scale: 0.5 },
+            inputs: {},
+          },
+        },
+      } as const;
+
+      await shaderPipeline.compileShaderPipeline(
+        shaderCode,
+        config,
+        "shader.glsl",
+        {
+          BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+          BufferB: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+        },
+      );
+
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(800, 600);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(400, 300);
+    });
+
+    it("clamps compile-time ping-pong buffers to WebGL render limits", async () => {
+      const limitedPipeline = new ShaderPipeline(
+        { ...mockCanvas, width: 12_000, height: 9_000 } as HTMLCanvasElement,
+        mockShaderCompiler as unknown as ShaderCompiler,
+        mockResourceManager as unknown as ResourceManager<PiTexture>,
+        mockRenderer as unknown as PiRenderer,
+        mockBufferManager as unknown as BufferManager,
+        mockTimeManager as unknown as TimeManager,
+        { maxWidth: 8_192, maxHeight: 4_096 },
+      );
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "buffer", source: "BufferA" },
+              iChannel1: { type: "buffer", source: "BufferB" },
+              iChannel2: { type: "buffer", source: "BufferC" },
+            },
+          },
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          BufferB: { path: "buffer-b.glsl", resolution: { scale: 0.5 }, inputs: {} },
+          BufferC: { path: "buffer-c.glsl", resolution: { width: 10_000, height: 5_000 }, inputs: {} },
+        },
+      } as const;
+
+      await limitedPipeline.compileShaderPipeline(
+        shaderCode,
+        config,
+        "shader.glsl",
+        {
+          BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+          BufferB: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+          BufferC: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+        },
+      );
+
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(6_000, 4_096);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096);
+    });
+  });
+
   describe("resize race condition", () => {
     it("should not use a stale buffer reference when resize occurs during async compilation", async () => {
       const shaderPath = "shader.glsl";

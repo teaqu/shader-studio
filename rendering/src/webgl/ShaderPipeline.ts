@@ -7,6 +7,8 @@ import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots } from "../util/InputSlotAssigner";
+import { resolveBufferPassSize } from "./BufferPassResolution";
+import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
@@ -28,7 +30,8 @@ export class ShaderPipeline {
     resourceManager: ResourceManager<PiTexture>,
     renderer: PiRenderer,
     bufferManager: BufferManager,
-    timeManager: TimeManager
+    timeManager: TimeManager,
+    private readonly renderLimits: WebGLRenderLimits | null = null,
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
@@ -148,6 +151,7 @@ export class ShaderPipeline {
           shaderSrc,
           inputs: pass?.inputs ?? {},
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
+          resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
         };
       })
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
@@ -269,10 +273,11 @@ export class ShaderPipeline {
       if (pass.name === "Image" || pass.name === "common") {
         continue;
       }
+      const size = resolveBufferPassSize(pass, this.canvas.width || 800, this.canvas.height || 600, this.renderLimits);
       nextPassBuffers[pass.name] = currentPassBuffers[pass.name]
         ?? this.bufferManager.createPingPongBuffers(
-          this.canvas.width || 800,
-          this.canvas.height || 600,
+          size.width,
+          size.height,
         );
     }
 

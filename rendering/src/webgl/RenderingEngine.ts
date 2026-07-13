@@ -23,6 +23,12 @@ import type { CaptureCompileContext, CaptureUniforms } from "../capture/Variable
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import type { ChannelSamplerType } from "./ShaderCompiler";
 import type { PiTexture } from "../types/piRenderer";
+import { buildBufferPassSizes } from "./BufferPassResolution";
+import {
+  clampSizeToWebGLRenderLimits,
+  getWebGLRenderLimits,
+  type WebGLRenderLimits,
+} from "./WebGLRenderLimits";
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -43,6 +49,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private pendingCustomUniformValues: { name: string; type: string; value: number | number[] | boolean }[] | null = null;
   private currentConfig: ShaderConfig | null = null;
   private compileQueue: Promise<void> = Promise.resolve();
+  private renderLimits: WebGLRenderLimits | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
@@ -53,6 +60,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
 
     this.gl = gl as WebGL2RenderingContext;
+    this.renderLimits = getWebGLRenderLimits(this.gl);
+    this.clampCanvasToRenderLimits();
     this.renderer = piRenderer();
     this.renderer.Initialize(this.gl);
     this.shaderCompiler = new ShaderCompiler(this.renderer, this.gl);
@@ -75,7 +84,8 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.resourceManager,
       this.renderer,
       this.bufferManager,
-      this.timeManager
+      this.timeManager,
+      this.renderLimits,
     );
 
     this.passRenderer = new PassRenderer(
@@ -105,18 +115,14 @@ export class RenderingEngine implements RenderingEngineInterface {
       return;
     }
 
-    const newWidth = Math.round(width);
-    const newHeight = Math.round(height);
+    const { width: newWidth, height: newHeight } = this.applyCanvasRenderSize(width, height);
 
-    if (this.glCanvas.width !== newWidth || this.glCanvas.height !== newHeight) {
-      this.glCanvas.width = newWidth;
-      this.glCanvas.height = newHeight;
+    const bufferPassSizes = buildBufferPassSizes(this.currentConfig, newWidth, newHeight, this.renderLimits);
+    if (bufferPassSizes) {
+      this.bufferManager.resizeBuffers(newWidth, newHeight, bufferPassSizes);
+    } else {
+      this.bufferManager.resizeBuffers(newWidth, newHeight);
     }
-
-    this.bufferManager.resizeBuffers(
-      newWidth,
-      newHeight,
-    );
 
     // Redraw the final image pass to prevent a black screen flicker.
     const imagePass = this.shaderPipeline.getPass("Image");
@@ -176,6 +182,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined> {
+    this.clampCanvasToRenderLimits();
+
     // Load custom uniforms — prefer pre-evaluated declarations from extension host
     if (customUniformDeclarations && customUniformInfo) {
       this.customUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
@@ -212,6 +220,66 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
 
     return result;
+  }
+
+  private clampCanvasToRenderLimits(): void {
+    if (!this.glCanvas) {
+      return;
+    }
+
+    this.applyCanvasRenderSize(this.glCanvas.width, this.glCanvas.height);
+  }
+
+  private clampSizeToRenderLimits(width: number, height: number): { width: number; height: number } {
+    return clampSizeToWebGLRenderLimits(width, height, this.renderLimits ?? this.getRenderLimitsFromContext());
+  }
+
+  private applyCanvasRenderSize(width: number, height: number): { width: number; height: number } {
+    if (!this.glCanvas) {
+      return this.clampSizeToRenderLimits(width, height);
+    }
+
+    const clampedSize = this.clampSizeToRenderLimits(width, height);
+    this.glCanvas.width = clampedSize.width;
+    this.glCanvas.height = clampedSize.height;
+
+    const drawingBufferSize = this.getDrawingBufferSize();
+    if (!drawingBufferSize) {
+      return clampedSize;
+    }
+
+    if (drawingBufferSize.width !== this.glCanvas.width || drawingBufferSize.height !== this.glCanvas.height) {
+      this.glCanvas.width = drawingBufferSize.width;
+      this.glCanvas.height = drawingBufferSize.height;
+    }
+
+    return drawingBufferSize;
+  }
+
+  private getDrawingBufferSize(): { width: number; height: number } | null {
+    if (!this.gl) {
+      return null;
+    }
+
+    const width = this.gl.drawingBufferWidth;
+    const height = this.gl.drawingBufferHeight;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return {
+      width: Math.floor(width),
+      height: Math.floor(height),
+    };
+  }
+
+  private getRenderLimitsFromContext(): WebGLRenderLimits | null {
+    if (this.renderLimits || !this.gl) {
+      return this.renderLimits;
+    }
+
+    this.renderLimits = getWebGLRenderLimits(this.gl);
+    return this.renderLimits;
   }
 
   public getCurrentConfig(): ShaderConfig | null {
