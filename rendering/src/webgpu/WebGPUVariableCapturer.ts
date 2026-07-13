@@ -60,7 +60,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     private readonly device: GPUDevice,
     private readonly compiler: AsyncSlangCompiler,
     compileContext: CaptureCompileContext = {},
-    private readonly getChannelResources?: () => Array<{ slot: number; textureView: GPUTextureView }> | null,
+    private readonly getChannelResources?: () => Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }> | null,
   ) {
     this.compileContext = compileContext;
   }
@@ -152,7 +152,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     let destroyed = 0;
     for (const pending of this.pendingCaptures) {
       // Skip buffers already destroyed on successful readback.
-      if (pending.resolved || pending.discarded) continue;
+      if (pending.resolved || pending.discarded) {
+        continue;
+      }
       pending.discarded = true;
       // destroy() is safe while a mapAsync is outstanding — it rejects the map.
       pending.buffer.destroy?.();
@@ -171,9 +173,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   dispose(): void {
     this.disposed = true;
     this.cancelPendingCaptures();
-    if (this.uniformBuffer) { this.uniformBuffer.destroy?.(); captureCounters.gpuBuffersDestroyed++; }
+    if (this.uniformBuffer) {
+      this.uniformBuffer.destroy?.(); captureCounters.gpuBuffersDestroyed++;
+    }
     this.uniformBuffer = null;
-    if (this.captureUniformBuffer) { this.captureUniformBuffer.destroy?.(); captureCounters.gpuBuffersDestroyed++; }
+    if (this.captureUniformBuffer) {
+      this.captureUniformBuffer.destroy?.(); captureCounters.gpuBuffersDestroyed++;
+    }
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
     this.pipelineCacheOrder = [];
@@ -191,7 +197,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     shouldContinue: () => boolean,
   ): Promise<number> {
     this.clearLastError();
-    if (captures.length === 0 || this.disposed) return 0;
+    if (captures.length === 0 || this.disposed) {
+      return 0;
+    }
 
     const channels = this.compileContext.slangChannels ?? [];
     const channelResources = channels.length > 0 ? this.getChannelResources?.() ?? null : [];
@@ -227,14 +235,22 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     let issued = 0;
     try {
       for (const capture of captures) {
-        if (!shouldContinue() || this.disposed) break;
+        if (!shouldContinue() || this.disposed) {
+          break;
+        }
 
         const cached = await this.getOrCompilePipeline(capture.captureShader, channels);
-        if (!shouldContinue() || this.disposed) break;
-        if (!cached) continue;
+        if (!shouldContinue() || this.disposed) {
+          break;
+        }
+        if (!cached) {
+          continue;
+        }
 
         const bindGroup = this.buildBindGroup(cached.bindGroupLayout, channelResources ?? []);
-        if (!bindGroup) continue;
+        if (!bindGroup) {
+          continue;
+        }
 
         this.writeCaptureUniforms(captureCoord, gridWidth, gridHeight, capture.selectorIndex ?? 0, isPixelMode);
 
@@ -341,7 +357,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       channels,
       captureMode: true,
     });
-    if (this.disposed) return null;
+    if (this.disposed) {
+      return null;
+    }
     if (!compileResult.success) {
       this.lastError = compileResult.errors.join("\n");
       return null;
@@ -418,7 +436,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   private buildBindGroup(
     layout: GPUBindGroupLayout,
-    channelResources: Array<{ slot: number; textureView: GPUTextureView }>,
+    channelResources: Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }>,
   ): GPUBindGroup | null {
     if (!this.uniformBuffer || !this.captureUniformBuffer) {
       return null;
@@ -427,7 +445,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     const sorted = [...channelResources].sort((a, b) => a.slot - b.slot);
     for (let index = 0; index < sorted.length; index++) {
       entries.push({ binding: 1 + index * 2, resource: sorted[index].textureView });
-      entries.push({ binding: 2 + index * 2, resource: this.sampler! });
+      entries.push({ binding: 2 + index * 2, resource: sorted[index].sampler ?? this.sampler! });
     }
     entries.push({ binding: 1 + sorted.length * 2, resource: { buffer: this.captureUniformBuffer } });
     try {

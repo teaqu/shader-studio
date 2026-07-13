@@ -96,16 +96,42 @@ describe("WebGPUTextureBackend.createTexture", () => {
       .toThrow(/[Cc]ubemap.*not supported/);
   });
 
-  it("updateTexture writes the subregion with r8 expansion", () => {
+  it("updateTexture writes the subregion with r8 expansion at the mirrored origin (y' = texH - y - h)", () => {
     const handle = backend.createTexture({ type: "2d", width: 4, height: 4, format: "r8", filter: "nearest", wrap: "clamp" })!;
     device.queue.writeTexture.mockClear();
     backend.updateTexture(handle, 0, 1, 4, 1, new Uint8Array([1, 2, 3, 4]));
+    // Storage is the vertical mirror of GL storage, so GL row 1 lands at
+    // texture row 4 - 1 - 1 = 2.
     expect(device.queue.writeTexture).toHaveBeenCalledWith(
-      { texture: handle.texture, origin: { x: 0, y: 1 } },
+      { texture: handle.texture, origin: { x: 0, y: 2 } },
       expandR8ToRgba8(new Uint8Array([1, 2, 3, 4]), 4, 1),
       { bytesPerRow: 16 },
       { width: 4, height: 1 },
     );
+  });
+
+  it("createTexture data uploads with row order reversed (storage mirrors GL vertically)", () => {
+    // 1x2 rgba8: row 0 = red-ish, row 1 = green-ish.
+    const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    backend.createTexture({ type: "2d", width: 1, height: 2, format: "rgba8", filter: "linear", wrap: "clamp", data });
+    const uploaded = device.queue.writeTexture.mock.calls[0][1] as Uint8Array;
+    expect(Array.from(uploaded)).toEqual([5, 6, 7, 8, 1, 2, 3, 4]);
+  });
+
+  it("keyboard-style data (held row 0, toggled row 2) uploads held LAST and toggled FIRST", () => {
+    // ShaderKeyboardInput packs held/pressed/toggled as rows 0/1/2 of a
+    // 256x3 r8 texture. Through the prelude's v-flip, sampled row 0 must be
+    // held — so the mirrored storage puts held in the last uploaded row.
+    const kb = new Uint8Array(256 * 3);
+    kb[65] = 255; // held[65], source row 0
+    kb[256 * 2 + 67] = 255; // toggled[67], source row 2
+    backend.createTexture({ type: "2d", width: 256, height: 3, format: "r8", filter: "nearest", wrap: "clamp", data: kb });
+    const uploaded = device.queue.writeTexture.mock.calls[0][1] as Uint8Array;
+    // toggled (source row 2) is uploaded row 0; held (source row 0) is uploaded row 2.
+    expect(uploaded[(0 * 256 + 67) * 4]).toBe(255);
+    expect(uploaded[(2 * 256 + 65) * 4]).toBe(255);
+    expect(uploaded[(0 * 256 + 65) * 4]).toBe(0);
+    expect(uploaded[(2 * 256 + 67) * 4]).toBe(0);
   });
 
   it("updateTexture writes rgba8 verbatim when the handle was created with rgba8 format", () => {
@@ -180,21 +206,21 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
     return { naturalWidth: w, naturalHeight: h, width: w, height: h } as HTMLImageElement;
   }
 
-  it("draws the image to a canvas and copies with flipY from vflip", () => {
+  it("vflip:true stores mirrored rows (flipY:false) so the prelude's v-flip yields GL orientation", () => {
     const handle = backend.createTextureFromImage(fakeImage(2, 1), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true });
     expect(handle).not.toBeNull();
     expect(drawImage).toHaveBeenCalled();
     expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledWith(
-      expect.objectContaining({ flipY: true }),
+      expect.objectContaining({ flipY: false }),
       expect.objectContaining({ texture: handle!.texture }),
       { width: 2, height: 1 },
     );
   });
 
-  it("vflip=false copies without flip", () => {
+  it("vflip:false stores flipped rows (flipY:true) — storage is always the vertical mirror of GL's", () => {
     backend.createTextureFromImage(fakeImage(2, 1), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: false });
     expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledWith(
-      expect.objectContaining({ flipY: false }),
+      expect.objectContaining({ flipY: true }),
       expect.anything(),
       expect.anything(),
     );
@@ -207,7 +233,25 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
     expect(Array.from(uploaded)).toEqual([50, 50, 50, 255, 90, 90, 90, 255]);
   });
 
-  it("mipmap filter creates the mip chain: one render pass per level below 0", () => {
+  it("grayscale vflip:true composes with the prelude v-flip to reproduce WebGL sampling", () => {
+    // 1x2 image: top row r=50, bottom row r=90 (getImageData is top-down).
+    // WebGL with vflip:true stores the image flipped (texture row 0 = image
+    // bottom = 90), so GL sampling at uv.y=0 returns 90.
+    // The prelude helper samples WebGPU storage at v = 1 - uv.y, so WebGPU
+    // storage must be the vertical MIRROR of GL's flipped storage — i.e. the
+    // image unflipped: row 0 = top (50), row 1 = bottom (90).
+    backend.createTextureFromImage(fakeImage(1, 2), { type: "2d", format: "r8", filter: "nearest", wrap: "clamp", vflip: true });
+    const uploaded = device.queue.writeTexture.mock.calls[0][1] as Uint8Array;
+    expect(Array.from(uploaded)).toEqual([50, 50, 50, 255, 90, 90, 90, 255]);
+    // Composition proof: sampling at helper-flipped v (row 1 - row) returns
+    // what WebGL returns at uv row (GL flipped storage = [90, 50]).
+    const glFlippedStorage = [90, 50];
+    for (let row = 0; row < 2; row++) {
+      expect(uploaded[(1 - row) * 4]).toBe(glFlippedStorage[row]);
+    }
+  });
+
+  it("mipmap filter creates the mip chain: one render pass per level above 0", () => {
     backend.createTextureFromImage(fakeImage(8, 8), { type: "2d", format: "rgba8", filter: "mipmap", wrap: "repeat", vflip: true });
     // 8x8 -> 4 levels -> 3 downsample passes
     const encoder = device.createCommandEncoder.mock.results.at(-1)!.value;
@@ -231,12 +275,12 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
       .toThrow(/Failed to create 2d canvas for texture upload/);
   });
 
-  it("updateTextureFromImage re-copies the source into the existing texture", () => {
+  it("updateTextureFromImage re-copies the source with the handle's inverted vflip (vflip:true → flipY:false)", () => {
     const handle = backend.createTextureFromImage(fakeImage(2, 2), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true })!;
     device.queue.copyExternalImageToTexture.mockClear();
     backend.updateTextureFromImage(handle, fakeImage(2, 2));
     expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledWith(
-      expect.objectContaining({ flipY: true }),
+      expect.objectContaining({ flipY: false }),
       expect.objectContaining({ texture: handle.texture }),
       { width: 2, height: 2 },
     );

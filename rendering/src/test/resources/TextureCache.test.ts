@@ -131,6 +131,16 @@ describe("TextureCache", () => {
       expect(textureCache.getDefaultTexture()).toBe(defaultTexture);
     });
 
+    it("should not destroy the default texture when it is cached as a fallback image", () => {
+      const defaultTexture = textureCache.getDefaultTexture();
+      textureCache.cacheTexture("broken.jpg", defaultTexture!);
+
+      textureCache.cleanup();
+
+      expect(backend.destroyTexture).not.toHaveBeenCalledWith(defaultTexture);
+      expect(textureCache.getImageTextureCache()).toEqual({});
+    });
+
     it("should clear cache after cleanup", () => {
       const mockTexture = createMockTexture();
       textureCache.cacheTexture("image.jpg", mockTexture);

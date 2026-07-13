@@ -41,6 +41,25 @@ function mipLevelCountFor(width: number, height: number): number {
   return Math.floor(Math.log2(Math.max(width, height))) + 1;
 }
 
+/** Returns a copy of `rgba` with its pixel rows in reverse order. */
+export function reverseRows(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(rgba.length);
+  const rowBytes = width * 4;
+  for (let y = 0; y < height; y++) {
+    out.set(rgba.subarray(y * rowBytes, (y + 1) * rowBytes), (height - 1 - y) * rowBytes);
+  }
+  return out;
+}
+
+/**
+ * GOVERNING INVARIANT: the Slang prelude's sampleIChannelN helper flips v
+ * (it samples at float2(uv.x, 1.0 - uv.y)) so GPU-rendered buffer textures
+ * (row 0 = top) sample like GL framebuffers (row 0 = bottom). Because every
+ * channel is read through that helper, WebGPU texture storage must be the
+ * VERTICAL MIRROR of what GL stores — for ALL channel content: image
+ * uploads (uploadImage inverts vflip) and CPU data writes (writeLevel0
+ * reverses row order and mirrors the subregion origin).
+ */
 export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle> {
   private mipPipeline: GPURenderPipeline | null = null;
   private mipSampler: GPUSampler | null = null;
@@ -60,7 +79,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
         (mip ? GPUTextureUsage.RENDER_ATTACHMENT : 0),
     });
     if (desc.data) {
-      this.writeLevel0(texture, 0, 0, desc.width, desc.height, desc.format, desc.data);
+      this.writeLevel0(texture, desc.height, 0, 0, desc.width, desc.height, desc.format, desc.data);
     }
     const handle: WebGPUTextureHandle = {
       texture,
@@ -80,7 +99,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
   updateTexture(tex: WebGPUTextureHandle, x: number, y: number, width: number, height: number, data: Uint8Array): void {
     // The handle remembers the format it was created with; r8 handles always
     // expand on write, regardless of the byte length of this particular update.
-    this.writeLevel0(tex.texture, x, y, width, height, tex.format, data);
+    this.writeLevel0(tex.texture, tex.height, x, y, width, height, tex.format, data);
   }
 
   destroyTexture(tex: WebGPUTextureHandle | null): void {
@@ -89,6 +108,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
 
   private writeLevel0(
     texture: GPUTexture,
+    textureHeight: number,
     x: number,
     y: number,
     width: number,
@@ -96,9 +116,10 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
     format: "rgba8" | "r8",
     data: Uint8Array,
   ): void {
-    const rgba = format === "r8" ? expandR8ToRgba8(data, width, height) : data;
+    const rgba = reverseRows(format === "r8" ? expandR8ToRgba8(data, width, height) : data, width, height);
+    const mirroredY = textureHeight - y - height;
     // Full-texture writes pass { texture } bare; subregion writes carry origin.
-    const destination = x === 0 && y === 0 ? { texture } : { texture, origin: { x, y } };
+    const destination = x === 0 && mirroredY === 0 ? { texture } : { texture, origin: { x, y: mirroredY } };
     this.device.queue.writeTexture(destination, rgba, { bytesPerRow: width * 4 }, { width, height });
   }
 
@@ -168,14 +189,14 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       const pixels = ctx.getImageData(0, 0, handle.width, handle.height).data;
       this.device.queue.writeTexture(
         { texture: handle.texture },
-        imageToGrayscaleRgba8(pixels, handle.width, handle.height, handle.vflip),
+        imageToGrayscaleRgba8(pixels, handle.width, handle.height, !handle.vflip),
         { bytesPerRow: handle.width * 4 },
         { width: handle.width, height: handle.height },
       );
       return;
     }
     this.device.queue.copyExternalImageToTexture(
-      { source: canvas, flipY: handle.vflip },
+      { source: canvas, flipY: !handle.vflip },
       { texture: handle.texture },
       { width: handle.width, height: handle.height },
     );

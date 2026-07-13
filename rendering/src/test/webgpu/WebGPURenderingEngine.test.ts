@@ -293,6 +293,22 @@ describe("WebGPURenderingEngine", () => {
         expect([uniforms[4], uniforms[5]]).toEqual([70, 80]);
       }
     });
+
+    it("renderForCapture preserves the frozen paused uniform snapshot", () => {
+      const { engine, mouse } = pausableEngine();
+
+      engine.render(1000);
+      engine.togglePause();
+      mouse.value = [50, 60, 0, 0];
+      engine.render(1016); // captures the paused uniform snapshot
+
+      mouse.value = [99, 88, 0, 0];
+      engine.renderForCapture();
+
+      const [imageUniforms] = lastFrameUniformWrites(engine, 1);
+      expect([imageUniforms[4], imageUniforms[5]]).toEqual([50, 60]);
+      expect((engine as any).pausedUniformInput).not.toBeNull();
+    });
   });
 
   it("exposes a TimeManager and the expected uniform shape", () => {
@@ -1998,6 +2014,20 @@ describe("WebGPURenderingEngine", () => {
       });
     });
 
+    it("cleans cached texture resources on the next compile after flagForceCleanupOnNextApply", async () => {
+      const { engine } = compiledEngine();
+      const rm = engine.getResourceManager()!;
+      const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
+      const cleanupSpy = vi.spyOn(rm, "cleanup");
+
+      engine.flagForceCleanupOnNextApply();
+      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+
+      expect(result?.success).toBe(true);
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+      expect(cleanupSpy.mock.invocationCallOrder[0]).toBeLessThan(loadSpy.mock.invocationCallOrder[0]);
+    });
+
     it("renders using the cached texture handle's view and sampler", async () => {
       const { engine, device } = compiledEngine();
       const rm = engine.getResourceManager()!;
@@ -2157,7 +2187,7 @@ describe("WebGPURenderingEngine", () => {
       expect(pressed2[65]).toBe(0); // pressed cleared after previous frame
     });
 
-    it("keyboard stays LIVE while paused (WebGL parity), unlike mouse/time uniforms", async () => {
+    it("freezes keyboard texture updates while paused, then resumes with pressed already cleared", async () => {
       const engine = await compiledEngineFactory(keyboardConfig);
       const rm = engine.getResourceManager()!;
       const spy = vi.spyOn(rm, "updateKeyboardTexture");
@@ -2165,8 +2195,13 @@ describe("WebGPURenderingEngine", () => {
       engine.getTimeManager().togglePause();
       window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 66 } as KeyboardEventInit));
       engine.render(32);
-      const [held] = spy.mock.calls.at(-1)!;
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      engine.getTimeManager().togglePause();
+      engine.render(48);
+      const [held, pressed] = spy.mock.calls.at(-1)!;
       expect(held[66]).toBe(255);
+      expect(pressed[66]).toBe(0);
     });
 
     it("binds the keyboard texture handle's view and sampler", async () => {

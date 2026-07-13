@@ -109,6 +109,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
    */
   private compileGeneration = 0;
   private disposed = false;
+  private forceCleanupOnNextApply = false;
 
   // Pixel inspector readback. WebGPU readback is async, so readPixel()
   // records the wanted coordinate and returns the last resolved pixel;
@@ -337,6 +338,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const reason = this.initError ?? this.describeUnavailableInitState();
       this.logSlangPerf("compile unavailable", { path, generation, reason });
       return { success: false, errors: [`WebGPU init failed: ${reason}`] };
+    }
+
+    if (this.forceCleanupOnNextApply) {
+      this.resourceManager?.cleanup();
+      this.forceCleanupOnNextApply = false;
     }
 
     const graphStartedAt = this.now();
@@ -661,7 +667,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return;
     }
 
-    const isPaused = !capture && this.timeManager.isPaused();
+    const isPaused = this.timeManager.isPaused();
 
     if (!capture) {
       this.timeManager.updateFrame(time);
@@ -719,7 +725,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.getChannelResources(pass);
+      const channelResources = this.getChannelResources(pass, isPaused);
       if (channelResources === null) {
         continue;
       }
@@ -831,6 +837,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
    */
   private getChannelResources(
     pass: RenderPassNode,
+    skipInputUpdates = false,
   ): SlangChannelResource[] | null {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
@@ -851,7 +858,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
         resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       } else {
-        const handle = this.resolveKeyboardHandle();
+        const handle = this.resolveKeyboardHandle(skipInputUpdates);
         if (!handle) {
           return null;
         }
@@ -862,16 +869,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   // WebGL parity (PassRenderer.getTextureBindings): the keyboard texture is
-  // refreshed at bind time on every rendered frame — including while paused.
-  private resolveKeyboardHandle(): WebGPUTextureHandle | null {
+  // refreshed at bind time, except paused frames skip input updates and keep
+  // binding the stale texture from the last non-paused render.
+  private resolveKeyboardHandle(skipInputUpdates: boolean): WebGPUTextureHandle | null {
     if (!this.resourceManager) {
       return null;
     }
-    this.resourceManager.updateKeyboardTexture(
-      this.keyboardManager.getKeyHeld(),
-      this.keyboardManager.getKeyPressed(),
-      this.keyboardManager.getKeyToggled(),
-    );
+    if (!skipInputUpdates) {
+      this.resourceManager.updateKeyboardTexture(
+        this.keyboardManager.getKeyHeld(),
+        this.keyboardManager.getKeyPressed(),
+        this.keyboardManager.getKeyToggled(),
+      );
+    }
     return this.resourceManager.getKeyboardTexture() ?? this.resourceManager.getDefaultTexture();
   }
 
@@ -1044,7 +1054,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   // ---- Not yet supported in the Slang/WebGPU path ----
 
   flagForceCleanupOnNextApply(): void {
-    // Buffer feedback state is recreated on recompile; nothing extra to clear.
+    this.forceCleanupOnNextApply = true;
   }
 
   getFrameTimeHistory(): number[] {

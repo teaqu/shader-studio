@@ -21,6 +21,7 @@ interface MockGpu {
   submit: ReturnType<typeof vi.fn>;
   copyTextureToBuffer: ReturnType<typeof vi.fn>;
   beginRenderPass: ReturnType<typeof vi.fn>;
+  createBindGroup: ReturnType<typeof vi.fn>;
   createdBuffers: Array<{ size: number; mapAsync: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }>;
   flushMaps: () => Promise<void>;
 }
@@ -29,6 +30,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   const writeBuffer = vi.fn();
   const submit = vi.fn();
   const copyTextureToBuffer = vi.fn();
+  const createBindGroup = vi.fn(() => ({}));
   const beginRenderPass = vi.fn(() => ({
     setPipeline: vi.fn(),
     setBindGroup: vi.fn(),
@@ -44,7 +46,9 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
       const data = readbackFloats?.(desc.size) ?? new Float32Array(desc.size / 4);
       const buffer = {
         size: desc.size,
-        mapAsync: vi.fn(() => new Promise<void>((resolve) => { mapResolvers.push(resolve); })),
+        mapAsync: vi.fn(() => new Promise<void>((resolve) => {
+          mapResolvers.push(resolve);
+        })),
         getMappedRange: vi.fn(() => data.buffer),
         unmap: vi.fn(),
         destroy: vi.fn(),
@@ -57,7 +61,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     createBindGroupLayout: vi.fn(() => ({})),
     createPipelineLayout: vi.fn(() => ({})),
     createRenderPipeline: vi.fn(() => ({})),
-    createBindGroup: vi.fn(() => ({})),
+    createBindGroup,
     createSampler: vi.fn(() => ({})),
     createCommandEncoder: vi.fn(() => ({
       beginRenderPass,
@@ -78,9 +82,12 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     submit,
     copyTextureToBuffer,
     beginRenderPass,
+    createBindGroup,
     createdBuffers,
     flushMaps: async () => {
-      for (const resolve of mapResolvers.splice(0)) resolve();
+      for (const resolve of mapResolvers.splice(0)) {
+        resolve();
+      }
       await Promise.resolve();
       await Promise.resolve();
     },
@@ -124,6 +131,24 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
       channels,
     }));
+  });
+
+  it("binds a channel resource's own sampler when provided", async () => {
+    const gpu = mockGpu();
+    const textureView = { tag: "textureView" } as unknown as GPUTextureView;
+    const sampler = { tag: "textureSampler" } as unknown as GPUSampler;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { commonCode: "", slangChannels: [{ slot: 0, key: "iChannel0" }] },
+      () => [{ slot: 0, textureView, sampler }],
+    );
+
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    const entries = gpu.createBindGroup.mock.calls.at(-1)![0].entries;
+    expect(entries).toContainEqual({ binding: 1, resource: textureView });
+    expect(entries).toContainEqual({ binding: 2, resource: sampler });
   });
 
   it("reports an error and issues nothing when channels cannot resolve", async () => {

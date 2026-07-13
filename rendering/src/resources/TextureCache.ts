@@ -95,7 +95,10 @@ export class TextureCache<T> {
 
   private cleanupImageTextures(): void {
     for (const key in this.imageTextureCache) {
-      this.backend.destroyTexture(this.imageTextureCache[key]);
+      const texture = this.imageTextureCache[key];
+      if (texture !== this.defaultTexture) {
+        this.backend.destroyTexture(texture);
+      }
     }
     Object.keys(this.imageTextureCache).forEach(key => delete this.imageTextureCache[key]);
   }
