@@ -41,6 +41,8 @@ cd ui && npx vitest run
 
 **Every change must have unit tests. Aim for excellent coverage — all branches, edge cases, and error paths covered.** When reviewing or making changes, audit test coverage and add missing tests before considering work done.
 
+When adding or changing behavior, tests are part of the implementation, not a separate follow-up. Before marking a slice done, explicitly ask: which public contract changed, which parser/type branch changed, which runtime branch changed, and which error/fallback path changed? Add or update tests for each relevant layer in the same change. For example, adding a new shader input kind must cover config/pass-graph parsing, resource loading, render-time binding, warnings/fallbacks, and public controls/state when those paths exist. Do not stop at a single happy-path runtime test if lower-level graph/type behavior or error paths changed too.
+
 Test structure mirrors `src/lib/`: unit tests in `src/test/`, component tests in `src/test/components/`.
 
 For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.

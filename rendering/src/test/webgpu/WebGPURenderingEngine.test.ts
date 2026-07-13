@@ -934,6 +934,159 @@ describe("WebGPURenderingEngine", () => {
     return { device, compiler, canvas };
   }
 
+  describe("video input parity", () => {
+    const videoConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: {
+              type: "video",
+              path: "clip.mp4",
+              resolved_path: "vscode-webview://clip.mp4",
+              filter: "nearest",
+              wrap: "repeat",
+              vflip: false,
+            },
+          },
+        },
+      },
+    };
+
+    it("loads video inputs as sampled channels during compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const loadVideoTexture = vi.fn(async () => ({ texture: {}, warning: undefined }));
+      (engine as any).resourceManager = { loadVideoTexture };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        videoConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect((result?.warnings ?? []).join("\n")).not.toContain("unsupported Slang/WebGPU input type");
+      expect(loadVideoTexture).toHaveBeenCalledWith("vscode-webview://clip.mp4", {
+        filter: "nearest",
+        wrap: "repeat",
+        vflip: false,
+      });
+      expect(compiler.compile).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          channels: [{ slot: 0, key: "iChannel0" }],
+        }),
+      );
+      expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
+        kind: "video",
+        slot: 0,
+        key: "iChannel0",
+        path: "vscode-webview://clip.mp4",
+      }));
+    });
+
+    it("binds the loaded video texture and sampler when rendering", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const videoHandle = {
+        view: { label: "video-view" },
+        sampler: { label: "video-sampler" },
+      };
+      const resourceManager = {
+        loadVideoTexture: vi.fn(async () => ({ texture: videoHandle, warning: undefined })),
+        getVideoTexture: vi.fn(() => videoHandle),
+        getDefaultTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        videoConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.getVideoTexture).toHaveBeenCalledWith("vscode-webview://clip.mp4");
+      expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: videoHandle.view },
+        { binding: 2, resource: videoHandle.sampler },
+      ]);
+    });
+
+    it("propagates video loading warnings from the resource manager", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const warning = "Video is not loading: vscode-webview://clip.mp4";
+      (engine as any).resourceManager = {
+        loadVideoTexture: vi.fn(async () => ({ texture: null, warning })),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        videoConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings).toContain(warning);
+    });
+
+    it("falls back to the default texture when a video texture cache lookup misses", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const defaultHandle = {
+        view: { label: "default-view" },
+        sampler: { label: "default-sampler" },
+      };
+      const resourceManager = {
+        loadVideoTexture: vi.fn(async () => ({ texture: defaultHandle, warning: "video warning" })),
+        getVideoTexture: vi.fn(() => null),
+        getDefaultTexture: vi.fn(() => defaultHandle),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        videoConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.getDefaultTexture).toHaveBeenCalled();
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: defaultHandle.view },
+        { binding: 2, resource: defaultHandle.sampler },
+      ]);
+    });
+
+    it("delegates video controls and state to the resource manager", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const state = { paused: false, muted: true, currentTime: 12, duration: 60 };
+      const resourceManager = {
+        controlVideo: vi.fn(),
+        getVideoState: vi.fn(() => state),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      engine.controlVideo("clip.mp4", "pause");
+      const result = engine.getVideoState("clip.mp4");
+
+      expect(resourceManager.controlVideo).toHaveBeenCalledWith("clip.mp4", "pause");
+      expect(resourceManager.getVideoState).toHaveBeenCalledWith("clip.mp4");
+      expect(result).toBe(state);
+    });
+  });
+
   describe("handleCanvasResize", () => {
     async function compiledEngine() {
       const engine = new WebGPURenderingEngine(assets);

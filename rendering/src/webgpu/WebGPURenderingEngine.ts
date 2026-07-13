@@ -81,8 +81,8 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
  * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
  * textures that other passes sample via iChannelN, and the Image pass renders
  * to the canvas. Inline Slang debugging, pixel inspection (async readback),
- * and variable capture are supported; texture/media inputs and audio/video
- * remain unimplemented and their interface methods no-op.
+ * variable capture, texture inputs, video inputs, and keyboard inputs are
+ * supported; audio and cubemaps remain unimplemented.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -429,8 +429,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.height = resolution.height;
     }
 
-    // WebGL parity (ShaderPipeline.updateResources): texture inputs are loaded
-    // (and awaited) as part of the compile; render then only does cache lookups.
+    // WebGL parity (ShaderPipeline.updateResources): texture/video inputs are
+    // loaded (and awaited) as part of the compile; render then only does cache
+    // lookups.
     if (this.resourceManager) {
       for (const pass of graph.passes) {
         for (const channel of pass.channels) {
@@ -441,6 +442,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
               vflip: channel.vflip,
               grayscale: channel.grayscale,
             });
+          } else if (channel.kind === "video") {
+            const result = await this.resourceManager.loadVideoTexture(channel.path, {
+              filter: channel.filter,
+              wrap: channel.wrap,
+              vflip: channel.vflip,
+            });
+            if (result.warning) {
+              graph.warnings.push(result.warning);
+            }
           }
         }
       }
@@ -917,6 +927,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
           return null;
         }
         resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+      } else if (channel.kind === "video") {
+        const handle = this.resourceManager?.getVideoTexture(channel.path)
+          ?? this.resourceManager?.getDefaultTexture();
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       } else {
         const handle = this.resolveKeyboardHandle(skipInputUpdates);
         if (!handle) {
@@ -1271,15 +1288,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.renderFrame(performance.now(), true);
   }
 
-  // ---- Audio/video (no resources in M1) ----
+  // ---- Audio/video (Slang/WebGPU only supports video texture resources today) ----
 
   async resumeAudioContext(): Promise<void> {}
   resumeAllAudio(): void {}
   updateAudioLoopRegion(): void {}
   setGlobalVolume(): void {}
-  controlVideo(): void {}
-  getVideoState(): null {
-    return null;
+  controlVideo(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {
+    this.resourceManager?.controlVideo(path, action);
+  }
+  getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager?.getVideoState(path) ?? null;
   }
   controlAudio(): void {}
   getAudioState(): null {

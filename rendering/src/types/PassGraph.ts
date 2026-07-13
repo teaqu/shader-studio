@@ -1,4 +1,4 @@
-import type { TextureConfigInput } from "@shader-studio/types";
+import type { TextureConfigInput, VideoConfigInput } from "@shader-studio/types";
 
 export type RenderPassName = "BufferA" | "BufferB" | "BufferC" | "BufferD" | "Image";
 export type ChannelReadTiming = "previous-frame" | "current-frame";
@@ -9,6 +9,11 @@ export type RenderPassChannel =
       kind: "texture"; slot: number; key: string; path: string;
       filter?: TextureConfigInput["filter"]; wrap?: TextureConfigInput["wrap"];
       vflip?: boolean; grayscale?: boolean;
+    }
+  | {
+      kind: "video"; slot: number; key: string; path: string;
+      filter?: VideoConfigInput["filter"]; wrap?: VideoConfigInput["wrap"];
+      vflip?: boolean;
     }
   | { kind: "keyboard"; slot: number; key: string };
 
