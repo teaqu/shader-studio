@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     projects: [
+      'types/vitest.config.ts',
       'ui/vitest.config.ts',
       'debug/vitest.config.ts',
       'rendering/vitest.config.ts',

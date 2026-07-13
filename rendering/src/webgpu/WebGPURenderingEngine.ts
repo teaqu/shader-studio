@@ -949,8 +949,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
         resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       } else if (channel.kind === "cubemap") {
-        const handle = this.resourceManager?.getCubemapTexture(channel.path)
-          ?? this.resourceManager?.getDefaultTexture();
+        const handle = this.resourceManager?.getCubemapTexture(channel.path);
         if (!handle) {
           return null;
         }

@@ -61,7 +61,8 @@ export class CubemapTextureManager<T> {
   }
 
   public extractCrossLayoutFaces(image: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement[] {
-    const faceSize = Math.floor(image.width / 4);
+    const imageWidth = "naturalWidth" in image && image.naturalWidth ? image.naturalWidth : image.width;
+    const faceSize = Math.floor(imageWidth / 4);
     const faces: HTMLCanvasElement[] = [];
 
     for (const [col, row] of FACE_POSITIONS) {

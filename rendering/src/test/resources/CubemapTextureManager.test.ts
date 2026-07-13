@@ -72,6 +72,26 @@ describe('CubemapTextureManager', () => {
       expect(calls[4][1]).toBe(1 * faceSize); expect(calls[4][2]).toBe(1 * faceSize); // +Z
       expect(calls[5][1]).toBe(3 * faceSize); expect(calls[5][2]).toBe(1 * faceSize); // -Z
     });
+
+    it('should use natural dimensions for HTML image sources whose layout size is zero', () => {
+      const mockCtx = mockCanvasContext();
+      const mockImage = {
+        width: 0,
+        height: 0,
+        naturalWidth: 400,
+        naturalHeight: 300,
+      } as HTMLImageElement;
+
+      const faces = manager.extractCrossLayoutFaces(mockImage);
+
+      expect(faces).toHaveLength(6);
+      for (const face of faces) {
+        expect(face.width).toBe(100);
+        expect(face.height).toBe(100);
+      }
+      expect(mockCtx.drawImage.mock.calls[0][1]).toBe(200);
+      expect(mockCtx.drawImage.mock.calls[0][2]).toBe(100);
+    });
   });
 
   describe('getCubemapTexture', () => {

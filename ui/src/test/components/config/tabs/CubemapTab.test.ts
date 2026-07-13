@@ -21,7 +21,7 @@ describe('CubemapTab', () => {
     it('should render path input with cubemap placeholder', () => {
       render(CubemapTab, defaultProps());
 
-      expect(screen.getByPlaceholderText('Path to cubemap cross-pattern PNG')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Path to cubemap cross-pattern image')).toBeInTheDocument();
     });
 
     it('should render filter and wrap selects', () => {

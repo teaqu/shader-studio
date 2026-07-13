@@ -189,7 +189,8 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       dimension: "2d",
       format: "rgba8unorm",
       mipLevelCount: 1,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const handle: WebGPUTextureHandle = {
       texture,

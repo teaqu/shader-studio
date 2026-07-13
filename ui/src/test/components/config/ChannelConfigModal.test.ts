@@ -873,7 +873,7 @@ describe('ChannelConfigModal', () => {
       const cubemapsTab = screen.getByRole('tab', { name: 'Cubemaps' });
       await fireEvent.click(cubemapsTab);
 
-      expect(screen.getByPlaceholderText('Path to cubemap cross-pattern PNG')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Path to cubemap cross-pattern image')).toBeInTheDocument();
     });
 
   });

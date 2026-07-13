@@ -1172,7 +1172,7 @@ describe("WebGPURenderingEngine", () => {
       ]);
     });
 
-    it("falls back to the default texture when a cubemap texture cache lookup misses", async () => {
+    it("skips the pass instead of binding a 2D default texture when a cubemap cache lookup misses", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
       const defaultHandle = {
@@ -1196,12 +1196,8 @@ describe("WebGPURenderingEngine", () => {
 
       engine.render(1000);
 
-      expect(resourceManager.getDefaultTexture).toHaveBeenCalled();
-      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
-        { binding: 0, resource: { buffer: expect.anything() } },
-        { binding: 1, resource: defaultHandle.view },
-        { binding: 2, resource: defaultHandle.sampler },
-      ]);
+      expect(resourceManager.getDefaultTexture).not.toHaveBeenCalled();
+      expect(device.createBindGroup).not.toHaveBeenCalled();
     });
   });
 

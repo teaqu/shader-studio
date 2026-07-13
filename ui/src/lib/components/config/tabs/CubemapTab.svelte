@@ -44,7 +44,7 @@
 
 <PathInput
   value={(tempInput?.type === "cubemap" && tempInput.path) || ""}
-  placeholder="Path to cubemap cross-pattern PNG"
+  placeholder="Path to cubemap cross-pattern image"
   fileType="cubemap"
   allowCreate={false}
   {shaderPath}

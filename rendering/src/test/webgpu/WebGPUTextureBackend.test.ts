@@ -281,6 +281,9 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
       format: "rgba8unorm",
       mipLevelCount: 1,
     }));
+    const desc = device.createTexture.mock.calls[0][0] as GPUTextureDescriptor;
+    expect((desc.usage as number) & GPUTextureUsage.COPY_DST).toBeTruthy();
+    expect((desc.usage as number) & GPUTextureUsage.RENDER_ATTACHMENT).toBeTruthy();
     expect(handle!.view).toEqual({ viewDesc: { dimension: "cube" } });
     expect(handle!.width).toBe(4);
     expect(handle!.height).toBe(4);
