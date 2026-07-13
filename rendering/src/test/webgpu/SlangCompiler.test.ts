@@ -89,7 +89,9 @@ describe("SlangCompiler", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ targets: [{ name: "GLSL", value: 1 }] }));
     const result = compiler.compileImagePass("x");
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors[0]).toMatch(/no WGSL compile target/i);
+    if (!result.success) {
+      expect(result.errors[0]).toMatch(/no WGSL compile target/i);
+    }
   });
 
   it("reads compile targets from an embind vector-like", () => {
@@ -112,7 +114,9 @@ describe("SlangCompiler", () => {
     );
     const result = compiler.compileImagePass("broken");
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors[0]).toContain("undefined identifier");
+    if (!result.success) {
+      expect(result.errors[0]).toContain("undefined identifier");
+    }
   });
 
   it("reports a clear error when mainImage is missing", () => {
@@ -121,14 +125,18 @@ describe("SlangCompiler", () => {
     );
     const result = compiler.compileImagePass("no main image here");
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors[0]).toMatch(/mainImage/);
+    if (!result.success) {
+      expect(result.errors[0]).toMatch(/mainImage/);
+    }
   });
 
   it("fails on link failure with a fallback message when no diagnostic", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ linkNull: true }));
     const result = compiler.compileImagePass("x");
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors[0]).toMatch(/link/i);
+    if (!result.success) {
+      expect(result.errors[0]).toMatch(/link/i);
+    }
   });
 
   it("does not throw when the global session cannot be created", () => {

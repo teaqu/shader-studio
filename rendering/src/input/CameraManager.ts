@@ -76,7 +76,9 @@ export class CameraManager {
     this.canvas = canvas;
 
     this.onMouseDown = (e: MouseEvent) => {
-      if (!this.enabled) return;
+      if (!this.enabled) {
+        return;
+      }
       if (e.button === 0) {
         this.isMouseDown = true;
         this.lastMouseX = e.clientX;
@@ -85,8 +87,12 @@ export class CameraManager {
     };
 
     this.onMouseMove = (e: MouseEvent) => {
-      if (!this.enabled) return;
-      if (!this.isMouseDown) return;
+      if (!this.enabled) {
+        return;
+      }
+      if (!this.isMouseDown) {
+        return;
+      }
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
       this.lastMouseX = e.clientX;
@@ -95,7 +101,9 @@ export class CameraManager {
     };
 
     this.onMouseUp = (e: MouseEvent) => {
-      if (!this.enabled) return;
+      if (!this.enabled) {
+        return;
+      }
       if (e.button === 0) {
         this.isMouseDown = false;
       }
@@ -128,8 +136,12 @@ export class CameraManager {
   }
 
   update(deltaTime: number): void {
-    if (!this.enabled) return;
-    if (deltaTime <= 0 || deltaTime > 1) return;
+    if (!this.enabled) {
+      return;
+    }
+    if (deltaTime <= 0 || deltaTime > 1) {
+      return;
+    }
 
     const keyHeld = this.keyboardManager.getKeyHeld();
     const speed = this.moveSpeed * (keyHeld[16] ? this.sprintMultiplier : 1);
@@ -165,8 +177,12 @@ export class CameraManager {
     }
 
     // Q/E: world-space vertical movement
-    if (keyHeld[81]) this.position[1] += move; // Q up
-    if (keyHeld[69]) this.position[1] -= move; // E down
+    if (keyHeld[81]) {
+      this.position[1] += move;
+    } // Q up
+    if (keyHeld[69]) {
+      this.position[1] -= move;
+    } // E down
 
     // Arrow key look
     const kls = this.keyLookSpeed * deltaTime;

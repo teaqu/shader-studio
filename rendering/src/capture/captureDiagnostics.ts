@@ -58,9 +58,13 @@ let ratesResetAt = 0;
  * collapse them behind a "…". Pass live gauges specific to the call site.
  */
 export function captureDiagTick(source: string, gauges: Record<string, number>): void {
-  if (!captureDiagEnabled()) return;
+  if (!captureDiagEnabled()) {
+    return;
+  }
   const now = performance.now();
-  if (now - (lastLogAt.get(source) ?? 0) < LOG_INTERVAL_MS) return;
+  if (now - (lastLogAt.get(source) ?? 0) < LOG_INTERVAL_MS) {
+    return;
+  }
   lastLogAt.set(source, now);
 
   const c = captureCounters;
@@ -68,7 +72,7 @@ export function captureDiagTick(source: string, gauges: Record<string, number>):
   const liveTextures = c.gpuTexturesCreated - c.gpuTexturesDestroyed;
   const gaugeStr = Object.entries(gauges).map(([k, v]) => `${k}=${v}`).join(' ');
 
-  // eslint-disable-next-line no-console
+
   console.log(
     `[CaptureDiag] ${source} | LIVE buf=${liveBuffers} tex=${liveTextures} | ` +
     `rates loop/s=${c.loopTicks} issue/s=${c.issueCalls} decode/s=${c.decodeCalls} | ` +
@@ -87,7 +91,9 @@ export function captureDiagTick(source: string, gauges: Record<string, number>):
 
 /** One-off event log (not throttled) — for rare events like loop (re)starts. */
 export function captureDiagEvent(message: string, data?: Record<string, unknown>): void {
-  if (!captureDiagEnabled()) return;
-  // eslint-disable-next-line no-console
+  if (!captureDiagEnabled()) {
+    return;
+  }
+
   console.log(`[CaptureDiag] ${message}`, data ?? {});
 }

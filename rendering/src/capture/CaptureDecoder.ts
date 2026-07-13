@@ -62,8 +62,12 @@ export class CaptureDecoder {
 
     for (let i = 0; i < values.length; i++) {
       const v = values[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
+      if (v < min) {
+        min = v;
+      }
+      if (v > max) {
+        max = v;
+      }
       sum += v;
     }
 

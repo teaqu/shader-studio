@@ -18,9 +18,13 @@ export class KeyboardManager {
 
   public setupEventListeners(): void {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!this.enabled) return;
+      if (!this.enabled) {
+        return;
+      }
       const keyIndex = this.getKeyIndex(e);
-      if (keyIndex >= 256) return;
+      if (keyIndex >= 256) {
+        return;
+      }
       // If key was not previously held, it's a "just pressed" event
       if (this.keyHeld[keyIndex] === 0) {
         this.keyPressed[keyIndex] = 255;
@@ -34,16 +38,22 @@ export class KeyboardManager {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!this.enabled) return;
+      if (!this.enabled) {
+        return;
+      }
       const keyIndex = this.getKeyIndex(e);
-      if (keyIndex >= 256) return;
+      if (keyIndex >= 256) {
+        return;
+      }
       // Unset key as held
       this.keyHeld[keyIndex] = 0;
     };
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", () => { this.clearTransientState(); });
+    window.addEventListener("blur", () => {
+      this.clearTransientState();
+    });
   }
 
   public clearPressed(): void {

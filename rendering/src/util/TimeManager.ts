@@ -1,223 +1,223 @@
 export class TimeManager {
-    private paused = false;
-    private pausedTime = 0;
-    private lastRealTime = 0;
-    private resetTime = 0;
-    private frame = 0;
-    private lastFrameTime = 0;
-    private deltaTime = 0;
-    private speedMultiplier = 1.0;
-    private zeroSpeedTime: number | null = null;
-    private loopEnabled = false;
-    private loopDuration = 60; // Default to 1 minute
+  private paused = false;
+  private pausedTime = 0;
+  private lastRealTime = 0;
+  private resetTime = 0;
+  private frame = 0;
+  private lastFrameTime = 0;
+  private deltaTime = 0;
+  private speedMultiplier = 1.0;
+  private zeroSpeedTime: number | null = null;
+  private loopEnabled = false;
+  private loopDuration = 60; // Default to 1 minute
 
-    constructor() {
-        this.resetTime = performance.now() * 0.001;
-        this.lastFrameTime = this.resetTime;
+  constructor() {
+    this.resetTime = performance.now() * 0.001;
+    this.lastFrameTime = this.resetTime;
+  }
+
+  public isPaused(): boolean {
+    return this.paused;
+  }
+
+  public togglePause(): void {
+    if (this.paused) {
+      // Resume: calculate how long we were paused and adjust the offset
+      const currentTime = performance.now() * 0.001;
+      this.pausedTime += currentTime - this.lastRealTime;
+      this.lastFrameTime = currentTime; // Reset frame time to avoid large delta
+      this.paused = false;
+    } else {
+      // Pause: record the current time (absolute time, not relative to resetTime)
+      this.lastRealTime = performance.now() * 0.001;
+      this.paused = true;
+    }
+  }
+
+  public cleanup(): void {
+    const currentTime = performance.now() * 0.001;
+    this.resetTime = currentTime;
+    this.pausedTime = 0;
+    this.frame = 0;
+    this.lastFrameTime = currentTime;
+    this.deltaTime = 0;
+    this.zeroSpeedTime = this.speedMultiplier === 0 ? 0 : null;
+
+    if (this.paused) {
+      this.lastRealTime = this.resetTime;
+    } else {
+      this.lastRealTime = 0;
+    }
+  }
+
+  public getCurrentTime(currentFrameTime: number): number {
+    const currentTime = currentFrameTime * 0.001;
+
+    let time = this.zeroSpeedTime ?? (
+      this.paused
+        ? (this.lastRealTime - this.resetTime) - this.pausedTime
+        : (currentTime - this.resetTime) - this.pausedTime
+    ) * this.speedMultiplier;
+
+    // Apply loop if enabled
+    if (this.loopEnabled && this.loopDuration > 0) {
+      time = ((time % this.loopDuration) + this.loopDuration) % this.loopDuration;
     }
 
-    public isPaused(): boolean {
-        return this.paused;
+    return time;
+  }
+
+  public updateFrame(frameTimeMs: number): void {
+    const currentTime = frameTimeMs * 0.001; // Convert to seconds
+
+    if (!this.paused) {
+      if (this.frame > 0) {
+        this.deltaTime = currentTime - this.lastFrameTime;
+      } else {
+        this.deltaTime = 0.016667; // Default to ~60fps for first frame
+      }
+      this.lastFrameTime = currentTime;
     }
+  }
 
-    public togglePause(): void {
-        if (this.paused) {
-            // Resume: calculate how long we were paused and adjust the offset
-            const currentTime = performance.now() * 0.001;
-            this.pausedTime += currentTime - this.lastRealTime;
-            this.lastFrameTime = currentTime; // Reset frame time to avoid large delta
-            this.paused = false;
-        } else {
-            // Pause: record the current time (absolute time, not relative to resetTime)
-            this.lastRealTime = performance.now() * 0.001;
-            this.paused = true;
-        }
-    }
+  public getDeltaTime(): number {
+    return this.deltaTime;
+  }
 
-    public cleanup(): void {
-        const currentTime = performance.now() * 0.001;
-        this.resetTime = currentTime;
-        this.pausedTime = 0;
-        this.frame = 0;
-        this.lastFrameTime = currentTime;
-        this.deltaTime = 0;
-        this.zeroSpeedTime = this.speedMultiplier === 0 ? 0 : null;
+  public getFrame(): number {
+    return this.frame;
+  }
 
-        if (this.paused) {
-            this.lastRealTime = this.resetTime;
-        } else {
-            this.lastRealTime = 0;
-        }
-    }
+  public incrementFrame(): void {
+    this.frame++;
+  }
 
-    public getCurrentTime(currentFrameTime: number): number {
-        const currentTime = currentFrameTime * 0.001;
-
-        let time = this.zeroSpeedTime ?? (
-            this.paused
-                ? (this.lastRealTime - this.resetTime) - this.pausedTime
-                : (currentTime - this.resetTime) - this.pausedTime
-        ) * this.speedMultiplier;
-
-        // Apply loop if enabled
-        if (this.loopEnabled && this.loopDuration > 0) {
-            time = ((time % this.loopDuration) + this.loopDuration) % this.loopDuration;
-        }
-
-        return time;
-    }
-
-    public updateFrame(frameTimeMs: number): void {
-        const currentTime = frameTimeMs * 0.001; // Convert to seconds
-
-        if (!this.paused) {
-            if (this.frame > 0) {
-                this.deltaTime = currentTime - this.lastFrameTime;
-            } else {
-                this.deltaTime = 0.016667; // Default to ~60fps for first frame
-            }
-            this.lastFrameTime = currentTime;
-        }
-    }
-
-    public getDeltaTime(): number {
-        return this.deltaTime;
-    }
-
-    public getFrame(): number {
-        return this.frame;
-    }
-
-    public incrementFrame(): void {
-        this.frame++;
-    }
-
-    public getCurrentDate(): Float32Array {
-        const currentDate = new Date();
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-        const day = currentDate.getDate();
-        const timeInSeconds = currentDate.getHours() * 60.0 * 60 +
+  public getCurrentDate(): Float32Array {
+    const currentDate = new Date();
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const day = currentDate.getDate();
+    const timeInSeconds = currentDate.getHours() * 60.0 * 60 +
             currentDate.getMinutes() * 60 +
             currentDate.getSeconds() +
             currentDate.getMilliseconds() / 1000.0;
 
-        return new Float32Array([year, month, day, timeInSeconds]);
+    return new Float32Array([year, month, day, timeInSeconds]);
+  }
+
+  public setSpeed(speed: number): void {
+    if (!Number.isFinite(speed)) {
+      return;
     }
 
-    public setSpeed(speed: number): void {
-        if (!Number.isFinite(speed)) {
-            return;
-        }
+    // Preserve current time when changing speed
+    const currentTime = performance.now() * 0.001;
+    const currentShaderTime = this.getCurrentTime(currentTime * 1000);
 
-        // Preserve current time when changing speed
-        const currentTime = performance.now() * 0.001;
-        const currentShaderTime = this.getCurrentTime(currentTime * 1000);
-
-        if (speed === 0) {
-            this.speedMultiplier = 0;
-            this.zeroSpeedTime = currentShaderTime;
-            if (this.paused) {
-                this.lastRealTime = currentTime;
-            }
-            return;
-        }
-
-        // Adjust resetTime so current shader time stays the same
-        // currentShaderTime = (currentTime - resetTime - pausedTime) * speed
-        // resetTime = currentTime - (currentShaderTime / speed) - pausedTime
-        this.resetTime = currentTime - (currentShaderTime / speed) - this.pausedTime;
-        this.speedMultiplier = speed;
-        this.zeroSpeedTime = null;
-
-        if (this.paused) {
-            this.lastRealTime = currentTime;
-        }
+    if (speed === 0) {
+      this.speedMultiplier = 0;
+      this.zeroSpeedTime = currentShaderTime;
+      if (this.paused) {
+        this.lastRealTime = currentTime;
+      }
+      return;
     }
 
-    public getSpeed(): number {
-        return this.speedMultiplier;
+    // Adjust resetTime so current shader time stays the same
+    // currentShaderTime = (currentTime - resetTime - pausedTime) * speed
+    // resetTime = currentTime - (currentShaderTime / speed) - pausedTime
+    this.resetTime = currentTime - (currentShaderTime / speed) - this.pausedTime;
+    this.speedMultiplier = speed;
+    this.zeroSpeedTime = null;
+
+    if (this.paused) {
+      this.lastRealTime = currentTime;
+    }
+  }
+
+  public getSpeed(): number {
+    return this.speedMultiplier;
+  }
+
+  public setLoopEnabled(enabled: boolean): void {
+    this.loopEnabled = enabled;
+  }
+
+  public isLoopEnabled(): boolean {
+    return this.loopEnabled;
+  }
+
+  public setLoopDuration(duration: number): void {
+    this.loopDuration = Math.max(0, duration);
+  }
+
+  public getLoopDuration(): number {
+    return this.loopDuration;
+  }
+
+  public setTime(time: number): void {
+    const currentTime = performance.now() * 0.001;
+    if (this.speedMultiplier === 0) {
+      this.zeroSpeedTime = time;
+      this.resetTime = currentTime;
+      this.pausedTime = 0;
+      this.lastFrameTime = currentTime;
+
+      if (this.paused) {
+        this.lastRealTime = currentTime;
+      }
+      return;
     }
 
-    public setLoopEnabled(enabled: boolean): void {
-        this.loopEnabled = enabled;
+    // Adjust the time accounting for speed multiplier
+    const adjustedTime = time / this.speedMultiplier;
+    this.resetTime = currentTime - adjustedTime;
+    this.pausedTime = 0;
+    this.lastFrameTime = currentTime;
+    this.zeroSpeedTime = null;
+
+    if (this.paused) {
+      this.lastRealTime = currentTime;
     }
+  }
 
-    public isLoopEnabled(): boolean {
-        return this.loopEnabled;
-    }
+  public setFrame(frame: number): void {
+    this.frame = frame;
+  }
 
-    public setLoopDuration(duration: number): void {
-        this.loopDuration = Math.max(0, duration);
-    }
+  public setDeltaTime(dt: number): void {
+    this.deltaTime = dt;
+  }
 
-    public getLoopDuration(): number {
-        return this.loopDuration;
-    }
+  public getState(): TimeManagerState {
+    return {
+      paused: this.paused,
+      pausedTime: this.pausedTime,
+      lastRealTime: this.lastRealTime,
+      resetTime: this.resetTime,
+      frame: this.frame,
+      lastFrameTime: this.lastFrameTime,
+      deltaTime: this.deltaTime,
+      speedMultiplier: this.speedMultiplier,
+      zeroSpeedTime: this.zeroSpeedTime,
+      loopEnabled: this.loopEnabled,
+      loopDuration: this.loopDuration,
+    };
+  }
 
-    public setTime(time: number): void {
-        const currentTime = performance.now() * 0.001;
-        if (this.speedMultiplier === 0) {
-            this.zeroSpeedTime = time;
-            this.resetTime = currentTime;
-            this.pausedTime = 0;
-            this.lastFrameTime = currentTime;
-
-            if (this.paused) {
-                this.lastRealTime = currentTime;
-            }
-            return;
-        }
-
-        // Adjust the time accounting for speed multiplier
-        const adjustedTime = time / this.speedMultiplier;
-        this.resetTime = currentTime - adjustedTime;
-        this.pausedTime = 0;
-        this.lastFrameTime = currentTime;
-        this.zeroSpeedTime = null;
-
-        if (this.paused) {
-            this.lastRealTime = currentTime;
-        }
-    }
-
-    public setFrame(frame: number): void {
-        this.frame = frame;
-    }
-
-    public setDeltaTime(dt: number): void {
-        this.deltaTime = dt;
-    }
-
-    public getState(): TimeManagerState {
-        return {
-            paused: this.paused,
-            pausedTime: this.pausedTime,
-            lastRealTime: this.lastRealTime,
-            resetTime: this.resetTime,
-            frame: this.frame,
-            lastFrameTime: this.lastFrameTime,
-            deltaTime: this.deltaTime,
-            speedMultiplier: this.speedMultiplier,
-            zeroSpeedTime: this.zeroSpeedTime,
-            loopEnabled: this.loopEnabled,
-            loopDuration: this.loopDuration,
-        };
-    }
-
-    public setState(state: TimeManagerState): void {
-        this.paused = state.paused;
-        this.pausedTime = state.pausedTime;
-        this.lastRealTime = state.lastRealTime;
-        this.resetTime = state.resetTime;
-        this.frame = state.frame;
-        this.lastFrameTime = state.lastFrameTime;
-        this.deltaTime = state.deltaTime;
-        this.speedMultiplier = state.speedMultiplier;
-        this.zeroSpeedTime = state.zeroSpeedTime ?? null;
-        this.loopEnabled = state.loopEnabled;
-        this.loopDuration = state.loopDuration;
-    }
+  public setState(state: TimeManagerState): void {
+    this.paused = state.paused;
+    this.pausedTime = state.pausedTime;
+    this.lastRealTime = state.lastRealTime;
+    this.resetTime = state.resetTime;
+    this.frame = state.frame;
+    this.lastFrameTime = state.lastFrameTime;
+    this.deltaTime = state.deltaTime;
+    this.speedMultiplier = state.speedMultiplier;
+    this.zeroSpeedTime = state.zeroSpeedTime ?? null;
+    this.loopEnabled = state.loopEnabled;
+    this.loopDuration = state.loopDuration;
+  }
 }
 
 export interface TimeManagerState {

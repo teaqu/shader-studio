@@ -27,7 +27,9 @@ describe("RenderingEngine WebGL Initialization", () => {
       const { RenderingEngine } = await import("../../webgl/RenderingEngine");
       const engine = new RenderingEngine();
 
-      try { engine.initialize(mockCanvas); } catch { /* piRenderer init may fail, that's OK */ }
+      try {
+        engine.initialize(mockCanvas);
+      } catch { /* piRenderer init may fail, that's OK */ }
 
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,
@@ -46,7 +48,9 @@ describe("RenderingEngine WebGL Initialization", () => {
       const { RenderingEngine } = await import("../../webgl/RenderingEngine");
       const engine = new RenderingEngine();
 
-      try { engine.initialize(mockCanvas, true); } catch { /* piRenderer init may fail */ }
+      try {
+        engine.initialize(mockCanvas, true);
+      } catch { /* piRenderer init may fail */ }
 
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,

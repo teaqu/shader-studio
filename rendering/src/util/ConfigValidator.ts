@@ -33,7 +33,9 @@ export class ConfigValidator {
 
     // Validate buffer passes (any key except Image)
     for (const passName of Object.keys(config.passes)) {
-      if (passName === 'Image') continue;
+      if (passName === 'Image') {
+        continue;
+      }
       if (!this.GLSL_IDENTIFIER.test(passName)) {
         errors.push(`Invalid pass name: ${passName}`);
         continue;

@@ -80,7 +80,9 @@ describe("WorkerSlangCompiler", () => {
 
   it("rejects create() when the worker factory throws", async () => {
     await expect(
-      WorkerSlangCompiler.create(() => { throw new Error("no Worker"); }, "s.js", "s.wasm"),
+      WorkerSlangCompiler.create(() => {
+        throw new Error("no Worker");
+      }, "s.js", "s.wasm"),
     ).rejects.toThrow("no Worker");
   });
 

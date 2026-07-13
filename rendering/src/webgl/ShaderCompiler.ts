@@ -156,7 +156,9 @@ uniform struct {
       const pollOutcome = await new Promise<'completed' | 'timeout'>(resolve => {
         let resolved = false;
         const done = (outcome: 'completed' | 'timeout') => {
-          if (!resolved) { resolved = true; resolve(outcome); }
+          if (!resolved) {
+            resolved = true; resolve(outcome);
+          }
         };
         const timeoutId = setTimeout(() => done('timeout'), ASYNC_COMPILE_TIMEOUT_MS);
         let slowLogged = false;
@@ -233,9 +235,15 @@ uniform struct {
         message: error instanceof Error ? error.message : String(error),
         glError: this.readGlError(gl),
       });
-      if (vs) gl.deleteShader(vs);
-      if (fs) gl.deleteShader(fs);
-      if (program) gl.deleteProgram(program);
+      if (vs) {
+        gl.deleteShader(vs);
+      }
+      if (fs) {
+        gl.deleteShader(fs);
+      }
+      if (program) {
+        gl.deleteProgram(program);
+      }
       throw error;
     }
   }
@@ -303,7 +311,9 @@ uniform struct {
 
   private readGlError(gl: WebGL2RenderingContext): number | null {
     const getError = (gl as { getError?: () => number }).getError;
-    if (!getError) return null;
+    if (!getError) {
+      return null;
+    }
 
     const error = getError.call(gl);
     const noError = (gl as { NO_ERROR?: number }).NO_ERROR ?? 0;

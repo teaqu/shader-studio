@@ -109,7 +109,9 @@ const createMockGl = () => {
 
     // State methods
     getParameter: vi.fn((param: number) => {
-      if (param === 0x0ba2) return [0, 0, 800, 600]; // VIEWPORT
+      if (param === 0x0ba2) {
+        return [0, 0, 800, 600];
+      } // VIEWPORT
       return null;
     }),
     viewport: vi.fn(),
@@ -625,7 +627,9 @@ describe("VariableCapturer", () => {
 
     const flushFrame = async () => {
       const cb = rafCallbacks.shift();
-      if (cb) cb(0);
+      if (cb) {
+        cb(0);
+      }
       // Drain microtasks/macrotasks so subsequent rAFs registered by the loop body queue up.
       await new Promise<void>(r => setTimeout(r, 0));
     };
@@ -635,7 +639,11 @@ describe("VariableCapturer", () => {
       let settled = false;
       let result: T;
       let error: unknown;
-      promise.then(r => { result = r; settled = true; }, e => { error = e; settled = true; });
+      promise.then(r => {
+        result = r; settled = true;
+      }, e => {
+        error = e; settled = true;
+      });
       let safety = 0;
       while (!settled && safety++ < 200) {
         if (rafCallbacks.length > 0) {
@@ -644,7 +652,9 @@ describe("VariableCapturer", () => {
           await new Promise<void>(r => setTimeout(r, 0));
         }
       }
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       return result!;
     };
 
@@ -707,7 +717,9 @@ describe("VariableCapturer", () => {
       );
 
       const cb = rafCallbacks.shift();
-      if (cb) cb(0);
+      if (cb) {
+        cb(0);
+      }
       // Cancel immediately after nextFrame resolves, before the async loop resumes.
       shouldContinue = false;
 
@@ -754,7 +766,9 @@ describe("VariableCapturer", () => {
       );
 
       const cb = rafCallbacks.shift();
-      if (cb) cb(0);
+      if (cb) {
+        cb(0);
+      }
       shouldContinue = false;
 
       const result = await driveUntilSettled(promise);
@@ -1267,7 +1281,9 @@ describe("VariableCapturer", () => {
 
     it("should skip uniform upload when getUniformLocation returns null", async () => {
       vi.mocked(gl.getUniformLocation).mockImplementation((_prog: any, name: string) => {
-        if (name === "uMissing") return null;
+        if (name === "uMissing") {
+          return null;
+        }
         return { loc: true } as any;
       });
 
@@ -1344,7 +1360,9 @@ describe("VariableCapturer", () => {
 
     const flushFrame = async () => {
       const cb = rafCallbacks.shift();
-      if (cb) cb(0);
+      if (cb) {
+        cb(0);
+      }
       await new Promise<void>(r => setTimeout(r, 0));
     };
 
@@ -1352,7 +1370,11 @@ describe("VariableCapturer", () => {
       let settled = false;
       let result: T;
       let error: unknown;
-      promise.then(r => { result = r; settled = true; }, e => { error = e; settled = true; });
+      promise.then(r => {
+        result = r; settled = true;
+      }, e => {
+        error = e; settled = true;
+      });
       let safety = 0;
       while (!settled && safety++ < 200) {
         if (rafCallbacks.length > 0) {
@@ -1361,7 +1383,9 @@ describe("VariableCapturer", () => {
           await new Promise<void>(r => setTimeout(r, 0));
         }
       }
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       return result!;
     };
 

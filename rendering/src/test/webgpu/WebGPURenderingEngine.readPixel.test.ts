@@ -39,7 +39,9 @@ function engineWithMockedGpu(pixelBytes: number[], format = "bgra8unorm") {
   const copyTextureToBuffer = vi.fn();
   let mapResolve: (() => void) | null = null;
   const readbackBuffer = {
-    mapAsync: vi.fn(() => new Promise<void>((resolve) => { mapResolve = resolve; })),
+    mapAsync: vi.fn(() => new Promise<void>((resolve) => {
+      mapResolve = resolve;
+    })),
     getMappedRange: vi.fn(() => new Uint8Array(pixelBytes).buffer),
     unmap: vi.fn(),
     destroy: vi.fn(),

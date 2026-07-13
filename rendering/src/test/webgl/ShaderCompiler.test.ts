@@ -84,18 +84,18 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform vec4 iMouse;");        // SetShaderConstant4FV
       expect(wrappedCode).toContain("uniform int iFrame;");         // SetShaderConstant1I
       expect(wrappedCode).toContain("uniform vec4 iDate;");         // SetShaderConstant4FV
-      
+
       // Channel samplers
       expect(wrappedCode).toContain("uniform sampler2D iChannel0;"); // SetShaderTextureUnit
       expect(wrappedCode).toContain("uniform sampler2D iChannel1;"); // SetShaderTextureUnit
       expect(wrappedCode).toContain("uniform sampler2D iChannel2;"); // SetShaderTextureUnit
       expect(wrappedCode).toContain("uniform sampler2D iChannel3;"); // SetShaderTextureUnit
-      
+
       // Channel resolutions
       expect(wrappedCode).toContain("uniform vec3 iChannelResolution[4];"); // SetShaderConstant3FV
     });
 
-it("should always inject all uniforms regardless of user declarations (Like ShaderToy)", () => {
+    it("should always inject all uniforms regardless of user declarations (Like ShaderToy)", () => {
       const code = `
         uniform vec4 iMouse;
         uniform int iFrame;
@@ -111,7 +111,7 @@ it("should always inject all uniforms regardless of user declarations (Like Shad
     });
 
 
-it("should always inject all channel samplers regardless of user declarations (Like shadertoy)", () => {
+    it("should always inject all channel samplers regardless of user declarations (Like shadertoy)", () => {
       const code = `
         uniform sampler2D iChannel0;
         uniform sampler2D iChannel2;
@@ -216,13 +216,13 @@ it("should always inject all channel samplers regardless of user declarations (L
       const code = `
         uniform float customUniform;
         #define PI 3.14159
-        
+
         vec3 hsv2rgb(vec3 c) {
           vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
           vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
           return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
         }
-        
+
         void mainImage(out vec4 fragColor, in vec2 fragCoord) {
           vec2 uv = fragCoord.xy / iResolution.xy;
           vec3 color = hsv2rgb(vec3(iTime * 0.1, 1.0, 1.0));
@@ -239,7 +239,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(wrappedCode).toContain("void mainImage(out vec4 fragColor, in vec2 fragCoord)");
       expect(wrappedCode).toContain("void main() {");
       expect(wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
-      
+
       // Verify standard uniforms are still injected
       expect(wrappedCode).toContain("uniform vec3 iResolution;");
       expect(wrappedCode).toContain("uniform float iTime;");
@@ -431,11 +431,11 @@ it("should always inject all channel samplers regardless of user declarations (L
       const complexCode = `
         #define COMPLEX_MACRO(x) (x * 2.0 + sin(iTime))
         uniform float userUniform;
-        
+
         vec3 complexFunction(vec3 input) {
           return normalize(input + vec3(sin(iTime), cos(iTime), 0.0));
         }
-        
+
         void mainImage(out vec4 fragColor, in vec2 fragCoord) {
           vec2 uv = fragCoord / iResolution.xy;
           vec3 color = complexFunction(vec3(uv, iTime * 0.1));
@@ -466,7 +466,7 @@ it("should always inject all channel samplers regardless of user declarations (L
 
       expect(result).toBe(mockShader);
       expect(mockRenderer.CreateShader).toHaveBeenCalledTimes(1);
-      
+
       // Verify the wrapped code was still generated properly
       const [vs, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
       expect(vs).toContain("in vec2 position;");
@@ -492,10 +492,10 @@ it("should always inject all channel samplers regardless of user declarations (L
         "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
         expect.stringContaining("precision highp float;")
       );
-      
+
       // Verify exact vertex shader format
       expect(capturedVs).toBe("in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }");
-      
+
       // Verify fragment shader has all required components in right order
       expect(capturedFs).toMatch(/precision highp float;[\s\S]*out vec4 fragColor;[\s\S]*#define HW_PERFORMANCE 1[\s\S]*uniform vec3 iResolution;[\s\S]*void main\(\) \{[\s\S]*mainImage\(fragColor, gl_FragCoord\.xy\);[\s\S]*\}/);
     });
@@ -546,7 +546,7 @@ it("should always inject all channel samplers regardless of user declarations (L
       // Ensure they are not concatenated without newline
       expect(fs).not.toContain("}#define");
     });
-   });
+  });
 
   describe("compileShaderAsync", () => {
     it("falls back to renderer CreateShader when no WebGL context is available", async () => {
@@ -916,4 +916,4 @@ it("should always inject all channel samplers regardless of user declarations (L
       expect(fsArg).toContain("uniform samplerCube iChannel0;");
     });
   });
- });
+});

@@ -13,9 +13,15 @@ function createMockKeyboardManager(): MockKeyboardManager {
   const keyHeld = new Uint8Array(256);
   return {
     getKeyHeld: () => keyHeld,
-    press: (code: number) => { keyHeld[code] = 255; },
-    release: (code: number) => { keyHeld[code] = 0; },
-    releaseAll: () => { keyHeld.fill(0); },
+    press: (code: number) => {
+      keyHeld[code] = 255;
+    },
+    release: (code: number) => {
+      keyHeld[code] = 0;
+    },
+    releaseAll: () => {
+      keyHeld.fill(0);
+    },
     setupEventListeners: vi.fn(),
     getKeyPressed: () => new Uint8Array(256),
   } as unknown as MockKeyboardManager;
@@ -193,7 +199,9 @@ describe("CameraManager", () => {
     it("horizontal mouse drag should change yaw", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
-        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+        addEventListener: vi.fn((event: string, handler: Function) => {
+          listeners[event] = handler;
+        }),
       } as unknown as HTMLCanvasElement;
       const windowAddSpy = vi.spyOn(window, "addEventListener");
 
@@ -218,7 +226,9 @@ describe("CameraManager", () => {
     it("vertical mouse drag should change pitch", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
-        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+        addEventListener: vi.fn((event: string, handler: Function) => {
+          listeners[event] = handler;
+        }),
       } as unknown as HTMLCanvasElement;
       const windowAddSpy = vi.spyOn(window, "addEventListener");
 
@@ -237,7 +247,9 @@ describe("CameraManager", () => {
     it("should not respond to right-click drag", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
-        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+        addEventListener: vi.fn((event: string, handler: Function) => {
+          listeners[event] = handler;
+        }),
       } as unknown as HTMLCanvasElement;
       const windowAddSpy = vi.spyOn(window, "addEventListener");
 
@@ -257,7 +269,9 @@ describe("CameraManager", () => {
     it("mouse up should stop drag", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
-        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+        addEventListener: vi.fn((event: string, handler: Function) => {
+          listeners[event] = handler;
+        }),
       } as unknown as HTMLCanvasElement;
       const windowAddSpy = vi.spyOn(window, "addEventListener");
 
@@ -295,7 +309,9 @@ describe("CameraManager", () => {
     it("should ignore mouse drag while disabled", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
-        addEventListener: vi.fn((event: string, handler: Function) => { listeners[event] = handler; }),
+        addEventListener: vi.fn((event: string, handler: Function) => {
+          listeners[event] = handler;
+        }),
       } as unknown as HTMLCanvasElement;
       const windowAddSpy = vi.spyOn(window, "addEventListener");
 

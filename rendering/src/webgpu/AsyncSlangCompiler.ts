@@ -59,11 +59,16 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
         return;
       }
       const entry = this.pending.get(msg.id);
-      if (!entry) return;
+      if (!entry) {
+        return;
+      }
       this.pending.delete(msg.id);
       if (entry.isInit) {
-        if (msg.ok) entry.initResolve!();
-        else entry.initReject!(new Error(msg.error));
+        if (msg.ok) {
+          entry.initResolve!();
+        } else {
+          entry.initReject!(new Error(msg.error));
+        }
         return;
       }
       if (!msg.ok) {
@@ -100,8 +105,14 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
         instance.pending.set(id, {
           isInit: true,
           resolve: () => {},
-          initResolve: () => { clearTimeout(timer); resolve(); },
-          initReject: (error) => { clearTimeout(timer); reject(error); },
+          initResolve: () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          initReject: (error) => {
+            clearTimeout(timer);
+            reject(error);
+          },
         });
         worker.postMessage({ id, type: "init", scriptUrl, wasmUrl });
       });
@@ -132,8 +143,11 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
 
   private failAllPending(message: string): void {
     for (const [, entry] of this.pending) {
-      if (entry.isInit) entry.initReject?.(new Error(message));
-      else entry.resolve({ success: false, errors: [message] });
+      if (entry.isInit) {
+        entry.initReject?.(new Error(message));
+      } else {
+        entry.resolve({ success: false, errors: [message] });
+      }
     }
     this.pending.clear();
   }

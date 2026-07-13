@@ -187,7 +187,9 @@ export class VariableCapturer implements IVariableCapturer {
     shouldContinue: CaptureContinuation = () => true,
   ): Promise<number> {
     this.clearLastError();
-    if (captures.length === 0) return 0;
+    if (captures.length === 0) {
+      return 0;
+    }
 
     const requestId = VariableCapturer.nextCaptureRequestId++;
     const preExistingErrors = this.drainGlErrors();
@@ -212,17 +214,25 @@ export class VariableCapturer implements IVariableCapturer {
     const requestShaderResults = new Map<string, PiShader | null>();
 
     for (const cap of captures) {
-      if (!shouldContinue()) break;
+      if (!shouldContinue()) {
+        break;
+      }
 
       try {
         const hasRequestShaderResult = requestShaderResults.has(cap.captureShader);
         const wasCacheMiss = !hasRequestShaderResult && !this.shaderCache.has(cap.captureShader);
         if (wasCacheMiss) {
-          if (this.gl.isContextLost()) break;
+          if (this.gl.isContextLost()) {
+            break;
+          }
           await this.nextFrame();
-          if (!shouldContinue() || this.gl.isContextLost()) break;
+          if (!shouldContinue() || this.gl.isContextLost()) {
+            break;
+          }
         }
-        if (this.gl.isContextLost()) break;
+        if (this.gl.isContextLost()) {
+          break;
+        }
         let piShader = requestShaderResults.get(cap.captureShader) ?? null;
         if (!hasRequestShaderResult) {
           try {
@@ -233,8 +243,12 @@ export class VariableCapturer implements IVariableCapturer {
             throw error;
           }
         }
-        if (!shouldContinue() || this.gl.isContextLost()) break;
-        if (!piShader || !piShader.mProgram) continue;
+        if (!shouldContinue() || this.gl.isContextLost()) {
+          break;
+        }
+        if (!piShader || !piShader.mProgram) {
+          continue;
+        }
 
         this.renderCaptureShader(
           piShader,
@@ -293,7 +307,9 @@ export class VariableCapturer implements IVariableCapturer {
     shouldContinue: CaptureContinuation = () => true,
   ): Promise<number> {
     this.clearLastError();
-    if (captures.length === 0) return 0;
+    if (captures.length === 0) {
+      return 0;
+    }
 
     const requestId = VariableCapturer.nextCaptureRequestId++;
     const preExistingErrors = this.drainGlErrors();
@@ -317,17 +333,25 @@ export class VariableCapturer implements IVariableCapturer {
     const requestShaderResults = new Map<string, PiShader | null>();
 
     for (const cap of captures) {
-      if (!shouldContinue()) break;
+      if (!shouldContinue()) {
+        break;
+      }
 
       try {
         const hasRequestShaderResult = requestShaderResults.has(cap.captureShader);
         const wasCacheMiss = !hasRequestShaderResult && !this.shaderCache.has(cap.captureShader);
         if (wasCacheMiss) {
-          if (this.gl.isContextLost()) break;
+          if (this.gl.isContextLost()) {
+            break;
+          }
           await this.nextFrame();
-          if (!shouldContinue() || this.gl.isContextLost()) break;
+          if (!shouldContinue() || this.gl.isContextLost()) {
+            break;
+          }
         }
-        if (this.gl.isContextLost()) break;
+        if (this.gl.isContextLost()) {
+          break;
+        }
         let piShader = requestShaderResults.get(cap.captureShader) ?? null;
         if (!hasRequestShaderResult) {
           try {
@@ -338,8 +362,12 @@ export class VariableCapturer implements IVariableCapturer {
             throw error;
           }
         }
-        if (!shouldContinue() || this.gl.isContextLost()) break;
-        if (!piShader || !piShader.mProgram) continue;
+        if (!shouldContinue() || this.gl.isContextLost()) {
+          break;
+        }
+        if (!piShader || !piShader.mProgram) {
+          continue;
+        }
 
         this.renderCaptureShader(
           piShader,
@@ -510,7 +538,9 @@ export class VariableCapturer implements IVariableCapturer {
     const gl = this.gl;
 
     const texture = gl.createTexture();
-    if (!texture) return null;
+    if (!texture) {
+      return null;
+    }
 
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
@@ -568,7 +598,7 @@ export class VariableCapturer implements IVariableCapturer {
     // Full-screen triangle (covers NDC [-1, 1] × [-1, 1])
     const vertices = new Float32Array([
       -1, -1,
-       3, -1,
+      3, -1,
       -1,  3,
     ]);
 
@@ -628,7 +658,9 @@ export class VariableCapturer implements IVariableCapturer {
     // Set custom uniforms from script
     for (const u of this.customUniforms) {
       const loc = gl.getUniformLocation(program, u.name);
-      if (loc === null) continue;
+      if (loc === null) {
+        continue;
+      }
       switch (u.type) {
         case 'float':
           gl.uniform1f(loc, u.value as number);
@@ -698,7 +730,9 @@ export class VariableCapturer implements IVariableCapturer {
     return new Promise<void>(resolve => {
       let resolved = false;
       const done = () => {
-        if (!resolved) { resolved = true; resolve(); }
+        if (!resolved) {
+          resolved = true; resolve();
+        }
       };
       requestAnimationFrame(done);
       // Safety: if rAF is throttled (e.g. WebGL context loss killing Metal), don't
@@ -722,7 +756,9 @@ export class VariableCapturer implements IVariableCapturer {
     const errors: number[] = [];
     for (let i = 0; i < 16; i++) {
       const err = this.readGlError();
-      if (err === null) break;
+      if (err === null) {
+        break;
+      }
       errors.push(err);
     }
     return errors;
@@ -730,7 +766,9 @@ export class VariableCapturer implements IVariableCapturer {
 
   private readGlError(): number | null {
     const getError = (this.gl as { getError?: () => number }).getError;
-    if (!getError) return null;
+    if (!getError) {
+      return null;
+    }
 
     const error = getError.call(this.gl);
     const noError = (this.gl as { NO_ERROR?: number }).NO_ERROR ?? 0;

@@ -57,7 +57,7 @@ export class BufferManager {
 
     this.buffers = newBuffers;
     this.cleanupBuffers(oldBuffers);
-  } 
+  }
 
   public getPassBuffers(): Buffers {
     return this.buffers;
@@ -102,8 +102,8 @@ export class BufferManager {
     name: string,
     newBuffers: Buffer
   ): boolean {
-    return !!(oldBuffers[name] && 
-             newBuffers.front?.mTex0 && 
+    return !!(oldBuffers[name] &&
+             newBuffers.front?.mTex0 &&
              newBuffers.back?.mTex0);
   }
 
@@ -122,7 +122,7 @@ export class BufferManager {
         // Copy FRONT buffer
         this.copyTexture(oldFront, newBuffer.front, minWidth, minHeight);
 
-        // Copy BACK buffer  
+        // Copy BACK buffer
         if (newBuffer.back) {
           this.copyTexture(oldBack, newBuffer.back, minWidth, minHeight);
         }
@@ -136,14 +136,16 @@ export class BufferManager {
     width: number,
     height: number
   ): void {
-    if (!sourceTexture || !this.copyShader) return;
+    if (!sourceTexture || !this.copyShader) {
+      return;
+    }
 
     this.renderer.SetRenderTarget(targetRenderTarget);
     this.renderer.SetViewport([0, 0, width, height]);
     this.renderer.AttachShader(this.copyShader);
     this.renderer.SetShaderTextureUnit("srcTex", 0);
     this.renderer.AttachTextures(1, sourceTexture, null, null, null);
-    
+
     const posLoc = this.renderer.GetAttribLocation(this.copyShader, "position");
     this.renderer.DrawUnitQuad_XY(posLoc);
   }
@@ -182,15 +184,16 @@ export class BufferManager {
     this.renderer.DestroyRenderTarget(renderTarget);
   }
 
-  private clearRenderTarget( 
+  private clearRenderTarget(
     renderTarget: PiRenderTarget | null,
     width: number,
     height: number
   ): void {
-    if (!renderTarget) return;
+    if (!renderTarget) {
+      return;
+    }
     this.renderer.SetRenderTarget(renderTarget);
     this.renderer.SetViewport([0, 0, width, height]);
     this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 0]);
   }
 }
- 
