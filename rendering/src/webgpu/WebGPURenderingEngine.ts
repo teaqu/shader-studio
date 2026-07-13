@@ -934,15 +934,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const canvasWidth = Math.max(1, this.canvas.width);
     const canvasHeight = Math.max(1, this.canvas.height);
     for (const pass of this.passGraph) {
-      const resolution = resolvePassResolution({
-        passName: pass.name,
-        passConfig: this.currentConfig?.passes?.[pass.name],
-        canvasWidth,
-        canvasHeight,
-        // Resolution settings were already validated at compile time; a
-        // resize cannot introduce new config errors.
-        errors: [],
-      });
+      const resolution = pass.output === "canvas"
+        ? { width: canvasWidth, height: canvasHeight }
+        : resolvePassResolution({
+          passName: pass.name,
+          passConfig: this.currentConfig?.passes?.[pass.name],
+          canvasWidth,
+          canvasHeight,
+          // Resolution settings were already validated at compile time; a
+          // resize cannot introduce new config errors.
+          errors: [],
+        });
       pass.width = resolution.width;
       pass.height = resolution.height;
       this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);

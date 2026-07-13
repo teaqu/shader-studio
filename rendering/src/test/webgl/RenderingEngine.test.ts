@@ -402,6 +402,34 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("handleCanvasResize", () => {
+    it("uses the resized canvas size directly when resolution scale is already applied by the UI", () => {
+      const canvas = { width: 320, height: 180 };
+      const imagePass = { name: "Image", shaderSrc: "void mainImage() {}", inputs: {} };
+      const mockBufferManager = { resizeBuffers: vi.fn() };
+      const mockPipeline = { getPass: vi.fn().mockReturnValue(imagePass) };
+      mockFrameRenderer.isRunning = vi.fn().mockReturnValue(false);
+      mockFrameRenderer.renderSinglePass = vi.fn();
+
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: canvas, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "bufferManager", {
+        value: mockBufferManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      renderingEngine.handleCanvasResize(160, 90);
+
+      expect(canvas).toEqual({ width: 160, height: 90 });
+      expect(mockBufferManager.resizeBuffers).toHaveBeenCalledWith(160, 90);
+      expect(mockPipeline.getPass).toHaveBeenCalledWith("Image");
+      expect(mockFrameRenderer.renderSinglePass).not.toHaveBeenCalled();
+    });
+  });
+
   describe("video sync on compilation", () => {
     let mockPipeline: any;
     let mockResourceManager: any;

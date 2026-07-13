@@ -939,6 +939,34 @@ describe("WebGPURenderingEngine", () => {
       ]);
     });
 
+    it("uses the resized canvas size for Image when Image resolution scale is already applied by the UI", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, canvas } = stubEngineInternals(engine);
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        {
+          version: "1",
+          passes: {
+            Image: { inputs: {}, resolution: { scale: 0.5 } },
+          },
+        },
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+
+      engine.handleCanvasResize(160, 90);
+      device.queue.writeBuffer.mockClear();
+      engine.render(1000);
+
+      expect(canvas.width).toBe(160);
+      expect(canvas.height).toBe(90);
+      const writeBuffer = device.queue.writeBuffer;
+      expect(writeBuffer).toHaveBeenCalledTimes(1);
+      const resolution = Array.from(new Float32Array(writeBuffer.mock.calls[0][2] as ArrayBuffer, 0, 2));
+      expect(resolution).toEqual([160, 90]);
+    });
+
     it("recreates scaled buffer textures at the new size and destroys the old ones", async () => {
       const { engine, device } = await compiledEngine();
       // Compile created 2 ping-pong textures each for BufferA then BufferB.

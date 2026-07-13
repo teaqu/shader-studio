@@ -186,11 +186,13 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes[0]).toMatchObject({ name: "BufferA", width: 256, height: 128 });
   });
 
-  it("applies scale on top of fixed width/height resolution", () => {
+  it("applies scale on top of fixed width/height resolution for buffer passes", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        Image: {
+        Image: { inputs: {} },
+        BufferA: {
+          path: "buffer-a.slang",
           inputs: {},
           resolution: { width: 200, height: 100, scale: 0.5 },
         },
@@ -200,13 +202,36 @@ describe("buildSlangPassGraph", () => {
     const graph = buildSlangPassGraph({
       imageCode,
       config,
-      buffers: {},
+      buffers: { BufferA: imageCode },
       canvasWidth: 800,
       canvasHeight: 600,
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.passes[0]).toMatchObject({ name: "Image", width: 100, height: 50 });
+    expect(graph.passes[0]).toMatchObject({ name: "BufferA", width: 100, height: 50 });
+  });
+
+  it("uses the canvas size for Image even when Image has resolution scale", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {},
+          resolution: { scale: 0.5 },
+        },
+      },
+    };
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: {},
+      canvasWidth: 400,
+      canvasHeight: 225,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0]).toMatchObject({ name: "Image", width: 400, height: 225 });
   });
 
   it("reports invalid resolution settings and falls back to canvas size", () => {

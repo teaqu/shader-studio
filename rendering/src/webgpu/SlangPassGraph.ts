@@ -74,13 +74,15 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       continue;
     }
 
-    const resolution = resolvePassResolution({
-      passName: name,
-      passConfig,
-      canvasWidth,
-      canvasHeight,
-      errors,
-    });
+    const resolution = isImage
+      ? { width: canvasWidth, height: canvasHeight }
+      : resolvePassResolution({
+        passName: name,
+        passConfig,
+        canvasWidth,
+        canvasHeight,
+        errors,
+      });
 
     passes.push({
       name,

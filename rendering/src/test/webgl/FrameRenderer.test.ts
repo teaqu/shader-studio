@@ -955,6 +955,16 @@ describe("FrameRenderer", () => {
   });
 
   describe("getUniforms - new fields", () => {
+    it("uses the current canvas backing size for iResolution", () => {
+      mockCanvas.width = 160;
+      mockCanvas.height = 90;
+
+      const uniforms = frameRenderer.getUniforms();
+
+      expect(Array.from(uniforms.res.slice(0, 2))).toEqual([160, 90]);
+      expect(uniforms.res[2]).toBeCloseTo(160 / 90);
+    });
+
     it("should include channelTime initialized to [0, 0, 0, 0]", () => {
       const uniforms = frameRenderer.getUniforms();
 
