@@ -4,6 +4,8 @@ import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
+import { ResourceManager } from "../../resources/ResourceManager";
+import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
@@ -57,7 +59,14 @@ describe("WebGPURenderingEngine", () => {
 
   it("logs WebGPU initialization timing boundaries when Slang timing debug is enabled", async () => {
     const context = { configure: vi.fn() };
-    const device = {};
+    // initDevice() also constructs a ResourceManager, which eagerly builds a
+    // 1x1 default texture via WebGPUTextureBackend — the fake device needs
+    // just enough surface for that to succeed.
+    const device = {
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      queue: { writeTexture: vi.fn() },
+    };
     const adapter = { requestDevice: vi.fn(async () => device) };
     const canvas = {
       width: 800,
@@ -833,7 +842,15 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
-      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      queue: {
+        writeBuffer: vi.fn(),
+        submit: vi.fn(),
+        // ResourceManager constructs a 1x1 default texture eagerly (via
+        // WebGPUTextureBackend.createTexture), so the fake device needs these
+        // even in tests that never load a real texture.
+        writeTexture: vi.fn(),
+        copyExternalImageToTexture: vi.fn(),
+      },
       createCommandEncoder: vi.fn(() => ({
         beginRenderPass: vi.fn(() => ({
           setPipeline: vi.fn(),
@@ -1880,6 +1897,204 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).passPipelines.size).toBe(0);
       expect((engine as any).passKeys.size).toBe(0);
       expect(engine.getPasses()).toEqual([]);
+    });
+
+    it("cleans up the resource manager", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      const cleanupSpy = vi.spyOn((engine as any).resourceManager, "cleanup");
+
+      engine.dispose();
+
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("cleanup()", () => {
+    it("cleans up the resource manager without disposing the device", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      const cleanupSpy = vi.spyOn((engine as any).resourceManager, "cleanup");
+
+      engine.cleanup();
+
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("texture channel inputs", () => {
+    const IMAGE_SRC = "float4 mainImage(float2 c) { return float4(0); }";
+    const textureConfig: ShaderConfig = {
+      version: "1.0",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: {
+              type: "texture",
+              path: "tex.png",
+              resolved_path: "/abs/tex.png",
+              filter: "nearest",
+              wrap: "clamp",
+              vflip: false,
+              grayscale: true,
+            },
+          },
+        },
+      },
+    };
+
+    let originalImage: typeof Image;
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      // The compile-time texture load hits the real image pipeline unless a
+      // test replaces loadImageTexture/getImageTextureCache directly; jsdom
+      // never fires onload/onerror on its own, so fail fast and
+      // deterministically instead of hanging the compile's await.
+      originalImage = globalThis.Image;
+      (globalThis as unknown as { Image: unknown }).Image = vi.fn().mockImplementation(function FailingImage() {
+        const img = { src: "", onload: null as (() => void) | null, onerror: null as (() => void) | null };
+        Object.defineProperty(img, "src", {
+          set() {
+            img.onerror?.();
+          },
+        });
+        return img;
+      });
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      (globalThis as unknown as { Image: unknown }).Image = originalImage;
+      errorSpy.mockRestore();
+    });
+
+    function compiledEngine() {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      return { engine, device, compiler };
+    }
+
+    it("awaits the texture load during compile with the channel's options", async () => {
+      const { engine } = compiledEngine();
+      const rm = engine.getResourceManager()!;
+      const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
+
+      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+
+      expect(result?.success).toBe(true);
+      expect(loadSpy).toHaveBeenCalledWith("/abs/tex.png", {
+        filter: "nearest",
+        wrap: "clamp",
+        vflip: false,
+        grayscale: true,
+      });
+    });
+
+    it("renders using the cached texture handle's view and sampler", async () => {
+      const { engine, device } = compiledEngine();
+      const rm = engine.getResourceManager()!;
+      const handle = { view: { tag: "texView" }, sampler: { tag: "texSampler" } };
+      vi.spyOn(rm, "getImageTextureCache").mockReturnValue({ "/abs/tex.png": handle as never });
+
+      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+      expect(result?.success).toBe(true);
+      engine.render(16);
+
+      const bindCalls = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls;
+      const entries = bindCalls.at(-1)![0].entries;
+      expect(entries).toContainEqual({ binding: 1, resource: handle.view });
+      expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+    });
+
+    it("falls back to the default texture when the load failed (cache miss)", async () => {
+      const { engine, device } = compiledEngine();
+      const rm = engine.getResourceManager()!;
+      vi.spyOn(rm, "getImageTextureCache").mockReturnValue({});
+      const def = { view: { tag: "defaultView" }, sampler: { tag: "defaultSampler" } };
+      vi.spyOn(rm, "getDefaultTexture").mockReturnValue(def as never);
+
+      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+      expect(result?.success).toBe(true);
+      engine.render(16);
+
+      const entries = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].entries;
+      expect(entries).toContainEqual({ binding: 1, resource: def.view });
+    });
+
+    it("buffer channels keep rendering when a texture channel coexists", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubDeviceAndContext(engine);
+      const device = (engine as any).device;
+      const drawCalls: string[] = [];
+      device.createCommandEncoder = vi.fn(() => ({
+        beginRenderPass: vi.fn((descriptor: { colorAttachments: Array<{ view: { label?: string } }> }) => {
+          drawCalls.push(descriptor.colorAttachments[0].view.label ?? "canvas");
+          return {
+            setPipeline: vi.fn(),
+            setBindGroup: vi.fn(),
+            draw: vi.fn(),
+            end: vi.fn(),
+          };
+        }),
+        finish: vi.fn(() => ({})),
+      }));
+
+      const textureHandle = { view: { label: "tex-view" }, sampler: { label: "tex-sampler" } };
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({ "/tex.png": textureHandle }),
+        getDefaultTexture: () => null,
+      };
+
+      const bufferPipeline = renderablePipeline({
+        getCurrentOutputView: () => ({ label: "bufferA-current" }),
+        getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+      });
+      const imagePipeline = renderablePipeline({
+        getCurrentOutputView: () => null,
+        getPreviousOutputView: () => null,
+      });
+
+      (engine as any).passGraph = [
+        {
+          name: "BufferA",
+          width: 320,
+          height: 180,
+          output: "texture",
+          channels: [{ kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" }],
+        },
+        {
+          name: "Image",
+          width: 320,
+          height: 180,
+          output: "canvas",
+          channels: [
+            { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+            { kind: "texture", slot: 1, key: "iChannel1", path: "/tex.png" },
+          ],
+        },
+      ];
+      (engine as any).passPipelines = new Map([
+        ["BufferA", bufferPipeline],
+        ["Image", imagePipeline],
+      ]);
+
+      engine.render(1000);
+
+      // Both passes drew: BufferA to its output texture, Image to the canvas.
+      expect(drawCalls).toEqual(["bufferA-current", "canvas"]);
+      // BufferA's own self-feedback buffer channel resolved fine alongside
+      // Image's coexisting buffer + texture channels.
+      expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
+        { slot: 0, textureView: { label: "bufferA-previous" } },
+      ]);
+      expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
+        { slot: 0, textureView: { label: "bufferA-current" } },
+        { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
+      ]);
     });
   });
 });

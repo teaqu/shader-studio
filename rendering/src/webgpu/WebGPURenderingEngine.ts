@@ -18,8 +18,10 @@ import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler }
 import { packShaderToyUniforms, type ShaderToyUniformInput } from "./uniforms";
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
-import { SlangPassPipeline } from "./SlangPassPipeline";
+import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
+import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
+import { ResourceManager } from "../resources/ResourceManager";
 
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -89,6 +91,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private initError: string | null = null;
 
   private compiler: AsyncSlangCompiler | null = null;
+  private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -177,6 +180,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const device = await adapter.requestDevice();
       const deviceMs = this.now() - deviceStartedAt;
       this.device = device;
+      this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
       // COPY_SRC lets the pixel inspector read back from the canvas texture.
@@ -348,6 +352,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors: graph.errors,
       });
       return { success: false, errors: graph.errors, warnings: graph.warnings };
+    }
+
+    // WebGL parity (ShaderPipeline.updateResources): texture inputs are loaded
+    // (and awaited) as part of the compile; render then only does cache lookups.
+    if (this.resourceManager) {
+      for (const pass of graph.passes) {
+        for (const channel of pass.channels) {
+          if (channel.kind === "texture") {
+            await this.resourceManager.loadImageTexture(channel.path, {
+              filter: channel.filter,
+              wrap: channel.wrap,
+              vflip: channel.vflip,
+              grayscale: channel.grayscale,
+            });
+          }
+        }
+      }
     }
 
     const nextPipelines = new Map<string, SlangPassPipeline>();
@@ -798,24 +819,39 @@ export class WebGPURenderingEngine implements RenderingEngine {
    */
   private getChannelResources(
     pass: RenderPassNode,
-  ): Array<{ slot: number; textureView: GPUTextureView }> | null {
-    const resources: Array<{ slot: number; textureView: GPUTextureView }> = [];
+  ): SlangChannelResource[] | null {
+    const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
-      // TEMPORARY bridge: only buffer channels resolve to texture views today.
-      // Task 12 adds texture/keyboard resource resolution.
-      if (channel.kind !== "buffer") {
-        return null;
+      if (channel.kind === "buffer") {
+        const source = this.passPipelines.get(channel.source);
+        const textureView = channel.readFrom === "previous-frame"
+          ? source?.getPreviousOutputView()
+          : source?.getCurrentOutputView();
+        if (!textureView) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView });
+      } else if (channel.kind === "texture") {
+        const handle = this.resourceManager?.getImageTextureCache()[channel.path]
+          ?? this.resourceManager?.getDefaultTexture();
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+      } else {
+        const handle = this.resolveKeyboardHandle();
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       }
-      const source = this.passPipelines.get(channel.source);
-      const textureView = channel.readFrom === "previous-frame"
-        ? source?.getPreviousOutputView()
-        : source?.getCurrentOutputView();
-      if (!textureView) {
-        return null;
-      }
-      resources.push({ slot: channel.slot, textureView });
     }
     return resources;
+  }
+
+  /** Task 13 wires real keyboard state; until then, render black rather than crash. */
+  private resolveKeyboardHandle(): WebGPUTextureHandle | null {
+    return this.resourceManager?.getDefaultTexture() ?? null;
   }
 
   startRenderLoop(): void {
@@ -874,6 +910,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  getResourceManager(): ResourceManager<WebGPUTextureHandle> | null {
+    return this.resourceManager;
+  }
+
   getCurrentConfig(): ShaderConfig | null {
     return this.currentConfig;
   }
@@ -923,6 +963,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   cleanup(): void {
     this.stopRenderLoop();
     this.timeManager.cleanup();
+    this.resourceManager?.cleanup();
   }
 
   dispose(): void {
@@ -940,6 +981,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    this.resourceManager?.cleanup();
     this.device?.destroy?.();
     this.device = null;
   }
