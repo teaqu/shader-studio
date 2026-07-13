@@ -46,6 +46,13 @@ suite('ShaderConfigPaths', () => {
       assert.strictEqual(getShaderPathFromConfigPath('/abs/foo.sha.json'), '/abs/foo.frag');
     });
 
+    test('falls back to .slang when only .slang exists', () => {
+      existsStub.withArgs('/abs/foo.glsl').returns(false);
+      existsStub.withArgs('/abs/foo.frag').returns(false);
+      existsStub.withArgs('/abs/foo.slang').returns(true);
+      assert.strictEqual(getShaderPathFromConfigPath('/abs/foo.sha.json'), '/abs/foo.slang');
+    });
+
     test('prefers .glsl over .frag when both exist', () => {
       existsStub.withArgs('/abs/foo.glsl').returns(true);
       existsStub.withArgs('/abs/foo.frag').returns(true);

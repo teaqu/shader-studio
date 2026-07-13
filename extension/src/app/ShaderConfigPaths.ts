@@ -5,6 +5,10 @@ export function isConfigPath(filePath: string): boolean {
   return filePath.toLowerCase().endsWith(Constants.CONFIG_FILE_EXTENSION);
 }
 
+export function getConfigPathForShaderPath(shaderPath: string): string {
+  return shaderPath.replace(/\.(glsl|frag|slang)$/i, Constants.CONFIG_FILE_EXTENSION);
+}
+
 export function getShaderPathFromConfigPath(configPath: string): string | undefined {
   if (!isConfigPath(configPath)) {
     return undefined;
@@ -19,6 +23,11 @@ export function getShaderPathFromConfigPath(configPath: string): string | undefi
   const fragPath = `${base}.frag`;
   if (fs.existsSync(fragPath)) {
     return fragPath;
+  }
+
+  const slangPath = `${base}.slang`;
+  if (fs.existsSync(slangPath)) {
+    return slangPath;
   }
 
   return undefined;

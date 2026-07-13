@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 
 export class OverlayPanelHandler {
   private logger: Logger;
@@ -64,7 +65,7 @@ export class OverlayPanelHandler {
       }
 
       // Load the config to find the buffer's relative path
-      const configPath = mainShaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      const configPath = getConfigPathForShaderPath(mainShaderPath);
       if (!fs.existsSync(configPath)) {
         this.logger.warn(`Config file not found: ${configPath}`);
         return;

@@ -6,6 +6,7 @@ import { Messenger } from "../transport/Messenger";
 import { WorkspaceFileScanner } from "../WorkspaceFileScanner";
 import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
+import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
 import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS } from "@shader-studio/types";
 
@@ -179,9 +180,9 @@ export class FileDialogHandler {
       fs.copyFileSync(sourcePath, destPath);
       this.logger.info(`Forked shader: ${sourcePath} → ${destPath}`);
 
-      const sourceConfigPath = sourcePath.replace(/\.(glsl|frag)$/, '.sha.json');
+      const sourceConfigPath = getConfigPathForShaderPath(sourcePath);
       if (fs.existsSync(sourceConfigPath)) {
-        const destConfigPath = destPath.replace(/\.(glsl|frag)$/, '.sha.json');
+        const destConfigPath = getConfigPathForShaderPath(destPath);
         fs.copyFileSync(sourceConfigPath, destConfigPath);
         this.logger.info(`Forked config: ${sourceConfigPath} → ${destConfigPath}`);
       }

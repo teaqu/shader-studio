@@ -9,6 +9,7 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
 import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import { ClientMessageHandler } from "./ClientMessageHandler";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class PanelManager {
@@ -216,7 +217,7 @@ export class PanelManager {
       }
 
       const shaderPath = editor.document.uri.fsPath;
-      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      const configPath = getConfigPathForShaderPath(shaderPath);
 
       if (!fs.existsSync(configPath)) {
         this.logger.warn(`Config file not found for auto-swap: ${configPath}`);

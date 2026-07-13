@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { PathResolver } from "./PathResolver";
 import { Logger } from "./services/Logger";
-import { Constants } from "./Constants";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { ErrorHandler } from "./ErrorHandler";
 
@@ -70,7 +70,7 @@ export class ShaderConfigProcessor {
    * Get the config file path for a shader file.
    */
   public static getConfigPath(shaderPath: string): string {
-    return shaderPath.replace(/\.(glsl|frag|slang)$/i, Constants.CONFIG_FILE_EXTENSION);
+    return getConfigPathForShaderPath(shaderPath);
   }
 
   /**

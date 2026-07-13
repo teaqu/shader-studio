@@ -206,6 +206,34 @@ suite('OverlayPanelHandler Test Suite', () => {
       assert.strictEqual(message.payload.path, '/path/to/buffer.glsl');
     });
 
+    test('should use the companion .sha.json config for .slang shaders', async () => {
+      const fs = require('fs');
+      const existsSyncStub = sandbox.stub(fs, 'existsSync');
+      existsSyncStub.withArgs('/path/to/shader.sha.json').returns(true);
+      existsSyncStub.withArgs('/path/to/buffer.slang').returns(true);
+
+      sandbox.stub(fs, 'readFileSync')
+        .withArgs('/path/to/shader.sha.json', 'utf-8').returns(JSON.stringify({
+          passes: {
+            'BufferA': { path: 'buffer.slang' },
+          },
+        }))
+        .withArgs('/path/to/buffer.slang', 'utf-8').returns('buffer shader code');
+
+      sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+
+      await handler.handleRequestFileContents(
+        { bufferName: 'BufferA', shaderPath: '/path/to/shader.slang' },
+        respondFn,
+      );
+
+      assert.ok(respondFn.calledOnce, 'respondFn should be called once');
+      const message = respondFn.firstCall.args[0];
+      assert.strictEqual(message.type, 'fileContents');
+      assert.strictEqual(message.payload.code, 'buffer shader code');
+      assert.strictEqual(message.payload.path, '/path/to/buffer.slang');
+    });
+
     test('should return early when bufferName is missing', async () => {
       // Given / When
       await handler.handleRequestFileContents(

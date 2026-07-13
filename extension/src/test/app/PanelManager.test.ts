@@ -749,6 +749,49 @@ suite('PanelManager Test Suite', () => {
       clock.restore();
     });
 
+    test('should update the companion .sha.json config for active .slang shaders', () => {
+      const clock = sandbox.useFakeTimers();
+      const fs = require('fs');
+      const mockEditor = {
+        document: {
+          uri: { fsPath: '/project/shaders/shader.slang' },
+          languageId: 'slang'
+        }
+      };
+      const mockGlslFileTracker = (panelManager as any).glslFileTracker;
+      mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(mockEditor);
+
+      const config = {
+        passes: {
+          image: {
+            inputs: {
+              iChannel0: { path: 'video.mp4', type: 'video' }
+            }
+          }
+        }
+      };
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns(JSON.stringify(config));
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      (mockShaderProvider as any).sendShaderFromPath = sandbox.stub();
+
+      (panelManager as any).handleVideoAudioConverted('video.mp4', '/project/shaders/converted/audio.wav');
+
+      sinon.assert.calledOnce(writeStub);
+      assert.strictEqual(writeStub.firstCall.args[0], '/project/shaders/shader.sha.json');
+
+      clock.tick(200);
+      sinon.assert.calledWith(
+        (mockShaderProvider as any).sendShaderFromPath,
+        '/project/shaders/shader.slang',
+        { forceCleanup: true }
+      );
+
+      clock.restore();
+    });
+
     test('should not write file when no matching path is found in config', () => {
       const fs = require('fs');
       const mockEditor = {

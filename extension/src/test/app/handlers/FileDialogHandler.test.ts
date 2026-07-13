@@ -536,6 +536,25 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(copyStub.args.some(([, dest]) => (dest as string).endsWith('.sha.json')));
     });
 
+    test('also copies companion .sha.json config when forking a .slang shader', async () => {
+      const fs = require('fs');
+      const existsStub = sandbox.stub(fs, 'existsSync');
+      existsStub.withArgs('/test/shader.slang').returns(true);
+      existsStub.withArgs('/test/shader.1.slang').returns(false);
+      existsStub.withArgs('/test/shader.sha.json').returns(true);
+      const copyStub = sandbox.stub(fs, 'copyFileSync');
+
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/shader.1.slang'));
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+      sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+      await handler.handleForkShader({ shaderPath: '/test/shader.slang' });
+
+      assert.strictEqual(copyStub.callCount, 2);
+      sinon.assert.calledWith(copyStub, '/test/shader.slang', '/test/shader.1.slang');
+      sinon.assert.calledWith(copyStub, '/test/shader.sha.json', '/test/shader.1.sha.json');
+    });
+
     test('increments counter to find a free filename', async () => {
       const fs = require('fs');
       const existsStub = sandbox.stub(fs, 'existsSync');

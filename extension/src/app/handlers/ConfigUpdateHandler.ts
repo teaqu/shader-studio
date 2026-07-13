@@ -4,6 +4,7 @@ import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 import { Messenger } from "../transport/Messenger";
 import { Logger } from "../services/Logger";
+import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class ConfigUpdateHandler {
@@ -31,7 +32,7 @@ export class ConfigUpdateHandler {
         shaderPath = editor.document.uri.fsPath;
       }
 
-      const configPath = shaderPath.replace(/\.(glsl|frag)$/, '.sha.json');
+      const configPath = getConfigPathForShaderPath(shaderPath);
       const openDocument = vscode.workspace.textDocuments.find(
         doc => doc.uri.fsPath === configPath,
       );

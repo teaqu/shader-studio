@@ -85,6 +85,20 @@ suite('ConfigUpdateHandler Test Suite', () => {
       assert.strictEqual(writeStub.firstCall.args[0], '/test/shader.sha.json');
     });
 
+    test('writes .slang shader updates to the companion .sha.json config file', async () => {
+      const fs = require('fs');
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text: '{}',
+        shaderPath: '/test/shader.slang',
+      });
+
+      assert.ok(writeStub.calledOnce);
+      assert.strictEqual(writeStub.firstCall.args[0], '/test/shader.sha.json');
+    });
+
     test('triggers shader refresh after timeout when skipRefresh is not set', async () => {
       const clock = sandbox.useFakeTimers();
       const fs = require('fs');
@@ -206,6 +220,29 @@ suite('ConfigUpdateHandler Test Suite', () => {
         config: {} as any,
         text: '{"version":1}',
         shaderPath: '/test/shader.glsl',
+        skipRefresh: true,
+      });
+
+      sinon.assert.calledOnce(applyEditStub);
+      sinon.assert.notCalled(writeStub);
+    });
+
+    test('applies WorkspaceEdit to the companion config document for .slang shaders', async () => {
+      const fs = require('fs');
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      const mockDocument = {
+        uri: { fsPath: '/test/shader.sha.json' } as any,
+        getText: sandbox.stub().returns('{"old":true}'),
+        positionAt: (offset: number) => new vscode.Position(0, offset),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([mockDocument]);
+      const applyEditStub = sandbox.stub(vscode.workspace, 'applyEdit').resolves(true);
+
+      await handler.handleConfigUpdate({
+        config: {} as any,
+        text: '{"version":1}',
+        shaderPath: '/test/shader.slang',
         skipRefresh: true,
       });
 
