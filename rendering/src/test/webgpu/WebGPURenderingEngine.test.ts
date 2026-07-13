@@ -1793,8 +1793,12 @@ describe("WebGPURenderingEngine", () => {
           releaseA = () => resolve({ success: true, wgsl: "wgsl-A" });
         });
         compiler.compile.mockImplementation((src: string) => {
-          if (src === "buf-A") return blockedA;
-          if (src === "buf-B") return Promise.resolve({ success: true, wgsl: "wgsl-B" });
+          if (src === "buf-A") {
+            return blockedA;
+          }
+          if (src === "buf-B") {
+            return Promise.resolve({ success: true, wgsl: "wgsl-B" });
+          }
           return Promise.resolve({ success: true, wgsl: "wgsl-base" });
         });
 

@@ -220,6 +220,17 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
       .toThrow(/[Cc]ubemap.*not supported/);
   });
 
+  it("throws when the 2d canvas context cannot be created", () => {
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => null),
+    };
+    vi.spyOn(document, "createElement").mockReturnValue(canvas as unknown as HTMLCanvasElement);
+    expect(() => backend.createTextureFromImage(fakeImage(2, 1), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: false }))
+      .toThrow(/Failed to create 2d canvas for texture upload/);
+  });
+
   it("updateTextureFromImage re-copies the source into the existing texture", () => {
     const handle = backend.createTextureFromImage(fakeImage(2, 2), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true })!;
     device.queue.copyExternalImageToTexture.mockClear();

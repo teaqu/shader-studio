@@ -172,12 +172,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private async initDevice(initStartedAt = this.now()): Promise<void> {
     try {
-      if (!navigator.gpu) throw new Error("navigator.gpu is undefined");
+      if (!navigator.gpu) {
+        throw new Error("navigator.gpu is undefined");
+      }
       const adapterStartedAt = this.now();
       this.logSlangPerf("adapter request start", {});
       const adapter = await navigator.gpu.requestAdapter();
       const adapterMs = this.now() - adapterStartedAt;
-      if (!adapter) throw new Error("requestAdapter() returned null");
+      if (!adapter) {
+        throw new Error("requestAdapter() returned null");
+      }
       const deviceStartedAt = this.now();
       this.logSlangPerf("device request start", {});
       const device = await adapter.requestDevice();
@@ -253,7 +257,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         });
         return new RevokingAsyncSlangCompiler(compiler, objectUrls);
       } catch (e) {
-        for (const url of objectUrls) URL.revokeObjectURL(url);
+        for (const url of objectUrls) {
+          URL.revokeObjectURL(url);
+        }
         console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
       }
     }
@@ -808,7 +814,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (frameDelta < 500) {
         this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
         this.frameTimeHead = (this.frameTimeHead + 1) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
-        if (this.frameTimeLen < WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) this.frameTimeLen++;
+        if (this.frameTimeLen < WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) {
+          this.frameTimeLen++;
+        }
         this.frameTimeCount++;
       }
     }
@@ -868,10 +876,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   startRenderLoop(): void {
-    if (this.running) return;
+    if (this.running) {
+      return;
+    }
     this.running = true;
     const loop = (t: number) => {
-      if (!this.running) return;
+      if (!this.running) {
+        return;
+      }
       this.render(t);
       this.rafId = requestAnimationFrame(loop);
     };
@@ -887,7 +899,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   handleCanvasResize(width: number, height: number): void {
-    if (!this.canvas) return;
+    if (!this.canvas) {
+      return;
+    }
     const w = Math.round(width);
     const h = Math.round(height);
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -904,7 +918,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
    * texture sizes all stay correct without a recompile.
    */
   private applyPassResolutions(): void {
-    if (!this.canvas || this.passGraph.length === 0) return;
+    if (!this.canvas || this.passGraph.length === 0) {
+      return;
+    }
     const canvasWidth = Math.max(1, this.canvas.width);
     const canvasHeight = Math.max(1, this.canvas.height);
     for (const pass of this.passGraph) {
@@ -1032,7 +1048,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   getFrameTimeHistory(): number[] {
-    if (this.frameTimeLen === 0) return [];
+    if (this.frameTimeLen === 0) {
+      return [];
+    }
     const start = (
       this.frameTimeHead - this.frameTimeLen + WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY
     ) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
