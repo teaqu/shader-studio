@@ -6,7 +6,7 @@ export interface SlangPassPipelineDescriptor {
   width: number;
   height: number;
   output: "texture" | "canvas";
-  channels: Array<{ slot: number; key: string }>;
+  channels: Array<{ slot: number; key: string; kind?: string }>;
 }
 
 export interface SlangChannelResource {
@@ -182,10 +182,14 @@ export class SlangPassPipeline {
     }];
     const sorted = [...this.descriptor.channels].sort((a, b) => a.slot - b.slot);
     for (let index = 0; index < sorted.length; index++) {
+      const textureEntry: GPUTextureBindingLayout = { sampleType: "float" };
+      if (sorted[index].kind === "cubemap") {
+        textureEntry.viewDimension = "cube";
+      }
       entries.push({
         binding: 1 + index * 2,
         visibility: GPUShaderStage.FRAGMENT,
-        texture: { sampleType: "float" },
+        texture: textureEntry,
       });
       entries.push({
         binding: 2 + index * 2,

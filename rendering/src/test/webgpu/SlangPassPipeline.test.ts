@@ -156,6 +156,36 @@ describe("SlangPassPipeline", () => {
     });
   });
 
+  it("uses cube texture layout entries for cubemap channels", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [
+        { slot: 0, key: "iChannel0", kind: "cubemap" },
+        { slot: 1, key: "iChannel1" },
+      ],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout).toHaveBeenCalledWith({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: "uniform" },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float", viewDimension: "cube" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+      ],
+    });
+  });
+
   it("creates the render pipeline with the explicit pipeline layout, not \"auto\"", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

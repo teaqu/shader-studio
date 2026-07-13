@@ -442,7 +442,7 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
-      channels: [{ slot: 0, key: "iChannel0" }],
+      channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
     });
   });
 
@@ -975,7 +975,7 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel0" }],
+          channels: [{ slot: 0, key: "iChannel0", kind: "video" }],
         }),
       );
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
@@ -1084,6 +1084,124 @@ describe("WebGPURenderingEngine", () => {
       expect(resourceManager.controlVideo).toHaveBeenCalledWith("clip.mp4", "pause");
       expect(resourceManager.getVideoState).toHaveBeenCalledWith("clip.mp4");
       expect(result).toBe(state);
+    });
+  });
+
+  describe("cubemap input parity", () => {
+    const cubemapConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: {
+              type: "cubemap",
+              path: "sky-cross.png",
+              resolved_path: "vscode-webview://sky-cross.png",
+              filter: "mipmap",
+              wrap: "clamp",
+              vflip: true,
+            },
+          },
+        },
+      },
+    };
+
+    it("loads cubemap inputs as cube sampled channels during compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const loadCubemapTexture = vi.fn(async () => ({}));
+      (engine as any).resourceManager = { loadCubemapTexture };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        cubemapConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect((result?.warnings ?? []).join("\n")).not.toContain("unsupported Slang/WebGPU input type");
+      expect(loadCubemapTexture).toHaveBeenCalledWith("vscode-webview://sky-cross.png", {
+        filter: "mipmap",
+        wrap: "clamp",
+        vflip: true,
+      });
+      expect(compiler.compile).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+        }),
+      );
+      expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
+        kind: "cubemap",
+        slot: 0,
+        key: "iChannel0",
+        path: "vscode-webview://sky-cross.png",
+      }));
+    });
+
+    it("binds the loaded cubemap texture and sampler when rendering", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const cubemapHandle = {
+        view: { label: "cube-view" },
+        sampler: { label: "cube-sampler" },
+      };
+      const resourceManager = {
+        loadCubemapTexture: vi.fn(async () => cubemapHandle),
+        getCubemapTexture: vi.fn(() => cubemapHandle),
+        getDefaultTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        cubemapConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.getCubemapTexture).toHaveBeenCalledWith("vscode-webview://sky-cross.png");
+      expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: cubemapHandle.view },
+        { binding: 2, resource: cubemapHandle.sampler },
+      ]);
+    });
+
+    it("falls back to the default texture when a cubemap texture cache lookup misses", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const defaultHandle = {
+        view: { label: "default-view" },
+        sampler: { label: "default-sampler" },
+      };
+      const resourceManager = {
+        loadCubemapTexture: vi.fn(async () => null),
+        getCubemapTexture: vi.fn(() => null),
+        getDefaultTexture: vi.fn(() => defaultHandle),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        cubemapConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.getDefaultTexture).toHaveBeenCalled();
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: defaultHandle.view },
+        { binding: 2, resource: defaultHandle.sampler },
+      ]);
     });
   });
 
@@ -1900,7 +2018,34 @@ describe("WebGPURenderingEngine", () => {
       expect(second.compiler.compile).toHaveBeenCalledTimes(1);
       expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
         passName: "Image",
-        channels: [{ slot: 1, key: "iChannel1" }],
+        channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }],
+      }));
+    });
+
+    it("recompiles when a channel keeps the same slot/key but changes resource kind", async () => {
+      const first = cachedSetup();
+      const second = cachedSetup();
+      const textureConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "texture", path: "sky.png" } } },
+        },
+      };
+      const cubemapConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "cubemap", path: "sky.png" } } },
+        },
+      };
+      (first.engine as any).resourceManager = { loadImageTexture: vi.fn(async () => ({})) };
+      (second.engine as any).resourceManager = { loadCubemapTexture: vi.fn(async () => ({})) };
+
+      await first.engine.compileShaderPipeline("img channel kind cache", textureConfig, "/channel-kind-cache.slang", {});
+      await second.engine.compileShaderPipeline("img channel kind cache", cubemapConfig, "/channel-kind-cache.slang", {});
+
+      expect(second.compiler.compile).toHaveBeenCalledWith("img channel kind cache", expect.objectContaining({
+        passName: "Image",
+        channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
       }));
     });
 

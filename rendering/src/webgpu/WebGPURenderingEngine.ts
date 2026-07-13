@@ -81,8 +81,8 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
  * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
  * textures that other passes sample via iChannelN, and the Image pass renders
  * to the canvas. Inline Slang debugging, pixel inspection (async readback),
- * variable capture, texture inputs, video inputs, and keyboard inputs are
- * supported; audio and cubemaps remain unimplemented.
+ * variable capture, texture inputs, video inputs, cubemap inputs, and keyboard
+ * inputs are supported; audio remains unimplemented.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -429,7 +429,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.height = resolution.height;
     }
 
-    // WebGL parity (ShaderPipeline.updateResources): texture/video inputs are
+    // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
     // loaded (and awaited) as part of the compile; render then only does cache
     // lookups.
     if (this.resourceManager) {
@@ -451,6 +451,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
             if (result.warning) {
               graph.warnings.push(result.warning);
             }
+          } else if (channel.kind === "cubemap") {
+            await this.resourceManager.loadCubemapTexture(channel.path, {
+              filter: channel.filter,
+              wrap: channel.wrap,
+              vflip: channel.vflip,
+            });
           }
         }
       }
@@ -487,7 +493,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
           const compiled = await this.compiler.compile(pass.source, {
             passName: pass.name,
             commonCode: graph.commonCode,
-            channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+            channels: pass.channels.map((channel) => ({
+              slot: channel.slot,
+              key: channel.key,
+              kind: channel.kind,
+            })),
           });
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
@@ -510,7 +520,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
           width: pass.width,
           height: pass.height,
           output: pass.output,
-          channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key })),
+          channels: pass.channels.map((channel) => ({
+            slot: channel.slot,
+            key: channel.key,
+            kind: channel.kind,
+          })),
         });
         const pipelineStartedAt = this.now();
         const wgslErrors = await pipeline.rebuild(wgsl);
@@ -716,12 +730,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   /**
    * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key).
+   * common code, cache key version, and channel layout (slot + key + kind).
    * Width/height are texture concerns handled by resize() without recompiling,
    * so they're deliberately excluded from the key.
    */
   private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
-    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}`).join(",");
+    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
     return JSON.stringify([SLANG_WGSL_CACHE_KEY_VERSION, pass.name, pass.source, commonCode, channels]);
   }
 
@@ -929,6 +943,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       } else if (channel.kind === "video") {
         const handle = this.resourceManager?.getVideoTexture(channel.path)
+          ?? this.resourceManager?.getDefaultTexture();
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+      } else if (channel.kind === "cubemap") {
+        const handle = this.resourceManager?.getCubemapTexture(channel.path)
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;

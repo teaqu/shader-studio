@@ -162,6 +162,24 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
   });
 
+  it("wraps cubemap channels with cube texture bindings and float3 sampling helpers", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(float3(1, 0, 0)); }", {
+      passName: "Image",
+      channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]");
+    expect(wrapped).toContain("TextureCube<float4> iChannel0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]");
+    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("float4 sampleIChannel0(float3 dir)");
+    expect(wrapped).toContain("return iChannel0.Sample(iChannel0Sampler, dir);");
+  });
+
   it("numbers bindings sequentially for multiple channels, sorted by slot", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));

@@ -75,6 +75,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 export interface SlangChannelBinding {
   slot: number;
   key: string;
+  kind?: "texture" | "video" | "cubemap" | "buffer" | "keyboard";
 }
 
 export interface SlangWrapOptions {
@@ -152,6 +153,17 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      if (channel.kind === "cubemap") {
+        return `[[vk::binding(${textureBinding}, 0)]]
+TextureCube<float4> ${channel.key};
+[[vk::binding(${samplerBinding}, 0)]]
+SamplerState ${channel.key}Sampler;
+float4 ${helperName}(float3 dir)
+{
+    return ${channel.key}.Sample(${channel.key}Sampler, dir);
+}
+`;
+      }
       return `[[vk::binding(${textureBinding}, 0)]]
 Texture2D<float4> ${channel.key};
 [[vk::binding(${samplerBinding}, 0)]]

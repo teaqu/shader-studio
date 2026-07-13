@@ -204,6 +204,24 @@ function resolveChannels(options: {
       continue;
     }
 
+    if (input.type === "cubemap") {
+      const path = input.resolved_path || input.path;
+      if (!path) {
+        options.errors.push(`${options.passName}: ${key} cubemap input is missing a path`);
+        continue;
+      }
+      channels.push({
+        kind: "cubemap",
+        slot,
+        key,
+        path,
+        filter: input.filter,
+        wrap: input.wrap,
+        vflip: input.vflip,
+      });
+      continue;
+    }
+
     if (input.type === "keyboard") {
       channels.push({ kind: "keyboard", slot, key });
       continue;

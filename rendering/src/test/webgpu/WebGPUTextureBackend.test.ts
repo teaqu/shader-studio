@@ -166,9 +166,9 @@ describe("WebGPUTextureBackend.createTexture", () => {
     expect(device.queue.submit).toHaveBeenCalled();
   });
 
-  it("createTextureFromImage throws for cubemap face arrays", () => {
+  it("createTextureFromImage rejects invalid cubemap face arrays", () => {
     expect(() => backend.createTextureFromImage([], { type: "cubemap", format: "rgba8", filter: "linear", wrap: "clamp", vflip: false }))
-      .toThrow(/[Cc]ubemap.*not supported/);
+      .toThrow(/Cubemap textures require exactly 6 faces/);
   });
 });
 
@@ -259,9 +259,44 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
     expect(device.queue.submit).toHaveBeenCalled();
   });
 
-  it("throws for cubemap face arrays", () => {
+  it("creates a cubemap texture from six face canvases", () => {
+    const faces = Array.from({ length: 6 }, (_, index) => ({
+      width: 4,
+      height: 4,
+      label: `face-${index}`,
+    } as unknown as HTMLCanvasElement));
+
+    const handle = backend.createTextureFromImage(faces, {
+      type: "cubemap",
+      format: "rgba8",
+      filter: "linear",
+      wrap: "clamp",
+      vflip: false,
+    });
+
+    expect(handle).not.toBeNull();
+    expect(device.createTexture).toHaveBeenCalledWith(expect.objectContaining({
+      size: { width: 4, height: 4, depthOrArrayLayers: 6 },
+      dimension: "2d",
+      format: "rgba8unorm",
+      mipLevelCount: 1,
+    }));
+    expect(handle!.view).toEqual({ viewDesc: { dimension: "cube" } });
+    expect(handle!.width).toBe(4);
+    expect(handle!.height).toBe(4);
+    expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledTimes(6);
+    for (let face = 0; face < 6; face++) {
+      expect(device.queue.copyExternalImageToTexture.mock.calls[face]).toEqual([
+        { source: faces[face], flipY: false },
+        { texture: handle!.texture, origin: { x: 0, y: 0, z: face } },
+        { width: 4, height: 4, depthOrArrayLayers: 1 },
+      ]);
+    }
+  });
+
+  it("rejects cubemap inputs with the wrong number of faces", () => {
     expect(() => backend.createTextureFromImage([{} as HTMLCanvasElement], { type: "cubemap", format: "rgba8", filter: "linear", wrap: "clamp", vflip: false }))
-      .toThrow(/[Cc]ubemap.*not supported/);
+      .toThrow(/Cubemap textures require exactly 6 faces/);
   });
 
   it("throws when the 2d canvas context cannot be created", () => {

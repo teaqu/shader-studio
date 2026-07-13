@@ -143,7 +143,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
     opts: ImageTextureOptions,
   ): WebGPUTextureHandle | null {
     if (opts.type === "cubemap" || Array.isArray(image)) {
-      throw new Error("Cubemap textures are not supported by the WebGPU engine yet");
+      return this.createCubemapTextureFromFaces(image, opts);
     }
     const width = "naturalWidth" in image ? image.naturalWidth || image.width : image.videoWidth;
     const height = "naturalHeight" in image ? image.naturalHeight || image.height : image.videoHeight;
@@ -168,6 +168,47 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
     if (mip) {
       this.createMipmaps(handle);
     }
+    return handle;
+  }
+
+  private createCubemapTextureFromFaces(
+    image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[],
+    opts: ImageTextureOptions,
+  ): WebGPUTextureHandle | null {
+    if (!Array.isArray(image) || image.length !== 6) {
+      throw new Error("Cubemap textures require exactly 6 faces");
+    }
+    const width = image[0].width;
+    const height = image[0].height;
+    if (!width || !height || image.some((face) => face.width !== width || face.height !== height)) {
+      throw new Error("Cubemap faces must have matching non-zero dimensions");
+    }
+
+    const texture = this.device.createTexture({
+      size: { width, height, depthOrArrayLayers: 6 },
+      dimension: "2d",
+      format: "rgba8unorm",
+      mipLevelCount: 1,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    const handle: WebGPUTextureHandle = {
+      texture,
+      view: texture.createView({ dimension: "cube" }),
+      sampler: this.createSampler(opts.filter, opts.wrap),
+      width,
+      height,
+      format: opts.format,
+      vflip: opts.vflip,
+    };
+
+    for (let face = 0; face < image.length; face++) {
+      this.device.queue.copyExternalImageToTexture(
+        { source: image[face], flipY: opts.vflip },
+        { texture, origin: { x: 0, y: 0, z: face } },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+    }
+
     return handle;
   }
 

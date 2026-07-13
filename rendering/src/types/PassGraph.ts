@@ -1,4 +1,4 @@
-import type { TextureConfigInput, VideoConfigInput } from "@shader-studio/types";
+import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "@shader-studio/types";
 
 export type RenderPassName = "BufferA" | "BufferB" | "BufferC" | "BufferD" | "Image";
 export type ChannelReadTiming = "previous-frame" | "current-frame";
@@ -13,6 +13,11 @@ export type RenderPassChannel =
   | {
       kind: "video"; slot: number; key: string; path: string;
       filter?: VideoConfigInput["filter"]; wrap?: VideoConfigInput["wrap"];
+      vflip?: boolean;
+    }
+  | {
+      kind: "cubemap"; slot: number; key: string; path: string;
+      filter?: CubemapConfigInput["filter"]; wrap?: CubemapConfigInput["wrap"];
       vflip?: boolean;
     }
   | { kind: "keyboard"; slot: number; key: string };
