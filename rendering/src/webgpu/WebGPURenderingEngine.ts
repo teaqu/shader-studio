@@ -11,6 +11,7 @@ import type {
 import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 import { TimeManager } from "../util/TimeManager";
 import { MouseManager } from "../input/MouseManager";
+import { KeyboardManager } from "../input/KeyboardManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
@@ -121,6 +122,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
+  private keyboardManager = new KeyboardManager();
   private fps = new FPSCalculator(60, 10);
   private currentConfig: ShaderConfig | null = null;
   private running = false;
@@ -164,6 +166,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     this.context = ctx;
     this.mouseManager.setupEventListeners(glCanvas);
+    this.keyboardManager.setupEventListeners();
     this.ready = this.initDevice(initStartedAt);
   }
 
@@ -768,6 +771,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     if (!capture) {
       this.recordFrameTime(time);
+      this.keyboardManager.clearPressed();
       if (!isPaused) {
         this.timeManager.incrementFrame();
       }
@@ -849,9 +853,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return resources;
   }
 
-  /** Task 13 wires real keyboard state; until then, render black rather than crash. */
+  // WebGL parity (PassRenderer.getTextureBindings): the keyboard texture is
+  // refreshed at bind time on every rendered frame — including while paused.
   private resolveKeyboardHandle(): WebGPUTextureHandle | null {
-    return this.resourceManager?.getDefaultTexture() ?? null;
+    if (!this.resourceManager) {
+      return null;
+    }
+    this.resourceManager.updateKeyboardTexture(
+      this.keyboardManager.getKeyHeld(),
+      this.keyboardManager.getKeyPressed(),
+      this.keyboardManager.getKeyToggled(),
+    );
+    return this.resourceManager.getKeyboardTexture() ?? this.resourceManager.getDefaultTexture();
   }
 
   startRenderLoop(): void {
@@ -936,6 +949,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   setInputEnabled(enabled: boolean): void {
     this.mouseManager.setEnabled(enabled);
+    this.keyboardManager.setEnabled(enabled);
   }
 
   getCurrentFPS(): number {

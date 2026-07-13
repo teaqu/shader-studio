@@ -2097,4 +2097,94 @@ describe("WebGPURenderingEngine", () => {
       ]);
     });
   });
+
+  describe("keyboard channel input", () => {
+    const IMAGE_SRC = "float4 mainImage(float2 c) { return float4(0); }";
+    const keyboardConfig: ShaderConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { iChannel0: { type: "keyboard" } } } },
+    };
+
+    async function compiledEngineFactory(config: ShaderConfig) {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(new WebGPUTextureBackend(device as unknown as GPUDevice));
+      // stubEngineInternals bypasses initialize(), which is normally what wires
+      // the keyboard manager to `window` — attach it directly so the real
+      // KeyboardManager instance reacts to dispatched KeyboardEvents.
+      (engine as any).keyboardManager.setupEventListeners();
+      const result = await engine.compileShaderPipeline(IMAGE_SRC, config, "/s.slang", {});
+      expect(result?.success).toBe(true);
+      return engine;
+    }
+
+    it("updates the keyboard texture from key state on every rendered frame", async () => {
+      const engine = await compiledEngineFactory(keyboardConfig);
+      const rm = engine.getResourceManager()!;
+      // KeyboardManager reuses the same held/pressed/toggled Uint8Arrays every
+      // frame (WebGL parity) and clearPressed() zeroes the "pressed" one
+      // in-place right after this same render() call — so a plain spy's
+      // recorded args would already read back as cleared by the time the
+      // test inspects them. Snapshot copies at call time instead.
+      let heldSnapshot: Uint8Array | undefined;
+      let pressedSnapshot: Uint8Array | undefined;
+      const original = rm.updateKeyboardTexture.bind(rm);
+      const spy = vi.spyOn(rm, "updateKeyboardTexture").mockImplementation((held, pressed, toggled) => {
+        heldSnapshot = Uint8Array.from(held);
+        pressedSnapshot = Uint8Array.from(pressed);
+        original(held, pressed, toggled);
+      });
+      window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 65 } as KeyboardEventInit));
+      engine.render(16);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(heldSnapshot?.[65]).toBe(255);
+      expect(pressedSnapshot?.[65]).toBe(255);
+    });
+
+    it("clears just-pressed state after each frame (pressed row is 0 on the next frame)", async () => {
+      const engine = await compiledEngineFactory(keyboardConfig);
+      const rm = engine.getResourceManager()!;
+      const spy = vi.spyOn(rm, "updateKeyboardTexture");
+      window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 65 } as KeyboardEventInit));
+      engine.render(16);
+      engine.render(32);
+      const [held2, pressed2] = spy.mock.calls[1];
+      expect(held2[65]).toBe(255); // still held
+      expect(pressed2[65]).toBe(0); // pressed cleared after previous frame
+    });
+
+    it("keyboard stays LIVE while paused (WebGL parity), unlike mouse/time uniforms", async () => {
+      const engine = await compiledEngineFactory(keyboardConfig);
+      const rm = engine.getResourceManager()!;
+      const spy = vi.spyOn(rm, "updateKeyboardTexture");
+      engine.render(16);
+      engine.getTimeManager().togglePause();
+      window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 66 } as KeyboardEventInit));
+      engine.render(32);
+      const [held] = spy.mock.calls.at(-1)!;
+      expect(held[66]).toBe(255);
+    });
+
+    it("binds the keyboard texture handle's view and sampler", async () => {
+      const engine = await compiledEngineFactory(keyboardConfig);
+      const rm = engine.getResourceManager()!;
+      const handle = { view: { tag: "kbView" }, sampler: { tag: "kbSampler" } };
+      vi.spyOn(rm, "getKeyboardTexture").mockReturnValue(handle as never);
+      engine.render(16);
+      const device = (engine as any).device;
+      const entries = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].entries;
+      expect(entries).toContainEqual({ binding: 1, resource: handle.view });
+      expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+    });
+
+    it("setInputEnabled(false) clears held keys", async () => {
+      const engine = await compiledEngineFactory(keyboardConfig);
+      const rm = engine.getResourceManager()!;
+      const spy = vi.spyOn(rm, "updateKeyboardTexture");
+      window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 65 } as KeyboardEventInit));
+      engine.setInputEnabled(false);
+      engine.render(16);
+      expect(spy.mock.calls.at(-1)![0][65]).toBe(0);
+    });
+  });
 });
