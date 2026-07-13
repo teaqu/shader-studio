@@ -43,6 +43,8 @@ cd ui && npx vitest run
 
 Test structure mirrors `src/lib/`: unit tests in `src/test/`, component tests in `src/test/components/`.
 
+For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.
+
 ## Linting
 
 ESLint is enforced. **Always run ESLint after making changes:**
