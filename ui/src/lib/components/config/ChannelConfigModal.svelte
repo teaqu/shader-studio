@@ -294,6 +294,13 @@
     }
   }
 
+  function updateMuted(muted: boolean) {
+    if (tempInput && (tempInput.type === "video" || tempInput.type === "audio")) {
+      tempInput = { ...tempInput, muted };
+      autoSave();
+    }
+  }
+
   function updateGrayscale(grayscale: boolean) {
     if (tempInput && tempInput.type === "texture") {
       tempInput = { ...tempInput, grayscale };
@@ -431,6 +438,7 @@
             onUpdateFilter={updateFilter}
             onUpdateWrap={updateWrap}
             onUpdateVFlip={updateVFlip}
+            onUpdateMuted={updateMuted}
             {audioVideoController}
           />
 
@@ -445,9 +453,10 @@
             onAssetSelect={handleAssetSelect}
             onUpdatePath={updatePath}
             onUpdateTempInput={(input) => {
-              tempInput = input; 
+              tempInput = input;
             }}
             onAutoSave={autoSave}
+            onUpdateMuted={updateMuted}
             {audioVideoController}
           />
         {/if}

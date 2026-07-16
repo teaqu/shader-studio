@@ -19,6 +19,7 @@
     onUpdatePath: (path: string) => void;
     onUpdateTempInput: (input: ConfigInput) => void;
     onAutoSave: () => void;
+    onUpdateMuted: (muted: boolean) => void;
     audioVideoController?: AudioVideoController;
   }
 
@@ -33,6 +34,7 @@
     onUpdatePath,
     onUpdateTempInput,
     onAutoSave,
+    onUpdateMuted,
     audioVideoController = undefined,
   }: Props = $props();
 
@@ -140,6 +142,17 @@
         }, 100);
       }
     }
+  }
+
+  let configMuted = $derived(tempInput?.type === 'audio' && tempInput.muted === true);
+
+  function toggleConfigMute() {
+    if (tempInput?.type !== 'audio') {
+      return;
+    }
+    const next = !configMuted;
+    onUpdateMuted(next);
+    handleAudioControl(next ? 'mute' : 'unmute');
   }
 
   // --- Waveform timeline editor ---
@@ -412,10 +425,10 @@
       </button>
       <button
         class="btn-control"
-        onclick={() => handleAudioControl(audioState?.muted ? 'unmute' : 'mute')}
-        title={audioState?.muted ? 'Unmute' : 'Mute'}
+        onclick={toggleConfigMute}
+        title={configMuted ? 'Unmute' : 'Mute'}
       >
-        {#if audioState?.muted}
+        {#if configMuted}
           <i class="codicon codicon-mute"></i>
         {:else}
           <i class="codicon codicon-unmute"></i>

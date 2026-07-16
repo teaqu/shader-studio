@@ -17,6 +17,7 @@
     onUpdateFilter: (filter: "linear" | "nearest" | "mipmap") => void;
     onUpdateWrap: (wrap: "repeat" | "clamp") => void;
     onUpdateVFlip: (vflip: boolean) => void;
+    onUpdateMuted: (muted: boolean) => void;
     audioVideoController?: AudioVideoController;
   }
 
@@ -31,6 +32,7 @@
     onUpdateFilter,
     onUpdateWrap,
     onUpdateVFlip,
+    onUpdateMuted,
     audioVideoController = undefined,
   }: Props = $props();
 
@@ -73,6 +75,17 @@
         }, 100);
       }
     }
+  }
+
+  let configMuted = $derived(tempInput?.type === 'video' && tempInput.muted === true);
+
+  function toggleConfigMute() {
+    if (tempInput?.type !== 'video') {
+      return;
+    }
+    const next = !configMuted;
+    onUpdateMuted(next);
+    handleVideoControl(next ? 'mute' : 'unmute');
   }
 </script>
 
@@ -156,10 +169,10 @@
         </button>
         <button
           class="btn-control"
-          onclick={() => handleVideoControl(videoState?.muted ? 'unmute' : 'mute')}
-          title={videoState?.muted ? 'Unmute' : 'Mute'}
+          onclick={toggleConfigMute}
+          title={configMuted ? 'Unmute' : 'Mute'}
         >
-          {#if videoState?.muted}
+          {#if configMuted}
             <i class="codicon codicon-mute"></i>
           {:else}
             <i class="codicon codicon-unmute"></i>

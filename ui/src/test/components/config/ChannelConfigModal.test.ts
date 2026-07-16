@@ -488,7 +488,8 @@ describe('ChannelConfigModal', () => {
     it('should render video control buttons with accessible titles', () => {
       const videoInput: ConfigInput = {
         type: 'video',
-        path: './video.mp4'
+        path: './video.mp4',
+        muted: true
       };
 
       const mockVideoControl = vi.fn();
@@ -514,7 +515,8 @@ describe('ChannelConfigModal', () => {
     it('should render mute/unmute buttons with codicon icons not emoji', () => {
       const videoInput: ConfigInput = {
         type: 'video',
-        path: './video.mp4'
+        path: './video.mp4',
+        muted: true
       };
 
       const mockVideoControl = vi.fn();
@@ -555,6 +557,100 @@ describe('ChannelConfigModal', () => {
       const resetBtn = document.body.querySelector('.btn-control[title="Reset to beginning"]');
       expect(resetBtn).toBeTruthy();
       expect(resetBtn!.querySelector('.codicon-debug-restart')).toBeTruthy();
+    });
+  });
+
+  describe('Mute Button Persists Channel Config', () => {
+    it('updateMuted saves muted onto the channel input', async () => {
+      const videoInput: ConfigInput = {
+        type: 'video',
+        path: './video.mp4'
+      };
+
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 5, duration: 30 });
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
+      });
+
+      const muteBtn = document.body.querySelector('.btn-control[title="Mute"]');
+      expect(muteBtn).toBeTruthy();
+      await fireEvent.click(muteBtn!);
+
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'video', muted: true }));
+      expect(mockVideoControl).toHaveBeenCalledWith(expect.any(String), 'mute');
+    });
+
+    it('unmute button restores muted to false and applies runtime unmute (video)', async () => {
+      const videoInput: any = {
+        type: 'video',
+        path: './video.mp4',
+        muted: true
+      };
+
+      const mockVideoControl = vi.fn();
+      const mockGetVideoState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 5, duration: 30 });
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+        audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any
+      });
+
+      const unmuteBtn = document.body.querySelector('.btn-control[title="Unmute"]');
+      expect(unmuteBtn).toBeTruthy();
+      await fireEvent.click(unmuteBtn!);
+
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'video', muted: false }));
+      expect(mockVideoControl).toHaveBeenCalledWith(expect.any(String), 'unmute');
+    });
+
+    it('updateMuted saves muted onto the channel input (audio)', async () => {
+      const audioInput: ConfigInput = {
+        type: 'audio',
+        path: './music.mp3'
+      };
+
+      const mockAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 5, duration: 120 });
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: audioInput,
+        audioVideoController: { audioControl: mockAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any
+      });
+
+      const muteBtn = document.body.querySelector('.btn-control[title="Mute"]');
+      expect(muteBtn).toBeTruthy();
+      await fireEvent.click(muteBtn!);
+
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({ type: 'audio', muted: true }));
+      expect(mockAudioControl).toHaveBeenCalledWith(expect.any(String), 'mute');
+    });
+
+    it('config mute survives a path edit (rest-spread in updatePath)', async () => {
+      const videoInput: any = {
+        type: 'video',
+        path: './video.mp4',
+        muted: true
+      };
+
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: videoInput,
+      });
+
+      const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
+      await fireEvent.input(pathInput, { target: { value: './other.mp4' } });
+
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', expect.objectContaining({
+        type: 'video',
+        path: './other.mp4',
+        muted: true
+      }));
     });
   });
 
@@ -882,7 +978,8 @@ describe('ChannelConfigModal', () => {
     it('should render audio control buttons when onAudioControl is provided', () => {
       const audioInput: ConfigInput = {
         type: 'audio',
-        path: './music.mp3'
+        path: './music.mp3',
+        muted: true
       };
 
       const mockAudioControl = vi.fn();
@@ -944,7 +1041,8 @@ describe('ChannelConfigModal', () => {
     it('should render mute/unmute buttons with codicon icons', () => {
       const audioInput: ConfigInput = {
         type: 'audio',
-        path: './music.mp3'
+        path: './music.mp3',
+        muted: true
       };
 
       const mockAudioControl = vi.fn();

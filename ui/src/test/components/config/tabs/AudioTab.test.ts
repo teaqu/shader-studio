@@ -19,6 +19,7 @@ describe('AudioTab', () => {
     onUpdatePath: vi.fn(),
     onUpdateTempInput: vi.fn(),
     onAutoSave: vi.fn(),
+    onUpdateMuted: vi.fn(),
     audioVideoController: undefined as any,
   });
 
@@ -102,7 +103,7 @@ describe('AudioTab', () => {
     it('should show unmute button with codicon when audio is muted', () => {
       const props = {
         ...defaultProps(),
-        tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
+        tempInput: { type: 'audio', path: './music.mp3', muted: true } as ConfigInput,
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
@@ -195,6 +196,58 @@ describe('AudioTab', () => {
 
       const call = mockAudioControl.mock.calls[mockAudioControl.mock.calls.length - 1];
       expect(call[1]).toBe('reset');
+    });
+  });
+
+  describe('Config-driven Mute', () => {
+    it('mute button updates channel config and applies runtime mute', async () => {
+      const onUpdateMuted = vi.fn();
+      const audioControl = vi.fn();
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'audio', path: 'a.mp3' } as ConfigInput,
+        onUpdateMuted,
+        audioVideoController: { audioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
+      };
+
+      render(AudioTab, props);
+
+      await fireEvent.click(screen.getByTitle('Mute'));
+
+      expect(onUpdateMuted).toHaveBeenCalledWith(true);
+      expect(audioControl).toHaveBeenCalledWith(expect.any(String), 'mute');
+    });
+
+    it('mute button reflects config muted and unmutes config', async () => {
+      const onUpdateMuted = vi.fn();
+      const audioControl = vi.fn();
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'audio', path: 'a.mp3', muted: true } as ConfigInput,
+        onUpdateMuted,
+        audioVideoController: { audioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
+      };
+
+      render(AudioTab, props);
+
+      await fireEvent.click(screen.getByTitle('Unmute'));
+
+      expect(onUpdateMuted).toHaveBeenCalledWith(false);
+      expect(audioControl).toHaveBeenCalledWith(expect.any(String), 'unmute');
+    });
+
+    it('mute button icon/title reflects config mute, not engine mute state', () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'audio', path: 'a.mp3' } as ConfigInput,
+        audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
+      };
+
+      render(AudioTab, props);
+
+      // Engine reports muted:true, but config has no muted flag — button should show "Mute"
+      expect(screen.getByTitle('Mute')).toBeInTheDocument();
+      expect(screen.queryByTitle('Unmute')).not.toBeInTheDocument();
     });
   });
 
