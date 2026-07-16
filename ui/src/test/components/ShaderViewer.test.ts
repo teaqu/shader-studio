@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockHasUserPausedAudio, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -49,12 +49,11 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockResumeAllAudio = vi.fn();
   const mockResumeAllVideos = vi.fn();
   const mockReleaseMediaResetHold = vi.fn();
-  const mockHasUserPausedAudio = vi.fn(() => false);
   const mockSetInputEnabled = vi.fn();
   const mockTriggerDebugRecompile = vi.fn();
   const mockUpdateCurrentConfig = vi.fn();
   const mockCreateTransport = vi.fn(() => mockTransport);
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockHasUserPausedAudio, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig };
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -109,27 +108,24 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     releaseMediaResetHold() {
       return mockReleaseMediaResetHold();
     }
-    hasUserPausedAudio() {
-      return mockHasUserPausedAudio();
-    }
     controlAudio() {}
     seekAudio() {}
     updateAudioLoopRegion() {}
     controlVideo() {}
     getAudioState() {
-      return null; 
+      return null;
     }
     getVideoState() {
-      return null; 
+      return null;
     }
     getAudioFFTData() {
-      return null; 
+      return null;
     }
     getFrameTimeHistory() {
-      return []; 
+      return [];
     }
     getFrameTimeCount() {
-      return 0; 
+      return 0;
     }
     createVariableCapturer() {
       return {
@@ -229,9 +225,6 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     }
     releaseMediaResetHold() {
       return mockReleaseMediaResetHold();
-    }
-    hasUserPausedAudio() {
-      return mockHasUserPausedAudio();
     }
     controlAudio() {}
     seekAudio() {}
@@ -524,7 +517,6 @@ describe('ShaderViewer', () => {
     audioStore.setMuted(true);
     audioStore.setVolume(1);
     mockTimeManager.isPaused = vi.fn(() => false);
-    mockHasUserPausedAudio.mockReturnValue(false);
     localStorage.removeItem('shader-studio-sync-with-config');
   });
 
@@ -3184,25 +3176,18 @@ describe('ShaderViewer', () => {
       expect(engine.updateAudioLoopRegion).toHaveBeenCalledWith('/test/audio.mp3', 1.0, 3.5);
     });
 
-    it('should not call controlAudio when globally muted and action is unmute', async () => {
+    it('forwards unmute to the engine even when globally muted', async () => {
       const engine = await setupEngine();
       vi.spyOn(engine, 'controlAudio');
 
-      // Ensure globally muted
+      // Under the overlay model, per-channel unmute can't leak sound while
+      // globally muted, so the engine call is no longer gated on mute state.
       audioStore.setMuted(true);
       await tick();
 
-      // The handleAudioControl function blocks unmute when audioMuted is true.
-      // We simulate the component logic: if action === 'unmute' && audioMuted, return early
-      const audioMuted = true;
-      const action = 'unmute';
-      if (action === 'unmute' && audioMuted) {
-        // Should not call controlAudio — this is the component's behavior
-      } else {
-        engine.controlAudio('/test/audio.mp3', action);
-      }
+      engine.controlAudio('/test/audio.mp3', 'unmute');
 
-      expect(engine.controlAudio).not.toHaveBeenCalled();
+      expect(engine.controlAudio).toHaveBeenCalledWith('/test/audio.mp3', 'unmute');
     });
   });
 
@@ -3336,7 +3321,7 @@ describe('ShaderViewer', () => {
   });
 
   describe('audio on reset', () => {
-    it('should preserve unmuted audio and resume media when reset is clicked while playing', async () => {
+    it('reset while playing resumes audio and video after replay', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -3345,7 +3330,6 @@ describe('ShaderViewer', () => {
       await tick();
       audioStore.setMuted(false);
 
-      mockSetGlobalVolume.mockClear();
       mockResumeAllAudio.mockClear();
       mockResumeAllVideos.mockClear();
       mockReleaseMediaResetHold.mockClear();
@@ -3357,13 +3341,9 @@ describe('ShaderViewer', () => {
       expect(mockResumeAllAudio).toHaveBeenCalledTimes(1);
       expect(mockResumeAllVideos).toHaveBeenCalledTimes(1);
       expect(mockReleaseMediaResetHold).not.toHaveBeenCalled();
-      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
-        expect.any(Number),
-        false,
-      );
     });
 
-    it('should preserve muted audio when reset is clicked', async () => {
+    it('preserves the audioStore mute state across reset', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -3371,68 +3351,34 @@ describe('ShaderViewer', () => {
       await loadShader();
       await tick();
       audioStore.setMuted(true);
-
-      mockSetGlobalVolume.mockClear();
 
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
       await tick();
 
-      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
-        expect.any(Number),
-        true,
-      );
+      expect(get(audioStore).muted).toBe(true);
     });
 
-    it('should apply mute before resuming media when reset is clicked while muted', async () => {
+    it('reset while paused releases the media hold without resuming', async () => {
+      mockTimeManager.isPaused = vi.fn(() => true);
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
 
       await loadShader();
       await tick();
-      audioStore.setMuted(true);
 
-      mockSetGlobalVolume.mockClear();
       mockResumeAllAudio.mockClear();
       mockResumeAllVideos.mockClear();
+      mockReleaseMediaResetHold.mockClear();
 
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
       await tick();
 
-      expect(mockSetGlobalVolume).toHaveBeenCalledWith(expect.any(Number), true);
-      expect(mockResumeAllAudio).toHaveBeenCalledTimes(1);
-      expect(mockResumeAllVideos).toHaveBeenCalledTimes(1);
-      expect(mockSetGlobalVolume.mock.invocationCallOrder[0]).toBeLessThan(
-        mockResumeAllAudio.mock.invocationCallOrder[0],
-      );
-      expect(mockSetGlobalVolume.mock.invocationCallOrder[0]).toBeLessThan(
-        mockResumeAllVideos.mock.invocationCallOrder[0],
-      );
-    });
-
-    it('should preserve muted audio across consecutive resets', async () => {
-      render(ShaderViewer, { onInitialized: vi.fn() });
-      await tick();
-      await tick();
-
-      await loadShader();
-      await tick();
-      audioStore.setMuted(true);
-
-      mockSetGlobalVolume.mockClear();
-
-      const resetButton = screen.getByLabelText('Reset shader');
-      await fireEvent.click(resetButton);
-      await tick();
-      await fireEvent.click(resetButton);
-      await tick();
-
-      expect(mockSetGlobalVolume).toHaveBeenCalledTimes(2);
-      for (const call of mockSetGlobalVolume.mock.calls) {
-        expect(call[1]).toBe(true);
-      }
+      expect(mockReleaseMediaResetHold).toHaveBeenCalledTimes(1);
+      expect(mockResumeAllAudio).not.toHaveBeenCalled();
+      expect(mockResumeAllVideos).not.toHaveBeenCalled();
     });
 
     it('should keep media paused on reset when shader time is paused', async () => {
@@ -3456,37 +3402,6 @@ describe('ShaderViewer', () => {
       expect(mockResumeAllAudio).not.toHaveBeenCalled();
       expect(mockResumeAllVideos).not.toHaveBeenCalled();
       expect(mockReleaseMediaResetHold).toHaveBeenCalledTimes(1);
-      expect(mockSetGlobalVolume).toHaveBeenCalledWith(
-        expect.any(Number),
-        false,
-      );
-    });
-
-    it('should keep media paused across consecutive resets after the user paused', async () => {
-      let isPaused = true;
-      mockTimeManager.isPaused = vi.fn(() => isPaused);
-      render(ShaderViewer, { onInitialized: vi.fn() });
-      await tick();
-      await tick();
-
-      await loadShader();
-      await tick();
-
-      mockResumeAllAudio.mockClear();
-      mockResumeAllVideos.mockClear();
-      mockReleaseMediaResetHold.mockClear();
-
-      const resetButton = screen.getByLabelText('Reset shader');
-      await fireEvent.click(resetButton);
-      await tick();
-
-      isPaused = false;
-      await fireEvent.click(resetButton);
-      await tick();
-
-      expect(mockResumeAllAudio).not.toHaveBeenCalled();
-      expect(mockResumeAllVideos).not.toHaveBeenCalled();
-      expect(mockReleaseMediaResetHold).toHaveBeenCalledTimes(2);
     });
 
     it('should resume media on reset after the user unpauses', async () => {
@@ -3520,8 +3435,7 @@ describe('ShaderViewer', () => {
       expect(mockReleaseMediaResetHold).not.toHaveBeenCalled();
     });
 
-    it('should keep media paused on reset when audio was user-paused', async () => {
-      mockHasUserPausedAudio.mockReturnValue(true);
+    it('reset never touches global volume/mute', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -3529,41 +3443,14 @@ describe('ShaderViewer', () => {
       await loadShader();
       await tick();
 
-      mockResumeAllAudio.mockClear();
-      mockResumeAllVideos.mockClear();
-      mockReleaseMediaResetHold.mockClear();
+      // Clear calls made by the initial AudioVideoController store subscription.
+      mockSetGlobalVolume.mockClear();
 
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
       await tick();
 
-      expect(mockResumeAllAudio).not.toHaveBeenCalled();
-      expect(mockResumeAllVideos).not.toHaveBeenCalled();
-      expect(mockReleaseMediaResetHold).toHaveBeenCalledTimes(1);
-    });
-
-    it('should keep media paused across consecutive resets after audio was user-paused', async () => {
-      mockHasUserPausedAudio.mockReturnValueOnce(true).mockReturnValue(false);
-      render(ShaderViewer, { onInitialized: vi.fn() });
-      await tick();
-      await tick();
-
-      await loadShader();
-      await tick();
-
-      mockResumeAllAudio.mockClear();
-      mockResumeAllVideos.mockClear();
-      mockReleaseMediaResetHold.mockClear();
-
-      const resetButton = screen.getByLabelText('Reset shader');
-      await fireEvent.click(resetButton);
-      await tick();
-      await fireEvent.click(resetButton);
-      await tick();
-
-      expect(mockResumeAllAudio).not.toHaveBeenCalled();
-      expect(mockResumeAllVideos).not.toHaveBeenCalled();
-      expect(mockReleaseMediaResetHold).toHaveBeenCalledTimes(2);
+      expect(mockSetGlobalVolume).not.toHaveBeenCalled();
     });
 
     it('should not unmute audio on initial shader load', async () => {

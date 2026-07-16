@@ -6,15 +6,12 @@ export class AudioVideoController {
   private audioMuted = true;
   private unsubscribe: (() => void) | null = null;
   private onStateChanged: ((volume: number, muted: boolean) => void) | null = null;
-  private onPlaybackIntent: ((intent: 'play' | 'pause') => void) | null = null;
 
   constructor(
     private getEngine: () => RenderingEngine | undefined,
     onStateChanged?: (volume: number, muted: boolean) => void,
-    onPlaybackIntent?: (intent: 'play' | 'pause') => void,
   ) {
     this.onStateChanged = onStateChanged ?? null;
-    this.onPlaybackIntent = onPlaybackIntent ?? null;
     this.unsubscribe = audioStore.subscribe((state: AudioState) => {
       this.audioVolume = state.volume;
       this.audioMuted = state.muted;
@@ -36,21 +33,7 @@ export class AudioVideoController {
     if (!engine) {
       return;
     }
-
-    // Block per-video unmute when globally muted
-    if (action === 'unmute' && this.audioMuted) {
-      return;
-    }
-
     engine.controlVideo(path, action as any);
-    if (action === 'play' || action === 'pause') {
-      this.onPlaybackIntent?.(action);
-    }
-
-    // After per-video unmute, apply the current global volume
-    if (action === 'unmute') {
-      engine.setGlobalVolume(linearToPerceptualVolume(this.audioVolume), false);
-    }
   }
 
   getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
@@ -82,20 +65,7 @@ export class AudioVideoController {
       return;
     }
 
-    // Block per-audio unmute when globally muted
-    if (action === 'unmute' && this.audioMuted) {
-      return;
-    }
-
     engine.controlAudio(path, action as any);
-    if (action === 'play' || action === 'pause') {
-      this.onPlaybackIntent?.(action);
-    }
-
-    // After per-audio unmute, apply the current global volume
-    if (action === 'unmute') {
-      engine.setGlobalVolume(linearToPerceptualVolume(this.audioVolume), false);
-    }
   }
 
   getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
