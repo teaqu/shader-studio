@@ -212,23 +212,12 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (result.success) {
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
-      console.info('[MediaSync] resources ready, syncing videos', {
-        path,
-        shaderTime,
-        paused,
-        holdVideosForReset,
-      });
       this.resourceManager.syncAllVideosToTime(shaderTime);
       if (paused || holdVideosForReset) {
         // Newly loaded media is held when the shader is paused, and reset
         // replays hold videos so audio/video can restart together afterwards.
-        console.info('[MediaSync] holding videos after compile', {
-          path,
-          reason: holdVideosForReset ? 'reset' : 'paused',
-        });
         this.resourceManager.pauseAllVideos();
       } else {
-        console.info('[MediaSync] resuming videos after all resources loaded', { path });
         this.resourceManager.resumeAllVideos();
       }
       // Audio never auto-plays on compilation — it only starts on explicit user
@@ -382,7 +371,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.shaderPipeline.resetTime();
     this.cameraManager.reset();
     this.holdVideoResumeForResetCompile = true;
-    console.info('[MediaSync] reset armed video hold');
   }
 
   public flagForceCleanupOnNextApply(): void {
@@ -391,20 +379,15 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   /** Resume audio without clearing user-paused state. Used on reset. */
   public resumeAllAudio(): void {
-    console.info('[MediaSync] resumeAllAudio requested');
     this.resourceManager.resumeAllAudio();
   }
 
   public resumeAllVideos(): void {
-    console.info('[MediaSync] resumeAllVideos requested');
     this.holdVideoResumeForResetCompile = false;
     this.resourceManager.resumeAllVideos();
   }
 
   public releaseMediaResetHold(): void {
-    if (this.holdVideoResumeForResetCompile) {
-      console.info('[MediaSync] media reset hold released without resume');
-    }
     this.holdVideoResumeForResetCompile = false;
   }
 

@@ -326,7 +326,8 @@ export class ShaderPipeline {
           const videoOptions = {
             filter: input.filter,
             wrap: input.wrap,
-            vflip: input.vflip
+            vflip: input.vflip,
+            muted: input.muted,
           };
           const result = await this.resourceManager.loadVideoTexture(input.resolved_path || input.path, videoOptions);
           if (result.warning) {
@@ -342,6 +343,7 @@ export class ShaderPipeline {
         } else if (input?.type === "audio" && input.path) {
           try {
             const audioLoadOptions = {
+              muted: input.muted,
               startTime: input.startTime,
               endTime: input.endTime,
             };

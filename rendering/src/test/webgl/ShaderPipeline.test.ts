@@ -1192,6 +1192,29 @@ describe("ShaderPipeline", () => {
     });
   });
 
+  describe("config muted wiring", () => {
+    it("passes config muted to video and audio resource loads", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "v.mp4", muted: true },
+              iChannel1: { type: "audio", path: "a.mp3", muted: true },
+            }
+          }
+        }
+      };
+
+      await shaderPipeline.compileShaderPipeline(shaderCode, config as any, "shader.glsl", {});
+
+      expect(mockResourceManager.loadVideoTexture)
+        .toHaveBeenCalledWith("v.mp4", expect.objectContaining({ muted: true }));
+      expect(mockResourceManager.loadAudioSource)
+        .toHaveBeenCalledWith("a.mp3", expect.objectContaining({ muted: true }));
+    });
+  });
+
   describe("texture input handling", () => {
     it("should load texture with default options when none specified", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
