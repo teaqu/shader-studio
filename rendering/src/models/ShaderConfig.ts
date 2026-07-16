@@ -30,6 +30,7 @@ export interface VideoConfigInput {
   filter?: "linear" | "nearest" | "mipmap";
   wrap?: "repeat" | "clamp";
   vflip?: boolean;
+  muted?: boolean;
 }
 
 export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput | CubemapConfigInput;
