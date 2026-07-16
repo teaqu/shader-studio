@@ -1141,6 +1141,91 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
+  describe("video sync on compilation", () => {
+    // WebGL parity (RenderingEngine.test.ts "video sync on compilation"):
+    // newly loaded video textures must not sit frozen on their first frame —
+    // a successful compile should sync them to the current shader time and
+    // start/hold playback based on pause state.
+    it("should sync and resume videos on successful compilation when not paused", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+      (engine as any).timeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(7.5),
+        isPaused: vi.fn().mockReturnValue(false),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(resourceManager.syncAllVideosToTime).toHaveBeenCalledWith(7.5);
+      expect(resourceManager.resumeAllVideos).toHaveBeenCalled();
+      expect(resourceManager.pauseAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should sync and pause videos on successful compilation when paused", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+      (engine as any).timeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(3.0),
+        isPaused: vi.fn().mockReturnValue(true),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(resourceManager.syncAllVideosToTime).toHaveBeenCalledWith(3.0);
+      expect(resourceManager.pauseAllVideos).toHaveBeenCalled();
+      expect(resourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should leave videos untouched on failed compilation", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+      (engine as any).timeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(0),
+        isPaused: vi.fn().mockReturnValue(false),
+      };
+      (engine as any).compiler = { compile: vi.fn(() => ({ success: false, errors: ["bad"] })), dispose: vi.fn() };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(false);
+      expect(resourceManager.syncAllVideosToTime).not.toHaveBeenCalled();
+      expect(resourceManager.pauseAllVideos).not.toHaveBeenCalled();
+      expect(resourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+  });
+
   describe("cubemap input parity", () => {
     const cubemapConfig: ShaderConfig = {
       version: "1",

@@ -5,8 +5,6 @@ export class VideoTextureManager<T> {
   private readonly videoElements: Record<string, HTMLVideoElement> = {};
   private readonly videoTextures: Record<string, T> = {};
   private readonly animationFrameIds: Record<string, number> = {};
-  private readonly playbackTimeoutIds: Record<string, ReturnType<typeof setTimeout>> = {};
-  private readonly playbackRetryCleanups: Record<string, () => void> = {};
   // Per-video user-initiated pause tracking
   private readonly userPaused: Set<string> = new Set();
   private globalMuted = false;
@@ -106,8 +104,6 @@ export class VideoTextureManager<T> {
   }
 
   public removeVideoTexture(path: string): void {
-    this.clearPlaybackRetry(path);
-
     // Stop animation frame updates
     const animationId = this.animationFrameIds[path];
     if (animationId) {
@@ -287,24 +283,6 @@ export class VideoTextureManager<T> {
 
     // Start updating texture
     updateTexture();
-  }
-
-  private clearPlaybackRetry(path: string): void {
-    const timeoutId = this.playbackTimeoutIds[path];
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      delete this.playbackTimeoutIds[path];
-    }
-
-    const cleanup = this.playbackRetryCleanups[path];
-    if (cleanup) {
-      cleanup();
-      delete this.playbackRetryCleanups[path];
-    }
-  }
-
-  private isActiveVideo(path: string, video: HTMLVideoElement, texture: T): boolean {
-    return this.videoElements[path] === video && this.videoTextures[path] === texture;
   }
 
   private warnUnlessPlayInterrupted(message: string, error: unknown): void {

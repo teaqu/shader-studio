@@ -625,6 +625,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
+
+    // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
+    // textures load with autoplay disabled, so without this they'd sit frozen
+    // on their first frame until some other action resumed them. Sync to the
+    // current shader time and start/hold playback based on pause state.
+    if (this.resourceManager) {
+      const shaderTime = this.timeManager.getCurrentTime(performance.now());
+      this.resourceManager.syncAllVideosToTime?.(shaderTime);
+      if (this.timeManager.isPaused()) {
+        this.resourceManager.pauseAllVideos?.();
+      } else {
+        this.resourceManager.resumeAllVideos?.();
+      }
+    }
+
     this.logCompileTiming("success", {
       path,
       generation,
