@@ -775,6 +775,91 @@ suite('ConfigPathConverter Test Suite', () => {
       sinon.assert.calledOnce(onVideoConverted);
     });
 
+    test('audio input backed by an MP4 offers conversion and updates config', async () => {
+      mockConverter.getUnsupportedAudioCodec.resolves('aac');
+      mockConverter.convertAudio.resolves('/absolute/path/to/audio-video_vscode.mp4');
+      showWarningStub.resolves('Convert');
+      showInfoStub.resolves(undefined);
+
+      const onVideoConverted = sandbox.stub();
+      const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/audio-video.mp4');
+      mockWebview.asWebviewUri.returns(mockUri);
+
+      const message = {
+        type: 'shaderSource',
+        code: 'shader code',
+        path: '/workspace/shaders/main.glsl',
+        config: {
+          version: '1.0',
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: {
+                  type: 'audio',
+                  path: '/absolute/path/to/audio-video.mp4'
+                }
+              }
+            }
+          }
+        }
+      };
+
+      await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                {
+                  videoAudioConverter: mockConverter as unknown as VideoAudioConverter,
+                  onVideoConverted,
+                }
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      sinon.assert.calledOnceWithExactly(
+        mockConverter.getUnsupportedAudioCodec,
+        '/absolute/path/to/audio-video.mp4',
+      );
+      sinon.assert.calledOnce(mockConverter.convertAudio);
+      sinon.assert.calledOnceWithExactly(
+        onVideoConverted,
+        '/absolute/path/to/audio-video.mp4',
+        '/absolute/path/to/audio-video_vscode.mp4',
+      );
+    });
+
+    test('audio input backed by a regular audio file does not run video conversion checks', async () => {
+      const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/music.mp3');
+      mockWebview.asWebviewUri.returns(mockUri);
+
+      const message = {
+        type: 'shaderSource',
+        code: 'shader code',
+        path: '/workspace/shaders/main.glsl',
+        config: {
+          version: '1.0',
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: {
+                  type: 'audio',
+                  path: '/absolute/path/to/music.mp3'
+                }
+              }
+            }
+          }
+        }
+      };
+
+      await ConfigPathConverter.processConfigPaths(
+                message as any,
+                mockWebview,
+                { videoAudioConverter: mockConverter as unknown as VideoAudioConverter }
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      sinon.assert.notCalled(mockConverter.getUnsupportedAudioCodec);
+      sinon.assert.notCalled(showWarningStub);
+    });
+
     test('dismissing without clicking Ignore does not suppress future notifications', async () => {
       mockConverter.getUnsupportedAudioCodec.resolves('aac');
       showWarningStub.resolves(undefined); // dismissed without clicking

@@ -8,9 +8,8 @@ const execFileAsync = promisify(execFile);
 /**
  * Detects videos with unsupported audio codecs and offers conversion.
  *
- * VS Code webviews only support: Wav, Mp3, Ogg, Flac for audio.
- * H.264 video is supported, so we copy the video stream and only
- * re-encode the audio track to MP3.
+ * VS Code webviews only support a subset of audio codecs. H.264 video is
+ * supported, so we copy the video stream and only re-encode the audio track.
  *
  * Converted files are placed alongside the original: video.mp4 -> video_vscode.mp4
  */
@@ -47,9 +46,9 @@ export class VideoAudioConverter {
   }
 
   /**
-   * Convert video to have MP3 audio. Returns path to new file.
+   * Convert video to have container-compatible audio. Returns path to new file.
    * Creates copy alongside original: video.mp4 -> video_vscode.mp4
-   * Identical video stream, only audio re-encoded.
+   * Identical video stream when possible, only audio re-encoded.
    *
    * If output already exists and is newer than source, skips conversion.
    */
@@ -66,19 +65,35 @@ export class VideoAudioConverter {
       }
     }
 
-    console.log(`[VideoAudioConverter] Converting ${path.basename(videoPath)} audio to MP3...`);
+    console.log(`[VideoAudioConverter] Converting ${path.basename(videoPath)} audio...`);
 
-    await execFileAsync("ffmpeg", [
+    await execFileAsync("ffmpeg", this.getFfmpegArgs(videoPath, outputPath), { timeout: 120_000 });
+
+    console.log(`[VideoAudioConverter] Created ${path.basename(outputPath)}`);
+    return outputPath;
+  }
+
+  private getFfmpegArgs(videoPath: string, outputPath: string): string[] {
+    const ext = path.extname(videoPath).toLowerCase();
+    if (ext === ".webm") {
+      return [
+        "-y",
+        "-i", videoPath,
+        "-c:v", "copy",
+        "-c:a", "libopus",
+        "-b:a", "128k",
+        outputPath,
+      ];
+    }
+
+    return [
       "-y",
       "-i", videoPath,
       "-c:v", "copy",
       "-c:a", "libmp3lame",
       "-q:a", "2",
       outputPath,
-    ], { timeout: 120_000 });
-
-    console.log(`[VideoAudioConverter] Created ${path.basename(outputPath)}`);
-    return outputPath;
+    ];
   }
 
   private async ensureFfmpegAvailable(): Promise<boolean> {

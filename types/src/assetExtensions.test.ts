@@ -36,6 +36,10 @@ describe("asset extension filters", () => {
     expect(CUBEMAP_EXTENSIONS).toContain("svg");
   });
 
+  it("allows video containers to be selected as shader audio inputs", () => {
+    expect(AUDIO_EXTENSIONS).toEqual(expect.arrayContaining(["mp4", "webm", "mov"]));
+  });
+
   it("keeps cubemap browser formats texture-compatible", () => {
     for (const extension of CUBEMAP_EXTENSIONS) {
       expect(TEXTURE_EXTENSIONS).toContain(extension);

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import type { ShaderConfig } from "@shader-studio/types";
+import { VIDEO_EXTENSIONS, type ShaderConfig } from "@shader-studio/types";
 import { PathResolver } from "../PathResolver";
 import { VideoAudioConverter } from "../services/VideoAudioConverter";
 
@@ -58,8 +58,11 @@ export class ConfigPathConverter {
                 ? PathResolver.resolvePath(shaderPath, input.path)
                 : (path.isAbsolute(input.path) ? input.path : path.join(configDir, input.path));
 
-              // For video inputs, check for unsupported audio and notify (fire-and-forget)
-              if (input.type === "video" && options.videoAudioConverter) {
+              // For video-backed inputs, check for unsupported audio and notify (fire-and-forget)
+              if (
+                options.videoAudioConverter
+                && (input.type === "video" || (input.type === "audio" && this.isVideoPath(absolutePath)))
+              ) {
                 this.checkVideoAudio(absolutePath, input.path, options.videoAudioConverter, options.onVideoConverted);
               }
 
@@ -128,6 +131,11 @@ export class ConfigPathConverter {
     }).catch((e) => {
       console.warn(`[ConfigPathConverter] Video audio check failed for ${absolutePath}:`, e);
     });
+  }
+
+  private static isVideoPath(filePath: string): boolean {
+    const extension = path.extname(filePath).slice(1).toLowerCase();
+    return VIDEO_EXTENSIONS.includes(extension);
   }
 
   /**

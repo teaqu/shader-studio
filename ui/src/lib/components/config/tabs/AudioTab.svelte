@@ -152,10 +152,11 @@
   let audioUri = $derived(tempInput?.type === 'audio' && tempInput.path
     ? (tempInput as any).resolved_path || (getWebviewUri ? getWebviewUri(tempInput.path) : null) || lastSelectedResolvedUri || ''
     : '');
+  let hasAudioState = $derived(audioState !== null);
 
   $effect(() => {
     const uri = audioUri;
-    if (uri) {
+    if (uri && hasAudioState) {
       let cancelled = false;
       getWaveformPeaks(uri, 350).then(async peaks => {
         if (cancelled) {
@@ -332,7 +333,7 @@
 
 <PathInput
   value={(tempInput?.type === "audio" && tempInput.path) || ""}
-  placeholder="Path to audio file (.mp3, .wav, .ogg)"
+  placeholder="Path to audio or video file"
   fileType="audio"
   allowCreate={false}
   {shaderPath}
@@ -344,7 +345,7 @@
   Audio provides a 512x2 texture: row 0 = FFT frequency data, row 1 = time-domain waveform.
 </div>
 
-{#if tempInput?.type === "audio" && tempInput.path}
+{#if tempInput?.type === "audio" && tempInput.path && hasAudioState}
   <div
     class="waveform-editor"
     role="button"
@@ -398,7 +399,7 @@
   </div>
 {/if}
 
-{#if tempInput?.type === "audio" && tempInput.path && onAudioControl}
+{#if tempInput?.type === "audio" && tempInput.path && onAudioControl && hasAudioState}
   <div class="video-controls">
     <span class="controls-label">Playback:</span>
     <div class="controls-row">

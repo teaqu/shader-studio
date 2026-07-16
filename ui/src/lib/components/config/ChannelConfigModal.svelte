@@ -6,7 +6,7 @@
   import TextureTab from "./tabs/TextureTab.svelte";
   import CubemapTab from "./tabs/CubemapTab.svelte";
   import VideoTab from "./tabs/VideoTab.svelte";
-  import MusicTab from "./tabs/MusicTab.svelte";
+  import AudioTab from "./tabs/AudioTab.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
 
   interface Props {
@@ -53,8 +53,8 @@
   let nameInput = $state("");
   let nameError = $state("");
 
-  type TabName = "Misc" | "Textures" | "Cubemaps" | "Videos" | "Music";
-  const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Videos", "Music"];
+  type TabName = "Misc" | "Textures" | "Cubemaps" | "Videos" | "Audio";
+  const TABS: TabName[] = ["Misc", "Textures", "Cubemaps", "Videos", "Audio"];
 
   let modalContent: HTMLElement = $state(null!);
   let tempInput: ConfigInput | undefined = $state(undefined);
@@ -75,7 +75,7 @@
       case "video":
         return "Videos";
       case "audio":
-        return "Music";
+        return "Audio";
       default:
         return null;
     }
@@ -213,7 +213,7 @@
         case "Videos":
           tempInput = { type: "video", path: "" };
           break;
-        case "Music":
+        case "Audio":
           tempInput = { type: "audio", path: "" };
           break;
       }
@@ -434,8 +434,8 @@
             {audioVideoController}
           />
 
-        {:else if activeTab === "Music"}
-          <MusicTab
+        {:else if activeTab === "Audio"}
+          <AudioTab
             {tempInput}
             {shaderPath}
             {postMessage}

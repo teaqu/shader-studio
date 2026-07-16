@@ -54,7 +54,7 @@ describe('ChannelConfigModal', () => {
       expect(screen.getByRole('tab', { name: 'Textures' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Cubemaps' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Videos' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Music' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Audio' })).toBeInTheDocument();
     });
 
     it('should default to Misc tab when no input is set', () => {

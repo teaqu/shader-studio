@@ -1,9 +1,9 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import MusicTab from '../../../../lib/components/config/tabs/MusicTab.svelte';
+import AudioTab from '../../../../lib/components/config/tabs/AudioTab.svelte';
 import type { ConfigInput } from '@shader-studio/types';
 
-describe('MusicTab', () => {
+describe('AudioTab', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -24,9 +24,9 @@ describe('MusicTab', () => {
 
   describe('Rendering', () => {
     it('should render path input with audio placeholder', () => {
-      render(MusicTab, defaultProps());
+      render(AudioTab, defaultProps());
 
-      expect(screen.getByPlaceholderText('Path to audio file (.mp3, .wav, .ogg)')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Path to audio or video file')).toBeInTheDocument();
     });
 
     it('should display existing audio path', () => {
@@ -35,7 +35,7 @@ describe('MusicTab', () => {
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
       };
 
-      render(MusicTab, props);
+      render(AudioTab, props);
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       expect(pathInput.value).toBe('./music.mp3');
@@ -50,7 +50,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       expect(container.querySelector('.btn-control[title="Pause"]')).toBeTruthy();
       expect(container.querySelector('.btn-control[title="Mute"]')).toBeTruthy();
@@ -63,8 +63,27 @@ describe('MusicTab', () => {
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
+      expect(container.querySelector('.video-controls .controls-row')).toBeFalsy();
+    });
+
+    it('should not show waveform or controls when the selected file has no loadable audio state', () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'audio', path: './clip.mp4' } as ConfigInput,
+        audioVideoController: {
+          audioControl: vi.fn(),
+          getAudioState: vi.fn().mockReturnValue(null),
+          videoControl: vi.fn(),
+          getVideoState: vi.fn(),
+          getAudioFFT: vi.fn(),
+        } as any,
+      };
+
+      const { container } = render(AudioTab, props);
+
+      expect(container.querySelector('.waveform-editor')).toBeFalsy();
       expect(container.querySelector('.video-controls .controls-row')).toBeFalsy();
     });
 
@@ -75,7 +94,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       expect(container.querySelector('.btn-control[title="Play"]')).toBeTruthy();
     });
@@ -87,7 +106,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const unmuteBtn = container.querySelector('.btn-control[title="Unmute"]');
       expect(unmuteBtn).toBeTruthy();
@@ -101,7 +120,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 65, duration: 180 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const timer = container.querySelector('.video-timer');
       expect(timer).toBeTruthy();
@@ -117,7 +136,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const playBtn = container.querySelector('.btn-control[title="Play"]');
       await fireEvent.click(playBtn!);
@@ -135,7 +154,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const pauseBtn = container.querySelector('.btn-control[title="Pause"]');
       await fireEvent.click(pauseBtn!);
@@ -152,7 +171,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const muteBtn = container.querySelector('.btn-control[title="Mute"]');
       await fireEvent.click(muteBtn!);
@@ -169,7 +188,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const resetBtn = container.querySelector('.btn-control[title="Reset to beginning"]');
       await fireEvent.click(resetBtn!);
@@ -188,7 +207,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const playBtn = container.querySelector('.btn-control[title="Play"]');
       if (playBtn) {
@@ -207,7 +226,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const playBtn = container.querySelector('.btn-control[title="Play"]');
       if (playBtn) {
@@ -220,7 +239,7 @@ describe('MusicTab', () => {
       const mockGetAudioState = vi.fn().mockReturnValue({ paused: true, muted: false, currentTime: 0, duration: 60 });
       const mockWebviewUri = vi.fn((path: string) => `webview://resolved/${path}`);
 
-      render(MusicTab, {
+      render(AudioTab, {
         ...defaultProps(),
         tempInput: { type: 'audio', path: './music.mp3' } as ConfigInput,
         getWebviewUri: mockWebviewUri,
@@ -242,7 +261,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       expect(container.querySelector('.waveform-editor')).toBeTruthy();
     });
@@ -254,7 +273,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       expect(container.querySelector('.waveform-handle-start')).toBeTruthy();
       expect(container.querySelector('.waveform-handle-end')).toBeTruthy();
@@ -267,7 +286,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 15, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const timeLabels = container.querySelectorAll('.waveform-time-label');
       expect(timeLabels.length).toBeGreaterThanOrEqual(2);
@@ -291,7 +310,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       expect(startHandle).toBeTruthy();
@@ -312,7 +331,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       await fireEvent.mouseDown(startHandle!);
@@ -332,7 +351,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       expect(startHandle).toBeTruthy();
@@ -356,7 +375,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const endHandle = container.querySelector('.waveform-handle-end');
       expect(endHandle).toBeTruthy();
@@ -383,7 +402,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const waveformEditor = container.querySelector('.waveform-editor');
       if (waveformEditor) {
@@ -404,7 +423,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const waveformEditor = container.querySelector('.waveform-editor');
       if (waveformEditor) {
@@ -431,7 +450,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const waveformEditor = container.querySelector('.waveform-editor');
       if (waveformEditor) {
@@ -458,7 +477,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: mockAudioControl, getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       if (startHandle) {
@@ -482,7 +501,7 @@ describe('MusicTab', () => {
   describe('Callbacks', () => {
     it('should call onUpdatePath when path changes', async () => {
       const props = defaultProps();
-      render(MusicTab, props);
+      render(AudioTab, props);
 
       const pathInput = screen.getByLabelText('Path:') as HTMLInputElement;
       await fireEvent.input(pathInput, { target: { value: './new-song.mp3' } });
@@ -497,7 +516,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       if (startHandle) {
@@ -519,7 +538,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 10, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const startHandle = container.querySelector('.waveform-handle-start');
       if (startHandle) {
@@ -548,7 +567,7 @@ describe('MusicTab', () => {
         audioVideoController: { audioControl: vi.fn(), getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 30, duration: 120 }), videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
       };
 
-      const { container } = render(MusicTab, props);
+      const { container } = render(AudioTab, props);
 
       const endHandle = container.querySelector('.waveform-handle-end');
       if (endHandle) {

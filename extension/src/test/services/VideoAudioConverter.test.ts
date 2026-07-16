@@ -177,7 +177,7 @@ suite('VideoAudioConverter Test Suite', () => {
       assert.strictEqual(result, '/path/to/video_vscode.mp4');
     });
 
-    test('calls ffmpeg with correct args (-c:v copy -c:a libmp3lame)', async () => {
+    test('calls ffmpeg with MP4-compatible MP3 audio args', async () => {
       const converter = new VideoAudioConverter();
       fsStubs.existsSync.returns(false);
 
@@ -196,13 +196,37 @@ suite('VideoAudioConverter Test Suite', () => {
       assert.ok(capturedArgs.includes('-c:v'), 'Should include -c:v flag');
       assert.ok(capturedArgs.includes('copy'), 'Should include copy for video codec');
       assert.ok(capturedArgs.includes('-c:a'), 'Should include -c:a flag');
-      assert.ok(capturedArgs.includes('libmp3lame'), 'Should include libmp3lame for audio codec');
-      assert.ok(capturedArgs.includes('-q:a'), 'Should include -q:a flag');
+      assert.ok(capturedArgs.includes('libmp3lame'), 'Should include MP3 encoder for audio codec');
+      assert.ok(capturedArgs.includes('-q:a'), 'Should include MP3 quality flag');
       assert.ok(capturedArgs.includes('2'), 'Should include quality level 2');
       assert.ok(capturedArgs.includes('-y'), 'Should include -y flag for overwrite');
       assert.ok(capturedArgs.includes('-i'), 'Should include -i flag');
       assert.ok(capturedArgs.includes('/path/to/video.mp4'), 'Should include input path');
       assert.ok(capturedArgs.includes('/path/to/video_vscode.mp4'), 'Should include output path');
+    });
+
+    test('uses Opus audio when converting WebM files', async () => {
+      const converter = new VideoAudioConverter();
+      fsStubs.existsSync.returns(false);
+
+      let capturedArgs: string[] = [];
+      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+        const cb = typeof opts === 'function' ? opts : callback;
+        if (cmd === 'ffmpeg' && args[0] !== '-version') {
+          capturedArgs = args;
+        }
+        cb(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      await converter.convertAudio('/path/to/video.webm');
+
+      assert.ok(capturedArgs.includes('-c:v'), 'Should include -c:v flag');
+      assert.ok(capturedArgs.includes('copy'), 'Should include copy for video codec');
+      assert.ok(capturedArgs.includes('-c:a'), 'Should include -c:a flag');
+      assert.ok(capturedArgs.includes('libopus'), 'Should include Opus for WebM-compatible audio');
+      assert.ok(!capturedArgs.includes('-movflags'), 'Should not use MP4 flags for WebM output');
+      assert.ok(capturedArgs.includes('/path/to/video_vscode.webm'), 'Should include WebM output path');
     });
 
     test('skips conversion if output already exists and is newer than source', async () => {
