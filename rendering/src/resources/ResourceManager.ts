@@ -17,7 +17,6 @@ export class ResourceManager<T> {
   private readonly cubemapTextureManager: CubemapTextureManager<T>;
   private readonly audioTextureManager: AudioTextureManager<T>;
   private readonly keyboardInput: ShaderKeyboardInput<T>;
-  private audioDefaults: { muted?: boolean; volume?: number } = {};
 
   constructor(
     private readonly backend: TextureBackend<T>,
@@ -84,7 +83,7 @@ export class ResourceManager<T> {
 
   public async loadVideoTexture(
     path: string,
-    opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+    opts: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip' | 'muted'>> = {}
   ): Promise<VideoLoadResult<T>> {
     try {
       const texture = await this.videoTextureManager.loadVideoTexture(path, opts);
@@ -124,15 +123,8 @@ export class ResourceManager<T> {
   }
 
   // Audio methods
-  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<T> {
-    return this.audioTextureManager.loadAudioSource(path, {
-      ...this.audioDefaults,
-      ...options,
-    });
-  }
-
-  public setAudioDefaults(options: { muted?: boolean; volume?: number }): void {
-    this.audioDefaults = options;
+  public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T> {
+    return this.audioTextureManager.loadAudioSource(path, options);
   }
 
   public async resumeAudioContext(): Promise<void> {

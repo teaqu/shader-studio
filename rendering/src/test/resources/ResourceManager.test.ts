@@ -428,6 +428,16 @@ describe("ResourceManager", () => {
 
       consoleSpy.mockRestore();
     });
+
+    it("should pass muted option to video texture manager", async () => {
+      const mockTexture = createMockTexture();
+      const videoManager = (resourceManager as any).videoTextureManager;
+      videoManager.loadVideoTexture.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadVideoTexture("video.mp4", { muted: true });
+
+      expect(videoManager.loadVideoTexture).toHaveBeenCalledWith("video.mp4", { muted: true });
+    });
   });
 
   describe("getVideoTexture", () => {
@@ -739,6 +749,16 @@ describe("ResourceManager", () => {
 
       expect(result).toBe(mockTexture);
       expect(audioManager.loadAudioSource).toHaveBeenCalledWith("audio.mp3", opts);
+    });
+
+    it("should pass audio options through unchanged with no defaults merge", async () => {
+      const mockTexture = createMockTexture();
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.loadAudioSource.mockResolvedValue(mockTexture);
+
+      await resourceManager.loadAudioSource("a.mp3", { muted: true, startTime: 1 });
+
+      expect(audioManager.loadAudioSource).toHaveBeenCalledWith("a.mp3", { muted: true, startTime: 1 });
     });
   });
 

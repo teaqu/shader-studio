@@ -409,7 +409,6 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public setGlobalVolume(volume: number, muted: boolean): void {
-    this.resourceManager.setAudioDefaults({ volume, muted });
     this.resourceManager.setGlobalAudioState(volume, muted);
   }
 

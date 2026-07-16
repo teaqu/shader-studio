@@ -1367,9 +1367,8 @@ describe("RenderingEngine", () => {
   });
 
   describe("setGlobalVolume", () => {
-    it("should record audio defaults and propagate global mute state", () => {
+    it("should propagate global mute state", () => {
       const mockResourceMgr = {
-        setAudioDefaults: vi.fn(),
         setGlobalAudioState: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'resourceManager', {
@@ -1378,13 +1377,11 @@ describe("RenderingEngine", () => {
 
       renderingEngine.setGlobalVolume(0.8, true);
 
-      expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: true });
       expect(mockResourceMgr.setGlobalAudioState).toHaveBeenCalledWith(0.8, true);
     });
 
-    it("should record audio defaults and propagate global unmute state", () => {
+    it("should propagate global unmute state", () => {
       const mockResourceMgr = {
-        setAudioDefaults: vi.fn(),
         setGlobalAudioState: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'resourceManager', {
@@ -1393,7 +1390,6 @@ describe("RenderingEngine", () => {
 
       renderingEngine.setGlobalVolume(0.8, false);
 
-      expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: false });
       expect(mockResourceMgr.setGlobalAudioState).toHaveBeenCalledWith(0.8, false);
     });
   });
