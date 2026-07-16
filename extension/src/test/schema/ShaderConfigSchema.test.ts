@@ -78,9 +78,9 @@ suite('Shader config JSON schema', () => {
         Image: {
           inputs: {
             iChannel0: { type: 'texture', path: 'texture.png', filter: 'mipmap', wrap: 'repeat', vflip: true, grayscale: true },
-            iChannel1: { type: 'video', path: 'video.mp4', filter: 'linear', wrap: 'clamp', vflip: false },
+            iChannel1: { type: 'video', path: 'video.mp4', filter: 'linear', wrap: 'clamp', vflip: false, muted: true },
             iChannel2: { type: 'cubemap', path: 'skybox.png', filter: 'nearest', wrap: 'repeat', vflip: true },
-            iChannel3: { type: 'audio', path: 'music.mp3', startTime: 1, endTime: 4 },
+            iChannel3: { type: 'audio', path: 'music.mp3', startTime: 1, endTime: 4, muted: false },
             iKeyboard: { type: 'keyboard' },
             previousFrame: { type: 'buffer', source: 'BufferA' }
           }
@@ -94,6 +94,19 @@ suite('Shader config JSON schema', () => {
         }
       }
     });
+  });
+
+  test('rejects non-boolean muted on media inputs', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'video', path: 'video.mp4', muted: 'yes' }
+          }
+        }
+      }
+    }, 'should be boolean');
   });
 
   test('rejects unknown top-level, pass, input, and resolution properties', () => {
