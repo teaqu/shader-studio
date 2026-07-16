@@ -331,6 +331,30 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     });
   });
 
+  it('resolves a queued shader message after its pending compile finishes', async () => {
+    const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
+
+    const queued = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(0.0); }'));
+    let queuedResult: unknown = 'pending';
+    void queued.then((result) => {
+      queuedResult = result;
+    });
+
+    await Promise.resolve();
+    expect(queuedResult).toBe('pending');
+
+    mocks.resolveCompile();
+    await first;
+
+    await vi.waitFor(() => {
+      expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2);
+    });
+    expect(queuedResult).toBe('pending');
+
+    mocks.resolveCompile();
+    await expect(queued).resolves.toEqual({ success: true, warnings: undefined });
+  });
+
   it('only keeps the latest pending message when multiple arrive while compiling', async () => {
     const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
 

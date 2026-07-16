@@ -20,6 +20,7 @@ const createMockShaderCompiler = () => ({
 
 const createMockResourceManager = () => ({
   cleanup: vi.fn(),
+  cleanupPreservingMediaPlayback: vi.fn(),
   loadImageTexture: vi.fn(),
   loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
   loadCubemapTexture: vi.fn().mockResolvedValue(null),
@@ -205,7 +206,7 @@ describe("ShaderPipeline", () => {
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    it("should clear resources and buffers on recompile after resetTime, without resetting clock again", async () => {
+    it("should clear render resources and buffers on recompile after resetTime without stopping media playback", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
 
@@ -213,12 +214,14 @@ describe("ShaderPipeline", () => {
       shaderPipeline.resetTime();
 
       mockResourceManager.cleanup.mockClear();
+      mockResourceManager.cleanupPreservingMediaPlayback.mockClear();
       mockTimeManager.cleanup.mockClear();
       mockBufferManager.dispose.mockClear();
 
       await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-      expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.cleanupPreservingMediaPlayback).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
       expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });

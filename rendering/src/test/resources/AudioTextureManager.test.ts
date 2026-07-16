@@ -585,14 +585,17 @@ describe("AudioTextureManager", () => {
     it("pauseAudio sets userPaused — resumeAll does NOT resume after pauseAudio", async () => {
       await loadTestAudio("track.mp3");
       manager.resumeAudio("track.mp3");
+      expect(manager.hasUserPausedAudio()).toBe(false);
 
       // User pause (e.g., clicking individual pause button)
       manager.pauseAudio("track.mp3");
       expect(manager.isAudioPaused("track.mp3")).toBe(true);
+      expect(manager.hasUserPausedAudio()).toBe(true);
 
       // System unpause — should NOT resume because user explicitly paused
       manager.resumeAll();
       expect(manager.isAudioPaused("track.mp3")).toBe(true);
+      expect(manager.hasUserPausedAudio()).toBe(true);
     });
 
     it("forceResumeAll clears userPaused — resumes even after pauseAudio", async () => {

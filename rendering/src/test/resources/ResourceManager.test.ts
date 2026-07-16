@@ -104,6 +104,7 @@ vi.mock("../../resources/AudioTextureManager", () => ({
       seekAudio: vi.fn(),
       getAudioDuration: vi.fn(),
       isAudioPaused: vi.fn(),
+      hasUserPausedAudio: vi.fn(),
       isAudioMuted: vi.fn(),
       getAudioCurrentTime: vi.fn(),
       pauseAll: vi.fn(),
@@ -936,6 +937,16 @@ describe("ResourceManager", () => {
     });
   });
 
+  describe("hasUserPausedAudio", () => {
+    it("should delegate to AudioTextureManager.hasUserPausedAudio", () => {
+      const audioManager = (resourceManager as any).audioTextureManager;
+      audioManager.hasUserPausedAudio.mockReturnValue(true);
+
+      expect(resourceManager.hasUserPausedAudio()).toBe(true);
+      expect(audioManager.hasUserPausedAudio).toHaveBeenCalled();
+    });
+  });
+
   describe("forceResumeAllAudio", () => {
     it("should delegate to AudioTextureManager.forceResumeAll", () => {
       const audioManager = (resourceManager as any).audioTextureManager;
@@ -973,6 +984,22 @@ describe("ResourceManager", () => {
       const audioManager = (resourceManager as any).audioTextureManager;
       resourceManager.cleanup();
       expect(audioManager.cleanup).toHaveBeenCalled();
+    });
+
+    it("cleanupPreservingMediaPlayback should not cleanup playing media managers", () => {
+      const textureCache = (resourceManager as any).textureCache;
+      const videoManager = (resourceManager as any).videoTextureManager;
+      const cubemapManager = (resourceManager as any).cubemapTextureManager;
+      const audioManager = (resourceManager as any).audioTextureManager;
+      const keyboardInput = (resourceManager as any).keyboardInput;
+
+      resourceManager.cleanupPreservingMediaPlayback();
+
+      expect(textureCache.cleanup).toHaveBeenCalled();
+      expect(videoManager.cleanup).not.toHaveBeenCalled();
+      expect(cubemapManager.cleanup).toHaveBeenCalled();
+      expect(keyboardInput.cleanup).toHaveBeenCalled();
+      expect(audioManager.cleanup).not.toHaveBeenCalled();
     });
   });
 });

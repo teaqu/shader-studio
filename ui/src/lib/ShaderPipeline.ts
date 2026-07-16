@@ -26,7 +26,10 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
-  private pendingShaderEvent: MessageEvent | null = null;
+  private pendingShaderEvent: {
+    event: MessageEvent;
+    resolve: (result: CompilationResult | undefined) => void;
+  } | null = null;
   private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
@@ -64,8 +67,10 @@ export class ShaderPipeline {
       }
 
       if (this.shaderProcessor.isCurrentlyProcessing()) {
-        this.pendingShaderEvent = event;
-        return undefined;
+        this.pendingShaderEvent?.resolve(undefined);
+        return await new Promise<CompilationResult | undefined>((resolve) => {
+          this.pendingShaderEvent = { event, resolve };
+        });
       }
 
       // Update cursor position if provided. Don't notify capture here: the
@@ -156,7 +161,7 @@ export class ShaderPipeline {
     if (this.pendingShaderEvent) {
       const pending = this.pendingShaderEvent;
       this.pendingShaderEvent = null;
-      void this.handleShaderMessage(pending);
+      void this.handleShaderMessage(pending.event).then(pending.resolve);
     }
 
     if (result.superseded) {

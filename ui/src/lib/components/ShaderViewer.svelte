@@ -191,6 +191,7 @@
   // Audio state (mirrored from AudioVideoController for Svelte reactivity)
   let audioVolume = $state(1.0);
   let audioMuted = $state(true);
+  let mediaResetShouldStayPaused = false;
 
   // Recording
   let isRecording = $state(false);
@@ -505,6 +506,7 @@
         shaderDebugManager?.setCapturedVariables(vars);
       });
       if (wasPaused) {
+        mediaResetShouldStayPaused = true;
         renderingEngine.togglePause();
       }
     }
@@ -540,17 +542,40 @@
     if (!initialized) {
       return;
     }
-    audioStore.setMuted(false);
+    const audioState = get(audioStore);
+    const wasPaused = renderingEngine.getTimeManager().isPaused();
+    const hadUserPausedAudio = renderingEngine.hasUserPausedAudio();
+    const keepMediaPaused = wasPaused || mediaResetShouldStayPaused || hadUserPausedAudio;
+    if (wasPaused || hadUserPausedAudio) {
+      mediaResetShouldStayPaused = true;
+    }
     // Reset script time origin so custom uniform iTime matches shader iTime
     transport.postMessage({ type: 'resetScriptTime' });
     await pipeline.reset(async () => {
       const lastEvent = pipeline.getLastEvent();
+      console.info('[MediaSync] reset replay start', {
+        path: lastEvent?.data?.path ?? null,
+      });
       if (lastEvent) {
         await handleMessage(lastEvent);
       }
+      console.info('[MediaSync] reset replay complete, resuming media');
       await renderingEngine.resumeAudioContext();
-      renderingEngine.resumeAllAudio();
-      renderingEngine.setGlobalVolume(linearToPerceptualVolume(audioVideoController!.volume), false);
+      console.info('[MediaSync] audio context ready after reset');
+      renderingEngine.setGlobalVolume(linearToPerceptualVolume(audioState.volume), audioState.muted);
+      if (!keepMediaPaused) {
+        renderingEngine.resumeAllAudio();
+        console.info('[MediaSync] audio resume requested after reset');
+        renderingEngine.resumeAllVideos();
+        console.info('[MediaSync] video resume requested after reset');
+      } else {
+        renderingEngine.releaseMediaResetHold();
+        console.info('[MediaSync] reset media kept paused', {
+          wasPaused,
+          mediaResetShouldStayPaused,
+          hadUserPausedAudio,
+        });
+      }
     });
   }
 
@@ -585,7 +610,9 @@
     if (!initialized) {
       return;
     }
+    const wasPaused = renderingEngine.getTimeManager().isPaused();
     renderingEngine.togglePause();
+    mediaResetShouldStayPaused = !wasPaused;
   }
 
   function handleToggleLock() {
@@ -1031,6 +1058,9 @@
         () => renderingEngine,
         (vol, mut) => {
           audioVolume = vol; audioMuted = mut; 
+        },
+        (intent) => {
+          mediaResetShouldStayPaused = intent === 'pause';
         },
       );
 

@@ -5,6 +5,8 @@ export class VideoTextureManager<T> {
   private readonly videoElements: Record<string, HTMLVideoElement> = {};
   private readonly videoTextures: Record<string, T> = {};
   private readonly animationFrameIds: Record<string, number> = {};
+  private readonly playbackTimeoutIds: Record<string, ReturnType<typeof setTimeout>> = {};
+  private readonly playbackRetryCleanups: Record<string, () => void> = {};
 
   constructor(private readonly backend: TextureBackend<T>) {}
 
@@ -23,7 +25,7 @@ export class VideoTextureManager<T> {
       video.muted = true;
       video.playsInline = true;
       video.preload = "auto";
-      video.autoplay = true;
+      video.autoplay = false;
       video.volume = 0;
 
       // webkit-playsinline for iOS/Safari compatibility
@@ -61,14 +63,19 @@ export class VideoTextureManager<T> {
         // Remove both listeners to prevent any further calls
         video.removeEventListener('canplay', handleVideoCanPlay);
         video.removeEventListener('loadeddata', handleVideoCanPlay);
+        video.removeEventListener('error', handleVideoError);
 
         try {
           const texture = this.createTextureFromVideo(video, options);
           this.videoElements[path] = video;
           this.videoTextures[path] = texture;
 
-          // Start playing the video and update texture
-          this.playVideoAndUpdateTexture(path, video, texture);
+          this.startVideoTextureUpdates(path, video, texture);
+          console.info('[MediaSync] video texture ready, playback held until resources complete', {
+            path,
+            width: video.videoWidth,
+            height: video.videoHeight,
+          });
 
           resolve(texture);
         } catch (error) {
@@ -94,6 +101,8 @@ export class VideoTextureManager<T> {
   }
 
   public removeVideoTexture(path: string): void {
+    this.clearPlaybackRetry(path);
+
     // Stop animation frame updates
     const animationId = this.animationFrameIds[path];
     if (animationId) {
@@ -140,7 +149,7 @@ export class VideoTextureManager<T> {
     for (const [path, video] of Object.entries(this.videoElements)) {
       if (video.paused && !this.userPaused.has(path)) {
         video.play().catch(error => {
-          console.warn(`Could not resume video ${path}:`, error);
+          this.warnUnlessPlayInterrupted(`Could not resume video ${path}:`, error);
         });
       }
     }
@@ -162,7 +171,7 @@ export class VideoTextureManager<T> {
     if (video && video.paused) {
       this.userPaused.delete(path);
       video.play().catch(error => {
-        console.warn(`Could not resume video ${path}:`, error);
+        this.warnUnlessPlayInterrupted(`Could not resume video ${path}:`, error);
       });
     }
   }
@@ -270,14 +279,13 @@ export class VideoTextureManager<T> {
     return texture;
   }
 
-  private playVideoAndUpdateTexture(path: string, video: HTMLVideoElement, texture: T): void {
+  private startVideoTextureUpdates(path: string, video: HTMLVideoElement, texture: T): void {
     // Cancel any existing rAF loop for this path to prevent duplicates
     const existingId = this.animationFrameIds[path];
     if (existingId) {
       cancelAnimationFrame(existingId);
       delete this.animationFrameIds[path];
     }
-
     const updateTexture = () => {
       if (video.readyState >= video.HAVE_CURRENT_DATA) {
         try {
@@ -293,30 +301,38 @@ export class VideoTextureManager<T> {
       }
     };
 
-    // Video should autoplay with autoplay=true, but ensure it plays
-    const ensurePlaying = () => {
-      if (video.paused) {
-        video.play().catch(error => {
-          console.warn(`Could not autoplay video ${path}:`, error);
-          // Set up user interaction fallback only if autoplay fails
-          const handleUserInteraction = () => {
-            video.play().catch(e => {
-              console.error(`Still failed to play video ${path}:`, e);
-            });
-            document.removeEventListener('click', handleUserInteraction);
-            document.removeEventListener('keydown', handleUserInteraction);
-          };
-          document.addEventListener('click', handleUserInteraction, { once: true });
-          document.addEventListener('keydown', handleUserInteraction, { once: true });
-        });
-      }
-    };
-
-    // Try to ensure playback
-    setTimeout(ensurePlaying, 100);
-
     // Start updating texture
     updateTexture();
+  }
+
+  private clearPlaybackRetry(path: string): void {
+    const timeoutId = this.playbackTimeoutIds[path];
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      delete this.playbackTimeoutIds[path];
+    }
+
+    const cleanup = this.playbackRetryCleanups[path];
+    if (cleanup) {
+      cleanup();
+      delete this.playbackRetryCleanups[path];
+    }
+  }
+
+  private isActiveVideo(path: string, video: HTMLVideoElement, texture: T): boolean {
+    return this.videoElements[path] === video && this.videoTextures[path] === texture;
+  }
+
+  private warnUnlessPlayInterrupted(message: string, error: unknown): void {
+    if (this.isPlayInterruptedError(error)) {
+      return;
+    }
+
+    console.warn(message, error);
+  }
+
+  private isPlayInterruptedError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'AbortError';
   }
 
   private getFilterFromOptions(filter?: string): TextureFilter {

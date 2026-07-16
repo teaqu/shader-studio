@@ -22,7 +22,7 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private customUniformManager: CustomUniformManager | null = null;
-  private clearBuffersOnNextApply = false;
+  private cleanupOnNextApply: "none" | "full" | "preserveMediaPlayback" = "none";
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -253,12 +253,17 @@ export class ShaderPipeline {
 
     if (pathChanged) {
       this.cleanup();
-    } else if (this.clearBuffersOnNextApply) {
-      this.clearBuffersOnNextApply = false;
+    } else if (this.cleanupOnNextApply !== "none") {
+      const cleanupMode = this.cleanupOnNextApply;
+      this.cleanupOnNextApply = "none";
       // Free resources and buffers without resetting the clock — resetTime()
       // already reset it for explicit resets; config-triggered forceCleanup
       // should never touch the clock.
-      this.resourceManager.cleanup();
+      if (cleanupMode === "preserveMediaPlayback") {
+        this.resourceManager.cleanupPreservingMediaPlayback();
+      } else {
+        this.resourceManager.cleanup();
+      }
       this.cleanupShaders();
       this.bufferManager.dispose();
     } else {
@@ -368,11 +373,11 @@ export class ShaderPipeline {
 
   public resetTime(): void {
     this.timeManager.cleanup();
-    this.clearBuffersOnNextApply = true;
+    this.cleanupOnNextApply = "preserveMediaPlayback";
   }
 
   public flagForceCleanupOnNextApply(): void {
-    this.clearBuffersOnNextApply = true;
+    this.cleanupOnNextApply = "full";
   }
 
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {

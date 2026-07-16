@@ -39,6 +39,9 @@ export interface RenderingEngine {
   getCaptureUniforms(): CaptureUniforms;
   resumeAudioContext(): Promise<void>;
   resumeAllAudio(): void;
+  resumeAllVideos(): void;
+  releaseMediaResetHold(): void;
+  hasUserPausedAudio(): boolean;
   updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void;
   setGlobalVolume(volume: number, muted: boolean): void;
   controlVideo(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void;

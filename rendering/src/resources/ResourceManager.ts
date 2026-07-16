@@ -196,6 +196,10 @@ export class ResourceManager<T> {
     this.audioTextureManager.resumeAll();
   }
 
+  public hasUserPausedAudio(): boolean {
+    return this.audioTextureManager.hasUserPausedAudio();
+  }
+
   public forceResumeAllAudio(): void {
     this.audioTextureManager.forceResumeAll();
   }
@@ -221,6 +225,16 @@ export class ResourceManager<T> {
     this.videoTextureManager.cleanup();
     this.cubemapTextureManager.cleanup();
     this.audioTextureManager.cleanup();
+    this.keyboardInput.cleanup();
+  }
+
+  public cleanupPreservingMediaPlayback(): void {
+    if (!this.backend) {
+      return;
+    }
+
+    this.textureCache.cleanup();
+    this.cubemapTextureManager.cleanup();
     this.keyboardInput.cleanup();
   }
 

@@ -1312,6 +1312,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   async resumeAudioContext(): Promise<void> {}
   resumeAllAudio(): void {}
+  resumeAllVideos(): void {
+    this.resourceManager?.resumeAllVideos();
+  }
+  releaseMediaResetHold(): void {}
+  hasUserPausedAudio(): boolean {
+    return false;
+  }
   updateAudioLoopRegion(): void {}
   setGlobalVolume(): void {}
   controlVideo(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {

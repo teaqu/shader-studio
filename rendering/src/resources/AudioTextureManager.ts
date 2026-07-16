@@ -336,6 +336,10 @@ export class AudioTextureManager<T> {
     return source ? !source.playing : true;
   }
 
+  public hasUserPausedAudio(): boolean {
+    return this.userPaused.size > 0;
+  }
+
   public isAudioMuted(path: string): boolean {
     const source = this.audioSources[path];
     return source ? source.gainNode.gain.value === 0 : true;

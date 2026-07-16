@@ -44,6 +44,7 @@ describe("RenderingEngine", () => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
         setCustomUniformManager: vi.fn(),
+        resetTime: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
         value: mockPipeline, writable: true, configurable: true,
@@ -586,6 +587,7 @@ describe("RenderingEngine", () => {
       mockPipeline = {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
         setCustomUniformManager: vi.fn(),
+        resetTime: vi.fn(),
       };
       mockResourceManager = {
         syncAllVideosToTime: vi.fn(),
@@ -611,6 +613,9 @@ describe("RenderingEngine", () => {
       });
       Object.defineProperty(renderingEngine, 'timeManager', {
         value: mockTimeManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'cameraManager', {
+        value: { reset: vi.fn() }, writable: true, configurable: true,
       });
 
       vi.clearAllMocks();
@@ -638,6 +643,29 @@ describe("RenderingEngine", () => {
       expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(3.0);
       expect(mockResourceManager.pauseAllVideos).toHaveBeenCalled();
       expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
+    });
+
+    it("should hold videos during all reset compilations so audio and video restart together", async () => {
+      mockPipeline.compileShaderPipeline.mockResolvedValue({ success: true });
+      mockTimeManager.isPaused.mockReturnValue(false);
+      mockTimeManager.getCurrentTime.mockReturnValue(0);
+
+      renderingEngine.resetTime();
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+
+      expect(mockResourceManager.syncAllVideosToTime).toHaveBeenCalledWith(0);
+      expect(mockResourceManager.pauseAllVideos).toHaveBeenCalledTimes(2);
+      expect(mockResourceManager.resumeAllVideos).not.toHaveBeenCalled();
+
+      renderingEngine.resumeAllVideos();
+      mockResourceManager.pauseAllVideos.mockClear();
+      mockResourceManager.resumeAllVideos.mockClear();
+
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+
+      expect(mockResourceManager.pauseAllVideos).not.toHaveBeenCalled();
+      expect(mockResourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
     });
 
     it("should leave videos untouched on failed compilation", async () => {
@@ -1045,8 +1073,9 @@ describe("RenderingEngine", () => {
   });
 
   describe("resumeAllAudio", () => {
-    it("should force-resume all audio via resourceManager", () => {
+    it("should resume audio without clearing user-paused state", () => {
       const mockResourceManager = {
+        resumeAllAudio: vi.fn(),
         forceResumeAllAudio: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'resourceManager', {
@@ -1055,7 +1084,79 @@ describe("RenderingEngine", () => {
 
       renderingEngine.resumeAllAudio();
 
-      expect(mockResourceManager.forceResumeAllAudio).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.forceResumeAllAudio).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("hasUserPausedAudio", () => {
+    it("should delegate to resourceManager.hasUserPausedAudio", () => {
+      const mockResourceManager = {
+        hasUserPausedAudio: vi.fn().mockReturnValue(true),
+      };
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.hasUserPausedAudio()).toBe(true);
+      expect(mockResourceManager.hasUserPausedAudio).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("resumeAllVideos", () => {
+    it("should resume all videos via resourceManager", () => {
+      const mockResourceManager = {
+        resumeAllVideos: vi.fn(),
+      };
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+
+      renderingEngine.resumeAllVideos();
+
+      expect(mockResourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("releaseMediaResetHold", () => {
+    it("should release reset video hold without resuming videos", async () => {
+      const mockPipeline = {
+        compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+        setCustomUniformManager: vi.fn(),
+        resetTime: vi.fn(),
+      };
+      const mockResourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      const mockTimeManager = {
+        getCurrentTime: vi.fn().mockReturnValue(0),
+        isPaused: vi.fn().mockReturnValue(false),
+      };
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: mockTimeManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'cameraManager', {
+        value: { reset: vi.fn() }, writable: true, configurable: true,
+      });
+
+      renderingEngine.resetTime();
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+      renderingEngine.releaseMediaResetHold();
+      mockResourceManager.pauseAllVideos.mockClear();
+      mockResourceManager.resumeAllVideos.mockClear();
+
+      await renderingEngine.compileShaderPipeline("void mainImage() {}", null, "test.glsl", {});
+
+      expect(mockResourceManager.pauseAllVideos).not.toHaveBeenCalled();
+      expect(mockResourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1282,7 +1383,7 @@ describe("RenderingEngine", () => {
   });
 
   describe("setGlobalVolume", () => {
-    it("should only mute audio when muted, not touch video state", () => {
+    it("should mute audio and videos when muted", () => {
       const mockResourceMgr = {
         setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
@@ -1298,11 +1399,12 @@ describe("RenderingEngine", () => {
 
       expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: true });
       expect(mockResourceMgr.muteAllAudio).toHaveBeenCalled();
-      expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
+      expect(mockResourceMgr.muteAllVideos).toHaveBeenCalled();
+      expect(mockResourceMgr.unmuteAllAudio).not.toHaveBeenCalled();
       expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();
     });
 
-    it("should only unmute audio when unmuted, not touch video state", () => {
+    it("should unmute audio and videos when unmuted", () => {
       const mockResourceMgr = {
         setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
@@ -1318,8 +1420,9 @@ describe("RenderingEngine", () => {
 
       expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: false });
       expect(mockResourceMgr.unmuteAllAudio).toHaveBeenCalledWith(0.8);
+      expect(mockResourceMgr.unmuteAllVideos).toHaveBeenCalledWith(0.8);
+      expect(mockResourceMgr.muteAllAudio).not.toHaveBeenCalled();
       expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
-      expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();
     });
   });
 

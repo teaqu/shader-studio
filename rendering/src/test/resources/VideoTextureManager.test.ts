@@ -139,7 +139,8 @@ describe("VideoTextureManager", () => {
       expect(mockVideo.muted).toBe(true);
       expect(mockVideo.playsInline).toBe(true);
       expect(mockVideo.preload).toBe("auto");
-      expect(mockVideo.autoplay).toBe(true);
+      expect(mockVideo.autoplay).toBe(false);
+      expect(mockVideo.play).not.toHaveBeenCalled();
     });
 
     it("should return cached texture for same path", async () => {
@@ -397,6 +398,7 @@ describe("VideoTextureManager", () => {
     it("should handle resume failures gracefully", async () => {
       const backend = mockBackend();
       const videoManager = new VideoTextureManager(backend);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       // Set up a video that fails to play
       const failingVideo = createMockVideoElement({ paused: true });
@@ -409,7 +411,35 @@ describe("VideoTextureManager", () => {
 
       await vi.waitFor(() => {
         expect(failingVideo.play).toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          "Could not resume video failing.mp4:",
+          expect.any(Error),
+        );
       });
+    });
+
+    it("should ignore AbortError resume failures caused by pause races", async () => {
+      const backend = mockBackend();
+      const videoManager = new VideoTextureManager(backend);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const video = createMockVideoElement({ paused: true });
+      const abortError = new DOMException(
+        "The play() request was interrupted by a call to pause().",
+        "AbortError",
+      );
+      video.play.mockRejectedValue(abortError);
+
+      (videoManager as any).videoElements['interrupted.mp4'] = video;
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.play).toHaveBeenCalled();
+      });
+      await Promise.resolve();
+
+      expect(warnSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -653,6 +683,65 @@ describe("VideoTextureManager", () => {
       const removedEvents = removeCalls.map((call: any[]) => call[0]);
       expect(removedEvents).toContain('canplay');
       expect(removedEvents).toContain('loadeddata');
+    });
+
+    it("should remove error listener after successful load so cleanup does not report empty-src errors", async () => {
+      const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      const errorHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'error'
+      )?.[1];
+
+      canplayHandler();
+      await loadPromise;
+
+      expect(mockVideo.removeEventListener).toHaveBeenCalledWith('error', errorHandler);
+    });
+
+    it("should not run delayed autoplay after the video was removed during reset cleanup", async () => {
+      vi.useFakeTimers();
+      mockVideo.paused = true;
+      const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+
+      canplayHandler();
+      await loadPromise;
+      videoManager.removeVideoTexture("test-video.mp4");
+
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+
+      expect(mockVideo.play).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it("should not install autoplay interaction retry while loading a texture", async () => {
+      vi.useFakeTimers();
+      mockVideo.paused = true;
+      mockVideo.play.mockRejectedValue(new Error("No supported sources"));
+      const addSpy = vi.spyOn(document, 'addEventListener');
+
+      const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+
+      canplayHandler();
+      await loadPromise;
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+
+      expect(mockVideo.play).not.toHaveBeenCalled();
+      expect(addSpy.mock.calls.some((call) => call[0] === 'click')).toBe(false);
+      expect(addSpy.mock.calls.some((call) => call[0] === 'keydown')).toBe(false);
+
+      vi.useRealTimers();
     });
   });
 
