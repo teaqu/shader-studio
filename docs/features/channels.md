@@ -91,7 +91,7 @@ Bind a video file. Sampled identically to a texture in GLSL.
 
 **Supported formats:** `mp4 webm ogg mov`
 
-The channel editor includes playback controls — play, pause, next, mute, reset, and a time display. Playback is synced to the shader's play/pause state.
+The channel editor includes playback controls — play, pause, next, mute, reset, and a time display. Playback is synced to the shader's play/pause state. The mute button persists to the config as `muted: true/false` (default `false`), so a channel's mute state survives reloads and resets.
 
 !!! note
     Pausing the shader pauses the video.
@@ -102,7 +102,7 @@ Bind an audio file. The channel provides a **512×2 texture** containing frequen
 
 ![Choosing an audio channel](../assets/images/select-music.png)
 
-**Supported formats:** `mp3 wav ogg flac aac m4a`
+**Supported formats:** `mp3 wav ogg flac aac m4a` — plus video containers (`mp4 webm mov`), which are converted to an audio track automatically.
 
 **Texture layout:**
 
@@ -121,7 +121,7 @@ float wave   = texture(iChannel0, vec2(uv.x, 0.75)).r; // (3)
 2. High-frequency FFT bin (x ≈ 1 = treble)
 3. Waveform value at the current screen column
 
-The channel editor includes a **waveform visualiser** with draggable handles to set a loop region (`startTime` / `endTime` in seconds) and standard playback controls.
+The channel editor includes a **waveform visualiser** with draggable handles to set a loop region (`startTime` / `endTime` in seconds) and standard playback controls. As with video channels, the mute button persists to the config as `muted: true/false` (default `false`).
 
 !!! tip
     The FFT texture layout matches Shadertoy's audio format exactly — audio-reactive shaders from Shadertoy port directly.

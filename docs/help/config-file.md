@@ -233,8 +233,8 @@ Each pass can bind up to 4 input channels (`iChannel0` through `iChannel3`):
 |------|--------|-------------|
 | `buffer` | `source` | Read from another pass (e.g. `"source": "BufferA"`) |
 | `texture` | `path`, `filter`, `wrap`, `vflip`, `grayscale` | Image file |
-| `video` | `path`, `filter`, `wrap`, `vflip` | Video file |
-| `audio` | `path`, `startTime`, `endTime` | Audio file with FFT/waveform texture |
+| `video` | `path`, `filter`, `wrap`, `vflip`, `muted` | Video file |
+| `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |
 | `cubemap` | `path`, `filter`, `wrap`, `vflip` | T-cross cubemap image |
 | `keyboard` | — | Key state input texture |
 
@@ -246,6 +246,7 @@ Each pass can bind up to 4 input channels (`iChannel0` through `iChannel3`):
 | `wrap` | `clamp` (default), `repeat` | Edge wrap mode |
 | `vflip` | `true` / `false` | Flip vertically |
 | `grayscale` | `true` / `false` | Texture only: convert to greyscale |
+| `muted` | `true` / `false` | Video and audio only: start the channel muted (default `false`) |
 
 ## Buffer Self-Read
 
