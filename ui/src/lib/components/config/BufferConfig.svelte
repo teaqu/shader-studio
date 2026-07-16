@@ -145,6 +145,16 @@
     closeChannelModal();
   }
 
+  /** Persist a mute toggle from the channel list row (outside the modal). */
+  function handleChannelMuteUpdate(channelName: string, muted: boolean) {
+    const currentInput = configuredInputs[channelName];
+    if (!currentInput || (currentInput.type !== 'video' && currentInput.type !== 'audio')) {
+      return;
+    }
+    configModel.updateInputChannel(channelName, { ...currentInput, muted });
+    config = configModel.getConfig();
+  }
+
   function handleModalRename(oldName: string, newName: string) {
     configModel.renameInputChannel(oldName, newName);
     config = configModel.getConfig();
@@ -291,7 +301,7 @@
                 channelInput={configuredInputs[channelName]!}
                 {getWebviewUri}
                 {audioVideoController}
-                {globalMuted}
+                onUpdateMuted={(muted) => handleChannelMuteUpdate(channelName, muted)}
                 onEdit={() => openChannelModal(channelName)}
                 onRemove={() => handleModalRemove(channelName)}
               />

@@ -185,9 +185,12 @@ describe("MessageHandler", () => {
   });
 
   describe("when reset is called", () => {
-    it("should call resetTime without calling cleanup", () => {
+    it("should not call resetTime or cleanup when there is no shader to reset", () => {
+      // Regression: resetTime() used to run unconditionally, arming the
+      // WebGL engine's video-resume hold even with no lastEvent to replay —
+      // nothing would ever release it, so every later compile paused videos.
       messageHandler.reset();
-      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).not.toHaveBeenCalled();
       expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
     });
 
@@ -209,9 +212,9 @@ describe("MessageHandler", () => {
       });
     });
 
-    it("should call resetTime on render engine", () => {
+    it("should not call resetTime on render engine when no lastEvent exists", () => {
       messageHandler.reset();
-      expect(mockRenderingEngine.resetTime).toHaveBeenCalledTimes(1);
+      expect(mockRenderingEngine.resetTime).not.toHaveBeenCalled();
     });
 
     it("should call resetTime but not cleanup when a shader is loaded", async () => {

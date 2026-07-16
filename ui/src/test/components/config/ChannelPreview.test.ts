@@ -692,7 +692,8 @@ describe('ChannelPreview', () => {
       const input: ConfigInput = {
         type: 'audio',
         path: 'music.mp3',
-        resolved_path: 'https://webview-uri/music.mp3'
+        resolved_path: 'https://webview-uri/music.mp3',
+        muted: true,
       } as any;
 
       const { container } = render(ChannelPreview, {
@@ -749,7 +750,8 @@ describe('ChannelPreview', () => {
       const input: ConfigInput = {
         type: 'audio',
         path: 'music.mp3',
-        resolved_path: 'https://webview-uri/music.mp3'
+        resolved_path: 'https://webview-uri/music.mp3',
+        muted: true,
       } as any;
 
       const { container } = render(ChannelPreview, {
@@ -1056,28 +1058,78 @@ describe('ChannelPreview', () => {
     });
   });
 
-  describe('Audio preview with globalMuted', () => {
-    it('should show globalMuted indicator when globalMuted is true', () => {
+  describe('Audio mute button is never disabled', () => {
+    // Regression: the mute button used to disable itself and show "Unmute
+    // globally first (options menu)" based on a `globalMuted` prop — a
+    // leftover from a deleted blocked-unmute model. Mute is config-driven
+    // now, so the button is always clickable.
+    it('should not disable the mute button regardless of engine mute state', () => {
       const mockOnAudioControl = vi.fn();
       const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 60 });
       const input: ConfigInput = {
         type: 'audio',
         path: 'music.mp3',
-        resolved_path: 'https://webview-uri/music.mp3'
+        resolved_path: 'https://webview-uri/music.mp3',
+        muted: true,
       } as any;
 
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
         audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
-        globalMuted: true
       });
 
-      // When globalMuted is true and audio is muted, the unmute button should be disabled
-      // with title "Unmute globally first (options menu)"
-      const disabledBtn = container.querySelector('.preview-ctrl-btn[title="Unmute globally first (options menu)"]') as HTMLButtonElement;
-      expect(disabledBtn).toBeTruthy();
-      expect(disabledBtn.disabled).toBe(true);
+      const unmuteBtn = container.querySelector('.preview-ctrl-btn[title="Unmute"]') as HTMLButtonElement;
+      expect(unmuteBtn).toBeTruthy();
+      expect(unmuteBtn.disabled).toBe(false);
+      expect(container.querySelector('[title="Unmute globally first (options menu)"]')).toBeNull();
+    });
+  });
+
+  describe('Audio mute via config UI', () => {
+    it('mute button updates channel config and applies runtime mute', async () => {
+      const onUpdateMuted = vi.fn();
+      const mockOnAudioControl = vi.fn();
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3',
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        onUpdateMuted,
+        audioVideoController: { audioControl: mockOnAudioControl, getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
+      });
+
+      const muteBtn = container.querySelector('.preview-ctrl-btn[title="Mute"]') as HTMLButtonElement;
+      expect(muteBtn).toBeTruthy();
+      await fireEvent.click(muteBtn);
+
+      expect(onUpdateMuted).toHaveBeenCalledWith(true);
+      expect(mockOnAudioControl).toHaveBeenCalledWith('https://webview-uri/music.mp3', 'mute');
+    });
+
+    it('mute button icon/title reflects config mute, not engine mute state', () => {
+      const mockGetAudioState = vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 60 });
+      const input: ConfigInput = {
+        type: 'audio',
+        path: 'music.mp3',
+        resolved_path: 'https://webview-uri/music.mp3',
+        muted: true,
+      } as any;
+
+      const { container } = render(ChannelPreview, {
+        channelInput: input,
+        getWebviewUri: mockGetWebviewUri,
+        audioVideoController: { audioControl: vi.fn(), getAudioState: mockGetAudioState, videoControl: vi.fn(), getVideoState: vi.fn(), getAudioFFT: vi.fn() } as any,
+      });
+
+      // Engine reports unmuted, but config says muted — button must follow config.
+      expect(container.querySelector('.preview-ctrl-btn[title="Unmute"]')).toBeTruthy();
+      expect(container.querySelector('.preview-ctrl-btn[title="Mute"]')).toBeNull();
     });
   });
 
@@ -1085,6 +1137,7 @@ describe('ChannelPreview', () => {
     it('should call onVideoControl with mute when mute button clicked', async () => {
       const input: ConfigInput = { type: 'video', path: 'video.mp4' };
       const mockVideoControl = vi.fn();
+      const onUpdateMuted = vi.fn();
       const mockGetVideoState = vi.fn().mockReturnValue({
         paused: false,
         muted: false,
@@ -1095,6 +1148,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
+        onUpdateMuted,
         audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
@@ -1107,12 +1161,14 @@ describe('ChannelPreview', () => {
       const muteBtn = buttons[1];
       await fireEvent.click(muteBtn);
 
+      expect(onUpdateMuted).toHaveBeenCalledWith(true);
       expect(mockVideoControl).toHaveBeenCalledWith('video.mp4', 'mute');
     });
 
     it('should call onVideoControl with unmute when unmute button clicked', async () => {
-      const input: ConfigInput = { type: 'video', path: 'video.mp4' };
+      const input: ConfigInput = { type: 'video', path: 'video.mp4', muted: true } as ConfigInput;
       const mockVideoControl = vi.fn();
+      const onUpdateMuted = vi.fn();
       const mockGetVideoState = vi.fn().mockReturnValue({
         paused: false,
         muted: true,
@@ -1123,6 +1179,7 @@ describe('ChannelPreview', () => {
       const { container } = render(ChannelPreview, {
         channelInput: input,
         getWebviewUri: mockGetWebviewUri,
+        onUpdateMuted,
         audioVideoController: { videoControl: mockVideoControl, getVideoState: mockGetVideoState, audioControl: vi.fn(), getAudioState: vi.fn(), getAudioFFT: vi.fn() } as any,
       });
 
@@ -1135,6 +1192,7 @@ describe('ChannelPreview', () => {
       const muteBtn = buttons[1];
       await fireEvent.click(muteBtn);
 
+      expect(onUpdateMuted).toHaveBeenCalledWith(false);
       expect(mockVideoControl).toHaveBeenCalledWith('video.mp4', 'unmute');
     });
   });

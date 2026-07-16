@@ -160,4 +160,37 @@ describe('AudioVideoController', () => {
     expect(controller.getAudioFFT('frequency')).toBeNull();
     controller.dispose();
   });
+
+  it('reapply pushes the current global volume/mute state to the engine', () => {
+    // Regression: on a language-driven engine swap, the fresh engine's
+    // managers start at globalMuted=false/volume=1 — without re-pushing the
+    // audioStore state, a swapped-in shader with media would ignore master
+    // mute. reapply() is the hook setupRenderingEngine calls after rebuilding
+    // the engine so the new one picks up the existing store state.
+    audioStore.setMuted(true);
+    audioStore.setVolume(0.5);
+
+    const engine = {
+      controlAudio: vi.fn(),
+      setGlobalVolume: vi.fn(),
+    } as any;
+    const controller = new AudioVideoController(() => engine);
+    engine.setGlobalVolume.mockClear(); // clear the construction-time subscription call
+
+    controller.reapply();
+
+    expect(engine.setGlobalVolume).toHaveBeenCalledWith(expect.any(Number), true);
+
+    controller.dispose();
+    audioStore.setMuted(false);
+    audioStore.setVolume(1);
+  });
+
+  it('reapply is a no-op (does not throw) when the engine is unavailable', () => {
+    const controller = new AudioVideoController(() => undefined);
+
+    expect(() => controller.reapply()).not.toThrow();
+
+    controller.dispose();
+  });
 });

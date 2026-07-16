@@ -235,6 +235,47 @@ describe('ShaderPipeline — overlay cursor gate', () => {
   });
 });
 
+describe('ShaderPipeline — reset', () => {
+  let pipeline: ShaderPipeline;
+  let mocks: ReturnType<typeof makeMocks>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = makeMocks();
+    (mocks.renderEngine as any).resetTime = vi.fn();
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+    );
+  });
+
+  it('does not arm the video resume hold when there is no shader to reset', async () => {
+    // Regression: reset() used to call renderEngine.resetTime() unconditionally,
+    // arming the WebGL engine's holdVideoResumeForResetCompile latch even when
+    // there was no lastEvent to replay. With no onReset ever running to release
+    // it, every later compile would pause all videos forever.
+    await pipeline.reset();
+
+    expect(mocks.renderEngine.resetTime).not.toHaveBeenCalled();
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['❌ No shader to reset'],
+    });
+  });
+
+  it('calls resetTime and onReset when a shader is loaded', async () => {
+    (pipeline as any).lastEvent = makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }');
+    const onReset = vi.fn();
+
+    await pipeline.reset(onReset);
+
+    expect(mocks.renderEngine.resetTime).toHaveBeenCalledTimes(1);
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+});
+
 function makeShaderEvent(code: string, path = '/shader.glsl'): MessageEvent {
   return {
     data: { type: 'shaderSource', code, config: null, path, buffers: {} },

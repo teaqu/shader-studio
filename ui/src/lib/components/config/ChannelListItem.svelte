@@ -10,7 +10,7 @@
     channelInput: ConfigInput;
     getWebviewUri: (path: string) => string | undefined;
     audioVideoController?: AudioVideoController;
-    globalMuted?: boolean;
+    onUpdateMuted?: (muted: boolean) => void;
     onEdit: () => void;
     onRemove: () => void;
   }
@@ -20,7 +20,7 @@
     channelInput,
     getWebviewUri,
     audioVideoController = undefined,
-    globalMuted = false,
+    onUpdateMuted = undefined,
     onEdit,
     onRemove,
   }: Props = $props();
@@ -39,6 +39,13 @@
 
   const hasMediaControls = $derived(
     (channelInput.type === 'video' || channelInput.type === 'audio') && !!audioVideoController
+  );
+
+  // Mute icon/title/action are config-driven (channelInput.muted), matching
+  // the modal's mute buttons — not the transient engine mute state, which a
+  // recompile would silently discard.
+  const configMuted = $derived(
+    (channelInput.type === 'video' || channelInput.type === 'audio') && (channelInput as any).muted === true
   );
 
   const onVideoControl = $derived(audioVideoController
@@ -105,8 +112,20 @@
     setTimeout(() => {
       if (getAudioState) {
         audioState = getAudioState(path);
-      } 
+      }
     }, 100);
+  }
+
+  function toggleVideoMute(e: MouseEvent) {
+    const next = !configMuted;
+    onUpdateMuted?.(next);
+    videoControl(next ? 'mute' : 'unmute', e);
+  }
+
+  function toggleAudioMute(e: MouseEvent) {
+    const next = !configMuted;
+    onUpdateMuted?.(next);
+    audioControl(next ? 'mute' : 'unmute', e);
   }
 </script>
 
@@ -142,11 +161,10 @@
         </button>
         <button
           class="ctrl-btn"
-          onclick={(e) => videoControl(videoState?.muted ? 'unmute' : 'mute', e)}
-          title={videoState?.muted && globalMuted ? 'Unmute globally first (options menu)' : videoState?.muted ? 'Unmute' : 'Mute'}
-          disabled={videoState?.muted && globalMuted}
+          onclick={toggleVideoMute}
+          title={configMuted ? 'Unmute' : 'Mute'}
         >
-          {#if videoState?.muted}
+          {#if configMuted}
             <i class="codicon codicon-mute"></i>
           {:else}
             <i class="codicon codicon-unmute"></i>
@@ -174,11 +192,10 @@
         </button>
         <button
           class="ctrl-btn"
-          onclick={(e) => audioControl(audioState?.muted ? 'unmute' : 'mute', e)}
-          title={audioState?.muted && globalMuted ? 'Unmute globally first (options menu)' : audioState?.muted ? 'Unmute' : 'Mute'}
-          disabled={audioState?.muted && globalMuted}
+          onclick={toggleAudioMute}
+          title={configMuted ? 'Unmute' : 'Mute'}
         >
-          {#if audioState?.muted}
+          {#if configMuted}
             <i class="codicon codicon-mute"></i>
           {:else}
             <i class="codicon codicon-unmute"></i>

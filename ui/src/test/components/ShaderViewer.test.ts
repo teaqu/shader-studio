@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -53,7 +53,10 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockTriggerDebugRecompile = vi.fn();
   const mockUpdateCurrentConfig = vi.fn();
   const mockCreateTransport = vi.fn(() => mockTransport);
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig };
+  // Tracks when the mocked ShaderPipeline's handleShaderMessage (the replay
+  // step of reset) runs, so tests can assert it precedes audio/video resume.
+  const mockPipelineHandleShaderMessage = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -85,13 +88,13 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     }
     cleanup() {}
     compileShaderPipeline() {
-      return Promise.resolve({ success: true }); 
+      return Promise.resolve({ success: true });
     }
     getPasses() {
-      return []; 
+      return [];
     }
     setInputEnabled(...args: any[]) {
-      return mockSetInputEnabled(...args); 
+      return mockSetInputEnabled(...args);
     }
     setGlobalVolume(...args: any[]) {
       return mockSetGlobalVolume(...args);
@@ -325,6 +328,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
     }
 
     async handleShaderMessage(event: any): Promise<{ success: boolean }> {
+      mockPipelineHandleShaderMessage(event);
       if (event?.data?.type === 'shaderSource' && this._shaderDebugManager) {
         this._shaderDebugManager.setShaderContext(
           event.data.config ?? null,
@@ -3333,6 +3337,7 @@ describe('ShaderViewer', () => {
       mockResumeAllAudio.mockClear();
       mockResumeAllVideos.mockClear();
       mockReleaseMediaResetHold.mockClear();
+      mockPipelineHandleShaderMessage.mockClear();
 
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
@@ -3341,6 +3346,15 @@ describe('ShaderViewer', () => {
       expect(mockResumeAllAudio).toHaveBeenCalledTimes(1);
       expect(mockResumeAllVideos).toHaveBeenCalledTimes(1);
       expect(mockReleaseMediaResetHold).not.toHaveBeenCalled();
+
+      // The last event must be replayed (recompiled) before audio/video are
+      // resumed, so media doesn't resume against stale (pre-reset) resources.
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+      const replayOrder = mockPipelineHandleShaderMessage.mock.invocationCallOrder[0];
+      const audioOrder = mockResumeAllAudio.mock.invocationCallOrder[0];
+      const videoOrder = mockResumeAllVideos.mock.invocationCallOrder[0];
+      expect(replayOrder).toBeLessThan(audioOrder);
+      expect(replayOrder).toBeLessThan(videoOrder);
     });
 
     it('preserves the audioStore mute state across reset', async () => {
@@ -4823,6 +4837,47 @@ describe('ShaderViewer', () => {
       const call = mockSetGlobalVolume.mock.calls[0];
       expect(call[0]).toBeCloseTo(0.75 ** 3, 3);
       expect(typeof call[1]).toBe('boolean');
+    });
+  });
+
+  describe('audio state survives an engine language swap', () => {
+    it('reapplies global mute/volume to the freshly swapped engine', async () => {
+      // Regression: setupRenderingEngine() rebuilds the engine (and its
+      // managers) on a language swap without re-pushing audioStore state.
+      // The fresh engine starts at globalMuted=false/volume=1, so a
+      // swapped-in shader with media would ignore an already-active master
+      // mute until some unrelated volume/mute toggle happened to re-sync it.
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+
+      await loadShader();
+      await tick();
+
+      audioStore.setMuted(true);
+      await tick();
+
+      mockSetGlobalVolume.mockClear();
+
+      const onMessageCalls = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls;
+      const messageHandler = onMessageCalls[0][0];
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.slang',
+          code: 'float4 mainImage(float2 uv) { return float4(1); }',
+          config: { passes: { Image: {} } },
+          pathMap: { Image: '/test/shader.slang' },
+          language: 'slang',
+        },
+      });
+      await tick();
+      await tick();
+      await tick();
+
+      expect(mockSetGlobalVolume).toHaveBeenCalledWith(expect.any(Number), true);
+
+      audioStore.setMuted(false);
     });
   });
 

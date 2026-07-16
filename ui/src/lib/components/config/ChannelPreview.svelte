@@ -7,7 +7,7 @@
     channelInput: ConfigInput | undefined;
     getWebviewUri: (path: string) => string | undefined;
     audioVideoController?: AudioVideoController;
-    globalMuted?: boolean;
+    onUpdateMuted?: (muted: boolean) => void;
     showControls?: boolean;
   }
 
@@ -15,9 +15,18 @@
     channelInput,
     getWebviewUri,
     audioVideoController = undefined as AudioVideoController | undefined,
-    globalMuted = false,
+    onUpdateMuted = undefined,
     showControls = true,
   }: Props = $props();
+
+  // Mute icon/title/action are config-driven (channelInput.muted), matching
+  // the modal's mute buttons — not the transient engine mute state, which a
+  // recompile would silently discard.
+  const configMuted = $derived(
+    !!channelInput
+    && (channelInput.type === 'video' || channelInput.type === 'audio')
+    && (channelInput as any).muted === true
+  );
 
   let onVideoControl = $derived(audioVideoController ? (p: string, a: string) => audioVideoController!.videoControl(p, a) : undefined);
   let getVideoState = $derived(audioVideoController ? (p: string) => audioVideoController!.getVideoState(p) : undefined);
@@ -127,6 +136,12 @@
     handlePreviewVideoControl(action, event);
   }
 
+  function toggleVideoConfigMute(event: MouseEvent) {
+    const next = !configMuted;
+    onUpdateMuted?.(next);
+    handlePreviewVideoControlWithSync(next ? 'mute' : 'unmute', event);
+  }
+
   // Audio control state polling
   let audioControlState: { paused: boolean; muted: boolean; currentTime: number; duration: number } | null = $state(null);
 
@@ -164,6 +179,12 @@
         }, 100);
       }
     }
+  }
+
+  function toggleAudioConfigMute(event: MouseEvent) {
+    const next = !configMuted;
+    onUpdateMuted?.(next);
+    handlePreviewAudioControl(next ? 'mute' : 'unmute', event);
   }
 
   // Apply vflip: Shadertoy convention is vflip=true (default), so flip when vflip is false/unchecked
@@ -353,11 +374,10 @@
             </button>
             <button
               class="preview-ctrl-btn"
-              onclick={(e) => handlePreviewVideoControlWithSync(videoState?.muted ? 'unmute' : 'mute', e)}
-              title={videoState?.muted && globalMuted ? 'Unmute globally first (options menu)' : videoState?.muted ? 'Unmute' : 'Mute'}
-              disabled={videoState?.muted && globalMuted}
+              onclick={toggleVideoConfigMute}
+              title={configMuted ? 'Unmute' : 'Mute'}
             >
-              {#if videoState?.muted}
+              {#if configMuted}
                 <i class="codicon codicon-mute"></i>
               {:else}
                 <i class="codicon codicon-unmute"></i>
@@ -406,11 +426,10 @@
             </button>
             <button
               class="preview-ctrl-btn"
-              onclick={(e) => handlePreviewAudioControl(audioControlState?.muted ? 'unmute' : 'mute', e)}
-              title={audioControlState?.muted && globalMuted ? 'Unmute globally first (options menu)' : audioControlState?.muted ? 'Unmute' : 'Mute'}
-              disabled={audioControlState?.muted && globalMuted}
+              onclick={toggleAudioConfigMute}
+              title={configMuted ? 'Unmute' : 'Mute'}
             >
-              {#if audioControlState?.muted}
+              {#if configMuted}
                 <i class="codicon codicon-mute"></i>
               {:else}
                 <i class="codicon codicon-unmute"></i>

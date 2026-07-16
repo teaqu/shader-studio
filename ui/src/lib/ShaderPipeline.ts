@@ -272,12 +272,14 @@ export class ShaderPipeline {
   }
 
   public async reset(onReset?: () => void | Promise<void>): Promise<void> {
-    // resetTime() flags the render pipeline to clear buffers on the next atomic
-    // shader swap — no early cleanup() here to avoid a black flash while the
-    // async recompile runs.
-    this.renderEngine.resetTime();
-
     if (this.lastEvent && onReset) {
+      // resetTime() flags the render pipeline to clear buffers on the next
+      // atomic shader swap — no early cleanup() here to avoid a black flash
+      // while the async recompile runs. Only called when a reset is actually
+      // going to happen: calling it unconditionally would arm the WebGL
+      // engine's video-resume hold even with no shader to replay, and
+      // nothing would ever release it.
+      this.renderEngine.resetTime();
       await onReset();
     } else {
       const errorMessage: ErrorMessage = {

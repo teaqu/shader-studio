@@ -503,6 +503,10 @@
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
+      // The fresh engine's managers start at globalMuted=false/volume=1;
+      // re-push the current audioStore state so a swapped-in shader with
+      // media respects an already-active master mute/volume.
+      audioVideoController?.reapply();
       if (wasPaused) {
         renderingEngine.togglePause();
       }

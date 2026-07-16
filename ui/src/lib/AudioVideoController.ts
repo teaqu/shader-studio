@@ -86,6 +86,16 @@ export class AudioVideoController {
     audioStore.toggleMute();
   }
 
+  /**
+   * Re-push the current global volume/mute state to whatever engine
+   * getEngine() currently resolves to. Needed after a language-driven engine
+   * swap: the fresh engine's managers start at globalMuted=false/volume=1,
+   * and nothing else re-applies the audioStore state to them.
+   */
+  reapply(): void {
+    this.applyGlobalAudioState();
+  }
+
   private applyGlobalAudioState(): void {
     const engine = this.getEngine();
     if (engine) {

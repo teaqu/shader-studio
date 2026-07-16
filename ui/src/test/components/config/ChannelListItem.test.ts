@@ -91,6 +91,135 @@ describe('ChannelListItem', () => {
   });
 });
 
+describe('ChannelListItem — config-driven mute', () => {
+  // Regression: the row's mute button used to toggle off engine-reported
+  // mute state and never wrote to config, so a recompile silently discarded
+  // the toggle and the icon disagreed with the modal's config-driven icon.
+  it('video mute button writes config and applies runtime mute', async () => {
+    const onUpdateMuted = vi.fn();
+    const videoControl = vi.fn();
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4' } as ConfigInput,
+      onUpdateMuted,
+      audioVideoController: {
+        videoControl,
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle } = render(ChannelListItem, props);
+    await fireEvent.click(getByTitle('Mute'));
+
+    expect(onUpdateMuted).toHaveBeenCalledWith(true);
+    expect(videoControl).toHaveBeenCalledWith('vid.mp4', 'mute');
+  });
+
+  it('video mute button icon/title reflects config mute, not engine mute state', () => {
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4', muted: true } as ConfigInput,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        // Engine reports unmuted, but config says muted — button must follow config.
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle, queryByTitle } = render(ChannelListItem, props);
+    expect(getByTitle('Unmute')).toBeTruthy();
+    expect(queryByTitle('Mute')).toBeNull();
+  });
+
+  it('video unmute button writes config false and applies runtime unmute', async () => {
+    const onUpdateMuted = vi.fn();
+    const videoControl = vi.fn();
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4', muted: true } as ConfigInput,
+      onUpdateMuted,
+      audioVideoController: {
+        videoControl,
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle } = render(ChannelListItem, props);
+    await fireEvent.click(getByTitle('Unmute'));
+
+    expect(onUpdateMuted).toHaveBeenCalledWith(false);
+    expect(videoControl).toHaveBeenCalledWith('vid.mp4', 'unmute');
+  });
+
+  it('audio mute button writes config and applies runtime mute', async () => {
+    const onUpdateMuted = vi.fn();
+    const audioControl = vi.fn();
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'audio', path: 'music.mp3' } as ConfigInput,
+      onUpdateMuted,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn(),
+        audioControl,
+        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 120 }),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle } = render(ChannelListItem, props);
+    await fireEvent.click(getByTitle('Mute'));
+
+    expect(onUpdateMuted).toHaveBeenCalledWith(true);
+    expect(audioControl).toHaveBeenCalledWith('music.mp3', 'mute');
+  });
+
+  it('audio mute button icon/title reflects config mute, not engine mute state', () => {
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'audio', path: 'music.mp3', muted: true } as ConfigInput,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn(),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn().mockReturnValue({ paused: false, muted: false, currentTime: 0, duration: 120 }),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle, queryByTitle } = render(ChannelListItem, props);
+    expect(getByTitle('Unmute')).toBeTruthy();
+    expect(queryByTitle('Mute')).toBeNull();
+  });
+
+  it('does not disable the mute button regardless of engine mute state', () => {
+    const props = {
+      ...mockProps,
+      channelInput: { type: 'video', path: 'vid.mp4', muted: true } as ConfigInput,
+      audioVideoController: {
+        videoControl: vi.fn(),
+        getVideoState: vi.fn().mockReturnValue({ paused: false, muted: true, currentTime: 0, duration: 10 }),
+        audioControl: vi.fn(),
+        getAudioState: vi.fn(),
+        getAudioFFT: vi.fn(),
+      } as any,
+    };
+
+    const { getByTitle } = render(ChannelListItem, props);
+    const btn = getByTitle('Unmute') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+  });
+});
+
 describe('video preview sync', () => {
   afterEach(() => {
     vi.restoreAllMocks();
