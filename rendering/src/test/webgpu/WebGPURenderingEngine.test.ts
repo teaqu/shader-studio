@@ -1085,6 +1085,60 @@ describe("WebGPURenderingEngine", () => {
       expect(resourceManager.getVideoState).toHaveBeenCalledWith("clip.mp4");
       expect(result).toBe(state);
     });
+
+    it("passes channel muted to loadVideoTexture", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const mutedVideoConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "video",
+                path: "clip.mp4",
+                resolved_path: "vscode-webview://clip.mp4",
+                filter: "nearest",
+                wrap: "repeat",
+                vflip: false,
+                muted: true,
+              },
+            },
+          },
+        },
+      };
+      const loadVideoTexture = vi.fn(async () => ({ texture: {}, warning: undefined }));
+      (engine as any).resourceManager = { loadVideoTexture };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        mutedVideoConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(loadVideoTexture).toHaveBeenCalledWith(
+        "vscode-webview://clip.mp4",
+        expect.objectContaining({ muted: true }),
+      );
+    });
+
+    it("setGlobalVolume delegates to resourceManager.setGlobalAudioState", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const setGlobalAudioState = vi.fn();
+      (engine as any).resourceManager = { setGlobalAudioState };
+
+      engine.setGlobalVolume(0.5, true);
+
+      expect(setGlobalAudioState).toHaveBeenCalledWith(0.5, true);
+    });
+
+    it("setGlobalVolume is a no-op when no resource manager is attached", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      (engine as any).resourceManager = null;
+
+      expect(() => engine.setGlobalVolume(0.5, true)).not.toThrow();
+    });
   });
 
   describe("cubemap input parity", () => {

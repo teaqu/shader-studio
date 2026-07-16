@@ -458,6 +458,17 @@ describe("texture, video, and keyboard channels", () => {
     expect(graph.passes[0].channels).toEqual([]);
   });
 
+  it("carries muted on video channels", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: {
+        iChannel0: { type: "video", path: "v.mp4", muted: true },
+      } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.passes[0].channels[0]).toMatchObject({ kind: "video", muted: true });
+  });
+
   it("resolves a cubemap input with resolved_path preferred over path", () => {
     const graph = buildSlangPassGraph({
       imageCode,

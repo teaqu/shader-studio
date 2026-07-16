@@ -200,6 +200,7 @@ function resolveChannels(options: {
         filter: input.filter,
         wrap: input.wrap,
         vflip: input.vflip,
+        muted: input.muted,
       });
       continue;
     }

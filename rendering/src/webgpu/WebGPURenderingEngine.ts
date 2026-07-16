@@ -447,6 +447,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               filter: channel.filter,
               wrap: channel.wrap,
               vflip: channel.vflip,
+              muted: channel.muted,
             });
             if (result.warning) {
               graph.warnings.push(result.warning);
@@ -1316,11 +1317,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.resourceManager?.resumeAllVideos();
   }
   releaseMediaResetHold(): void {}
-  hasUserPausedAudio(): boolean {
-    return false;
-  }
   updateAudioLoopRegion(): void {}
-  setGlobalVolume(): void {}
+  setGlobalVolume(volume: number, muted: boolean): void {
+    this.resourceManager?.setGlobalAudioState(volume, muted);
+  }
   controlVideo(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {
     this.resourceManager?.controlVideo(path, action);
   }

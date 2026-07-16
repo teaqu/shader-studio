@@ -13,7 +13,7 @@ export type RenderPassChannel =
   | {
       kind: "video"; slot: number; key: string; path: string;
       filter?: VideoConfigInput["filter"]; wrap?: VideoConfigInput["wrap"];
-      vflip?: boolean;
+      vflip?: boolean; muted?: boolean;
     }
   | {
       kind: "cubemap"; slot: number; key: string; path: string;
