@@ -229,6 +229,33 @@ suite('VideoAudioConverter Test Suite', () => {
       assert.ok(capturedArgs.includes('/path/to/video_vscode.webm'), 'Should include WebM output path');
     });
 
+    test('uses Opus audio when converting Ogg files', async () => {
+      // Regression: only .webm routed to libopus. An .ogg conversion fell
+      // through to the libmp3lame branch, which ffmpeg rejects when muxing
+      // MP3 into an Ogg container.
+      const converter = new VideoAudioConverter();
+      fsStubs.existsSync.returns(false);
+
+      let capturedArgs: string[] = [];
+      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+        const cb = typeof opts === 'function' ? opts : callback;
+        if (cmd === 'ffmpeg' && args[0] !== '-version') {
+          capturedArgs = args;
+        }
+        cb(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      await converter.convertAudio('/path/to/video.ogg');
+
+      assert.ok(capturedArgs.includes('-c:v'), 'Should include -c:v flag');
+      assert.ok(capturedArgs.includes('copy'), 'Should include copy for video codec');
+      assert.ok(capturedArgs.includes('-c:a'), 'Should include -c:a flag');
+      assert.ok(capturedArgs.includes('libopus'), 'Should include Opus for Ogg-compatible audio');
+      assert.ok(!capturedArgs.includes('libmp3lame'), 'Should not use MP3 encoder for Ogg output');
+      assert.ok(capturedArgs.includes('/path/to/video_vscode.ogg'), 'Should include Ogg output path');
+    });
+
     test('skips conversion if output already exists and is newer than source', async () => {
       const converter = new VideoAudioConverter();
       fsStubs.existsSync.returns(true);

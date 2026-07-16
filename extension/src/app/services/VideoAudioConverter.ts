@@ -75,7 +75,9 @@ export class VideoAudioConverter {
 
   private getFfmpegArgs(videoPath: string, outputPath: string): string[] {
     const ext = path.extname(videoPath).toLowerCase();
-    if (ext === ".webm") {
+    // Ogg (like WebM) can only mux Opus/Vorbis/FLAC audio — muxing libmp3lame
+    // into an Ogg container is rejected by ffmpeg.
+    if (ext === ".webm" || ext === ".ogg") {
       return [
         "-y",
         "-i", videoPath,
