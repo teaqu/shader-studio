@@ -65,10 +65,7 @@ vi.mock("../../resources/VideoTextureManager", () => ({
       muteVideo: vi.fn(),
       unmuteVideo: vi.fn(),
       resetVideo: vi.fn(),
-      setVideoVolume: vi.fn(),
-      setAllVideoVolumes: vi.fn(),
-      muteAllVideos: vi.fn(),
-      unmuteAllVideos: vi.fn(),
+      setGlobalAudioState: vi.fn(),
       isVideoPaused: vi.fn(),
       isVideoMuted: vi.fn(),
       cleanup: vi.fn(),
@@ -684,19 +681,11 @@ describe("ResourceManager", () => {
     });
   });
 
-  describe("muteAllVideos", () => {
+  describe("setGlobalAudioState", () => {
     it("should delegate to VideoTextureManager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;
-      resourceManager.muteAllVideos();
-      expect(videoManager.muteAllVideos).toHaveBeenCalled();
-    });
-  });
-
-  describe("unmuteAllVideos", () => {
-    it("should delegate to VideoTextureManager", () => {
-      const videoManager = (resourceManager as any).videoTextureManager;
-      resourceManager.unmuteAllVideos(0.7);
-      expect(videoManager.unmuteAllVideos).toHaveBeenCalledWith(0.7);
+      resourceManager.setGlobalAudioState(0.7, true);
+      expect(videoManager.setGlobalAudioState).toHaveBeenCalledWith(0.7, true);
     });
   });
 

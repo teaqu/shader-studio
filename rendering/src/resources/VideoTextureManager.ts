@@ -7,26 +7,36 @@ export class VideoTextureManager<T> {
   private readonly animationFrameIds: Record<string, number> = {};
   private readonly playbackTimeoutIds: Record<string, ReturnType<typeof setTimeout>> = {};
   private readonly playbackRetryCleanups: Record<string, () => void> = {};
+  // Per-video user-initiated pause tracking
+  private readonly userPaused: Set<string> = new Set();
+  private globalMuted = false;
+  private globalVolume = 1;
+  private readonly channelMuted: Record<string, boolean> = {};
 
   constructor(private readonly backend: TextureBackend<T>) {}
 
   public async loadVideoTexture(
     path: string,
-    options: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip'>> = {}
+    options: Partial<Pick<VideoConfigInput, 'filter' | 'wrap' | 'vflip' | 'muted'>> = {}
   ): Promise<T> {
     // Check if video is already loaded
     if (this.videoTextures[path]) {
+      // Config may have changed since first load (e.g. muted toggled, then recompile)
+      this.channelMuted[path] = options.muted === true;
+      this.applyEffectiveAudioState(path);
       return this.videoTextures[path];
     }
 
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       video.loop = true;
-      video.muted = true;
       video.playsInline = true;
       video.preload = "auto";
       video.autoplay = false;
-      video.volume = 0;
+      this.channelMuted[path] = options.muted === true;
+      const muted = this.channelMuted[path] || this.globalMuted;
+      video.muted = muted;
+      video.volume = muted ? 0 : this.globalVolume;
 
       // webkit-playsinline for iOS/Safari compatibility
       video.setAttribute('webkit-playsinline', 'true');
@@ -71,11 +81,6 @@ export class VideoTextureManager<T> {
           this.videoTextures[path] = texture;
 
           this.startVideoTextureUpdates(path, video, texture);
-          console.info('[MediaSync] video texture ready, playback held until resources complete', {
-            path,
-            width: video.videoWidth,
-            height: video.videoHeight,
-          });
 
           resolve(texture);
         } catch (error) {
@@ -127,6 +132,8 @@ export class VideoTextureManager<T> {
       this.backend.destroyTexture(texture);
       delete this.videoTextures[path];
     }
+
+    delete this.channelMuted[path];
   }
 
   public cleanup(): void {
@@ -155,9 +162,6 @@ export class VideoTextureManager<T> {
     }
   }
 
-  // Per-video user-initiated pause tracking
-  private readonly userPaused: Set<string> = new Set();
-
   public pauseVideo(path: string): void {
     const video = this.videoElements[path];
     if (video && !video.paused) {
@@ -176,52 +180,32 @@ export class VideoTextureManager<T> {
     }
   }
 
-  public muteVideo(path: string): void {
-    const video = this.videoElements[path];
-    if (video) {
-      video.muted = true;
-      video.volume = 0;
-    }
-  }
-
-  public unmuteVideo(path: string, volume: number = 1): void {
+  private applyEffectiveAudioState(path: string): void {
     const video = this.videoElements[path];
     if (!video) {
-      console.warn(`[VideoTexture] unmuteVideo: no video element found for path ${path}`);
       return;
     }
-
-    video.muted = false;
-    video.volume = Math.max(0, Math.min(1, volume));
+    const muted = (this.channelMuted[path] ?? false) || this.globalMuted;
+    video.muted = muted;
+    video.volume = muted ? 0 : this.globalVolume;
   }
 
-  public setVideoVolume(path: string, volume: number): void {
-    const video = this.videoElements[path];
-    if (video) {
-      video.volume = Math.max(0, Math.min(1, volume));
+  public setGlobalAudioState(volume: number, muted: boolean): void {
+    this.globalVolume = Math.max(0, Math.min(1, volume));
+    this.globalMuted = muted;
+    for (const path of Object.keys(this.videoElements)) {
+      this.applyEffectiveAudioState(path);
     }
   }
 
-  public setAllVideoVolumes(volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    for (const video of Object.values(this.videoElements)) {
-      video.volume = clamped;
-    }
+  public muteVideo(path: string): void {
+    this.channelMuted[path] = true;
+    this.applyEffectiveAudioState(path);
   }
 
-  public muteAllVideos(): void {
-    for (const video of Object.values(this.videoElements)) {
-      video.muted = true;
-      video.volume = 0;
-    }
-  }
-
-  public unmuteAllVideos(volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    for (const video of Object.values(this.videoElements)) {
-      video.muted = false;
-      video.volume = clamped;
-    }
+  public unmuteVideo(path: string): void {
+    this.channelMuted[path] = false;
+    this.applyEffectiveAudioState(path);
   }
 
   public resetVideo(path: string): void {

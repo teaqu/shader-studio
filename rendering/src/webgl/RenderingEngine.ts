@@ -416,11 +416,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.resourceManager.setAudioDefaults({ volume, muted });
     if (muted) {
       this.resourceManager.muteAllAudio();
-      this.resourceManager.muteAllVideos();
     } else {
       this.resourceManager.unmuteAllAudio(volume);
-      this.resourceManager.unmuteAllVideos(volume);
     }
+    this.resourceManager.setGlobalAudioState(volume, muted);
   }
 
   public controlVideo(path: string, action: 'play' | 'pause' | 'mute' | 'unmute' | 'reset'): void {

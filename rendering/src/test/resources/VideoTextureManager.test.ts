@@ -136,7 +136,7 @@ describe("VideoTextureManager", () => {
 
       expect(mockVideo.crossOrigin).toBe("");
       expect(mockVideo.loop).toBe(true);
-      expect(mockVideo.muted).toBe(true);
+      expect(mockVideo.muted).toBe(false);
       expect(mockVideo.playsInline).toBe(true);
       expect(mockVideo.preload).toBe("auto");
       expect(mockVideo.autoplay).toBe(false);
@@ -562,37 +562,108 @@ describe("VideoTextureManager", () => {
     });
   });
 
-  describe("mute and volume", () => {
-    it("should mute all videos", () => {
-      const v1 = createMockVideoElement();
-      const v2 = createMockVideoElement();
-      (videoManager as any).videoElements['v1.mp4'] = v1;
-      (videoManager as any).videoElements['v2.mp4'] = v2;
+  describe("mute model", () => {
+    it("loads unmuted at global volume by default", async () => {
+      const loadPromise = videoManager.loadVideoTexture('a.mp4');
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      canplayHandler?.();
+      await loadPromise;
 
-      videoManager.muteAllVideos();
-
-      expect(v1.muted).toBe(true);
-      expect(v1.volume).toBe(0);
-      expect(v2.muted).toBe(true);
-      expect(v2.volume).toBe(0);
+      const video = videoManager.getVideoElement('a.mp4')!;
+      expect(video.muted).toBe(false);
+      expect(video.volume).toBe(1);
     });
 
-    it("should unmute all videos with given volume", () => {
-      const v1 = createMockVideoElement();
-      v1.muted = true;
-      v1.volume = 0;
-      const v2 = createMockVideoElement();
-      v2.muted = true;
-      v2.volume = 0;
-      (videoManager as any).videoElements['v1.mp4'] = v1;
-      (videoManager as any).videoElements['v2.mp4'] = v2;
+    it("loads muted when config says muted", async () => {
+      const loadPromise = videoManager.loadVideoTexture('a.mp4', { muted: true });
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      canplayHandler?.();
+      await loadPromise;
 
-      videoManager.unmuteAllVideos(0.7);
+      const video = videoManager.getVideoElement('a.mp4')!;
+      expect(video.muted).toBe(true);
+      expect(video.volume).toBe(0);
+    });
 
-      expect(v1.muted).toBe(false);
-      expect(v1.volume).toBe(0.7);
-      expect(v2.muted).toBe(false);
-      expect(v2.volume).toBe(0.7);
+    it("loads muted while globally muted even if config is unmuted", async () => {
+      videoManager.setGlobalAudioState(1, true);
+
+      const loadPromise = videoManager.loadVideoTexture('a.mp4');
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      canplayHandler?.();
+      await loadPromise;
+
+      expect(videoManager.getVideoElement('a.mp4')!.muted).toBe(true);
+    });
+
+    it("global unmute does not unmute config-muted videos", async () => {
+      const mutedVideo = createMockVideoElement();
+      const openVideo = createMockVideoElement();
+      let created = 0;
+      vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        if (tagName === 'video') {
+          created += 1;
+          return (created === 1 ? mutedVideo : openVideo) as unknown as HTMLVideoElement;
+        }
+        return originalCreateElement(tagName);
+      });
+
+      const loadMuted = videoManager.loadVideoTexture('muted.mp4', { muted: true });
+      const mutedCanplay = (mutedVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      mutedCanplay?.();
+      await loadMuted;
+
+      const loadOpen = videoManager.loadVideoTexture('open.mp4');
+      const openCanplay = (openVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      openCanplay?.();
+      await loadOpen;
+
+      videoManager.setGlobalAudioState(0.5, true);
+      videoManager.setGlobalAudioState(0.5, false);
+
+      expect(videoManager.getVideoElement('muted.mp4')!.muted).toBe(true);
+      expect(videoManager.getVideoElement('open.mp4')!.muted).toBe(false);
+      expect(videoManager.getVideoElement('open.mp4')!.volume).toBe(0.5);
+    });
+
+    it("per-channel mute/unmute toggles channel state and applies global volume", async () => {
+      const loadPromise = videoManager.loadVideoTexture('a.mp4');
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      canplayHandler?.();
+      await loadPromise;
+
+      videoManager.setGlobalAudioState(0.7, false);
+      videoManager.muteVideo('a.mp4');
+      expect(videoManager.getVideoElement('a.mp4')!.muted).toBe(true);
+
+      videoManager.unmuteVideo('a.mp4');
+      expect(videoManager.getVideoElement('a.mp4')!.muted).toBe(false);
+      expect(videoManager.getVideoElement('a.mp4')!.volume).toBe(0.7);
+    });
+
+    it("reload of a cached path reapplies changed config mute", async () => {
+      const loadPromise = videoManager.loadVideoTexture('a.mp4');
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === 'canplay'
+      )?.[1];
+      canplayHandler?.();
+      await loadPromise;
+
+      await videoManager.loadVideoTexture('a.mp4', { muted: true });
+
+      expect(videoManager.getVideoElement('a.mp4')!.muted).toBe(true);
     });
   });
 

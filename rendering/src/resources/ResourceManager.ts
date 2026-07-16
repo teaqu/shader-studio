@@ -260,12 +260,8 @@ export class ResourceManager<T> {
     }
   }
 
-  public muteAllVideos(): void {
-    this.videoTextureManager.muteAllVideos();
-  }
-
-  public unmuteAllVideos(volume: number): void {
-    this.videoTextureManager.unmuteAllVideos(volume);
+  public setGlobalAudioState(volume: number, muted: boolean): void {
+    this.videoTextureManager.setGlobalAudioState(volume, muted);
   }
 
   public getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {

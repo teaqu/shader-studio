@@ -1388,8 +1388,7 @@ describe("RenderingEngine", () => {
         setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
         unmuteAllAudio: vi.fn(),
-        muteAllVideos: vi.fn(),
-        unmuteAllVideos: vi.fn(),
+        setGlobalAudioState: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'resourceManager', {
         value: mockResourceMgr, writable: true, configurable: true,
@@ -1399,9 +1398,8 @@ describe("RenderingEngine", () => {
 
       expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: true });
       expect(mockResourceMgr.muteAllAudio).toHaveBeenCalled();
-      expect(mockResourceMgr.muteAllVideos).toHaveBeenCalled();
+      expect(mockResourceMgr.setGlobalAudioState).toHaveBeenCalledWith(0.8, true);
       expect(mockResourceMgr.unmuteAllAudio).not.toHaveBeenCalled();
-      expect(mockResourceMgr.unmuteAllVideos).not.toHaveBeenCalled();
     });
 
     it("should unmute audio and videos when unmuted", () => {
@@ -1409,8 +1407,7 @@ describe("RenderingEngine", () => {
         setAudioDefaults: vi.fn(),
         muteAllAudio: vi.fn(),
         unmuteAllAudio: vi.fn(),
-        muteAllVideos: vi.fn(),
-        unmuteAllVideos: vi.fn(),
+        setGlobalAudioState: vi.fn(),
       };
       Object.defineProperty(renderingEngine, 'resourceManager', {
         value: mockResourceMgr, writable: true, configurable: true,
@@ -1420,9 +1417,8 @@ describe("RenderingEngine", () => {
 
       expect(mockResourceMgr.setAudioDefaults).toHaveBeenCalledWith({ volume: 0.8, muted: false });
       expect(mockResourceMgr.unmuteAllAudio).toHaveBeenCalledWith(0.8);
-      expect(mockResourceMgr.unmuteAllVideos).toHaveBeenCalledWith(0.8);
+      expect(mockResourceMgr.setGlobalAudioState).toHaveBeenCalledWith(0.8, false);
       expect(mockResourceMgr.muteAllAudio).not.toHaveBeenCalled();
-      expect(mockResourceMgr.muteAllVideos).not.toHaveBeenCalled();
     });
   });
 
