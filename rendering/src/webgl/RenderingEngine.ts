@@ -395,10 +395,6 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.resourceManager.resumeAllAudio();
   }
 
-  public hasUserPausedAudio(): boolean {
-    return this.resourceManager.hasUserPausedAudio();
-  }
-
   public resumeAllVideos(): void {
     console.info('[MediaSync] resumeAllVideos requested');
     this.holdVideoResumeForResetCompile = false;
@@ -414,11 +410,6 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public setGlobalVolume(volume: number, muted: boolean): void {
     this.resourceManager.setAudioDefaults({ volume, muted });
-    if (muted) {
-      this.resourceManager.muteAllAudio();
-    } else {
-      this.resourceManager.unmuteAllAudio(volume);
-    }
     this.resourceManager.setGlobalAudioState(volume, muted);
   }
 

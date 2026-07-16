@@ -101,17 +101,12 @@ vi.mock("../../resources/AudioTextureManager", () => ({
       seekAudio: vi.fn(),
       getAudioDuration: vi.fn(),
       isAudioPaused: vi.fn(),
-      hasUserPausedAudio: vi.fn(),
       isAudioMuted: vi.fn(),
       getAudioCurrentTime: vi.fn(),
       pauseAll: vi.fn(),
       resumeAll: vi.fn(),
-      forceResumeAll: vi.fn(),
       syncAllToTime: vi.fn(),
-      setAudioVolume: vi.fn(),
-      setAllAudioVolumes: vi.fn(),
-      muteAllAudio: vi.fn(),
-      unmuteAllAudio: vi.fn(),
+      setGlobalAudioState: vi.fn(),
       cleanup: vi.fn(),
     };
   }),
@@ -682,10 +677,12 @@ describe("ResourceManager", () => {
   });
 
   describe("setGlobalAudioState", () => {
-    it("should delegate to VideoTextureManager", () => {
+    it("should delegate to VideoTextureManager and AudioTextureManager", () => {
       const videoManager = (resourceManager as any).videoTextureManager;
+      const audioManager = (resourceManager as any).audioTextureManager;
       resourceManager.setGlobalAudioState(0.7, true);
       expect(videoManager.setGlobalAudioState).toHaveBeenCalledWith(0.7, true);
+      expect(audioManager.setGlobalAudioState).toHaveBeenCalledWith(0.7, true);
     });
   });
 
@@ -926,45 +923,11 @@ describe("ResourceManager", () => {
     });
   });
 
-  describe("hasUserPausedAudio", () => {
-    it("should delegate to AudioTextureManager.hasUserPausedAudio", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      audioManager.hasUserPausedAudio.mockReturnValue(true);
-
-      expect(resourceManager.hasUserPausedAudio()).toBe(true);
-      expect(audioManager.hasUserPausedAudio).toHaveBeenCalled();
-    });
-  });
-
-  describe("forceResumeAllAudio", () => {
-    it("should delegate to AudioTextureManager.forceResumeAll", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      resourceManager.forceResumeAllAudio();
-      expect(audioManager.forceResumeAll).toHaveBeenCalled();
-    });
-  });
-
   describe("syncAllAudioToTime", () => {
     it("should delegate to AudioTextureManager", () => {
       const audioManager = (resourceManager as any).audioTextureManager;
       resourceManager.syncAllAudioToTime(10.0);
       expect(audioManager.syncAllToTime).toHaveBeenCalledWith(10.0);
-    });
-  });
-
-  describe("muteAllAudio", () => {
-    it("should delegate to AudioTextureManager", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      resourceManager.muteAllAudio();
-      expect(audioManager.muteAllAudio).toHaveBeenCalled();
-    });
-  });
-
-  describe("unmuteAllAudio", () => {
-    it("should delegate to AudioTextureManager", () => {
-      const audioManager = (resourceManager as any).audioTextureManager;
-      resourceManager.unmuteAllAudio(0.5);
-      expect(audioManager.unmuteAllAudio).toHaveBeenCalledWith(0.5);
     });
   });
 

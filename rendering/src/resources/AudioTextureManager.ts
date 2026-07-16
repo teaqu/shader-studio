@@ -25,7 +25,15 @@ export class AudioTextureManager<T> {
   // Per-audio user-initiated pause tracking
   private readonly userPaused: Set<string> = new Set();
 
+  private globalMuted = false;
+  private globalVolume = 1;
+  private readonly channelMuted: Record<string, boolean> = {};
+
   constructor(private readonly backend: TextureBackend<T>) {}
+
+  private effectiveGain(path: string): number {
+    return ((this.channelMuted[path] ?? false) || this.globalMuted) ? 0 : this.globalVolume;
+  }
 
   private autoResumeCleanup: (() => void) | null = null;
 
@@ -124,8 +132,10 @@ export class AudioTextureManager<T> {
     source.playing = true;
   }
 
-  public async loadAudioSource(path: string, options?: { muted?: boolean; volume?: number; startTime?: number; endTime?: number }): Promise<T> {
+  public async loadAudioSource(path: string, options?: { muted?: boolean; startTime?: number; endTime?: number }): Promise<T> {
     if (this.audioSources[path]) {
+      this.channelMuted[path] = options?.muted === true;
+      this.audioSources[path].gainNode.gain.value = this.effectiveGain(path);
       return this.audioSources[path].texture;
     }
 
@@ -139,9 +149,8 @@ export class AudioTextureManager<T> {
     analyser.smoothingTimeConstant = 0.5;
 
     const gainNode = ctx.createGain();
-    const muted = options?.muted ?? false;
-    const volume = options?.volume ?? 1.0;
-    gainNode.gain.value = muted ? 0 : Math.max(0, Math.min(1, volume));
+    this.channelMuted[path] = options?.muted === true;
+    gainNode.gain.value = this.effectiveGain(path);
 
     analyser.connect(gainNode);
     gainNode.connect(ctx.destination);
@@ -240,16 +249,26 @@ export class AudioTextureManager<T> {
   }
 
   public muteAudio(path: string): void {
+    this.channelMuted[path] = true;
     const source = this.audioSources[path];
     if (source) {
       source.gainNode.gain.value = 0;
     }
   }
 
-  public unmuteAudio(path: string, volume: number = 1): void {
+  public unmuteAudio(path: string): void {
+    this.channelMuted[path] = false;
     const source = this.audioSources[path];
     if (source) {
-      source.gainNode.gain.value = Math.max(0, Math.min(1, volume));
+      source.gainNode.gain.value = this.effectiveGain(path);
+    }
+  }
+
+  public setGlobalAudioState(volume: number, muted: boolean): void {
+    this.globalVolume = Math.max(0, Math.min(1, volume));
+    this.globalMuted = muted;
+    for (const path of Object.keys(this.audioSources)) {
+      this.audioSources[path].gainNode.gain.value = this.effectiveGain(path);
     }
   }
 
@@ -336,40 +355,11 @@ export class AudioTextureManager<T> {
     return source ? !source.playing : true;
   }
 
-  public hasUserPausedAudio(): boolean {
-    return this.userPaused.size > 0;
-  }
-
   public isAudioMuted(path: string): boolean {
-    const source = this.audioSources[path];
-    return source ? source.gainNode.gain.value === 0 : true;
-  }
-
-  public setAudioVolume(path: string, volume: number): void {
-    const source = this.audioSources[path];
-    if (source) {
-      source.gainNode.gain.value = Math.max(0, Math.min(1, volume));
+    if (!this.audioSources[path]) {
+      return true;
     }
-  }
-
-  public setAllAudioVolumes(volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    for (const source of Object.values(this.audioSources)) {
-      source.gainNode.gain.value = clamped;
-    }
-  }
-
-  public muteAllAudio(): void {
-    for (const source of Object.values(this.audioSources)) {
-      source.gainNode.gain.value = 0;
-    }
-  }
-
-  public unmuteAllAudio(volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    for (const source of Object.values(this.audioSources)) {
-      source.gainNode.gain.value = clamped;
-    }
+    return (this.channelMuted[path] ?? false) || this.globalMuted;
   }
 
   public pauseAll(): void {
@@ -396,19 +386,6 @@ export class AudioTextureManager<T> {
         continue;
       }
       if (!source.playing && !this.userPaused.has(path)) {
-        this.startSourceNode(path, source, source.offsetTime);
-      }
-    }
-  }
-
-  /** Force-resume all audio, clearing user-paused state. Used on reset. */
-  public forceResumeAll(): void {
-    this.userPaused.clear();
-    for (const [path, source] of Object.entries(this.audioSources)) {
-      if (this.initializing.has(path)) {
-        continue;
-      }
-      if (!source.playing) {
         this.startSourceNode(path, source, source.offsetTime);
       }
     }
@@ -452,6 +429,7 @@ export class AudioTextureManager<T> {
     this.backend.destroyTexture(source.texture);
     delete this.audioSources[path];
     delete this.audioLoopRegions[path];
+    delete this.channelMuted[path];
     this.initializing.delete(path);
     this.userPaused.delete(path);
   }

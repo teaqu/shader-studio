@@ -196,24 +196,8 @@ export class ResourceManager<T> {
     this.audioTextureManager.resumeAll();
   }
 
-  public hasUserPausedAudio(): boolean {
-    return this.audioTextureManager.hasUserPausedAudio();
-  }
-
-  public forceResumeAllAudio(): void {
-    this.audioTextureManager.forceResumeAll();
-  }
-
   public syncAllAudioToTime(shaderTime: number): void {
     this.audioTextureManager.syncAllToTime(shaderTime);
-  }
-
-  public muteAllAudio(): void {
-    this.audioTextureManager.muteAllAudio();
-  }
-
-  public unmuteAllAudio(volume: number): void {
-    this.audioTextureManager.unmuteAllAudio(volume);
   }
 
   public cleanup(): void {
@@ -262,6 +246,7 @@ export class ResourceManager<T> {
 
   public setGlobalAudioState(volume: number, muted: boolean): void {
     this.videoTextureManager.setGlobalAudioState(volume, muted);
+    this.audioTextureManager.setGlobalAudioState(volume, muted);
   }
 
   public getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {

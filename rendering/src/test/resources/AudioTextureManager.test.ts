@@ -146,7 +146,7 @@ describe("AudioTextureManager", () => {
       manager.muteAudio("track.mp3");
       expect(manager.isAudioMuted("track.mp3")).toBe(true);
 
-      manager.unmuteAudio("track.mp3", 0.8);
+      manager.unmuteAudio("track.mp3");
       expect(manager.isAudioMuted("track.mp3")).toBe(false);
     });
 
@@ -155,16 +155,6 @@ describe("AudioTextureManager", () => {
 
       manager.resetAudio("track.mp3");
       expect(manager.getAudioCurrentTime("track.mp3")).toBe(0);
-    });
-
-    it("should set audio volume clamped to [0,1]", async () => {
-      await loadTestAudio("track.mp3");
-
-      manager.setAudioVolume("track.mp3", 0.5);
-      expect(manager.isAudioMuted("track.mp3")).toBe(false);
-
-      manager.setAudioVolume("track.mp3", 2.0);
-      expect(manager.isAudioMuted("track.mp3")).toBe(false);
     });
 
     it("should return paused=true for non-existent path", () => {
@@ -182,7 +172,6 @@ describe("AudioTextureManager", () => {
         manager.muteAudio("nope");
         manager.unmuteAudio("nope");
         manager.resetAudio("nope");
-        manager.setAudioVolume("nope", 0.5);
       }).not.toThrow();
     });
   });
@@ -226,54 +215,6 @@ describe("AudioTextureManager", () => {
       // because it's not userPaused. This is correct for togglePause unpause.
       manager.resumeAll();
       expect(manager.isAudioPaused("track.mp3")).toBe(false);
-    });
-
-    it("forceResumeAll should resume all audio including user-paused", async () => {
-      await loadTestAudio("a.mp3");
-      await loadTestAudio("b.mp3");
-      manager.resumeAudio("a.mp3");
-      manager.resumeAudio("b.mp3");
-
-      // User pauses one
-      manager.pauseAudio("a.mp3");
-      expect(manager.isAudioPaused("a.mp3")).toBe(true);
-
-      // forceResumeAll should resume everything, clearing user pause state
-      manager.forceResumeAll();
-      expect(manager.isAudioPaused("a.mp3")).toBe(false);
-      expect(manager.isAudioPaused("b.mp3")).toBe(false);
-    });
-
-    it("forceResumeAll should start audio that was never played", async () => {
-      await loadTestAudio("track.mp3");
-
-      // Audio was loaded but never started
-      expect(manager.isAudioPaused("track.mp3")).toBe(true);
-
-      manager.forceResumeAll();
-      expect(manager.isAudioPaused("track.mp3")).toBe(false);
-    });
-
-    it("should mute and unmute all audio", async () => {
-      await loadTestAudio("a.mp3");
-      await loadTestAudio("b.mp3");
-
-      manager.muteAllAudio();
-      expect(manager.isAudioMuted("a.mp3")).toBe(true);
-      expect(manager.isAudioMuted("b.mp3")).toBe(true);
-
-      manager.unmuteAllAudio(0.7);
-      expect(manager.isAudioMuted("a.mp3")).toBe(false);
-      expect(manager.isAudioMuted("b.mp3")).toBe(false);
-    });
-
-    it("should set all audio volumes", async () => {
-      await loadTestAudio("a.mp3");
-      await loadTestAudio("b.mp3");
-
-      manager.setAllAudioVolumes(0.3);
-      expect(manager.isAudioMuted("a.mp3")).toBe(false);
-      expect(manager.isAudioMuted("b.mp3")).toBe(false);
     });
 
     it("should sync all audio to shader time", async () => {
@@ -585,55 +526,20 @@ describe("AudioTextureManager", () => {
     it("pauseAudio sets userPaused — resumeAll does NOT resume after pauseAudio", async () => {
       await loadTestAudio("track.mp3");
       manager.resumeAudio("track.mp3");
-      expect(manager.hasUserPausedAudio()).toBe(false);
 
       // User pause (e.g., clicking individual pause button)
       manager.pauseAudio("track.mp3");
       expect(manager.isAudioPaused("track.mp3")).toBe(true);
-      expect(manager.hasUserPausedAudio()).toBe(true);
 
       // System unpause — should NOT resume because user explicitly paused
       manager.resumeAll();
       expect(manager.isAudioPaused("track.mp3")).toBe(true);
-      expect(manager.hasUserPausedAudio()).toBe(true);
-    });
-
-    it("forceResumeAll clears userPaused — resumes even after pauseAudio", async () => {
-      await loadTestAudio("track.mp3");
-      manager.resumeAudio("track.mp3");
-
-      // User pause
-      manager.pauseAudio("track.mp3");
-      expect(manager.isAudioPaused("track.mp3")).toBe(true);
-
-      // Force resume (reset button) — should clear userPaused and resume
-      manager.forceResumeAll();
-      expect(manager.isAudioPaused("track.mp3")).toBe(false);
-    });
-
-    it("full reset flow: load → no auto-play → forceResumeAll → playing", async () => {
-      // Simulate: shader loads audio, audio stays silent, user hits reset
-      await loadTestAudio("a.mp3");
-      await loadTestAudio("b.mp3");
-
-      // Audio should not auto-play on load
-      expect(manager.isAudioPaused("a.mp3")).toBe(true);
-      expect(manager.isAudioPaused("b.mp3")).toBe(true);
-      expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
-
-      // User hits reset → forceResumeAll is called
-      manager.forceResumeAll();
-
-      // Both should now be playing
-      expect(manager.isAudioPaused("a.mp3")).toBe(false);
-      expect(manager.isAudioPaused("b.mp3")).toBe(false);
-      expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(2);
     });
 
     it("shader switch: cleanup removes all state, new load does not auto-play", async () => {
       // Load audio for shader A
       await loadTestAudio("shaderA-music.mp3");
-      manager.forceResumeAll();
+      manager.resumeAll();
       expect(manager.isAudioPaused("shaderA-music.mp3")).toBe(false);
 
       // Switch to shader B — cleanup is called
@@ -654,7 +560,7 @@ describe("AudioTextureManager", () => {
       await loadTestAudio("b.mp3");
 
       // Start both playing
-      manager.forceResumeAll();
+      manager.resumeAll();
       expect(manager.isAudioPaused("a.mp3")).toBe(false);
       expect(manager.isAudioPaused("b.mp3")).toBe(false);
 
@@ -674,40 +580,6 @@ describe("AudioTextureManager", () => {
       expect(manager.isAudioPaused("b.mp3")).toBe(false);
     });
 
-    it("multiple pause/resume cycles maintain correct userPaused tracking", async () => {
-      await loadTestAudio("track.mp3");
-      manager.forceResumeAll();
-
-      // Cycle 1: user pause → forceResume clears it
-      manager.pauseAudio("track.mp3");
-      manager.forceResumeAll();
-      expect(manager.isAudioPaused("track.mp3")).toBe(false);
-
-      // Cycle 2: user pause → resumeAll does NOT clear it
-      manager.pauseAudio("track.mp3");
-      manager.resumeAll();
-      expect(manager.isAudioPaused("track.mp3")).toBe(true);
-
-      // Cycle 3: forceResumeAll clears it again
-      manager.forceResumeAll();
-      expect(manager.isAudioPaused("track.mp3")).toBe(false);
-    });
-
-    it("forceResumeAll skips audio still initializing", async () => {
-      // Start loading but don't await (simulates in-progress load)
-      const loadPromise = manager.loadAudioSource("loading.mp3");
-
-      // The path should be in initializing set at this point
-      // forceResumeAll should skip it
-      manager.forceResumeAll();
-
-      // Finish loading
-      await loadPromise;
-
-      // Should still be paused since forceResumeAll ran while initializing
-      expect(manager.isAudioPaused("loading.mp3")).toBe(true);
-    });
-
     it("resumeAll skips audio still initializing", async () => {
       const loadPromise = manager.loadAudioSource("loading.mp3");
 
@@ -716,6 +588,88 @@ describe("AudioTextureManager", () => {
       await loadPromise;
 
       expect(manager.isAudioPaused("loading.mp3")).toBe(true);
+    });
+  });
+
+  describe("mute model", () => {
+    // The mock createGain() returns a fresh { gain: { value }, connect, disconnect }
+    // object per call. Track the gain object for a path the first time createGain
+    // is invoked for it (new sources only — cache hits reuse the existing gainNode).
+    const gainNodes: Record<string, { value: number }> = {};
+
+    async function loadTracked(
+      path: string,
+      options?: { muted?: boolean; startTime?: number; endTime?: number },
+    ): Promise<void> {
+      const before = mockAudioContext.createGain.mock.calls.length;
+      await manager.loadAudioSource(path, options);
+      const after = mockAudioContext.createGain.mock.calls.length;
+      if (after > before) {
+        gainNodes[path] = mockAudioContext.createGain.mock.results[before].value.gain;
+      }
+    }
+
+    function gainValueFor(path: string): number {
+      return gainNodes[path]?.value ?? NaN;
+    }
+
+    it("loads audible at gain 1 by default", async () => {
+      await loadTracked("a.mp3");
+      expect(gainValueFor("a.mp3")).toBe(1);
+    });
+
+    it("loads at gain 0 when config muted", async () => {
+      await loadTracked("a.mp3", { muted: true });
+      expect(gainValueFor("a.mp3")).toBe(0);
+    });
+
+    it("loads at gain 0 while globally muted", async () => {
+      manager.setGlobalAudioState(1, true);
+      await loadTracked("a.mp3");
+      expect(gainValueFor("a.mp3")).toBe(0);
+    });
+
+    it("global unmute restores volume only for channels not config-muted", async () => {
+      await loadTracked("muted.mp3", { muted: true });
+      await loadTracked("open.mp3");
+      manager.setGlobalAudioState(0.5, true);
+      manager.setGlobalAudioState(0.5, false);
+      expect(gainValueFor("muted.mp3")).toBe(0);
+      expect(gainValueFor("open.mp3")).toBe(0.5);
+    });
+
+    it("per-channel mute/unmute toggles gain against global volume", async () => {
+      await loadTracked("a.mp3");
+      manager.setGlobalAudioState(0.7, false);
+      manager.muteAudio("a.mp3");
+      expect(gainValueFor("a.mp3")).toBe(0);
+      expect(manager.isAudioMuted("a.mp3")).toBe(true);
+      manager.unmuteAudio("a.mp3");
+      expect(gainValueFor("a.mp3")).toBe(0.7);
+      expect(manager.isAudioMuted("a.mp3")).toBe(false);
+    });
+
+    it("reload of a cached path reapplies changed config mute", async () => {
+      await loadTracked("a.mp3");
+      await loadTracked("a.mp3", { muted: true });
+      expect(gainValueFor("a.mp3")).toBe(0);
+    });
+
+    it("clamps global volume to [0,1]", async () => {
+      await loadTracked("a.mp3");
+      manager.setGlobalAudioState(2, false);
+      expect(gainValueFor("a.mp3")).toBe(1);
+      manager.setGlobalAudioState(-1, false);
+      expect(gainValueFor("a.mp3")).toBe(0);
+    });
+
+    it("clears channelMuted state when a source is removed", async () => {
+      await loadTracked("a.mp3", { muted: true });
+      expect(gainValueFor("a.mp3")).toBe(0);
+
+      manager.removeAudioSource("a.mp3");
+      await loadTracked("a.mp3");
+      expect(gainValueFor("a.mp3")).toBe(1);
     });
   });
 
