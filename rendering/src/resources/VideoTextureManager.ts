@@ -10,8 +10,24 @@ export class VideoTextureManager<T> {
   private globalMuted = false;
   private globalVolume = 1;
   private readonly channelMuted: Record<string, boolean> = {};
+  // Paths that were force-muted to work around the browser autoplay policy,
+  // pending a real user gesture to restore their effective audio state.
+  private readonly pendingGestureUnmute: Set<string> = new Set();
+  private gestureListenersArmed = false;
 
   constructor(private readonly backend: TextureBackend<T>) {}
+
+  // Bound once so add/removeEventListener target the same reference.
+  private readonly onGestureUnmute = (): void => {
+    const paths = Array.from(this.pendingGestureUnmute);
+    this.pendingGestureUnmute.clear();
+    this.disarmGestureListeners();
+    for (const path of paths) {
+      if (this.videoElements[path]) {
+        this.applyEffectiveAudioState(path);
+      }
+    }
+  };
 
   public async loadVideoTexture(
     path: string,
@@ -130,6 +146,10 @@ export class VideoTextureManager<T> {
     }
 
     delete this.channelMuted[path];
+
+    if (this.pendingGestureUnmute.delete(path) && this.pendingGestureUnmute.size === 0) {
+      this.disarmGestureListeners();
+    }
   }
 
   public cleanup(): void {
@@ -138,6 +158,8 @@ export class VideoTextureManager<T> {
     for (const path of paths) {
       this.removeVideoTexture(path);
     }
+    this.pendingGestureUnmute.clear();
+    this.disarmGestureListeners();
   }
 
   public pauseAll(): void {
@@ -152,7 +174,7 @@ export class VideoTextureManager<T> {
     for (const [path, video] of Object.entries(this.videoElements)) {
       if (video.paused && !this.userPaused.has(path)) {
         video.play().catch(error => {
-          this.warnUnlessPlayInterrupted(`Could not resume video ${path}:`, error);
+          this.handlePlayRejection(path, video, error, `Could not resume video ${path}:`);
         });
       }
     }
@@ -171,7 +193,7 @@ export class VideoTextureManager<T> {
     if (video && video.paused) {
       this.userPaused.delete(path);
       video.play().catch(error => {
-        this.warnUnlessPlayInterrupted(`Could not resume video ${path}:`, error);
+        this.handlePlayRejection(path, video, error, `Could not resume video ${path}:`);
       });
     }
   }
@@ -295,6 +317,56 @@ export class VideoTextureManager<T> {
 
   private isPlayInterruptedError(error: unknown): boolean {
     return error instanceof DOMException && error.name === 'AbortError';
+  }
+
+  private isPlayNotAllowedError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'NotAllowedError';
+  }
+
+  /**
+   * Chromium's autoplay policy only allows muted playback without a user
+   * gesture. When an effectively-unmuted video's play() is rejected with
+   * NotAllowedError, fall back to muted playback so the video at least
+   * renders, and restore the real audio state on the next user gesture.
+   */
+  private handlePlayRejection(
+    path: string,
+    video: HTMLVideoElement,
+    error: unknown,
+    message: string
+  ): void {
+    if (this.isPlayNotAllowedError(error) && !video.muted) {
+      video.muted = true;
+      video.play()
+        .then(() => {
+          this.pendingGestureUnmute.add(path);
+          this.armGestureListeners();
+        })
+        .catch(retryError => {
+          this.warnUnlessPlayInterrupted(message, retryError);
+        });
+      return;
+    }
+
+    this.warnUnlessPlayInterrupted(message, error);
+  }
+
+  private armGestureListeners(): void {
+    if (this.gestureListenersArmed) {
+      return;
+    }
+    this.gestureListenersArmed = true;
+    document.addEventListener('pointerdown', this.onGestureUnmute);
+    document.addEventListener('keydown', this.onGestureUnmute);
+  }
+
+  private disarmGestureListeners(): void {
+    if (!this.gestureListenersArmed) {
+      return;
+    }
+    this.gestureListenersArmed = false;
+    document.removeEventListener('pointerdown', this.onGestureUnmute);
+    document.removeEventListener('keydown', this.onGestureUnmute);
   }
 
   private getFilterFromOptions(filter?: string): TextureFilter {

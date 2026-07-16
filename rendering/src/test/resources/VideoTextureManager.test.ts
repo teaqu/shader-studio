@@ -83,6 +83,27 @@ const createMockVideoElement = (options: {
   return video;
 };
 
+// Mock HTMLVideoElement that emulates Chromium's autoplay policy:
+// play() rejects with NotAllowedError while unmuted, resolves once muted.
+const createAutoplayBlockedVideoElement = (options: {
+  paused?: boolean;
+} = {}) => {
+  const video = createMockVideoElement({ paused: options.paused ?? true });
+  video.play.mockImplementation(() => {
+    if (video.muted) {
+      video.paused = false;
+      return Promise.resolve(undefined);
+    }
+    return Promise.reject(
+      new DOMException("play() can only be initiated by a user gesture.", "NotAllowedError"),
+    );
+  });
+  video.pause.mockImplementation(() => {
+    video.paused = true;
+  });
+  return video;
+};
+
 describe("VideoTextureManager", () => {
   let backend: TextureBackend<FakeTex>;
   let videoManager: VideoTextureManager<FakeTex>;
@@ -813,6 +834,151 @@ describe("VideoTextureManager", () => {
       expect(addSpy.mock.calls.some((call) => call[0] === 'keydown')).toBe(false);
 
       vi.useRealTimers();
+    });
+  });
+
+  describe("autoplay policy fallback", () => {
+    it("falls back to muted playback when unmuted play is blocked by autoplay policy", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['blocked.mp4'] = video;
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+        expect(video.paused).toBe(false);
+      });
+
+      expect((videoManager as any).pendingGestureUnmute.has('blocked.mp4')).toBe(true);
+    });
+
+    it("restores effective audio state on first user gesture", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['gesture.mp4'] = video;
+      const addSpy = vi.spyOn(document, 'addEventListener');
+      const removeSpy = vi.spyOn(document, 'removeEventListener');
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+      });
+
+      expect(addSpy.mock.calls.filter(c => c[0] === 'pointerdown').length).toBe(1);
+      expect(addSpy.mock.calls.filter(c => c[0] === 'keydown').length).toBe(1);
+
+      document.dispatchEvent(new Event('pointerdown'));
+
+      expect(video.muted).toBe(false);
+      expect(video.volume).toBe(1); // default global volume
+
+      expect(removeSpy.mock.calls.filter(c => c[0] === 'pointerdown').length).toBe(1);
+      expect(removeSpy.mock.calls.filter(c => c[0] === 'keydown').length).toBe(1);
+
+      // Second gesture should be a no-op: no re-arm, no further listener churn.
+      document.dispatchEvent(new Event('keydown'));
+
+      expect(addSpy.mock.calls.filter(c => c[0] === 'pointerdown').length).toBe(1);
+      expect(removeSpy.mock.calls.filter(c => c[0] === 'pointerdown').length).toBe(1);
+    });
+
+    it("gesture restore respects state changed since the block", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['changed.mp4'] = video;
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+      });
+
+      videoManager.muteVideo('changed.mp4');
+
+      document.dispatchEvent(new Event('pointerdown'));
+
+      expect(video.muted).toBe(true);
+    });
+
+    it("gesture restore does not resume a video paused in the meantime", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['paused-meanwhile.mp4'] = video;
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+        expect(video.paused).toBe(false);
+      });
+
+      videoManager.pauseVideo('paused-meanwhile.mp4');
+      expect(video.paused).toBe(true);
+
+      const playCallsBeforeGesture = video.play.mock.calls.length;
+
+      document.dispatchEvent(new Event('pointerdown'));
+
+      expect(video.paused).toBe(true);
+      expect(video.play.mock.calls.length).toBe(playCallsBeforeGesture);
+    });
+
+    it("config/global-muted videos are unaffected by the fallback", async () => {
+      const video = createMockVideoElement({ paused: true });
+      video.muted = true;
+      (videoManager as any).videoElements['muted.mp4'] = video;
+      (videoManager as any).channelMuted['muted.mp4'] = true;
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.play).toHaveBeenCalled();
+      });
+      await Promise.resolve();
+
+      expect((videoManager as any).pendingGestureUnmute.has('muted.mp4')).toBe(false);
+
+      document.dispatchEvent(new Event('pointerdown'));
+
+      expect(video.muted).toBe(true);
+    });
+
+    it("cleanup removes gesture listeners and pending state", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['cleanup.mp4'] = video;
+      (videoManager as any).videoTextures['cleanup.mp4'] = { id: {} };
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+      });
+      expect((videoManager as any).gestureListenersArmed).toBe(true);
+
+      videoManager.cleanup();
+
+      expect((videoManager as any).pendingGestureUnmute.size).toBe(0);
+      expect((videoManager as any).gestureListenersArmed).toBe(false);
+
+      expect(() => {
+        document.dispatchEvent(new Event('pointerdown'));
+      }).not.toThrow();
+    });
+
+    it("removeVideoTexture drops the path from the pending gesture set", async () => {
+      const video = createAutoplayBlockedVideoElement({ paused: true });
+      (videoManager as any).videoElements['removed.mp4'] = video;
+      (videoManager as any).videoTextures['removed.mp4'] = { id: {} };
+
+      videoManager.resumeAll();
+
+      await vi.waitFor(() => {
+        expect(video.muted).toBe(true);
+      });
+      expect((videoManager as any).pendingGestureUnmute.has('removed.mp4')).toBe(true);
+
+      videoManager.removeVideoTexture('removed.mp4');
+
+      expect((videoManager as any).pendingGestureUnmute.has('removed.mp4')).toBe(false);
+      expect((videoManager as any).gestureListenersArmed).toBe(false);
     });
   });
 
