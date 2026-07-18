@@ -2,6 +2,17 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 const proxyquire = require('proxyquire');
 
+interface ExecFileInvocationOptions {
+  timeout?: number;
+}
+
+interface ExecFileResult {
+  stdout: string;
+  stderr: string;
+}
+
+type ExecFileCallback = (error: Error | null, result?: ExecFileResult) => void;
+
 suite('VideoAudioConverter Test Suite', () => {
   let sandbox: sinon.SinonSandbox;
   let execFileStub: sinon.SinonStub;
@@ -72,6 +83,33 @@ suite('VideoAudioConverter Test Suite', () => {
       const cb = typeof opts === 'function' ? opts : callback;
       cb(new Error(`Command not found: ${cmd}`));
       return {} as any;
+    });
+  }
+
+  function stubDurationConversion(
+    durationOutput: string | Error,
+    captureFfmpegArgs: (args: string[]) => void,
+    captureDurationProbe?: (args: string[], options: ExecFileInvocationOptions) => void
+  ): void {
+    execFileStub.callsFake((
+      cmd: string,
+      args: string[],
+      options: ExecFileInvocationOptions,
+      callback: ExecFileCallback
+    ) => {
+      if (cmd === 'ffprobe') {
+        captureDurationProbe?.(args, options);
+        if (durationOutput instanceof Error) {
+          callback(durationOutput);
+        } else {
+          callback(null, { stdout: durationOutput, stderr: '' });
+        }
+      } else if (cmd === 'ffmpeg') {
+        captureFfmpegArgs(args);
+        callback(null, { stdout: '', stderr: '' });
+      } else {
+        callback(new Error(`Command not found: ${cmd}`));
+      }
     });
   }
 
@@ -210,22 +248,16 @@ suite('VideoAudioConverter Test Suite', () => {
       fsStubs.existsSync.returns(false);
 
       let durationProbeArgs: string[] = [];
-      let durationProbeOptions: { timeout?: number } = {};
+      let durationProbeOptions: ExecFileInvocationOptions = {};
       let capturedArgs: string[] = [];
-      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
-        const cb = typeof opts === 'function' ? opts : callback;
-        if (cmd === 'ffprobe') {
+      stubDurationConversion(
+        ' 4.000000\n',
+        args => capturedArgs = args,
+        (args, options) => {
           durationProbeArgs = args;
-          durationProbeOptions = opts;
-          cb(null, { stdout: ' 4.000000\n', stderr: '' });
-        } else if (cmd === 'ffmpeg') {
-          capturedArgs = args;
-          cb(null, { stdout: '', stderr: '' });
-        } else {
-          cb(new Error(`Command not found: ${cmd}`));
+          durationProbeOptions = options;
         }
-        return {} as any;
-      });
+      );
 
       await converter.convertAudio('/path/to/video.mp4');
 
@@ -272,18 +304,7 @@ suite('VideoAudioConverter Test Suite', () => {
       fsStubs.existsSync.returns(false);
 
       let capturedArgs: string[] = [];
-      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
-        const cb = typeof opts === 'function' ? opts : callback;
-        if (cmd === 'ffprobe') {
-          cb(null, { stdout: '6.250000\n', stderr: '' });
-        } else if (cmd === 'ffmpeg') {
-          capturedArgs = args;
-          cb(null, { stdout: '', stderr: '' });
-        } else {
-          cb(new Error(`Command not found: ${cmd}`));
-        }
-        return {} as any;
-      });
+      stubDurationConversion('6.250000\n', args => capturedArgs = args);
 
       await converter.convertAudio('/path/to/video.webm');
 
@@ -306,18 +327,7 @@ suite('VideoAudioConverter Test Suite', () => {
         fsStubs.existsSync.returns(false);
 
         let capturedArgs: string[] = [];
-        execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
-          const cb = typeof opts === 'function' ? opts : callback;
-          if (cmd === 'ffprobe') {
-            cb(null, { stdout: durationOutput, stderr: '' });
-          } else if (cmd === 'ffmpeg') {
-            capturedArgs = args;
-            cb(null, { stdout: '', stderr: '' });
-          } else {
-            cb(new Error(`Command not found: ${cmd}`));
-          }
-          return {} as any;
-        });
+        stubDurationConversion(durationOutput, args => capturedArgs = args);
 
         await converter.convertAudio('/path/to/video.mp4');
 
@@ -331,18 +341,10 @@ suite('VideoAudioConverter Test Suite', () => {
       fsStubs.existsSync.returns(false);
 
       let capturedArgs: string[] = [];
-      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
-        const cb = typeof opts === 'function' ? opts : callback;
-        if (cmd === 'ffprobe') {
-          cb(new Error('ffprobe duration failed'));
-        } else if (cmd === 'ffmpeg') {
-          capturedArgs = args;
-          cb(null, { stdout: '', stderr: '' });
-        } else {
-          cb(new Error(`Command not found: ${cmd}`));
-        }
-        return {} as any;
-      });
+      stubDurationConversion(
+        new Error('ffprobe duration failed'),
+        args => capturedArgs = args
+      );
 
       const result = await converter.convertAudio('/path/to/video.mp4');
 
@@ -398,6 +400,7 @@ suite('VideoAudioConverter Test Suite', () => {
       const result = await converter.convertAudio('/path/to/video.mp4');
       assert.strictEqual(result, '/path/to/video_vscode.mp4');
       assert.strictEqual(ffmpegConvertCalled, false, 'Should not call ffmpeg for conversion');
+      assert.strictEqual(execFileStub.notCalled, true, 'Should not call ffprobe for cached output');
     });
 
     test('re-converts if source is newer than existing output', async () => {
