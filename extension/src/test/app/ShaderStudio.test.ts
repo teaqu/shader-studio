@@ -1095,7 +1095,7 @@ suite('Shader Studio Test Suite', () => {
         },
       };
 
-      test('muted-only config change sends a plain recompile (regression pin for the mute bug)', () => {
+      test('muted-only config change sends no shader update', () => {
         const clock = sandbox.useFakeTimers();
         const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
 
@@ -1114,8 +1114,7 @@ suite('Shader Studio Test Suite', () => {
         simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(mutedConfig)));
         clock.tick(150);
 
-        sinon.assert.calledOnce(sendFromPathSpy);
-        sinon.assert.calledWithExactly(sendFromPathSpy, '/mock/path/shader.glsl', undefined);
+        sinon.assert.notCalled(sendFromPathSpy);
 
         clock.restore();
       });

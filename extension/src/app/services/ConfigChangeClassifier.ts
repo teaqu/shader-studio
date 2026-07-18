@@ -4,9 +4,9 @@
  *
  * | Verdict     | Meaning                                            | Engine behavior                                   | Observable guarantees                                                                 |
  * |-------------|----------------------------------------------------|---------------------------------------------------|---------------------------------------------------------------------------------------|
- * | `skip`      | Structurally equal (formatting/key-order only)     | Nothing — no message sent                         | Nothing changes at all                                                                 |
- * | `recompile` | Only live-safe fields changed:                     | Plain `shaderSource` resend (no `reload` flag).   | Audio/video keep playing (mute/loop reapplied in place by the loaders); ping-pong      |
- * |             | `muted`, `startTime`, `endTime` on inputs          | Loaders reapply these idempotently to cached media| buffers keep their contents; `iTime` unaffected; shader caches make this cheap         |
+ * | `skip`      | Structurally equal, or only input `muted` changed  | Nothing — no message sent                         | UI mute controls already applied the runtime change; persisted mute is reused on load |
+ * | `recompile` | Only live-safe loop fields changed:                | Plain `shaderSource` resend (no `reload` flag).   | Audio/video keep playing (loop reapplied in place by the loaders); ping-pong buffers   |
+ * |             | `startTime`, `endTime` on inputs                   | Loaders reapply these idempotently to cached media| keep their contents; `iTime` unaffected; shader caches make this cheap                 |
  * | `reload`    | Anything else changed (paths, types, filter/wrap/  | `shaderSource` resend with `reload: true`: all    | Media playback restarts (audio silent until user action, video re-syncs); buffers      |
  * |             | vflip/grayscale, resolution, passes, script, ...)  | resources destroyed and reloaded on next apply    | wiped; `iTime` NOT reset                                                               |
  *
@@ -18,6 +18,11 @@
  * destructive path.
  */
 export type ConfigChangeVerdict = "skip" | "recompile" | "reload";
+
+// Mute buttons apply their runtime command before persisting config, so a
+// mute-only disk change needs no shader message. Manual config edits are
+// picked up on the next load/reset from the persisted value.
+const NO_SHADER_UPDATE_LEAF = /^passes\.[^.]+\.inputs\.[^.]+\.muted$/;
 
 // Leaf paths whose changes the runtime applies in place on a plain recompile.
 const LIVE_SAFE_LEAF = /^passes\.[^.]+\.inputs\.[^.]+\.(muted|startTime|endTime)$/;
@@ -52,6 +57,9 @@ export class ConfigChangeClassifier {
     const changed: string[] = [];
     collectChangedPaths(previous, next, "", changed);
     if (changed.length === 0) {
+      return "skip";
+    }
+    if (changed.every((path) => NO_SHADER_UPDATE_LEAF.test(path))) {
       return "skip";
     }
     return changed.every((path) => LIVE_SAFE_LEAF.test(path)) ? "recompile" : "reload";

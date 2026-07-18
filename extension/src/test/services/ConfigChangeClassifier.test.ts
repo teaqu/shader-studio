@@ -27,22 +27,22 @@ suite('ConfigChangeClassifier', () => {
     assert.strictEqual(c.classifyChange(CONFIG_PATH, reordered), 'skip');
   });
 
-  test('recompile: muted toggled', () => {
+  test('skip: muted toggled', () => {
     const c = primed();
     const next = base(); (next.passes.Image.inputs.iChannel0 as any).muted = true;
-    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'recompile');
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'skip');
   });
 
-  test('recompile: muted field added where absent', () => {
+  test('skip: muted field added where absent', () => {
     const start = base(); delete (start.passes.Image.inputs.iChannel0 as any).muted;
     const c = primed(start);
-    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(base())), 'recompile');
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(base())), 'skip');
   });
 
-  test('recompile: muted field removed', () => {
+  test('skip: muted field removed', () => {
     const c = primed();
     const next = base(); delete (next.passes.Image.inputs.iChannel0 as any).muted;
-    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'recompile');
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'skip');
   });
 
   test('recompile: startTime and endTime changed together', () => {
@@ -50,6 +50,14 @@ suite('ConfigChangeClassifier', () => {
     const next = base();
     (next.passes.Image.inputs.iChannel1 as any).startTime = 2;
     (next.passes.Image.inputs.iChannel1 as any).endTime = 9;
+    assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'recompile');
+  });
+
+  test('recompile: muted plus another live-safe field changed', () => {
+    const c = primed();
+    const next = base();
+    (next.passes.Image.inputs.iChannel0 as any).muted = true;
+    (next.passes.Image.inputs.iChannel1 as any).startTime = 2;
     assert.strictEqual(c.classifyChange(CONFIG_PATH, JSON.stringify(next)), 'recompile');
   });
 

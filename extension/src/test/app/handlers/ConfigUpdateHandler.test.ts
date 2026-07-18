@@ -164,7 +164,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
         return { handler: handlerWithClassifier, classifier };
       }
 
-      test('live-safe-only change (e.g. muted) sends a plain recompile, no reload option', async () => {
+      test('muted-only change sends no shader update', async () => {
         const clock = sandbox.useFakeTimers();
         const fs = require('fs');
         sandbox.stub(fs, 'writeFileSync');
@@ -189,9 +189,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
         });
 
         clock.tick(200);
-        assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
-        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[0], shaderPath);
-        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], undefined);
+        assert.ok(mockShaderProvider.sendShaderFromPath.notCalled);
 
         clock.restore();
       });
