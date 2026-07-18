@@ -33,7 +33,7 @@ export class ShaderProcessor {
 
   public async processMainShaderCompilation(
     message: ShaderSourceMessage,
-    forceCleanup: boolean = false,
+    reload: boolean = false,
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
@@ -42,8 +42,8 @@ export class ShaderProcessor {
     this.imageShaderCode = code;
     this.shaderDebugManager.setImageShaderCode(code);
 
-    if (forceCleanup) {
-      this.renderEngine.flagForceCleanupOnNextApply();
+    if (reload) {
+      this.renderEngine.flagReloadOnNextApply();
     }
 
     try {

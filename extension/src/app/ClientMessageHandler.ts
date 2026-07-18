@@ -10,6 +10,7 @@ import { NavigationHandler } from "./handlers/NavigationHandler";
 import { FileDialogHandler } from "./handlers/FileDialogHandler";
 import { ProfileMessageHandler } from "./handlers/ProfileMessageHandler";
 import { ProfileFileService } from "./services/ProfileFileService";
+import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 
 export class ClientMessageHandler {
   readonly overlay: OverlayPanelHandler;
@@ -27,6 +28,7 @@ export class ClientMessageHandler {
     messenger: Messenger | null,
     extensionPath: string,
     getPanelColumns?: () => Set<vscode.ViewColumn>,
+    configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.logger = Logger.getInstance();
     this.layoutStateStore = new LayoutStateStore(context);
@@ -36,7 +38,7 @@ export class ClientMessageHandler {
       ?? context.globalStorageUri?.fsPath
       ?? extensionPath;
     this.profileHandler = new ProfileMessageHandler(new ProfileFileService(workspaceRoot));
-    this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger);
+    this.config = new ConfigUpdateHandler(glslFileTracker, shaderProvider, messenger, this.logger, configChangeClassifier);
     this.nav = new NavigationHandler(glslFileTracker, getPanelColumns ?? (() => new Set()), this.logger);
     this.files = new FileDialogHandler(
       context,

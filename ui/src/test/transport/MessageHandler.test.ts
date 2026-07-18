@@ -104,7 +104,7 @@ describe("MessageHandler", () => {
       );
     });
 
-    it("should forward forceCleanup=true in the shader message to the runtime session", async () => {
+    it("should forward reload=true in the shader message to the runtime session", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -112,19 +112,19 @@ describe("MessageHandler", () => {
           code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
-          forceCleanup: true,
+          reload: true,
         } as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
       expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        expect.objectContaining({ forceCleanup: true }),
+        expect.objectContaining({ reload: true }),
         true,
       );
     });
 
-    it("should forward forceCleanup=false in the shader message to the runtime session", async () => {
+    it("should forward reload=false in the shader message to the runtime session", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -132,19 +132,19 @@ describe("MessageHandler", () => {
           code: "void mainImage() { gl_FragColor = vec4(1.0); }",
           config: null,
           buffers: {},
-          forceCleanup: false,
+          reload: false,
         } as ShaderSourceMessage,
       } as MessageEvent;
 
       await messageHandler.handleShaderMessage(shaderEvent);
 
       expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        expect.objectContaining({ forceCleanup: false }),
+        expect.objectContaining({ reload: false }),
         false,
       );
     });
 
-    it("should forward shader messages without forceCleanup to the runtime session unchanged", async () => {
+    it("should forward shader messages without reload to the runtime session unchanged", async () => {
       const shaderEvent = {
         data: {
           type: "shaderSource",
@@ -158,7 +158,7 @@ describe("MessageHandler", () => {
       await messageHandler.handleShaderMessage(shaderEvent);
 
       expect(shaderProcessor.processMainShaderCompilation).toHaveBeenCalledWith(
-        expect.not.objectContaining({ forceCleanup: expect.anything() }),
+        expect.not.objectContaining({ reload: expect.anything() }),
         false,
       );
     });
@@ -1046,7 +1046,7 @@ describe("MessageHandler", () => {
           code: 'float helper() { return 1.0; }',
           config: null,
           buffers: {},
-          forceCleanup: true,
+          reload: true,
         } as ShaderSourceMessage,
       } as MessageEvent;
 
@@ -1093,7 +1093,7 @@ describe("MessageHandler", () => {
           code: 'float helper() { return 1.0; }',
           config: null,
           buffers: {},
-          forceCleanup: true,
+          reload: true,
         } as ShaderSourceMessage,
       } as MessageEvent;
 

@@ -22,7 +22,17 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private customUniformManager: CustomUniformManager | null = null;
-  private cleanupOnNextApply: "none" | "full" | "preserveMediaPlayback" = "none";
+  // Which resources to reload when the next compiled pipeline is applied.
+  // Deferred to the apply so cleanup never runs mid-recompile (black flash).
+  // - "none":           reuse everything — the hot path for plain code recompiles.
+  // - "all":            destroy and reload every resource (textures, cubemaps,
+  //                     keyboard, videos, audio) and buffers. Set by
+  //                     flagReloadOnNextApply() for structural config changes.
+  // - "allExceptMedia": like "all" but video/audio elements survive so playback
+  //                     continues. Set by resetTime() — the Reset button wipes
+  //                     buffers and the clock without stopping media.
+  // Neither reload scope touches the clock here; only resetTime() resets it.
+  private resourceReloadScope: "none" | "all" | "allExceptMedia" = "none";
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -253,14 +263,11 @@ export class ShaderPipeline {
 
     if (pathChanged) {
       this.cleanup();
-    } else if (this.cleanupOnNextApply !== "none") {
-      const cleanupMode = this.cleanupOnNextApply;
-      this.cleanupOnNextApply = "none";
-      // Free resources and buffers without resetting the clock — resetTime()
-      // already reset it for explicit resets; config-triggered forceCleanup
-      // should never touch the clock.
-      if (cleanupMode === "preserveMediaPlayback") {
-        this.resourceManager.cleanupPreservingMediaPlayback();
+    } else if (this.resourceReloadScope !== "none") {
+      const reloadScope = this.resourceReloadScope;
+      this.resourceReloadScope = "none";
+      if (reloadScope === "allExceptMedia") {
+        this.resourceManager.cleanupAllExceptMedia();
       } else {
         this.resourceManager.cleanup();
       }
@@ -375,11 +382,11 @@ export class ShaderPipeline {
 
   public resetTime(): void {
     this.timeManager.cleanup();
-    this.cleanupOnNextApply = "preserveMediaPlayback";
+    this.resourceReloadScope = "allExceptMedia";
   }
 
-  public flagForceCleanupOnNextApply(): void {
-    this.cleanupOnNextApply = "full";
+  public flagReloadOnNextApply(): void {
+    this.resourceReloadScope = "all";
   }
 
   private cleanupShaders(shaders?: Record<string, PiShader | null>): void {

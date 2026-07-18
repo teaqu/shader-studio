@@ -20,7 +20,7 @@ const createMockShaderCompiler = () => ({
 
 const createMockResourceManager = () => ({
   cleanup: vi.fn(),
-  cleanupPreservingMediaPlayback: vi.fn(),
+  cleanupAllExceptMedia: vi.fn(),
   loadImageTexture: vi.fn(),
   loadVideoTexture: vi.fn().mockResolvedValue({ texture: null, warning: undefined }),
   loadCubemapTexture: vi.fn().mockResolvedValue(null),
@@ -214,19 +214,19 @@ describe("ShaderPipeline", () => {
       shaderPipeline.resetTime();
 
       mockResourceManager.cleanup.mockClear();
-      mockResourceManager.cleanupPreservingMediaPlayback.mockClear();
+      mockResourceManager.cleanupAllExceptMedia.mockClear();
       mockTimeManager.cleanup.mockClear();
       mockBufferManager.dispose.mockClear();
 
       await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-      expect(mockResourceManager.cleanupPreservingMediaPlayback).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.cleanupAllExceptMedia).toHaveBeenCalledTimes(1);
       expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
       expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
-    it("should clear resources and buffers (but not reset time) after flagForceCleanupOnNextApply + recompile", async () => {
+    it("should clear resources and buffers (but not reset time) after flagReloadOnNextApply + recompile", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
 
@@ -236,7 +236,7 @@ describe("ShaderPipeline", () => {
       mockTimeManager.cleanup.mockClear();
       mockBufferManager.dispose.mockClear();
 
-      shaderPipeline.flagForceCleanupOnNextApply();
+      shaderPipeline.flagReloadOnNextApply();
       expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
 
@@ -247,7 +247,7 @@ describe("ShaderPipeline", () => {
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
 
-    it("should not force cleanup on second compile if neither resetTime nor flagForceCleanupOnNextApply was called", async () => {
+    it("should not force cleanup on second compile if neither resetTime nor flagReloadOnNextApply was called", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
 

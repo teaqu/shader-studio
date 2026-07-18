@@ -308,7 +308,7 @@
     }
   }
 
-  /** Resume audio after a config save that triggers a forceCleanup recompile */
+  /** Resume audio after a config save that triggers a reload recompile */
   function resumeAudioAfterSave() {
     if (tempInput?.type === 'audio' && tempInput.path && audioVideoController) {
       const path = (tempInput as any).resolved_path

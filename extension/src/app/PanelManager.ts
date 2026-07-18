@@ -10,6 +10,7 @@ import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
 import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class PanelManager {
@@ -25,6 +26,7 @@ export class PanelManager {
     private messenger: Messenger,
     private shaderProvider: ShaderProvider,
     private glslFileTracker: GlslFileTracker,
+    private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.logger = Logger.getInstance();
     this.videoAudioConverter = new VideoAudioConverter();
@@ -45,11 +47,12 @@ export class PanelManager {
         const cols = new Set<vscode.ViewColumn>();
         for (const p of this.panels) {
           if (p.viewColumn !== undefined) {
-            cols.add(p.viewColumn); 
+            cols.add(p.viewColumn);
           }
         }
         return cols;
       },
+      this.configChangeClassifier,
     );
   }
 
@@ -254,7 +257,7 @@ export class PanelManager {
 
         // Trigger shader refresh
         setTimeout(() => {
-          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+          this.shaderProvider.sendShaderFromPath(shaderPath, { reload: true });
         }, 150);
       }
     } catch (error) {

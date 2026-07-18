@@ -373,8 +373,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.holdVideoResumeForResetCompile = true;
   }
 
-  public flagForceCleanupOnNextApply(): void {
-    this.shaderPipeline.flagForceCleanupOnNextApply();
+  public flagReloadOnNextApply(): void {
+    this.shaderPipeline.flagReloadOnNextApply();
   }
 
   /** Resume audio without clearing user-paused state. Used on reset. */

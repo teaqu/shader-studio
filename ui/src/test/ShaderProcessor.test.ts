@@ -40,7 +40,7 @@ describe('ShaderProcessor', () => {
       stopRenderLoop: vi.fn(),
       startRenderLoop: vi.fn(),
       cleanup: vi.fn(),
-      flagForceCleanupOnNextApply: vi.fn(),
+      flagReloadOnNextApply: vi.fn(),
       compileShaderPipeline: vi.fn().mockResolvedValue({
         success: true,
         warnings: [],
@@ -140,7 +140,7 @@ describe('ShaderProcessor', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should flag deferred cleanup (not immediate) when forceCleanup is true', async () => {
+    it('should flag deferred cleanup (not immediate) when reload is true', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
@@ -153,10 +153,10 @@ describe('ShaderProcessor', () => {
 
       // Immediate cleanup is skipped to avoid black flash; deferred flag is set instead
       expect(mockRenderEngine.cleanup).not.toHaveBeenCalled();
-      expect(mockRenderEngine.flagForceCleanupOnNextApply).toHaveBeenCalled();
+      expect(mockRenderEngine.flagReloadOnNextApply).toHaveBeenCalled();
     });
 
-    it('should not cleanup when forceCleanup is false', async () => {
+    it('should not cleanup when reload is false', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'void mainImage() {}',
@@ -170,7 +170,7 @@ describe('ShaderProcessor', () => {
       expect(mockRenderEngine.cleanup).not.toHaveBeenCalled();
     });
 
-    it('should NOT reset time when forceCleanup is true', async () => {
+    it('should NOT reset time when reload is true', async () => {
       const mockResetTime = vi.fn();
       (mockRenderEngine as any).resetTime = mockResetTime;
 
@@ -187,7 +187,7 @@ describe('ShaderProcessor', () => {
       expect(mockResetTime).not.toHaveBeenCalled();
     });
 
-    it('should NOT reset time when forceCleanup is false', async () => {
+    it('should NOT reset time when reload is false', async () => {
       const mockResetTime = vi.fn();
       (mockRenderEngine as any).resetTime = mockResetTime;
 

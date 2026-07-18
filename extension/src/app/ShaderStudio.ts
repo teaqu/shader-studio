@@ -16,6 +16,7 @@ import { ConfigGenerator } from "./ConfigGenerator";
 import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
 import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
+import { ConfigChangeClassifier, type ConfigChangeVerdict } from "./services/ConfigChangeClassifier";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -38,6 +39,10 @@ export class ShaderStudio {
   private compileController: CompileController;
   private configChangeDebounce = new Map<string, NodeJS.Timeout>();
   private static readonly CONFIG_CHANGE_DEBOUNCE_MS = 150;
+  // Shared with ShaderProvider (records snapshots on every send) and
+  // ConfigUpdateHandler (classifies the disk-write fallback) so all three
+  // agree on what was last sent for a given config path.
+  private configChangeClassifier = new ConfigChangeClassifier();
 
   constructor(
     context: vscode.ExtensionContext,
@@ -63,6 +68,7 @@ export class ShaderStudio {
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
+      this.configChangeClassifier,
     );
     this.compileController = new CompileController(
       context,
@@ -79,6 +85,7 @@ export class ShaderStudio {
       this.messenger,
       this.shaderProvider,
       this.glslFileTracker,
+      this.configChangeClassifier,
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
     this.webServer.setMessenger(this.messenger);
@@ -140,6 +147,7 @@ export class ShaderStudio {
           this.webServer.setWebSocketPort(actualPort);
           this.logger.info(`WebSocket server ready on port ${actualPort}`);
         },
+        this.configChangeClassifier,
       );
       this.messenger.addTransport(this.webSocketTransport);
     } catch (error) {
@@ -409,7 +417,20 @@ export class ShaderStudio {
     }
     const timer = setTimeout(() => {
       this.configChangeDebounce.delete(shaderPath);
-      void this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+      let verdict: ConfigChangeVerdict = "reload";
+      try {
+        verdict = this.configChangeClassifier.classifyChange(fsPath, document.getText());
+      } catch (error) {
+        this.logger.warn(`Config change classification failed, using reload: ${error}`);
+      }
+      if (verdict === "skip") {
+        this.logger.debug(`Config change is formatting-only, skipping refresh: ${fsPath}`);
+        return;
+      }
+      void this.shaderProvider.sendShaderFromPath(
+        shaderPath,
+        verdict === "reload" ? { reload: true } : undefined,
+      );
     }, ShaderStudio.CONFIG_CHANGE_DEBOUNCE_MS);
     this.configChangeDebounce.set(shaderPath, timer);
   }
@@ -475,7 +496,7 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
-      this.shaderProvider.sendShaderFromEditor(activeEditor, { forceCleanup: true });
+      this.shaderProvider.sendShaderFromEditor(activeEditor, { reload: true });
     } else {
       // Only fall back to the last viewed file if it is currently open in VS Code.
       // Avoid loading a stale path from a previous session when nothing is open.
@@ -488,7 +509,7 @@ export class ShaderStudio {
           `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
         );
         // Use sendShaderFromPath to avoid switching focus
-        await this.shaderProvider.sendShaderFromPath(lastViewedFile, { forceCleanup: true });
+        await this.shaderProvider.sendShaderFromPath(lastViewedFile, { reload: true });
       } else {
         this.logger.info("No active GLSL editor and no open last viewed file — nothing to refresh");
       }
@@ -509,7 +530,7 @@ export class ShaderStudio {
       // Always read from file to avoid switching focus
       this.logger.info(`Sending shader from path: ${shaderPath}`);
       this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-      await this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+      await this.shaderProvider.sendShaderFromPath(shaderPath, { reload: true });
     } catch (error) {
       this.logger.error(
         `Failed to refresh shader at path '${shaderPath}': ${error}`,

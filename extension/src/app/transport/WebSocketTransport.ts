@@ -7,6 +7,7 @@ import { MessageTransport } from "./MessageTransport";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 import { ClientMessageHandler } from "../ClientMessageHandler";
+import { ConfigChangeClassifier } from "../services/ConfigChangeClassifier";
 
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
@@ -19,7 +20,8 @@ export class WebSocketTransport implements MessageTransport {
     private glslFileTracker: GlslFileTracker,
     private context: vscode.ExtensionContext,
     private extensionPath: string,
-    onReady?: (actualPort: number) => void
+    onReady?: (actualPort: number) => void,
+    private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.wsServer = new WebSocketServer({ port, perMessageDeflate: true });
 
@@ -63,6 +65,8 @@ export class WebSocketTransport implements MessageTransport {
         this.glslFileTracker,
         null,
         this.extensionPath,
+        undefined,
+        this.configChangeClassifier,
       );
 
       // Send current shader instead of welcome message

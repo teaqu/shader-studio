@@ -111,7 +111,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
    */
   private compileGeneration = 0;
   private disposed = false;
-  private forceCleanupOnNextApply = false;
+  private reloadOnNextApply = false;
 
   // Pixel inspector readback. WebGPU readback is async, so readPixel()
   // records the wanted coordinate and returns the last resolved pixel;
@@ -394,9 +394,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: [`WebGPU init failed: ${reason}`] };
     }
 
-    if (this.forceCleanupOnNextApply) {
+    if (this.reloadOnNextApply) {
       this.resourceManager?.cleanup();
-      this.forceCleanupOnNextApply = false;
+      this.reloadOnNextApply = false;
     }
 
     this.clampCanvasToTextureLimit();
@@ -1169,8 +1169,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   // ---- Not yet supported in the Slang/WebGPU path ----
 
-  flagForceCleanupOnNextApply(): void {
-    this.forceCleanupOnNextApply = true;
+  flagReloadOnNextApply(): void {
+    this.reloadOnNextApply = true;
   }
 
   getFrameTimeHistory(): number[] {

@@ -21,7 +21,7 @@ export interface RenderingEngine {
   togglePause(): void;
   getTimeManager(): TimeManager;
   resetTime(): void;
-  flagForceCleanupOnNextApply(): void;
+  flagReloadOnNextApply(): void;
   startRenderLoop(): void;
   stopRenderLoop(): void;
   render(time?: number): void;

@@ -5,6 +5,7 @@ import { GlslFileTracker } from "../GlslFileTracker";
 import { Messenger } from "../transport/Messenger";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
+import { ConfigChangeClassifier, type ConfigChangeVerdict } from "../services/ConfigChangeClassifier";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
 export class ConfigUpdateHandler {
@@ -13,6 +14,7 @@ export class ConfigUpdateHandler {
     private shaderProvider: ShaderProvider,
     private messenger: Messenger | null,
     private logger: Logger,
+    private classifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {}
 
   async handleConfigUpdate(payload: {
@@ -60,11 +62,23 @@ export class ConfigUpdateHandler {
       }
 
       setTimeout(() => {
-        if (typeof (this.shaderProvider as any).sendShaderFromPath === "function") {
-          this.shaderProvider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+        if (typeof (this.shaderProvider as any).sendShaderFromPath !== "function") {
+          this.logger.warn("ShaderProvider missing sendShaderFromPath during config refresh");
           return;
         }
-        this.logger.warn("ShaderProvider missing sendShaderFromPath during config refresh");
+        let verdict: ConfigChangeVerdict = "reload";
+        try {
+          verdict = this.classifier.classifyChange(configPath, payload.text);
+        } catch (error) {
+          this.logger.warn(`Config change classification failed, using reload: ${error}`);
+        }
+        if (verdict === "skip") {
+          return;
+        }
+        this.shaderProvider.sendShaderFromPath(
+          shaderPath,
+          verdict === "reload" ? { reload: true } : undefined,
+        );
       }, 150);
     } catch (error) {
       this.logger.error(`Failed to update config: ${error}`);

@@ -958,14 +958,14 @@ describe("ResourceManager", () => {
       expect(audioManager.cleanup).toHaveBeenCalled();
     });
 
-    it("cleanupPreservingMediaPlayback should not cleanup playing media managers", () => {
+    it("cleanupAllExceptMedia should not cleanup playing media managers", () => {
       const textureCache = (resourceManager as any).textureCache;
       const videoManager = (resourceManager as any).videoTextureManager;
       const cubemapManager = (resourceManager as any).cubemapTextureManager;
       const audioManager = (resourceManager as any).audioTextureManager;
       const keyboardInput = (resourceManager as any).keyboardInput;
 
-      resourceManager.cleanupPreservingMediaPlayback();
+      resourceManager.cleanupAllExceptMedia();
 
       expect(textureCache.cleanup).toHaveBeenCalled();
       expect(videoManager.cleanup).not.toHaveBeenCalled();

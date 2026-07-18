@@ -5,6 +5,7 @@ import { ShaderProvider } from '../../app/ShaderProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { PathResolver } from '../../app/PathResolver';
 import { Logger } from '../../app/services/Logger';
+import { ConfigChangeClassifier } from '../../app/services/ConfigChangeClassifier';
 
 suite('ShaderProvider Test Suite', () => {
   let provider: ShaderProvider;
@@ -118,7 +119,7 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.path, shaderPath);
     });
 
-    test('should include forceCleanup in message when option is provided', async () => {
+    test('should include reload in message when option is provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
 
       const mockEditor = {
@@ -145,15 +146,15 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderFromEditor(mockEditor as any, { forceCleanup: true });
+      await provider.sendShaderFromEditor(mockEditor as any, { reload: true });
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.forceCleanup, true);
+      assert.strictEqual(message.reload, true);
     });
 
-    test('should not include forceCleanup when option is not provided', async () => {
+    test('should not include reload when option is not provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
 
       const mockEditor = {
@@ -185,7 +186,7 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.forceCleanup, undefined);
+      assert.strictEqual(message.reload, undefined);
     });
 
     test('should NOT include cursor position when debug mode is disabled', async () => {
@@ -447,7 +448,7 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(clearPersistentErrorsStub);
     });
 
-    test('should include forceCleanup in message when option is provided', async () => {
+    test('should include reload in message when option is provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
       const fs = require('fs');
 
@@ -463,16 +464,16 @@ suite('ShaderProvider Test Suite', () => {
 
       loadAndProcessConfigStub.returns(mockConfig);
 
-      await provider.sendShaderFromPath(shaderPath, { forceCleanup: true });
+      await provider.sendShaderFromPath(shaderPath, { reload: true });
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.forceCleanup, true);
+      assert.strictEqual(message.reload, true);
       assert.strictEqual(message.path, shaderPath);
     });
 
-    test('should not include forceCleanup when option is not provided', async () => {
+    test('should not include reload when option is not provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
       const fs = require('fs');
 
@@ -493,7 +494,7 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.forceCleanup, undefined);
+      assert.strictEqual(message.reload, undefined);
     });
 
     test('should send error to UI for files without mainImage', async () => {
@@ -573,14 +574,14 @@ suite('ShaderProvider Test Suite', () => {
         passes: { Image: {} },
       });
 
-      await provider.sendShaderFromDocument(document, { forceCleanup: true });
+      await provider.sendShaderFromDocument(document, { reload: true });
 
       sinon.assert.calledOnce(sendSpy);
       const message = sendSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
       assert.strictEqual(message.path, shaderPath);
       assert.strictEqual(message.code, 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
-      assert.strictEqual(message.forceCleanup, true);
+      assert.strictEqual(message.reload, true);
     });
 
     test('should include cursor position from the matching visible editor when debug mode is enabled', async () => {
@@ -677,6 +678,64 @@ suite('ShaderProvider Test Suite', () => {
       await provider.sendShaderFromDocument(document);
 
       sinon.assert.notCalled(sendSpy);
+    });
+  });
+
+  suite('config change classifier snapshot recording', () => {
+    test('records the raw config file text (not the reprocessed config) on send', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const configPath = '/path/to/shader.sha.json';
+      const fs = require('fs');
+      const shaderCode = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+      // Deliberately irregular whitespace/formatting so a re-serialized
+      // JSON.stringify() of the processed config would NOT match this string —
+      // proves the classifier is fed the raw file text, not derived JSON.
+      const rawConfigText = '{\n  "version":   "1.0",\n\n  "passes": {   "Image": {} }\n}\n\n';
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readStub = sandbox.stub(fs, 'readFileSync');
+      readStub.withArgs(shaderPath, 'utf-8').returns(shaderCode);
+      readStub.withArgs(configPath, 'utf-8').returns(rawConfigText);
+
+      const mockConfig = { version: '1.0', passes: { Image: {} } };
+      loadAndProcessConfigStub.returns(mockConfig);
+
+      const classifier = new ConfigChangeClassifier();
+      const recordSpy = sandbox.spy(classifier, 'recordSentConfig');
+      const providerWithClassifier = new ShaderProvider(mockMessenger, undefined, classifier);
+
+      await providerWithClassifier.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnce(sendSpy);
+      sinon.assert.calledOnce(recordSpy);
+      sinon.assert.calledWithExactly(recordSpy, configPath, rawConfigText);
+      assert.notStrictEqual(recordSpy.firstCall.args[1], JSON.stringify(mockConfig));
+    });
+
+    test('records null when the config file cannot be read', async () => {
+      const shaderPath = '/path/to/shader-missing-config.glsl';
+      const configPath = '/path/to/shader-missing-config.sha.json';
+      const fs = require('fs');
+      const shaderCode = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readStub = sandbox.stub(fs, 'readFileSync');
+      readStub.withArgs(shaderPath, 'utf-8').returns(shaderCode);
+      readStub.withArgs(configPath, 'utf-8').throws(
+        Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' }),
+      );
+
+      loadAndProcessConfigStub.returns(null);
+
+      const classifier = new ConfigChangeClassifier();
+      const recordSpy = sandbox.spy(classifier, 'recordSentConfig');
+      const providerWithClassifier = new ShaderProvider(mockMessenger, undefined, classifier);
+
+      await providerWithClassifier.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnce(sendSpy);
+      sinon.assert.calledOnce(recordSpy);
+      sinon.assert.calledWithExactly(recordSpy, configPath, null);
     });
   });
 });

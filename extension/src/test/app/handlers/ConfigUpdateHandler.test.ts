@@ -3,6 +3,8 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { ConfigUpdateHandler, computeMinimalReplace } from '../../../app/handlers/ConfigUpdateHandler';
 import { Logger } from '../../../app/services/Logger';
+import { ConfigChangeClassifier } from '../../../app/services/ConfigChangeClassifier';
+import { getConfigPathForShaderPath } from '../../../app/ShaderConfigPaths';
 
 suite('ConfigUpdateHandler Test Suite', () => {
   let handler: ConfigUpdateHandler;
@@ -114,7 +116,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
       clock.tick(200);
       assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
       assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[0], '/test/shader.glsl');
-      assert.deepStrictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], { forceCleanup: true });
+      assert.deepStrictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], { reload: true });
 
       clock.restore();
     });
@@ -135,6 +137,160 @@ suite('ConfigUpdateHandler Test Suite', () => {
       assert.ok(mockShaderProvider.sendShaderFromPath.notCalled);
 
       clock.restore();
+    });
+
+    suite('classified verdict (disk-write fallback)', () => {
+      const shaderPath = '/test/shader.glsl';
+      const configPath = getConfigPathForShaderPath(shaderPath);
+      const baseConfig = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { path: 'video.mp4', muted: false },
+            },
+          },
+        },
+      };
+
+      function makeHandlerWithClassifier(): { handler: ConfigUpdateHandler; classifier: ConfigChangeClassifier } {
+        const classifier = new ConfigChangeClassifier();
+        const handlerWithClassifier = new ConfigUpdateHandler(
+          mockGlslFileTracker,
+          mockShaderProvider,
+          mockMessenger,
+          logger,
+          classifier,
+        );
+        return { handler: handlerWithClassifier, classifier };
+      }
+
+      test('live-safe-only change (e.g. muted) sends a plain recompile, no reload option', async () => {
+        const clock = sandbox.useFakeTimers();
+        const fs = require('fs');
+        sandbox.stub(fs, 'writeFileSync');
+        const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
+        classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const mutedConfig = {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { path: 'video.mp4', muted: true },
+              },
+            },
+          },
+        };
+        const text = JSON.stringify(mutedConfig);
+
+        await handlerWithClassifier.handleConfigUpdate({
+          config: mutedConfig as any,
+          text,
+          shaderPath,
+        });
+
+        clock.tick(200);
+        assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[0], shaderPath);
+        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], undefined);
+
+        clock.restore();
+      });
+
+      test('formatting-only change sends nothing', async () => {
+        const clock = sandbox.useFakeTimers();
+        const fs = require('fs');
+        sandbox.stub(fs, 'writeFileSync');
+        const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
+        classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const text = JSON.stringify(baseConfig, null, 2);
+
+        await handlerWithClassifier.handleConfigUpdate({
+          config: baseConfig as any,
+          text,
+          shaderPath,
+        });
+
+        clock.tick(200);
+        assert.ok(mockShaderProvider.sendShaderFromPath.notCalled);
+
+        clock.restore();
+      });
+
+      test('structural change sends reload', async () => {
+        const clock = sandbox.useFakeTimers();
+        const fs = require('fs');
+        sandbox.stub(fs, 'writeFileSync');
+        const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
+        classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const structuralConfig = {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { path: 'other-video.mp4', muted: false },
+              },
+            },
+          },
+        };
+        const text = JSON.stringify(structuralConfig);
+
+        await handlerWithClassifier.handleConfigUpdate({
+          config: structuralConfig as any,
+          text,
+          shaderPath,
+        });
+
+        clock.tick(200);
+        assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[0], shaderPath);
+        assert.deepStrictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], { reload: true });
+
+        clock.restore();
+      });
+
+      test("no prior snapshot sends reload (mirrors watcher's first-change-no-snapshot case)", async () => {
+        const clock = sandbox.useFakeTimers();
+        const fs = require('fs');
+        sandbox.stub(fs, 'writeFileSync');
+        const { handler: handlerWithClassifier } = makeHandlerWithClassifier();
+        // No prior recordSentConfig call — classifier has never seen this config path.
+
+        const text = JSON.stringify(baseConfig);
+
+        await handlerWithClassifier.handleConfigUpdate({
+          config: baseConfig as any,
+          text,
+          shaderPath,
+        });
+
+        clock.tick(200);
+        assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+        assert.strictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[0], shaderPath);
+        assert.deepStrictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], { reload: true });
+
+        clock.restore();
+      });
+
+      test("classifier throw falls back to reload (mirrors watcher's throw fallback)", async () => {
+        const clock = sandbox.useFakeTimers();
+        const fs = require('fs');
+        sandbox.stub(fs, 'writeFileSync');
+        const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
+        sandbox.stub(classifier, 'classifyChange').throws(new Error('boom'));
+
+        await handlerWithClassifier.handleConfigUpdate({
+          config: baseConfig as any,
+          text: JSON.stringify(baseConfig),
+          shaderPath,
+        });
+
+        clock.tick(200);
+        assert.ok(mockShaderProvider.sendShaderFromPath.calledOnce);
+        assert.deepStrictEqual(mockShaderProvider.sendShaderFromPath.firstCall.args[1], { reload: true });
+
+        clock.restore();
+      });
     });
 
     test('falls back to active GLSL editor when shaderPath is not provided', async () => {

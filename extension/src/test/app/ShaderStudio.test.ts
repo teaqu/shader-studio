@@ -506,7 +506,7 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledOnce(generateConfigSpy);
   });
 
-  test('refreshSpecificShaderByPath should call sendShaderFromPath with forceCleanup', async () => {
+  test('refreshSpecificShaderByPath should call sendShaderFromPath with reload', async () => {
     const shaderPath = '/mock/path/shader.glsl';
     const fs = require('fs');
     
@@ -518,7 +518,7 @@ suite('Shader Studio Test Suite', () => {
     await shaderStudio['refreshSpecificShaderByPath'](shaderPath);
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
-    sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { forceCleanup: true });
+    sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { reload: true });
   });
 
   test('refreshCurrentShader should call sendShaderFromPath when last viewed file is currently open', async () => {
@@ -539,7 +539,7 @@ suite('Shader Studio Test Suite', () => {
     await shaderStudio['refreshCurrentShader']();
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
-    sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { forceCleanup: true });
+    sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { reload: true });
   });
 
   test('refreshCurrentShader should not send shader when last viewed file is from a previous session (not currently open)', async () => {
@@ -561,7 +561,7 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.notCalled(sendShaderFromPathSpy);
   });
 
-  test('refreshCurrentShader should call sendShaderFromEditor with forceCleanup when active GLSL editor exists', async () => {
+  test('refreshCurrentShader should call sendShaderFromEditor with reload when active GLSL editor exists', async () => {
     const mockEditor = createMockGLSLEditor();
 
     // Mock active editor is a GLSL editor
@@ -573,7 +573,7 @@ suite('Shader Studio Test Suite', () => {
     await shaderStudio['refreshCurrentShader']();
 
     sinon.assert.calledOnce(sendShaderSpy);
-    sinon.assert.calledWith(sendShaderSpy, mockEditor, { forceCleanup: true });
+    sinon.assert.calledWith(sendShaderSpy, mockEditor, { reload: true });
   });
 
   test('toggleEditorOverlay command should target the active shader panel', () => {
@@ -1019,11 +1019,12 @@ suite('Shader Studio Test Suite', () => {
   });
 
   suite('.sha.json change watcher (live updates)', () => {
-    function makeConfigDoc(fsPath: string): vscode.TextDocument {
+    function makeConfigDoc(fsPath: string, text: string = '{}'): vscode.TextDocument {
       return {
         uri: vscode.Uri.file(fsPath),
         fileName: fsPath,
         languageId: 'json',
+        getText: () => text,
       } as any;
     }
 
@@ -1047,7 +1048,7 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.calledWith(
         sendFromPathSpy,
         '/mock/path/shader.glsl',
-        sinon.match({ forceCleanup: true }),
+        sinon.match({ reload: true }),
       );
 
       clock.restore();
@@ -1080,6 +1081,165 @@ suite('Shader Studio Test Suite', () => {
       sinon.assert.notCalled(sendFromPathSpy);
 
       clock.restore();
+    });
+
+    suite('classified refresh (ConfigChangeClassifier)', () => {
+      const configPath = '/mock/path/shader.sha.json';
+      const baseConfig = {
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { path: 'video.mp4', muted: false },
+            },
+          },
+        },
+      };
+
+      test('muted-only config change sends a plain recompile (regression pin for the mute bug)', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+        // Prime: simulate a prior send so the classifier has a snapshot to diff against.
+        shaderStudio['configChangeClassifier'].recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const mutedConfig = {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { path: 'video.mp4', muted: true },
+              },
+            },
+          },
+        };
+        simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(mutedConfig)));
+        clock.tick(150);
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+        sinon.assert.calledWithExactly(sendFromPathSpy, '/mock/path/shader.glsl', undefined);
+
+        clock.restore();
+      });
+
+      test('structural config change sends reload', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+        shaderStudio['configChangeClassifier'].recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const structuralConfig = {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { path: 'other-video.mp4', muted: false },
+              },
+            },
+          },
+        };
+        simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(structuralConfig)));
+        clock.tick(150);
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+        sinon.assert.calledWithExactly(
+          sendFromPathSpy,
+          '/mock/path/shader.glsl',
+          sinon.match({ reload: true }),
+        );
+
+        clock.restore();
+      });
+
+      test('formatting-only save sends nothing', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+        shaderStudio['configChangeClassifier'].recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        const reformatted = JSON.stringify(baseConfig, null, 2);
+        simulateDocumentChange(makeConfigDoc(configPath, reformatted));
+        clock.tick(150);
+
+        sinon.assert.notCalled(sendFromPathSpy);
+
+        clock.restore();
+      });
+
+      test('first change with no snapshot sends reload', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+        // No prior recordSentConfig call — classifier has never seen this path.
+        simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(baseConfig)));
+        clock.tick(150);
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+        sinon.assert.calledWithExactly(
+          sendFromPathSpy,
+          '/mock/path/shader.glsl',
+          sinon.match({ reload: true }),
+        );
+
+        clock.restore();
+      });
+
+      test('classifier throw falls back to reload without crashing', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+        // Even with a valid prior snapshot, a classifier that throws must not
+        // propagate — the watcher's try/catch should fall back to the safe default.
+        shaderStudio['configChangeClassifier'].recordSentConfig(configPath, JSON.stringify(baseConfig));
+        sandbox.stub(shaderStudio['configChangeClassifier'], 'classifyChange').throws(new Error('classifier boom'));
+
+        assert.doesNotThrow(() => {
+          simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(baseConfig)));
+          clock.tick(150);
+        });
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+        sinon.assert.calledWithExactly(
+          sendFromPathSpy,
+          '/mock/path/shader.glsl',
+          sinon.match({ reload: true }),
+        );
+
+        clock.restore();
+      });
+
+      test('watcher-triggered send followed by an identical save is classified skip (no second send)', () => {
+        const clock = sandbox.useFakeTimers();
+        const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+        const classifier = shaderStudio['configChangeClassifier'];
+
+        // First save: no snapshot yet, so this is a reload — the same path exercised
+        // by 'first change with no snapshot sends reload' above.
+        simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(baseConfig)));
+        clock.tick(150);
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+        sinon.assert.calledWithExactly(
+          sendFromPathSpy,
+          '/mock/path/shader.glsl',
+          sinon.match({ reload: true }),
+        );
+
+        // Simulate the send-time snapshot that ShaderProvider.sendMainImageShader
+        // records for a real mainImage shader (see ShaderProvider.test.ts's
+        // 'config change classifier snapshot recording' suite for that half of the
+        // loop, pinned end-to-end on the real provider). This harness's mocked
+        // fs.readFileSync returns non-mainImage HTML content, so the real
+        // ShaderProvider never reaches its recordSentConfig call here — we simulate
+        // that step directly to exercise the watcher's skip behavior once a
+        // snapshot exists.
+        classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
+
+        // Second save with IDENTICAL content — must classify as 'skip', no second send.
+        simulateDocumentChange(makeConfigDoc(configPath, JSON.stringify(baseConfig)));
+        clock.tick(150);
+
+        sinon.assert.calledOnce(sendFromPathSpy);
+
+        clock.restore();
+      });
     });
   });
 });

@@ -743,7 +743,7 @@ suite('PanelManager Test Suite', () => {
       sinon.assert.calledWith(
         (mockShaderProvider as any).sendShaderFromPath,
         '/project/shaders/shader.glsl',
-        { forceCleanup: true }
+        { reload: true }
       );
 
       clock.restore();
@@ -786,7 +786,7 @@ suite('PanelManager Test Suite', () => {
       sinon.assert.calledWith(
         (mockShaderProvider as any).sendShaderFromPath,
         '/project/shaders/shader.slang',
-        { forceCleanup: true }
+        { reload: true }
       );
 
       clock.restore();

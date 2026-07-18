@@ -9,6 +9,8 @@ import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
+import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
@@ -22,6 +24,7 @@ export class ShaderProvider {
   constructor(
     private messenger: Messenger,
     getDebugModeEnabled?: () => boolean,
+    private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
@@ -29,7 +32,7 @@ export class ShaderProvider {
 
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -72,7 +75,7 @@ export class ShaderProvider {
 
   public async sendShaderFromPath(
     shaderPath: string,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -103,7 +106,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
@@ -389,7 +392,7 @@ export class ShaderProvider {
   private async sendMainImageShader(
     shaderPath: string,
     code: string,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
   ): Promise<void> {
@@ -406,11 +409,21 @@ export class ShaderProvider {
       path: shaderPath,
       buffers,
       language: getShaderLanguage(shaderPath),
-      forceCleanup: options?.forceCleanup,
+      reload: options?.reload,
       pathMap: this.buildPathMap(config, shaderPath),
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
       cursorPosition,
     };
+
+    // Snapshot the RAW config file text (not the processed `config` above, which
+    // injects resolved_path etc. and would make every diff look structural) so the
+    // next watcher/fallback change can be classified against what we actually sent.
+    const configPath = getConfigPathForShaderPath(shaderPath);
+    try {
+      this.configChangeClassifier.recordSentConfig(configPath, fs.readFileSync(configPath, "utf-8"));
+    } catch {
+      this.configChangeClassifier.recordSentConfig(configPath, null);
+    }
 
     await this.bundleScript(config, shaderPath, message);
     this.messenger.send(message);
@@ -426,7 +439,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     editor: vscode.TextEditor,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     const line = editor.selection.active.line;
     const message = this.buildNonMainImageShaderMessage(
@@ -449,7 +462,7 @@ export class ShaderProvider {
   private async sendNonMainImageShaderFromPath(
     filePath: string,
     code: string,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     const message = this.buildNonMainImageShaderMessage(
       filePath,
@@ -465,7 +478,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     document: vscode.TextDocument,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
   ): Promise<void> {
     let cursorPosition: ShaderSourceMessage["cursorPosition"];
 
@@ -497,7 +510,7 @@ export class ShaderProvider {
   private buildNonMainImageShaderMessage(
     filePath: string,
     code: string,
-    options?: { forceCleanup?: boolean },
+    options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): ShaderSourceMessage {
     return {
@@ -506,7 +519,7 @@ export class ShaderProvider {
       config: null,
       path: filePath,
       buffers: {},
-      forceCleanup: true,
+      reload: true,
       cursorPosition,
     };
   }

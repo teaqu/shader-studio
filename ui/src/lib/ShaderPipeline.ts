@@ -154,7 +154,7 @@ export class ShaderPipeline {
 
     const result = await this.shaderProcessor.processMainShaderCompilation(
       message,
-      message.forceCleanup || false,
+      message.reload || false,
     );
     this.handleCompilationResult(result);
 

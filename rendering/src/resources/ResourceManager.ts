@@ -204,7 +204,7 @@ export class ResourceManager<T> {
     this.keyboardInput.cleanup();
   }
 
-  public cleanupPreservingMediaPlayback(): void {
+  public cleanupAllExceptMedia(): void {
     if (!this.backend) {
       return;
     }

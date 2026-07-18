@@ -2552,13 +2552,13 @@ describe("WebGPURenderingEngine", () => {
       });
     });
 
-    it("cleans cached texture resources on the next compile after flagForceCleanupOnNextApply", async () => {
+    it("cleans cached texture resources on the next compile after flagReloadOnNextApply", async () => {
       const { engine } = compiledEngine();
       const rm = engine.getResourceManager()!;
       const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
       const cleanupSpy = vi.spyOn(rm, "cleanup");
 
-      engine.flagForceCleanupOnNextApply();
+      engine.flagReloadOnNextApply();
       const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
 
       expect(result?.success).toBe(true);
