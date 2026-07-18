@@ -794,6 +794,39 @@ describe('ChannelConfigModal', () => {
   });
 
   describe('Path Change Clears Resolved Path', () => {
+    it('should preserve the selected video webview URI for immediate runtime loading', async () => {
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: {
+          type: 'video',
+          path: './old-video.mp4',
+        },
+      });
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          type: 'workspaceFiles',
+          payload: {
+            files: [{
+              name: 'video-channel-test.mp4',
+              workspacePath: '@/assets/video-channel-test.mp4',
+              thumbnailUri: 'vscode-webview://panel/assets/video-channel-test.mp4',
+              isSameDirectory: false,
+            }],
+          },
+        },
+      }));
+
+      const videoCard = await screen.findByText('video-channel-test.mp4');
+      await fireEvent.click(videoCard.closest('button')!);
+
+      expect(mockOnSave).toHaveBeenLastCalledWith('iChannel0', expect.objectContaining({
+        type: 'video',
+        path: '@/assets/video-channel-test.mp4',
+        resolved_path: 'vscode-webview://panel/assets/video-channel-test.mp4',
+      }));
+    });
+
     it('should clear resolved_path when path is changed so preview updates', async () => {
       const textureInput: ConfigInput = {
         type: 'texture',

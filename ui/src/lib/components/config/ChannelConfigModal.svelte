@@ -221,13 +221,16 @@
     }
   }
 
-  function updatePath(path: string) {
+  function updatePath(path: string, resolvedUri?: string) {
     if (tempInput && (tempInput.type === "texture" || tempInput.type === "video" || tempInput.type === "cubemap" || tempInput.type === "audio")) {
       const cleanPath = extractOriginalPath(path);
       const { resolved_path, startTime, endTime, ...rest } = tempInput as any;
       const isPathChange = 'path' in tempInput && (tempInput as any).path !== cleanPath;
       const preserveTimes = tempInput.type === "audio" && !isPathChange;
       const updated: any = { ...rest, path: cleanPath };
+      if (resolvedUri) {
+        updated.resolved_path = resolvedUri;
+      }
       if (preserveTimes) {
         if (startTime !== null && startTime !== undefined) {
           updated.startTime = startTime;
@@ -270,7 +273,7 @@
     if (resolvedUri) {
       lastSelectedResolvedUri = resolvedUri;
     }
-    updatePath(path);
+    updatePath(path, resolvedUri);
   }
 
   function updateFilter(filter: "linear" | "nearest" | "mipmap") {
