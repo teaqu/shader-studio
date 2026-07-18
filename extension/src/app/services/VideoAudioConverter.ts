@@ -67,14 +67,16 @@ export class VideoAudioConverter {
 
     console.log(`[VideoAudioConverter] Converting ${path.basename(videoPath)} audio...`);
 
-    await execFileAsync("ffmpeg", this.getFfmpegArgs(videoPath, outputPath), { timeout: 120_000 });
+    const duration = await this.getVideoDuration(videoPath);
+    await execFileAsync("ffmpeg", this.getFfmpegArgs(videoPath, outputPath, duration), { timeout: 120_000 });
 
     console.log(`[VideoAudioConverter] Created ${path.basename(outputPath)}`);
     return outputPath;
   }
 
-  private getFfmpegArgs(videoPath: string, outputPath: string): string[] {
+  private getFfmpegArgs(videoPath: string, outputPath: string, duration?: string): string[] {
     const ext = path.extname(videoPath).toLowerCase();
+    const durationArgs = duration ? ["-t", duration] : [];
     // Ogg (like WebM) can only mux Opus/Vorbis/FLAC audio — muxing libmp3lame
     // into an Ogg container is rejected by ffmpeg.
     if (ext === ".webm" || ext === ".ogg") {
@@ -84,6 +86,7 @@ export class VideoAudioConverter {
         "-c:v", "copy",
         "-c:a", "libopus",
         "-b:a", "128k",
+        ...durationArgs,
         outputPath,
       ];
     }
@@ -94,8 +97,27 @@ export class VideoAudioConverter {
       "-c:v", "copy",
       "-c:a", "libmp3lame",
       "-q:a", "2",
+      ...durationArgs,
       outputPath,
     ];
+  }
+
+  private async getVideoDuration(videoPath: string): Promise<string | undefined> {
+    try {
+      const { stdout } = await execFileAsync("ffprobe", [
+        "-v", "quiet",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=duration",
+        "-of", "csv=p=0",
+        videoPath,
+      ], { timeout: 10_000 });
+
+      const duration = stdout.trim();
+      const numericDuration = Number(duration);
+      return Number.isFinite(numericDuration) && numericDuration > 0 ? duration : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async ensureFfmpegAvailable(): Promise<boolean> {

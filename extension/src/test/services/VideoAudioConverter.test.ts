@@ -205,6 +205,44 @@ suite('VideoAudioConverter Test Suite', () => {
       assert.ok(capturedArgs.includes('/path/to/video_vscode.mp4'), 'Should include output path');
     });
 
+    test('caps MP4 conversion at the primary video duration', async () => {
+      const converter = new VideoAudioConverter();
+      fsStubs.existsSync.returns(false);
+
+      let durationProbeArgs: string[] = [];
+      let durationProbeOptions: { timeout?: number } = {};
+      let capturedArgs: string[] = [];
+      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+        const cb = typeof opts === 'function' ? opts : callback;
+        if (cmd === 'ffprobe') {
+          durationProbeArgs = args;
+          durationProbeOptions = opts;
+          cb(null, { stdout: ' 4.000000\n', stderr: '' });
+        } else if (cmd === 'ffmpeg') {
+          capturedArgs = args;
+          cb(null, { stdout: '', stderr: '' });
+        } else {
+          cb(new Error(`Command not found: ${cmd}`));
+        }
+        return {} as any;
+      });
+
+      await converter.convertAudio('/path/to/video.mp4');
+
+      assert.deepStrictEqual(durationProbeArgs, [
+        '-v', 'quiet',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=duration',
+        '-of', 'csv=p=0',
+        '/path/to/video.mp4',
+      ]);
+      assert.strictEqual(durationProbeOptions.timeout, 10_000);
+      assert.deepStrictEqual(
+        capturedArgs.slice(-3),
+        ['-t', '4.000000', '/path/to/video_vscode.mp4']
+      );
+    });
+
     test('uses Opus audio when converting WebM files', async () => {
       const converter = new VideoAudioConverter();
       fsStubs.existsSync.returns(false);
@@ -227,6 +265,90 @@ suite('VideoAudioConverter Test Suite', () => {
       assert.ok(capturedArgs.includes('libopus'), 'Should include Opus for WebM-compatible audio');
       assert.ok(!capturedArgs.includes('-movflags'), 'Should not use MP4 flags for WebM output');
       assert.ok(capturedArgs.includes('/path/to/video_vscode.webm'), 'Should include WebM output path');
+    });
+
+    test('caps WebM conversion at the primary video duration', async () => {
+      const converter = new VideoAudioConverter();
+      fsStubs.existsSync.returns(false);
+
+      let capturedArgs: string[] = [];
+      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+        const cb = typeof opts === 'function' ? opts : callback;
+        if (cmd === 'ffprobe') {
+          cb(null, { stdout: '6.250000\n', stderr: '' });
+        } else if (cmd === 'ffmpeg') {
+          capturedArgs = args;
+          cb(null, { stdout: '', stderr: '' });
+        } else {
+          cb(new Error(`Command not found: ${cmd}`));
+        }
+        return {} as any;
+      });
+
+      await converter.convertAudio('/path/to/video.webm');
+
+      assert.ok(capturedArgs.includes('libopus'), 'Should retain the Opus encoder');
+      assert.deepStrictEqual(
+        capturedArgs.slice(-3),
+        ['-t', '6.250000', '/path/to/video_vscode.webm']
+      );
+    });
+
+    for (const [label, durationOutput] of [
+      ['empty', '   \n'],
+      ['N/A', 'N/A\n'],
+      ['Infinity', 'Infinity\n'],
+      ['zero', '0\n'],
+      ['negative', '-1.500000\n'],
+    ]) {
+      test(`omits duration cap for ${label} probe output`, async () => {
+        const converter = new VideoAudioConverter();
+        fsStubs.existsSync.returns(false);
+
+        let capturedArgs: string[] = [];
+        execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+          const cb = typeof opts === 'function' ? opts : callback;
+          if (cmd === 'ffprobe') {
+            cb(null, { stdout: durationOutput, stderr: '' });
+          } else if (cmd === 'ffmpeg') {
+            capturedArgs = args;
+            cb(null, { stdout: '', stderr: '' });
+          } else {
+            cb(new Error(`Command not found: ${cmd}`));
+          }
+          return {} as any;
+        });
+
+        await converter.convertAudio('/path/to/video.mp4');
+
+        assert.ok(!capturedArgs.includes('-t'));
+        assert.strictEqual(capturedArgs.at(-1), '/path/to/video_vscode.mp4');
+      });
+    }
+
+    test('converts without a duration cap when the duration probe fails', async () => {
+      const converter = new VideoAudioConverter();
+      fsStubs.existsSync.returns(false);
+
+      let capturedArgs: string[] = [];
+      execFileStub.callsFake((cmd: string, args: string[], opts: any, callback?: Function) => {
+        const cb = typeof opts === 'function' ? opts : callback;
+        if (cmd === 'ffprobe') {
+          cb(new Error('ffprobe duration failed'));
+        } else if (cmd === 'ffmpeg') {
+          capturedArgs = args;
+          cb(null, { stdout: '', stderr: '' });
+        } else {
+          cb(new Error(`Command not found: ${cmd}`));
+        }
+        return {} as any;
+      });
+
+      const result = await converter.convertAudio('/path/to/video.mp4');
+
+      assert.strictEqual(result, '/path/to/video_vscode.mp4');
+      assert.ok(!capturedArgs.includes('-t'));
+      assert.strictEqual(capturedArgs.at(-1), '/path/to/video_vscode.mp4');
     });
 
     test('uses Opus audio when converting Ogg files', async () => {
