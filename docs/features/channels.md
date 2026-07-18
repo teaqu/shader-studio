@@ -102,7 +102,10 @@ Bind an audio file. The channel provides a **512×2 texture** containing frequen
 
 ![Choosing an audio channel](../assets/images/select-music.png)
 
-**Supported formats:** `mp3 wav ogg flac aac m4a` — plus video containers (`mp4 webm mov`), which are converted to an audio track automatically.
+**Supported formats:** `mp3 wav ogg flac aac m4a` — plus video containers (`mp4 webm mov`) that contain an audio stream.
+
+!!! note "FFmpeg requirement for video audio conversion"
+    Shader Studio requires both `ffmpeg` and `ffprobe` to be installed and available on your system `PATH` to inspect a video's embedded audio codec and create a compatible copy when conversion is needed. Normal video-channel playback does not require these commands, but without them Shader Studio cannot automatically convert incompatible embedded audio.
 
 **Texture layout:**
 
