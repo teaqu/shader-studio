@@ -25,11 +25,12 @@ describe('ShaderCompilationState', () => {
     expect(state.acceptRequest({ requestId: 9 })).toBe(true);
   });
 
-  it('tracks locked shader requests independently from the unlocked stream', () => {
+  it('seeds locked shader request scopes from the global watermark', () => {
     const state = new ShaderCompilationState();
 
     expect(state.acceptRequest({ requestId: 12 }, 'global')).toBe(true);
-    expect(state.acceptRequest({ requestId: 4 }, '/locked.slang')).toBe(true);
-    expect(state.acceptRequest({ requestId: 3 }, '/locked.slang')).toBe(false);
+    expect(state.acceptRequest({ requestId: 4 }, '/locked.slang')).toBe(false);
+    expect(state.acceptRequest({ requestId: 12 }, '/locked.slang')).toBe(true);
+    expect(state.acceptRequest({ requestId: 11 }, '/locked.slang')).toBe(false);
   });
 });

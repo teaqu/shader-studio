@@ -42,7 +42,10 @@
     getVariablePreview,
     resetVariablePreview,
   } from "../state/variablePreviewState.svelte";
-  import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
+  import {
+    getShaderRequestScope,
+    ShaderCompilationState,
+  } from "../state/ShaderCompilationState.svelte";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { AspectRatioMode, ShaderConfig, SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
@@ -940,7 +943,7 @@
 
     if (type === 'shaderSource') {
       const lockedPath = shaderLocker?.isLocked() ? shaderLocker.getLockedShaderPath() : undefined;
-      const requestScope = lockedPath && event.data.path === lockedPath ? lockedPath : 'global';
+      const requestScope = getShaderRequestScope(event.data.path, lockedPath);
       if (!compilationState.acceptRequest(event.data, requestScope)) {
         return;
       }

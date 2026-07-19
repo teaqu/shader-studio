@@ -817,6 +817,43 @@ describe('ShaderViewer', () => {
     expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
   });
 
+  it('keeps the global request watermark when locking the current shader', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 10,
+      language: 'slang',
+      path: '/test/a.slang',
+      code: 'float4 mainImage(float2 uv) { return 1; }',
+      config: { passes: { Image: {} } },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/a.slang', requestId: 10 }),
+      }));
+    });
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    await tick();
+    const currentCanvas = container.querySelector('canvas');
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 9,
+      language: 'glsl',
+      path: '/test/a.slang',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { passes: { Image: {} } },
+    });
+    await tick();
+
+    expect(container.querySelector('canvas')).toBe(currentCanvas);
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
+  });
+
   it('should apply Image Config Resolution to the session stores on shader load', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

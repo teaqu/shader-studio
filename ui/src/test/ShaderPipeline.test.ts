@@ -5,6 +5,7 @@ import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { CursorPositionMessage } from '@shader-studio/types';
+import { ShaderCompilationState } from '../lib/state/ShaderCompilationState.svelte';
 
 vi.mock('../lib/state/editorOverlayState.svelte', () => ({
   getEditorOverlayVisible: vi.fn(() => false),
@@ -355,6 +356,33 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       mocks.shaderLocker,
       mocks.shaderDebugManager,
     );
+  });
+
+  it('rejects a delayed request after locking at the global watermark', async () => {
+    const compilationState = new ShaderCompilationState();
+    expect(compilationState.acceptRequest({ requestId: 10 })).toBe(true);
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+    const event = {
+      data: {
+        ...makeShaderEvent('delayed', '/a.slang').data,
+        requestId: 9,
+        language: 'slang',
+      },
+    } as MessageEvent;
+
+    await expect(pipeline.handleShaderMessage(event)).resolves.toBeUndefined();
+
+    expect(mocks.compileShaderPipeline).not.toHaveBeenCalled();
+    expect(mocks.shaderDebugManager.setShaderContext).not.toHaveBeenCalled();
   });
 
   it('compiles the latest shader after a message arrives while a compile is in flight', async () => {

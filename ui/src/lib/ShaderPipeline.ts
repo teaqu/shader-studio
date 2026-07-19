@@ -14,7 +14,10 @@ import { BufferPathResolver } from './util/BufferPathResolver';
 import { ShaderDebugManager } from './ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from './ShaderProcessor';
 import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
-import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
+import {
+  getShaderRequestScope,
+  type ShaderCompilationState,
+} from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderPipeline {
@@ -35,7 +38,10 @@ export class ShaderPipeline {
     results: Map<string, { index: number; result: CompilationResult }>;
   }>();
   private latestCompileGenerationId = 0;
-  private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
+  private compilationState: (
+    Pick<ShaderCompilationState, 'setResult'>
+    & Partial<Pick<ShaderCompilationState, 'acceptRequest'>>
+  ) | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
 
@@ -44,7 +50,8 @@ export class ShaderPipeline {
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
     shaderDebugManager: ShaderDebugManager,
-    compilationState?: Pick<ShaderCompilationState, 'setResult'>,
+    compilationState?: Pick<ShaderCompilationState, 'setResult'>
+      & Partial<Pick<ShaderCompilationState, 'acceptRequest'>>,
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
@@ -56,7 +63,10 @@ export class ShaderPipeline {
     this.compilationState = compilationState ?? null;
   }
 
-  public setCompilationState(compilationState: Pick<ShaderCompilationState, 'setResult'> | null): void {
+  public setCompilationState(
+    compilationState: Pick<ShaderCompilationState, 'setResult'>
+      & Partial<Pick<ShaderCompilationState, 'acceptRequest'>> | null,
+  ): void {
     this.compilationState = compilationState;
   }
 
@@ -68,6 +78,10 @@ export class ShaderPipeline {
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
 
       if (!this.isValidShaderMessage(type)) {
+        return undefined;
+      }
+
+      if (!this.acceptRequest(message)) {
         return undefined;
       }
 
@@ -167,6 +181,14 @@ export class ShaderPipeline {
 
   private isValidShaderMessage(type: string): boolean {
     return type === "shaderSource";
+  }
+
+  private acceptRequest(message: ShaderSourceMessage): boolean {
+    const lockedPath = this.shaderLocker.isLocked()
+      ? this.shaderLocker.getLockedShaderPath()
+      : undefined;
+    const scope = getShaderRequestScope(message.path, lockedPath);
+    return this.compilationState?.acceptRequest?.(message, scope) ?? true;
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
