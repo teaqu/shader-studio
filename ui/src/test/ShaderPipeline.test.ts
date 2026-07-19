@@ -363,7 +363,6 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     expect(compilationState.acceptRequest({ requestId: 10 })).toBe(true);
     vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
     vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
-    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
     pipeline = new ShaderPipeline(
       mocks.transport,
       mocks.renderEngine,
@@ -502,10 +501,10 @@ describe('ShaderPipeline — concurrent shader messages', () => {
         compileGeneration: { id, rootIndex: index, rootCount: 2, rootPath: path },
       },
     } as MessageEvent);
-    const oldFirst = pipeline.handleShaderMessage(event(10, '/old-a.slang', 0));
-    const oldQueued = pipeline.handleShaderMessage(event(10, '/old-b.slang', 1));
-    const currentFirst = pipeline.handleShaderMessage(event(11, '/new-a.slang', 0));
-    const currentSecond = pipeline.handleShaderMessage(event(11, '/new-b.slang', 1));
+    const oldFirst = pipeline.handleShaderMessage(event(10, '/a.slang', 0));
+    const oldQueued = pipeline.handleShaderMessage(event(10, '/b.slang', 1));
+    const currentFirst = pipeline.handleShaderMessage(event(11, '/a.slang', 0));
+    const currentSecond = pipeline.handleShaderMessage(event(11, '/b.slang', 1));
 
     await expect(oldQueued).resolves.toBeUndefined();
     mocks.resolveCompile();
@@ -518,9 +517,9 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     await currentSecond;
 
     expect(mocks.compileShaderPipeline.mock.calls.map((call: any[]) => call[2])).toEqual([
-      '/old-a.slang',
-      '/new-a.slang',
-      '/new-b.slang',
+      '/a.slang',
+      '/a.slang',
+      '/b.slang',
     ]);
     expect(mocks.transport.postMessage).toHaveBeenCalledTimes(1);
   });
@@ -572,6 +571,42 @@ describe('ShaderPipeline — concurrent shader messages', () => {
 
     expect(mocks.compileShaderPipeline).not.toHaveBeenCalled();
     expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not let an irrelevant newer root make the locked root stale', async () => {
+    const compilationState = new ShaderCompilationState();
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+    const event = (id: number, path: string) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        requestId: id,
+        compileGeneration: { id, rootIndex: 0, rootCount: 1, rootPath: path },
+        compileScope: { rootUris: [`file://${path}`], generationId: id },
+      },
+    } as MessageEvent);
+
+    const slowA = pipeline.handleShaderMessage(event(10, '/a.slang'));
+    await pipeline.handleShaderMessage(event(11, '/b.slang'));
+    mocks.resolveCompile();
+    await expect(slowA).resolves.toEqual({ success: true, warnings: undefined });
+    await expect(pipeline.handleShaderMessage(event(9, '/a.slang'))).resolves.toBeUndefined();
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(1);
+    expect((mocks.compileShaderPipeline.mock.calls[0] as any[])[2]).toBe('/a.slang');
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: ['file:///a.slang'], generationId: 10 },
+    });
   });
 
   it('reports only the compiled locked root when sibling generation roots are skipped', async () => {

@@ -943,12 +943,16 @@
 
     if (type === 'shaderSource') {
       const lockedPath = shaderLocker?.isLocked() ? shaderLocker.getLockedShaderPath() : undefined;
-      const requestScope = getShaderRequestScope(event.data.path, lockedPath);
-      if (!compilationState.acceptRequest(event.data, requestScope)) {
-        return;
-      }
       if (lockedPath && event.data.path !== lockedPath) {
         await pipeline?.handleShaderMessage(event);
+        return;
+      }
+      const requestScope = getShaderRequestScope(
+        event.data.path,
+        lockedPath,
+        event.data.compileScope?.rootUris[0],
+      );
+      if (!compilationState.acceptRequest(event.data, requestScope)) {
         return;
       }
       // If the shader's language doesn't match the active engine, remount the

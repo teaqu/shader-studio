@@ -791,7 +791,7 @@ describe('ShaderViewer', () => {
       type: 'shaderSource',
       requestId: 9,
       language: 'glsl',
-      path: '/test/stale.glsl',
+      path: '/test/current.slang',
       code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
       config: { passes: { Image: {} } },
     });
@@ -810,7 +810,7 @@ describe('ShaderViewer', () => {
     const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
 
     await sendMessage({
-      type: 'shaderSource', requestId: 3, language: 'glsl', path: '/test/stale.glsl',
+      type: 'shaderSource', requestId: 3, language: 'glsl', path: '/test/current.glsl',
       code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }', config: { passes: { Image: {} } },
     });
 

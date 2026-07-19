@@ -3,10 +3,14 @@ import type { CompilationResult } from '../ShaderProcessor';
 
 export const GLOBAL_SHADER_REQUEST_SCOPE = 'global';
 
-export function getShaderRequestScope(messagePath?: string, lockedPath?: string): string {
-  return lockedPath && messagePath === lockedPath
-    ? lockedPath
-    : GLOBAL_SHADER_REQUEST_SCOPE;
+export function getShaderRequestScope(
+  messagePath?: string,
+  lockedPath?: string,
+  rootUri?: string,
+): string {
+  return rootUri
+    ?? (lockedPath && messagePath === lockedPath ? lockedPath : messagePath)
+    ?? GLOBAL_SHADER_REQUEST_SCOPE;
 }
 
 export class ShaderCompilationState {
