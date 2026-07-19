@@ -38,7 +38,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 
 | Type | Description |
 |------|-------------|
-| **Buffer** | Output from another pass (BufferA–D) |
+| **Buffer** | Output from another configured pass (arbitrary names supported) |
 | **Texture** | Image files (jpg, png, etc.) |
 | **Video** | Video files (webm, mp4, mov, avi) |
 | **Audio** | Audio files (mp3, wav, ogg, etc.) — provides FFT and waveform data as a texture |
@@ -50,7 +50,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Pass | Description |
 |------|-------------|
 | **Image** | Main output pass (required) |
-| **BufferA–D** | Up to 4 intermediate render passes |
+| **BufferA–D** | Imported Shadertoy names work; Shader Studio also supports arbitrary names and more than 4 intermediate passes |
 | **Common** | Shared code included in all passes |
 
 ## Not Yet Supported
@@ -60,5 +60,4 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Webcam input | Live camera feed (planned) |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
-
 

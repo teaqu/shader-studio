@@ -4,7 +4,7 @@
 
 Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on.
 
-Each pass has its own channel grid with up to 16 slots, from `iChannel0` to `iChannel15`. The Image pass can have channels, and every Buffer pass can have a separate set of channels. That means `iChannel0` in Image can point to BufferA, while `iChannel0` in BufferA can point to a noise texture.
+Each pass has its own channel grid with up to 16 slots, from `iChannel0` to `iChannel15`. The Image pass, arbitrary named fragment buffer passes, and Slang compute passes can each have a separate set of channels. That means `iChannel0` in Image can point to a pass named `Flow`, while `iChannel0` in `Flow` can point to a noise texture.
 
 ## What Channels Can Do
 
@@ -176,9 +176,19 @@ vec4 sky  = texture(iChannel0, dir);  // samplerCube lookup — direction, not U
 !!! warning
     Cubemap channels are `samplerCube`, not `sampler2D`. Passing a `vec2` UV will cause a compile error.
 
-## Buffer Channels
+## Pass Output (Buffer) Channels
 
-Read the output of another pass as a texture. The `source` field names the pass to read from.
+Read the texture output of another pass. The `source` field accepts any configured non-Image pass name, including arbitrary fragment names such as `Flow` and Slang compute names such as `ComputeBlur`. Pass names and counts are not limited to `BufferA` through `BufferD`.
+
+For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
+
+```json
+"iChannel0": {
+  "type": "buffer",
+  "source": "ComputeBlur",
+  "layer": 1
+}
+```
 
 ![Choosing a buffer or keyboard channel](../assets/images/select-misc.png)
 
@@ -190,7 +200,7 @@ vec4 prev = texture(iChannel0, bufferUV);
 !!! note
     Use `iChannelResolution[N].xy` to get the buffer's resolution for UV mapping, especially if the buffer has a fixed resolution different from the canvas.
 
-**Self-reference (feedback):** A buffer can list itself as a source. Each frame it reads its own *previous* output. This enables feedback loops, particle trails, and simulations.
+**Frame timing:** a pass samples the current-frame output of a source that runs earlier in the frame. A self-reference or reference to a source that runs later reads that source's *previous* output. This enables feedback loops, particle trails, and simulations. Compute passes run before fragment buffer passes, then Image runs last.
 
 
 

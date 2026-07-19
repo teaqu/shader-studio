@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "storage": {
+    "laneA": {
+      "count": 256,
+      "stride": 16,
+      "elementType": "float4"
+    },
+    "laneB": {
+      "count": 256,
+      "stride": 16,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "path": "init.slang",
+      "dispatch": { "cover": "laneA" },
+      "dispatchOnce": true,
+      "workgroupSize": [64, 1, 1]
+    },
+    "ComputeSubsteps": {
+      "path": "substep.slang",
+      "dispatch": { "cover": "laneA" },
+      "dispatchCount": 6,
+      "workgroupSize": [64, 1, 1]
+    },
+    "Image": {
+      "resolution": { "aspectRatio": "16:9" }
+    }
+  }
+}

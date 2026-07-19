@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "storage": {
+    "positions": {
+      "count": 512,
+      "stride": 16,
+      "elementType": "float4"
+    },
+    "velocities": {
+      "count": 512,
+      "stride": 16,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "path": "init.slang",
+      "dispatch": { "cover": "positions" },
+      "dispatchOnce": true,
+      "workgroupSize": [64, 1, 1]
+    },
+    "ComputeSim": {
+      "path": "sim.slang",
+      "dispatch": { "cover": "positions" },
+      "workgroupSize": [64, 1, 1]
+    },
+    "Image": {
+      "resolution": { "aspectRatio": "16:9" }
+    },
+    "common": {
+      "path": "common.slang"
+    }
+  }
+}

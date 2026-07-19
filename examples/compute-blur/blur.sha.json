@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeBlur": {
+      "path": "compute.slang",
+      "resolution": { "scale": 1 },
+      "outputLayers": 2
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeBlur",
+          "layer": 1
+        }
+      },
+      "resolution": { "aspectRatio": "16:9" }
+    }
+  }
+}
