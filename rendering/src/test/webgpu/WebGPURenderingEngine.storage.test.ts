@@ -89,6 +89,30 @@ function installedStorageBuffers(engine: WebGPURenderingEngine): Map<string, GPU
   return (engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers;
 }
 
+function enableRendering(
+  engine: WebGPURenderingEngine,
+  device: ReturnType<typeof engineHarness>["device"],
+) {
+  const renderPass = {
+    setPipeline: vi.fn(),
+    setBindGroup: vi.fn(),
+    draw: vi.fn(),
+    end: vi.fn(),
+  };
+  Object.assign(device, {
+    createCommandEncoder: vi.fn(() => ({
+      beginRenderPass: vi.fn(() => renderPass),
+      finish: vi.fn(() => ({})),
+    })),
+  });
+  (engine as unknown as { context: GPUCanvasContext }).context = {
+    getCurrentTexture: () => ({
+      createView: () => ({ label: "canvas-view" }),
+    }),
+  } as unknown as GPUCanvasContext;
+  return renderPass;
+}
+
 describe("WebGPURenderingEngine storage buffers", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
@@ -113,6 +137,42 @@ describe("WebGPURenderingEngine storage buffers", () => {
     );
   });
 
+  it("draws a storage-only fragment pass with a read-only layout and complete bind group", async () => {
+    const { engine, device } = engineHarness();
+    const renderPass = enableRendering(engine, device);
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ positions: { count: 4, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+    const positions = installedStorageBuffers(engine).get("positions")!;
+
+    engine.render(1000);
+
+    const layoutEntries = device.createBindGroupLayout.mock.calls.at(-1)![0].entries;
+    expect(layoutEntries).toEqual([
+      {
+        binding: 0,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: "uniform" },
+      },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+    ]);
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries).toEqual([
+      { binding: 0, resource: { buffer: expect.anything() } },
+      { binding: 1, resource: { buffer: positions } },
+    ]);
+    expect(renderPass.setBindGroup).toHaveBeenCalledWith(
+      0,
+      device.createBindGroup.mock.results.at(-1)!.value,
+    );
+    expect(renderPass.draw).toHaveBeenCalledWith(3);
+  });
+
   it("reuses the exact storage buffer for an identical recompile", async () => {
     const { engine, device } = engineHarness();
     const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
@@ -123,6 +183,30 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     expect(createdStorageBuffers(device)).toEqual([firstBuffer]);
     expect(firstBuffer.destroy).not.toHaveBeenCalled();
+  });
+
+  it("reuses an identical fragment pipeline but rebuilds it when storage layout changes", async () => {
+    const { engine, device } = engineHarness();
+    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    const firstPipeline = (engine as unknown as {
+      passPipelines: Map<string, unknown>;
+    }).passPipelines.get("Image");
+
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
+      .toBe(firstPipeline);
+    expect(device.createBindGroupLayout).toHaveBeenCalledTimes(1);
+
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+
+    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines.get("Image"))
+      .not.toBe(firstPipeline);
+    expect(device.createBindGroupLayout).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -403,6 +487,28 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     expect(createdStorageBuffers(device)).toHaveLength(2);
     expect(buffersAfterReset[1].destroy).not.toHaveBeenCalled();
+  });
+
+  it("binds reset-created storage on the next fragment frame instead of the destroyed buffer", async () => {
+    const { engine, device } = engineHarness();
+    enableRendering(engine, device);
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+    const firstBuffer = installedStorageBuffers(engine).get("a")!;
+    engine.render(1000);
+
+    engine.resetTime();
+    const resetBuffer = installedStorageBuffers(engine).get("a")!;
+    engine.render(1016);
+
+    expect(resetBuffer).not.toBe(firstBuffer);
+    expect((firstBuffer as unknown as FakeBuffer).destroy).toHaveBeenCalledTimes(1);
+    const latestEntries = device.createBindGroup.mock.calls.at(-1)![0].entries;
+    expect(latestEntries).toContainEqual({ binding: 1, resource: { buffer: resetBuffer } });
+    expect(latestEntries).not.toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
   });
 
   it("re-zeroes retained storage layout after a valid shader file switch", async () => {

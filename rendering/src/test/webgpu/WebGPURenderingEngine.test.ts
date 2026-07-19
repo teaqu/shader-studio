@@ -2967,9 +2967,10 @@ describe("WebGPURenderingEngine", () => {
 
     engine.render(1000);
 
-    expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
-      { slot: 0, textureView: { label: "bufferA-previous" } },
-    ]);
+    expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-previous" } }],
+      expect.any(Map),
+    );
   });
 
   it("passes the source pipeline's current-frame view for an Image channel", () => {
@@ -3002,9 +3003,53 @@ describe("WebGPURenderingEngine", () => {
 
     engine.render(1000);
 
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
-      { slot: 0, textureView: { label: "bufferA-current" } },
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-current" } }],
+      expect.any(Map),
+    );
+  });
+
+  it("rebuilds a channel fragment pass with both resolved channels and installed storage", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const installedStorage = new Map([["positions", positions]]);
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+    (engine as any).storageBuffers = installedStorage;
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{
+          kind: "buffer",
+          slot: 0,
+          key: "iChannel0",
+          source: "BufferA",
+          readFrom: "current-frame",
+        }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
     ]);
+
+    engine.render(1000);
+
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-current" } }],
+      installedStorage,
+    );
   });
 
   it("skips a pass entirely when any of its channel sources is unresolvable", () => {
@@ -3152,15 +3197,19 @@ describe("WebGPURenderingEngine", () => {
     ]);
 
     engine.render(1000);
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(1, [
-      { slot: 0, textureView: { label: "initial-view" } },
-    ]);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(
+      1,
+      [{ slot: 0, textureView: { label: "initial-view" } }],
+      expect.any(Map),
+    );
 
     bufferViewToggle = true;
     engine.render(1016);
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(2, [
-      { slot: 0, textureView: { label: "swapped-view" } },
-    ]);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(
+      2,
+      [{ slot: 0, textureView: { label: "swapped-view" } }],
+      expect.any(Map),
+    );
   });
 
   describe("per-pass compile cache", () => {
@@ -3976,13 +4025,17 @@ describe("WebGPURenderingEngine", () => {
       expect(drawCalls).toEqual(["bufferA-current", "canvas"]);
       // BufferA's own self-feedback buffer channel resolved fine alongside
       // Image's coexisting buffer + texture channels.
-      expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
-        { slot: 0, textureView: { label: "bufferA-previous" } },
-      ]);
-      expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
-        { slot: 0, textureView: { label: "bufferA-current" } },
-        { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
-      ]);
+      expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith(
+        [{ slot: 0, textureView: { label: "bufferA-previous" } }],
+        expect.any(Map),
+      );
+      expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+        [
+          { slot: 0, textureView: { label: "bufferA-current" } },
+          { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
+        ],
+        expect.any(Map),
+      );
     });
   });
 

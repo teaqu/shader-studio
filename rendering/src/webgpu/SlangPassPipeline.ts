@@ -1,4 +1,5 @@
 /// <reference types="@webgpu/types" />
+import type { StorageBindingNode } from "../types/PassGraph";
 import { SHADERTOY_UNIFORM_SIZE, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
 export interface SlangPassPipelineDescriptor {
@@ -7,6 +8,7 @@ export interface SlangPassPipelineDescriptor {
   height: number;
   output: "texture" | "canvas";
   channels: Array<{ slot: number; key: string; kind?: string }>;
+  storage: StorageBindingNode[];
 }
 
 export interface SlangChannelResource {
@@ -104,10 +106,10 @@ export class SlangPassPipeline {
         throw error;
       }
     }
-    if (this.descriptor.channels.length === 0) {
-      // Channel passes cannot build a valid bind group yet (the explicit
-      // layout requires their texture/sampler entries); rebuildBindGroup
-      // creates it each frame once channel views are resolved.
+    if (this.descriptor.channels.length === 0 && this.descriptor.storage.length === 0) {
+      // Passes with channels or storage cannot build a valid bind group yet
+      // (the explicit layout requires those resources); rebuildBindGroup
+      // creates it each frame once live resources are resolved.
       this.bindGroup = this.device.createBindGroup({
         layout: this.bindGroupLayout,
         entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
@@ -159,8 +161,19 @@ export class SlangPassPipeline {
     this.descriptor = nextDescriptor;
   }
 
-  rebuildBindGroup(resources: SlangChannelResource[]): void {
+  rebuildBindGroup(
+    resources: SlangChannelResource[],
+    storageBuffers?: Map<string, GPUBuffer>,
+  ): void {
     if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout) {
+      return;
+    }
+    const resolvedStorage = this.descriptor.storage.map((node) => ({
+      node,
+      buffer: storageBuffers?.get(node.name),
+    }));
+    if (resolvedStorage.some(({ buffer }) => !buffer)) {
+      this.bindGroup = null;
       return;
     }
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
@@ -170,6 +183,13 @@ export class SlangPassPipeline {
       const samplerBinding = textureBinding + 1;
       entries.push({ binding: textureBinding, resource: sorted[index].textureView });
       entries.push({ binding: samplerBinding, resource: sorted[index].sampler ?? this.sampler! });
+    }
+    const storageBaseBinding = 1 + this.descriptor.channels.length * 2;
+    for (const { node, buffer } of resolvedStorage) {
+      entries.push({
+        binding: storageBaseBinding + node.binding,
+        resource: { buffer: buffer! },
+      });
     }
     this.bindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayout,
@@ -218,7 +238,8 @@ export class SlangPassPipeline {
   /**
    * Bind group layout entries matching the prelude's binding contract:
    * binding 0 = uniforms; then, over the slot-sorted channel array, texture
-   * at 1+index*2 and sampler at 2+index*2.
+   * at 1+index*2 and sampler at 2+index*2; storage follows channel
+   * pairs at 1+channelCount*2+node.binding.
    */
   private buildBindGroupLayoutEntries(): GPUBindGroupLayoutEntry[] {
     const entries: GPUBindGroupLayoutEntry[] = [{
@@ -241,6 +262,14 @@ export class SlangPassPipeline {
         binding: 2 + index * 2,
         visibility: GPUShaderStage.FRAGMENT,
         sampler: { type: "filtering" },
+      });
+    }
+    const storageBaseBinding = 1 + sorted.length * 2;
+    for (const node of this.descriptor.storage) {
+      entries.push({
+        binding: storageBaseBinding + node.binding,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
       });
     }
     return entries;

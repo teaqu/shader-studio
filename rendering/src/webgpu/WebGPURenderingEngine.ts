@@ -1637,6 +1637,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         channels,
+        storage,
       });
   }
 
@@ -1900,11 +1901,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
-      // Channel passes have no bind group until the first rebuildBindGroup:
-      // their explicit layout requires the channel texture/sampler entries,
-      // so it must be (re)built before the bind-group presence check.
-      if (channelResources.length > 0) {
-        pipeline.rebuildBindGroup(channelResources);
+      // Passes with channels or storage have no eager bind group: their
+      // explicit layout requires live resources, so it must be (re)built
+      // before the bind-group presence check.
+      if (channelResources.length > 0 || this.storageBuffers.size > 0) {
+        pipeline.rebuildBindGroup(channelResources, this.storageBuffers);
       }
       const bindGroup = pipeline.getBindGroup();
       if (!bindGroup) {

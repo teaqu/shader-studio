@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { StorageBindingNode } from "../../types/PassGraph";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
@@ -32,6 +33,24 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
   };
 }
 
+const storageA: StorageBindingNode = {
+  name: "positions",
+  binding: 0,
+  elementType: "float4",
+  builtin: true,
+  count: 64,
+  stride: 16,
+};
+
+const storageB: StorageBindingNode = {
+  name: "particles",
+  binding: 1,
+  elementType: "Particle",
+  builtin: false,
+  count: 32,
+  stride: 32,
+};
+
 describe("SlangPassPipeline", () => {
   it("creates a canvas pipeline without ping-pong textures", async () => {
     const device = fakeDevice();
@@ -40,6 +59,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -58,6 +78,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -77,6 +98,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -103,6 +125,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl");
@@ -123,6 +146,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -140,6 +164,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -157,6 +182,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -176,6 +202,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -203,6 +230,156 @@ describe("SlangPassPipeline", () => {
     });
   });
 
+  it("places read-only fragment storage at its exact binding after slot-sorted channel pairs", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 3, key: "iChannel3" }],
+      storage: [storageA, storageB],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const entries = device.createBindGroupLayout.mock.calls[0][0].entries;
+    expect(entries.map((entry: GPUBindGroupLayoutEntry) => entry.binding)).toEqual([0, 1, 2, 3, 4]);
+    expect(entries.slice(3)).toEqual([
+      {
+        binding: 3,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: 4,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+    ]);
+  });
+
+  it("uses each storage node binding instead of its descriptor-array index", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+      storage: [{ ...storageA, binding: 2 }],
+    });
+
+    await pass.rebuild("// wgsl");
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    pass.rebuildBindGroup(
+      [{ slot: 0, textureView: { label: "view" } as unknown as GPUTextureView }],
+      new Map([[storageA.name, positions]]),
+    );
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)!.binding).toBe(5);
+    expect(device.createBindGroup.mock.calls[0][0].entries.at(-1)).toEqual({
+      binding: 5,
+      resource: { buffer: positions },
+    });
+  });
+
+  it("defers a storage-only bind group until storage buffers are provided", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.map(
+      (entry: GPUBindGroupLayoutEntry) => entry.binding,
+    )).toEqual([0, 1]);
+    expect(device.createBindGroup).not.toHaveBeenCalled();
+    expect(pass.getBindGroup()).toBeNull();
+  });
+
+  it("binds slot-sorted channels before storage buffers resolved by node name", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [
+        { slot: 3, key: "iChannel3" },
+        { slot: 0, key: "iChannel0" },
+      ],
+      storage: [storageA, storageB],
+    });
+    await pass.rebuild("// wgsl");
+    const view0 = { label: "view-0" } as unknown as GPUTextureView;
+    const view3 = { label: "view-3" } as unknown as GPUTextureView;
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const particles = { label: "particles" } as unknown as GPUBuffer;
+
+    pass.rebuildBindGroup(
+      [
+        { slot: 3, textureView: view3 },
+        { slot: 0, textureView: view0 },
+      ],
+      new Map([
+        [storageB.name, particles],
+        [storageA.name, positions],
+      ]),
+    );
+
+    const sampler = device.createSampler.mock.results[0].value;
+    expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+      { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
+      { binding: 1, resource: view0 },
+      { binding: 2, resource: sampler },
+      { binding: 3, resource: view3 },
+      { binding: 4, resource: sampler },
+      { binding: 5, resource: { buffer: positions } },
+      { binding: 6, resource: { buffer: particles } },
+    ]);
+  });
+
+  it("clears a prior bind group when storage is absent and recovers without partial creation", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA, storageB],
+    });
+    await pass.rebuild("// wgsl");
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const particles = { label: "particles" } as unknown as GPUBuffer;
+    const complete = new Map([
+      [storageA.name, positions],
+      [storageB.name, particles],
+    ]);
+    pass.rebuildBindGroup([], complete);
+    expect(pass.getBindGroup()).not.toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], new Map([[storageA.name, positions]]));
+    expect(pass.getBindGroup()).toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], undefined);
+    expect(pass.getBindGroup()).toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], complete);
+    expect(pass.getBindGroup()).not.toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+  });
+
   it("uses cube texture layout entries for cubemap channels", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -210,6 +387,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0", kind: "cubemap" },
         { slot: 1, key: "iChannel1" },
@@ -240,6 +418,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -260,6 +439,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -279,6 +459,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -298,6 +479,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -318,6 +500,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -334,6 +517,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -349,6 +533,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -366,6 +551,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -391,6 +577,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -421,6 +608,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -438,6 +626,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -460,6 +649,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -475,6 +665,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -484,6 +675,7 @@ describe("SlangPassPipeline", () => {
       width: 640,
       height: 360,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl v2");
@@ -499,6 +691,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -528,6 +721,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -548,6 +742,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -564,6 +759,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -583,6 +779,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl");
@@ -610,6 +807,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl");
@@ -644,6 +842,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl");
@@ -678,6 +877,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -699,6 +899,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -720,6 +921,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -733,6 +935,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -749,6 +952,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -774,6 +978,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -789,6 +994,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -804,6 +1010,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -821,6 +1028,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 2, key: "iChannel2" }],
     });
 
@@ -843,6 +1051,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -857,6 +1066,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -895,6 +1105,7 @@ describe("SlangPassPipeline", () => {
       width: 8,
       height: 8,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -930,6 +1141,7 @@ describe("SlangPassPipeline", () => {
         width: 800,
         height: 600,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");
@@ -951,6 +1163,7 @@ describe("SlangPassPipeline", () => {
         width: 320,
         height: 180,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");
@@ -967,6 +1180,7 @@ describe("SlangPassPipeline", () => {
         width: 800,
         height: 600,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");
