@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   acquireEditorModel,
+  acquireEditorModelReference,
   canonicalEditorUri,
+  createEditorModelOwner,
+  getEditorModelOwnerReferenceCount,
   releaseEditorModel,
 } from '../../../monaco/src/modelRegistry';
 
@@ -60,5 +63,25 @@ describe('Monaco model registry', () => {
     await Promise.resolve();
     expect(first.dispose).toHaveBeenCalledTimes(1);
     expect(monaco.editor.createModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks live reference counts independently by owner kind and token', async () => {
+    const monaco = createMonaco();
+    const adapterOwner = createEditorModelOwner('adapter');
+    const editorOwner = createEditorModelOwner('editor');
+    const adapter = acquireEditorModelReference(monaco as never, '/project/main.slang', '', 'slang', adapterOwner);
+    const editor = acquireEditorModelReference(monaco as never, '/project/main.slang', '', 'slang', editorOwner);
+
+    expect(getEditorModelOwnerReferenceCount(monaco as never, adapter.model, { kind: 'adapter' })).toBe(1);
+    expect(getEditorModelOwnerReferenceCount(monaco as never, adapter.model, { kind: 'editor' })).toBe(1);
+    expect(getEditorModelOwnerReferenceCount(monaco as never, adapter.model, { excludingToken: adapterOwner.token })).toBe(1);
+
+    releaseEditorModel(monaco as never, editor.model, editorOwner);
+    expect(getEditorModelOwnerReferenceCount(monaco as never, adapter.model, { kind: 'editor' })).toBe(0);
+    expect(adapter.model.dispose).not.toHaveBeenCalled();
+
+    releaseEditorModel(monaco as never, adapter.model, adapterOwner);
+    await Promise.resolve();
+    expect(adapter.model.dispose).toHaveBeenCalledTimes(1);
   });
 });

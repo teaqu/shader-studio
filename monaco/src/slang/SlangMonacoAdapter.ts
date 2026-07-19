@@ -15,7 +15,12 @@ import {
   StaleSlangResultError,
   SupersededSlangMutationError,
 } from '@shader-studio/slang-language-service';
-import { acquireEditorModelReference, releaseEditorModel } from '../modelRegistry';
+import {
+  acquireEditorModelReference,
+  createEditorModelOwner,
+  getEditorModelOwnerReferenceCount,
+  releaseEditorModel,
+} from '../modelRegistry';
 
 export const SLANG_LANGUAGE_MARKER_OWNER = 'slang-language';
 export const SLANG_COMPILE_MARKER_OWNER = 'slang-compile';
@@ -44,7 +49,7 @@ interface ModelState {
   changeDisposable: Monaco.IDisposable;
   applyingSnapshot: boolean;
   dirty: boolean;
-  editorOwned: boolean;
+  baselineSource: string;
   open: boolean;
 }
 
@@ -140,6 +145,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
   private readonly files = new Map<string, SlangWorkspaceSnapshot['files'][number]>();
   private readonly models = new Map<string, ModelState>();
   private readonly completionMetadata = new WeakMap<object, CompletionMetadata>();
+  private readonly modelOwner = createEditorModelOwner('adapter');
   private readonly disposables: Monaco.IDisposable[];
   private disposed = false;
 
@@ -184,7 +190,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       for (const [uri, state] of [...this.models]) {
         const nextFile = canonicalSnapshot.files.find((file) => file.uri === uri);
         if (!nextUris.has(uri)) {
-          if (state.dirty || state.editorOwned) {
+          if (state.dirty || this.hasNonAdapterOwners(state)) {
             continue;
           }
           if (state.open) {
@@ -194,7 +200,17 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
           this.models.delete(uri);
           continue;
         }
-        if (nextFile && !state.dirty && !state.editorOwned && state.model.getValue() !== nextFile.source) {
+        if (nextFile && state.model.getValue() === nextFile.source) {
+          state.baselineSource = nextFile.source;
+          state.dirty = false;
+          continue;
+        }
+        if (nextFile && (state.dirty || this.hasNonAdapterOwners(state))) {
+          state.baselineSource = nextFile.source;
+          state.dirty = true;
+          continue;
+        }
+        if (nextFile && state.model.getValue() !== nextFile.source) {
           if (state.open) {
             await this.client.closeDocument(state.uri, state.model.getVersionId());
             state.open = false;
@@ -202,6 +218,8 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
           state.applyingSnapshot = true;
           state.model.setValue(nextFile.source);
           state.applyingSnapshot = false;
+          state.baselineSource = nextFile.source;
+          state.dirty = false;
         }
       }
       await this.client.replaceFiles(canonicalSnapshot);
@@ -244,7 +262,8 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     if (!file && source === undefined) {
       return undefined;
     }
-    const acquired = acquireEditorModelReference(this.monaco, uri, source ?? file!.source, 'slang');
+    const baselineSource = source ?? file!.source;
+    const acquired = acquireEditorModelReference(this.monaco, uri, baselineSource, 'slang', this.modelOwner);
     const model = acquired.model;
     const state: ModelState = {
       model,
@@ -253,16 +272,16 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       version: model.getVersionId(),
       changeDisposable: { dispose() {} },
       applyingSnapshot: false,
-      dirty: false,
-      editorOwned: acquired.hadOwners,
-      open: acquired.hadOwners,
+      dirty: model.getValue() !== baselineSource,
+      baselineSource,
+      open: getEditorModelOwnerReferenceCount(this.monaco, model, { excludingKind: 'adapter' }) > 0,
     };
     state.changeDisposable = model.onDidChangeContent(() => {
       if (state.applyingSnapshot) {
         return;
       }
       state.version = model.getVersionId();
-      state.dirty = true;
+      state.dirty = model.getValue() !== state.baselineSource;
       const update = state.open
         ? this.client.changeDocument(this.documentSnapshot(state))
         : this.client.openDocument(this.documentSnapshot(state));
@@ -451,7 +470,11 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     state.changeDisposable.dispose();
     this.clearLanguageMarkers(state.model);
     this.monaco.editor.setModelMarkers(state.model, SLANG_COMPILE_MARKER_OWNER, []);
-    releaseEditorModel(this.monaco, state.model);
+    releaseEditorModel(this.monaco, state.model, this.modelOwner);
+  }
+
+  private hasNonAdapterOwners(state: ModelState): boolean {
+    return getEditorModelOwnerReferenceCount(this.monaco, state.model, { excludingKind: 'adapter' }) > 0;
   }
 
   private isDropped(model: Monaco.editor.ITextModel, version: number, token: Monaco.CancellationToken): boolean {

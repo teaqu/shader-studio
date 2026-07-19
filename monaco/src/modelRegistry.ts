@@ -2,10 +2,27 @@ import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 
 interface ModelReference {
   model: Monaco.editor.ITextModel;
-  references: number;
+  owners: Map<object, { kind: EditorModelOwnerKind; references: number }>;
   owned: boolean;
   disposalGeneration: number;
 }
+
+export type EditorModelOwnerKind = 'editor' | 'adapter' | 'external';
+
+export interface EditorModelOwner {
+  kind: EditorModelOwnerKind;
+  token: object;
+}
+
+export interface EditorModelOwnerQuery {
+  kind?: EditorModelOwnerKind;
+  token?: object;
+  excludingKind?: EditorModelOwnerKind;
+  excludingToken?: object;
+}
+
+const defaultEditorOwner = createEditorModelOwner('editor');
+const inferredExternalOwner = createEditorModelOwner('external');
 
 const registries = new WeakMap<typeof Monaco, Map<string, ModelReference>>();
 
@@ -50,6 +67,10 @@ export function acquireEditorModel(
   return acquireEditorModelReference(monaco, pathOrUri, source, language).model;
 }
 
+export function createEditorModelOwner(kind: EditorModelOwnerKind): EditorModelOwner {
+  return { kind, token: {} };
+}
+
 export interface EditorModelReference {
   model: Monaco.editor.ITextModel;
   hadOwners: boolean;
@@ -60,14 +81,15 @@ export function acquireEditorModelReference(
   pathOrUri: string,
   source: string,
   language: 'glsl' | 'slang',
+  owner: EditorModelOwner = defaultEditorOwner,
 ): EditorModelReference {
   const uri = canonicalEditorUri(monaco, pathOrUri);
   const key = uri.toString();
   const entries = registry(monaco);
   const tracked = entries.get(key);
   if (tracked && !tracked.model.isDisposed()) {
-    const hadOwners = tracked.references > 0;
-    tracked.references += 1;
+    const hadOwners = referenceCount(tracked) > 0;
+    addOwnerReference(tracked, owner);
     tracked.disposalGeneration += 1;
     if (tracked.model.getLanguageId() !== language) {
       monaco.editor.setModelLanguage(tracked.model, language);
@@ -76,22 +98,71 @@ export function acquireEditorModelReference(
   }
   const existing = monaco.editor.getModel(uri);
   const model = existing ?? monaco.editor.createModel(source, language, uri);
-  entries.set(key, { model, references: 1, owned: !existing, disposalGeneration: 0 });
+  const reference: ModelReference = {
+    model,
+    owners: new Map(),
+    owned: !existing,
+    disposalGeneration: 0,
+  };
+  if (existing) {
+    addOwnerReference(reference, inferredExternalOwner);
+  }
+  addOwnerReference(reference, owner);
+  entries.set(key, reference);
   return { model, hadOwners: existing !== null };
 }
 
-export function releaseEditorModel(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {
+export function getEditorModelOwnerReferenceCount(
+  monaco: typeof Monaco,
+  model: Monaco.editor.ITextModel,
+  query: EditorModelOwnerQuery = {},
+): number {
+  const tracked = registry(monaco).get(model.uri.toString());
+  if (!tracked || tracked.model !== model) {
+    return 0;
+  }
+  let references = 0;
+  for (const [token, owner] of tracked.owners) {
+    if (query.kind && owner.kind !== query.kind) {
+      continue;
+    }
+    if (query.token && token !== query.token) {
+      continue;
+    }
+    if (query.excludingKind && owner.kind === query.excludingKind) {
+      continue;
+    }
+    if (query.excludingToken && token === query.excludingToken) {
+      continue;
+    }
+    references += owner.references;
+  }
+  return references;
+}
+
+export function releaseEditorModel(
+  monaco: typeof Monaco,
+  model: Monaco.editor.ITextModel,
+  owner: EditorModelOwner = defaultEditorOwner,
+): void {
   const entries = registry(monaco);
   const key = model.uri.toString();
   const tracked = entries.get(key);
   if (!tracked || tracked.model !== model) {
     return;
   }
-  tracked.references = Math.max(0, tracked.references - 1);
+  const ownerReference = tracked.owners.get(owner.token);
+  if (!ownerReference || ownerReference.kind !== owner.kind) {
+    return;
+  }
+  ownerReference.references -= 1;
+  if (ownerReference.references === 0) {
+    tracked.owners.delete(owner.token);
+  }
   const generation = ++tracked.disposalGeneration;
   queueMicrotask(() => {
     const current = entries.get(key);
-    if (!current || current !== tracked || current.references !== 0 || current.disposalGeneration !== generation) {
+    if (!current || current !== tracked || referenceCount(current) !== 0 || current.disposalGeneration !== generation) {
       return;
     }
     entries.delete(key);
@@ -99,4 +170,24 @@ export function releaseEditorModel(monaco: typeof Monaco, model: Monaco.editor.I
       current.model.dispose();
     }
   });
+}
+
+function addOwnerReference(reference: ModelReference, owner: EditorModelOwner): void {
+  const trackedOwner = reference.owners.get(owner.token);
+  if (trackedOwner) {
+    if (trackedOwner.kind !== owner.kind) {
+      throw new Error('A Monaco model owner token cannot be reused with a different owner kind');
+    }
+    trackedOwner.references += 1;
+    return;
+  }
+  reference.owners.set(owner.token, { kind: owner.kind, references: 1 });
+}
+
+function referenceCount(reference: ModelReference): number {
+  let total = 0;
+  for (const owner of reference.owners.values()) {
+    total += owner.references;
+  }
+  return total;
 }

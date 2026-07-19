@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SlangMonacoAdapter, canonicalModelUri } from '../slang/SlangMonacoAdapter';
 import type { SlangWorkspaceSnapshot } from '@shader-studio/slang-language-service';
 import { SlangPathMap, StaleSlangResultError } from '@shader-studio/slang-language-service';
+import { acquireEditorModel, releaseEditorModel } from '../modelRegistry';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -288,6 +289,91 @@ describe('SlangMonacoAdapter', () => {
     expect(adapter.getOrCreateModel('file:///project/borrowed.slang', 'fallback')).toBe(editorOwned);
     expect(client.closeDocument).not.toHaveBeenCalledWith('file:///project/lib/helper.slang', expect.any(Number));
     expect(borrowed.dispose).not.toHaveBeenCalled();
+  });
+
+  it('uses live editor ownership and snapshot convergence for adapter-created dependencies', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    const editorModel = acquireEditorModel(
+      monaco as never,
+      'file:///project/lib/helper.slang',
+      helper.getValue(),
+      'slang',
+    );
+
+    await adapter.setWorkspace({
+      ...snapshot,
+      files: snapshot.files.map((file) => file.uri.endsWith('helper.slang')
+        ? { ...file, source: 'disk changed while displayed' }
+        : file),
+    });
+    expect(helper.getValue()).toBe('float f(){}');
+
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await adapter.provideHover(
+      helper as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    );
+    expect(client.hover).toHaveBeenCalledTimes(1);
+    expect(adapter.getOrCreateModel('file:///project/lib/helper.slang', 'fallback')).toBe(helper);
+
+    releaseEditorModel(monaco as never, editorModel);
+    await adapter.setWorkspace(snapshot);
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
+
+    expect(helper.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a clean model after its live editor owner releases it', async () => {
+    const monaco = createMonaco();
+    const editorModel = acquireEditorModel(
+      monaco as never,
+      'file:///project/lib/helper.slang',
+      'float f(){}',
+      'slang',
+    );
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await adapter.provideHover(
+      editorModel as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    );
+    expect(client.hover).toHaveBeenCalledTimes(1);
+    expect(editorModel.dispose).not.toHaveBeenCalled();
+
+    releaseEditorModel(monaco as never, editorModel);
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
+
+    expect(editorModel.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears dirty state when a later snapshot converges with the model contents', async () => {
+    const monaco = createMonaco();
+    const adapter = new SlangMonacoAdapter(monaco as never, createClient());
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    helper.setValue('saved edit');
+
+    await adapter.setWorkspace({
+      ...snapshot,
+      files: snapshot.files.map((file) => file.uri.endsWith('helper.slang')
+        ? { ...file, source: 'saved edit' }
+        : file),
+    });
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
+
+    expect(helper.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('preserves dirty dependency models across same-root snapshot replacement', async () => {
