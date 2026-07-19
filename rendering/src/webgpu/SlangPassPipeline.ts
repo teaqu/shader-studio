@@ -7,6 +7,7 @@ export interface SlangPassPipelineDescriptor {
   height: number;
   output: "texture" | "canvas";
   channels: Array<{ slot: number; key: string; kind?: string }>;
+  uniformBufferSize?: number;
 }
 
 export interface SlangChannelResource {
@@ -74,7 +75,7 @@ export class SlangPassPipeline {
       this.pipeline = this.device.createRenderPipeline(pipelineDescriptor);
     }
     this.uniformBuffer = this.device.createBuffer({
-      size: SHADERTOY_UNIFORM_SIZE,
+      size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });

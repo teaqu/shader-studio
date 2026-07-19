@@ -101,6 +101,39 @@ const captures = [
 ];
 
 describe("WebGPUVariableCapturer", () => {
+  it("packs date, channel resolutions, and custom values for capture shaders", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    capturer.setCustomUniforms("uniform vec3 tint;\nuniform bool enabled;", [
+      { name: "tint", type: "vec3", value: [0.25, 0.5, 0.75] },
+      { name: "enabled", type: "bool", value: true },
+    ]);
+
+    await capturer.issueCaptureGrid(captures.slice(0, 1), {
+      ...uniforms,
+      date: [2026, 7, 19, 123],
+      channelResolution: [512, 2, 1, 0, 0, 0, 0, 0, 0, 256, 3, 1],
+      cameraPos: [1, 2, 3],
+      cameraDir: [0.25, 0.5, -0.75],
+    } as CaptureUniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
+      customUniforms: [
+        { name: "tint", type: "vec3" },
+        { name: "enabled", type: "bool" },
+      ],
+    }));
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(packed.byteLength).toBeGreaterThan(UNIFORM_OFFSETS.iChannelResolution + 64);
+    const values = new DataView(packed);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iDate, true)).toBe(2026);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(512);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iCameraPos + 8, true)).toBe(3);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iCameraDir + 8, true)).toBe(-0.75);
+    expect(values.getFloat32(208, true)).toBeCloseTo(0.25);
+    expect(values.getInt32(220, true)).toBe(1);
+  });
+
   it("packs provided channel timing, loaded state, and sample rate", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);

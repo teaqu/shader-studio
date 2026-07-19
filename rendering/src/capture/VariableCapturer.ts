@@ -18,6 +18,7 @@ export interface CaptureUniforms {
   channelTime?: number[];
   channelLoaded?: number[];
   sampleRate?: number;
+  channelResolution?: number[];
 }
 
 export interface CaptureCustomUniform {
@@ -32,6 +33,8 @@ export interface CaptureCompileContext {
   channelTypes?: ChannelSamplerType[];
   /** Slang/WebGPU path: channel bindings of the captured pass. */
   slangChannels?: Array<{ slot: number; key: string }>;
+  /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
+  slangPassName?: string;
 }
 
 interface PendingCapture {

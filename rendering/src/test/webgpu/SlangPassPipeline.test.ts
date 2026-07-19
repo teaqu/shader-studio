@@ -103,6 +103,22 @@ describe("SlangPassPipeline", () => {
     expect(pass.getUniformBuffer()).toBe(device.createBuffer.mock.results[0].value);
   });
 
+  it("allocates the descriptor's dynamically extended custom-uniform size", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      channels: [],
+      uniformBufferSize: 224,
+    } as any);
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBuffer).toHaveBeenCalledWith(expect.objectContaining({ size: 224 }));
+  });
+
   it("wires the bind group to binding 0 with the uniform buffer via the explicit layout", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

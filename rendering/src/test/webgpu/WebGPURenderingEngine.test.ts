@@ -77,6 +77,8 @@ describe("WebGPURenderingEngine", () => {
     } as unknown as HTMLCanvasElement;
     const engine = new WebGPURenderingEngine({ ...assets, debugTimings: true });
     const compiler = { compile: vi.fn(), dispose: vi.fn() };
+    const camera = { setupEventListeners: vi.fn() };
+    (engine as any).cameraManager = camera;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.stubGlobal("navigator", {
       gpu: {
@@ -90,6 +92,7 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
+      expect(camera.setupEventListeners).toHaveBeenCalledWith(canvas);
       expect(logSpy).toHaveBeenCalledWith("[SlangPerf] init start", {
         canvasWidth: 800,
         canvasHeight: 600,
@@ -216,7 +219,7 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
-  /** Engine with a BufferA→Image pass graph, stubbed device, and a controllable mouse. */
+  /** Engine with a BufferA→Image pass graph and controllable input managers. */
   function pausableEngine() {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
@@ -246,7 +249,20 @@ describe("WebGPURenderingEngine", () => {
       setEnabled: vi.fn(),
     };
 
-    return { engine, bufferPipeline, imagePipeline, mouse };
+    const camera = {
+      pos: [0, 0, 0] as number[],
+      dir: [0, 0, -1] as number[],
+      update: vi.fn(),
+      getCameraPos: vi.fn(() => camera.pos),
+      getCameraDir: vi.fn(() => camera.dir),
+      setupEventListeners: vi.fn(),
+      setEnabled: vi.fn(),
+      reset: vi.fn(),
+      dispose: vi.fn(),
+    };
+    (engine as any).cameraManager = camera;
+
+    return { engine, bufferPipeline, imagePipeline, mouse, camera };
   }
 
   /** Uniform payloads written during the most recent render call. */
@@ -335,6 +351,46 @@ describe("WebGPURenderingEngine", () => {
       }
     });
 
+    it("updates camera motion using rendered-frame wall time and uploads its uniforms", () => {
+      const { engine, camera } = pausableEngine();
+      camera.pos = [1, 2, 3];
+      camera.dir = [0.25, 0.5, -0.75];
+
+      engine.render(1000);
+      engine.render(1016);
+
+      expect(camera.update).toHaveBeenNthCalledWith(1, 0);
+      expect(camera.update).toHaveBeenNthCalledWith(2, 0.016);
+      const writes = lastFrameUniformWrites(engine, 2);
+      for (const uniforms of writes) {
+        const cameraPos = UNIFORM_OFFSETS.iCameraPos / 4;
+        const cameraDir = UNIFORM_OFFSETS.iCameraDir / 4;
+        expect(Array.from(uniforms.slice(cameraPos, cameraPos + 3))).toEqual([1, 2, 3]);
+        expect(Array.from(uniforms.slice(cameraDir, cameraDir + 3))).toEqual([0.25, 0.5, -0.75]);
+      }
+    });
+
+    it("freezes camera uniforms at pause entry while camera controls keep updating", () => {
+      const { engine, camera } = pausableEngine();
+
+      engine.render(1000);
+      engine.togglePause();
+      camera.pos = [1, 2, 3];
+      camera.dir = [0.25, 0.5, -0.75];
+      engine.render(1016);
+
+      camera.pos = [9, 8, 7];
+      camera.dir = [1, 0, 0];
+      engine.render(1033);
+
+      expect(camera.update).toHaveBeenLastCalledWith(0.017);
+      const [uniforms] = lastFrameUniformWrites(engine, 1);
+      const cameraPos = UNIFORM_OFFSETS.iCameraPos / 4;
+      const cameraDir = UNIFORM_OFFSETS.iCameraDir / 4;
+      expect(Array.from(uniforms.slice(cameraPos, cameraPos + 3))).toEqual([1, 2, 3]);
+      expect(Array.from(uniforms.slice(cameraDir, cameraDir + 3))).toEqual([0.25, 0.5, -0.75]);
+    });
+
     it("renderForCapture preserves the frozen paused uniform snapshot", () => {
       const { engine, mouse } = pausableEngine();
 
@@ -410,6 +466,24 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).compiler = compiler;
     engine.dispose();
     expect(compiler.dispose).toHaveBeenCalled();
+  });
+
+  it("delegates input enablement, reset, and disposal to the camera manager", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const camera = {
+      setEnabled: vi.fn(),
+      reset: vi.fn(),
+      dispose: vi.fn(),
+    };
+    (engine as any).cameraManager = camera;
+
+    engine.setInputEnabled(false);
+    engine.resetTime();
+    engine.dispose();
+
+    expect(camera.setEnabled).toHaveBeenCalledWith(false);
+    expect(camera.reset).toHaveBeenCalledTimes(1);
+    expect(camera.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("remembers the config from the last compile", async () => {
@@ -960,6 +1034,234 @@ describe("WebGPURenderingEngine", () => {
     };
     return { device, compiler, canvas };
   }
+
+  describe("custom and remaining ShaderToy uniform parity", () => {
+    it("compiles, exposes, preserves, and partially updates script uniforms", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler, device } = stubEngineInternals(engine);
+      const declarations = "uniform float gain;\nuniform bool enabled;";
+      const info = [
+        { name: "gain", type: "float" },
+        { name: "enabled", type: "bool" },
+      ];
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(enabled ? gain : 0); }",
+        null,
+        "/image.slang",
+        {},
+        declarations,
+        info,
+      );
+
+      expect(result?.success).toBe(true);
+      expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+        customUniforms: info,
+      }));
+      expect(engine.getCustomUniformDeclarations()).toBe(declarations);
+      expect(engine.getCustomUniformInfo()).toEqual(info);
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 0 },
+        { name: "enabled", type: "bool", value: false },
+      ]);
+
+      engine.setCustomUniformValues([
+        { name: "gain", type: "float", value: 0.5 },
+        { name: "enabled", type: "bool", value: false },
+      ]);
+      engine.updateCustomUniformValues([
+        { name: "enabled", type: "bool", value: true },
+      ]);
+      device.queue.writeBuffer.mockClear();
+      engine.render(1000);
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 0.5 },
+        { name: "enabled", type: "bool", value: true },
+      ]);
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      expect(packed.byteLength).toBe(224);
+      const view = new DataView(packed);
+      expect(view.getFloat32(208, true)).toBeCloseTo(0.5);
+      expect(view.getInt32(212, true)).toBe(1);
+    });
+
+    it("preserves values that arrive before custom declarations compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      engine.setCustomUniformValues([{ name: "gain", type: "float", value: 2.5 }]);
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2.5 },
+      ]);
+    });
+
+    it("clears script uniforms when a later compile has no script", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(engine.getCustomUniformDeclarations()).toBe("");
+      expect(engine.getCustomUniformInfo()).toEqual([]);
+      expect(engine.getCurrentCustomUniforms()).toEqual([]);
+    });
+
+    it("recompiles unchanged shader source when the script uniform layout changes", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const source = "float4 mainImage(float2 c) { return float4(1); }";
+      await engine.compileShaderPipeline(
+        source, null, "/image.slang", {}, "uniform float gain;", [{ name: "gain", type: "float" }],
+      );
+
+      await engine.compileShaderPipeline(
+        source, null, "/image.slang", {}, "uniform vec4 tint;", [{ name: "tint", type: "vec4" }],
+      );
+
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the installed custom layout when a same-file recompile fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      const result = await engine.compileShaderPipeline(
+        "broken",
+        null,
+        "/image.slang",
+        {},
+        "uniform vec4 tint;",
+        [{ name: "tint", type: "vec4" }],
+      );
+
+      expect(result?.success).toBe(false);
+      expect(engine.getCustomUniformDeclarations()).toBe("uniform float gain;");
+      expect(engine.getCustomUniformInfo()).toEqual([{ name: "gain", type: "float" }]);
+    });
+
+    it("packs iDate and GLSL-compatible channel resolutions per pass", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubDeviceAndContext(engine);
+      const textureHandle = { width: 640, height: 360, view: {}, sampler: {} };
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({ "/tex.png": textureHandle }),
+        getDefaultTexture: () => textureHandle,
+        getAudioTexture: () => textureHandle,
+        getAudioState: () => null,
+        getAudioSampleRate: () => 44100,
+        updateAudioTextures: vi.fn(),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: () => textureHandle,
+      };
+      vi.spyOn(engine.getTimeManager(), "getCurrentDate").mockReturnValue(
+        Float32Array.from([2026, 7, 19, 12345]),
+      );
+      const imagePipeline = renderablePipeline({
+        getCurrentOutputView: () => null,
+        getPreviousOutputView: () => null,
+      });
+      (engine as any).passGraph = [{
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [
+          { kind: "texture", slot: 0, key: "iChannel0", path: "/tex.png" },
+          { kind: "audio", slot: 1, key: "iChannel1", path: "/audio.wav" },
+          { kind: "keyboard", slot: 3, key: "iChannel3" },
+        ],
+      }];
+      (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+
+      engine.render(1000);
+
+      const write = (engine as any).device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const view = new DataView(write);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iDate, true)).toBe(2026);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(640);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 4, true)).toBe(360);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16, true)).toBe(512);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16 + 4, true)).toBe(2);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48, true)).toBe(256);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48 + 4, true)).toBe(3);
+    });
+
+    it("uses the selected buffer pass resources, resolution, and channel uniforms for capture", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const bufferHandle = { width: 64, height: 32, view: { label: "buffer-input" }, sampler: {} };
+      const imageHandle = { width: 256, height: 128, view: { label: "image-input" }, sampler: {} };
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({
+          "/buffer.png": bufferHandle,
+          "/image.png": imageHandle,
+        }),
+        getDefaultTexture: () => imageHandle,
+        getAudioSampleRate: () => 44100,
+      };
+      (engine as any).passGraph = [
+        {
+          name: "BufferA",
+          width: 160,
+          height: 90,
+          output: "texture",
+          source: "buffer-source",
+          channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/buffer.png" }],
+        },
+        {
+          name: "Image",
+          width: 320,
+          height: 180,
+          output: "canvas",
+          source: "image-source",
+          channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/image.png" }],
+        },
+      ];
+
+      const capturer = engine.createVariableCapturer();
+      const context = engine.getVariableCaptureCompileContext(undefined, "BufferA");
+      capturer.setCompileContext(context);
+
+      expect(context).toMatchObject({ slangPassName: "BufferA" });
+      expect((capturer as any).getChannelResources(context)).toEqual([
+        expect.objectContaining({ slot: 0, textureView: bufferHandle.view }),
+      ]);
+      const captureUniforms = engine.getCaptureUniforms();
+      expect(captureUniforms.res).toEqual([160, 90, 1]);
+      expect(captureUniforms.channelResolution?.slice(0, 3)).toEqual([64, 32, 1]);
+    });
+  });
 
   describe("video input parity", () => {
     const videoConfig: ShaderConfig = {

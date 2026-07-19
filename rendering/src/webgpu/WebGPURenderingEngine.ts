@@ -12,11 +12,17 @@ import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 import { TimeManager } from "../util/TimeManager";
 import { MouseManager } from "../input/MouseManager";
 import { KeyboardManager } from "../input/KeyboardManager";
+import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
-import { packShaderToyUniforms, type ShaderToyUniformInput } from "./uniforms";
+import {
+  createSlangCustomUniformLayout,
+  packShaderToyUniforms,
+  type ShaderToyUniformInput,
+} from "./uniforms";
+import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
@@ -100,7 +106,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
   private shaderPath = "";
-  private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
+  private lastCompile: {
+    code: string;
+    path: string;
+    buffers: Record<string, string>;
+    customUniformDeclarations?: string;
+    customUniformInfo?: { name: string; type: string }[];
+  } | null = null;
+  private customUniformManager = new CustomUniformManager();
+  private pendingCustomUniformValues: CustomUniform[] | null = null;
   /**
    * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
    * serialized upstream (BufferUpdater is fire-and-forget, worker compiles
@@ -123,10 +137,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private inspectorReadbackBuffer: GPUBuffer | null = null;
   private inspectorReadbackPending = false;
   private inspectorCopyEncoded = false;
+  private capturePassName: string | null = null;
 
   private timeManager = new TimeManager();
   private mouseManager = new MouseManager();
   private keyboardManager = new KeyboardManager();
+  private cameraManager = new CameraManager(this.keyboardManager);
   private fps = new FPSCalculator(60, 10);
   private currentConfig: ShaderConfig | null = null;
   private running = false;
@@ -138,6 +154,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private frameTimeLen = 0;
   private frameTimeCount = 0;
   private previousFrameTimestamp: number | null = null;
+  private lastCameraTimestamp: number | null = null;
   private static readonly MAX_FRAME_TIME_HISTORY = 3600;
 
   // WebGL pause parity (see FrameRenderer): while paused, per-frame uniform
@@ -145,7 +162,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   // movement can't keep driving a "paused" shader.
   private pausedUniformInput: Pick<
     ShaderToyUniformInput,
-    "time" | "timeDelta" | "frameRate" | "frame" | "mouse"
+    "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "date" | "cameraPos" | "cameraDir"
   > | null = null;
 
   constructor(private slangAssets: SlangAssetUrls) {}
@@ -174,6 +191,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.context = ctx;
     this.mouseManager.setupEventListeners(glCanvas);
     this.keyboardManager.setupEventListeners();
+    this.cameraManager.setupEventListeners(glCanvas);
     this.ready = this.initDevice(initStartedAt);
   }
 
@@ -352,6 +370,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     config: ShaderConfig | null,
     path: string,
     buffers: Record<string, string> = {},
+    customUniformDeclarations?: string,
+    customUniformInfo?: { name: string; type: string }[],
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
@@ -386,7 +406,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
     });
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
-    this.lastCompile = { code, path, buffers: { ...buffers } };
+    this.lastCompile = {
+      code,
+      path,
+      buffers: { ...buffers },
+      customUniformDeclarations,
+      customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
+    };
+    const nextCustomUniformManager = new CustomUniformManager();
+    if (customUniformDeclarations && customUniformInfo) {
+      nextCustomUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
+      if (this.pendingCustomUniformValues) {
+        nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
+      }
+    }
     if (this.ready) {
       const readyStartedAt = this.now();
       this.logSlangPerf("compile waiting for init", { path, generation });
@@ -498,7 +531,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const errors: string[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
-      const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
+      const key = WebGPURenderingEngine.passCacheKey(
+        pass,
+        graph.commonCode,
+        nextCustomUniformManager.getUniformInfo(),
+      );
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
         // Unchanged pass: carry the live pipeline into the next generation.
@@ -528,6 +565,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               key: channel.key,
               kind: channel.kind,
             })),
+            ...(nextCustomUniformManager.hasUniforms()
+              ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
+              : {}),
           });
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
@@ -555,6 +595,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
             key: channel.key,
             kind: channel.kind,
           })),
+          uniformBufferSize: createSlangCustomUniformLayout(
+            nextCustomUniformManager.getUniformInfo(),
+          ).size,
         });
         const pipelineStartedAt = this.now();
         const wgslErrors = await pipeline.rebuild(wgsl);
@@ -652,6 +695,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         pipeline.dispose();
       }
     }
+    if (this.pendingCustomUniformValues) {
+      nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
+    }
+    this.customUniformManager = nextCustomUniformManager;
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
@@ -843,9 +890,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
    * Width/height are texture concerns handled by resize() without recompiling,
    * so they're deliberately excluded from the key.
    */
-  private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
+  private static passCacheKey(
+    pass: RenderPassNode,
+    commonCode: string,
+    customUniforms: { name: string; type: string }[] = [],
+  ): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
-    return JSON.stringify([SLANG_WGSL_CACHE_KEY_VERSION, pass.name, pass.source, commonCode, channels]);
+    return JSON.stringify([
+      SLANG_WGSL_CACHE_KEY_VERSION,
+      pass.name,
+      pass.source,
+      commonCode,
+      channels,
+      customUniforms,
+    ]);
   }
 
   render(time: number = performance.now()): void {
@@ -876,6 +934,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
 
       this.resourceManager?.updateAudioTextures?.();
+
+      const cameraDelta = this.lastCameraTimestamp === null
+        ? 0
+        : (time - this.lastCameraTimestamp) / 1000;
+      this.lastCameraTimestamp = time;
+      this.cameraManager.update(cameraDelta);
     }
 
     // WebGL pause parity: freeze the per-frame uniform inputs at the values
@@ -888,6 +952,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         frameRate: this.fps.getRawFPS(),
         frame: this.timeManager.getFrame(),
         mouse: Array.from(this.mouseManager.getMouse()),
+        date: Array.from(this.timeManager.getCurrentDate()),
+        cameraPos: Array.from(this.cameraManager.getCameraPos()),
+        cameraDir: Array.from(this.cameraManager.getCameraDir()),
       };
     } else if (!isPaused) {
       this.pausedUniformInput = null;
@@ -899,6 +966,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       frameRate: this.fps.getRawFPS(),
       frame: this.timeManager.getFrame(),
       mouse: this.mouseManager.getMouse(),
+      date: this.timeManager.getCurrentDate(),
+      cameraPos: this.cameraManager.getCameraPos(),
+      cameraDir: this.cameraManager.getCameraDir(),
     };
 
     // While paused, buffer passes stop advancing. Frame 0 is the exception:
@@ -941,7 +1011,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         ...frameInput,
         ...this.getChannelUniforms(pass),
-      });
+      }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
 
       const targetView = pass.output === "canvas"
@@ -1086,9 +1156,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private getChannelUniforms(
     pass: RenderPassNode,
-  ): { channelTime: number[]; channelLoaded: number[]; sampleRate: number } {
+  ): {
+    channelTime: number[];
+    channelLoaded: number[];
+    sampleRate: number;
+    channelResolution: number[];
+  } {
     const channelTime = [0, 0, 0, 0];
     const channelLoaded = [0, 0, 0, 0];
+    const channelResolution = new Array<number>(12).fill(0);
 
     for (const channel of pass.channels) {
       if (channel.slot > 3) {
@@ -1097,28 +1173,38 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       if (channel.kind === "video") {
         const video = this.resourceManager?.getVideoElement?.(channel.path);
+        const handle = this.resourceManager?.getVideoTexture?.(channel.path);
         if (video) {
           channelTime[channel.slot] = video.currentTime;
           channelLoaded[channel.slot] = 1;
         }
+        this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
       } else if (channel.kind === "audio") {
         const state = this.resourceManager?.getAudioState?.(channel.path);
         if (state) {
           channelTime[channel.slot] = state.currentTime;
           channelLoaded[channel.slot] = 1;
         }
+        this.setChannelResolution(channelResolution, channel.slot, 512, 2);
       } else if (channel.kind === "texture") {
-        channelLoaded[channel.slot] = this.resourceManager?.getImageTextureCache?.()[channel.path] ? 1 : 0;
+        const handle = this.resourceManager?.getImageTextureCache?.()[channel.path];
+        channelLoaded[channel.slot] = handle ? 1 : 0;
+        this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
       } else if (channel.kind === "cubemap") {
-        channelLoaded[channel.slot] = this.resourceManager?.getCubemapTexture?.(channel.path) ? 1 : 0;
+        const handle = this.resourceManager?.getCubemapTexture?.(channel.path);
+        channelLoaded[channel.slot] = handle ? 1 : 0;
+        this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
       } else if (channel.kind === "buffer") {
         const source = this.passPipelines.get(channel.source);
         const view = channel.readFrom === "previous-frame"
           ? source?.getPreviousOutputView()
           : source?.getCurrentOutputView();
         channelLoaded[channel.slot] = view ? 1 : 0;
+        const sourcePass = this.passGraph.find((candidate) => candidate.name === channel.source);
+        this.setChannelResolution(channelResolution, channel.slot, sourcePass?.width, sourcePass?.height);
       } else {
         channelLoaded[channel.slot] = this.resourceManager?.getKeyboardTexture?.() ? 1 : 0;
+        this.setChannelResolution(channelResolution, channel.slot, 256, 3);
       }
     }
 
@@ -1126,7 +1212,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
       channelTime,
       channelLoaded,
       sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
+      channelResolution,
     };
+  }
+
+  private setChannelResolution(
+    resolutions: number[],
+    slot: number,
+    width: number | undefined,
+    height: number | undefined,
+  ): void {
+    if (width === undefined || height === undefined) {
+      return;
+    }
+    resolutions[slot * 3] = width;
+    resolutions[slot * 3 + 1] = height;
+    resolutions[slot * 3 + 2] = 1;
   }
 
   // WebGL parity (PassRenderer.getTextureBindings): the keyboard texture is
@@ -1248,11 +1349,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   resetTime(): void {
     this.timeManager.cleanup();
+    this.cameraManager.reset();
   }
 
   setInputEnabled(enabled: boolean): void {
     this.mouseManager.setEnabled(enabled);
     this.keyboardManager.setEnabled(enabled);
+    this.cameraManager.setEnabled(enabled);
   }
 
   getCurrentFPS(): number {
@@ -1272,8 +1375,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       channelTime: [0, 0, 0, 0],
       sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
       channelLoaded: [0, 0, 0, 0],
-      cameraPos: [0, 0, 0],
-      cameraDir: [0, 0, -1],
+      cameraPos: Array.from(this.cameraManager.getCameraPos()),
+      cameraDir: Array.from(this.cameraManager.getCameraDir()),
     };
   }
 
@@ -1299,6 +1402,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passKeys.clear();
     this.passGraph = [];
     this.resourceManager?.cleanup();
+    this.cameraManager.dispose();
     this.device?.destroy?.();
     this.device = null;
   }
@@ -1321,6 +1425,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.currentConfig,
       this.lastCompile.path,
       this.lastCompile.buffers,
+      this.lastCompile.customUniformDeclarations,
+      this.lastCompile.customUniformInfo,
     );
   }
 
@@ -1427,8 +1533,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device,
       this.compiler,
       this.getVariableCaptureCompileContext(),
-      () => {
-        const pass = this.passGraph.find((p) => p.name === "Image") ?? this.passGraph[0];
+      (context) => {
+        const pass = this.passGraph.find((candidate) => candidate.name === context.slangPassName)
+          ?? this.passGraph.find((candidate) => candidate.name === "Image")
+          ?? this.passGraph[0];
         return pass ? this.getChannelResources(pass) : [];
       },
     );
@@ -1442,8 +1550,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
     const commonCode = this.lastCompile?.buffers?.common ?? "";
+    this.capturePassName = targetPass?.name ?? null;
     return {
       commonCode,
+      slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key }) => ({ slot, key })) ?? [],
     };
   }
@@ -1468,16 +1578,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getCaptureUniforms(): CaptureUniforms {
     const u = this.getUniforms();
-    const pass = this.passGraph.find((candidate) => candidate.name === "Image") ?? this.passGraph[0];
+    const pass = this.passGraph.find((candidate) => candidate.name === this.capturePassName)
+      ?? this.passGraph.find((candidate) => candidate.name === "Image")
+      ?? this.passGraph[0];
     const channelUniforms = pass
       ? this.getChannelUniforms(pass)
-      : { channelTime: [0, 0, 0, 0], channelLoaded: [0, 0, 0, 0], sampleRate: u.sampleRate };
+      : {
+        channelTime: [0, 0, 0, 0],
+        channelLoaded: [0, 0, 0, 0],
+        sampleRate: u.sampleRate,
+        channelResolution: new Array<number>(12).fill(0),
+      };
     return {
       time: u.time,
       timeDelta: u.timeDelta,
       frameRate: u.frameRate,
       frame: u.frame,
-      res: u.res as number[],
+      res: pass ? [pass.width, pass.height, 1] : u.res as number[],
       mouse: u.mouse as number[],
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
@@ -1529,17 +1646,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
       : null;
   }
 
-  // ---- Custom uniforms (M2) ----
+  // ---- Custom uniforms ----
 
   getCustomUniformInfo(): { name: string; type: string }[] {
-    return [];
+    return this.customUniformManager.getUniformInfo();
   }
   getCustomUniformDeclarations(): string {
-    return "";
+    return this.customUniformManager.getDeclarations();
   }
   getCurrentCustomUniforms(): CaptureCustomUniform[] {
-    return [];
+    return this.customUniformManager.getCurrentValues();
   }
-  setCustomUniformValues(): void {}
-  updateCustomUniformValues(): void {}
+  setCustomUniformValues(values: CustomUniform[]): void {
+    this.pendingCustomUniformValues = values;
+    this.customUniformManager.setValues(values);
+  }
+  updateCustomUniformValues(changed: CustomUniform[]): void {
+    this.customUniformManager.updateValues(changed);
+    this.pendingCustomUniformValues = this.customUniformManager.getCurrentValues();
+  }
 }

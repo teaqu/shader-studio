@@ -178,6 +178,63 @@ describe("SlangCompiler", () => {
     expect(wrapped).not.toContain("_audioPad");
   });
 
+  it("declares the remaining GLSL ShaderToy date and channel-resolution uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return iDate + float4(iChannelResolution[2], 0); }",
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 date;");
+    expect(wrapped).toContain("float3 channelResolution[4];");
+    expect(wrapped).toContain("#define iDate (_st.date)");
+    expect(wrapped).toContain("#define iChannelResolution (_st.channelResolution)");
+  });
+
+  it("declares the GLSL camera uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return float4(iCameraPos + iCameraDir, 1); }",
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 cameraPos;");
+    expect(wrapped).toContain("float4 cameraDir;");
+    expect(wrapped).toContain("#define iCameraPos (_st.cameraPos.xyz)");
+    expect(wrapped).toContain("#define iCameraDir (_st.cameraDir.xyz)");
+  });
+
+  it("declares every supported script uniform type in the shared uniform block", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return tint * gain + float4(offset, enabled ? 1 : 0); }",
+      {
+        customUniforms: [
+          { name: "gain", type: "float" },
+          { name: "offset", type: "vec2" },
+          { name: "normal", type: "vec3" },
+          { name: "tint", type: "vec4" },
+          { name: "enabled", type: "bool" },
+        ],
+      } as any,
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float custom_gain;");
+    expect(wrapped).toContain("float2 custom_offset;");
+    expect(wrapped).toContain("float3 custom_normal;");
+    expect(wrapped).toContain("float4 custom_tint;");
+    expect(wrapped).toContain("int custom_enabled;");
+    expect(wrapped).toContain("#define gain (_st.custom_gain)");
+    expect(wrapped).toContain("#define enabled (_st.custom_enabled != 0)");
+  });
+
   it("lets the uniform struct pad naturally to 96 bytes", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));

@@ -15,11 +15,10 @@
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 
-// Uniform buffer layout (WGSL std140 — every field is naturally aligned, so
-// there is no interior padding). Offsets are bytes. iResolution/iMouse occupy a
-// full vec4 each; iResolution only uses xyz. Total size is a multiple of 16, as
-// required for the uniform address space.
-export const SHADERTOY_UNIFORM_SIZE = 96;
+// Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
+// full vec4 each; iResolution only uses xyz. Script fields are appended after
+// this prefix, and the total allocation is rounded to a multiple of 16.
+export const SHADERTOY_UNIFORM_SIZE = 208;
 export const UNIFORM_OFFSETS = {
   iResolution: 0, // float4 (xyz used)
   iMouse: 16, // float4
@@ -30,12 +29,46 @@ export const UNIFORM_OFFSETS = {
   iChannelTime: 48, // float4
   iChannelLoaded: 64, // float4
   iSampleRate: 80, // float
+  iDate: 96, // float4
+  iChannelResolution: 112, // float4[4] (xyz used)
+  iCameraPos: 176, // float4 (xyz used)
+  iCameraDir: 192, // float4 (xyz used)
 } as const;
 
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
 // #define macros, and the Slang preprocessor would expand them inside the
 // struct member accesses below (`_st.resolution`), corrupting the code.
-const PRELUDE = `// ---- shader-studio Slang prelude (generated) ----
+export type SlangCustomUniformType = "float" | "vec2" | "vec3" | "vec4" | "bool";
+
+export interface SlangCustomUniformInfo {
+  name: string;
+  type: string;
+}
+
+const CUSTOM_SLANG_TYPES: Record<SlangCustomUniformType, string> = {
+  float: "float",
+  vec2: "float2",
+  vec3: "float3",
+  vec4: "float4",
+  bool: "int",
+};
+
+export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
+  return type in CUSTOM_SLANG_TYPES;
+}
+
+function buildPrelude(customUniforms: SlangCustomUniformInfo[] = []): string {
+  const supported = customUniforms.filter(({ type }) => isSlangCustomUniformType(type));
+  const fields = supported
+    .map(({ name, type }) => `    ${CUSTOM_SLANG_TYPES[type as SlangCustomUniformType]} custom_${name};`)
+    .join("\n");
+  const aliases = supported
+    .map(({ name, type }) => type === "bool"
+      ? `#define ${name} (_st.custom_${name} != 0)`
+      : `#define ${name} (_st.custom_${name})`)
+    .join("\n");
+
+  return `// ---- shader-studio Slang prelude (generated) ----
 struct ShaderToyUniforms
 {
     float4 resolution;
@@ -47,6 +80,11 @@ struct ShaderToyUniforms
     float4 channelTime;
     float4 channelLoaded;
     float sampleRate;
+    float4 date;
+    float3 channelResolution[4];
+    float4 cameraPos;
+    float4 cameraDir;
+${fields}
 };
 
 [[vk::binding(0, 0)]]
@@ -61,7 +99,13 @@ ConstantBuffer<ShaderToyUniforms> _st;
 #define iChannelTime (_st.channelTime)
 #define iChannelLoaded (_st.channelLoaded)
 #define iSampleRate (_st.sampleRate)
+#define iDate (_st.date)
+#define iChannelResolution (_st.channelResolution)
+#define iCameraPos (_st.cameraPos.xyz)
+#define iCameraDir (_st.cameraDir.xyz)
+${aliases}
 `;
+}
 
 const ENTRY_POINTS = `
 // ---- shader-studio Slang entry points (generated) ----
@@ -91,6 +135,7 @@ export interface SlangWrapOptions {
   passName?: string;
   commonCode?: string;
   channels?: SlangChannelBinding[];
+  customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
    * capture coordinate, grid size) and swaps the fragment entry for one that
@@ -191,16 +236,17 @@ float4 ${helperName}(float2 uv)
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
+  const prelude = buildPrelude(options.customUniforms);
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
   if (options.captureMode) {
     // Capture uniforms bind right after the channel texture/sampler pairs.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${PRELUDE}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.
-  return `${PRELUDE}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
 }
