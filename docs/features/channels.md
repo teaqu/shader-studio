@@ -178,7 +178,7 @@ vec4 sky  = texture(iChannel0, dir);  // samplerCube lookup — direction, not U
 
 ## Pass Output (Buffer) Channels
 
-Read the texture output of another pass. The `source` field accepts any configured non-Image pass name, including arbitrary fragment names such as `Flow` and Slang compute names such as `ComputeBlur`. Pass names and counts are not limited to `BufferA` through `BufferD`.
+Read the texture output of a renderable pass. The `source` field accepts arbitrary fragment buffer pass names such as `Flow` and Slang compute pass names such as `ComputeBlur`. Referencing a compute pass causes Shader Studio to allocate its output texture. `common` is shared code rather than a renderable source, and `Image` cannot be used as a source. Pass names and counts are not limited to `BufferA` through `BufferD`.
 
 For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
 

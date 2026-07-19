@@ -232,7 +232,7 @@ Each pass can bind up to 16 input channels (`iChannel0` through `iChannel15`):
 
 | Type | Fields | Description |
 |------|--------|-------------|
-| `buffer` | `source`, optional `layer` | Read from any configured non-Image pass (for example `"source": "Flow"`); `layer` selects a compute texture-array layer |
+| `buffer` | `source`, optional `layer` | Read from an arbitrary fragment buffer pass or a compute pass (the reference allocates its output texture); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
 | `texture` | `path`, `filter`, `wrap`, `vflip`, `grayscale` | Image file |
 | `video` | `path`, `filter`, `wrap`, `vflip`, `muted` | Video file |
 | `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |

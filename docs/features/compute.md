@@ -2,7 +2,7 @@
 
 Compute passes run Slang compute shaders on WebGPU before the fragment passes in each frame. They can update persistent typed storage buffers, write textures for later passes to sample, and repeat work several times per frame. Compute is available only for `.slang` shaders using the WebGPU engine.
 
-The main shader and config must share a basename, such as `particles.slang` and `particles.sha.json`. Every compute pass uses a separate file whose `path` is relative to that main shader.
+The main shader and config must share a basename, such as `particles.slang` and `particles.sha.json`. Every compute pass uses a separate file. A relative `path` resolves from the main shader's directory, an absolute path is used as-is, and an `@/` path resolves from the workspace root.
 
 ## Complete Config Example
 
@@ -97,7 +97,7 @@ The top-level `storage` object declares persistent engine-managed buffers. Each 
 | `stride` | Bytes per element. Must be a positive integer and match the element type's WGSL storage layout. |
 | `elementType` | A Slang type such as `float4`, `uint`, `Atomic<uint>`, or a struct declared in `common`. |
 
-Shader Studio allocates `count * stride` zero-initialized bytes. Storage survives between frames, is recreated when its declaration changes, and is cleared on reset or rewind. The engine declares and binds every configured storage buffer in every pass. Compute passes see `RWStructuredBuffer<T>`; fragment passes see read-only `StructuredBuffer<T>`. Do not declare the buffers or choose binding numbers yourself:
+Shader Studio allocates `count * stride` zero-initialized bytes. Storage survives between frames and across successful same-session recompiles when its declaration is unchanged. Choosing **Reset** explicitly recreates every storage buffer with zeroed contents. A main shader/path switch installs fresh storage for the new session, and an individual buffer is recreated when its declaration changes. Timeline scrubbing, loop wrap, negative playback, and ordinary time changes do not clear storage. The engine declares and binds every configured storage buffer in every pass. Compute passes see `RWStructuredBuffer<T>`; fragment passes see read-only `StructuredBuffer<T>`. Do not declare the buffers or choose binding numbers yourself:
 
 ```slang
 // "positions": { "count": 1024, "stride": 16, "elementType": "float4" }
@@ -173,7 +173,7 @@ void computeMain(uint3 id)
 
 Repeated dispatches execute consecutively, and storage writes from one are visible to the next. This makes the two-lane pattern useful for solver substeps.
 
-`dispatchOnce: true` runs a pass only on the first eligible frame after compile, reset, or rewind. It is intended for initialization. A one-shot pass cannot also use `dispatchCount` greater than 1; that combination is a graph validation error. Keep initialization in a separate `ComputeInit` pass when another pass needs substeps.
+`dispatchOnce: true` runs a pass only on the first eligible frame after the initial compile, a successfully installed recompilation, or an explicit **Reset**. A successful recompilation rearms it even when unchanged storage is retained. Timeline scrubbing, loop wrap, negative playback, and ordinary time changes do not rearm it, so scrubbing does not replay a simulation from its initial state. A one-shot pass cannot also use `dispatchCount` greater than 1; that combination is a graph validation error. Keep initialization in a separate `ComputeInit` pass when another pass needs substeps.
 
 ## Writing a Texture Output
 
