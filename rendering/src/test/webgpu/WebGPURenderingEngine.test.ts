@@ -111,7 +111,7 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
-  it("requests the adapter's higher 2D texture limit when available", async () => {
+  it("requests the adapter's higher texture and storage limits when available", async () => {
     const context = { configure: vi.fn() };
     const device = {
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
@@ -120,7 +120,11 @@ describe("WebGPURenderingEngine", () => {
       limits: { maxTextureDimension2D: 16384 },
     };
     const adapter = {
-      limits: { maxTextureDimension2D: 16384 },
+      limits: {
+        maxTextureDimension2D: 16384,
+        maxStorageBuffersPerShaderStage: 16,
+        maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+      },
       requestDevice: vi.fn(async () => device),
     };
     const canvas = {
@@ -144,8 +148,62 @@ describe("WebGPURenderingEngine", () => {
       await (engine as unknown as { ready: Promise<void> }).ready;
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
-        requiredLimits: { maxTextureDimension2D: 16384 },
+        requiredLimits: {
+          maxTextureDimension2D: 16384,
+          maxStorageBuffersPerShaderStage: 16,
+          maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+        },
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    ["absent", {}],
+    ["at defaults", {
+      maxTextureDimension2D: 8192,
+      maxStorageBuffersPerShaderStage: 8,
+      maxStorageBufferBindingSize: 128 * 1024 * 1024,
+    }],
+    ["non-finite", {
+      maxTextureDimension2D: Number.POSITIVE_INFINITY,
+      maxStorageBuffersPerShaderStage: Number.NaN,
+      maxStorageBufferBindingSize: Number.POSITIVE_INFINITY,
+    }],
+  ])("omits %s adapter limits from the device request descriptor", async (_case, limits) => {
+    const context = { configure: vi.fn() };
+    const device = {
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      queue: { writeTexture: vi.fn() },
+      limits: {},
+    };
+    const adapter = {
+      limits,
+      requestDevice: vi.fn(async () => device),
+    };
+    const canvas = {
+      width: 800,
+      height: 600,
+      getContext: vi.fn(() => context),
+      addEventListener: vi.fn(),
+    } as unknown as HTMLCanvasElement;
+    const engine = new WebGPURenderingEngine(assets);
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => adapter),
+        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+      },
+    });
+    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
+      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
+
+    try {
+      engine.initialize(canvas);
+      await (engine as unknown as { ready: Promise<void> }).ready;
+
+      expect(adapter.requestDevice).toHaveBeenCalledWith();
     } finally {
       vi.unstubAllGlobals();
     }

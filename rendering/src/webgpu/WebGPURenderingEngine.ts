@@ -19,6 +19,7 @@ import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler }
 import { packShaderToyUniforms, type ShaderToyUniformInput } from "./uniforms";
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
+import type { StorageBindingNode } from "../types/PassGraph";
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
@@ -52,6 +53,8 @@ interface PassTiming {
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
+const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
+const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
@@ -99,6 +102,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
+  private storageBuffers = new Map<string, GPUBuffer>();
+  private storageKeys = new Map<string, string>();
+  private storageLayouts = new Map<string, StorageBindingNode>();
+  private resetStorageOnNextSync = false;
   private shaderPath = "";
   private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
   /**
@@ -228,19 +235,32 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private buildDeviceDescriptor(adapter: GPUAdapter): GPUDeviceDescriptor | undefined {
-    const adapterLimit = adapter.limits?.maxTextureDimension2D;
+    const requiredLimits: Record<string, number> = {};
+    const adapterTextureLimit = adapter.limits?.maxTextureDimension2D;
     if (
-      typeof adapterLimit === "number" &&
-      Number.isFinite(adapterLimit) &&
-      adapterLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D
+      typeof adapterTextureLimit === "number" &&
+      Number.isFinite(adapterTextureLimit) &&
+      adapterTextureLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D
     ) {
-      return {
-        requiredLimits: {
-          maxTextureDimension2D: adapterLimit,
-        },
-      };
+      requiredLimits.maxTextureDimension2D = adapterTextureLimit;
     }
-    return undefined;
+    const adapterStorageCountLimit = adapter.limits?.maxStorageBuffersPerShaderStage;
+    if (
+      typeof adapterStorageCountLimit === "number" &&
+      Number.isFinite(adapterStorageCountLimit) &&
+      adapterStorageCountLimit > DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE
+    ) {
+      requiredLimits.maxStorageBuffersPerShaderStage = adapterStorageCountLimit;
+    }
+    const adapterStorageSizeLimit = adapter.limits?.maxStorageBufferBindingSize;
+    if (
+      typeof adapterStorageSizeLimit === "number" &&
+      Number.isFinite(adapterStorageSizeLimit) &&
+      adapterStorageSizeLimit > DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE
+    ) {
+      requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
+    }
+    return Object.keys(requiredLimits).length > 0 ? { requiredLimits } : undefined;
   }
 
   private resolveDeviceTextureLimit(device: GPUDevice): number {
@@ -431,6 +451,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return this.failedCompilation(path, generation, {
         success: false,
         errors: graph.errors,
+        warnings: graph.warnings,
+      });
+    }
+    const storageErrors = this.syncStorageBuffers(graph.storage);
+    if (storageErrors.length > 0) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: storageErrors,
         warnings: graph.warnings,
       });
     }
@@ -672,6 +700,92 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
   }
 
+  private syncStorageBuffers(storage: StorageBindingNode[]): string[] {
+    if (!this.device) {
+      return ["WebGPU device unavailable while allocating storage buffers"];
+    }
+
+    const grantedCountLimit = this.device.limits?.maxStorageBuffersPerShaderStage;
+    const maxStorageBuffers = typeof grantedCountLimit === "number" &&
+      Number.isFinite(grantedCountLimit) && grantedCountLimit > 0
+      ? Math.floor(grantedCountLimit)
+      : DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE;
+    const grantedSizeLimit = this.device.limits?.maxStorageBufferBindingSize;
+    const maxStorageBufferSize = typeof grantedSizeLimit === "number" &&
+      Number.isFinite(grantedSizeLimit) && grantedSizeLimit > 0
+      ? Math.floor(grantedSizeLimit)
+      : DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE;
+    const errors: string[] = [];
+    if (storage.length > maxStorageBuffers) {
+      errors.push(
+        `Storage config declares ${storage.length} buffers, but the device ` +
+        `maxStorageBuffersPerShaderStage limit is ${maxStorageBuffers}; ` +
+        "pack related buffers into structs to reduce the buffer count",
+      );
+    }
+    for (const node of storage) {
+      const byteSize = node.count * node.stride;
+      if (byteSize > maxStorageBufferSize) {
+        errors.push(
+          `Storage ${node.name} requires ${byteSize} bytes, but the device ` +
+          `maxStorageBufferBindingSize limit is ${maxStorageBufferSize} bytes; ` +
+          "reduce its size or pack related data into structs",
+        );
+      }
+    }
+    if (errors.length > 0) {
+      return errors;
+    }
+
+    const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const nextBuffers = new Map<string, GPUBuffer>();
+    const nextKeys = new Map<string, string>();
+    const nextLayouts = new Map<string, StorageBindingNode>();
+    for (const node of storage) {
+      const key = WebGPURenderingEngine.storageCacheKey(node);
+      const existing = this.storageBuffers.get(node.name);
+      const buffer = !this.resetStorageOnNextSync && existing && this.storageKeys.get(node.name) === key
+        ? existing
+        : this.device.createBuffer({
+          size: node.count * node.stride,
+          usage: STORAGE | COPY_DST,
+        });
+      nextBuffers.set(node.name, buffer);
+      nextKeys.set(node.name, key);
+      nextLayouts.set(node.name, { ...node });
+    }
+    for (const [name, buffer] of this.storageBuffers) {
+      if (nextBuffers.get(name) !== buffer) {
+        buffer.destroy();
+      }
+    }
+    this.storageBuffers = nextBuffers;
+    this.storageKeys = nextKeys;
+    this.storageLayouts = nextLayouts;
+    this.resetStorageOnNextSync = false;
+    return [];
+  }
+
+  private recreateStorageBuffers(): void {
+    if (!this.device || this.storageLayouts.size === 0) {
+      return;
+    }
+    const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const nextBuffers = new Map<string, GPUBuffer>();
+    for (const node of this.storageLayouts.values()) {
+      nextBuffers.set(node.name, this.device.createBuffer({
+        size: node.count * node.stride,
+        usage: STORAGE | COPY_DST,
+      }));
+    }
+    for (const buffer of this.storageBuffers.values()) {
+      buffer.destroy();
+    }
+    this.storageBuffers = nextBuffers;
+  }
+
   private failedCompilation(
     path: string,
     generation: number,
@@ -694,12 +808,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private beginShaderSession(path: string): void {
     const hadInstalledPipeline = this.passPipelines.size > 0;
+    const switchedShaderPath = this.shaderPath !== "" && this.shaderPath !== path;
     for (const pipeline of this.passPipelines.values()) {
       pipeline.dispose();
     }
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    this.resetStorageOnNextSync = this.resetStorageOnNextSync || (
+      switchedShaderPath && this.storageLayouts.size > 0
+    );
     if (hadInstalledPipeline) {
       this.resourceManager?.cleanup();
       this.timeManager.cleanup();
@@ -831,6 +949,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
     return JSON.stringify([SLANG_WGSL_CACHE_KEY_VERSION, pass.name, pass.source, commonCode, channels]);
+  }
+
+  private static storageCacheKey(node: StorageBindingNode): string {
+    return JSON.stringify([node.elementType, node.count, node.stride]);
   }
 
   render(time: number = performance.now()): void {
@@ -1165,6 +1287,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   resetTime(): void {
     this.timeManager.cleanup();
+    this.recreateStorageBuffers();
   }
 
   setInputEnabled(enabled: boolean): void {
@@ -1215,6 +1338,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    for (const buffer of this.storageBuffers.values()) {
+      buffer.destroy();
+    }
+    this.storageBuffers.clear();
+    this.storageKeys.clear();
+    this.storageLayouts.clear();
+    this.resetStorageOnNextSync = false;
     this.resourceManager?.cleanup();
     this.device?.destroy?.();
     this.device = null;
