@@ -12,6 +12,8 @@
 // that calls mainImage). A `#line 1` directive sits just before the user code
 // so Slang's diagnostics report the user's real line numbers.
 
+import type { StorageBindingNode } from "../types/PassGraph";
+
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 
@@ -82,6 +84,8 @@ export interface SlangWrapOptions {
   passName?: string;
   commonCode?: string;
   channels?: SlangChannelBinding[];
+  storage?: StorageBindingNode[];
+  passKind?: "render" | "compute";
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
    * capture coordinate, grid size) and swaps the fragment entry for one that
@@ -180,18 +184,40 @@ float4 ${helperName}(float2 uv)
     .join("\n");
 }
 
+/** Build storage declarations split around common code by their type dependency. */
+export function buildStorageDeclarations(
+  storage: StorageBindingNode[],
+  channelCount: number,
+  passKind: "render" | "compute",
+): { beforeCommon: string; afterCommon: string } {
+  const bufferType = passKind === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
+  const declaration = (node: StorageBindingNode) => `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
+${bufferType}<${node.elementType}> ${node.name};
+`;
+
+  return {
+    beforeCommon: storage.filter((node) => node.builtin).map(declaration).join(""),
+    afterCommon: storage.filter((node) => !node.builtin).map(declaration).join(""),
+  };
+}
+
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
+  const storageDeclarations = buildStorageDeclarations(
+    options.storage ?? [],
+    options.channels?.length ?? 0,
+    options.passKind ?? "render",
+  );
   if (options.captureMode) {
-    // Capture uniforms bind right after the channel texture/sampler pairs.
-    const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
+    // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
+    const captureBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${PRELUDE}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${PRELUDE}\n${channelPrelude}\n${capturePrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
-  // above the user source (after commonCode) to keep user diagnostics on the
-  // user's real line numbers.
-  return `${PRELUDE}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  // above the user source (after commonCode and custom storage declarations)
+  // to keep user diagnostics on the user's real line numbers.
+  return `${PRELUDE}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${ENTRY_POINTS}`;
 }
