@@ -82,4 +82,23 @@ describe("splitSlangRootHeader", () => {
     expect(result.header).toBe("#language slang 2026\n");
     expect(result.body).toBe("\nfloat x;\nmodule tooLate;\n");
   });
+
+  it("treats one leading UTF-8 BOM as trivia before an explicit header", () => {
+    const result = splitSlangRootHeader("\uFEFF#language slang 2026\nmodule image;\nfloat x;\n");
+
+    expect(result.header).toBe("#language slang 2026\nmodule image;\n");
+    expect(result.body).toBe("\uFEFF\n\nfloat x;\n");
+    expect(result.language).toBe("2026");
+  });
+
+  it("preserves a leading UTF-8 BOM when injecting the legacy header", () => {
+    const source = "\uFEFFfloat x;\n";
+
+    expect(splitSlangRootHeader(source)).toEqual({
+      header: "#language slang legacy\n",
+      body: source,
+      language: "legacy",
+      diagnostics: [],
+    });
+  });
 });

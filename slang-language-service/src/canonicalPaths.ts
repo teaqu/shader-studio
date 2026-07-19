@@ -42,12 +42,25 @@ export function normalizeInternalPath(input: string): string {
   return result;
 }
 
-function parsedFilePath(uri: string): string | undefined {
+interface ParsedFileUri {
+  authority: string;
+  path: string;
+}
+
+function normalizeFileAuthority(hostname: string): string {
+  const authority = hostname.toLowerCase();
+  return authority === "localhost" ? "" : authority;
+}
+
+function parsedFileUri(uri: string): ParsedFileUri | undefined {
   const parsed = new URL(uri);
   if (parsed.protocol !== "file:") {
     return undefined;
   }
-  return decodePath(parsed.pathname).replaceAll("\\", "/").replace(/\/$/, "");
+  return {
+    authority: normalizeFileAuthority(parsed.hostname),
+    path: decodePath(parsed.pathname).replaceAll("\\", "/").replace(/\/$/, ""),
+  };
 }
 
 function isWindowsPath(path: string): boolean {
@@ -69,12 +82,15 @@ function relativeFilePath(rootPath: string, filePath: string): string {
 }
 
 export class SlangPathMap {
+  private readonly rootFileAuthority: string | undefined;
   private readonly rootFilePath: string | undefined;
   private readonly uriToPath = new Map<string, string>();
   private readonly pathToUri = new Map<string, string>();
 
   constructor(readonly rootUri: string) {
-    this.rootFilePath = parsedFilePath(rootUri);
+    const rootFile = parsedFileUri(rootUri);
+    this.rootFileAuthority = rootFile?.authority;
+    this.rootFilePath = rootFile?.path;
   }
 
   register(uri: string, relativePath?: string): string {
@@ -93,11 +109,14 @@ export class SlangPathMap {
       if (this.rootFilePath === undefined) {
         throw new Error(`A relative path is required for non-file URI "${uri}"`);
       }
-      const filePath = parsedFilePath(uri);
-      if (filePath === undefined) {
+      const file = parsedFileUri(uri);
+      if (file === undefined) {
         throw new Error(`A relative path is required for non-file URI "${uri}"`);
       }
-      path = normalizeInternalPath(relativeFilePath(this.rootFilePath, filePath));
+      if (file.authority !== this.rootFileAuthority) {
+        throw new Error(`URI authority "${file.authority}" is outside the Slang workspace root authority "${this.rootFileAuthority}"`);
+      }
+      path = normalizeInternalPath(relativeFilePath(this.rootFilePath, file.path));
     }
 
     const mappedUri = this.pathToUri.get(path);

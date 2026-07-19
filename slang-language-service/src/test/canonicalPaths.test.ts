@@ -36,6 +36,22 @@ describe("SlangPathMap", () => {
     expect(paths.register("file:///tmp/root/a.slang")).toBe("/workspace/a.slang");
   });
 
+  it("requires matching case-insensitive file URI authorities", () => {
+    const paths = new SlangPathMap("file://Server-A/share/project");
+
+    expect(paths.register("file://server-a/share/project/a.slang")).toBe("/workspace/a.slang");
+    expect(() => paths.register("file://server-b/share/project/b.slang"))
+      .toThrow("outside the Slang workspace root");
+  });
+
+  it("treats localhost and an empty file URI authority as equivalent", () => {
+    const localRoot = new SlangPathMap("file://localhost/tmp/project");
+    const emptyRoot = new SlangPathMap("file:///tmp/project");
+
+    expect(localRoot.register("file:///tmp/project/a.slang")).toBe("/workspace/a.slang");
+    expect(emptyRoot.register("file://LOCALHOST/tmp/project/a.slang")).toBe("/workspace/a.slang");
+  });
+
   it("uses decoded path separators for file-root containment", () => {
     const paths = new SlangPathMap("file:///tmp/a%2Fb");
 

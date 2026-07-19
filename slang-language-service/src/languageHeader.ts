@@ -13,7 +13,7 @@ const DIRECTIVE_PATTERN = /#language[\t ]+slang[\t ]+([^\s]+)[^\r\n]*(?:\r\n|\r|
 const MODULE_PATTERN = /module[\t ]+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*[\t ]*;[\t ]*(?:\r\n|\r|\n|$)/y;
 
 function skipTrivia(source: string, start: number): number {
-  let cursor = start;
+  let cursor = start === 0 && source.startsWith("\uFEFF") ? 1 : start;
 
   while (cursor < source.length) {
     const whitespace = /^[\t \r\n]+/.exec(source.slice(cursor));

@@ -104,4 +104,64 @@ describe("syncWorkspaceToFileSystem", () => {
     expect(result).toBe(state);
     expect([...state]).toEqual(["/workspace/a.slang"]);
   });
+
+  it("retains retryable ownership when creating a directory fails", () => {
+    const fs = fakeFs(["/workspace/old.slang"]);
+    fs.mkdirTree.mockImplementationOnce(() => {
+      throw new Error("mkdir failed");
+    });
+    const state = new Set(["/workspace/old.slang"]);
+
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state)).toThrow("mkdir failed");
+
+    expect(state).toEqual(new Set(["/workspace/old.slang", "/workspace/new.slang"]));
+    expect(fs.unlink).not.toHaveBeenCalled();
+
+    syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state);
+    expect(state).toEqual(new Set(["/workspace/new.slang"]));
+  });
+
+  it("retains retryable ownership when writing a file fails", () => {
+    const fs = fakeFs(["/workspace/old.slang"]);
+    fs.writeFile.mockImplementationOnce(() => {
+      throw new Error("write failed");
+    });
+    const state = new Set(["/workspace/old.slang"]);
+
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state)).toThrow("write failed");
+
+    expect(state).toEqual(new Set(["/workspace/old.slang", "/workspace/new.slang"]));
+    expect(fs.unlink).not.toHaveBeenCalled();
+
+    syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state);
+    expect(state).toEqual(new Set(["/workspace/new.slang"]));
+  });
+
+  it("retains old and current ownership when deleting a stale file fails", () => {
+    const fs = fakeFs(["/workspace/old.slang"]);
+    fs.unlink.mockImplementationOnce(() => {
+      throw new Error("unlink failed");
+    });
+    const state = new Set(["/workspace/old.slang"]);
+
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state)).toThrow("unlink failed");
+
+    expect(fs.writeFile).toHaveBeenCalledWith("/workspace/new.slang", "new");
+    expect(state).toEqual(new Set(["/workspace/old.slang", "/workspace/new.slang"]));
+
+    syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/new.slang", path: "/workspace/new.slang", source: "new" },
+    ]), new Map(), state);
+    expect(state).toEqual(new Set(["/workspace/new.slang"]));
+  });
 });

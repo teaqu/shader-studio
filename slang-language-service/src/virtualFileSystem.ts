@@ -26,17 +26,29 @@ export function syncWorkspaceToFileSystem(
   const previousPaths = [...ownedPaths].map(normalizeInternalPath);
   const nextPaths = new Set(files.map((file) => file.path));
 
-  for (const path of previousPaths) {
-    if (!nextPaths.has(path) && fs.analyzePath(path).exists) {
-      fs.unlink(path);
+  try {
+    for (const file of files) {
+      fs.mkdirTree(parentPath(file.path));
+      fs.writeFile(file.path, openDocuments.get(file.uri)?.source ?? file.source);
     }
+
+    for (const path of previousPaths) {
+      if (!nextPaths.has(path) && fs.analyzePath(path).exists) {
+        fs.unlink(path);
+      }
+    }
+  } catch (error) {
+    // A failed operation may still have created or written a path. Retaining
+    // both ownership generations lets a later sync safely clean either one.
+    for (const path of nextPaths) {
+      ownedPaths.add(path);
+    }
+    throw error;
   }
 
   ownedPaths.clear();
-  for (const file of files) {
-    fs.mkdirTree(parentPath(file.path));
-    fs.writeFile(file.path, openDocuments.get(file.uri)?.source ?? file.source);
-    ownedPaths.add(file.path);
+  for (const path of nextPaths) {
+    ownedPaths.add(path);
   }
 
   return ownedPaths;
