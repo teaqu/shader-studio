@@ -130,11 +130,6 @@ ffmpeg -i input.mp4 -c:v copy -c:a libmp3lame -q:a 2 output.mp4
     ffmpeg -i input.mp4 -vn -c:a pcm_s16le -ar 48000 output.wav
     ```
 
-    WAV removes codec padding, but the waveform at the end must still join the
-    waveform at the beginning. Arbitrary audio may require editing or a crossfade.
-    Audio embedded in a looping video is played by the browser's video element and
-    is not guaranteed to loop sample-perfectly.
-
 **Texture layout:**
 
 | Row | y coordinate | Contents |
