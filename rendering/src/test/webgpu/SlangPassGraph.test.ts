@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BufferPass, ShaderConfig } from "@shader-studio/types";
 import {
   BUILTIN_STORAGE_TYPES,
+  MAX_COMPUTE_DISPATCH_COUNT,
   buildSlangPassGraph,
   isComputePassName,
 } from "../../webgpu/SlangPassGraph";
@@ -802,6 +803,30 @@ describe("Slang compute passes", () => {
 
     expect(graph.errors.some((error) => error.includes("dispatchCount must be a positive integer"))).toBe(true);
     expect(graph.passes[0].dispatchCount).toBe(1);
+  });
+
+  it("accepts the dispatchCount safety maximum and rejects the next value", () => {
+    const accepted = build({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        ComputeMain: { path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT },
+      },
+    }, { ComputeMain: imageCode });
+    const rejected = build({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        ComputeMain: { path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT + 1 },
+      },
+    }, { ComputeMain: imageCode });
+
+    expect(accepted.errors).toEqual([]);
+    expect(accepted.passes[0].dispatchCount).toBe(MAX_COMPUTE_DISPATCH_COUNT);
+    expect(rejected.errors).toContain(
+      `ComputeMain: dispatchCount must be at most ${MAX_COMPUTE_DISPATCH_COUNT}`,
+    );
+    expect(rejected.passes[0].dispatchCount).toBe(1);
   });
 
   it.each([

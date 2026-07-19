@@ -84,6 +84,7 @@ const SLANG_PIPELINE_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
+const DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = 65_535;
 
 type WorkgroupCounts = [number, number, number];
 
@@ -132,6 +133,20 @@ function resolveWorkgroupCounts(
       ];
     }
   }
+}
+
+function validateWorkgroupCounts(
+  passName: string,
+  counts: WorkgroupCounts,
+  limit: number,
+): string | null {
+  const axes = ["x", "y", "z"] as const;
+  for (let index = 0; index < counts.length; index += 1) {
+    if (counts[index] > limit) {
+      return `${passName}: dispatch ${axes[index]} count ${counts[index]} exceeds device limit ${limit}`;
+    }
+  }
+  return null;
 }
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
@@ -186,6 +201,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private storageKeys = new Map<string, string>();
   private storageLayouts = new Map<string, StorageBindingNode>();
   private dispatchOnceRan = new Set<string>();
+  private hasSubmittedFrameForInstalledGeneration = false;
   private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
   private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
@@ -563,11 +579,24 @@ export class WebGPURenderingEngine implements RenderingEngine {
         warnings: graph.warnings,
       });
     }
+    for (const pass of graph.passes) {
+      const resolution = this.clampResolutionToTextureLimit(pass);
+      pass.width = resolution.width;
+      pass.height = resolution.height;
+    }
     const storageErrors = this.validateStorageLimits(graph.storage);
     if (storageErrors.length > 0) {
       return this.failedCompilation(path, generation, {
         success: false,
         errors: storageErrors,
+        warnings: graph.warnings,
+      });
+    }
+    const dispatchErrors = this.validateStaticComputeDispatchLimits(graph.passes, graph.storage);
+    if (dispatchErrors.length > 0) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: dispatchErrors,
         warnings: graph.warnings,
       });
     }
@@ -606,12 +635,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
       const compileResourceManager = candidateResourceManager ?? this.resourceManager;
       pipelineCandidates = this.preparePipelineCandidates(generation, candidateResourceManager);
-
-      for (const pass of graph.passes) {
-        const resolution = this.clampResolutionToTextureLimit(pass);
-        pass.width = resolution.width;
-        pass.height = resolution.height;
-      }
 
       // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
       // loaded (and awaited) as part of the compile; render then only does cache
@@ -922,6 +945,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.computePipelines = nextComputePipelines;
       this.computeKeys = nextComputeKeys;
       this.dispatchOnceRan.clear();
+      this.hasSubmittedFrameForInstalledGeneration = false;
       if (candidateResourceManager) {
         this.resourceManager = candidateResourceManager;
       }
@@ -1083,6 +1107,35 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     return [];
+  }
+
+  private resolveComputeWorkgroupLimit(): number {
+    const grantedLimit = this.device?.limits?.maxComputeWorkgroupsPerDimension;
+    return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
+      ? Math.floor(grantedLimit)
+      : DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION;
+  }
+
+  private validateStaticComputeDispatchLimits(
+    passes: RenderPassNode[],
+    storage: StorageBindingNode[],
+  ): string[] {
+    const storageLayouts = new Map(storage.map((node) => [node.name, node]));
+    const limit = this.resolveComputeWorkgroupLimit();
+    const errors: string[] = [];
+    for (const pass of passes) {
+      if (pass.kind !== "compute" || pass.dispatch?.mode === "cover-channel") {
+        continue;
+      }
+      const counts = resolveWorkgroupCounts(pass, storageLayouts, []);
+      if (counts) {
+        const error = validateWorkgroupCounts(pass.name, counts, limit);
+        if (error) {
+          errors.push(error);
+        }
+      }
+    }
+    return errors;
   }
 
   private prepareStorageBuffers(
@@ -1747,13 +1800,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       mouse: this.mouseManager.getMouse(),
     };
 
-    // While paused, buffer passes stop advancing. Frame 0 is the exception:
-    // a shader loaded while paused still renders its first buffer state.
-    const skipBufferPasses = isPaused && this.timeManager.getFrame() > 0;
+    // A shader installed while paused still submits one complete initial
+    // frame. TimeManager's frame stays at zero while paused, so the engine
+    // owns this submission state instead of inferring it from iFrame.
+    const skipBufferPasses = isPaused && this.hasSubmittedFrameForInstalledGeneration;
 
     const encoder = this.device.createCommandEncoder();
     let canvasTexture: GPUTexture | null = null;
     const encodedComputePasses = new Set<string>();
+    const pendingDispatchOnce = new Set<string>();
 
     for (const pass of this.passGraph) {
       if (pass.kind !== "compute" || skipBufferPasses) {
@@ -1776,6 +1831,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         channelResources ?? [],
       );
       if (channelResources === null || workgroupCounts === null) {
+        continue;
+      }
+      if (validateWorkgroupCounts(
+        pass.name,
+        workgroupCounts,
+        this.resolveComputeWorkgroupLimit(),
+      )) {
         continue;
       }
       pipeline.rebuildBindGroups(channelResources, this.storageBuffers);
@@ -1813,7 +1875,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
       }
       if (pass.dispatchOnce) {
-        this.dispatchOnceRan.add(pass.name);
+        pendingDispatchOnce.add(pass.name);
       }
       encodedComputePasses.add(pass.name);
     }
@@ -1879,8 +1941,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     this.encodeInspectorCopy(encoder, canvasTexture);
     this.device.queue.submit([encoder.finish()]);
+    this.hasSubmittedFrameForInstalledGeneration = true;
     this.resolveInspectorReadback();
 
+    for (const passName of pendingDispatchOnce) {
+      this.dispatchOnceRan.add(passName);
+    }
     for (const passName of encodedComputePasses) {
       this.computePipelines.get(passName)?.swap();
     }
@@ -2088,12 +2154,34 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.canvas || this.passGraph.length === 0) {
       return;
     }
-    this.updatePassGraphResolutions(this.passGraph, this.currentConfig);
-    for (const pass of this.passGraph) {
+    const resizedPasses = this.passGraph.map((pass) => ({ ...pass }));
+    this.updatePassGraphResolutions(resizedPasses, this.currentConfig);
+    for (let index = 0; index < this.passGraph.length; index += 1) {
+      const pass = this.passGraph[index];
+      const resizedPass = resizedPasses[index];
+      const sizeChanged = pass.width !== resizedPass.width || pass.height !== resizedPass.height;
       if (pass.kind === "compute") {
-        this.computePipelines.get(pass.name)?.resize(pass.width, pass.height);
+        const pipeline = this.computePipelines.get(pass.name);
+        if (!pipeline) {
+          pass.width = resizedPass.width;
+          pass.height = resizedPass.height;
+          continue;
+        }
+        pipeline.resize(resizedPass.width, resizedPass.height);
+        pass.width = resizedPass.width;
+        pass.height = resizedPass.height;
+        const dispatchMode = pass.dispatch?.mode ?? "texel";
+        if (
+          pass.dispatchOnce &&
+          sizeChanged &&
+          (dispatchMode === "texel" || pass.output === "texture")
+        ) {
+          this.dispatchOnceRan.delete(pass.name);
+        }
       } else {
-        this.passPipelines.get(pass.name)?.resize(pass.width, pass.height);
+        this.passPipelines.get(pass.name)?.resize(resizedPass.width, resizedPass.height);
+        pass.width = resizedPass.width;
+        pass.height = resizedPass.height;
       }
     }
   }
@@ -2148,6 +2236,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   resetTime(): void {
     this.timeManager.cleanup();
     this.dispatchOnceRan.clear();
+    this.hasSubmittedFrameForInstalledGeneration = false;
     this.compileGeneration++;
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
@@ -2211,6 +2300,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.computePipelines.clear();
     this.computeKeys.clear();
     this.dispatchOnceRan.clear();
+    this.hasSubmittedFrameForInstalledGeneration = false;
     this.passGraph = [];
     this.installedCompile = null;
     this.installedResourceKey = null;

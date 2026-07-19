@@ -80,19 +80,33 @@ function harness() {
   }> = [];
   const computeFailure: {
     method: ComputeFailureMethod | null;
+    pass: number;
     call: number;
     error: Error;
     endError: Error | null;
   } = {
     method: null,
+    pass: 1,
     call: 1,
     error: new Error("compute encoder operation failed"),
     endError: null,
   };
+  const renderFailure: {
+    method: "setPipeline" | "draw" | null;
+    pass: number;
+    error: Error;
+  } = {
+    method: null,
+    pass: 1,
+    error: new Error("render encoder operation failed"),
+  };
+  let finishFailure: Error | null = null;
+  let submitFailure: Error | null = null;
+  let renderPassCount = 0;
   let bindGroupId = 0;
   let computePipelineId = 0;
   const device = {
-    limits: {},
+    limits: { maxComputeWorkgroupsPerDimension: 65_535 },
     createShaderModule: vi.fn(() => ({
       getCompilationInfo: vi.fn(async () => ({ messages: [] })),
     })),
@@ -126,6 +140,7 @@ function harness() {
     createCommandEncoder: vi.fn(() => ({
       beginComputePass: vi.fn(() => {
         commandEvents.push({ type: "beginComputePass" });
+        const passNumber = computePasses.length + 1;
         const calls: Record<ComputeFailureMethod, number> = {
           setPipeline: 0,
           setBindGroup: 0,
@@ -134,7 +149,11 @@ function harness() {
         };
         const failIfConfigured = (method: ComputeFailureMethod) => {
           calls[method]++;
-          if (computeFailure.method === method && computeFailure.call === calls[method]) {
+          if (
+            computeFailure.method === method &&
+            computeFailure.pass === passNumber &&
+            computeFailure.call === calls[method]
+          ) {
             computeFailure.method = null;
             throw computeFailure.error;
           }
@@ -167,18 +186,34 @@ function harness() {
       }),
       beginRenderPass: vi.fn(() => {
         commandEvents.push({ type: "beginRenderPass" });
+        const passNumber = ++renderPassCount;
+        const failIfConfigured = (method: "setPipeline" | "draw") => {
+          if (renderFailure.method === method && renderFailure.pass === passNumber) {
+            renderFailure.method = null;
+            throw renderFailure.error;
+          }
+        };
         return {
           setPipeline: vi.fn((pipeline: GPURenderPipeline) => {
             commandEvents.push({ type: "render.setPipeline", value: pipeline });
+            failIfConfigured("setPipeline");
           }),
           setBindGroup: vi.fn((_index: number, bindGroup: GPUBindGroup) => {
             commandEvents.push({ type: "render.setBindGroup", value: bindGroup });
           }),
-          draw: vi.fn(() => commandEvents.push({ type: "draw" })),
+          draw: vi.fn(() => {
+            commandEvents.push({ type: "draw" });
+            failIfConfigured("draw");
+          }),
           end: vi.fn(() => commandEvents.push({ type: "endRenderPass" })),
         };
       }),
       finish: vi.fn(() => {
+        if (finishFailure) {
+          const error = finishFailure;
+          finishFailure = null;
+          throw error;
+        }
         const commandBuffer = { label: "frame-command-buffer" };
         commandEvents.push({ type: "finish", value: commandBuffer });
         return commandBuffer;
@@ -189,6 +224,11 @@ function harness() {
       writeTexture: vi.fn(),
       copyExternalImageToTexture: vi.fn(),
       submit: vi.fn((buffers: GPUCommandBuffer[]) => {
+        if (submitFailure) {
+          const error = submitFailure;
+          submitFailure = null;
+          throw error;
+        }
         commandEvents.push({ type: "submit", value: buffers });
       }),
     },
@@ -217,6 +257,13 @@ function harness() {
     commandEvents,
     computePasses,
     computeFailure,
+    renderFailure,
+    setFinishFailure(error: Error) {
+      finishFailure = error;
+    },
+    setSubmitFailure(error: Error) {
+      submitFailure = error;
+    },
   };
 }
 
@@ -424,6 +471,131 @@ describe("WebGPURenderingEngine compute compilation", () => {
 
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
       .toEqual([{ type: "dispatchWorkgroups", value: [2, 1, 1] }]);
+  });
+
+  it.each([
+    {
+      label: "texel x",
+      options: { resolution: { width: 41, height: 8 }, workgroupSize: [8, 8, 1] },
+      axis: "x",
+    },
+    {
+      label: "count x",
+      options: { dispatch: { count: 41 }, workgroupSize: [8, 1, 1] },
+      axis: "x",
+    },
+    {
+      label: "storage x",
+      options: {
+        dispatch: { cover: "particles" },
+        workgroupSize: [8, 1, 1],
+        storage: { particles: { count: 41, stride: 4, elementType: "float" } },
+      },
+      axis: "x",
+    },
+    {
+      label: "literal y",
+      options: { dispatch: { x: 5, y: 6, z: 5 } },
+      axis: "y",
+    },
+    {
+      label: "literal z",
+      options: { dispatch: { x: 5, y: 5, z: 6 } },
+      axis: "z",
+    },
+  ] as const)("rejects static $label dispatch above the device axis limit", async ({ options, axis }) => {
+    const testHarness = harness();
+    testHarness.device.limits.maxComputeWorkgroupsPerDimension = 5;
+
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(options),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      errors: [`ComputeSim: dispatch ${axis} count 6 exceeds device limit 5`],
+    });
+    expect(testHarness.device.createComputePipeline).not.toHaveBeenCalled();
+  });
+
+  it("accepts static dispatch counts equal to the device axis limit", async () => {
+    const testHarness = harness();
+    testHarness.device.limits.maxComputeWorkgroupsPerDimension = 5;
+
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatch: { x: 5, y: 5, z: 5 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+
+    expect(result?.success).toBe(true);
+  });
+
+  it("uses the WebGPU 65535 dispatch-axis fallback when the device omits its limit", async () => {
+    const testHarness = harness();
+    delete (testHarness.device.limits as { maxComputeWorkgroupsPerDimension?: number })
+      .maxComputeWorkgroupsPerDimension;
+
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatch: { x: 65_536, y: 1, z: 1 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      errors: ["ComputeSim: dispatch x count 65536 exceeds device limit 65535"],
+    });
+  });
+
+  it("skips a dynamic cover-channel dispatch over the device limit without consuming once", async () => {
+    const testHarness = harness();
+    testHarness.device.limits.maxComputeWorkgroupsPerDimension = 4;
+    const path = "/dynamic.png";
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        dispatchOnce: true,
+        dispatch: { cover: "iChannel0" },
+        inputs: { iChannel0: { type: "texture", path } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const handle = {
+      view: { label: "dynamic-view" },
+      sampler: { label: "dynamic-sampler" },
+      width: 33,
+      height: 16,
+    };
+    const resourceManager = {
+      getImageTextureCache: vi.fn(() => ({ [path]: handle })),
+      getDefaultTexture: vi.fn(() => null),
+    };
+    (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
+      .resourceManager = resourceManager;
+    const compute = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const swap = vi.spyOn(compute, "swap");
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    expect(testHarness.commandEvents.some(({ type }) => type === "beginComputePass")).toBe(false);
+    expect(swap).not.toHaveBeenCalled();
+
+    handle.width = 32;
+    testHarness.engine.render(1016);
+    testHarness.engine.render(1032);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([{ type: "dispatchWorkgroups", value: [4, 2, 1] }]);
+    expect(swap).toHaveBeenCalledTimes(1);
   });
 
   it.each(["texture", "video"] as const)(
@@ -747,9 +919,95 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.togglePause();
 
     testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
 
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
       .toHaveLength(1);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "beginRenderPass"))
+      .toHaveLength(2);
+  });
+
+  it("retries the initial paused frame after submit fails, then skips compute", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.togglePause();
+    const submitFailure = new Error("initial paused submit failed");
+    testHarness.setSubmitFailure(submitFailure);
+
+    expect(() => testHarness.engine.render(1000)).toThrow(submitFailure);
+    expect(() => testHarness.engine.render(1016)).not.toThrow();
+    testHarness.engine.render(1032);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
+    expect(testHarness.device.queue.submit).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-arms the initial paused frame after resetTime", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.togglePause();
+
+    testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
+    testHarness.engine.resetTime();
+    testHarness.engine.render(2000);
+    testHarness.engine.render(2016);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
+  });
+
+  it("re-arms paused compute on successful publication but not failed compilation", async () => {
+    const testHarness = harness();
+    const config = computeConfig();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.togglePause();
+    testHarness.engine.render(1000);
+
+    testHarness.compiler.compile.mockImplementationOnce(async () => ({
+      success: false,
+      errors: ["expected failure"],
+    }));
+    const failed = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: `${COMPUTE_SOURCE} // broken` },
+    );
+    expect(failed?.success).toBe(false);
+    testHarness.engine.render(1016);
+
+    const successful = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(successful?.success).toBe(true);
+    testHarness.engine.render(1032);
+    testHarness.engine.render(1048);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
   });
 
   it.each([
@@ -843,6 +1101,125 @@ describe("WebGPURenderingEngine compute compilation", () => {
       ]);
     expect(originalTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
     expect(testHarness.compiler.compile).toHaveBeenCalledTimes(compileCount);
+  });
+
+  it("re-arms sampled dispatchOnce after resize replaces its output textures", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, dispatchOnce: true, resolution: { scale: 0.5 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const compute = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const rebuildBindGroups = vi.spyOn(compute, "rebuildBindGroups");
+    const swap = vi.spyOn(compute, "swap");
+    enableRendering(testHarness);
+    testHarness.device.createBindGroup.mockClear();
+
+    testHarness.engine.render(1000);
+    testHarness.engine.handleCanvasResize(640, 360);
+    testHarness.engine.render(1016);
+
+    expect(rebuildBindGroups).toHaveBeenCalledTimes(2);
+    expect(swap).toHaveBeenCalledTimes(2);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([
+        { type: "dispatchWorkgroups", value: [20, 12, 1] },
+        { type: "dispatchWorkgroups", value: [40, 23, 1] },
+      ]);
+    const resizedImageEntries = testHarness.device.createBindGroup.mock.calls[3][0].entries;
+    expect(resizedImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: expect.objectContaining({ textureId: 2 }),
+      }),
+    ]));
+  });
+
+  it("re-arms an output-free texel dispatchOnce when its work dimensions resize", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        dispatchOnce: true,
+        resolution: { scale: 0.5 },
+        storage: { particles: { count: 16, stride: 4, elementType: "float" } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.handleCanvasResize(640, 360);
+    testHarness.engine.render(1016);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([
+        { type: "dispatchWorkgroups", value: [20, 12, 1] },
+        { type: "dispatchWorkgroups", value: [40, 23, 1] },
+      ]);
+  });
+
+  it.each([
+    { label: "count", dispatch: { count: 10 } as ComputeDispatch },
+    { label: "literal", dispatch: { x: 2, y: 3, z: 1 } as ComputeDispatch },
+  ])("re-arms a sampled $label dispatchOnce when resize replaces its output", async ({ dispatch }) => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        dispatchOnce: true,
+        dispatch,
+        resolution: { scale: 0.5 },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.handleCanvasResize(640, 360);
+    testHarness.engine.render(1016);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
+  });
+
+  it("preserves dispatchOnce completion and output when resize allocation fails", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, dispatchOnce: true, resolution: { scale: 0.5 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const compute = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const rebuildBindGroups = vi.spyOn(compute, "rebuildBindGroups");
+    const swap = vi.spyOn(compute, "swap");
+    const originalTextures = [...testHarness.textures];
+    enableRendering(testHarness);
+    testHarness.engine.render(1000);
+    testHarness.device.createTexture.mockImplementationOnce(() => {
+      throw new Error("resize allocation failed");
+    });
+
+    expect(() => testHarness.engine.handleCanvasResize(640, 360))
+      .toThrow("resize allocation failed");
+    expect(compute.getOutputSize()).toEqual({ width: 160, height: 90 });
+    expect(testHarness.engine.getPasses().find(({ name }) => name === "ComputeSim"))
+      .toMatchObject({ width: 160, height: 90 });
+    expect(originalTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+
+    testHarness.engine.render(1016);
+    expect(rebuildBindGroups).toHaveBeenCalledTimes(1);
+    expect(swap).toHaveBeenCalledTimes(1);
   });
 
   it("encodes multiple compute nodes in graph order before buffer and Image draws", async () => {
@@ -1135,6 +1512,67 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(() => testHarness.engine.render(1000)).toThrow(operationError);
     expect(testHarness.computePasses[0].end).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    "later-compute",
+    "render-setPipeline",
+    "render-draw",
+    "finish",
+    "submit",
+  ] as const)(
+    "commits dispatchOnce and swaps only after submit succeeds past a %s failure",
+    async (failurePoint) => {
+      const testHarness = harness();
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          ComputeOnce: { path: "once.slang", dispatchOnce: true },
+          ...(failurePoint === "later-compute"
+            ? { ComputeLater: { path: "later.slang" } }
+            : {}),
+          Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeOnce" } } },
+        },
+      };
+      await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+        ComputeOnce: "once compute",
+        ...(failurePoint === "later-compute" ? { ComputeLater: "later compute" } : {}),
+      });
+      const once = (testHarness.engine as unknown as {
+        computePipelines: Map<string, SlangComputePipeline>;
+      }).computePipelines.get("ComputeOnce")!;
+      const rebuildBindGroups = vi.spyOn(once, "rebuildBindGroups");
+      const swap = vi.spyOn(once, "swap");
+      enableRendering(testHarness);
+      const failure = new Error(`${failurePoint} failed`);
+      if (failurePoint === "later-compute") {
+        testHarness.computeFailure.method = "setPipeline";
+        testHarness.computeFailure.pass = 2;
+        testHarness.computeFailure.error = failure;
+      } else if (failurePoint === "render-setPipeline") {
+        testHarness.renderFailure.method = "setPipeline";
+        testHarness.renderFailure.error = failure;
+      } else if (failurePoint === "render-draw") {
+        testHarness.renderFailure.method = "draw";
+        testHarness.renderFailure.error = failure;
+      } else if (failurePoint === "finish") {
+        testHarness.setFinishFailure(failure);
+      } else {
+        testHarness.setSubmitFailure(failure);
+      }
+
+      expect(() => testHarness.engine.render(1000)).toThrow(failure);
+      expect(rebuildBindGroups).toHaveBeenCalledTimes(1);
+      expect(swap).not.toHaveBeenCalled();
+
+      expect(() => testHarness.engine.render(1016)).not.toThrow();
+      expect(rebuildBindGroups).toHaveBeenCalledTimes(2);
+      expect(swap).toHaveBeenCalledTimes(1);
+
+      testHarness.engine.render(1032);
+      expect(rebuildBindGroups).toHaveBeenCalledTimes(2);
+      expect(swap).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps sampling the completed compute output while a paused frame skips the source", async () => {
     const testHarness = harness();

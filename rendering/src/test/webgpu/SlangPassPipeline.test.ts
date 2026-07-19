@@ -70,6 +70,52 @@ describe("SlangPassPipeline", () => {
     expect(before).not.toBe(pass.getCurrentOutputView());
   });
 
+  it("precreates stable current and previous buffer views across reads and swaps", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const textures = device.createTexture.mock.results.map((result) => result.value);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+    const current = pass.getCurrentOutputView();
+    const previous = pass.getPreviousOutputView();
+    expect(pass.getCurrentOutputView()).toBe(current);
+    expect(pass.getPreviousOutputView()).toBe(previous);
+
+    pass.swap();
+
+    expect(pass.getCurrentOutputView()).toBe(previous);
+    expect(pass.getPreviousOutputView()).toBe(current);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+  });
+
+  it("replaces cached buffer views only after a successful resize", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalCurrent = pass.getCurrentOutputView();
+
+    pass.resize(640, 360);
+
+    const nextTextures = device.createTexture.mock.results.slice(2).map((result) => result.value);
+    expect(pass.getCurrentOutputView()).not.toBe(originalCurrent);
+    expect(nextTextures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+    expect(pass.getCurrentOutputView()).toBe(pass.getCurrentOutputView());
+  });
+
   it("returns null getters before rebuild has ever run", () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -332,8 +378,10 @@ describe("SlangPassPipeline", () => {
 
     pass.swap();
 
-    expect(pass.getCurrentOutputView()).toBe(textureB.createView.mock.results[1].value);
-    expect(pass.getPreviousOutputView()).toBe(textureA.createView.mock.results[1].value);
+    expect(pass.getCurrentOutputView()).toBe(textureB.createView.mock.results[0].value);
+    expect(pass.getPreviousOutputView()).toBe(textureA.createView.mock.results[0].value);
+    expect(textureA.createView).toHaveBeenCalledTimes(1);
+    expect(textureB.createView).toHaveBeenCalledTimes(1);
   });
 
   it("destroys the previous ping-pong textures when rebuild runs again", async () => {
@@ -355,6 +403,32 @@ describe("SlangPassPipeline", () => {
       expect(texture.destroy).toHaveBeenCalledTimes(1);
     }
     expect(device.createTexture).toHaveBeenCalledTimes(4);
+  });
+
+  it("destroys a partial output allocation when the second rebuild texture throws", async () => {
+    const device = fakeDevice();
+    const partialTexture = {
+      createView: vi.fn(() => ({ label: "partial-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second render rebuild allocation failed");
+      });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+
+    await expect(pass.rebuild("// wgsl"))
+      .rejects.toThrow("second render rebuild allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(pass.getCurrentOutputView()).toBeNull();
   });
 
   it("dispose() destroys ping-pong textures and clears the output view", async () => {
@@ -561,6 +635,40 @@ describe("SlangPassPipeline", () => {
     const callsAfterFailure = device.createTexture.mock.calls.length;
     pass.resize(320, 180);
     expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
+  it("preserves cached render views when resized output view creation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalView = pass.getCurrentOutputView();
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const failingTexture = {
+      createView: vi.fn(() => {
+        throw new Error("render resize view failed");
+      }),
+      destroy: vi.fn(),
+    };
+    const siblingTexture = {
+      createView: vi.fn(() => ({ label: "sibling-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => failingTexture)
+      .mockImplementationOnce(() => siblingTexture);
+
+    expect(() => pass.resize(640, 360)).toThrow("render resize view failed");
+
+    expect(failingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(siblingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    expect(pass.getCurrentOutputView()).toBe(originalView);
   });
 
   it("destroys the uniform buffer on dispose()", async () => {

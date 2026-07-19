@@ -29,8 +29,11 @@ export class SlangComputePipeline {
   private dispatchUniformBuffers: GPUBuffer[] = [];
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private bindGroups: GPUBindGroup[] = [];
+  private bindGroupResourceIdentities: unknown[] | null = null;
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
+  private fullOutputViews: GPUTextureView[] = [];
+  private layerOutputViews: GPUTextureView[][] = [];
   private textureIndex = 0;
   private rebuildGeneration = 0;
 
@@ -90,7 +93,18 @@ export class SlangComputePipeline {
     }
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     if (this.descriptor.hasOutput) {
-      this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+      const textures: GPUTexture[] = [];
+      try {
+        textures.push(this.createOutputTexture());
+        textures.push(this.createOutputTexture());
+        const views = this.createOutputViews(textures);
+        this.textures = textures;
+        this.fullOutputViews = views.full;
+        this.layerOutputViews = views.layers;
+      } catch (error) {
+        SlangComputePipeline.destroyTextureList(textures);
+        throw error;
+      }
     }
 
     const info = await shaderModule.getCompilationInfo?.();
@@ -109,36 +123,40 @@ export class SlangComputePipeline {
     const nextDescriptor = { ...this.descriptor, width, height };
     if (this.descriptor.hasOutput && this.textures.length > 0) {
       const nextTextures: GPUTexture[] = [];
+      let nextViews: ReturnType<SlangComputePipeline["createOutputViews"]>;
       try {
         nextTextures.push(this.createOutputTexture(width, height));
         nextTextures.push(this.createOutputTexture(width, height));
+        nextViews = this.createOutputViews(nextTextures);
       } catch (error) {
         SlangComputePipeline.destroyTextureList(nextTextures);
         throw error;
       }
       const previousTextures = this.textures;
       this.descriptor = nextDescriptor;
-      this.bindGroups = [];
+      this.invalidateBindGroups();
       this.textures = nextTextures;
+      this.fullOutputViews = nextViews.full;
+      this.layerOutputViews = nextViews.layers;
       this.textureIndex = 0;
       SlangComputePipeline.destroyTextureList(previousTextures);
       return;
     }
     this.descriptor = nextDescriptor;
-    this.bindGroups = [];
+    this.invalidateBindGroups();
   }
 
   rebuildBindGroups(
     channels: SlangChannelResource[],
     storageBuffers: Map<string, GPUBuffer>,
   ): void {
-    this.bindGroups = [];
     if (
       !this.pipeline ||
       !this.uniformBuffer ||
       !this.bindGroupLayout ||
       this.dispatchUniformBuffers.length !== this.descriptor.dispatchCount
     ) {
+      this.invalidateBindGroups();
       return;
     }
 
@@ -149,16 +167,44 @@ export class SlangComputePipeline {
       sortedChannels.some((channel, index) => channel.slot !== expectedChannels[index].slot) ||
       (sortedChannels.length > 0 && !this.sampler)
     ) {
+      this.invalidateBindGroups();
       return;
     }
     if (this.descriptor.storage.some((node) => !storageBuffers.has(node.name))) {
+      this.invalidateBindGroups();
       return;
     }
 
     const outputView = this.descriptor.hasOutput ? this.getCurrentOutputView() : null;
     if (this.descriptor.hasOutput && !outputView) {
+      this.invalidateBindGroups();
       return;
     }
+
+    const resourceIdentities: unknown[] = [
+      this.pipeline,
+      this.uniformBuffer,
+      this.bindGroupLayout,
+      ...this.dispatchUniformBuffers,
+    ];
+    for (const channel of sortedChannels) {
+      resourceIdentities.push(
+        channel.slot,
+        channel.textureView,
+        channel.sampler ?? this.sampler,
+      );
+    }
+    for (const node of this.descriptor.storage) {
+      resourceIdentities.push(node.name, storageBuffers.get(node.name));
+    }
+    resourceIdentities.push(outputView);
+    if (
+      this.bindGroups.length === this.descriptor.dispatchCount &&
+      this.sameResourceIdentities(resourceIdentities)
+    ) {
+      return;
+    }
+    this.invalidateBindGroups();
 
     const commonEntries: GPUBindGroupEntry[] = [{
       binding: 0,
@@ -196,6 +242,7 @@ export class SlangComputePipeline {
         { binding: dispatchBinding, resource: { buffer } },
       ],
     }));
+    this.bindGroupResourceIdentities = resourceIdentities;
   }
 
   getPipeline(): GPUComputePipeline | null {
@@ -215,24 +262,27 @@ export class SlangComputePipeline {
   }
 
   getCurrentOutputView(): GPUTextureView | null {
-    return this.createFullOutputView(this.textureIndex);
+    return this.fullOutputViews[this.textureIndex] ?? null;
   }
 
   getLayerOutputView(layer: number): GPUTextureView | null {
-    return this.createLayerOutputView(this.textureIndex, layer);
+    if (!Number.isInteger(layer) || layer < 0 || layer >= this.descriptor.outputLayers) {
+      return null;
+    }
+    return this.layerOutputViews[this.textureIndex]?.[layer] ?? null;
   }
 
   getPreviousLayerOutputView(layer: number): GPUTextureView | null {
     if (this.textures.length === 0) {
       return null;
     }
-    return this.createLayerOutputView(1 - this.textureIndex, layer);
+    return this.layerOutputViews[1 - this.textureIndex]?.[layer] ?? null;
   }
 
   swap(): void {
     if (this.textures.length > 0) {
       this.textureIndex = 1 - this.textureIndex;
-      this.bindGroups = [];
+      this.invalidateBindGroups();
     }
   }
 
@@ -312,34 +362,26 @@ export class SlangComputePipeline {
     });
   }
 
-  private createFullOutputView(textureIndex: number): GPUTextureView | null {
-    const texture = this.textures[textureIndex];
-    if (!texture) {
-      return null;
-    }
-    if (this.descriptor.outputLayers > 1) {
-      return texture.createView({
+  private createOutputViews(textures: GPUTexture[]): {
+    full: GPUTextureView[];
+    layers: GPUTextureView[][];
+  } {
+    const full = textures.map((texture) => this.descriptor.outputLayers > 1
+      ? texture.createView({
         dimension: "2d-array",
         baseArrayLayer: 0,
         arrayLayerCount: this.descriptor.outputLayers,
-      });
-    }
-    return texture.createView({ dimension: "2d" });
-  }
-
-  private createLayerOutputView(textureIndex: number, layer: number): GPUTextureView | null {
-    if (
-      !Number.isInteger(layer) ||
-      layer < 0 ||
-      layer >= this.descriptor.outputLayers
-    ) {
-      return null;
-    }
-    return this.textures[textureIndex]?.createView({
-      dimension: "2d",
-      baseArrayLayer: layer,
-      arrayLayerCount: 1,
-    }) ?? null;
+      })
+      : texture.createView({ dimension: "2d" }));
+    const layers = textures.map((texture) => Array.from(
+      { length: this.descriptor.outputLayers },
+      (_, layer) => texture.createView({
+        dimension: "2d",
+        baseArrayLayer: layer,
+        arrayLayerCount: 1,
+      }),
+    ));
+    return { full, layers };
   }
 
   private resetResources(): void {
@@ -349,7 +391,7 @@ export class SlangComputePipeline {
     this.shaderModule = null;
     this.pipeline = null;
     this.bindGroupLayout = null;
-    this.bindGroups = [];
+    this.invalidateBindGroups();
     this.sampler = null;
   }
 
@@ -368,7 +410,19 @@ export class SlangComputePipeline {
   private destroyTextures(): void {
     SlangComputePipeline.destroyTextureList(this.textures);
     this.textures = [];
+    this.fullOutputViews = [];
+    this.layerOutputViews = [];
     this.textureIndex = 0;
+  }
+
+  private invalidateBindGroups(): void {
+    this.bindGroups = [];
+    this.bindGroupResourceIdentities = null;
+  }
+
+  private sameResourceIdentities(next: unknown[]): boolean {
+    return this.bindGroupResourceIdentities?.length === next.length &&
+      next.every((resource, index) => resource === this.bindGroupResourceIdentities?.[index]);
   }
 
   private static destroyTextureList(textures: GPUTexture[]): void {

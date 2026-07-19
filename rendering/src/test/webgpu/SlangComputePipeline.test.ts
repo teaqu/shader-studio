@@ -445,6 +445,65 @@ describe("SlangComputePipeline", () => {
     }
   });
 
+  it("reuses bind groups while channel, sampler, and storage identities remain unchanged", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor({
+      hasOutput: false,
+      outputLayers: 0,
+      dispatchCount: 2,
+      channels: [{ slot: 0, key: "input" }],
+      storage: [storageA],
+    }));
+    const firstSampler = { label: "sampler-a" } as unknown as GPUSampler;
+    const firstChannel = fakeChannel(0, firstSampler);
+    const firstStorage = fakeStorageBuffer("positions-a");
+
+    await compute.rebuild("// wgsl");
+    compute.rebuildBindGroups([firstChannel], new Map([["positions", firstStorage]]));
+    const firstGroups = [compute.getBindGroup(0), compute.getBindGroup(1)];
+    compute.rebuildBindGroups([firstChannel], new Map([["positions", firstStorage]]));
+
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+    expect([compute.getBindGroup(0), compute.getBindGroup(1)]).toEqual(firstGroups);
+
+    const nextView = fakeChannel(0, firstSampler);
+    compute.rebuildBindGroups([nextView], new Map([["positions", firstStorage]]));
+    expect(device.createBindGroup).toHaveBeenCalledTimes(4);
+
+    const nextSampler = { label: "sampler-b" } as unknown as GPUSampler;
+    compute.rebuildBindGroups(
+      [{ ...nextView, sampler: nextSampler }],
+      new Map([["positions", firstStorage]]),
+    );
+    expect(device.createBindGroup).toHaveBeenCalledTimes(6);
+
+    compute.rebuildBindGroups(
+      [{ ...nextView, sampler: nextSampler }],
+      new Map([["positions", fakeStorageBuffer("positions-b")]]),
+    );
+    expect(device.createBindGroup).toHaveBeenCalledTimes(8);
+  });
+
+  it("rebuilds output bind groups only when ping-pong swaps the write target", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+
+    compute.rebuildBindGroups([], new Map());
+    const firstGroup = compute.getBindGroup(0);
+    const firstOutput = bindGroupEntries(device, 0)[1].resource;
+    compute.rebuildBindGroups([], new Map());
+
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+    expect(compute.getBindGroup(0)).toBe(firstGroup);
+
+    compute.swap();
+    compute.rebuildBindGroups([], new Map());
+
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+    expect(bindGroupEntries(device, 1)[1].resource).not.toBe(firstOutput);
+  });
+
   it("creates full array output views and bounded single-layer sampler views", async () => {
     const device = fakeDevice();
     const compute = new SlangComputePipeline(device, descriptor({ outputLayers: 3 }));
@@ -466,6 +525,43 @@ describe("SlangComputePipeline", () => {
     expect(compute.getLayerOutputView(-1)).toBeNull();
     expect(compute.getLayerOutputView(3)).toBeNull();
     expect(compute.getPreviousLayerOutputView(3)).toBeNull();
+  });
+
+  it("precreates and reuses every full and per-layer ping-pong output view", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor({ outputLayers: 2 }));
+
+    await compute.rebuild("// wgsl");
+
+    const textures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([3, 3]);
+    const currentFull = compute.getCurrentOutputView();
+    const currentLayer = compute.getLayerOutputView(1);
+    const previousLayer = compute.getPreviousLayerOutputView(1);
+    expect(compute.getCurrentOutputView()).toBe(currentFull);
+    expect(compute.getLayerOutputView(1)).toBe(currentLayer);
+    expect(compute.getPreviousLayerOutputView(1)).toBe(previousLayer);
+
+    compute.swap();
+
+    expect(compute.getCurrentOutputView()).not.toBe(currentFull);
+    expect(compute.getPreviousLayerOutputView(1)).toBe(currentLayer);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([3, 3]);
+  });
+
+  it("replaces cached compute output views only after a successful resize", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor({ outputLayers: 2 }));
+    await compute.rebuild("// wgsl");
+    const originalView = compute.getCurrentOutputView();
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+
+    compute.resize(640, 360);
+
+    const nextTextures = device.createTexture.mock.results.slice(2).map((result) => result.value as FakeTexture);
+    expect(compute.getCurrentOutputView()).not.toBe(originalView);
+    expect(nextTextures.map((texture) => texture.createView.mock.calls.length)).toEqual([3, 3]);
+    expect(originalTextures.map((texture) => texture.createView.mock.calls.length)).toEqual([3, 3]);
   });
 
   it("supports only layer zero for a plain 2D output", async () => {
@@ -617,6 +713,41 @@ describe("SlangComputePipeline", () => {
     expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
   });
 
+  it("preserves cached compute resources when resized output view creation throws", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    compute.rebuildBindGroups([], new Map());
+    const originalGroup = compute.getBindGroup(0);
+    const originalView = compute.getCurrentOutputView();
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+    const failingTexture: FakeTexture = {
+      id: 998,
+      descriptor: {} as GPUTextureDescriptor,
+      createView: vi.fn(() => {
+        throw new Error("compute resize view failed");
+      }),
+      destroy: vi.fn(),
+    };
+    const siblingTexture: FakeTexture = {
+      id: 999,
+      descriptor: {} as GPUTextureDescriptor,
+      createView: vi.fn(() => ({ textureId: 999, descriptor: undefined })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => failingTexture)
+      .mockImplementationOnce(() => siblingTexture);
+
+    expect(() => compute.resize(640, 360)).toThrow("compute resize view failed");
+
+    expect(failingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(siblingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    expect(compute.getCurrentOutputView()).toBe(originalView);
+    expect(compute.getBindGroup(0)).toBe(originalGroup);
+  });
+
   it("destroys old buffers and textures and resets groups on rebuild", async () => {
     const device = fakeDevice();
     const compute = new SlangComputePipeline(device, descriptor({ dispatchCount: 2 }));
@@ -658,6 +789,28 @@ describe("SlangComputePipeline", () => {
     }
     expect(compute.getPipeline()).toBeNull();
     expect(compute.getUniformBuffer()).toBeNull();
+    expect(compute.getCurrentOutputView()).toBeNull();
+  });
+
+  it("destroys a partial output allocation when the second rebuild texture throws", async () => {
+    const device = fakeDevice();
+    const partialTexture: FakeTexture = {
+      id: 999,
+      descriptor: {} as GPUTextureDescriptor,
+      createView: vi.fn(() => ({ textureId: 999, descriptor: undefined })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second compute rebuild allocation failed");
+      });
+    const compute = new SlangComputePipeline(device, descriptor());
+
+    await expect(compute.rebuild("// wgsl"))
+      .rejects.toThrow("second compute rebuild allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
     expect(compute.getCurrentOutputView()).toBeNull();
   });
 

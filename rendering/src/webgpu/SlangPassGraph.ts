@@ -39,6 +39,8 @@ const BASELINE_STORAGE_BUFFER_COUNT = 8;
 const MAX_WORKGROUP_INVOCATIONS = 256;
 const TEXEL_WORKGROUP_SIZE: [number, number, number] = [8, 8, 1];
 const COUNT_WORKGROUP_SIZE: [number, number, number] = [64, 1, 1];
+/** Bounds synchronous iDispatch allocation and per-frame command encoding work. */
+export const MAX_COMPUTE_DISPATCH_COUNT = 1024;
 
 export function isComputePassName(name: string): boolean {
   return name.startsWith("Compute");
@@ -328,7 +330,13 @@ function resolveDispatchCount(passName: string, dispatchCount: unknown, errors: 
     return 1;
   }
   if (isPositiveInteger(dispatchCount)) {
-    return dispatchCount;
+    if (dispatchCount <= MAX_COMPUTE_DISPATCH_COUNT) {
+      return dispatchCount;
+    }
+    errors.push(
+      `${passName}: dispatchCount must be at most ${MAX_COMPUTE_DISPATCH_COUNT}`,
+    );
+    return 1;
   }
   errors.push(`${passName}: dispatchCount must be a positive integer`);
   return 1;

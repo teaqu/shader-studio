@@ -33,6 +33,7 @@ export class SlangPassPipeline {
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
+  private outputViews: GPUTextureView[] = [];
   private textureIndex = 0;
   private rebuildGeneration = 0;
 
@@ -92,7 +93,16 @@ export class SlangPassPipeline {
     });
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     if (this.descriptor.output === "texture") {
-      this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+      const textures: GPUTexture[] = [];
+      try {
+        textures.push(this.createOutputTexture());
+        textures.push(this.createOutputTexture());
+        this.outputViews = textures.map((texture) => texture.createView());
+        this.textures = textures;
+      } catch (error) {
+        SlangPassPipeline.destroyTextureList(textures);
+        throw error;
+      }
     }
     if (this.descriptor.channels.length === 0) {
       // Channel passes cannot build a valid bind group yet (the explicit
@@ -129,9 +139,11 @@ export class SlangPassPipeline {
     const nextDescriptor = { ...this.descriptor, width, height };
     if (this.descriptor.output === "texture" && this.textures.length > 0) {
       const nextTextures: GPUTexture[] = [];
+      let nextViews: GPUTextureView[];
       try {
         nextTextures.push(this.createOutputTexture(width, height));
         nextTextures.push(this.createOutputTexture(width, height));
+        nextViews = nextTextures.map((texture) => texture.createView());
       } catch (error) {
         SlangPassPipeline.destroyTextureList(nextTextures);
         throw error;
@@ -139,6 +151,7 @@ export class SlangPassPipeline {
       const previousTextures = this.textures;
       this.descriptor = nextDescriptor;
       this.textures = nextTextures;
+      this.outputViews = nextViews;
       this.textureIndex = 0;
       SlangPassPipeline.destroyTextureList(previousTextures);
       return;
@@ -181,14 +194,14 @@ export class SlangPassPipeline {
   }
 
   getCurrentOutputView(): GPUTextureView | null {
-    return this.textures[this.textureIndex]?.createView() ?? null;
+    return this.outputViews[this.textureIndex] ?? null;
   }
 
   getPreviousOutputView(): GPUTextureView | null {
     if (this.textures.length === 0) {
       return null;
     }
-    return this.textures[1 - this.textureIndex]?.createView() ?? null;
+    return this.outputViews[1 - this.textureIndex] ?? null;
   }
 
   swap(): void {
@@ -267,6 +280,7 @@ export class SlangPassPipeline {
   private destroyTextures(): void {
     SlangPassPipeline.destroyTextureList(this.textures);
     this.textures = [];
+    this.outputViews = [];
     this.textureIndex = 0;
   }
 
