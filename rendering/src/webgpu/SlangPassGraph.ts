@@ -223,13 +223,26 @@ function resolveChannels(options: {
       continue;
     }
 
-    if (input.type === "keyboard") {
-      channels.push({ kind: "keyboard", slot, key });
+    if (input.type === "audio") {
+      const path = input.resolved_path || input.path;
+      if (!path) {
+        options.errors.push(`${options.passName}: ${key} audio input is missing a path`);
+        continue;
+      }
+      channels.push({
+        kind: "audio",
+        slot,
+        key,
+        path,
+        muted: input.muted,
+        startTime: input.startTime,
+        endTime: input.endTime,
+      });
       continue;
     }
 
-    if (input.type !== "buffer") {
-      options.warnings.push(`${options.passName}: ${key} uses unsupported Slang/WebGPU input type "${input.type}"`);
+    if (input.type === "keyboard") {
+      channels.push({ kind: "keyboard", slot, key });
       continue;
     }
 

@@ -6,6 +6,7 @@ import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
+import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
@@ -349,6 +350,32 @@ describe("WebGPURenderingEngine", () => {
       expect([imageUniforms[4], imageUniforms[5]]).toEqual([50, 60]);
       expect((engine as any).pausedUniformInput).not.toBeNull();
     });
+
+    it("synchronizes and pauses or resumes audio and video with shader time", () => {
+      const { engine } = pausableEngine();
+      vi.spyOn(engine.getTimeManager(), "getCurrentTime").mockReturnValue(2.25);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        syncAllAudioToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        pauseAllAudio: vi.fn(),
+        resumeAllVideos: vi.fn(),
+        resumeAllAudio: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      engine.togglePause();
+
+      expect(resourceManager.syncAllVideosToTime).toHaveBeenLastCalledWith(2.25);
+      expect(resourceManager.syncAllAudioToTime).toHaveBeenLastCalledWith(2.25);
+      expect(resourceManager.pauseAllVideos).toHaveBeenCalledTimes(1);
+      expect(resourceManager.pauseAllAudio).toHaveBeenCalledTimes(1);
+
+      engine.togglePause();
+
+      expect(resourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
+      expect(resourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("exposes a TimeManager and the expected uniform shape", () => {
@@ -675,7 +702,7 @@ describe("WebGPURenderingEngine", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "audio", path: "foo.mp3" } } },
+          Image: { inputs: { ignoredInput: { type: "audio", path: "foo.mp3" } } },
         },
       },
       "/image.slang",
@@ -683,7 +710,7 @@ describe("WebGPURenderingEngine", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.warnings?.[0]).toMatch(/unsupported/i);
+    expect(result?.warnings?.[0]).toMatch(/non-iChannel/i);
   });
 
   it("renders buffer passes before Image and swaps buffer textures once per frame", () => {
@@ -1138,6 +1165,203 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = null;
 
       expect(() => engine.setGlobalVolume(0.5, true)).not.toThrow();
+    });
+  });
+
+  describe("audio input parity", () => {
+    const audioConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel1: {
+              type: "audio",
+              path: "test.wav",
+              resolved_path: "/audio/test.wav",
+              muted: true,
+              startTime: 0.5,
+              endTime: 2.5,
+            },
+          },
+        },
+      },
+    };
+
+    it("delegates public audio controls and queries", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const state = { paused: false, muted: true, currentTime: 1.5, duration: 3 };
+      const fft = new Uint8Array([1, 2, 3]);
+      const resourceManager = {
+        resumeAudioContext: vi.fn(async () => undefined),
+        resumeAllAudio: vi.fn(),
+        updateAudioLoopRegion: vi.fn(),
+        controlAudio: vi.fn(),
+        getAudioState: vi.fn(() => state),
+        seekAudio: vi.fn(),
+        getAudioFFTData: vi.fn(() => fft),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      await engine.resumeAudioContext();
+      engine.resumeAllAudio();
+      engine.updateAudioLoopRegion("music.wav", 0.25, 2.75);
+      engine.controlAudio("music.wav", "play");
+      const actualState = engine.getAudioState("music.wav");
+      engine.seekAudio("music.wav", 1.25);
+
+      expect(resourceManager.resumeAudioContext).toHaveBeenCalledTimes(1);
+      expect(resourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
+      expect(resourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.wav", 0.25, 2.75);
+      expect(resourceManager.controlAudio).toHaveBeenCalledWith("music.wav", "play");
+      expect(resourceManager.getAudioState).toHaveBeenCalledWith("music.wav");
+      expect(actualState).toBe(state);
+      expect(resourceManager.seekAudio).toHaveBeenCalledWith("music.wav", 1.25);
+      expect(engine.getAudioFFTData("audio", "music.wav")).toBe(fft);
+      expect(resourceManager.getAudioFFTData).toHaveBeenCalledWith("music.wav");
+      expect(engine.getAudioFFTData("video", "music.wav")).toBeNull();
+      expect(engine.getAudioFFTData("audio")).toBeNull();
+    });
+
+    it("loads audio with playback options and updates its loop without autoplaying", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => ({})),
+        updateAudioLoopRegion: vi.fn(),
+        controlAudio: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(resourceManager.loadAudioSource).toHaveBeenCalledWith("/audio/test.wav", {
+        muted: true,
+        startTime: 0.5,
+        endTime: 2.5,
+      });
+      expect(resourceManager.updateAudioLoopRegion).toHaveBeenCalledWith(
+        "/audio/test.wav", 0.5, 2.5,
+      );
+      expect(resourceManager.controlAudio).not.toHaveBeenCalled();
+      expect(compiler.compile).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          channels: [{ slot: 1, key: "iChannel1", kind: "audio" }],
+        }),
+      );
+    });
+
+    it("keeps shader compilation successful when audio loading fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      (engine as any).resourceManager = {
+        loadAudioSource: vi.fn(async () => {
+          throw new Error("decode failed");
+        }),
+        updateAudioLoopRegion: vi.fn(),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings).toContain("Audio loading failed: /audio/test.wav");
+      expect((engine as any).resourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
+    });
+
+    it("updates and binds the audio texture with its timing uniforms", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const audioHandle = {
+        view: { label: "audio-view" },
+        sampler: { label: "audio-sampler" },
+      };
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => audioHandle),
+        updateAudioLoopRegion: vi.fn(),
+        updateAudioTextures: vi.fn(),
+        getAudioTexture: vi.fn(() => audioHandle),
+        getAudioState: vi.fn(() => ({
+          paused: false, muted: true, currentTime: 1.75, duration: 3,
+        })),
+        getAudioSampleRate: vi.fn(() => 48000),
+        getDefaultTexture: vi.fn(() => null),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+      device.queue.writeBuffer.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.updateAudioTextures).toHaveBeenCalledTimes(1);
+      expect(resourceManager.getAudioTexture).toHaveBeenCalledWith("/audio/test.wav");
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: audioHandle.view },
+        { binding: 2, resource: audioHandle.sampler },
+      ]);
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const uniforms = new DataView(packed);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBeCloseTo(1.75);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(1);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(48000);
+    });
+
+    it("binds the default texture and reports unloaded when audio is missing", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const defaultHandle = {
+        view: { label: "default-view" },
+        sampler: { label: "default-sampler" },
+      };
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => defaultHandle),
+        updateAudioLoopRegion: vi.fn(),
+        updateAudioTextures: vi.fn(),
+        getAudioTexture: vi.fn(() => null),
+        getAudioState: vi.fn(() => null),
+        getAudioSampleRate: vi.fn(() => 0),
+        getDefaultTexture: vi.fn(() => defaultHandle),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+      device.createBindGroup.mockClear();
+      device.queue.writeBuffer.mockClear();
+
+      engine.render(1000);
+
+      expect(device.createBindGroup.mock.calls[0][0].entries).toContainEqual({
+        binding: 1, resource: defaultHandle.view,
+      });
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const uniforms = new DataView(packed);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBe(0);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(0);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(44100);
     });
   });
 

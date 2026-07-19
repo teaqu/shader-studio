@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
+import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -100,6 +101,25 @@ const captures = [
 ];
 
 describe("WebGPUVariableCapturer", () => {
+  it("packs provided channel timing, loaded state, and sample rate", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const audioUniforms = {
+      ...uniforms,
+      channelTime: [0, 1.75, 0, 0],
+      channelLoaded: [0, 1, 0, 0],
+      sampleRate: 48000,
+    };
+
+    await capturer.issueCaptureGrid(captures, audioUniforms, 8, 4);
+
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    const view = new DataView(packed);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBeCloseTo(1.75);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(1);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(48000);
+  });
+
   it("compiles the capture shader once in captureMode and draws once per variable", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, { commonCode: "" });

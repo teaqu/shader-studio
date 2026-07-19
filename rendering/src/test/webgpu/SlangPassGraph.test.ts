@@ -100,7 +100,7 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
-  it("reports unsupported inputs and missing buffer sources", () => {
+  it("accepts audio inputs while reporting missing buffer sources", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
@@ -124,7 +124,10 @@ describe("buildSlangPassGraph", () => {
 
     expect(graph.errors).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
     expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"BufferB\"");
-    expect(graph.warnings).toContain("Image: iChannel0 uses unsupported Slang/WebGPU input type \"audio\"");
+    expect(graph.warnings).toEqual([]);
+    expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toContainEqual({
+      kind: "audio", slot: 0, key: "iChannel0", path: "noise.mp3",
+    });
   });
 
   it("errors when a channel's buffer source is not a buffer pass name", () => {
@@ -387,7 +390,7 @@ describe("buildSlangPassGraph", () => {
   });
 });
 
-describe("texture, video, and keyboard channels", () => {
+describe("file and input channels", () => {
   const imageCode = "float4 mainImage(float2 c){return float4(1);}";
 
   it("resolves a texture input with resolved_path preferred over path", () => {
@@ -524,7 +527,35 @@ describe("texture, video, and keyboard channels", () => {
     expect(graph.passes[0].channels).toEqual([{ kind: "keyboard", slot: 1, key: "iChannel1" }]);
   });
 
-  it("still warns on audio inputs", () => {
+  it("resolves audio inputs with playback options", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: {
+        iChannel1: {
+          type: "audio",
+          path: "a.mp3",
+          resolved_path: "/abs/a.wav",
+          muted: true,
+          startTime: 0.25,
+          endTime: 2.5,
+        },
+      } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.errors).toEqual([]);
+    expect(graph.warnings).toEqual([]);
+    expect(graph.passes[0].channels).toEqual([{
+      kind: "audio",
+      slot: 1,
+      key: "iChannel1",
+      path: "/abs/a.wav",
+      muted: true,
+      startTime: 0.25,
+      endTime: 2.5,
+    }]);
+  });
+
+  it("falls back to the audio path when resolved_path is absent", () => {
     const graph = buildSlangPassGraph({
       imageCode,
       config: { version: "1", passes: { Image: { inputs: {
@@ -532,9 +563,18 @@ describe("texture, video, and keyboard channels", () => {
       } } } },
       buffers: {}, canvasWidth: 100, canvasHeight: 50,
     });
-    expect(graph.warnings).toEqual([
-      'Image: iChannel0 uses unsupported Slang/WebGPU input type "audio"',
-    ]);
+    expect(graph.passes[0].channels[0]).toMatchObject({ kind: "audio", path: "a.mp3" });
+  });
+
+  it("errors when an audio input has no path", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { inputs: {
+        iChannel0: { type: "audio", path: "" },
+      } } } },
+      buffers: {}, canvasWidth: 100, canvasHeight: 50,
+    });
+    expect(graph.errors).toEqual(["Image: iChannel0 audio input is missing a path"]);
     expect(graph.passes[0].channels).toEqual([]);
   });
 
@@ -549,6 +589,7 @@ describe("texture, video, and keyboard channels", () => {
           iChannel1: { type: "buffer", source: "BufferA" },
           iChannel3: { type: "video", path: "v.mp4" },
           iChannel4: { type: "cubemap", path: "sky.png" },
+          iChannel5: { type: "audio", path: "a.wav" },
         } },
       } },
       buffers: { BufferA: "float4 mainImage(float2 c){return float4(0);}" },
@@ -556,7 +597,7 @@ describe("texture, video, and keyboard channels", () => {
     });
     expect(graph.passes.map(p => p.name)).toEqual(["BufferA", "Image"]);
     expect(graph.passes[1].channels.map(c => [c.kind, c.slot])).toEqual([
-      ["texture", 0], ["buffer", 1], ["keyboard", 2], ["video", 3], ["cubemap", 4],
+      ["texture", 0], ["buffer", 1], ["keyboard", 2], ["video", 3], ["cubemap", 4], ["audio", 5],
     ]);
   });
 });

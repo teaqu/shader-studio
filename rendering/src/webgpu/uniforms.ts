@@ -9,6 +9,9 @@ export interface ShaderToyUniformInput {
   frameRate: number;
   frame: number;
   mouse: ArrayLike<number>; // [x, y, z, w]
+  channelTime: ArrayLike<number>; // four channel playback times
+  channelLoaded: ArrayLike<number>; // four loaded flags
+  sampleRate: number;
 }
 
 /**
@@ -38,6 +41,12 @@ export function packShaderToyUniforms(input: ShaderToyUniformInput): ArrayBuffer
   f32[9] = input.timeDelta; // iTimeDelta @ 36
   f32[10] = input.frameRate; // iFrameRate @ 40
   i32[11] = input.frame | 0; // iFrame @ 44
+
+  for (let channel = 0; channel < 4; channel++) {
+    f32[12 + channel] = input.channelTime[channel] ?? 0; // iChannelTime @ 48
+    f32[16 + channel] = input.channelLoaded[channel] ?? 0; // iChannelLoaded @ 64
+  }
+  f32[20] = input.sampleRate; // iSampleRate @ 80
 
   return buf;
 }

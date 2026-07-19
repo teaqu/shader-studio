@@ -81,8 +81,8 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
  * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
  * textures that other passes sample via iChannelN, and the Image pass renders
  * to the canvas. Inline Slang debugging, pixel inspection (async readback),
- * variable capture, texture inputs, video inputs, cubemap inputs, and keyboard
- * inputs are supported; audio remains unimplemented.
+ * variable capture, texture inputs, video inputs, cubemap inputs, audio inputs,
+ * and keyboard inputs are supported.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -143,7 +143,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   // WebGL pause parity (see FrameRenderer): while paused, per-frame uniform
   // inputs are frozen at the values captured when the pause began, so mouse
   // movement can't keep driving a "paused" shader.
-  private pausedUniformInput: Omit<ShaderToyUniformInput, "width" | "height"> | null = null;
+  private pausedUniformInput: Pick<
+    ShaderToyUniformInput,
+    "time" | "timeDelta" | "frameRate" | "frame" | "mouse"
+  > | null = null;
 
   constructor(private slangAssets: SlangAssetUrls) {}
 
@@ -469,6 +472,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
               wrap: channel.wrap,
               vflip: channel.vflip,
             });
+          } else if (channel.kind === "audio") {
+            try {
+              await this.resourceManager.loadAudioSource(channel.path, {
+                muted: channel.muted,
+                startTime: channel.startTime,
+                endTime: channel.endTime,
+              });
+              this.resourceManager.updateAudioLoopRegion(
+                channel.path,
+                channel.startTime,
+                channel.endTime,
+              );
+            } catch {
+              graph.warnings.push(`Audio loading failed: ${channel.path}`);
+            }
           }
         }
       }
@@ -856,6 +874,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!isPaused) {
         this.fps.updateFrame(time);
       }
+
+      this.resourceManager?.updateAudioTextures?.();
     }
 
     // WebGL pause parity: freeze the per-frame uniform inputs at the values
@@ -920,6 +940,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         width: pass.width,
         height: pass.height,
         ...frameInput,
+        ...this.getChannelUniforms(pass),
       });
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
 
@@ -1045,6 +1066,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
           return null;
         }
         resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+      } else if (channel.kind === "audio") {
+        const handle = this.resourceManager?.getAudioTexture(channel.path)
+          ?? this.resourceManager?.getDefaultTexture();
+        if (!handle) {
+          return null;
+        }
+        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
       } else {
         const handle = this.resolveKeyboardHandle(skipInputUpdates);
         if (!handle) {
@@ -1054,6 +1082,51 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
     }
     return resources;
+  }
+
+  private getChannelUniforms(
+    pass: RenderPassNode,
+  ): { channelTime: number[]; channelLoaded: number[]; sampleRate: number } {
+    const channelTime = [0, 0, 0, 0];
+    const channelLoaded = [0, 0, 0, 0];
+
+    for (const channel of pass.channels) {
+      if (channel.slot > 3) {
+        continue;
+      }
+
+      if (channel.kind === "video") {
+        const video = this.resourceManager?.getVideoElement?.(channel.path);
+        if (video) {
+          channelTime[channel.slot] = video.currentTime;
+          channelLoaded[channel.slot] = 1;
+        }
+      } else if (channel.kind === "audio") {
+        const state = this.resourceManager?.getAudioState?.(channel.path);
+        if (state) {
+          channelTime[channel.slot] = state.currentTime;
+          channelLoaded[channel.slot] = 1;
+        }
+      } else if (channel.kind === "texture") {
+        channelLoaded[channel.slot] = this.resourceManager?.getImageTextureCache?.()[channel.path] ? 1 : 0;
+      } else if (channel.kind === "cubemap") {
+        channelLoaded[channel.slot] = this.resourceManager?.getCubemapTexture?.(channel.path) ? 1 : 0;
+      } else if (channel.kind === "buffer") {
+        const source = this.passPipelines.get(channel.source);
+        const view = channel.readFrom === "previous-frame"
+          ? source?.getPreviousOutputView()
+          : source?.getCurrentOutputView();
+        channelLoaded[channel.slot] = view ? 1 : 0;
+      } else {
+        channelLoaded[channel.slot] = this.resourceManager?.getKeyboardTexture?.() ? 1 : 0;
+      }
+    }
+
+    return {
+      channelTime,
+      channelLoaded,
+      sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
+    };
   }
 
   // WebGL parity (PassRenderer.getTextureBindings): the keyboard texture is
@@ -1157,7 +1230,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   togglePause(): void {
+    const wasPaused = this.timeManager.isPaused();
     this.timeManager.togglePause();
+
+    const shaderTime = this.timeManager.getCurrentTime(performance.now());
+    this.resourceManager?.syncAllVideosToTime(shaderTime);
+    this.resourceManager?.syncAllAudioToTime(shaderTime);
+
+    if (wasPaused) {
+      this.resourceManager?.resumeAllVideos();
+      this.resourceManager?.resumeAllAudio();
+    } else {
+      this.resourceManager?.pauseAllVideos();
+      this.resourceManager?.pauseAllAudio();
+    }
   }
 
   resetTime(): void {
@@ -1184,7 +1270,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       frame: this.timeManager.getFrame(),
       date: Array.from(this.timeManager.getCurrentDate()),
       channelTime: [0, 0, 0, 0],
-      sampleRate: 44100,
+      sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
       channelLoaded: [0, 0, 0, 0],
       cameraPos: [0, 0, 0],
       cameraDir: [0, 0, -1],
@@ -1382,6 +1468,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getCaptureUniforms(): CaptureUniforms {
     const u = this.getUniforms();
+    const pass = this.passGraph.find((candidate) => candidate.name === "Image") ?? this.passGraph[0];
+    const channelUniforms = pass
+      ? this.getChannelUniforms(pass)
+      : { channelTime: [0, 0, 0, 0], channelLoaded: [0, 0, 0, 0], sampleRate: u.sampleRate };
     return {
       time: u.time,
       timeDelta: u.timeDelta,
@@ -1392,6 +1482,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
+      ...channelUniforms,
     };
   }
 
@@ -1399,15 +1490,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.renderFrame(performance.now(), true);
   }
 
-  // ---- Audio/video (Slang/WebGPU only supports video texture resources today) ----
+  // ---- Audio/video ----
 
-  async resumeAudioContext(): Promise<void> {}
-  resumeAllAudio(): void {}
+  async resumeAudioContext(): Promise<void> {
+    await this.resourceManager?.resumeAudioContext();
+  }
+  resumeAllAudio(): void {
+    this.resourceManager?.resumeAllAudio();
+  }
   resumeAllVideos(): void {
     this.resourceManager?.resumeAllVideos();
   }
   releaseMediaResetHold(): void {}
-  updateAudioLoopRegion(): void {}
+  updateAudioLoopRegion(path: string, startTime?: number, endTime?: number): void {
+    this.resourceManager?.updateAudioLoopRegion(path, startTime, endTime);
+  }
   setGlobalVolume(volume: number, muted: boolean): void {
     this.resourceManager?.setGlobalAudioState(volume, muted);
   }
@@ -1417,13 +1514,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
   getVideoState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
     return this.resourceManager?.getVideoState(path) ?? null;
   }
-  controlAudio(): void {}
-  getAudioState(): null {
-    return null;
+  controlAudio(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {
+    this.resourceManager?.controlAudio(path, action);
   }
-  seekAudio(): void {}
-  getAudioFFTData(): Uint8Array | null {
-    return null;
+  getAudioState(path: string): { paused: boolean; muted: boolean; currentTime: number; duration: number } | null {
+    return this.resourceManager?.getAudioState(path) ?? null;
+  }
+  seekAudio(path: string, time: number): void {
+    this.resourceManager?.seekAudio(path, time);
+  }
+  getAudioFFTData(type: string, path?: string): Uint8Array | null {
+    return type === "audio" && path
+      ? this.resourceManager?.getAudioFFTData(path) ?? null
+      : null;
   }
 
   // ---- Custom uniforms (M2) ----

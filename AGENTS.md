@@ -47,6 +47,12 @@ Test structure mirrors `src/lib/`: unit tests in `src/test/`, component tests in
 
 For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.
 
+## Extension Development Builds
+
+Do not run the full root `npm run build` merely to prepare changes for manual testing in the Extension Development Host. Both VS Code launch configurations use the default build task, which runs `extension`'s `compile` script and rebuilds/copies the UI bundle when the user launches or restarts the extension with the green debug button.
+
+Package-level builds and type checks are still required when they are relevant verification for the files changed. Only skip the redundant full extension build before manual testing.
+
 ## Linting
 
 ESLint is enforced. **Always run ESLint after making changes:**

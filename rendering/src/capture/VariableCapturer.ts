@@ -15,6 +15,9 @@ export interface CaptureUniforms {
   date: number[];
   cameraPos: number[];
   cameraDir: number[];
+  channelTime?: number[];
+  channelLoaded?: number[];
+  sampleRate?: number;
 }
 
 export interface CaptureCustomUniform {

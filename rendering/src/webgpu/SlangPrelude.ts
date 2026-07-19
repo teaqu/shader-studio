@@ -19,7 +19,7 @@ export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 // there is no interior padding). Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Total size is a multiple of 16, as
 // required for the uniform address space.
-export const SHADERTOY_UNIFORM_SIZE = 48;
+export const SHADERTOY_UNIFORM_SIZE = 96;
 export const UNIFORM_OFFSETS = {
   iResolution: 0, // float4 (xyz used)
   iMouse: 16, // float4
@@ -27,6 +27,9 @@ export const UNIFORM_OFFSETS = {
   iTimeDelta: 36, // float
   iFrameRate: 40, // float
   iFrame: 44, // int
+  iChannelTime: 48, // float4
+  iChannelLoaded: 64, // float4
+  iSampleRate: 80, // float
 } as const;
 
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
@@ -41,6 +44,9 @@ struct ShaderToyUniforms
     float timeDelta;
     float frameRate;
     int frame;
+    float4 channelTime;
+    float4 channelLoaded;
+    float sampleRate;
 };
 
 [[vk::binding(0, 0)]]
@@ -52,6 +58,9 @@ ConstantBuffer<ShaderToyUniforms> _st;
 #define iTimeDelta (_st.timeDelta)
 #define iFrameRate (_st.frameRate)
 #define iFrame (_st.frame)
+#define iChannelTime (_st.channelTime)
+#define iChannelLoaded (_st.channelLoaded)
+#define iSampleRate (_st.sampleRate)
 `;
 
 const ENTRY_POINTS = `
@@ -75,7 +84,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 export interface SlangChannelBinding {
   slot: number;
   key: string;
-  kind?: "texture" | "video" | "cubemap" | "buffer" | "keyboard";
+  kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
 }
 
 export interface SlangWrapOptions {

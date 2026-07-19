@@ -162,6 +162,32 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
   });
 
+  it("declares ShaderToy audio timing and loaded uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iChannelTime[1]); }");
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 channelTime;");
+    expect(wrapped).toContain("float4 channelLoaded;");
+    expect(wrapped).toContain("float sampleRate;");
+    expect(wrapped).toContain("#define iChannelTime (_st.channelTime)");
+    expect(wrapped).toContain("#define iChannelLoaded (_st.channelLoaded)");
+    expect(wrapped).toContain("#define iSampleRate (_st.sampleRate)");
+    expect(wrapped).not.toContain("_audioPad");
+  });
+
+  it("lets the uniform struct pad naturally to 96 bytes", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iSampleRate); }");
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("float3 _audioPad");
+  });
+
   it("wraps cubemap channels with cube texture bindings and float3 sampling helpers", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
@@ -178,6 +204,21 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("SamplerState iChannel0Sampler;");
     expect(wrapped).toContain("float4 sampleIChannel0(float3 dir)");
     expect(wrapped).toContain("return iChannel0.Sample(iChannel0Sampler, dir);");
+  });
+
+  it("wraps a sparse audio channel with a 2D sampling helper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+      { channels: [{ slot: 1, key: "iChannel1", kind: "audio" }] },
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel1;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel1Sampler;");
+    expect(wrapped).toContain("float4 sampleIChannel1(float2 uv)");
   });
 
   it("numbers bindings sequentially for multiple channels, sorted by slot", () => {

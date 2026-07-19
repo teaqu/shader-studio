@@ -11,6 +11,9 @@ describe("packShaderToyUniforms", () => {
     frameRate: 60,
     frame: 42,
     mouse: [10, 20, -10, -20],
+    channelTime: [1.25, 0, 3.5, 0],
+    channelLoaded: [1, 0, 1, 0],
+    sampleRate: 48000,
   };
 
   it("produces a buffer of the declared size", () => {
@@ -36,6 +39,17 @@ describe("packShaderToyUniforms", () => {
     expect(f(UNIFORM_OFFSETS.iTimeDelta)).toBeCloseTo(0.016);
     expect(f(UNIFORM_OFFSETS.iFrameRate)).toBe(60);
     expect(i(UNIFORM_OFFSETS.iFrame)).toBe(42);
+
+    expect(f(UNIFORM_OFFSETS.iChannelTime)).toBeCloseTo(1.25);
+    expect(f(UNIFORM_OFFSETS.iChannelTime + 4)).toBe(0);
+    expect(f(UNIFORM_OFFSETS.iChannelTime + 8)).toBeCloseTo(3.5);
+    expect(f(UNIFORM_OFFSETS.iChannelTime + 12)).toBe(0);
+
+    expect(f(UNIFORM_OFFSETS.iChannelLoaded)).toBe(1);
+    expect(f(UNIFORM_OFFSETS.iChannelLoaded + 4)).toBe(0);
+    expect(f(UNIFORM_OFFSETS.iChannelLoaded + 8)).toBe(1);
+    expect(f(UNIFORM_OFFSETS.iChannelLoaded + 12)).toBe(0);
+    expect(f(UNIFORM_OFFSETS.iSampleRate)).toBe(48000);
   });
 
   it("defaults missing mouse components to zero", () => {
