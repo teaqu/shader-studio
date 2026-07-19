@@ -1,5 +1,5 @@
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
-import type { IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
+import type { CaptureCompileContext, IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
@@ -88,6 +88,32 @@ function writeSessionSettings(settings: CaptureSessionSettings): void {
   } catch {
     // Best effort only; capture controls still work with instance-local state.
   }
+}
+
+function isImportedSlangSelection(context: CaptureCompileContext, filePath: string | null | undefined): boolean {
+  if (!filePath || !context.workspace || !context.sourceUri || !context.sourcePath) {
+    return false;
+  }
+  const normalize = (value: string): string => {
+    try {
+      return decodeURIComponent(new URL(value).pathname).replaceAll('\\', '/');
+    } catch {
+      return value.replaceAll('\\', '/');
+    }
+  };
+  const selectedPath = normalize(filePath);
+  const selected = context.workspace.files.find((file) => {
+    const uriPath = normalize(file.uri);
+    const workspacePath = normalize(file.path).replace(/^\/workspace/, '');
+    const workspaceRelative = workspacePath.replace(/^\/+/, '');
+    const selectedRelative = selectedPath.replace(/^\/+/, '');
+    return filePath === file.uri
+      || selectedPath === uriPath
+      || selectedPath === file.path
+      || selectedRelative === workspaceRelative
+      || selectedPath.endsWith(`/${workspaceRelative}`);
+  });
+  return Boolean(selected && selected.uri !== context.sourceUri && selected.path !== context.sourcePath);
 }
 
 export interface CapturedVariable {
@@ -580,11 +606,19 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
-    this.capturer.setCompileContext(
-      this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName),
-    );
+    const compileContext = this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName);
+    this.capturer.setCompileContext(compileContext);
     this.capturer.clearLastError();
     this.emitErrorState(null);
+
+    if (
+      this.renderingEngine.getShaderLanguage?.() === 'slang'
+      && isImportedSlangSelection(compileContext, params.filePath)
+    ) {
+      this.emitErrorState('Capturing variables inside imported Slang modules is not supported yet; select a line in the active pass source.');
+      this.finishCollection([]);
+      return;
+    }
 
     const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
 

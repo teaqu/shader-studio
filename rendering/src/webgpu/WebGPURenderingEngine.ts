@@ -1611,11 +1611,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
     const commonCode = this.lastCompile?.buffers?.common ?? "";
+    const sourceFile = targetPass && this.lastCompile
+      ? WebGPURenderingEngine.findPassSourceFile(targetPass, this.lastCompile.path, this.lastCompile.workspace)
+      : undefined;
     this.capturePassName = targetPass?.name ?? null;
     return {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      sourceUri: sourceFile?.uri,
+      sourcePath: sourceFile?.path,
+      workspace: this.lastCompile?.workspace,
     };
   }
 

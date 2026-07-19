@@ -1,7 +1,7 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
-import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
+import type { ShaderConfig, ConfigInput, SlangWorkspaceSnapshot } from "@shader-studio/types";
 
 export interface DebugTarget {
   passName: string;
@@ -42,6 +42,7 @@ export class ShaderDebugManager {
     isStepEnabled: false,
     stepEdge: 0.5,
     debugError: null,
+    debugDiagnostic: null,
     debugNotice: null,
     isVariableInspectorEnabled: false,
     isErrorsEnabled: false,
@@ -63,6 +64,7 @@ export class ShaderDebugManager {
   private bufferCodes: Record<string, string> = {};
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
+  private slangWorkspace: SlangWorkspaceSnapshot | undefined;
 
   public setLanguage(language: ShaderDialect): void {
     this.language = language;
@@ -76,6 +78,7 @@ export class ShaderDebugManager {
     config: ShaderConfig | null,
     imagePath: string | null,
     buffers: Record<string, string>,
+    workspace?: SlangWorkspaceSnapshot,
   ): void {
     this.bufferCodes = buffers;
     this.bufferPathMap = {};
@@ -86,6 +89,7 @@ export class ShaderDebugManager {
       }
     }
     this.imagePassPath = imagePath && this.isBufferPath(imagePath) ? null : imagePath;
+    this.slangWorkspace = workspace;
   }
 
   public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
@@ -182,6 +186,7 @@ export class ShaderDebugManager {
     this.state.lineContent = lineContent;
     this.state.filePath = filePath;
     this.state.debugError = null;
+    this.state.debugDiagnostic = null;
     this.state.debugNotice = null;
     this.variablePreview = null;
     this.state.activeBufferName = this.resolveActiveBuffer(filePath);
@@ -473,6 +478,16 @@ export class ShaderDebugManager {
       return null;
     }
 
+    const unsupportedDiagnostic = this.getUnsupportedCrossFileDiagnostic(debugLine);
+    if (unsupportedDiagnostic) {
+      const target = this.variablePreview ?? this.state;
+      target.debugError = unsupportedDiagnostic.message;
+      this.state.debugDiagnostic = unsupportedDiagnostic;
+      this.notifyStateChange();
+      return null;
+    }
+    this.state.debugDiagnostic = null;
+
     let result: string | null;
     let shouldReportMissingVariable = false;
     if (this.variablePreview) {
@@ -514,6 +529,57 @@ export class ShaderDebugManager {
     }
 
     return result;
+  }
+
+  private getUnsupportedCrossFileDiagnostic(debugLine: number) {
+    const selectedFilePath = this.variablePreview?.filePath ?? this.state.filePath;
+    const selectedLine = this.variablePreview?.debugLine ?? debugLine;
+    const passName = this.variablePreview?.activeBufferName ?? this.state.activeBufferName;
+    if (this.language !== 'slang' || !this.slangWorkspace || !selectedFilePath) {
+      return null;
+    }
+    const selected = this.findWorkspaceFile(selectedFilePath);
+    const targetSelector = passName === 'Image'
+      ? this.imagePassPath
+      : this.bufferPathMap[passName];
+    const target = targetSelector ? this.findWorkspaceFile(targetSelector) : undefined;
+    if (!selected || !target || (passName !== 'common' && selected.uri === target.uri)) {
+      return null;
+    }
+    const message = 'Debugging inside imported Slang modules or configured common code is not supported yet; select a line in the active pass source.';
+    return {
+      code: 'slang-cross-file-debug-unsupported' as const,
+      severity: 'error' as const,
+      message,
+      sourceUri: selected.uri,
+      passName,
+      range: {
+        start: { line: selectedLine, character: 0 },
+        end: { line: selectedLine, character: Math.max(0, this.state.lineContent?.length ?? 0) },
+      },
+    };
+  }
+
+  private findWorkspaceFile(selector: string): SlangWorkspaceSnapshot['files'][number] | undefined {
+    const normalize = (value: string): string => {
+      try {
+        return decodeURIComponent(new URL(value).pathname).replaceAll('\\', '/');
+      } catch {
+        return value.replaceAll('\\', '/');
+      }
+    };
+    const selectedPath = normalize(selector);
+    return this.slangWorkspace?.files.find((file) => {
+      const uriPath = normalize(file.uri);
+      const workspacePath = normalize(file.path).replace(/^\/workspace/, '');
+      const workspaceRelative = workspacePath.replace(/^\/+/, '');
+      const selectedRelative = selectedPath.replace(/^\/+/, '');
+      return selector === file.uri
+        || selectedPath === uriPath
+        || selectedPath === file.path
+        || selectedRelative === workspaceRelative
+        || selectedPath.endsWith(`/${workspaceRelative}`);
+    });
   }
 
   private getCodeForActiveBuffer(activeBufferName: string): string {

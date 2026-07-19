@@ -239,6 +239,7 @@ export class ShaderPipeline {
       message.config ?? null,
       message.path,
       message.buffers ?? {},
+      message.workspace,
     );
 
     const result = await this.shaderProcessor.processMainShaderCompilation(
@@ -465,6 +466,7 @@ export class ShaderPipeline {
       nextMessage.config ?? null,
       nextMessage.path,
       nextMessage.buffers ?? {},
+      nextMessage.workspace,
     );
   }
 
@@ -627,6 +629,7 @@ export class ShaderPipeline {
       config,
       nextMessage.path,
       nextMessage.buffers ?? {},
+      nextMessage.workspace,
     );
   }
 

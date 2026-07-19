@@ -408,6 +408,28 @@ describe('VariableCaptureManager', () => {
         5,
       );
     });
+
+    it('refuses to capture a line selected in an imported Slang module', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        sourceUri: 'file:///project/image.slang',
+        sourcePath: '/workspace/image.slang',
+        workspace: {
+          rootUri: 'file:///project',
+          files: [
+            { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'root' },
+            { uri: 'file:///project/helper.slang', path: '/workspace/helper.slang', source: 'helper' },
+          ],
+        },
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS, filePath: '/project/helper.slang' });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.getAllInScopeVariables).not.toHaveBeenCalled();
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(expect.stringMatching(/imported Slang modules/i));
+    });
   });
 
   // ----------------------------------------------------------------

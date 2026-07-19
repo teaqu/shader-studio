@@ -69,14 +69,6 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   setCompileContext(context: CaptureCompileContext): void {
-    const nextCommon = context.commonCode ?? "";
-    const nextChannels = JSON.stringify(context.slangChannels ?? []);
-    const currentCommon = this.compileContext.commonCode ?? "";
-    const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    if (nextCommon !== currentCommon || nextChannels !== currentChannels) {
-      this.pipelineCache.clear();
-      this.pipelineCacheOrder = [];
-    }
     this.compileContext = context;
   }
 
@@ -88,8 +80,6 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
     }));
     if (previousShape !== nextShape) {
-      this.pipelineCache.clear();
-      this.pipelineCacheOrder = [];
       this.uniformBuffer?.destroy?.();
       this.uniformBuffer = null;
     }
@@ -367,25 +357,36 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureShader: string,
     channels: SlangChannelBinding[],
   ): Promise<CachedPipeline | null> {
-    const existing = this.pipelineCache.get(captureShader);
+    const cacheKey = this.capturePipelineKey(captureShader);
+    const existing = this.pipelineCache.get(cacheKey);
     if (existing) {
       existing.lastUsed = performance.now();
       return existing;
     }
 
     captureCounters.pipelineCompiles++;
-    const sourceUri = "shader-studio://capture/capture.slang";
-    const sourcePath = "/workspace/capture.slang";
+    const sourceUri = this.compileContext.sourceUri ?? "shader-studio://capture/capture.slang";
+    const sourcePath = this.compileContext.sourcePath ?? "/workspace/capture.slang";
+    const workspace = this.compileContext.workspace
+      ? {
+        ...this.compileContext.workspace,
+        files: this.compileContext.workspace.files.map((file) =>
+          file.uri === sourceUri || file.path === sourcePath
+            ? { ...file, source: captureShader }
+            : file,
+        ),
+      }
+      : {
+        rootUri: "shader-studio://capture",
+        files: [{ uri: sourceUri, path: sourcePath, source: captureShader }],
+      };
     const compileResult = await this.compiler.compile({
       source: captureShader,
       sourceUri,
       sourcePath,
-      workspace: {
-        rootUri: "shader-studio://capture",
-        files: [{ uri: sourceUri, path: sourcePath, source: captureShader }],
-      },
+      workspace,
       options: {
-        passName: "capture",
+        passName: this.compileContext.slangPassName ?? "capture",
         commonCode: this.compileContext.commonCode,
         channels,
         captureMode: true,
@@ -430,9 +431,22 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       this.pipelineCache.delete(oldest);
     }
     const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
-    this.pipelineCache.set(captureShader, cached);
-    this.pipelineCacheOrder.push(captureShader);
+    this.pipelineCache.set(cacheKey, cached);
+    this.pipelineCacheOrder.push(cacheKey);
     return cached;
+  }
+
+  private capturePipelineKey(captureShader: string): string {
+    return JSON.stringify({
+      captureShader,
+      commonCode: this.compileContext.commonCode ?? "",
+      channels: this.compileContext.slangChannels ?? [],
+      passName: this.compileContext.slangPassName ?? "capture",
+      sourceUri: this.compileContext.sourceUri ?? "",
+      sourcePath: this.compileContext.sourcePath ?? "",
+      workspace: this.compileContext.workspace ?? null,
+      customUniformShape: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    });
   }
 
   /**
