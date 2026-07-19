@@ -155,9 +155,32 @@ suite('ShaderExplorerProvider Test Suite', () => {
   }
 
   function getCsp(html: string): string {
-    const match = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/i);
-    assert.ok(match, 'Expected a Content-Security-Policy meta tag');
-    return match[1];
+    const meta = (html.match(/<meta(?:\s[^>]*)?>/gi) ?? []).find(tag => {
+      const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+      return httpEquiv?.toLowerCase() === 'content-security-policy';
+    });
+    const content = meta?.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
+    assert.ok(content, 'Expected a Content-Security-Policy meta tag');
+    return content;
+  }
+
+  function getDirective(csp: string, name: string): string | undefined {
+    return csp
+      .split(';')
+      .map(directive => directive.trim())
+      .find(directive => directive.split(/\s+/, 1)[0].toLowerCase() === name.toLowerCase());
+  }
+
+  function countDirectives(csp: string, name: string): number {
+    return csp
+      .split(';')
+      .map(directive => directive.trim())
+      .filter(directive => directive.split(/\s+/, 1)[0].toLowerCase() === name.toLowerCase())
+      .length;
+  }
+
+  function countCspMetas(html: string): number {
+    return (html.match(/<meta\b[^>]*\bhttp-equiv\s*=\s*["']Content-Security-Policy["'][^>]*>/gi) ?? []).length;
   }
 
   suite('Command Registration', () => {
@@ -272,6 +295,33 @@ suite('ShaderExplorerProvider Test Suite', () => {
   });
 
   suite('Webview HTML', () => {
+    test('creates a real head with exact Slang metadata and CSP when HTML has no head', () => {
+      configureExplorerHtml('<html><body>Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => ({
+        toString: () => `mapped:${uri.fsPath}`,
+      }));
+
+      showExplorer();
+
+      const head = mockWebview.html.match(/<head>(.*?)<\/head>/s)?.[1];
+      assert.ok(head, 'Expected a real head element');
+      assert.ok(head.includes('<meta name="shader-studio-slang-script-url" content="mapped:/mock/extension/path/ui-dist/assets/slang.js">'));
+      assert.ok(head.includes('<meta name="shader-studio-slang-wasm-url" content="mapped:/mock/extension/path/ui-dist/assets/slang.wasm">'));
+      assert.ok(head.includes('<meta name="shader-studio-slang-worker-url" content="mapped:/mock/extension/path/ui-dist/assets/slang-worker.js">'));
+      assert.ok(head.includes('http-equiv="Content-Security-Policy"'));
+      assert.ok(mockWebview.html.indexOf('<head>') < mockWebview.html.indexOf('<body>'));
+    });
+
+    test('does not mistake a body header element for the document head', () => {
+      configureExplorerHtml('<html><body><header>Explorer title</header></body></html>');
+
+      showExplorer();
+
+      assert.match(mockWebview.html, /<html><head>.*<\/head><body><header>Explorer title<\/header>/s);
+      assert.strictEqual((mockWebview.html.match(/<head(?:\s[^>]*)?>/gi) ?? []).length, 1);
+      assert.strictEqual((mockWebview.html.match(/<header(?:\s[^>]*)?>/gi) ?? []).length, 1);
+    });
+
     test('adds Slang asset metadata and required directives to an existing CSP without duplicate tokens', () => {
       configureExplorerHtml(`<!doctype html><html><head>
         <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; worker-src stale:; connect-src stale:">
@@ -294,6 +344,47 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual((scriptDirective.match(/blob:/g) ?? []).length, 1);
       assert.strictEqual((scriptDirective.match(/'unsafe-eval'/g) ?? []).length, 1);
       assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('updates mixed-case CSP directives without adding case-variant duplicates', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; ScRiPt-SrC 'self'; StYlE-SrC 'self'; ImG-SrC 'self'; MeDiA-SrC 'self'; WoRkEr-SrC stale:; CoNnEcT-SrC stale:; FoNt-SrC 'self'">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      for (const directive of ['script-src', 'style-src', 'img-src', 'media-src', 'worker-src', 'connect-src']) {
+        assert.strictEqual(countDirectives(csp, directive), 1, `Expected one ${directive}`);
+      }
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+      assert.strictEqual(getDirective(csp, 'worker-src'), 'worker-src vscode-webview://test-source blob:');
+      assert.strictEqual(getDirective(csp, 'connect-src'), 'connect-src vscode-webview://test-source blob:');
+    });
+
+    test('adds exact script-src without modifying script-src-elem', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src-elem 'self'; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'script-src-elem'), "script-src-elem 'self'");
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'wasm-unsafe-eval'"));
+    });
+
+    test('recognizes a CSP meta with reversed and intervening attributes', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content="default-src 'self'; script-src 'self'" id="policy" HTTP-EQUIV="content-security-policy">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
     });
 
     test('adds a Slang-compatible CSP and escaped asset metadata when the source has no CSP', () => {
@@ -327,6 +418,13 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(mockWebview.html.includes('explorer.js'));
       assert.ok(getCsp(mockWebview.html).includes("script-src 'self' 'unsafe-inline'"));
       assert.ok(!mockWebview.html.includes('shader-studio-slang-script-url'));
+      const csp = getCsp(mockWebview.html);
+      const scriptSrc = getDirective(csp, 'script-src') ?? '';
+      assert.ok(!scriptSrc.includes('blob:'));
+      assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
+      assert.ok(!scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
+      assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
       assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: invalid manifest'));
     });
   });
