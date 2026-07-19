@@ -689,7 +689,6 @@ export class ShaderExplorerProvider {
       if (hasSlangAssets) {
         updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', 'blob:');
         updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'wasm-unsafe-eval'");
-        updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'unsafe-eval'");
         updatedCsp = this.replaceCspDirective(
           updatedCsp,
           'worker-src',
@@ -701,10 +700,11 @@ export class ShaderExplorerProvider {
           `connect-src ${webview.cspSource} blob:`,
         );
       }
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'unsafe-eval'");
             
       const updatedMeta = cspMeta.tag.replace(
         /((?:^|\s)content\s*=\s*)(["'])(.*?)\2/i,
-        (_attribute, prefix, quote) => `${prefix}${quote}${updatedCsp}${quote}`,
+        (_attribute, prefix) => `${prefix}"${this.escapeHtmlAttribute(updatedCsp)}"`,
       );
       const finalHtml = processedHtml.slice(0, cspMeta.index) +
         updatedMeta +
@@ -717,7 +717,6 @@ export class ShaderExplorerProvider {
       if (hasSlangAssets) {
         newCsp = this.ensureCspToken(newCsp, 'script-src', 'blob:');
         newCsp = this.ensureCspToken(newCsp, 'script-src', "'wasm-unsafe-eval'");
-        newCsp = this.ensureCspToken(newCsp, 'script-src', "'unsafe-eval'");
         newCsp = this.replaceCspDirective(
           newCsp,
           'worker-src',
@@ -729,7 +728,8 @@ export class ShaderExplorerProvider {
           `connect-src ${webview.cspSource} blob:`,
         );
       }
-      const cspMetaTag = `<meta http-equiv="Content-Security-Policy" content="${newCsp};">`;
+      newCsp = this.ensureCspToken(newCsp, 'script-src', "'unsafe-eval'");
+      const cspMetaTag = `<meta http-equiv="Content-Security-Policy" content="${this.escapeHtmlAttribute(newCsp)};">`;
 
       return processedHtml.replace(
         /<head(?:\s[^>]*)?>/i,
@@ -765,7 +765,10 @@ export class ShaderExplorerProvider {
         continue;
       }
 
-      const content = tag.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
+      const rawContent = tag.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
+      const content = rawContent === undefined
+        ? undefined
+        : this.decodeHtmlAttribute(rawContent);
       if (content !== undefined) {
         return { tag, content, index: headBounds.start + match.index };
       }
@@ -834,5 +837,42 @@ export class ShaderExplorerProvider {
 
   private getCspDirectiveName(directive: string): string {
     return directive.split(/\s+/, 1)[0].toLowerCase();
+  }
+
+  private decodeHtmlAttribute(value: string): string {
+    return value.replace(
+      /&(#(?:x[0-9a-f]+|\d+)|amp|quot|apos|lt|gt);/gi,
+      (entity, name: string) => {
+        const normalizedName = name.toLowerCase();
+        const namedEntities: Record<string, string> = {
+          amp: '&',
+          quot: '"',
+          apos: "'",
+          lt: '<',
+          gt: '>',
+        };
+        if (normalizedName in namedEntities) {
+          return namedEntities[normalizedName];
+        }
+
+        const radix = normalizedName.startsWith('#x') ? 16 : 10;
+        const digits = normalizedName.slice(radix === 16 ? 2 : 1);
+        const codePoint = Number.parseInt(digits, radix);
+        try {
+          return String.fromCodePoint(codePoint);
+        } catch {
+          return entity;
+        }
+      },
+    );
+  }
+
+  private escapeHtmlAttribute(value: string): string {
+    return value.replace(/[&"<>]/g, character => ({
+      '&': '&amp;',
+      '"': '&quot;',
+      '<': '&lt;',
+      '>': '&gt;',
+    })[character]!);
   }
 }

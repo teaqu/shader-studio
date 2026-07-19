@@ -420,6 +420,24 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
     });
 
+    test('safely rewrites an entity-encoded single-quoted CSP content attribute', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content='default-src &apos;self&apos;; script-src &apos;self&apos;' id="policy" http-equiv="Content-Security-Policy">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      assert.match(
+        mockWebview.html,
+        /<meta data-owner="explorer" content="default-src 'self'; script-src 'self'[^>]+" id="policy" http-equiv="Content-Security-Policy">/,
+      );
+      assert.ok(!mockWebview.html.includes('&amp;apos;'));
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
     test('adds a Slang-compatible CSP and escaped asset metadata when the source has no CSP', () => {
       configureExplorerHtml('<html><head></head><body>Explorer</body></html>');
       mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => ({
@@ -455,7 +473,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const scriptSrc = getDirective(csp, 'script-src') ?? '';
       assert.ok(!scriptSrc.includes('blob:'));
       assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
-      assert.ok(!scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(scriptSrc.includes("'unsafe-eval'"));
       assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
       assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
       assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: invalid manifest'));
@@ -478,7 +496,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const scriptSrc = getDirective(csp, 'script-src') ?? '';
       assert.ok(!scriptSrc.includes('blob:'));
       assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
-      assert.ok(!scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(scriptSrc.includes("'unsafe-eval'"));
       assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
       assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
       assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: WASM URI conversion failed'));
