@@ -478,6 +478,91 @@ describe("VideoTextureManager", () => {
       expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
       expect(backend.destroyTexture).toHaveBeenCalledWith(texture);
     });
+
+    it("destroys a replacement installed after re-entrant cleanup during a frame update", async () => {
+      let updateFrame: FrameRequestCallback | undefined;
+      vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+        updateFrame = callback;
+        return 42;
+      });
+      const destroyedIds: object[] = [];
+      vi.mocked(backend.destroyTexture).mockImplementation((texture) => {
+        if (texture) {
+          destroyedIds.push(texture.id);
+        }
+      });
+      const loadPromise = videoManager.loadVideoTexture("resizing.mp4");
+      const canplayHandler = mockVideo.addEventListener.mock.calls.find(
+        ([type]) => type === "canplay",
+      )?.[1] as (() => void) | undefined;
+      canplayHandler?.();
+      const texture = await loadPromise;
+      const originalId = texture.id;
+      const replacementId = {};
+      vi.mocked(backend.updateTextureFromImage).mockImplementationOnce((liveTexture) => {
+        videoManager.cleanup();
+        liveTexture.id = replacementId;
+        liveTexture.width = 1280;
+        liveTexture.height = 720;
+      });
+
+      updateFrame?.(16);
+
+      expect(destroyedIds).toEqual([originalId, replacementId]);
+      expect(videoManager.getVideoTexture("resizing.mp4")).toBeUndefined();
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a completed video load usable when scheduling its update loop throws", async () => {
+      const scheduleFailure = new Error("animation frame scheduling failed");
+      vi.mocked(window.requestAnimationFrame).mockImplementationOnce(() => {
+        throw scheduleFailure;
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const loadPromise = videoManager.loadVideoTexture("schedule-error.mp4");
+      const canplayHandler = mockVideo.addEventListener.mock.calls.find(
+        ([type]) => type === "canplay",
+      )?.[1] as (() => void) | undefined;
+
+      expect(() => canplayHandler?.()).not.toThrow();
+      const texture = await loadPromise;
+
+      expect(videoManager.getVideoTexture("schedule-error.mp4")).toBe(texture);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to schedule texture update for video schedule-error.mp4:",
+        scheduleFailure,
+      );
+    });
+
+    it("logs a frame upload error and retries on the next scheduled update", async () => {
+      const updateFrames: FrameRequestCallback[] = [];
+      vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+        updateFrames.push(callback);
+        return updateFrames.length;
+      });
+      const loadPromise = videoManager.loadVideoTexture("retry-update.mp4");
+      const canplayHandler = mockVideo.addEventListener.mock.calls.find(
+        ([type]) => type === "canplay",
+      )?.[1] as (() => void) | undefined;
+      canplayHandler?.();
+      await loadPromise;
+      const updateFailure = new Error("video frame upload failed");
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.mocked(backend.updateTextureFromImage).mockClear();
+      vi.mocked(backend.updateTextureFromImage).mockImplementationOnce(() => {
+        throw updateFailure;
+      });
+
+      updateFrames[0](16);
+      updateFrames[1](32);
+
+      expect(backend.updateTextureFromImage).toHaveBeenCalledTimes(2);
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(3);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to update texture for video retry-update.mp4:",
+        updateFailure,
+      );
+    });
   });
 
   describe("pause and resume functionality", () => {

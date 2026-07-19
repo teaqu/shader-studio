@@ -378,17 +378,34 @@ export class VideoTextureManager<T> {
       delete this.animationFrameIds[path];
     }
     const updateTexture = () => {
+      let updated = false;
       if (video.readyState >= video.HAVE_CURRENT_DATA) {
         try {
           this.backend.updateTextureFromImage(texture, video);
+          updated = true;
         } catch (error) {
           console.error(`Failed to update texture for video ${path}:`, error);
         }
       }
-      
-      // Continue updating if video is still active
-      if (this.videoTextures[path]) {
+
+      // A backend update may invoke browser/driver hooks that remove this
+      // video re-entrantly. A successful stable-handle update can then own a
+      // replacement resource that cleanup did not see, so release it here.
+      if (this.videoTextures[path] !== texture) {
+        if (updated) {
+          try {
+            this.backend.destroyTexture(texture);
+          } catch (error) {
+            console.error(`Failed to destroy detached texture for video ${path}:`, error);
+          }
+        }
+        return;
+      }
+
+      try {
         this.animationFrameIds[path] = requestAnimationFrame(updateTexture);
+      } catch (error) {
+        console.error(`Failed to schedule texture update for video ${path}:`, error);
       }
     };
 

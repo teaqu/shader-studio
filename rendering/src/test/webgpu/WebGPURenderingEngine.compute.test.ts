@@ -10,6 +10,8 @@ import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangComputePipeline } from "../../webgpu/SlangComputePipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { ResourceManager } from "../../resources/ResourceManager";
+import { VideoTextureManager } from "../../resources/VideoTextureManager";
+import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 
 interface FakeBuffer {
   descriptor: GPUBufferDescriptor;
@@ -642,6 +644,149 @@ describe("WebGPURenderingEngine compute compilation", () => {
         ]);
     },
   );
+
+  it("tracks real video resizes through the manager and backend for cover dispatch and binding", async () => {
+    const testHarness = harness();
+    const path = "/live-source.mp4";
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        dispatch: { cover: "iChannel0" },
+        inputs: { iChannel0: { type: "video", path } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+
+    const listeners = new Map<string, EventListener>();
+    const video = {
+      videoWidth: 77,
+      videoHeight: 45,
+      readyState: 4,
+      HAVE_CURRENT_DATA: 2,
+      loop: false,
+      playsInline: false,
+      preload: "",
+      autoplay: false,
+      muted: false,
+      volume: 1,
+      src: "",
+      error: null,
+      style: {} as CSSStyleDeclaration,
+      parentNode: null,
+      pause: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: EventListener) => {
+        listeners.set(type, listener);
+      }),
+      removeEventListener: vi.fn(),
+      setAttribute: vi.fn(),
+    } as unknown as HTMLVideoElement & { videoWidth: number; videoHeight: number };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+    } as unknown as HTMLCanvasElement;
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(
+      (tagName: string) => {
+        if (tagName === "video") {
+          return video;
+        }
+        if (tagName === "canvas") {
+          return canvas;
+        }
+        return originalCreateElement(tagName);
+      },
+    );
+    const appendChildSpy = vi.spyOn(document.body, "appendChild").mockImplementation(
+      (node) => node,
+    );
+    let updateFrame: FrameRequestCallback | undefined;
+    const requestFrameSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (callback) => {
+        updateFrame = callback;
+        return 7;
+      },
+    );
+    const cancelFrameSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const manager = new VideoTextureManager(
+      new WebGPUTextureBackend(testHarness.device as unknown as GPUDevice),
+    );
+
+    try {
+      const load = manager.loadVideoTexture(path);
+      listeners.get("canplay")?.(new Event("canplay"));
+      const liveHandle = await load;
+      const originalTexture = liveHandle.texture as unknown as {
+        destroy: ReturnType<typeof vi.fn>;
+      };
+      const originalView = liveHandle.view;
+      const resourceManager = {
+        getVideoTexture: vi.fn(() => manager.getVideoTexture(path) ?? null),
+        getDefaultTexture: vi.fn(() => null),
+      };
+      (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
+        .resourceManager = resourceManager;
+      enableRendering(testHarness);
+
+      testHarness.engine.render(1000);
+      video.videoWidth = 129;
+      video.videoHeight = 65;
+      updateFrame?.(16);
+      testHarness.engine.render(1016);
+
+      const resizedHandle = manager.getVideoTexture(path)!;
+      expect(resizedHandle).toBe(liveHandle);
+      expect(resizedHandle).toMatchObject({ width: 129, height: 65 });
+      expect(resizedHandle.texture).not.toBe(originalTexture);
+      expect(resizedHandle.view).not.toBe(originalView);
+      expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
+      expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+        .toEqual([
+          { type: "dispatchWorkgroups", value: [10, 6, 1] },
+          { type: "dispatchWorkgroups", value: [17, 9, 1] },
+        ]);
+      const latestComputeBindGroup = testHarness.commandEvents
+        .filter(({ type }) => type === "compute.setBindGroup")
+        .at(-1)?.value as { descriptor: GPUBindGroupDescriptor };
+      expect(latestComputeBindGroup.descriptor.entries)
+        .toContainEqual({ binding: 1, resource: resizedHandle.view });
+
+      const resizedTexture = resizedHandle.texture as unknown as {
+        destroy: ReturnType<typeof vi.fn>;
+      };
+      let detachedCandidate: FakeTexture | undefined;
+      testHarness.device.createTexture.mockImplementationOnce((descriptor) => {
+        manager.cleanup();
+        const textureId = testHarness.textures.length;
+        detachedCandidate = {
+          descriptor,
+          createView: vi.fn((viewDescriptor?: GPUTextureViewDescriptor) => ({
+            textureId,
+            descriptor: viewDescriptor,
+          })),
+          destroy: vi.fn(),
+        };
+        testHarness.textures.push(detachedCandidate);
+        return detachedCandidate;
+      });
+      video.videoWidth = 200;
+      video.videoHeight = 100;
+      updateFrame?.(32);
+
+      expect(manager.getVideoTexture(path)).toBeUndefined();
+      expect(resizedTexture.destroy).toHaveBeenCalled();
+      expect(detachedCandidate?.destroy).toHaveBeenCalledTimes(1);
+      expect(requestFrameSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      manager.cleanup();
+      createElementSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      requestFrameSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+    }
+  });
 
   it("samples the current compute layer in Image and swaps it to previous only after submit", async () => {
     const testHarness = harness();

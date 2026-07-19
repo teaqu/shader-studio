@@ -16,6 +16,8 @@ export interface WebGPUTextureHandle {
   height: number;
   /** Format the texture was created with; drives r8 expansion on updateTexture. */
   format: TextureFormat;
+  /** Filter determines whether a resized live video needs a mip chain. */
+  filter: TextureFilter;
   /** Whether sampling should be vertically flipped (image textures; Task 9). */
   vflip: boolean;
 }
@@ -89,6 +91,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
         width: desc.width,
         height: desc.height,
         format: desc.format,
+        filter: desc.filter,
         vflip: false,
       };
       if (mip && desc.data) {
@@ -167,6 +170,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       width,
       height,
       format: opts.format,
+      filter: opts.filter,
       vflip: opts.vflip,
     };
     this.uploadImage(handle, image, opts.format);
@@ -204,6 +208,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       width,
       height,
       format: opts.format,
+      filter: opts.filter,
       vflip: opts.vflip,
     };
 
@@ -219,7 +224,68 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
   }
 
   updateTextureFromImage(tex: WebGPUTextureHandle, image: HTMLImageElement | HTMLVideoElement): void {
-    this.uploadImage(tex, image, "rgba8");
+    if (!("videoWidth" in image)) {
+      this.uploadImage(tex, image, tex.format);
+      return;
+    }
+
+    const width = image.videoWidth;
+    const height = image.videoHeight;
+    if (
+      !Number.isInteger(width) || width <= 0 ||
+      !Number.isInteger(height) || height <= 0
+    ) {
+      return;
+    }
+    if (width === tex.width && height === tex.height) {
+      this.uploadImage(tex, image, tex.format);
+      if (tex.filter === "mipmap") {
+        this.createMipmaps(tex);
+      }
+      return;
+    }
+
+    let replacementTexture: GPUTexture | null = null;
+    try {
+      replacementTexture = this.device.createTexture({
+        size: { width, height },
+        format: "rgba8unorm",
+        mipLevelCount: tex.filter === "mipmap" ? mipLevelCountFor(width, height) : 1,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+          GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      const replacement: WebGPUTextureHandle = {
+        ...tex,
+        texture: replacementTexture,
+        view: replacementTexture.createView(),
+        width,
+        height,
+      };
+      this.uploadImage(replacement, image, tex.format);
+      if (tex.filter === "mipmap") {
+        this.createMipmaps(replacement);
+      }
+
+      const retiredTexture = tex.texture;
+      tex.texture = replacement.texture;
+      tex.view = replacement.view;
+      tex.width = width;
+      tex.height = height;
+      try {
+        retiredTexture.destroy?.();
+      } catch {
+        // The replacement is already published. Driver-backed retirement is
+        // best effort and must not invalidate the resized live handle.
+      }
+    } catch (error) {
+      try {
+        replacementTexture?.destroy?.();
+      } catch {
+        // Preserve the allocation/upload failure and leave the old live
+        // handle untouched so a later video frame can retry the resize.
+      }
+      throw error;
+    }
   }
 
   private uploadImage(handle: WebGPUTextureHandle, image: HTMLImageElement | HTMLVideoElement, format: "rgba8" | "r8"): void {
