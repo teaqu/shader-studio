@@ -214,7 +214,7 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${PRELUDE}\n${channelPrelude}\n${capturePrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${PRELUDE}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)

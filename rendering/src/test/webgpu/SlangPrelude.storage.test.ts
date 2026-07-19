@@ -39,6 +39,15 @@ describe("SlangPrelude storage declarations", () => {
     expect(declarations.beforeCommon).not.toContain("RWStructuredBuffer");
   });
 
+  it("defaults storage declarations to read-only structured buffers", () => {
+    const wrapped = wrapSlangImageSource("float4 mainImage(float2 c) { return float4(0); }", {
+      storage: [lanes],
+    });
+
+    expect(wrapped).toContain("StructuredBuffer<float4> lanes;");
+    expect(wrapped).not.toContain("RWStructuredBuffer");
+  });
+
   it("places built-in declarations before common code and custom declarations after it", () => {
     const wrapped = wrapSlangImageSource("float4 mainImage(float2 c) { return float4(0); }", {
       commonCode: "struct Boid { float4 position; };",
@@ -101,6 +110,29 @@ describe("SlangPrelude storage declarations", () => {
 
     expect(wrapped).toContain("[[vk::binding(7, 0)]]\nConstantBuffer<DbgCaptureUniforms> _dbgCapU;");
     expect(wrapped).toContain("shader-studio Slang capture entry points");
+  });
+
+  it("places capture uniforms after both storage declaration tiers", () => {
+    const source = "float4 mainImage(float2 c) { return float4(0); }";
+    const wrapped = wrapSlangImageSource(source, {
+      commonCode: "struct Boid { float4 position; };",
+      storage: [lanes, boids],
+      passKind: "compute",
+      captureMode: true,
+    });
+
+    expect(wrapped.indexOf("RWStructuredBuffer<float4> lanes;")).toBeLessThan(
+      wrapped.indexOf("struct Boid"),
+    );
+    expect(wrapped.indexOf("struct Boid")).toBeLessThan(
+      wrapped.indexOf("RWStructuredBuffer<Boid> boids;"),
+    );
+    expect(wrapped.indexOf("RWStructuredBuffer<Boid> boids;")).toBeLessThan(
+      wrapped.indexOf("ConstantBuffer<DbgCaptureUniforms> _dbgCapU;"),
+    );
+    expect(wrapped.indexOf("ConstantBuffer<DbgCaptureUniforms> _dbgCapU;")).toBeLessThan(
+      wrapped.indexOf(`#line 1\n${source}`),
+    );
   });
 
   it("preserves the existing wrapper output when storage and common code are absent", () => {
