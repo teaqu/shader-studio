@@ -74,6 +74,7 @@ nav:
       - Recording: features/recording.md
       - Open In Browser: features/web-server.md
       - Shader Explorer: features/shader-explorer.md
+      - Slang Workspaces: features/slang-workspaces.md
       - GLSL and Slang Code Snippets: features/code-snippets.md
       - Performance: features/performance.md
   - Debugging:
