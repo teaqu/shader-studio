@@ -89,20 +89,28 @@ export class ShaderPipeline {
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
+    const configWarnings = config?.storage !== undefined ||
+      Object.keys(config?.passes ?? {}).some(name => name.startsWith("Compute"))
+      ? [SLANG_FEATURE_WARNING]
+      : [];
     const nextPasses = this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders(nextPasses);
+    const compileWarnings = [...(compilation.warnings || []), ...configWarnings];
 
     if (!compilation.success) {
       if (pathChanged) {
         this.applyFailedCompilation(path, nextPasses);
       }
-      return compilation;
+      return compileWarnings.length > 0
+        ? { ...compilation, warnings: compileWarnings }
+        : compilation;
     }
 
     if (!compilation.passShaders) {
       return {
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
+        warnings: compileWarnings.length > 0 ? compileWarnings : undefined,
       };
     }
 
@@ -113,13 +121,8 @@ export class ShaderPipeline {
       pathChanged,
     );
 
-    const compileWarnings = compilation.warnings || [];
-    const configWarnings = config?.storage !== undefined ||
-      Object.keys(config?.passes ?? {}).some(name => name.startsWith("Compute"))
-      ? [SLANG_FEATURE_WARNING]
-      : [];
     const resourceWarnings = await this.updateResources();
-    const warnings = [...compileWarnings, ...configWarnings, ...resourceWarnings];
+    const warnings = [...compileWarnings, ...resourceWarnings];
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
 

@@ -5,7 +5,7 @@ import type { ResourceManager } from "../../resources/ResourceManager";
 import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
 import type { BufferManager } from "../../webgl/BufferManager";
 import type { TimeManager } from "../../util/TimeManager";
-import type { ShaderConfig } from "../../models";
+import type { CompilationResult, ShaderConfig } from "../../models";
 
 const SLANG_FEATURE_WARNING =
   "compute passes and storage buffers require the Slang/WebGPU engine";
@@ -803,6 +803,127 @@ describe("ShaderPipeline", () => {
         "buffer source",
         "image source",
       ]);
+    });
+
+    it("keeps the Compute warning when an ordinary buffer source is missing", async () => {
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          ComputeSim: { path: "sim.slang" },
+          BufferA: { path: "buffer-a.glsl" },
+          Image: { inputs: {} },
+        },
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "image source",
+        config,
+        "shader.glsl",
+        { ComputeSim: "compute source" },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: [
+          "BufferA: Buffer file not found or is empty (path: \"buffer-a.glsl\"). " +
+            "Please check that the file exists and contains valid shader code.",
+        ],
+        warnings: [SLANG_FEATURE_WARNING],
+      });
+      expect(mockShaderCompiler.compileShaderAsync).not.toHaveBeenCalled();
+    });
+
+    it("keeps the storage warning when an ordinary shader fails to compile", async () => {
+      const config: ShaderConfig = {
+        version: "1.0",
+        storage: {
+          particles: { count: 4, stride: 16, elementType: "float4" },
+        },
+        passes: { Image: { inputs: {} } },
+      };
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(null);
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "broken image source",
+        config,
+        "shader.glsl",
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: ["Image: Failed to compile shader"],
+        warnings: [SLANG_FEATURE_WARNING],
+      });
+    });
+
+    it("preserves failed compilation errors and warnings without duplicating the combined feature warning", async () => {
+      const compileShaders = vi.spyOn(
+        shaderPipeline as unknown as {
+          compileShaders: (passes: unknown[]) => Promise<CompilationResult>;
+        },
+        "compileShaders",
+      );
+      compileShaders.mockResolvedValue({
+        success: false,
+        errors: ["existing compile error"],
+        warnings: ["existing compile warning"],
+      });
+      const config: ShaderConfig = {
+        version: "1.0",
+        storage: {
+          particles: { count: 4, stride: 16, elementType: "float4" },
+        },
+        passes: {
+          ComputeSim: { path: "sim.slang" },
+          Image: { inputs: {} },
+        },
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "image source",
+        config,
+        "shader.glsl",
+        { ComputeSim: "compute source" },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: ["existing compile error"],
+        warnings: ["existing compile warning", SLANG_FEATURE_WARNING],
+      });
+    });
+
+    it("preserves warnings when a Compute config produces an incomplete compilation result", async () => {
+      const compileShaders = vi.spyOn(
+        shaderPipeline as unknown as {
+          compileShaders: (passes: unknown[]) => Promise<CompilationResult>;
+        },
+        "compileShaders",
+      );
+      compileShaders.mockResolvedValue({
+        success: true,
+        warnings: ["existing compile warning"],
+      });
+      const config: ShaderConfig = {
+        version: "1.0",
+        passes: {
+          ComputeSim: { path: "sim.slang" },
+          Image: { inputs: {} },
+        },
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "image source",
+        config,
+        "shader.glsl",
+        { ComputeSim: "compute source" },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: ["Compiled pipeline result was incomplete"],
+        warnings: ["existing compile warning", SLANG_FEATURE_WARNING],
+      });
     });
   });
 
