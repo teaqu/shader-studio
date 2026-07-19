@@ -1,7 +1,7 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { Pass, Buffers, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
+import type { Pass, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
 import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "../util/TimeManager";

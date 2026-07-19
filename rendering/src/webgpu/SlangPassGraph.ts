@@ -1,6 +1,5 @@
 import type { ConfigInput, ShaderConfig } from "@shader-studio/types";
 import type {
-  ChannelReadTiming,
   RenderPassChannel,
   RenderPassGraph,
   RenderPassName,
