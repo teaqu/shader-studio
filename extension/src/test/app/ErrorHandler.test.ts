@@ -147,6 +147,91 @@ suite('ErrorHandler Test Suite', () => {
     assert.deepStrictEqual(current.get(root)?.map((diagnostic) => diagnostic.message), ['new failure']);
   });
 
+  test('an owned direct success clears an unowned dependency failure for the same root', () => {
+    const current = useStatefulDiagnosticCollection();
+    const root = vscode.Uri.file('/project/a.slang').toString();
+    const dependency = vscode.Uri.file('/project/shared.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['dependency failed'], diagnostics: [compileDiagnostic(dependency, 'dependency failed')],
+      compileScope: { rootUris: [root], generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [root], ownerId: 'active-editor', generationId: 2,
+    });
+
+    assert.strictEqual(current.has(dependency), false);
+  });
+
+  test('an aggregate success clears an earlier direct failure for every covered root', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['A failed'], diagnostics: [compileDiagnostic(rootA, 'A failed')],
+      compileScope: { rootUris: [rootA], ownerId: 'panel:a', generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [rootB, rootA], ownerId: 'panel:aggregate', generationId: 2,
+    });
+
+    assert.strictEqual(current.has(rootA), false);
+  });
+
+  test('a direct success replaces only that root from an earlier aggregate failure', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['aggregate failed'],
+      diagnostics: [compileDiagnostic(rootA, 'A failed'), compileDiagnostic(rootB, 'B failed')],
+      compileScope: { rootUris: [rootA, rootB], ownerId: 'panel:aggregate', generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [rootB], ownerId: 'panel:b', generationId: 2,
+    });
+
+    assert.deepStrictEqual(current.get(rootA)?.map((diagnostic) => diagnostic.message), ['A failed']);
+    assert.strictEqual(current.has(rootB), false);
+  });
+
+  test('deduplicates identical diagnostics contributed by overlapping root scopes', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+    const dependency = vscode.Uri.file('/project/shared.slang').toString();
+    const duplicate = compileDiagnostic(dependency, 'shared failure');
+
+    errorHandler.handleError({
+      type: 'error', payload: ['shared failure'], diagnostics: [duplicate, duplicate],
+      compileScope: { rootUris: [rootA, rootB], generationId: 1 },
+    });
+
+    assert.deepStrictEqual(current.get(dependency)?.map((diagnostic) => diagnostic.message), ['shared failure']);
+  });
+
+  test('ignores out-of-order generations independently for each root in an aggregate scope', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['new A failure'], diagnostics: [compileDiagnostic(rootA, 'new A failure')],
+      compileScope: { rootUris: [rootA], generationId: 3 },
+    });
+    errorHandler.handleError({
+      type: 'error', payload: ['old aggregate failure'],
+      diagnostics: [compileDiagnostic(rootA, 'old A failure'), compileDiagnostic(rootB, 'old B failure')],
+      compileScope: { rootUris: [rootA, rootB], generationId: 2 },
+    });
+
+    assert.deepStrictEqual(current.get(rootA)?.map((diagnostic) => diagnostic.message), ['new A failure']);
+    assert.deepStrictEqual(current.get(rootB)?.map((diagnostic) => diagnostic.message), ['old B failure']);
+  });
+
   test('persistent warning and error survive structured, legacy, and successful compile results on the same URI', () => {
     const current = useStatefulDiagnosticCollection();
     const root = vscode.Uri.file('/test/shader.glsl').toString();

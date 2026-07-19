@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ErrorMessage, WarningMessage } from "@shader-studio/types";
 import type { CompileDiagnosticScope, SlangDiagnostic } from "@shader-studio/types";
 
-interface CompileScopeDiagnostics {
+interface CompileRootDiagnostics {
   generationId?: number;
   diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>;
 }
@@ -15,7 +15,7 @@ export class ErrorHandler {
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
   private lastChangedGlslUri: vscode.Uri | null = null;
-  private compileDiagnosticsByScope = new Map<string, CompileScopeDiagnostics>();
+  private compileDiagnosticsByRoot = new Map<string, CompileRootDiagnostics>();
   private compileOwnedDiagnostics = new Set<vscode.Diagnostic>();
 
   constructor(
@@ -285,66 +285,127 @@ export class ErrorHandler {
     compileScope: CompileDiagnosticScope | undefined,
     diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>,
   ): void {
-    const scopeKey = this.compileScopeKey(compileScope);
-    const previous = this.compileDiagnosticsByScope.get(scopeKey);
-    if (
-      previous?.generationId !== undefined
-      && compileScope?.generationId !== undefined
-      && compileScope.generationId < previous.generationId
-    ) {
+    const rootKeys = this.compileRootKeys(compileScope);
+    const diagnosticsByRoot = this.partitionDiagnosticsByRoot(rootKeys, diagnosticsByUri);
+    const previousOwnedDiagnostics = new Set(this.compileOwnedDiagnostics);
+    const affectedUris = new Map<string, vscode.Uri>();
+    let replacedRoot = false;
+
+    for (const rootKey of rootKeys) {
+      const previous = this.compileDiagnosticsByRoot.get(rootKey);
+      if (
+        previous?.generationId !== undefined
+        && compileScope?.generationId !== undefined
+        && compileScope.generationId < previous.generationId
+      ) {
+        continue;
+      }
+
+      for (const [uri, group] of previous?.diagnosticsByUri ?? []) {
+        affectedUris.set(uri, group.uri);
+      }
+      const nextDiagnostics = diagnosticsByRoot.get(rootKey) ?? new Map();
+      for (const [uri, group] of nextDiagnostics) {
+        affectedUris.set(uri, group.uri);
+      }
+      this.compileDiagnosticsByRoot.set(rootKey, {
+        generationId: compileScope?.generationId,
+        diagnosticsByUri: nextDiagnostics,
+      });
+      replacedRoot = true;
+    }
+
+    if (!replacedRoot) {
       return;
     }
 
-    const previousDiagnostics = [...(previous?.diagnosticsByUri.values() ?? [])]
-      .flatMap(({ diagnostics }) => diagnostics);
-    const affectedUris = new Map<string, vscode.Uri>();
-    for (const [uri, group] of previous?.diagnosticsByUri ?? []) {
-      affectedUris.set(uri, group.uri);
+    this.compileOwnedDiagnostics = new Set(
+      [...this.compileDiagnosticsByRoot.values()]
+        .flatMap(({ diagnosticsByUri: byUri }) => [...byUri.values()])
+        .flatMap(({ diagnostics }) => diagnostics),
+    );
+    for (const uri of affectedUris.values()) {
+      this.rebuildUri(uri, previousOwnedDiagnostics);
     }
+  }
+
+  private compileRootKeys(compileScope?: CompileDiagnosticScope): string[] {
+    if (!compileScope || compileScope.rootUris.length === 0) {
+      return ["legacy"];
+    }
+    return [...new Set(compileScope.rootUris.map((rootUri) => vscode.Uri.parse(rootUri).toString()))]
+      .sort()
+      .map((rootUri) => `root:${rootUri}`);
+  }
+
+  private partitionDiagnosticsByRoot(
+    rootKeys: readonly string[],
+    diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>,
+  ): Map<string, Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>> {
+    if (rootKeys.length === 1) {
+      return new Map([[rootKeys[0], diagnosticsByUri]]);
+    }
+
+    const result = new Map(
+      rootKeys.map((rootKey) => [
+        rootKey,
+        new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>(),
+      ]),
+    );
     for (const [uri, group] of diagnosticsByUri) {
-      affectedUris.set(uri, group.uri);
-      for (const diagnostic of group.diagnostics) {
-        this.compileOwnedDiagnostics.add(diagnostic);
+      const matchingRoot = `root:${vscode.Uri.parse(uri).toString()}`;
+      const owners = result.has(matchingRoot) ? [matchingRoot] : rootKeys;
+      for (const owner of owners) {
+        result.get(owner)?.set(uri, group);
       }
     }
-
-    this.compileDiagnosticsByScope.set(scopeKey, {
-      generationId: compileScope?.generationId,
-      diagnosticsByUri,
-    });
-    for (const uri of affectedUris.values()) {
-      this.rebuildUri(uri);
-    }
-    for (const diagnostic of previousDiagnostics) {
-      this.compileOwnedDiagnostics.delete(diagnostic);
-    }
+    return result;
   }
 
-  private compileScopeKey(compileScope?: CompileDiagnosticScope): string {
-    if (!compileScope) {
-      return "legacy";
-    }
-    return JSON.stringify({
-      ownerId: compileScope.ownerId ?? "",
-      rootUris: [...new Set(compileScope.rootUris)].sort(),
-    });
-  }
-
-  private rebuildUri(uri: vscode.Uri): void {
+  private rebuildUri(uri: vscode.Uri, previousOwnedDiagnostics = this.compileOwnedDiagnostics): void {
     const existingDiagnostics = [...(this.diagnosticCollection.get(uri) ?? [])]
-      .filter((diagnostic) => !this.compileOwnedDiagnostics.has(diagnostic));
+      .filter((diagnostic) => !previousOwnedDiagnostics.has(diagnostic));
     const languageDiagnostics = existingDiagnostics
       .filter((diagnostic) => diagnostic.source === "slang-language");
     const persistentDiagnostics = existingDiagnostics
       .filter((diagnostic) => diagnostic.source !== "slang-language");
-    const compileDiagnostics = [...this.compileDiagnosticsByScope.values()]
-      .flatMap(({ diagnosticsByUri }) => diagnosticsByUri.get(uri.toString())?.diagnostics ?? []);
-    const next = [...languageDiagnostics, ...compileDiagnostics, ...persistentDiagnostics];
+    const compileDiagnostics = this.deduplicateDiagnostics(
+      [...this.compileDiagnosticsByRoot.values()]
+        .flatMap(({ diagnosticsByUri }) => diagnosticsByUri.get(uri.toString())?.diagnostics ?? []),
+    );
+    const next = [
+      ...languageDiagnostics,
+      ...compileDiagnostics,
+      ...persistentDiagnostics,
+    ];
     if (next.length > 0) {
       this.diagnosticCollection.set(uri, next);
     } else {
       this.diagnosticCollection.delete(uri);
     }
+  }
+
+  private deduplicateDiagnostics(diagnostics: readonly vscode.Diagnostic[]): vscode.Diagnostic[] {
+    const seen = new Set<string>();
+    return diagnostics.filter((diagnostic) => {
+      const key = JSON.stringify({
+        range: [
+          diagnostic.range.start.line,
+          diagnostic.range.start.character,
+          diagnostic.range.end.line,
+          diagnostic.range.end.character,
+        ],
+        message: diagnostic.message,
+        severity: diagnostic.severity,
+        source: diagnostic.source,
+        code: diagnostic.code,
+      });
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
   }
 
   private restorePersistentErrors(targetUri?: vscode.Uri): void {
