@@ -89,7 +89,12 @@ Bind a video file. Sampled identically to a texture in GLSL.
 
 ![Choosing a video channel](../assets/images/select-video.png)
 
-**Supported formats:** `mp4 webm ogg mov`
+**Common formats:** `mp4 webm ogg mov`
+
+The container extension alone does not guarantee playback. The video and audio
+codecs inside the container must also be supported by the browser engine used by
+your Shader Studio host. Codec availability can differ between a normal browser,
+VS Code, Electron, and operating systems.
 
 The channel editor includes playback controls — play, pause, next, mute, reset, and a time display. Playback is synced to the shader's play/pause state. The mute button persists to the config as `muted: true/false` (default `false`), so a channel's mute state survives reloads and resets.
 
@@ -102,10 +107,33 @@ Bind an audio file. The channel provides a **512×2 texture** containing frequen
 
 ![Choosing an audio channel](../assets/images/select-music.png)
 
-**Supported formats:** `mp3 wav ogg flac aac m4a` — plus video containers (`mp4 webm mov`) that contain an audio stream.
+**Common formats:** `mp3 wav ogg flac aac m4a` — plus video containers
+(`mp4 webm mov`) that contain an audio stream. Actual codec support depends on
+the browser engine used by the host; a recognized extension does not guarantee
+that its encoded audio can be decoded.
 
-!!! note "FFmpeg requirement for video audio conversion"
-    Shader Studio requires both `ffmpeg` and `ffprobe` to be installed and available on your system `PATH` to inspect a video's embedded audio codec. When it detects an incompatible codec, it offers to create a compatible copy; conversion runs only after you choose **Convert**. Normal video-channel playback does not require these commands.
+If a media file fails to load or its audio plays silently, convert it to a format
+supported by your target browser or VS Code build. For example, FFmpeg can create
+an MP3-audio copy of an MP4 while leaving its video stream unchanged:
+
+```sh
+ffmpeg -i input.mp4 -c:v copy -c:a libmp3lame -q:a 2 output.mp4
+```
+
+!!! tip "Seamless audio loops"
+    MP3, AAC, and other compressed formats can add encoder delay, padding, or a
+    startup transient. These artifacts may cause a click or short gap when an
+    audio channel loops. For the most predictable, sample-continuous audio-channel
+    loops, use uncompressed PCM WAV:
+
+    ```sh
+    ffmpeg -i input.mp4 -vn -c:a pcm_s16le -ar 48000 output.wav
+    ```
+
+    WAV removes codec padding, but the waveform at the end must still join the
+    waveform at the beginning. Arbitrary audio may require editing or a crossfade.
+    Audio embedded in a looping video is played by the browser's video element and
+    is not guaranteed to loop sample-perfectly.
 
 **Texture layout:**
 

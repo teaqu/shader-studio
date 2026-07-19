@@ -3,13 +3,10 @@ import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import { ConfigPathConverter } from "./ConfigPathConverter";
 import { PathResolver } from "../PathResolver";
-import { VideoAudioConverter } from "../services/VideoAudioConverter";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
   private panels: Set<vscode.WebviewPanel> = new Set();
-  private videoAudioConverter?: VideoAudioConverter;
-  private onVideoConverted?: (originalConfigPath: string, convertedAbsolutePath: string) => void;
 
   public addPanel(panel: vscode.WebviewPanel): void {
     this.panels.add(panel);
@@ -30,14 +27,6 @@ export class WebviewTransport implements MessageTransport {
     this.panels.delete(panel);
   }
 
-  public setVideoAudioConverter(converter: VideoAudioConverter): void {
-    this.videoAudioConverter = converter;
-  }
-
-  public setOnVideoConverted(callback: (originalConfigPath: string, convertedAbsolutePath: string) => void): void {
-    this.onVideoConverted = callback;
-  }
-
   /** High-frequency message types that should not be logged */
   private static readonly QUIET_TYPES = new Set(['customUniformValues']);
 
@@ -47,7 +36,7 @@ export class WebviewTransport implements MessageTransport {
     }
 
     if (message.type === "shaderSource" && message.config) {
-      // Process config paths async (video audio conversion may be needed)
+      // Process config paths asynchronously before posting to the webview.
       this.sendShaderSourceAsync(message);
       return;
     }
@@ -60,10 +49,7 @@ export class WebviewTransport implements MessageTransport {
     const firstPanel = this.panels.values().next().value;
     if (firstPanel?.webview) {
       console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
-      message = await ConfigPathConverter.processConfigPaths(message, firstPanel.webview, {
-        videoAudioConverter: this.videoAudioConverter,
-        onVideoConverted: this.onVideoConverted,
-      });
+      message = await ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
 
       // Handle video-specific localResourceRoots for webview
       this.handleVideoResourceRoots(message);

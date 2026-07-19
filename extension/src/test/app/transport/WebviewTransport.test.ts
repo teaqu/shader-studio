@@ -281,41 +281,6 @@ suite('WebviewTransport Test Suite', () => {
     assert.strictEqual(sentMessage.config.passes.Image.inputs.iChannel1.resolved_path, mockUri2.toString());
   });
 
-  test('setVideoAudioConverter stores the converter', () => {
-    transport = new WebviewTransport();
-    const mockConverter = {
-      convertIfNeeded: sinon.stub().resolves({ converted: false, path: '/test.mp4' }),
-    } as any;
-
-    // Should not throw
-    assert.doesNotThrow(() => {
-      transport.setVideoAudioConverter(mockConverter);
-    });
-
-    // Verify it's stored by sending a shaderSource with video — the converter should be passed through
-    // We can't directly access the private field, but we verify it doesn't error
-    transport.addPanel(mockPanel as any);
-    assert.doesNotThrow(() => {
-      transport.send({ type: 'shaderSource', config: { passes: { Image: { inputs: {} } } } });
-    });
-  });
-
-  test('setOnVideoConverted stores the callback', () => {
-    transport = new WebviewTransport();
-    const mockCallback = sinon.stub();
-
-    // Should not throw
-    assert.doesNotThrow(() => {
-      transport.setOnVideoConverted(mockCallback);
-    });
-
-    // Verify it's stored by sending a shaderSource — the callback should be passed through
-    transport.addPanel(mockPanel as any);
-    assert.doesNotThrow(() => {
-      transport.send({ type: 'shaderSource', config: { passes: { Image: { inputs: {} } } } });
-    });
-  });
-
   suite('handleVideoPaths', () => {
     let fsExistsSyncStub: sinon.SinonStub;
     let mockErrorHandler: { handleError: sinon.SinonStub; handlePersistentError: sinon.SinonStub };

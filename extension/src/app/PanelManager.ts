@@ -7,18 +7,14 @@ import { WebviewTransport } from "./transport/WebviewTransport";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
-import { VideoAudioConverter } from "./services/VideoAudioConverter";
 import { ClientMessageHandler } from "./ClientMessageHandler";
-import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
-import type { ShaderConfig } from "@shader-studio/types";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
   private panelSlots: Map<vscode.WebviewPanel, number> = new Map();
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
-  private videoAudioConverter: VideoAudioConverter;
   private clientHandler: ClientMessageHandler;
 
   constructor(
@@ -29,12 +25,7 @@ export class PanelManager {
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
     this.logger = Logger.getInstance();
-    this.videoAudioConverter = new VideoAudioConverter();
     this.webviewTransport = new WebviewTransport();
-    this.webviewTransport.setVideoAudioConverter(this.videoAudioConverter);
-    this.webviewTransport.setOnVideoConverted((originalConfigPath, convertedAbsolutePath) => {
-      this.handleVideoAudioConverted(originalConfigPath, convertedAbsolutePath);
-    });
     this.messenger.addTransport(this.webviewTransport);
 
     this.clientHandler = new ClientMessageHandler(
@@ -205,64 +196,6 @@ export class PanelManager {
       (msg) => panel.webview.postMessage(msg),
       (absPath) => ConfigPathConverter.convertUriForClient(absPath, panel.webview),
     );
-  }
-
-  /**
-   * After video audio conversion, update the .sha.json config to point to the new file and refresh.
-   */
-  private handleVideoAudioConverted(originalConfigPath: string, convertedAbsolutePath: string): void {
-    try {
-      // Find the active shader's .sha.json
-      const editor = this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
-      if (!editor) {
-        this.logger.warn("No active shader for auto-swap after video conversion");
-        return;
-      }
-
-      const shaderPath = editor.document.uri.fsPath;
-      const configPath = getConfigPathForShaderPath(shaderPath);
-
-      if (!fs.existsSync(configPath)) {
-        this.logger.warn(`Config file not found for auto-swap: ${configPath}`);
-        return;
-      }
-
-      const configText = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configText) as ShaderConfig;
-      const configDir = path.dirname(configPath);
-
-      // Compute the relative path for the converted file, matching the style of the original
-      const convertedRelative = path.relative(configDir, convertedAbsolutePath);
-
-      let modified = false;
-
-      // Walk all passes and inputs, replacing matching paths
-      for (const passName of Object.keys(config.passes || {})) {
-        const pass = config.passes[passName as keyof typeof config.passes];
-        if (pass && typeof pass === 'object' && 'inputs' in pass && pass.inputs) {
-          for (const key of Object.keys(pass.inputs)) {
-            const input = pass.inputs[key as keyof typeof pass.inputs] as any;
-            if (input?.path === originalConfigPath) {
-              input.path = convertedRelative;
-              modified = true;
-            }
-          }
-        }
-      }
-
-      if (modified) {
-        const updatedText = JSON.stringify(config, null, 2) + '\n';
-        fs.writeFileSync(configPath, updatedText, 'utf-8');
-        this.logger.info(`Auto-swapped video path in config: ${configPath}`);
-
-        // Trigger shader refresh
-        setTimeout(() => {
-          this.shaderProvider.sendShaderFromPath(shaderPath, { reload: true });
-        }, 150);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to auto-swap video path in config: ${error}`);
-    }
   }
 
   private setupWebviewHtml(
