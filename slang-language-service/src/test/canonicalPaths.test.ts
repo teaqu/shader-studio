@@ -36,6 +36,26 @@ describe("SlangPathMap", () => {
     expect(paths.register("file:///c:/work/shader/lib/math.slang")).toBe("/workspace/lib/math.slang");
   });
 
+  it("handles Windows drive-root file URIs case-insensitively", () => {
+    const paths = new SlangPathMap("file:///C:/");
+
+    expect(paths.register("file:///c:/lib/math.slang")).toBe("/workspace/lib/math.slang");
+  });
+
+  it("decodes each file URI pathname exactly once without colliding with nested paths", () => {
+    const paths = new SlangPathMap("file:///tmp/root");
+
+    expect(paths.register("file:///tmp/root/a%252Fb.slang")).toBe("/workspace/a%2Fb.slang");
+    expect(paths.register("file:///tmp/root/a/b.slang")).toBe("/workspace/a/b.slang");
+  });
+
+  it("rejects invalid percent encoding in a file URI", () => {
+    const paths = new SlangPathMap("file:///tmp/root");
+
+    expect(() => paths.register("file:///tmp/root/a%ZZ.slang"))
+      .toThrow("invalid percent encoding");
+  });
+
   it("accepts an explicit relative path for non-file editor URIs", () => {
     const paths = new SlangPathMap("shader-studio://workspace/root");
 

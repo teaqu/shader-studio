@@ -47,11 +47,14 @@ function parsedFilePath(uri: string): string | undefined {
   if (parsed.protocol !== "file:") {
     return undefined;
   }
-  return decodePath(parsed.pathname).replaceAll("\\", "/").replace(/\/$/, "");
+  // Validate encoding here, but retain the encoded pathname until the relative
+  // path is normalized. This ensures URI pathnames are decoded exactly once.
+  decodePath(parsed.pathname);
+  return parsed.pathname.replaceAll("\\", "/").replace(/\/$/, "");
 }
 
 function isWindowsPath(path: string): boolean {
-  return /^\/[A-Za-z]:\//.test(path);
+  return /^\/[A-Za-z]:(?:\/|$)/.test(path);
 }
 
 function relativeFilePath(rootPath: string, filePath: string): string {
