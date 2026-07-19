@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   StaleSlangResultError,
+  SupersededSlangMutationError,
   type CompletionItemDto,
   type DiagnosticDto,
   type DocumentSymbolDto,
@@ -23,7 +24,7 @@ const activeRegistrations = new WeakMap<vscode.ExtensionContext, vscode.Disposab
 export type SlangLanguageClientContract = Pick<SlangLanguageClient,
   "init" | "replaceFiles" | "openDocument" | "changeDocument" | "closeDocument" |
   "hover" | "definition" | "completion" | "completionResolve" | "signatureHelp" |
-  "documentSymbols" | "diagnostics" | "dispose">;
+  "documentSymbols" | "diagnostics" | "ready" | "dispose">;
 
 export interface RegisterSlangLanguageFeatureOptions {
   createClient(workerScriptPath: string): SlangLanguageClientContract;
@@ -126,7 +127,7 @@ function languageServiceSnapshot(snapshot: SlangWorkspaceSnapshot): SlangWorkspa
 }
 
 function ignoredStale(error: unknown): void {
-  if (!(error instanceof StaleSlangResultError)) {
+  if (!(error instanceof StaleSlangResultError) && !(error instanceof SupersededSlangMutationError)) {
     console.error(`Slang language feature error: ${error}`);
   }
 }
@@ -142,10 +143,13 @@ class SlangFeatureSession implements vscode.Disposable {
   private readonly openedVersions = new Map<string, number>();
   private snapshot: SlangWorkspaceSnapshot | undefined;
   private readonly initialized: Promise<void>;
+  private disposed = false;
+  private initializationError: Error | undefined;
 
   constructor(
     private readonly client: SlangLanguageClientContract,
     context: vscode.ExtensionContext,
+    private readonly workspaceFolder: vscode.WorkspaceFolder,
   ) {
     this.disposables.push(this.diagnostics);
     const registrations = this.registerProviders();
@@ -157,10 +161,14 @@ class SlangFeatureSession implements vscode.Disposable {
       vscode.workspace.onDidCloseTextDocument((document) => void this.close(document)),
     );
     context.subscriptions.push(...this.disposables.slice(-3));
-    this.initialized = this.initialize();
+    this.initialized = this.initializeSafely();
   }
 
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
     this.diagnostics.clear();
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
@@ -168,14 +176,38 @@ class SlangFeatureSession implements vscode.Disposable {
     this.client.dispose();
   }
 
-  private async initialize(): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      return;
+  private async initializeSafely(): Promise<void> {
+    try {
+      await this.initialize();
+    } catch (error) {
+      if (this.disposed) {
+        return;
+      }
+      if (!this.snapshot) {
+        this.initializationError = error instanceof Error ? error : new Error(String(error));
+        return;
+      }
+      try {
+        await this.client.ready();
+        if (!this.disposed) {
+          await this.openInitialDocuments();
+        }
+      } catch (recoveryError) {
+        if (!this.disposed) {
+          this.initializationError = recoveryError instanceof Error
+            ? recoveryError
+            : new Error(String(recoveryError));
+        }
+      }
     }
-    const rootUri = workspaceFolder.uri.toString();
+  }
+
+  private async initialize(): Promise<void> {
+    const rootUri = this.workspaceFolder.uri.toString();
     const builder = new SlangWorkspaceSnapshotBuilder({
-      findSlangFiles: async () => (await vscode.workspace.findFiles("**/*.slang")).map((uri) => uri.toString()),
+      findSlangFiles: async () => (await vscode.workspace.findFiles(
+        new vscode.RelativePattern(this.workspaceFolder, "**/*.slang"),
+      )).map((uri) => uri.toString()),
       readFile: async (uri) => {
         try {
           return new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(uri)));
@@ -184,22 +216,55 @@ class SlangFeatureSession implements vscode.Disposable {
         }
       },
       openDocuments: vscode.workspace.textDocuments
-        .filter((document) => document.languageId === "slang" && document.uri.scheme === "file")
+        .filter((document) => document.languageId === "slang" && this.isDocumentManaged(document))
         .map((document) => ({ uri: document.uri.toString(), source: document.getText(), version: document.version })),
     });
     this.snapshot = await builder.build({ rootUri });
+    if (this.disposed) {
+      return;
+    }
     await this.client.init(languageServiceSnapshot(this.snapshot));
+    if (this.disposed) {
+      return;
+    }
+    await this.openInitialDocuments();
+  }
+
+  private async openInitialDocuments(): Promise<void> {
+    if (!this.snapshot) {
+      return;
+    }
     for (const document of vscode.workspace.textDocuments) {
       if (
         document.languageId === "slang" &&
-        document.uri.scheme === "file" &&
+        this.isDocumentManaged(document) &&
         this.snapshot.files.some((file) => file.uri === document.uri.toString())
       ) {
-        await this.client.openDocument(this.snapshotDocument(document));
-        this.openedVersions.set(document.uri.toString(), document.version);
+        if (this.openedVersions.get(document.uri.toString()) !== document.version) {
+          await this.client.openDocument(this.snapshotDocument(document));
+          if (this.disposed) {
+            return;
+          }
+          this.openedVersions.set(document.uri.toString(), document.version);
+        }
         await this.publishDiagnostics(document);
       }
     }
+  }
+
+  private relativeDocumentPath(document: vscode.TextDocument): string | undefined {
+    if (document.uri.scheme !== "file") {
+      return undefined;
+    }
+    const relativePath = path.relative(this.workspaceFolder.uri.fsPath, document.uri.fsPath).replaceAll(path.sep, "/");
+    if (relativePath === "" || relativePath === ".." || relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
+      return undefined;
+    }
+    return relativePath;
+  }
+
+  private isDocumentManaged(document: vscode.TextDocument): boolean {
+    return this.relativeDocumentPath(document) !== undefined;
   }
 
   private snapshotDocument(document: vscode.TextDocument): SlangDocumentSnapshot {
@@ -214,9 +279,8 @@ class SlangFeatureSession implements vscode.Disposable {
     if (!this.snapshot || this.snapshot.files.some((file) => file.uri === document.uri.toString())) {
       return this.snapshot !== undefined;
     }
-    const root = vscode.Uri.parse(this.snapshot.rootUri);
-    const relativePath = path.relative(root.fsPath, document.uri.fsPath).replaceAll(path.sep, "/");
-    if (relativePath === "" || relativePath === ".." || relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
+    const relativePath = this.relativeDocumentPath(document);
+    if (!relativePath) {
       return false;
     }
     this.snapshot = {
@@ -233,7 +297,7 @@ class SlangFeatureSession implements vscode.Disposable {
   }
 
   private async open(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "slang" || document.uri.scheme !== "file") {
+    if (document.languageId !== "slang" || !this.isDocumentManaged(document)) {
       return;
     }
     try {
@@ -247,12 +311,12 @@ class SlangFeatureSession implements vscode.Disposable {
       }
       await this.publishDiagnostics(document);
     } catch (error) {
-      ignoredStale(error); 
+      ignoredStale(error);
     }
   }
 
   private async change(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "slang" || document.uri.scheme !== "file") {
+    if (document.languageId !== "slang" || !this.isDocumentManaged(document)) {
       return;
     }
     try {
@@ -264,12 +328,12 @@ class SlangFeatureSession implements vscode.Disposable {
       this.openedVersions.set(document.uri.toString(), document.version);
       await this.publishDiagnostics(document);
     } catch (error) {
-      ignoredStale(error); 
+      ignoredStale(error);
     }
   }
 
   private async close(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "slang" || document.uri.scheme !== "file") {
+    if (document.languageId !== "slang" || !this.isDocumentManaged(document)) {
       return;
     }
     try {
@@ -281,7 +345,7 @@ class SlangFeatureSession implements vscode.Disposable {
       this.openedVersions.delete(document.uri.toString());
       this.diagnostics.delete(document.uri);
     } catch (error) {
-      ignoredStale(error); 
+      ignoredStale(error);
     }
   }
 
@@ -295,13 +359,21 @@ class SlangFeatureSession implements vscode.Disposable {
   private registerProviders(): vscode.Disposable[] {
     const ready = async <T>(operation: () => Promise<T>): Promise<T | undefined> => {
       try {
-        await this.initialized; return await operation(); 
+        await this.initialized;
+        if (this.disposed || this.initializationError) {
+          return undefined;
+        }
+        return await operation();
       } catch (error) {
-        ignoredStale(error); return undefined; 
+        ignoredStale(error);
+        return undefined;
       }
     };
     const completions = vscode.languages.registerCompletionItemProvider(SLANG_DOCUMENT_SELECTOR, {
       provideCompletionItems: async (document, position, _token, context) => {
+        if (!this.isDocumentManaged(document)) {
+          return undefined;
+        }
         const values = await ready(() => this.client.completion(
           document.uri.toString(), position, document.version,
           { triggerKind: context.triggerKind + 1, triggerCharacter: context.triggerCharacter ?? "" },
@@ -324,19 +396,28 @@ class SlangFeatureSession implements vscode.Disposable {
     return [
       completions,
       vscode.languages.registerHoverProvider(SLANG_DOCUMENT_SELECTOR, {
-        provideHover: async (document, position) => toHover(await ready(() => this.client.hover(document.uri.toString(), position, document.version))),
+        provideHover: async (document, position) => this.isDocumentManaged(document)
+          ? toHover(await ready(() => this.client.hover(document.uri.toString(), position, document.version)))
+          : undefined,
       }),
       vscode.languages.registerDefinitionProvider(SLANG_DOCUMENT_SELECTOR, {
-        provideDefinition: async (document, position) => (await ready(() => this.client.definition(document.uri.toString(), position, document.version)))?.map(toLocation),
+        provideDefinition: async (document, position) => this.isDocumentManaged(document)
+          ? (await ready(() => this.client.definition(document.uri.toString(), position, document.version)))?.map(toLocation)
+          : undefined,
       }),
       vscode.languages.registerSignatureHelpProvider(SLANG_DOCUMENT_SELECTOR, {
         provideSignatureHelp: async (document, position) => {
+          if (!this.isDocumentManaged(document)) {
+            return undefined;
+          }
           const value = await ready(() => this.client.signatureHelp(document.uri.toString(), position, document.version));
           return value ? toSignatureHelp(value) : undefined;
         },
       }, "(", ","),
       vscode.languages.registerDocumentSymbolProvider(SLANG_DOCUMENT_SELECTOR, {
-        provideDocumentSymbols: async (document) => (await ready(() => this.client.documentSymbols(document.uri.toString(), document.version)))?.map(toDocumentSymbol),
+        provideDocumentSymbols: async (document) => this.isDocumentManaged(document)
+          ? (await ready(() => this.client.documentSymbols(document.uri.toString(), document.version)))?.map(toDocumentSymbol)
+          : undefined,
       }),
     ];
   }
@@ -353,16 +434,23 @@ export function registerSlangLanguageFeatures(
     return existing;
   }
   let session: SlangFeatureSession | undefined;
+  let sessionRootUri: string | undefined;
   const update = (): void => {
     const enabled = vscode.workspace.getConfiguration("shader-studio").get("slangLanguageFeatures", true);
-    if (enabled && !session) {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    const nextRootUri = enabled ? workspaceFolder?.uri.toString() : undefined;
+    if (session && sessionRootUri !== nextRootUri) {
+      session.dispose();
+      session = undefined;
+      sessionRootUri = undefined;
+    }
+    if (enabled && workspaceFolder && !session) {
       session = new SlangFeatureSession(
         options.createClient(path.join(context.extensionPath, "dist", "slang", "slangLanguageWorker.js")),
         context,
+        workspaceFolder,
       );
-    } else if (!enabled && session) {
-      session.dispose();
-      session = undefined;
+      sessionRootUri = nextRootUri;
     }
   };
   update();
@@ -371,13 +459,15 @@ export function registerSlangLanguageFeatures(
       update();
     }
   });
+  const workspaceFolders = vscode.workspace.onDidChangeWorkspaceFolders(() => update());
   const registration = new vscode.Disposable(() => {
     configuration.dispose();
+    workspaceFolders.dispose();
     session?.dispose();
     session = undefined;
     activeRegistrations.delete(context);
   });
   activeRegistrations.set(context, registration);
-  context.subscriptions.push(configuration, registration);
+  context.subscriptions.push(configuration, workspaceFolders, registration);
   return registration;
 }

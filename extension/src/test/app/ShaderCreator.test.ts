@@ -246,4 +246,21 @@ suite('ShaderCreator Test Suite', () => {
     assert.ok(content.includes('float4 mainImage(float2 fragCoord)'));
   });
 
+  test('prefixes Slang reserved words when deriving module names', async () => {
+    const modulePath = path.join(testDir, 'module.slang');
+    const floatPath = path.join(testDir, 'float.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog')
+      .onFirstCall().resolves(vscode.Uri.file(modulePath))
+      .onSecondCall().resolves(vscode.Uri.file(floatPath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+    await shaderCreator.create();
+
+    assert.ok(fs.readFileSync(modulePath, 'utf8').startsWith('#language slang 2026\nmodule _module;'));
+    assert.ok(fs.readFileSync(floatPath, 'utf8').startsWith('#language slang 2026\nmodule _float;'));
+  });
+
 });

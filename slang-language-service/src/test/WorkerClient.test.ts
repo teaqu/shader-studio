@@ -37,6 +37,49 @@ async function tick(): Promise<void> {
 }
 
 describe("WorkerClient", () => {
+  it("stops after one consecutive recovery attempt and rejects terminal work", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    }, { maxConsecutiveRestarts: 1 });
+    const init = client.init(snapshot);
+    await tick();
+
+    workers[0].crash("initial worker failed");
+    await expect(init).rejects.toThrow("initial worker failed");
+    expect(workers).toHaveLength(2);
+    workers[1].crash("recovery worker failed");
+    await tick();
+
+    expect(workers).toHaveLength(2);
+    await expect(client.ready()).rejects.toThrow("recovery worker failed");
+    await expect(client.diagnostics("file:///project/root.slang", 1)).rejects.toThrow("recovery worker failed");
+  });
+
+  it("resets the recovery budget after a successful replay", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    }, { maxConsecutiveRestarts: 1 });
+    const init = client.init(snapshot);
+    await tick();
+    workers[0].respond(0, true);
+    await init;
+
+    workers[0].crash("first independent crash");
+    workers[1].respond(0, true);
+    await client.ready();
+    workers[1].crash("second independent crash");
+
+    expect(workers).toHaveLength(3);
+    workers[2].respond(0, true);
+    await expect(client.ready()).resolves.toBeUndefined();
+  });
+
   it("serializes mutations and waits for preceding mutations before queries", async () => {
     const worker = new FakeWorker();
     const client = new WorkerClient(() => worker);

@@ -5,6 +5,14 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { NEW_SLANG_FILE_LANGUAGE_VERSION } from "@shader-studio/slang-language-service";
 
+const SLANG_RESERVED_MODULE_NAMES = new Set([
+  "associatedtype", "break", "case", "class", "const", "continue", "default", "discard", "do", "else",
+  "bool", "double", "enum", "extension", "extern", "false", "float", "for", "func", "generic", "half",
+  "if", "implementing", "import", "in", "inline", "inout", "int", "interface", "internal", "let", "module", "namespace", "none",
+  "null", "operator", "out", "private", "property", "public", "ref", "return", "static", "struct",
+  "switch", "this", "true", "typedef", "typealias", "uint", "uniform", "using", "var", "void", "where", "while",
+]);
+
 export class ShaderCreator {
   private logger: Logger;
   private glslFileTracker: GlslFileTracker;
@@ -32,7 +40,9 @@ export class ShaderCreator {
     if (filePath.toLowerCase().endsWith(".slang")) {
       const basename = path.basename(filePath, path.extname(filePath))
         .replace(/[^a-zA-Z0-9_]/g, "_") || "shader";
-      const moduleName = /^[0-9]/.test(basename) ? `_${basename}` : basename;
+      const moduleName = /^[0-9]/.test(basename) || SLANG_RESERVED_MODULE_NAMES.has(basename)
+        ? `_${basename}`
+        : basename;
       return `#language slang ${NEW_SLANG_FILE_LANGUAGE_VERSION}
 module ${moduleName};
 

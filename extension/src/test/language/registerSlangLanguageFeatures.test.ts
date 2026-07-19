@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import * as sinon from "sinon";
 import * as vscode from "vscode";
+import { SupersededSlangMutationError } from "@shader-studio/slang-language-service";
 import {
   registerSlangLanguageFeatures,
   SLANG_DOCUMENT_SELECTOR,
@@ -83,6 +84,51 @@ suite("Slang language feature adapter", () => {
     }
   });
 
+  test("keeps an enabled empty window idle and reacts when a workspace folder is added", () => {
+    const sandbox = sinon.createSandbox();
+    let folders: readonly vscode.WorkspaceFolder[] | undefined;
+    let folderListener: ((event: vscode.WorkspaceFoldersChangeEvent) => void) | undefined;
+    const createClient = sandbox.stub().returns({
+      init: sandbox.stub().resolves(), ready: sandbox.stub().resolves(), dispose: sandbox.spy(),
+    });
+    const disposable = new vscode.Disposable(() => undefined);
+    try {
+      sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "workspaceFolders").get(() => folders);
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").returns(new vscode.Disposable(() => undefined));
+      sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").callsFake((listener) => {
+        folderListener = listener;
+        return new vscode.Disposable(() => undefined);
+      });
+      sandbox.stub(vscode.workspace, "findFiles").resolves([]);
+      sandbox.stub(vscode.workspace, "textDocuments").value([]);
+      const diagnosticFactory = sandbox.stub(vscode.languages, "createDiagnosticCollection")
+        .returns({ clear() {}, dispose() {} } as vscode.DiagnosticCollection);
+      const providerFactory = sandbox.stub(vscode.languages, "registerHoverProvider");
+      providerFactory.returns(disposable);
+      sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerSignatureHelpProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
+      const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
+
+      const registration = registerSlangLanguageFeatures(context, { createClient });
+      assert.strictEqual(createClient.callCount, 0);
+      assert.strictEqual(diagnosticFactory.callCount, 0);
+      assert.strictEqual(providerFactory.callCount, 0);
+
+      folders = [{ uri: vscode.Uri.file("/tmp/added-root"), name: "added", index: 0 }];
+      folderListener?.({ added: folders, removed: [] });
+      assert.strictEqual(createClient.callCount, 1);
+      registration.dispose();
+    } finally {
+      sandbox.restore();
+    }
+  });
+
   test("forwards document lifecycle, publishes isolated diagnostics, and disposes on disable", async () => {
     const sandbox = sinon.createSandbox();
     let enabled = true;
@@ -90,6 +136,7 @@ suite("Slang language feature adapter", () => {
     let openListener: ((document: vscode.TextDocument) => void) | undefined;
     let changeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
     let closeListener: ((document: vscode.TextDocument) => void) | undefined;
+    let hoverProvider: vscode.HoverProvider | undefined;
     const providerDisposals: sinon.SinonSpy[] = [];
     const disposable = (): vscode.Disposable => {
       const dispose = sandbox.spy();
@@ -127,9 +174,11 @@ suite("Slang language feature adapter", () => {
         message: "broken",
         range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
       }]),
+      ready: sandbox.stub().resolves(),
       dispose: sandbox.spy(),
     } satisfies SlangLanguageClientContract;
     const root = vscode.Uri.file("/tmp/slang-feature-test");
+    const secondRoot = vscode.Uri.file("/tmp/slang-feature-test-two");
     const document = {
       uri: vscode.Uri.joinPath(root, "new.slang"),
       languageId: "slang",
@@ -139,9 +188,12 @@ suite("Slang language feature adapter", () => {
     const openDocuments: vscode.TextDocument[] = [];
     try {
       sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => enabled } as unknown as vscode.WorkspaceConfiguration);
-      sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "test", index: 0 }]);
+      sandbox.stub(vscode.workspace, "workspaceFolders").value([
+        { uri: root, name: "test", index: 0 },
+        { uri: secondRoot, name: "second", index: 1 },
+      ]);
       sandbox.stub(vscode.workspace, "textDocuments").value(openDocuments);
-      sandbox.stub(vscode.workspace, "findFiles").resolves([]);
+      const findFiles = sandbox.stub(vscode.workspace, "findFiles").resolves([]);
       sandbox.stub(vscode.workspace, "onDidChangeConfiguration").callsFake((listener) => {
         configurationListener = listener;
         return disposable();
@@ -164,7 +216,10 @@ suite("Slang language feature adapter", () => {
         return diagnosticCollection;
       });
       sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable());
-      sandbox.stub(vscode.languages, "registerHoverProvider").returns(disposable());
+      sandbox.stub(vscode.languages, "registerHoverProvider").callsFake((_selector, provider) => {
+        hoverProvider = provider;
+        return disposable();
+      });
       sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable());
       sandbox.stub(vscode.languages, "registerSignatureHelpProvider").returns(disposable());
       sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable());
@@ -172,16 +227,42 @@ suite("Slang language feature adapter", () => {
       const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
       await waitUntil(() => client.init.calledOnce);
 
+      const scanPattern = findFiles.firstCall.args[0];
+      assert.ok(scanPattern instanceof vscode.RelativePattern);
+      assert.strictEqual(scanPattern.baseUri.toString(), root.toString());
+      const outsideDocument = {
+        ...document,
+        uri: vscode.Uri.joinPath(secondRoot, "outside.slang"),
+      } as vscode.TextDocument;
+      openListener?.(outsideDocument);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.strictEqual(client.openDocument.callCount, 0, "second-root documents are quietly ignored");
+      const outsideHover = await hoverProvider?.provideHover(
+        outsideDocument,
+        new vscode.Position(0, 0),
+        new vscode.CancellationTokenSource().token,
+      );
+      assert.strictEqual(outsideHover, undefined);
+      assert.strictEqual(client.hover.callCount, 0, "providers do not query unmanaged roots");
+
       openDocuments.push(document);
       openListener?.(document);
       await waitUntil(() => client.openDocument.calledOnce && diagnosticSet.calledOnce);
       assert.strictEqual(client.replaceFiles.callCount, 1, "new files are added to the worker snapshot before opening");
       assert.strictEqual(diagnosticSet.firstCall.args[0].toString(), document.uri.toString());
 
-      changeListener?.({ document } as vscode.TextDocumentChangeEvent);
-      await waitUntil(() => client.changeDocument.calledOnce);
+      const consoleError = sandbox.stub(console, "error");
+      client.changeDocument.onFirstCall().rejects(new SupersededSlangMutationError(document.uri.toString()));
+      client.changeDocument.onSecondCall().resolves();
+      const versionEight = { ...document, version: 8, getText: () => "module edit_eight;" } as vscode.TextDocument;
+      const versionNine = { ...document, version: 9, getText: () => "module edit_nine;" } as vscode.TextDocument;
+      openDocuments[0] = versionNine;
+      changeListener?.({ document: versionEight } as vscode.TextDocumentChangeEvent);
+      changeListener?.({ document: versionNine } as vscode.TextDocumentChangeEvent);
+      await waitUntil(() => client.changeDocument.callCount === 2);
+      assert.strictEqual(consoleError.callCount, 0, "superseded rapid edits are expected control flow");
       openDocuments.splice(0);
-      closeListener?.(document);
+      closeListener?.(versionNine);
       await waitUntil(() => client.closeDocument.calledOnce && diagnosticDelete.calledOnce);
 
       enabled = false;
@@ -193,6 +274,113 @@ suite("Slang language feature adapter", () => {
         providerDisposals.length - 1,
         "all provider and document listeners dispose while the configuration listener remains active",
       );
+      registration.dispose();
+    } finally {
+      sandbox.restore();
+    }
+  });
+
+  test("recovers a startup worker crash before serving providers", async () => {
+    const sandbox = sinon.createSandbox();
+    let hoverProvider: vscode.HoverProvider | undefined;
+    const root = vscode.Uri.file("/tmp/slang-recovery-test");
+    const document = {
+      uri: vscode.Uri.joinPath(root, "main.slang"), languageId: "slang", version: 1, getText: () => "module main;",
+    } as unknown as vscode.TextDocument;
+    const client = {
+      init: sandbox.stub().rejects(new Error("startup worker crashed")),
+      ready: sandbox.stub().resolves(),
+      replaceFiles: sandbox.stub().resolves(), openDocument: sandbox.stub().resolves(),
+      changeDocument: sandbox.stub().resolves(), closeDocument: sandbox.stub().resolves(),
+      hover: sandbox.stub().resolves({
+        contents: { kind: "plaintext", value: "recovered" },
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      }),
+      definition: sandbox.stub().resolves(undefined), completion: sandbox.stub().resolves(undefined),
+      completionResolve: sandbox.stub().resolves(undefined), signatureHelp: sandbox.stub().resolves(undefined),
+      documentSymbols: sandbox.stub().resolves(undefined), diagnostics: sandbox.stub().resolves([]),
+      dispose: sandbox.spy(),
+    } satisfies SlangLanguageClientContract;
+    const disposable = new vscode.Disposable(() => undefined);
+    try {
+      sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
+      sandbox.stub(vscode.workspace, "textDocuments").value([]);
+      sandbox.stub(vscode.workspace, "findFiles").resolves([]);
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
+      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({ clear() {}, dispose() {} } as vscode.DiagnosticCollection);
+      sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerHoverProvider").callsFake((_selector, provider) => {
+        hoverProvider = provider;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerSignatureHelpProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable);
+      const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
+      const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
+      await waitUntil(() => client.ready.calledOnce);
+
+      const hover = await hoverProvider?.provideHover(document, new vscode.Position(0, 0), new vscode.CancellationTokenSource().token);
+      assert.strictEqual(client.hover.callCount, 1);
+      assert.ok(hover instanceof vscode.Hover);
+      registration.dispose();
+    } finally {
+      sandbox.restore();
+    }
+  });
+
+  test("absorbs disable while workspace scanning is still in flight", async () => {
+    const sandbox = sinon.createSandbox();
+    let enabled = true;
+    let configurationListener: ((event: vscode.ConfigurationChangeEvent) => void) | undefined;
+    let finishScan: ((uris: vscode.Uri[]) => void) | undefined;
+    const scan = new Promise<vscode.Uri[]>((resolve) => {
+      finishScan = resolve;
+    });
+    const root = vscode.Uri.file("/tmp/slang-disable-race");
+    const client = {
+      init: sandbox.stub().rejects(new Error("disposed client must not initialize")), ready: sandbox.stub().resolves(),
+      replaceFiles: sandbox.stub().resolves(), openDocument: sandbox.stub().resolves(),
+      changeDocument: sandbox.stub().resolves(), closeDocument: sandbox.stub().resolves(),
+      hover: sandbox.stub().resolves(undefined), definition: sandbox.stub().resolves(undefined),
+      completion: sandbox.stub().resolves(undefined), completionResolve: sandbox.stub().resolves(undefined),
+      signatureHelp: sandbox.stub().resolves(undefined), documentSymbols: sandbox.stub().resolves(undefined),
+      diagnostics: sandbox.stub().resolves([]), dispose: sandbox.spy(),
+    } satisfies SlangLanguageClientContract;
+    const disposable = new vscode.Disposable(() => undefined);
+    try {
+      sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => enabled } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
+      sandbox.stub(vscode.workspace, "textDocuments").value([]);
+      sandbox.stub(vscode.workspace, "findFiles").returns(scan);
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").callsFake((listener) => {
+        configurationListener = listener;
+        return disposable;
+      });
+      sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
+      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({ clear() {}, dispose() {} } as vscode.DiagnosticCollection);
+      sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerHoverProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerSignatureHelpProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable);
+      const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
+      const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
+      enabled = false;
+      configurationListener?.({ affectsConfiguration: () => true });
+      finishScan?.([]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      assert.strictEqual(client.dispose.callCount, 1);
+      assert.strictEqual(client.init.callCount, 0);
       registration.dispose();
     } finally {
       sandbox.restore();

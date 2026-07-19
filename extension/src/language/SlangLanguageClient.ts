@@ -35,6 +35,9 @@ export class NodeSlangWorker implements SlangWorker {
 /** Extension-host facade over the shared, replaying Slang RPC client. */
 export class SlangLanguageClient extends WorkerClient {
   static forWorkerScript(workerScriptPath: string): SlangLanguageClient {
-    return new SlangLanguageClient(() => new NodeSlangWorker(workerScriptPath));
+    return new SlangLanguageClient(
+      () => new NodeSlangWorker(workerScriptPath),
+      { maxConsecutiveRestarts: 1 },
+    );
   }
 }

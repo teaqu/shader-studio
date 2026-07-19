@@ -19,6 +19,11 @@ export interface SlangWorker {
 
 type WorkerFactory = () => SlangWorker;
 
+export interface WorkerClientOptions {
+  /** Maximum restarts before a continuously failing worker becomes terminal. */
+  maxConsecutiveRestarts?: number;
+}
+
 interface PendingRequest {
   resolve(value: { result: unknown; documentVersion?: number }): void;
   reject(error: Error): void;
@@ -68,8 +73,19 @@ export class WorkerClient {
   private readonly documentMutationGenerations = new Map<string, number>();
   private nextDocumentMutationGeneration = 1;
   private disposed = false;
+  private terminalError: Error | undefined;
+  private consecutiveRestarts = 0;
+  private readonly maxConsecutiveRestarts: number;
 
-  constructor(private readonly createWorker: WorkerFactory) {
+  constructor(
+    private readonly createWorker: WorkerFactory,
+    options: WorkerClientOptions = {},
+  ) {
+    const maximum = options.maxConsecutiveRestarts ?? Number.POSITIVE_INFINITY;
+    if (maximum < 0 || (!Number.isInteger(maximum) && maximum !== Number.POSITIVE_INFINITY)) {
+      throw new Error("maxConsecutiveRestarts must be a non-negative integer");
+    }
+    this.maxConsecutiveRestarts = maximum;
     this.worker = this.startWorker();
   }
 
@@ -79,7 +95,9 @@ export class WorkerClient {
     }
     this.latestSnapshot = snapshot;
     this.rememberSnapshotVersions(snapshot);
-    return this.mutate({ method: "init", snapshot });
+    return this.mutate({ method: "init", snapshot }).then(() => {
+      this.consecutiveRestarts = 0;
+    });
   }
 
   replaceFiles(snapshot: SlangWorkspaceSnapshot): Promise<void> {
@@ -362,8 +380,17 @@ export class WorkerClient {
     this.worker.terminate();
     this.rejectPending(error);
     this.acknowledgedDocuments.clear();
+    if (this.consecutiveRestarts >= this.maxConsecutiveRestarts) {
+      this.terminalError = error;
+      this.recovery = Promise.reject(error);
+      void this.recovery.catch(() => undefined);
+      return;
+    }
+    this.consecutiveRestarts += 1;
     this.worker = this.startWorker();
-    this.recovery = this.replayState();
+    this.recovery = this.replayState().then(() => {
+      this.consecutiveRestarts = 0;
+    });
     void this.recovery.catch(() => undefined);
   }
 
@@ -425,6 +452,9 @@ export class WorkerClient {
   private ensureActive(): void {
     if (this.disposed) {
       throw new Error("Slang worker client is disposed");
+    }
+    if (this.terminalError) {
+      throw this.terminalError;
     }
   }
 
