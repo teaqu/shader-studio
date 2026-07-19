@@ -251,6 +251,29 @@ describe('ConfigManager', () => {
   });
 
   describe('addComputePass', () => {
+    it('should create and publish a valid default config when no config is loaded', () => {
+      const name = configManager.addComputePass();
+      const config = configManager.getConfig();
+
+      expect(name).toBe('ComputeA');
+      expect(config).toEqual({
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      });
+      expect(onConfigChange).toHaveBeenCalledOnce();
+      expect(onConfigChange).toHaveBeenCalledWith(config);
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          config,
+          text: JSON.stringify(config, null, 2),
+        }),
+      });
+    });
+
     it('should auto-name compute passes from ComputeA to ComputeB', () => {
       configManager.setConfig(createTestConfig());
 

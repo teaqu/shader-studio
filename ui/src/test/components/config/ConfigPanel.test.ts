@@ -732,6 +732,66 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
       expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
     });
+
+    it('does nothing when the manager cannot add a compute pass', async () => {
+      const mockManager = createMockConfigManager([]);
+      mockManager.addComputePass.mockReturnValue(null);
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(mockManager.getConfig).not.toHaveBeenCalled();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+      expect(getByRole('button', { name: 'Image' })).toHaveClass('active');
+    });
+
+    it('selects the returned pass without publishing when the manager has no config', async () => {
+      const mockManager = createMockConfigManager([]);
+      mockManager.addComputePass.mockReturnValue('ComputeA');
+      mockManager.getConfig.mockReturnValue(null);
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(mockManager.getConfig).toHaveBeenCalledOnce();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(mockOnFileSelect).toHaveBeenCalledOnce();
+      expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
+      expect(getByRole('button', { name: 'Image' })).not.toHaveClass('active');
+    });
   });
 
   describe('double-click sends navigateToBuffer', () => {
