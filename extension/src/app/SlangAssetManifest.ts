@@ -9,6 +9,23 @@ export interface SlangAssetPaths {
 
 type SlangAssetKey = 'script' | 'wasm' | 'worker';
 
+interface PathSemantics {
+  readonly sep: string;
+  relative(from: string, to: string): string;
+  isAbsolute(path: string): boolean;
+}
+
+export function isPathOutsideRoot(
+  rootPath: string,
+  resolvedPath: string,
+  pathSemantics: PathSemantics = path,
+): boolean {
+  const relativePath = pathSemantics.relative(rootPath, resolvedPath);
+  return relativePath === '..'
+    || relativePath.startsWith(`..${pathSemantics.sep}`)
+    || pathSemantics.isAbsolute(relativePath);
+}
+
 export function loadSlangAssetPaths(extensionPath: string): SlangAssetPaths {
   const uiDistPath = path.resolve(extensionPath, 'ui-dist');
   const manifestPath = path.join(uiDistPath, 'slang-assets.json');
@@ -25,8 +42,7 @@ export function loadSlangAssetPaths(extensionPath: string): SlangAssetPaths {
     }
 
     const resolvedPath = path.resolve(uiDistPath, relativePath);
-    const relativeResolvedPath = path.relative(uiDistPath, resolvedPath);
-    if (relativeResolvedPath.startsWith('..') || path.isAbsolute(relativeResolvedPath)) {
+    if (isPathOutsideRoot(uiDistPath, resolvedPath)) {
       throw new Error(`Slang asset path escapes ui-dist: ${relativePath}`);
     }
 
