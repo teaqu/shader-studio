@@ -26,6 +26,45 @@ describe("SlangWgslCache", () => {
     expect(createSlangWgslCacheKey(sourceChanged)).not.toBe(createSlangWgslCacheKey(base));
     expect(createSlangWgslCacheKey(pathChanged)).not.toBe(createSlangWgslCacheKey(base));
     expect(createSlangWgslCacheKey(optionsChanged)).not.toBe(createSlangWgslCacheKey(base));
+    expect(createSlangWgslCacheKey(base)).toMatch(/^slang-wgsl-v1:[0-9a-f]{16}$/);
+    expect(createSlangWgslCacheKey(base).length).toBe(30);
+  });
+
+  it("frames path and source values so concatenation boundaries cannot collide", () => {
+    const request = (path: string, source: string): SlangCompileRequest => ({
+      source: "root",
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [{ uri: "file:///project/dependency.slang", path, source }],
+      },
+      options: {},
+    });
+
+    expect(createSlangWgslCacheKey(request("/workspace/a", "bc")))
+      .not.toBe(createSlangWgslCacheKey(request("/workspace/ab", "c")));
+  });
+
+  it("is order-independent even when canonical paths are duplicated", () => {
+    const base: SlangCompileRequest = {
+      source: "root",
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "first" },
+          { uri: "file:///project/a-copy.slang", path: "/workspace/a.slang", source: "second" },
+        ],
+      },
+      options: {},
+    };
+
+    expect(createSlangWgslCacheKey(base)).toBe(createSlangWgslCacheKey({
+      ...base,
+      workspace: { ...base.workspace, files: [...base.workspace.files].reverse() },
+    }));
   });
   it("stores and retrieves compiled WGSL by key", () => {
     const cache = new SlangWgslCache(2);

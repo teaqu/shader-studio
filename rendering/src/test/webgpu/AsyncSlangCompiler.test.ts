@@ -42,6 +42,14 @@ function fakeWorker() {
 }
 
 describe("MainThreadSlangCompiler", () => {
+  it("delegates dispose to the wrapped compiler", () => {
+    const inner = { compile: vi.fn(), dispose: vi.fn() };
+    const compiler = new MainThreadSlangCompiler(inner as any);
+
+    compiler.dispose();
+
+    expect(inner.dispose).toHaveBeenCalledOnce();
+  });
   it("forwards the same serializable request used by the worker contract", async () => {
     const inner = { compile: vi.fn(() => ({ success: true as const, wgsl: "w", diagnostics: [] })) };
     const compiler = new MainThreadSlangCompiler(inner as any);

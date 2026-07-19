@@ -64,32 +64,100 @@ function makeFakeSlang(opts: {
   onLoad?: (source: string, name?: string, path?: string) => void;
   onWrite?: (path: string, source: string) => void;
   onUnlink?: (path: string) => void;
+  onDelete?: (handle: string) => void;
+  throwAt?: "load" | "entry" | "composite" | "link" | "code";
+  aliasLinkedToComposite?: boolean;
+  throwDeleteAt?: string;
 } = {}): SlangModuleApi {
   const files = new Set<string>();
   const wgsl = opts.wgsl ?? "// wgsl output";
+  let linkedDeleted = false;
+  let compositeDeleted = false;
   const linked = {
+    delete: () => {
+      linkedDeleted = true;
+      opts.onDelete?.("linked");
+      if (opts.throwDeleteAt === "linked") {
+        throw new Error("linked delete threw");
+      }
+    },
+    isAliasOf: (other: unknown) => {
+      if (linkedDeleted || compositeDeleted) {
+        throw new Error("alias check used deleted handle");
+      }
+      return opts.aliasLinkedToComposite && other === composite;
+    },
     link: () => linked,
-    getTargetCode: () => wgsl,
+    getTargetCode: () => {
+      if (opts.throwAt === "code") {
+        throw new Error("code threw");
+      }
+      return wgsl;
+    },
   };
   const composite = {
-    link: () => (opts.linkNull ? null : linked),
+    delete: () => {
+      compositeDeleted = true;
+      opts.onDelete?.("composite");
+      if (opts.throwDeleteAt === "composite") {
+        throw new Error("composite delete threw");
+      }
+    },
+    isAliasOf: (other: unknown) => {
+      if (linkedDeleted || compositeDeleted) {
+        throw new Error("alias check used deleted handle");
+      }
+      return opts.aliasLinkedToComposite && other === linked;
+    },
+    link: () => {
+      if (opts.throwAt === "link") {
+        throw new Error("link threw");
+      }
+      return opts.linkNull ? null : linked;
+    },
     getTargetCode: () => wgsl,
   };
   const module = {
-    findEntryPointByName: (name: string) =>
-      opts.missingEntryPoint === name ? null : { name },
+    delete: () => opts.onDelete?.("module"),
+    isAliasOf: () => false,
+    findEntryPointByName: (name: string) => {
+      if (opts.throwAt === "entry") {
+        throw new Error("entry threw");
+      }
+      return opts.missingEntryPoint === name ? null : {
+        name,
+        delete: () => opts.onDelete?.(name),
+        isAliasOf: () => false,
+      };
+    },
     link: () => null,
     getTargetCode: () => "",
   };
   const session = {
+    delete: () => opts.onDelete?.("session"),
+    isAliasOf: () => false,
     loadModuleFromSource: (source: string, name?: string, path?: string) => {
+      if (opts.throwAt === "load") {
+        throw new Error("load threw");
+      }
       opts.onLoad?.(source, name, path);
       return opts.moduleNull ? null : module;
     },
-    createCompositeComponentType: () => (opts.compositeNull ? null : composite),
+    createCompositeComponentType: () => {
+      if (opts.throwAt === "composite") {
+        throw new Error("composite threw");
+      }
+      return opts.compositeNull ? null : composite;
+    },
   };
   const globalSession = {
-    createSession: () => (opts.sessionNull ? null : session),
+    delete: () => opts.onDelete?.("global"),
+    isAliasOf: () => false,
+    createSession: () => {
+      linkedDeleted = false;
+      compositeDeleted = false;
+      return opts.sessionNull ? null : session;
+    },
   };
 
   return {
@@ -117,6 +185,91 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("deletes transient Embind handles in reverse ownership order after success", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete: (handle) => deleted.push(handle) }));
+
+    expect(compiler.compile(compileRequest()).success).toBe(true);
+
+    expect(deleted).toEqual([
+      "linked",
+      "composite",
+      SLANG_ENTRY_FRAGMENT,
+      SLANG_ENTRY_VERTEX,
+      "module",
+      "session",
+    ]);
+  });
+
+  it.each([
+    ["load", ["session"]],
+    ["entry", ["module", "session"]],
+    ["composite", [SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+    ["link", ["composite", SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+    ["code", ["linked", "composite", SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+  ] as const)("deletes every acquired handle when %s throws", (throwAt, expected) => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      throwAt,
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(() => compiler.compile(compileRequest())).toThrow(`${throwAt} threw`);
+    expect(deleted).toEqual(expected);
+  });
+
+  it("does not double-delete aliased composite and linked handles", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      aliasLinkedToComposite: true,
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    compiler.compile(compileRequest());
+
+    expect(deleted.filter((handle) => handle === "linked" || handle === "composite")).toHaveLength(1);
+  });
+
+  it("continues deleting remaining handles if one native deletion throws", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      throwDeleteAt: "linked",
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(() => compiler.compile(compileRequest())).toThrow("linked delete threw");
+    expect(deleted).toEqual([
+      "linked",
+      "composite",
+      SLANG_ENTRY_FRAGMENT,
+      SLANG_ENTRY_VERTEX,
+      "module",
+      "session",
+    ]);
+  });
+
+  it("idempotently deletes the cached global session on dispose", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete: (handle) => deleted.push(handle) }));
+    compiler.compile(compileRequest());
+
+    compiler.dispose();
+    compiler.dispose();
+
+    expect(deleted.filter((handle) => handle === "global")).toEqual(["global"]);
+  });
+
+  it("deletes an uncacheable global session when WGSL is unavailable", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      targets: [{ name: "GLSL", value: 1 }],
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(compiler.compile(compileRequest()).success).toBe(false);
+
+    expect(deleted).toEqual(["global"]);
+  });
   it("keeps an explicit language and module header before the generated prelude", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));

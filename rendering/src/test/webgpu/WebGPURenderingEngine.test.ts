@@ -7,6 +7,7 @@ import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import type { RenderPassNode } from "../../types/PassGraph";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
@@ -23,6 +24,82 @@ const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
+  });
+
+  const findPassSourceFile = (
+    pass: RenderPassNode,
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot,
+  ) => (WebGPURenderingEngine as unknown as {
+    findPassSourceFile(
+      pass: RenderPassNode,
+      shaderPath: string,
+      workspace: SlangWorkspaceSnapshot,
+    ): SlangWorkspaceSnapshot["files"][number] | undefined;
+  }).findPassSourceFile(pass, shaderPath, workspace);
+
+  it("resolves Windows source paths case-insensitively from canonical snapshot identity", () => {
+    const file = {
+      uri: "file:///C:/Project/My%20Shader.slang",
+      path: "/workspace/My Shader.slang",
+      source: "snapshot source",
+    };
+    const workspace = { rootUri: "file:///C:/Project", files: [file] };
+    const pass: RenderPassNode = {
+      name: "Image", source: "edited source", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "c:\\project\\My Shader.slang", workspace)).toBe(file);
+  });
+
+  it("resolves @/ configured pass paths against the workspace root", () => {
+    const file = {
+      uri: "file:///project/passes/My%20Buffer.slang",
+      path: "/workspace/passes/My Buffer.slang",
+      source: "snapshot buffer source",
+    };
+    const workspace = { rootUri: "file:///project", files: [file] };
+    const pass: RenderPassNode = {
+      name: "BufferA", path: "@/passes/My Buffer.slang", source: "edited buffer source",
+      output: "texture", width: 1, height: 1, channels: [],
+    };
+    expect(findPassSourceFile(pass, "/project/image.slang", workspace)).toBe(file);
+  });
+
+  it("does not guess source identity from equal text or similar names", () => {
+    const workspace: SlangWorkspaceSnapshot = {
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/image-old.slang", path: "/workspace/image-old.slang", source: "duplicate" },
+        { uri: "file:///project/image-copy.slang", path: "/workspace/image-copy.slang", source: "duplicate" },
+      ],
+    };
+    const pass: RenderPassNode = {
+      name: "Image", source: "duplicate", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "/project/missing.slang", workspace)).toBeUndefined();
+  });
+
+  it("selects the exact encoded-space URI among duplicate-source files", () => {
+    const expected = {
+      uri: "file:///project/My%20Shader.slang",
+      path: "/workspace/My Shader.slang",
+      source: "snapshot source",
+    };
+    const workspace: SlangWorkspaceSnapshot = {
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/MyShader.slang", path: "/workspace/MyShader.slang", source: "duplicate" },
+        expected,
+      ],
+    };
+    const pass: RenderPassNode = {
+      name: "Image", source: "edited source", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "/project/My Shader.slang", workspace)).toBe(expected);
+    expect(findPassSourceFile(pass, "file:///project/My%20Shader.slang", workspace)).toBe(expected);
   });
 
   it("initializes without throwing when WebGPU is unavailable", () => {

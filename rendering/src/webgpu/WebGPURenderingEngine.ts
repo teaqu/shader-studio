@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
 import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import { normalizeInternalPath } from "@shader-studio/slang-language-service";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -550,7 +551,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
         pass,
         path,
         workspace,
-        config,
         options,
       );
       const key = createSlangWgslCacheKey(compileRequest);
@@ -895,15 +895,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     shaderPath: string,
     workspace: SlangWorkspaceSnapshot | undefined,
-    config: ShaderConfig | null,
     options: SlangCompileOptions,
   ): SlangCompileRequest {
-    const sourceFile = WebGPURenderingEngine.findPassSourceFile(pass, shaderPath, workspace, config);
+    const sourceFile = WebGPURenderingEngine.findPassSourceFile(pass, shaderPath, workspace);
     const generatedName = pass.name.toLowerCase();
     const sourceUri = sourceFile?.uri ?? WebGPURenderingEngine.pathToFileUri(
       pass.name === "Image" ? shaderPath : `/${generatedName}.slang`,
     );
-    const sourcePath = sourceFile?.path ?? `/workspace/${generatedName}.slang`;
+    // If the caller's selector has no exact canonical snapshot identity, use
+    // an explicitly synthetic namespace. Never attach the pass to a file just
+    // because its text or name resembles the in-memory buffer.
+    const sourcePath = sourceFile?.path ?? `/workspace/__shader_studio_generated__/${generatedName}.slang`;
     const snapshot = workspace ?? {
       rootUri: WebGPURenderingEngine.parentUri(sourceUri),
       files: [{ uri: sourceUri, path: sourcePath, source: pass.source }],
@@ -915,41 +917,40 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     shaderPath: string,
     workspace: SlangWorkspaceSnapshot | undefined,
-    config: ShaderConfig | null,
   ): SlangWorkspaceSnapshot["files"][number] | undefined {
     if (!workspace) {
       return undefined;
     }
-    if (pass.name === "Image") {
-      const shaderUri = WebGPURenderingEngine.pathToFileUri(shaderPath);
-      const exact = workspace.files.find((file) => file.uri === shaderUri);
-      if (exact) {
-        return exact;
+    const selector = pass.name === "Image" ? shaderPath : pass.path;
+    if (!selector) {
+      return undefined;
+    }
+    const windowsWorkspace = isWindowsFileUri(workspace.rootUri);
+    const workspacePath = selectorToWorkspacePath(selector, windowsWorkspace);
+    if (workspacePath) {
+      return workspace.files.find((file) => comparableWorkspacePath(file.path, windowsWorkspace) === workspacePath);
+    }
+    for (const uri of selectorToFileUris(selector, shaderPath, workspace.rootUri)) {
+      const uriKey = comparableFileUri(uri, windowsWorkspace);
+      const file = workspace.files.find((candidate) => comparableFileUri(candidate.uri, windowsWorkspace) === uriKey);
+      if (file) {
+        return file;
       }
     }
-    const configuredPass = config?.passes?.[pass.name];
-    const configuredPath = configuredPass && "path" in configuredPass ? configuredPass.path : undefined;
-    if (configuredPath) {
-      const configuredUri = new URL(configuredPath, WebGPURenderingEngine.pathToFileUri(shaderPath)).href;
-      const configured = workspace.files.find((file) => file.uri === configuredUri);
-      if (configured) {
-        return configured;
+    // Historical callers may pass `/image.slang` as a workspace-root path
+    // rather than an absolute host path. Only use that interpretation after
+    // exact URI resolution failed, and still require an exact snapshot path.
+    if (selector.startsWith("/") && !selector.startsWith("/workspace/")) {
+      const rootPath = selectorToWorkspacePath(`@${selector}`, windowsWorkspace);
+      if (rootPath) {
+        return workspace.files.find((file) => comparableWorkspacePath(file.path, windowsWorkspace) === rootPath);
       }
     }
-    const sourceMatches = workspace.files.filter((file) => file.source === pass.source);
-    if (sourceMatches.length <= 1) {
-      return sourceMatches[0];
-    }
-    const expected = pass.name.toLowerCase();
-    return sourceMatches.find((file) => file.path.toLowerCase().includes(expected)) ?? sourceMatches[0];
+    return undefined;
   }
 
   private static pathToFileUri(path: string): string {
-    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(path)) {
-      return new URL(path).href;
-    }
-    const normalized = path.replace(/\\/g, "/");
-    return new URL(`file://${normalized.startsWith("/") ? "" : "/"}${normalized}`).href;
+    return pathToFileUri(path);
   }
 
   private static parentUri(uri: string): string {
@@ -1718,4 +1719,80 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.customUniformManager.updateValues(changed);
     this.pendingCustomUniformValues = this.customUniformManager.getCurrentValues();
   }
+}
+
+function selectorToWorkspacePath(selector: string, windows: boolean): string | undefined {
+  let path: string;
+  if (selector.startsWith("@/")) {
+    path = `/workspace/${decodePath(selector.slice(2))}`;
+  } else if (selector === "/workspace" || selector.startsWith("/workspace/")) {
+    path = decodePath(selector);
+  } else {
+    return undefined;
+  }
+  try {
+    return comparableWorkspacePath(normalizeInternalPath(path), windows);
+  } catch {
+    return undefined;
+  }
+}
+
+function comparableWorkspacePath(path: string, windows: boolean): string {
+  const normalized = normalizeInternalPath(path);
+  return windows ? normalized.toLowerCase() : normalized;
+}
+
+function selectorToFileUris(selector: string, shaderPath: string, rootUri: string): string[] {
+  try {
+    if (/^[A-Za-z]:[\\/]/.test(selector) || selector.startsWith("/")) {
+      return [pathToFileUri(selector)];
+    }
+    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(selector)) {
+      return [new URL(selector).href];
+    }
+    const normalized = selector.replace(/\\/g, "/");
+    const shaderRelative = new URL(normalized, pathToFileUri(shaderPath)).href;
+    const rootRelative = new URL(normalized, `${rootUri.replace(/\/$/, "")}/`).href;
+    return shaderRelative === rootRelative ? [shaderRelative] : [shaderRelative, rootRelative];
+  } catch {
+    return [];
+  }
+}
+
+function comparableFileUri(uri: string, windows: boolean): string | undefined {
+  try {
+    const parsed = new URL(uri);
+    parsed.hash = "";
+    parsed.search = "";
+    const authority = parsed.hostname.toLowerCase();
+    const path = decodePath(parsed.pathname);
+    const key = `${parsed.protocol.toLowerCase()}//${authority}${path}`;
+    return windows ? key.toLowerCase() : key;
+  } catch {
+    return undefined;
+  }
+}
+
+function isWindowsFileUri(uri: string): boolean {
+  try {
+    return /^\/[A-Za-z]:(?:\/|$)/.test(new URL(uri).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+function pathToFileUri(path: string): string {
+  if (!/^[A-Za-z]:[\\/]/.test(path) && /^[A-Za-z][A-Za-z\d+.-]*:/.test(path)) {
+    return new URL(path).href;
+  }
+  const normalized = path.replace(/\\/g, "/");
+  return new URL(`file://${normalized.startsWith("/") ? "" : "/"}${normalized}`).href;
 }

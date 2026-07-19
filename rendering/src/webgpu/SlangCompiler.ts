@@ -6,7 +6,12 @@ import {
 } from "@shader-studio/slang-language-service";
 import {
   type SlangModuleApi,
+  type SlangClassHandle,
+  type SlangComponentType,
+  type SlangEntryPoint,
   type SlangGlobalSession,
+  type SlangModule,
+  type SlangSession,
   slangVectorToArray,
 } from "./slangTypes";
 import {
@@ -54,6 +59,10 @@ export class SlangCompiler {
         new Map(),
         this.mountedPaths,
       );
+      // Native Slang imports are separate translation units and therefore
+      // choose their own language mode (directive-free means legacy). Textual
+      // includes inherit their includer's mode. Preserve dependency bytes
+      // exactly; injecting a language header here would break that distinction.
       this.mountWorkspaceRootCandidates(request);
     } catch (error) {
       return this.failure(errMessage(error), request);
@@ -67,46 +76,63 @@ export class SlangCompiler {
       return this.failure(errMessage(error), request);
     }
 
-    const session = globalSession.createSession(target);
-    if (!session) {
-      return this.failure(this.lastError("Slang: failed to create session"), request);
-    }
-
-    let sourcePath: string;
+    let session: SlangSession | null = null;
+    let module: SlangModule | null = null;
+    let vs: SlangEntryPoint | null = null;
+    let fs: SlangEntryPoint | null = null;
+    let composite: SlangComponentType | null = null;
+    let linked: SlangComponentType | null = null;
     try {
-      sourcePath = normalizeInternalPath(request.sourcePath);
-    } catch (error) {
-      return this.failure(errMessage(error), request);
-    }
-    const wrapped = wrapSlangImageSource(request.source, request.options);
-    const moduleName = sourcePath.slice(sourcePath.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "") || "image";
-    const module = session.loadModuleFromSource(wrapped, moduleName, sourcePath);
-    if (!module) {
-      return this.failure(this.lastError("Slang: failed to compile module"), request);
-    }
+      session = globalSession.createSession(target);
+      if (!session) {
+        return this.failure(this.lastError("Slang: failed to create session"), request);
+      }
 
-    const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
-    const fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
-    if (!vs || !fs) {
-      return this.failure("Slang: entry points not found (is `mainImage` defined?)", request);
-    }
+      let sourcePath: string;
+      try {
+        sourcePath = normalizeInternalPath(request.sourcePath);
+      } catch (error) {
+        return this.failure(errMessage(error), request);
+      }
+      const wrapped = wrapSlangImageSource(request.source, request.options);
+      const moduleName = sourcePath.slice(sourcePath.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "") || "image";
+      module = session.loadModuleFromSource(wrapped, moduleName, sourcePath);
+      if (!module) {
+        return this.failure(this.lastError("Slang: failed to compile module"), request);
+      }
 
-    const composite = session.createCompositeComponentType([module, vs, fs]);
-    if (!composite) {
-      return this.failure(this.lastError("Slang: failed to compose program"), request);
-    }
+      vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
+      fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
+      if (!vs || !fs) {
+        return this.failure("Slang: entry points not found (is `mainImage` defined?)", request);
+      }
 
-    const linked = composite.link();
-    if (!linked) {
-      return this.failure(this.lastError("Slang: failed to link program"), request);
-    }
+      composite = session.createCompositeComponentType([module, vs, fs]);
+      if (!composite) {
+        return this.failure(this.lastError("Slang: failed to compose program"), request);
+      }
 
-    const wgsl = linked.getTargetCode(0);
-    if (!wgsl) {
-      return this.failure(this.lastError("Slang: produced empty WGSL"), request);
-    }
+      linked = composite.link();
+      if (!linked) {
+        return this.failure(this.lastError("Slang: failed to link program"), request);
+      }
 
-    return { success: true, wgsl, diagnostics: [] };
+      const wgsl = linked.getTargetCode(0);
+      if (!wgsl) {
+        return this.failure(this.lastError("Slang: produced empty WGSL"), request);
+      }
+
+      return { success: true, wgsl, diagnostics: [] };
+    } finally {
+      deleteDistinctHandles([linked, composite, fs, vs, module, session]);
+    }
+  }
+
+  public dispose(): void {
+    const globalSession = this.globalSession;
+    this.globalSession = null;
+    this.wgslTargetValue = null;
+    globalSession?.delete();
   }
 
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
@@ -119,17 +145,22 @@ export class SlangCompiler {
       throw new Error("Slang: createGlobalSession returned null");
     }
 
-    const targets = slangVectorToArray(this.slang.getCompileTargets());
-    const wgsl = targets.find((t) => /wgsl/i.test(t.name));
-    if (!wgsl) {
-      throw new Error(
-        `Slang: no WGSL compile target (available: ${targets.map((t) => t.name).join(", ") || "none"})`,
-      );
-    }
+    try {
+      const targets = slangVectorToArray(this.slang.getCompileTargets());
+      const wgsl = targets.find((t) => /wgsl/i.test(t.name));
+      if (!wgsl) {
+        throw new Error(
+          `Slang: no WGSL compile target (available: ${targets.map((t) => t.name).join(", ") || "none"})`,
+        );
+      }
 
-    this.globalSession = globalSession;
-    this.wgslTargetValue = wgsl.value;
-    return { globalSession, target: wgsl.value };
+      this.globalSession = globalSession;
+      this.wgslTargetValue = wgsl.value;
+      return { globalSession, target: wgsl.value };
+    } catch (error) {
+      globalSession.delete();
+      throw error;
+    }
   }
 
   private lastError(fallback: string): string {
@@ -179,6 +210,33 @@ export class SlangCompiler {
       this.diagnosticAliases.set(aliasPath, file.uri);
     }
   }
+}
+
+function deleteDistinctHandles(handles: Array<SlangClassHandle | null>): void {
+  const distinct: SlangClassHandle[] = [];
+  for (const handle of handles) {
+    if (!handle || distinct.some((other) => handlesAlias(handle, other))) {
+      continue;
+    }
+    distinct.push(handle);
+  }
+  // Alias checks must happen while every Embind handle is still live: calling
+  // isAliasOf() with an already-deleted wrapper itself raises a binding error.
+  let firstError: unknown;
+  for (const handle of distinct) {
+    try {
+      handle.delete();
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+  if (firstError !== undefined) {
+    throw firstError;
+  }
+}
+
+function handlesAlias(left: SlangClassHandle, right: SlangClassHandle): boolean {
+  return left === right || left.isAliasOf(right) || right.isAliasOf(left);
 }
 
 const DIAGNOSTIC_ENVELOPE = /^(.*?)\((\d+),(\d+)\):\s*(error|warning|note|info)(?:\s+([A-Za-z]?\d+))?\s*:\s*(.*)$/;
