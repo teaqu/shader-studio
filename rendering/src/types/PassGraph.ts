@@ -31,7 +31,7 @@ export type RenderPassChannel =
 
 export interface StorageBindingNode {
   name: string;
-  /** Bind-group binding index (after uniform + channel bindings). */
+  /** Zero-based index among the graph's valid storage declarations. */
   binding: number;
   elementType: string;
   /** True when elementType is on the built-in whitelist (declared before common). */
