@@ -665,6 +665,7 @@ export class ShaderExplorerProvider {
     }
 
     // Inject or update CSP to allow loading from webview sources
+    processedHtml = this.removeCspMetasOutsideHead(processedHtml);
     const cspMeta = this.findCspMeta(processedHtml);
         
     if (cspMeta) {
@@ -750,20 +751,57 @@ export class ShaderExplorerProvider {
   }
 
   private findCspMeta(html: string): { tag: string; content: string; index: number } | undefined {
-    for (const match of html.matchAll(/<meta(?:\s[^>]*)?>/gi)) {
+    const headBounds = this.getHeadContentBounds(html);
+    if (!headBounds) {
+      return undefined;
+    }
+
+    const headHtml = html.slice(headBounds.start, headBounds.end);
+    for (const match of headHtml.matchAll(/<meta(?:\s[^>]*)?>/gi)) {
       const tag = match[0];
-      const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
-      if (httpEquiv?.toLowerCase() !== 'content-security-policy') {
+      if (!this.isCspMeta(tag)) {
         continue;
       }
 
       const content = tag.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
       if (content !== undefined) {
-        return { tag, content, index: match.index };
+        return { tag, content, index: headBounds.start + match.index };
       }
     }
 
     return undefined;
+  }
+
+  private removeCspMetasOutsideHead(html: string): string {
+    const headBounds = this.getHeadContentBounds(html);
+    if (!headBounds) {
+      return html;
+    }
+
+    return html.replace(/<meta(?:\s[^>]*)?>/gi, (tag, index: number) => {
+      const isInsideHead = index >= headBounds.start && index < headBounds.end;
+      return !isInsideHead && this.isCspMeta(tag) ? '' : tag;
+    });
+  }
+
+  private getHeadContentBounds(html: string): { start: number; end: number } | undefined {
+    const headTag = /<head(?:\s[^>]*)?>/i.exec(html);
+    if (!headTag) {
+      return undefined;
+    }
+
+    const start = headTag.index + headTag[0].length;
+    const closingHead = /<\/head\s*>/i.exec(html.slice(start));
+    if (!closingHead) {
+      return undefined;
+    }
+
+    return { start, end: start + closingHead.index };
+  }
+
+  private isCspMeta(tag: string): boolean {
+    const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+    return httpEquiv?.toLowerCase() === 'content-security-policy';
   }
 
   private replaceCspDirective(csp: string, directive: string, replacement: string): string {

@@ -183,6 +183,12 @@ suite('ShaderExplorerProvider Test Suite', () => {
     return (html.match(/<meta\b[^>]*\bhttp-equiv\s*=\s*["']Content-Security-Policy["'][^>]*>/gi) ?? []).length;
   }
 
+  function getHead(html: string): string {
+    const head = html.match(/<head(?:\s[^>]*)?>(.*?)<\/head>/is)?.[1];
+    assert.ok(head, 'Expected a real head element');
+    return head;
+  }
+
   suite('Command Registration', () => {
     test('should register shader explorer command', () => {
       const registerCommandStub = sandbox.stub(vscode.commands, 'registerCommand').returns({
@@ -322,6 +328,33 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual((mockWebview.html.match(/<header(?:\s[^>]*)?>/gi) ?? []).length, 1);
     });
 
+    test('moves the effective policy into a generated head when the source CSP is in the body', () => {
+      configureExplorerHtml(`<html><body>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src body-source:">
+        Explorer
+      </body></html>`);
+
+      showExplorer();
+
+      const head = getHead(mockWebview.html);
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      assert.strictEqual(countCspMetas(head), 1);
+      assert.strictEqual((head.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+      assert.ok(getDirective(getCsp(head), 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('does not mistake htmlish for html when creating the document head', () => {
+      configureExplorerHtml('<htmlish><body>Explorer</body></htmlish>');
+
+      showExplorer();
+
+      const head = getHead(mockWebview.html);
+      assert.ok(mockWebview.html.startsWith('<head>'));
+      assert.ok(mockWebview.html.includes('<htmlish>'));
+      assert.strictEqual(countCspMetas(head), 1);
+      assert.strictEqual((head.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
     test('adds Slang asset metadata and required directives to an existing CSP without duplicate tokens', () => {
       configureExplorerHtml(`<!doctype html><html><head>
         <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; worker-src stale:; connect-src stale:">
@@ -426,6 +459,29 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
       assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
       assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: invalid manifest'));
+    });
+
+    test('does not partially inject Slang metadata when asset URI conversion fails', () => {
+      configureExplorerHtml('<html><body>GLSL Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => {
+        if (uri.fsPath.endsWith('slang.wasm')) {
+          throw new Error('WASM URI conversion failed');
+        }
+        return uri;
+      });
+
+      showExplorer();
+
+      assert.ok(mockWebview.html.includes('GLSL Explorer'));
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 0);
+      const csp = getCsp(getHead(mockWebview.html));
+      const scriptSrc = getDirective(csp, 'script-src') ?? '';
+      assert.ok(!scriptSrc.includes('blob:'));
+      assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
+      assert.ok(!scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
+      assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
+      assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: WASM URI conversion failed'));
     });
   });
 
