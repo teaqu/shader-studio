@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
@@ -13,11 +14,15 @@ suite('ShaderExplorerProvider Test Suite', () => {
   let mockPanel: any;
   let mockWebview: any;
   let postMessageSpy: sinon.SinonSpy;
+  let existsSyncStub: sinon.SinonStub;
+  let readFileSyncStub: sinon.SinonStub;
+  let loggerErrorStub: sinon.SinonStub;
 
   setup(() => {
     sandbox = sinon.createSandbox();
         
     // Initialize Logger for tests with mock output channel
+    loggerErrorStub = sandbox.stub();
     const mockOutputChannel = {
       name: 'test',
       append: sandbox.stub(),
@@ -28,7 +33,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       dispose: sandbox.stub(),
       info: sandbox.stub(),
       warn: sandbox.stub(),
-      error: sandbox.stub(),
+      error: loggerErrorStub,
       debug: sandbox.stub(),
       trace: sandbox.stub()
     } as any;
@@ -36,7 +41,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
         
     // Mock filesystem operations to prevent ThumbnailCache from creating real directories
     const fs = require('fs');
-    sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {
+    existsSyncStub = sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {
       const path = args[0] as string;
       // Return false for HTML files to trigger error handling
       if (path.includes('index.html')) {
@@ -48,7 +53,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       // Mock implementation - do nothing
       return undefined;
     });
-    sandbox.stub(fs, 'readFileSync').callsFake((...args: any[]) => {
+    readFileSyncStub = sandbox.stub(fs, 'readFileSync').callsFake((...args: any[]) => {
       const path = args[0] as string;
       // Return mock HTML for HTML files
       if (path.includes('index.html')) {
@@ -61,7 +66,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
     postMessageSpy = sandbox.spy();
     mockWebview = {
       postMessage: postMessageSpy,
-      asWebviewUri: (uri: vscode.Uri) => uri,
+      asWebviewUri: sandbox.stub().callsFake((uri: vscode.Uri) => uri),
+      cspSource: 'vscode-webview://test-source',
       html: '',
       onDidReceiveMessage: sandbox.stub(),
     };
@@ -126,6 +132,34 @@ suite('ShaderExplorerProvider Test Suite', () => {
     return handler;
   }
 
+  function configureExplorerHtml(html: string): void {
+    existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html') || filePath.includes('shader-explorer-dist'));
+    readFileSyncStub.callsFake((filePath: string) => {
+      if (filePath.endsWith('slang-assets.json')) {
+        return JSON.stringify({
+          script: 'assets/slang.js',
+          wasm: 'assets/slang.wasm',
+          worker: 'assets/slang-worker.js',
+        });
+      }
+      if (filePath.includes('shader-explorer-dist') && filePath.endsWith('index.html')) {
+        return html;
+      }
+      return '<html><head></head><body></body></html>';
+    });
+  }
+
+  function showExplorer(): void {
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+    provider.show();
+  }
+
+  function getCsp(html: string): string {
+    const match = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/i);
+    assert.ok(match, 'Expected a Content-Security-Policy meta tag');
+    return match[1];
+  }
+
   suite('Command Registration', () => {
     test('should register shader explorer command', () => {
       const registerCommandStub = sandbox.stub(vscode.commands, 'registerCommand').returns({
@@ -178,7 +212,14 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(options.enableScripts, true);
       assert.strictEqual(options.retainContextWhenHidden, true);
       assert.ok(Array.isArray(options.localResourceRoots));
-      assert.ok(options.localResourceRoots.length > 0);
+      assert.deepStrictEqual(
+        options.localResourceRoots.map((root: vscode.Uri) => root.fsPath),
+        [
+          '/mock/extension/path/shader-explorer-dist',
+          '/mock/extension/path/ui-dist',
+          '/workspace',
+        ],
+      );
     });
 
     test('should reveal existing panel instead of creating new one', () => {
@@ -227,6 +268,66 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
             provider.show();
             assert.strictEqual(createWebviewPanelStub.callCount, 2, 'Should create new panel after dispose');
+    });
+  });
+
+  suite('Webview HTML', () => {
+    test('adds Slang asset metadata and required directives to an existing CSP without duplicate tokens', () => {
+      configureExplorerHtml(`<!doctype html><html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; worker-src stale:; connect-src stale:">
+      </head><body><script src="./assets/explorer.js"></script></body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.match(csp, /script-src[^;]*vscode-webview:\/\/test-source/);
+      assert.match(csp, /script-src[^;]*blob:/);
+      assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
+      assert.match(csp, /script-src[^;]*'unsafe-eval'/);
+      assert.match(csp, /worker-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /connect-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /style-src 'self' 'unsafe-inline' vscode-webview:\/\/test-source/);
+      assert.match(csp, /img-src 'self' data: blob: vscode-webview:\/\/test-source/);
+      assert.match(csp, /media-src 'self' blob: vscode-webview:\/\/test-source/);
+      assert.match(csp, /font-src 'self'/);
+      const scriptDirective = csp.match(/script-src[^;]*/)?.[0] ?? '';
+      assert.strictEqual((scriptDirective.match(/blob:/g) ?? []).length, 1);
+      assert.strictEqual((scriptDirective.match(/'unsafe-eval'/g) ?? []).length, 1);
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('adds a Slang-compatible CSP and escaped asset metadata when the source has no CSP', () => {
+      configureExplorerHtml('<html><head></head><body>Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => ({
+        toString: () => `vscode-webview://assets/${path.basename(uri.fsPath)}?label=a&value=\"b\"<c>`,
+      }));
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.match(csp, /script-src[^;]*vscode-webview:\/\/test-source[^;]*blob:[^;]*'wasm-unsafe-eval'[^;]*'unsafe-eval'/);
+      assert.match(csp, /worker-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /connect-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /style-src[^;]*vscode-webview:\/\/test-source/);
+      assert.match(csp, /img-src[^;]*data:[^;]*blob:/);
+      assert.match(csp, /media-src[^;]*blob:/);
+      assert.match(csp, /font-src 'self'/);
+      assert.ok(mockWebview.html.includes('name="shader-studio-slang-script-url"'));
+      assert.ok(mockWebview.html.includes('a&amp;value=&quot;b&quot;&lt;c&gt;'));
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('keeps GLSL Explorer HTML usable when the Slang asset manifest is invalid', () => {
+      configureExplorerHtml('<!doctype html><html><head></head><body><script src="./assets/explorer.js"></script></body></html>');
+      readFileSyncStub.withArgs('/mock/extension/path/ui-dist/slang-assets.json', 'utf8').throws(new Error('invalid manifest'));
+
+      showExplorer();
+
+      assert.ok(mockWebview.html.includes('Mock Shader Explorer') === false);
+      assert.ok(mockWebview.html.includes('explorer.js'));
+      assert.ok(getCsp(mockWebview.html).includes("script-src 'self' 'unsafe-inline'"));
+      assert.ok(!mockWebview.html.includes('shader-studio-slang-script-url'));
+      assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: invalid manifest'));
     });
   });
 
