@@ -44,6 +44,9 @@ import { createEngineForLanguage } from './engineFactory';
 describe('createEngineForLanguage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    MockWebGLRenderingEngine.mockImplementation(() => mockWebGLEngine);
+    MockWebGPURenderingEngine.mockImplementation(() => mockWebGPUEngine);
+    mockGetSlangAssetUrls.mockImplementation(() => mockSlangAssets);
   });
 
   it('creates a WebGL engine for GLSL', () => {
@@ -65,6 +68,31 @@ describe('createEngineForLanguage', () => {
     expect(mockGetSlangAssetUrls).toHaveBeenCalledTimes(1);
     expect(MockWebGPURenderingEngine).toHaveBeenCalledTimes(1);
     expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(mockSlangAssets);
+    expect(MockWebGPURenderingEngine.mock.calls[0]?.[0]).toBe(mockSlangAssets);
+    expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
+  });
+
+  it('propagates WebGL constructor errors without constructing WebGPU', () => {
+    const constructorError = new Error('WebGL construction failed');
+    MockWebGLRenderingEngine.mockImplementationOnce(() => {
+      throw constructorError;
+    });
+
+    expect(() => createEngineForLanguage('glsl')).toThrow(constructorError);
+    expect(MockWebGLRenderingEngine).toHaveBeenCalledTimes(1);
+    expect(MockWebGPURenderingEngine).not.toHaveBeenCalled();
+    expect(mockGetSlangAssetUrls).not.toHaveBeenCalled();
+  });
+
+  it('propagates WebGPU constructor errors without falling back to WebGL', () => {
+    const constructorError = new Error('WebGPU construction failed');
+    MockWebGPURenderingEngine.mockImplementationOnce(() => {
+      throw constructorError;
+    });
+
+    expect(() => createEngineForLanguage('slang')).toThrow(constructorError);
+    expect(mockGetSlangAssetUrls).toHaveBeenCalledTimes(1);
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledTimes(1);
     expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
   });
 
