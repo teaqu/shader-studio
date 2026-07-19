@@ -50,6 +50,15 @@ interface PassTiming {
   errorCount?: number;
 }
 
+interface PreparedStorageBuffers {
+  generation: number;
+  buffers: Map<string, GPUBuffer>;
+  keys: Map<string, string>;
+  layouts: Map<string, StorageBindingNode>;
+  stagedBuffers: GPUBuffer[];
+  settled: boolean;
+}
+
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
@@ -105,6 +114,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private storageBuffers = new Map<string, GPUBuffer>();
   private storageKeys = new Map<string, string>();
   private storageLayouts = new Map<string, StorageBindingNode>();
+  private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
   private resetStorageOnNextSync = false;
   private shaderPath = "";
   private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
@@ -454,7 +464,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         warnings: graph.warnings,
       });
     }
-    const storageErrors = this.syncStorageBuffers(graph.storage);
+    const storageErrors = this.validateStorageLimits(graph.storage);
     if (storageErrors.length > 0) {
       return this.failedCompilation(path, generation, {
         success: false,
@@ -462,153 +472,245 @@ export class WebGPURenderingEngine implements RenderingEngine {
         warnings: graph.warnings,
       });
     }
-    for (const pass of graph.passes) {
-      const resolution = this.clampResolutionToTextureLimit(pass);
-      pass.width = resolution.width;
-      pass.height = resolution.height;
+    let preparedStorage: PreparedStorageBuffers;
+    try {
+      preparedStorage = this.prepareStorageBuffers(graph.storage, generation);
+    } catch (error) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: [`Storage allocation failed: ${error instanceof Error ? error.message : String(error)}`],
+        warnings: graph.warnings,
+      });
     }
 
-    // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
-    // loaded (and awaited) as part of the compile; render then only does cache
-    // lookups.
-    if (this.resourceManager) {
+    try {
       for (const pass of graph.passes) {
-        for (const channel of pass.channels) {
-          if (channel.kind === "texture") {
-            await this.resourceManager.loadImageTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              grayscale: channel.grayscale,
-            });
-          } else if (channel.kind === "video") {
-            const result = await this.resourceManager.loadVideoTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              muted: channel.muted,
-            });
-            if (result.warning) {
-              graph.warnings.push(result.warning);
+        const resolution = this.clampResolutionToTextureLimit(pass);
+        pass.width = resolution.width;
+        pass.height = resolution.height;
+      }
+
+      // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
+      // loaded (and awaited) as part of the compile; render then only does cache
+      // lookups.
+      if (this.resourceManager) {
+        for (const pass of graph.passes) {
+          for (const channel of pass.channels) {
+            if (channel.kind === "texture") {
+              await this.resourceManager.loadImageTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                grayscale: channel.grayscale,
+              });
+            } else if (channel.kind === "video") {
+              const result = await this.resourceManager.loadVideoTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                muted: channel.muted,
+              });
+              if (result.warning) {
+                graph.warnings.push(result.warning);
+              }
+            } else if (channel.kind === "cubemap") {
+              await this.resourceManager.loadCubemapTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+              });
             }
-          } else if (channel.kind === "cubemap") {
-            await this.resourceManager.loadCubemapTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-            });
           }
         }
       }
-    }
 
-    const nextPipelines = new Map<string, SlangPassPipeline>();
-    const nextKeys = new Map<string, string>();
-    const passTimings: PassTiming[] = [];
-    const errors: string[] = [];
-    for (const pass of graph.passes) {
-      if (pass.kind !== "render" || pass.output === "none") {
-        continue;
-      }
-      const passStartedAt = this.now();
-      const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
-      const existing = this.passPipelines.get(pass.name);
-      if (existing && this.passKeys.get(pass.name) === key) {
-        // Unchanged pass: carry the live pipeline into the next generation.
-        // Resize (if the canvas changed) is deferred to the success block so
-        // this loop stays mutation-free while a later pass can still fail.
-        nextPipelines.set(pass.name, existing);
-        nextKeys.set(pass.name, key);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: true,
-          totalMs: this.ms(this.now() - passStartedAt),
-        });
-        continue;
-      }
-      let pipeline: SlangPassPipeline | undefined;
-      try {
-        let wgsl = sharedSlangWgslCache.get(key);
-        const wgslCacheHit = wgsl !== null;
-        let slangMs = 0;
-        if (!wgsl) {
-          const slangStartedAt = this.now();
-          const compiled = await this.compiler.compile(pass.source, {
-            passName: pass.name,
-            commonCode: graph.commonCode,
+      const nextPipelines = new Map<string, SlangPassPipeline>();
+      const nextKeys = new Map<string, string>();
+      const passTimings: PassTiming[] = [];
+      const errors: string[] = [];
+      for (const pass of graph.passes) {
+        if (pass.kind !== "render" || pass.output === "none") {
+          continue;
+        }
+        const passStartedAt = this.now();
+        const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
+        const existing = this.passPipelines.get(pass.name);
+        if (existing && this.passKeys.get(pass.name) === key) {
+          // Unchanged pass: carry the live pipeline into the next generation.
+          // Resize (if the canvas changed) is deferred to the success block so
+          // this loop stays mutation-free while a later pass can still fail.
+          nextPipelines.set(pass.name, existing);
+          nextKeys.set(pass.name, key);
+          passTimings.push({
+            name: pass.name,
+            cacheHit: true,
+            totalMs: this.ms(this.now() - passStartedAt),
+          });
+          continue;
+        }
+        let pipeline: SlangPassPipeline | undefined;
+        try {
+          let wgsl = sharedSlangWgslCache.get(key);
+          const wgslCacheHit = wgsl !== null;
+          let slangMs = 0;
+          if (!wgsl) {
+            const slangStartedAt = this.now();
+            const compiled = await this.compiler.compile(pass.source, {
+              passName: pass.name,
+              commonCode: graph.commonCode,
+              channels: pass.channels.map((channel) => ({
+                slot: channel.slot,
+                key: channel.key,
+                kind: channel.kind,
+              })),
+            });
+            slangMs = this.now() - slangStartedAt;
+            if (!compiled.success) {
+              errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+              passTimings.push({
+                name: pass.name,
+                cacheHit: false,
+                wgslCacheHit: false,
+                slangMs: this.ms(slangMs),
+                totalMs: this.ms(this.now() - passStartedAt),
+                errorCount: compiled.errors.length,
+              });
+              continue;
+            }
+            wgsl = compiled.wgsl;
+            sharedSlangWgslCache.set(key, wgsl);
+          }
+          pipeline = new SlangPassPipeline(this.device, this.format, {
+            name: pass.name,
+            width: pass.width,
+            height: pass.height,
+            output: pass.output,
             channels: pass.channels.map((channel) => ({
               slot: channel.slot,
               key: channel.key,
               kind: channel.kind,
             })),
           });
-          slangMs = this.now() - slangStartedAt;
-          if (!compiled.success) {
-            errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
-            passTimings.push({
-              name: pass.name,
-              cacheHit: false,
-              wgslCacheHit: false,
-              slangMs: this.ms(slangMs),
-              totalMs: this.ms(this.now() - passStartedAt),
-              errorCount: compiled.errors.length,
-            });
-            continue;
+          const pipelineStartedAt = this.now();
+          const wgslErrors = await pipeline.rebuild(wgsl);
+          const pipelineMs = this.now() - pipelineStartedAt;
+          errors.push(...wgslErrors);
+          passTimings.push({
+            name: pass.name,
+            cacheHit: false,
+            wgslCacheHit,
+            slangMs: this.ms(slangMs),
+            pipelineMs: this.ms(pipelineMs),
+            totalMs: this.ms(this.now() - passStartedAt),
+            errorCount: wgslErrors.length,
+          });
+          nextPipelines.set(pass.name, pipeline);
+          nextKeys.set(pass.name, key);
+        } catch (error) {
+          // rebuild() may throw mid-way through constructing GPU resources;
+          // dispose whatever this pipeline managed to create before re-throwing
+          // as a compile error.
+          pipeline?.dispose();
+          errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
+          passTimings.push({
+            name: pass.name,
+            cacheHit: false,
+            totalMs: this.ms(this.now() - passStartedAt),
+            errorCount: 1,
+          });
+        }
+      }
+
+      if (errors.length > 0) {
+        // Dispose only pipelines built THIS attempt; carried-over pipelines are
+        // still installed in this.passPipelines and actively rendering, so they
+        // must survive a failed recompile untouched.
+        for (const [name, pipeline] of nextPipelines) {
+          if (pipeline !== this.passPipelines.get(name)) {
+            pipeline.dispose();
           }
-          wgsl = compiled.wgsl;
-          sharedSlangWgslCache.set(key, wgsl);
         }
-        pipeline = new SlangPassPipeline(this.device, this.format, {
-          name: pass.name,
-          width: pass.width,
-          height: pass.height,
-          output: pass.output,
-          channels: pass.channels.map((channel) => ({
-            slot: channel.slot,
-            key: channel.key,
-            kind: channel.kind,
-          })),
+        this.logCompileTiming("failed", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors,
         });
-        const pipelineStartedAt = this.now();
-        const wgslErrors = await pipeline.rebuild(wgsl);
-        const pipelineMs = this.now() - pipelineStartedAt;
-        errors.push(...wgslErrors);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: false,
-          wgslCacheHit,
-          slangMs: this.ms(slangMs),
-          pipelineMs: this.ms(pipelineMs),
-          totalMs: this.ms(this.now() - passStartedAt),
-          errorCount: wgslErrors.length,
-        });
-        nextPipelines.set(pass.name, pipeline);
-        nextKeys.set(pass.name, key);
-      } catch (error) {
-        // rebuild() may throw mid-way through constructing GPU resources;
-        // dispose whatever this pipeline managed to create before re-throwing
-        // as a compile error.
-        pipeline?.dispose();
-        errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: false,
-          totalMs: this.ms(this.now() - passStartedAt),
-          errorCount: 1,
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors,
+          warnings: graph.warnings,
         });
       }
-    }
 
-    if (errors.length > 0) {
-      // Dispose only pipelines built THIS attempt; carried-over pipelines are
-      // still installed in this.passPipelines and actively rendering, so they
-      // must survive a failed recompile untouched.
-      for (const [name, pipeline] of nextPipelines) {
-        if (pipeline !== this.passPipelines.get(name)) {
+      if (generation !== this.compileGeneration || this.disposed) {
+        // A newer compileShaderPipeline call (or dispose()) already landed
+        // while this attempt was awaiting the compiler/worker. Installing now
+        // would clobber the newer, already-live pipelines with stale ones, so
+        // drop this attempt: dispose only the pipelines built THIS attempt
+        // (carried-over ones are — or were — still installed and must survive
+        // untouched).
+        for (const [name, pipeline] of nextPipelines) {
+          if (pipeline !== this.passPipelines.get(name)) {
+            pipeline.dispose();
+          }
+        }
+        this.logCompileTiming("superseded", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors: ["Superseded by a newer compile"],
+        });
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+
+      // Success: resize carried-over pipelines to the new graph dimensions
+      // (width/height don't affect the cache key, so a canvas resize alone
+      // wouldn't have recompiled them), then dispose replaced/removed
+      // pipelines and swap in the new generation atomically.
+      for (const pass of graph.passes) {
+        const pipeline = nextPipelines.get(pass.name);
+        if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
+          pipeline.resize(pass.width, pass.height);
+        }
+      }
+      for (const [name, pipeline] of this.passPipelines) {
+        if (nextPipelines.get(name) !== pipeline) {
           pipeline.dispose();
         }
       }
-      this.logCompileTiming("failed", {
+      this.passGraph = graph.passes;
+      this.passPipelines = nextPipelines;
+      this.passKeys = nextKeys;
+      this.installPreparedStorage(preparedStorage);
+      this.shaderPath = path;
+      // Correct any canvas resize that landed mid-compile immediately, rather
+      // than leaving passes stale until the next resize/recompile.
+      this.applyPassResolutions();
+
+      // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
+      // textures load with autoplay disabled, so without this they'd sit frozen
+      // on their first frame until some other action resumed them. Sync to the
+      // current shader time and start/hold playback based on pause state.
+      if (this.resourceManager) {
+        const shaderTime = this.timeManager.getCurrentTime(performance.now());
+        this.resourceManager.syncAllVideosToTime?.(shaderTime);
+        if (this.timeManager.isPaused()) {
+          this.resourceManager.pauseAllVideos?.();
+        } else {
+          this.resourceManager.resumeAllVideos?.();
+        }
+      }
+
+      this.logCompileTiming("success", {
         path,
         generation,
         startedAt,
@@ -618,91 +720,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors,
       });
-      return this.failedCompilation(path, generation, {
-        success: false,
-        errors,
-        warnings: graph.warnings,
-      });
+      return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    } finally {
+      this.discardPreparedStorage(preparedStorage);
     }
-
-    if (generation !== this.compileGeneration || this.disposed) {
-      // A newer compileShaderPipeline call (or dispose()) already landed
-      // while this attempt was awaiting the compiler/worker. Installing now
-      // would clobber the newer, already-live pipelines with stale ones, so
-      // drop this attempt: dispose only the pipelines built THIS attempt
-      // (carried-over ones are — or were — still installed and must survive
-      // untouched).
-      for (const [name, pipeline] of nextPipelines) {
-        if (pipeline !== this.passPipelines.get(name)) {
-          pipeline.dispose();
-        }
-      }
-      this.logCompileTiming("superseded", {
-        path,
-        generation,
-        startedAt,
-        readyMs,
-        graphMs,
-        passTimings,
-        graph,
-        errors: ["Superseded by a newer compile"],
-      });
-      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
-    }
-
-    // Success: resize carried-over pipelines to the new graph dimensions
-    // (width/height don't affect the cache key, so a canvas resize alone
-    // wouldn't have recompiled them), then dispose replaced/removed
-    // pipelines and swap in the new generation atomically.
-    for (const pass of graph.passes) {
-      const pipeline = nextPipelines.get(pass.name);
-      if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
-        pipeline.resize(pass.width, pass.height);
-      }
-    }
-    for (const [name, pipeline] of this.passPipelines) {
-      if (nextPipelines.get(name) !== pipeline) {
-        pipeline.dispose();
-      }
-    }
-    this.passGraph = graph.passes;
-    this.passPipelines = nextPipelines;
-    this.passKeys = nextKeys;
-    this.shaderPath = path;
-    // Correct any canvas resize that landed mid-compile immediately, rather
-    // than leaving passes stale until the next resize/recompile.
-    this.applyPassResolutions();
-
-    // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
-    // textures load with autoplay disabled, so without this they'd sit frozen
-    // on their first frame until some other action resumed them. Sync to the
-    // current shader time and start/hold playback based on pause state.
-    if (this.resourceManager) {
-      const shaderTime = this.timeManager.getCurrentTime(performance.now());
-      this.resourceManager.syncAllVideosToTime?.(shaderTime);
-      if (this.timeManager.isPaused()) {
-        this.resourceManager.pauseAllVideos?.();
-      } else {
-        this.resourceManager.resumeAllVideos?.();
-      }
-    }
-
-    this.logCompileTiming("success", {
-      path,
-      generation,
-      startedAt,
-      readyMs,
-      graphMs,
-      passTimings,
-      graph,
-      errors,
-    });
-    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
   }
 
-  private syncStorageBuffers(storage: StorageBindingNode[]): string[] {
+  private validateStorageLimits(storage: StorageBindingNode[]): string[] {
     if (!this.device) {
-      return ["WebGPU device unavailable while allocating storage buffers"];
+      return ["WebGPU device unavailable while validating storage buffers"];
     }
 
     const grantedCountLimit = this.device.limits?.maxStorageBuffersPerShaderStage;
@@ -737,34 +763,84 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return errors;
     }
 
+    return [];
+  }
+
+  private prepareStorageBuffers(
+    storage: StorageBindingNode[],
+    generation: number,
+  ): PreparedStorageBuffers {
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while allocating storage buffers");
+    }
     const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     const nextBuffers = new Map<string, GPUBuffer>();
     const nextKeys = new Map<string, string>();
     const nextLayouts = new Map<string, StorageBindingNode>();
-    for (const node of storage) {
-      const key = WebGPURenderingEngine.storageCacheKey(node);
-      const existing = this.storageBuffers.get(node.name);
-      const buffer = !this.resetStorageOnNextSync && existing && this.storageKeys.get(node.name) === key
-        ? existing
-        : this.device.createBuffer({
-          size: node.count * node.stride,
-          usage: STORAGE | COPY_DST,
-        });
-      nextBuffers.set(node.name, buffer);
-      nextKeys.set(node.name, key);
-      nextLayouts.set(node.name, { ...node });
+    const stagedBuffers: GPUBuffer[] = [];
+    try {
+      for (const node of storage) {
+        const key = WebGPURenderingEngine.storageCacheKey(node);
+        const existing = this.storageBuffers.get(node.name);
+        let buffer: GPUBuffer;
+        if (!this.resetStorageOnNextSync && existing && this.storageKeys.get(node.name) === key) {
+          buffer = existing;
+        } else {
+          buffer = this.device.createBuffer({
+            size: node.count * node.stride,
+            usage: STORAGE | COPY_DST,
+          });
+          stagedBuffers.push(buffer);
+        }
+        nextBuffers.set(node.name, buffer);
+        nextKeys.set(node.name, key);
+        nextLayouts.set(node.name, { ...node });
+      }
+    } catch (error) {
+      for (const buffer of stagedBuffers) {
+        buffer.destroy();
+      }
+      throw error;
     }
-    for (const [name, buffer] of this.storageBuffers) {
-      if (nextBuffers.get(name) !== buffer) {
+
+    const prepared: PreparedStorageBuffers = {
+      generation,
+      buffers: nextBuffers,
+      keys: nextKeys,
+      layouts: nextLayouts,
+      stagedBuffers,
+      settled: false,
+    };
+    this.pendingStoragePreparations.add(prepared);
+    return prepared;
+  }
+
+  private installPreparedStorage(prepared: PreparedStorageBuffers): void {
+    const previousBuffers = this.storageBuffers;
+    this.storageBuffers = prepared.buffers;
+    this.storageKeys = prepared.keys;
+    this.storageLayouts = prepared.layouts;
+    this.resetStorageOnNextSync = false;
+    prepared.settled = true;
+    this.pendingStoragePreparations.delete(prepared);
+
+    for (const [name, buffer] of previousBuffers) {
+      if (prepared.buffers.get(name) !== buffer) {
         buffer.destroy();
       }
     }
-    this.storageBuffers = nextBuffers;
-    this.storageKeys = nextKeys;
-    this.storageLayouts = nextLayouts;
-    this.resetStorageOnNextSync = false;
-    return [];
+  }
+
+  private discardPreparedStorage(prepared: PreparedStorageBuffers): void {
+    if (prepared.settled) {
+      return;
+    }
+    prepared.settled = true;
+    this.pendingStoragePreparations.delete(prepared);
+    for (const buffer of prepared.stagedBuffers) {
+      buffer.destroy();
+    }
   }
 
   private recreateStorageBuffers(): void {
@@ -1338,6 +1414,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      this.discardPreparedStorage(prepared);
+    }
     for (const buffer of this.storageBuffers.values()) {
       buffer.destroy();
     }

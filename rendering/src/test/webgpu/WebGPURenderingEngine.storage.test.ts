@@ -85,6 +85,10 @@ function createdStorageBuffers(device: ReturnType<typeof engineHarness>["device"
     .filter((buffer) => buffer.descriptor.usage === storageUsage);
 }
 
+function installedStorageBuffers(engine: WebGPURenderingEngine): Map<string, GPUBuffer> {
+  return (engine as unknown as { storageBuffers: Map<string, GPUBuffer> }).storageBuffers;
+}
+
 describe("WebGPURenderingEngine storage buffers", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
@@ -405,7 +409,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     ]).toEqual(["a"]);
   });
 
-  it("reuses synced storage when retrying after a compiler error", async () => {
+  it("discards staged storage before retrying after a compiler error", async () => {
     const { engine, device, compiler } = engineHarness();
     compiler.compile
       .mockResolvedValueOnce({ success: false, errors: ["bad shader"] })
@@ -413,16 +417,18 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
 
     const failed = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    const failedBuffer = createdStorageBuffers(device)[0];
     const retried = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
 
     expect(failed?.success).toBe(false);
     expect(retried?.success).toBe(true);
-    expect(createdStorageBuffers(device)).toHaveLength(1);
-    expect(createdStorageBuffers(device)[0].destroy).not.toHaveBeenCalled();
+    expect(createdStorageBuffers(device)).toHaveLength(2);
+    expect(failedBuffer.destroy).toHaveBeenCalledTimes(1);
+    expect(createdStorageBuffers(device)[1].destroy).not.toHaveBeenCalled();
     expect(compiler.compile).toHaveBeenCalledTimes(2);
   });
 
-  it("reuses synced storage when retrying after a pipeline error", async () => {
+  it("discards staged storage before retrying after a pipeline error", async () => {
     const { engine, device } = engineHarness();
     device.createRenderPipeline.mockImplementationOnce(() => {
       throw new Error("pipeline failed");
@@ -430,12 +436,231 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
 
     const failed = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    const failedBuffer = createdStorageBuffers(device)[0];
     const retried = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
 
     expect(failed?.success).toBe(false);
     expect(retried?.success).toBe(true);
-    expect(createdStorageBuffers(device)).toHaveLength(1);
-    expect(createdStorageBuffers(device)[0].destroy).not.toHaveBeenCalled();
+    expect(createdStorageBuffers(device)).toHaveLength(2);
+    expect(failedBuffer.destroy).toHaveBeenCalledTimes(1);
+    expect(createdStorageBuffers(device)[1].destroy).not.toHaveBeenCalled();
+  });
+
+  it("keeps changed storage staged until its compile installs successfully", async () => {
+    const { engine, device, compiler } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    let resolveB!: (result: { success: true; wgsl: string }) => void;
+    compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveB = resolve;
+    }));
+
+    const pendingB = engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledTimes(2));
+    const bufferB = createdStorageBuffers(device)[1];
+
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+    expect(bufferB.destroy).not.toHaveBeenCalled();
+
+    resolveB({ success: true, wgsl: "// changed B" });
+    const resultB = await pendingB;
+
+    expect(resultB?.success).toBe(true);
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferB);
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(bufferB.destroy).not.toHaveBeenCalled();
+  });
+
+  it("preserves installed storage and discards a changed stage on compiler failure", async () => {
+    const { engine, device, compiler } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    compiler.compile.mockResolvedValueOnce({ success: false, errors: ["bad B"] });
+
+    const failedB = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    const failedBufferB = createdStorageBuffers(device)[1];
+
+    expect(failedB?.success).toBe(false);
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+    expect(failedBufferB.destroy).toHaveBeenCalledTimes(1);
+
+    const retriedB = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    const installedBufferB = createdStorageBuffers(device)[2];
+    expect(retriedB?.success).toBe(true);
+    expect(installedStorageBuffers(engine).get("a")).toBe(installedBufferB);
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(installedBufferB.destroy).not.toHaveBeenCalled();
+  });
+
+  it("preserves installed storage and discards a changed stage on pipeline failure", async () => {
+    const { engine, device } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    device.createRenderPipeline.mockImplementationOnce(() => {
+      throw new Error("pipeline B failed");
+    });
+
+    const failedB = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    const failedBufferB = createdStorageBuffers(device)[1];
+
+    expect(failedB?.success).toBe(false);
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+    expect(failedBufferB.destroy).toHaveBeenCalledTimes(1);
+
+    const retriedB = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    const installedBufferB = createdStorageBuffers(device)[2];
+    expect(retriedB?.success).toBe(true);
+    expect(installedStorageBuffers(engine).get("a")).toBe(installedBufferB);
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(installedBufferB.destroy).not.toHaveBeenCalled();
+  });
+
+  it("discards changed staged storage when resource loading throws", async () => {
+    const { engine, device } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    (engine as unknown as { resourceManager: unknown }).resourceManager = {
+      loadImageTexture: vi.fn(async () => {
+        throw new Error("texture load failed");
+      }),
+    };
+
+    await expect(engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      {
+        version: "1",
+        storage: { a: { count: 8, stride: 16, elementType: "float4" } },
+        passes: {
+          Image: { inputs: { iChannel0: { type: "texture", path: "missing.png" } } },
+        },
+      },
+      "/image.slang",
+    )).rejects.toThrow("texture load failed");
+    const failedBufferB = createdStorageBuffers(device)[1];
+
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+    expect(failedBufferB.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps installed storage when a pending changed compile is superseded by a graph failure", async () => {
+    const { engine, device, compiler } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    let resolveB!: (result: { success: true; wgsl: string }) => void;
+    compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveB = resolve;
+    }));
+
+    const pendingB = engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledTimes(2));
+    const bufferB = createdStorageBuffers(device)[1];
+
+    const failedC = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      {
+        version: "1",
+        storage: { a: { count: 2, stride: 4, elementType: "uint" } },
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "missing.slang", inputs: {} },
+        },
+      },
+      "/image.slang",
+    );
+    resolveB({ success: true, wgsl: "// changed B" });
+    const supersededB = await pendingB;
+
+    expect(failedC?.success).toBe(false);
+    expect(supersededB).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+    expect(bufferB.destroy).toHaveBeenCalledTimes(1);
+
+    const reusedA = await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    expect(reusedA?.success).toBe(true);
+    expect(createdStorageBuffers(device)).toHaveLength(2);
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+  });
+
+  it("cleans installed and staged storage when disposed during a pending compile", async () => {
+    const { engine, device, compiler } = engineHarness();
+    const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, configA, "/image.slang");
+    const bufferA = createdStorageBuffers(device)[0];
+    let resolveB!: (result: { success: true; wgsl: string }) => void;
+    compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveB = resolve;
+    }));
+
+    const pendingB = engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      configB,
+      "/image.slang",
+    );
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledTimes(2));
+    const bufferB = createdStorageBuffers(device)[1];
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+
+    engine.dispose();
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(bufferB.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorageBuffers(engine).size).toBe(0);
+
+    resolveB({ success: true, wgsl: "// changed B" });
+    const staleB = await pendingB;
+    engine.dispose();
+
+    expect(staleB).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(bufferB.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorageBuffers(engine).size).toBe(0);
   });
 
   it("destroys and clears all storage exactly once on repeated disposal", async () => {
