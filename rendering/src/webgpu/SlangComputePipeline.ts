@@ -106,12 +106,26 @@ export class SlangComputePipeline {
     if (this.descriptor.width === width && this.descriptor.height === height) {
       return;
     }
-    this.descriptor = { ...this.descriptor, width, height };
-    this.bindGroups = [];
+    const nextDescriptor = { ...this.descriptor, width, height };
     if (this.descriptor.hasOutput && this.textures.length > 0) {
-      this.destroyTextures();
-      this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+      const nextTextures: GPUTexture[] = [];
+      try {
+        nextTextures.push(this.createOutputTexture(width, height));
+        nextTextures.push(this.createOutputTexture(width, height));
+      } catch (error) {
+        SlangComputePipeline.destroyTextureList(nextTextures);
+        throw error;
+      }
+      const previousTextures = this.textures;
+      this.descriptor = nextDescriptor;
+      this.bindGroups = [];
+      this.textures = nextTextures;
+      this.textureIndex = 0;
+      SlangComputePipeline.destroyTextureList(previousTextures);
+      return;
     }
+    this.descriptor = nextDescriptor;
+    this.bindGroups = [];
   }
 
   rebuildBindGroups(
@@ -279,11 +293,14 @@ export class SlangComputePipeline {
     return entries;
   }
 
-  private createOutputTexture(): GPUTexture {
+  private createOutputTexture(
+    width = this.descriptor.width,
+    height = this.descriptor.height,
+  ): GPUTexture {
     return this.device.createTexture({
       size: {
-        width: this.descriptor.width,
-        height: this.descriptor.height,
+        width,
+        height,
         depthOrArrayLayers: this.descriptor.outputLayers,
       },
       format: BUFFER_TEXTURE_FORMAT,
@@ -345,10 +362,14 @@ export class SlangComputePipeline {
   }
 
   private destroyTextures(): void {
-    for (const texture of this.textures) {
-      texture.destroy?.();
-    }
+    SlangComputePipeline.destroyTextureList(this.textures);
     this.textures = [];
     this.textureIndex = 0;
+  }
+
+  private static destroyTextureList(textures: GPUTexture[]): void {
+    for (const texture of textures) {
+      texture.destroy?.();
+    }
   }
 }

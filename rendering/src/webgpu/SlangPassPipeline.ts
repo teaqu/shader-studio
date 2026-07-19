@@ -123,11 +123,24 @@ export class SlangPassPipeline {
     if (this.descriptor.width === width && this.descriptor.height === height) {
       return;
     }
-    this.descriptor = { ...this.descriptor, width, height };
+    const nextDescriptor = { ...this.descriptor, width, height };
     if (this.descriptor.output === "texture" && this.textures.length > 0) {
-      this.destroyTextures();
-      this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+      const nextTextures: GPUTexture[] = [];
+      try {
+        nextTextures.push(this.createOutputTexture(width, height));
+        nextTextures.push(this.createOutputTexture(width, height));
+      } catch (error) {
+        SlangPassPipeline.destroyTextureList(nextTextures);
+        throw error;
+      }
+      const previousTextures = this.textures;
+      this.descriptor = nextDescriptor;
+      this.textures = nextTextures;
+      this.textureIndex = 0;
+      SlangPassPipeline.destroyTextureList(previousTextures);
+      return;
     }
+    this.descriptor = nextDescriptor;
   }
 
   rebuildBindGroup(resources: SlangChannelResource[]): void {
@@ -218,9 +231,12 @@ export class SlangPassPipeline {
     return this.descriptor.output === "texture" ? BUFFER_TEXTURE_FORMAT : this.format;
   }
 
-  private createOutputTexture(): GPUTexture {
+  private createOutputTexture(
+    width = this.descriptor.width,
+    height = this.descriptor.height,
+  ): GPUTexture {
     return this.device.createTexture({
-      size: { width: this.descriptor.width, height: this.descriptor.height },
+      size: { width, height },
       format: this.targetFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
@@ -242,10 +258,14 @@ export class SlangPassPipeline {
   }
 
   private destroyTextures(): void {
-    for (const texture of this.textures) {
-      texture.destroy?.();
-    }
+    SlangPassPipeline.destroyTextureList(this.textures);
     this.textures = [];
     this.textureIndex = 0;
+  }
+
+  private static destroyTextureList(textures: GPUTexture[]): void {
+    for (const texture of textures) {
+      texture.destroy?.();
+    }
   }
 }

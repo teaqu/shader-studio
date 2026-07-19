@@ -715,7 +715,10 @@ describe("WebGPURenderingEngine storage buffers", () => {
         },
       },
       "/image.slang",
-    )).rejects.toThrow("texture load failed");
+    )).resolves.toMatchObject({
+      success: false,
+      errors: [expect.stringMatching(/texture load failed/i)],
+    });
     const failedBufferB = createdStorageBuffers(device)[1];
 
     expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
@@ -854,6 +857,82 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(bufferA.destroy).toHaveBeenCalledTimes(1);
     expect(bufferB.destroy).toHaveBeenCalledTimes(1);
     expect(installedStorageBuffers(engine).size).toBe(0);
+  });
+
+  it("publishes coherent storage and pipelines when predecessor buffer retirement throws", async () => {
+    const { engine, device } = engineHarness();
+    const installedConfig = storageConfig({
+      a: { count: 4, stride: 16, elementType: "float4" },
+      b: { count: 2, stride: 4, elementType: "uint" },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/image.slang");
+    const [bufferA, bufferB] = createdStorageBuffers(device);
+    const predecessor = (engine as unknown as {
+      passPipelines: Map<string, { getPipeline(): GPURenderPipeline | null }>;
+    }).passPipelines.get("Image")!;
+    bufferA.destroy.mockImplementationOnce(() => {
+      throw new Error("old storage retirement failed");
+    });
+    const nextConfig = storageConfig({});
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      nextConfig,
+      "/image.slang",
+    );
+    const installed = (engine as unknown as {
+      passPipelines: Map<string, { getPipeline(): GPURenderPipeline | null }>;
+    }).passPipelines.get("Image")!;
+
+    expect(result?.success).toBe(true);
+    expect(result?.warnings?.join("\n")).toMatch(/old storage retirement failed/i);
+    expect(installedStorageBuffers(engine).size).toBe(0);
+    expect(installed).not.toBe(predecessor);
+    expect(installed.getPipeline()).not.toBeNull();
+    expect(bufferA.destroy).toHaveBeenCalledTimes(1);
+    expect(bufferB.destroy).toHaveBeenCalledTimes(1);
+    expect(engine.getCurrentConfig()).toBe(nextConfig);
+  });
+
+  it("leaves the installed generation untouched when retirement enumeration throws precommit", async () => {
+    const { engine, device } = engineHarness();
+    const installedConfig = storageConfig({
+      a: { count: 4, stride: 16, elementType: "float4" },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/image.slang");
+    const installedStorage = installedStorageBuffers(engine);
+    const installedBuffer = createdStorageBuffers(device)[0];
+    const installedPipelines = (engine as unknown as {
+      passPipelines: Map<string, unknown>;
+    }).passPipelines;
+    Object.defineProperty(installedStorage, Symbol.iterator, {
+      configurable: true,
+      value: function* () {
+        throw new Error("retirement enumeration failed");
+      },
+    });
+    const nextConfig = storageConfig({
+      a: { count: 8, stride: 16, elementType: "float4" },
+    });
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      nextConfig,
+      "/image.slang",
+    );
+    const stagedBuffer = createdStorageBuffers(device)[1];
+
+    expect(result).toMatchObject({
+      success: false,
+      errors: [expect.stringMatching(/retirement enumeration failed/i)],
+    });
+    expect(installedStorageBuffers(engine)).toBe(installedStorage);
+    expect(installedStorageBuffers(engine).get("a")).toBe(installedBuffer);
+    expect((engine as unknown as { passPipelines: Map<string, unknown> }).passPipelines)
+      .toBe(installedPipelines);
+    expect(installedBuffer.destroy).not.toHaveBeenCalled();
+    expect(stagedBuffer.destroy).toHaveBeenCalledTimes(1);
+    expect(engine.getCurrentConfig()).toBe(installedConfig);
   });
 
   it("destroys and clears all storage exactly once on repeated disposal", async () => {

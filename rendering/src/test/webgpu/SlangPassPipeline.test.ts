@@ -500,6 +500,67 @@ describe("SlangPassPipeline", () => {
     }
   });
 
+  it("preserves the old descriptor, views, and textures when the first resize allocation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const stableView = { label: "stable-original-view" };
+    originalTextures[0].createView.mockReturnValue(stableView);
+    const originalCurrentView = pass.getCurrentOutputView();
+    device.createTexture.mockImplementationOnce(() => {
+      throw new Error("first resize allocation failed");
+    });
+
+    expect(() => pass.resize(640, 360)).toThrow("first resize allocation failed");
+
+    expect(pass.getCurrentOutputView()).toBe(originalCurrentView);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    pass.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
+  it("destroys a partial resize allocation while preserving old resources when the second allocation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const stableView = { label: "stable-original-view" };
+    originalTextures[0].createView.mockReturnValue(stableView);
+    const originalCurrentView = pass.getCurrentOutputView();
+    const partialTexture = {
+      createView: vi.fn(() => ({ label: "partial-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second resize allocation failed");
+      });
+
+    expect(() => pass.resize(640, 360)).toThrow("second resize allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(pass.getCurrentOutputView()).toBe(originalCurrentView);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    pass.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
   it("destroys the uniform buffer on dispose()", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

@@ -65,6 +65,8 @@ interface PendingPipelineCandidates {
   render: Set<SlangPassPipeline>;
   compute: Set<SlangComputePipeline>;
   resourceManager: ResourceManager<WebGPUTextureHandle> | null;
+  resourceLoadsPending: number;
+  resourceManagerDisposed: boolean;
   installed: boolean;
   settled: boolean;
 }
@@ -77,7 +79,8 @@ interface ShaderCompileSnapshot {
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
-const SLANG_WGSL_CACHE_KEY_VERSION = 2;
+const SLANG_WGSL_CACHE_KEY_VERSION = 3;
+const SLANG_PIPELINE_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
@@ -137,6 +140,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
   private shaderPath = "";
+  private installedResourceKey: string | null = null;
   private lastCompile: ShaderCompileSnapshot | null = null;
   private installedCompile: ShaderCompileSnapshot | null = null;
   /**
@@ -440,9 +444,30 @@ export class WebGPURenderingEngine implements RenderingEngine {
       hasDevice: Boolean(this.device),
       hasCompiler: Boolean(this.compiler),
     });
+    let attemptedCompile: ShaderCompileSnapshot;
+    let prospectiveInstalledCompile: ShaderCompileSnapshot;
+    try {
+      // Read caller-owned/proxy-backed input exactly once, before any live
+      // ownership transfer. The second snapshot clones only this plain object.
+      const bufferSnapshot = { ...buffers };
+      attemptedCompile = { code, config, path, buffers: bufferSnapshot };
+      prospectiveInstalledCompile = {
+        code,
+        config,
+        path,
+        buffers: { ...bufferSnapshot },
+      };
+    } catch (error) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: [`Failed to snapshot shader buffers: ${
+          error instanceof Error ? error.message : String(error)
+        }`],
+      });
+    }
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
-    this.lastCompile = { code, config, path, buffers: { ...buffers } };
+    this.lastCompile = attemptedCompile;
     if (this.ready) {
       const readyStartedAt = this.now();
       this.logSlangPerf("compile waiting for init", { path, generation });
@@ -460,19 +485,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
     }
 
-    if (this.reloadOnNextApply) {
-      if (!sessionChanged) {
-        this.resourceManager?.cleanup();
-      }
-      this.reloadOnNextApply = false;
-    }
-
     this.clampCanvasToTextureLimit();
     const graphStartedAt = this.now();
     const graph = buildSlangPassGraph({
       imageCode: code,
       config,
-      buffers,
+      buffers: attemptedCompile.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
     });
@@ -509,6 +527,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     let preparedStorage: PreparedStorageBuffers | undefined;
     let candidateResourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
     let pipelineCandidates: PendingPipelineCandidates | undefined;
+    const passTimings: PassTiming[] = [];
+    const errors: string[] = [];
+    let published = false;
     try {
       try {
         preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
@@ -519,8 +540,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
           warnings: graph.warnings,
         });
       }
-      candidateResourceManager = sessionChanged && this.resourceManager
-        ? new ResourceManager(new WebGPUTextureBackend(this.device))
+      const resourceKey = WebGPURenderingEngine.resourceLayoutKey(graph.passes);
+      const hasFileResources = WebGPURenderingEngine.hasFileResources(graph.passes);
+      const requiresResourceCandidate = Boolean(this.resourceManager) && (
+        sessionChanged ||
+        this.reloadOnNextApply ||
+        hasFileResources && resourceKey !== this.installedResourceKey ||
+        this.installedResourceKey !== null && resourceKey !== this.installedResourceKey
+      );
+      candidateResourceManager = requiresResourceCandidate
+        ? this.resourceManager?.createIsolated?.() ?? (
+          sessionChanged ? new ResourceManager(new WebGPUTextureBackend(this.device)) : null
+        )
         : null;
       candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
       const compileResourceManager = candidateResourceManager ?? this.resourceManager;
@@ -539,28 +570,34 @@ export class WebGPURenderingEngine implements RenderingEngine {
         for (const pass of graph.passes) {
           for (const channel of pass.channels) {
             if (channel.kind === "texture") {
-              await compileResourceManager.loadImageTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-                grayscale: channel.grayscale,
-              });
+              await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadImageTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                  grayscale: channel.grayscale,
+                }));
             } else if (channel.kind === "video") {
-              const result = await compileResourceManager.loadVideoTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-                muted: channel.muted,
-              });
+              const result = await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadVideoTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                  muted: channel.muted,
+                }));
               if (result.warning) {
                 graph.warnings.push(result.warning);
               }
             } else if (channel.kind === "cubemap") {
-              await compileResourceManager.loadCubemapTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-              });
+              await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadCubemapTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                }));
+            }
+            if (generation !== this.compileGeneration || this.disposed) {
+              return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
             }
           }
         }
@@ -574,14 +611,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const nextKeys = new Map<string, string>();
       const nextComputePipelines = new Map<string, SlangComputePipeline>();
       const nextComputeKeys = new Map<string, string>();
-      const passTimings: PassTiming[] = [];
-      const errors: string[] = [];
       for (const pass of graph.passes) {
         if (generation !== this.compileGeneration || this.disposed) {
           break;
         }
         const passStartedAt = this.now();
-        const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode, graph.storage);
+        const wgslKey = WebGPURenderingEngine.wgslCacheKey(pass, graph.commonCode, graph.storage);
+        const pipelineKey = WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+        );
         const isCompute = pass.kind === "compute";
         const existing = sessionChanged
           ? undefined
@@ -593,16 +633,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
           : isCompute
             ? this.computeKeys.get(pass.name)
             : this.passKeys.get(pass.name);
-        if (existing && existingKey === key) {
+        if (existing && existingKey === pipelineKey) {
           // Unchanged pass: carry the live pipeline into the next generation.
           // Resize (if the canvas changed) is deferred to the success block so
           // this loop stays mutation-free while a later pass can still fail.
           if (isCompute) {
             nextComputePipelines.set(pass.name, existing as SlangComputePipeline);
-            nextComputeKeys.set(pass.name, key);
+            nextComputeKeys.set(pass.name, pipelineKey);
           } else {
             nextPipelines.set(pass.name, existing as SlangPassPipeline);
-            nextKeys.set(pass.name, key);
+            nextKeys.set(pass.name, pipelineKey);
           }
           passTimings.push({
             name: pass.name,
@@ -613,7 +653,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
         let pipeline: SlangPassPipeline | SlangComputePipeline | undefined;
         try {
-          let wgsl = sharedSlangWgslCache.get(key);
+          let wgsl = sharedSlangWgslCache.get(wgslKey);
           const wgslCacheHit = wgsl !== null;
           let slangMs = 0;
           const channels = [...pass.channels]
@@ -653,27 +693,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               continue;
             }
             wgsl = compiled.wgsl;
-            sharedSlangWgslCache.set(key, wgsl);
+            sharedSlangWgslCache.set(wgslKey, wgsl);
           }
-          pipeline = isCompute
-            ? new SlangComputePipeline(this.device, {
-              name: pass.name,
-              width: pass.width,
-              height: pass.height,
-              hasOutput: pass.output === "texture",
-              outputLayers: pass.outputLayers,
-              workgroupSize: pass.workgroupSize,
-              dispatchCount: pass.dispatchCount,
-              channels,
-              storage: graph.storage,
-            })
-            : new SlangPassPipeline(this.device, this.format, {
-              name: pass.name,
-              width: pass.width,
-              height: pass.height,
-              output: pass.output === "canvas" ? "canvas" : "texture",
-              channels,
-            });
+          pipeline = this.createPassPipeline(pass, graph.storage);
           if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
             break;
           }
@@ -692,10 +714,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
           });
           if (isCompute) {
             nextComputePipelines.set(pass.name, pipeline as SlangComputePipeline);
-            nextComputeKeys.set(pass.name, key);
+            nextComputeKeys.set(pass.name, pipelineKey);
           } else {
             nextPipelines.set(pass.name, pipeline as SlangPassPipeline);
-            nextKeys.set(pass.name, key);
+            nextKeys.set(pass.name, pipelineKey);
           }
         } catch (error) {
           errors.push(WebGPURenderingEngine.prefixPassError(
@@ -748,23 +770,98 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
       }
 
-      // Success: resize carried-over pipelines to the new graph dimensions
-      // (width/height don't affect the cache key, so a canvas resize alone
-      // wouldn't have recompiled them), then dispose replaced/removed
-      // pipelines and swap in the new generation atomically.
-      for (const pass of graph.passes) {
-        if (pass.kind === "compute") {
-          const pipeline = nextComputePipelines.get(pass.name);
-          if (pipeline && pipeline === this.computePipelines.get(pass.name)) {
-            pipeline.resize(pass.width, pass.height);
+      const resolutionErrors = await this.reconcileCandidateResolutions(
+        graph,
+        config,
+        nextPipelines,
+        nextKeys,
+        nextComputePipelines,
+        nextComputeKeys,
+        pipelineCandidates,
+        generation,
+      );
+      if (generation !== this.compileGeneration || this.disposed) {
+        this.logCompileTiming("superseded", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors: ["Superseded by a newer compile"],
+        });
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+      if (resolutionErrors.length > 0) {
+        errors.push(...resolutionErrors);
+        this.logCompileTiming("failed", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors,
+        });
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors,
+          warnings: graph.warnings,
+        });
+      }
+
+      // setGlobalVolume() and pause state may change while resource loading or
+      // Slang compilation awaits. Apply their latest values to the prospective
+      // manager before publication; any media failure is still transactional.
+      if (candidateResourceManager) {
+        try {
+          candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+          // A path switch resets shader time immediately after publication.
+          // Stage the media against that prospective time, not the retiring
+          // session's clock.
+          const shaderTime = sessionChanged && (
+            this.passPipelines.size > 0 || this.computePipelines.size > 0
+          )
+            ? 0
+            : this.timeManager.getCurrentTime(performance.now());
+          candidateResourceManager.syncAllVideosToTime?.(shaderTime);
+          if (this.timeManager.isPaused()) {
+            candidateResourceManager.pauseAllVideos?.();
+          } else {
+            candidateResourceManager.resumeAllVideos?.();
           }
-        } else {
-          const pipeline = nextPipelines.get(pass.name);
-          if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
-            pipeline.resize(pass.width, pass.height);
-          }
+        } catch (error) {
+          errors.push(`Media synchronization failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`);
+          this.logCompileTiming("failed", {
+            path,
+            generation,
+            startedAt,
+            readyMs,
+            graphMs,
+            passTimings,
+            graph,
+            errors,
+          });
+          return this.failedCompilation(path, generation, {
+            success: false,
+            errors,
+            warnings: graph.warnings,
+          });
         }
       }
+
+      // Enumerating the retiring map can invoke user-modified iterators and
+      // allocate. Finish that work while the installed generation is still
+      // untouched; publication below then contains ownership assignments only.
+      const retiredStorageBuffers = this.collectRetiredStorageBuffers(preparedStorage);
+
+      // All resolution-sensitive work above was staged in candidate-owned
+      // pipelines. Publication below is therefore a synchronous map swap: a
+      // failure can never leave a subset of the installed graph resized.
       const previousPipelines = this.passPipelines;
       const previousComputePipelines = this.computePipelines;
       const previousResourceManager = this.resourceManager;
@@ -777,43 +874,67 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (candidateResourceManager) {
         this.resourceManager = candidateResourceManager;
       }
-      this.installPreparedStorage(preparedStorage);
+      this.publishPreparedStorage(preparedStorage);
       this.installPipelineCandidates(pipelineCandidates);
       this.shaderPath = path;
+      this.installedResourceKey = resourceKey;
+      this.reloadOnNextApply = false;
       this.currentConfig = config;
-      this.installedCompile = { code, config, path, buffers: { ...buffers } };
+      this.installedCompile = prospectiveInstalledCompile;
+      published = true;
+
+      // Publication has completed. Every remaining operation retires the old
+      // generation best-effort; failures are warnings and never roll back or
+      // invalidate the newly installed generation.
       for (const [name, pipeline] of previousPipelines) {
         if (nextPipelines.get(name) !== pipeline) {
-          pipeline.dispose();
+          this.retireAfterPublication(`render pipeline ${name}`, () => pipeline.dispose(), graph.warnings);
         }
       }
       for (const [name, pipeline] of previousComputePipelines) {
         if (nextComputePipelines.get(name) !== pipeline) {
-          pipeline.dispose();
+          this.retireAfterPublication(`compute pipeline ${name}`, () => pipeline.dispose(), graph.warnings);
         }
+      }
+      if (candidateResourceManager && previousResourceManager !== candidateResourceManager) {
+        this.retireAfterPublication(
+          "resource manager",
+          () => previousResourceManager?.dispose(),
+          graph.warnings,
+        );
+      }
+      for (const [name, buffer] of retiredStorageBuffers) {
+        this.retireAfterPublication(`storage buffer ${name}`, () => buffer.destroy(), graph.warnings);
       }
       if (sessionChanged) {
         if (hadInstalledPipeline) {
-          previousResourceManager?.dispose();
-          this.timeManager.cleanup();
+          this.retireAfterPublication(
+            "previous shader time state",
+            () => this.timeManager.cleanup(),
+            graph.warnings,
+          );
         }
-        this.clearCanvas();
+        this.retireAfterPublication("previous canvas contents", () => this.clearCanvas(), graph.warnings);
       }
-      // Correct any canvas resize that landed mid-compile immediately, rather
-      // than leaving passes stale until the next resize/recompile.
-      this.applyPassResolutions();
-
-      // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
-      // textures load with autoplay disabled, so without this they'd sit frozen
-      // on their first frame until some other action resumed them. Sync to the
-      // current shader time and start/hold playback based on pause state.
-      if (this.resourceManager) {
+      if (!candidateResourceManager && this.resourceManager) {
         const shaderTime = this.timeManager.getCurrentTime(performance.now());
-        this.resourceManager.syncAllVideosToTime?.(shaderTime);
+        this.retireAfterPublication(
+          "installed video synchronization",
+          () => this.resourceManager?.syncAllVideosToTime?.(shaderTime),
+          graph.warnings,
+        );
         if (this.timeManager.isPaused()) {
-          this.resourceManager.pauseAllVideos?.();
+          this.retireAfterPublication(
+            "installed video pause state",
+            () => this.resourceManager?.pauseAllVideos?.(),
+            graph.warnings,
+          );
         } else {
-          this.resourceManager.resumeAllVideos?.();
+          this.retireAfterPublication(
+            "installed video playback state",
+            () => this.resourceManager?.resumeAllVideos?.(),
+            graph.warnings,
+          );
         }
       }
 
@@ -828,6 +949,28 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors,
       });
       return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (published) {
+        graph.warnings.push(`Post-publication cleanup failed: ${message}`);
+        return { success: true, warnings: graph.warnings };
+      }
+      errors.push(message);
+      this.logCompileTiming("failed", {
+        path,
+        generation,
+        startedAt,
+        readyMs,
+        graphMs,
+        passTimings,
+        graph,
+        errors,
+      });
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors,
+        warnings: graph.warnings,
+      });
     } finally {
       if (preparedStorage) {
         this.discardPreparedStorage(preparedStorage);
@@ -835,7 +978,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (pipelineCandidates) {
         this.discardPipelineCandidates(pipelineCandidates);
       } else {
-        candidateResourceManager?.dispose();
+        try {
+          candidateResourceManager?.dispose();
+        } catch {
+          // Candidate construction/setup already failed; cleanup is best
+          // effort and must not replace the structured compilation result.
+        }
       }
     }
   }
@@ -942,19 +1090,33 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return prepared;
   }
 
-  private installPreparedStorage(prepared: PreparedStorageBuffers): void {
-    const previousBuffers = this.storageBuffers;
+  private collectRetiredStorageBuffers(
+    prepared: PreparedStorageBuffers,
+  ): Array<[string, GPUBuffer]> {
+    return [...this.storageBuffers].filter(([name, buffer]) =>
+      prepared.buffers.get(name) !== buffer);
+  }
+
+  private publishPreparedStorage(prepared: PreparedStorageBuffers): void {
     this.storageBuffers = prepared.buffers;
     this.storageKeys = prepared.keys;
     this.storageLayouts = prepared.layouts;
     this.resetStorageOnNextSync = false;
     prepared.settled = true;
     this.pendingStoragePreparations.delete(prepared);
+  }
 
-    for (const [name, buffer] of previousBuffers) {
-      if (prepared.buffers.get(name) !== buffer) {
-        buffer.destroy();
-      }
+  private retireAfterPublication(
+    resource: string,
+    retire: () => void,
+    warnings: string[],
+  ): void {
+    try {
+      retire();
+    } catch (error) {
+      warnings.push(`Failed to retire ${resource}: ${
+        error instanceof Error ? error.message : String(error)
+      }`);
     }
   }
 
@@ -965,7 +1127,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     prepared.settled = true;
     this.pendingStoragePreparations.delete(prepared);
     for (const buffer of prepared.stagedBuffers) {
-      buffer.destroy();
+      try {
+        buffer.destroy();
+      } catch {
+        // A failed candidate owns no live state. Continue releasing its other
+        // resources even if one driver-backed destroy call fails.
+      }
     }
   }
 
@@ -978,6 +1145,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       render: new Set(),
       compute: new Set(),
       resourceManager,
+      resourceLoadsPending: 0,
+      resourceManagerDisposed: false,
       installed: false,
       settled: false,
     };
@@ -985,12 +1154,29 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return candidates;
   }
 
+  private async trackCandidateResourceLoad<T>(
+    candidates: PendingPipelineCandidates,
+    load: () => Promise<T>,
+  ): Promise<T> {
+    candidates.resourceLoadsPending++;
+    try {
+      return await load();
+    } finally {
+      candidates.resourceLoadsPending--;
+    }
+  }
+
   private registerPipelineCandidate(
     candidates: PendingPipelineCandidates,
     pipeline: SlangPassPipeline | SlangComputePipeline,
   ): boolean {
     if (candidates.settled) {
-      pipeline.dispose();
+      try {
+        pipeline.dispose();
+      } catch {
+        // The transaction was already cancelled; disposal is best effort and
+        // must not let a late async rebuild reject its superseded compile.
+      }
       return false;
     }
     if (pipeline instanceof SlangComputePipeline) {
@@ -1017,18 +1203,39 @@ export class WebGPURenderingEngine implements RenderingEngine {
       candidates.settled = true;
       this.pendingPipelineCandidates.delete(candidates);
       for (const pipeline of candidates.render) {
-        pipeline.dispose();
+        try {
+          pipeline.dispose();
+        } catch {
+          // Best-effort candidate teardown must not mask the compile result or
+          // prevent the remaining candidate resources from being released.
+        }
       }
       for (const pipeline of candidates.compute) {
-        pipeline.dispose();
+        try {
+          pipeline.dispose();
+        } catch {
+          // See render candidate teardown above.
+        }
       }
       candidates.render.clear();
       candidates.compute.clear();
     }
-    // A resource load that was already awaiting when this transaction was
-    // canceled may finish after the first cleanup. Calling cleanup again from
-    // compile's finally block reclaims anything that completed late.
-    candidates.resourceManager?.dispose();
+    const resourceManager = candidates.resourceManager;
+    const shouldDisposeResourceManager = resourceManager && (
+      !candidates.resourceManagerDisposed || candidates.resourceLoadsPending === 0
+    );
+    if (shouldDisposeResourceManager) {
+      candidates.resourceManagerDisposed = true;
+      try {
+        resourceManager.dispose();
+      } catch {
+        // Candidate cleanup remains best effort for the same reason as pipeline
+        // teardown: publication never transferred ownership of this manager.
+      }
+    }
+    if (candidates.resourceLoadsPending === 0) {
+      candidates.resourceManager = null;
+    }
   }
 
   private recreateStorageBuffers(): void {
@@ -1176,13 +1383,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ].join(" ");
   }
 
-  /**
-   * A pass's compiled WGSL and pipeline resources depend on its source and
-   * compile descriptor, including compute mode, channel/storage layouts,
-   * workgroup size, output shape, and repeated dispatch count. Width/height
-   * remain texture concerns handled by resize() without recompiling.
-   */
-  private static passCacheKey(
+  /** Inputs that can change generated WGSL. Runtime buffer sizes, dispatch
+   * counts and texture dimensions deliberately stay out of this key. */
+  private static wgslCacheKey(
     pass: RenderPassNode,
     commonCode: string,
     storage: StorageBindingNode[],
@@ -1193,23 +1396,101 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const storageLayout = storage.map((node) => [
       node.name,
       node.elementType,
-      node.count,
-      node.stride,
+      node.builtin,
     ]);
+    const hasOutput = pass.output === "texture";
     return JSON.stringify([
       SLANG_WGSL_CACHE_KEY_VERSION,
       pass.kind,
-      pass.name,
       pass.source,
       commonCode,
       channels,
       storageLayout,
       pass.workgroupSize,
-      pass.outputLayers,
-      pass.dispatchCount,
-      pass.output,
-      pass.output === "texture",
+      hasOutput,
+      hasOutput ? pass.outputLayers : null,
     ]);
+  }
+
+  /** GPU object/resource compatibility for reusing an installed pipeline. */
+  private static pipelineCacheKey(
+    pass: RenderPassNode,
+    commonCode: string,
+    storage: StorageBindingNode[],
+  ): string {
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const storageLayout = storage.map((node) => [
+      node.name,
+      node.binding,
+      node.elementType,
+      node.builtin,
+      node.count,
+      node.stride,
+    ]);
+    return JSON.stringify([
+      SLANG_PIPELINE_CACHE_KEY_VERSION,
+      WebGPURenderingEngine.wgslCacheKey(pass, commonCode, storage),
+      pass.name,
+      pass.kind,
+      pass.width,
+      pass.height,
+      channels,
+      storageLayout,
+      pass.workgroupSize,
+      pass.dispatch,
+      pass.dispatchCount,
+      pass.dispatchOnce,
+      pass.output,
+      pass.outputLayers,
+    ]);
+  }
+
+  private static hasFileResources(passes: RenderPassNode[]): boolean {
+    return passes.some((pass) => pass.channels.some((channel) =>
+      channel.kind === "texture" || channel.kind === "video" || channel.kind === "cubemap"));
+  }
+
+  private static resourceLayoutKey(passes: RenderPassNode[]): string {
+    return JSON.stringify(passes.flatMap((pass) => pass.channels.flatMap((channel) => {
+      if (channel.kind === "texture") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+          channel.grayscale,
+        ]];
+      }
+      if (channel.kind === "video") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+          channel.muted,
+        ]];
+      }
+      if (channel.kind === "cubemap") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+        ]];
+      }
+      return [];
+    })));
   }
 
   private static prefixPassError(passName: string, error: string): string {
@@ -1218,6 +1499,150 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private static storageCacheKey(node: StorageBindingNode): string {
     return JSON.stringify([node.elementType, node.count, node.stride]);
+  }
+
+  private createPassPipeline(
+    pass: RenderPassNode,
+    storage: StorageBindingNode[],
+  ): SlangPassPipeline | SlangComputePipeline {
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while creating pass pipeline");
+    }
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => ({
+        slot: channel.slot,
+        key: channel.key,
+        kind: channel.kind,
+      }));
+    return pass.kind === "compute"
+      ? new SlangComputePipeline(this.device, {
+        name: pass.name,
+        width: pass.width,
+        height: pass.height,
+        hasOutput: pass.output === "texture",
+        outputLayers: pass.outputLayers,
+        workgroupSize: pass.workgroupSize,
+        dispatchCount: pass.dispatchCount,
+        channels,
+        storage,
+      })
+      : new SlangPassPipeline(this.device, this.format, {
+        name: pass.name,
+        width: pass.width,
+        height: pass.height,
+        output: pass.output === "canvas" ? "canvas" : "texture",
+        channels,
+      });
+  }
+
+  /**
+   * Re-read the live canvas immediately before publication. Pipelines already
+   * owned by this transaction can resize in place; carried-over installed
+   * pipelines are replaced with candidates so an allocation failure cannot
+   * partially mutate the live graph.
+   */
+  private async reconcileCandidateResolutions(
+    graph: ReturnType<typeof buildSlangPassGraph>,
+    config: ShaderConfig | null,
+    nextPipelines: Map<string, SlangPassPipeline>,
+    nextKeys: Map<string, string>,
+    nextComputePipelines: Map<string, SlangComputePipeline>,
+    nextComputeKeys: Map<string, string>,
+    candidates: PendingPipelineCandidates,
+    generation: number,
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    while (generation === this.compileGeneration && !this.disposed) {
+      this.updatePassGraphResolutions(graph.passes, config);
+      for (const pass of graph.passes) {
+        const isCompute = pass.kind === "compute";
+        const pipelines = isCompute ? nextComputePipelines : nextPipelines;
+        const keys = isCompute ? nextComputeKeys : nextKeys;
+        const pipeline = pipelines.get(pass.name);
+        const finalKey = WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+        );
+        if (!pipeline || keys.get(pass.name) === finalKey) {
+          continue;
+        }
+
+        const candidateOwned = isCompute
+          ? candidates.compute.has(pipeline as SlangComputePipeline)
+          : candidates.render.has(pipeline as SlangPassPipeline);
+        if (candidateOwned) {
+          try {
+            pipeline.resize(pass.width, pass.height);
+            keys.set(pass.name, finalKey);
+          } catch (error) {
+            errors.push(WebGPURenderingEngine.prefixPassError(
+              pass.name,
+              error instanceof Error ? error.message : String(error),
+            ));
+          }
+          continue;
+        }
+
+        const wgslKey = WebGPURenderingEngine.wgslCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+        );
+        const wgsl = sharedSlangWgslCache.get(wgslKey);
+        if (!wgsl) {
+          errors.push(`${pass.name}: compiled WGSL unavailable during resolution reconciliation`);
+          continue;
+        }
+
+        let replacement: SlangPassPipeline | SlangComputePipeline | undefined;
+        try {
+          replacement = this.createPassPipeline(pass, graph.storage);
+          if (!this.registerPipelineCandidate(candidates, replacement)) {
+            return errors;
+          }
+          const wgslErrors = await replacement.rebuild(wgsl);
+          errors.push(...wgslErrors.map((error) =>
+            WebGPURenderingEngine.prefixPassError(pass.name, error)));
+          if (wgslErrors.length === 0 &&
+            generation === this.compileGeneration && !this.disposed) {
+            if (isCompute) {
+              nextComputePipelines.set(pass.name, replacement as SlangComputePipeline);
+              nextComputeKeys.set(pass.name, finalKey);
+            } else {
+              nextPipelines.set(pass.name, replacement as SlangPassPipeline);
+              nextKeys.set(pass.name, finalKey);
+            }
+          }
+        } catch (error) {
+          errors.push(WebGPURenderingEngine.prefixPassError(
+            pass.name,
+            error instanceof Error ? error.message : String(error),
+          ));
+        }
+      }
+
+      if (errors.length > 0 || generation !== this.compileGeneration || this.disposed) {
+        return errors;
+      }
+
+      // A replacement rebuild awaited GPU work. If another resize landed in
+      // that interval, loop once more and reconcile the candidate to it.
+      this.updatePassGraphResolutions(graph.passes, config);
+      const stable = graph.passes.every((pass) => {
+        const keys = pass.kind === "compute" ? nextComputeKeys : nextKeys;
+        return keys.get(pass.name) === WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+        );
+      });
+      if (stable) {
+        return errors;
+      }
+    }
+    return errors;
   }
 
   render(time: number = performance.now()): void {
@@ -1509,14 +1934,31 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.canvas || this.passGraph.length === 0) {
       return;
     }
+    this.updatePassGraphResolutions(this.passGraph, this.currentConfig);
+    for (const pass of this.passGraph) {
+      if (pass.kind === "compute") {
+        this.computePipelines.get(pass.name)?.resize(pass.width, pass.height);
+      } else {
+        this.passPipelines.get(pass.name)?.resize(pass.width, pass.height);
+      }
+    }
+  }
+
+  private updatePassGraphResolutions(
+    passes: RenderPassNode[],
+    config: ShaderConfig | null,
+  ): void {
+    if (!this.canvas) {
+      return;
+    }
     const canvasWidth = Math.max(1, this.canvas.width);
     const canvasHeight = Math.max(1, this.canvas.height);
-    for (const pass of this.passGraph) {
+    for (const pass of passes) {
       const unclampedResolution = pass.output === "canvas"
         ? { width: canvasWidth, height: canvasHeight }
         : resolvePassResolution({
           passName: pass.name,
-          passConfig: this.currentConfig?.passes?.[pass.name],
+          passConfig: config?.passes?.[pass.name],
           canvasWidth,
           canvasHeight,
           // Resolution settings were already validated at compile time; a
@@ -1526,11 +1968,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
       pass.width = resolution.width;
       pass.height = resolution.height;
-      if (pass.kind === "compute") {
-        this.computePipelines.get(pass.name)?.resize(resolution.width, resolution.height);
-      } else {
-        this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);
-      }
     }
   }
 
@@ -1620,6 +2057,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.computeKeys.clear();
     this.passGraph = [];
     this.installedCompile = null;
+    this.installedResourceKey = null;
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
     }

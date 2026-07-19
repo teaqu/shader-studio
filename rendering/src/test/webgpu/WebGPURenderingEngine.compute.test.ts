@@ -222,11 +222,15 @@ describe("WebGPURenderingEngine compute compilation", () => {
   });
 
   it.each([
-    ["workgroup size", computeConfig({ workgroupSize: [4, 4, 1] })],
-    ["output layers", computeConfig({ outputLayers: 2 })],
-    ["dispatch count", computeConfig({ dispatchCount: 2 })],
-    ["output state", computeConfig({ sampled: true })],
-  ])("rebuilds the compute pipeline when %s changes", async (_label, changedConfig) => {
+    ["workgroup size", computeConfig({ workgroupSize: [4, 4, 1] }), 2],
+    ["output layers without an output", computeConfig({ outputLayers: 2 }), 1],
+    ["dispatch count", computeConfig({ dispatchCount: 2 }), 1],
+    ["output state", computeConfig({ sampled: true }), 2],
+  ])("rebuilds the compute pipeline when %s changes while compiling WGSL only when required", async (
+    _label,
+    changedConfig,
+    expectedComputeCompiles,
+  ) => {
     const { engine, device, compiler } = harness();
     await engine.compileShaderPipeline(
       IMAGE_SOURCE,
@@ -245,17 +249,17 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(result?.success).toBe(true);
     expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
     expect(compiler.compile.mock.calls.filter(([, options]) =>
-      options.passName === "ComputeSim")).toHaveLength(2);
+      options.passName === "ComputeSim")).toHaveLength(expectedComputeCompiles);
   });
 
-  it.each<[string, Record<string, StorageBufferConfig>]>([
-    ["name", { renamed: { count: 4, stride: 16, elementType: "float4" } }],
-    ["element type", { particles: { count: 4, stride: 16, elementType: "uint4" } }],
-    ["count", { particles: { count: 8, stride: 16, elementType: "float4" } }],
-    ["stride", { particles: { count: 4, stride: 32, elementType: "float4" } }],
+  it.each<[string, Record<string, StorageBufferConfig>, number]>([
+    ["name", { renamed: { count: 4, stride: 16, elementType: "float4" } }, 2],
+    ["element type", { particles: { count: 4, stride: 16, elementType: "uint4" } }, 2],
+    ["count", { particles: { count: 8, stride: 16, elementType: "float4" } }, 1],
+    ["stride", { particles: { count: 4, stride: 32, elementType: "float4" } }, 1],
   ])(
-    "rebuilds the compute pipeline when storage %s changes",
-    async (_label, storage) => {
+    "rebuilds the compute pipeline when storage %s changes while reusing layout-compatible WGSL",
+    async (_label, storage, expectedComputeCompiles) => {
       const { engine, device, compiler } = harness();
       await engine.compileShaderPipeline(
         IMAGE_SOURCE,
@@ -276,11 +280,11 @@ describe("WebGPURenderingEngine compute compilation", () => {
       expect(result?.success).toBe(true);
       expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
       expect(compiler.compile.mock.calls.filter(([, options]) =>
-        options.passName === "ComputeSim")).toHaveLength(2);
+        options.passName === "ComputeSim")).toHaveLength(expectedComputeCompiles);
     },
   );
 
-  it("reuses an identical compute pipeline and resizes it without recompiling", async () => {
+  it("reuses WGSL but rebuilds compute GPU resources when dimensions change", async () => {
     const { engine, device, compiler, textures } = harness();
     const config = computeConfig({ sampled: true });
     await engine.compileShaderPipeline(
@@ -303,7 +307,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(device.createComputePipeline).toHaveBeenCalledTimes(1);
+    expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
     expect(compiler.compile).toHaveBeenCalledTimes(2);
     expect(initialTextures.every((texture) => texture.destroy.mock.calls.length === 1)).toBe(true);
     expect(textures.slice(2).map(({ descriptor }) => descriptor.size)).toEqual([
@@ -499,7 +503,10 @@ describe("WebGPURenderingEngine compute compilation", () => {
     );
     const stagedStorage = storageBuffers(buffers)[1];
 
-    await expect(pending).rejects.toThrow("default texture allocation failed");
+    await expect(pending).resolves.toMatchObject({
+      success: false,
+      errors: [expect.stringMatching(/default texture allocation failed/i)],
+    });
     const partialCandidateTexture = textures[installedTextureCount];
     expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
     expect(partialCandidateTexture.destroy).toHaveBeenCalledTimes(1);
@@ -543,8 +550,12 @@ describe("WebGPURenderingEngine compute compilation", () => {
       );
       const stagedStorage = storageBuffers(buffers)[1];
 
-      await expect(pending).rejects.toThrow("media setup failed");
+      const result = await pending;
       const candidateDefaultTexture = textures[installedTextureCount];
+      expect(result).toMatchObject({
+        success: false,
+        errors: [expect.stringMatching(/media setup failed/i)],
+      });
       expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
       expect(candidateDefaultTexture.destroy).toHaveBeenCalledTimes(1);
       expect(installedStorage.destroy).not.toHaveBeenCalled();
@@ -554,6 +565,34 @@ describe("WebGPURenderingEngine compute compilation", () => {
     } finally {
       setupSpy.mockRestore();
     }
+  });
+
+  it("keeps a published compute generation live when predecessor disposal throws", async () => {
+    const { engine, buffers } = harness();
+    const config = computeConfig({ sampled: true });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const predecessor = (engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const predecessorDispose = vi.spyOn(predecessor, "dispose").mockImplementation(() => {
+      throw new Error("old compute disposal failed");
+    });
+
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeSim: "void computeMain(uint3 tid) { uint changed = tid.x; }",
+    });
+    const installed = (engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+
+    expect(result?.success).toBe(true);
+    expect(result?.warnings?.join("\n")).toMatch(/old compute disposal failed/i);
+    expect(installed).not.toBe(predecessor);
+    expect(installed.getPipeline()).not.toBeNull();
+    expect(predecessorDispose).toHaveBeenCalledTimes(1);
+    expect(dispatchBuffers(buffers).at(-1)?.destroy).not.toHaveBeenCalled();
   });
 
   it("preserves installed compute and storage state across compiler and WGSL failures", async () => {

@@ -1,10 +1,22 @@
 import type { TextureBackend, TextureFilter, TextureWrap } from "./TextureBackend";
 import type { VideoConfigInput } from "../models/ShaderConfig";
 
+interface PendingVideoLoad<T> {
+  path: string;
+  video: HTMLVideoElement;
+  promise: Promise<T>;
+  resolve: (texture: T) => void;
+  reject: (error: Error) => void;
+  handleCanPlay: () => void;
+  handleError: () => void;
+  settled: boolean;
+}
+
 export class VideoTextureManager<T> {
   private readonly videoElements: Record<string, HTMLVideoElement> = {};
   private readonly videoTextures: Record<string, T> = {};
   private readonly animationFrameIds: Record<string, number> = {};
+  private readonly pendingLoads = new Map<string, PendingVideoLoad<T>>();
   // Per-video user-initiated pause tracking
   private readonly userPaused: Set<string> = new Set();
   private globalMuted = false;
@@ -41,74 +53,110 @@ export class VideoTextureManager<T> {
       return this.videoTextures[path];
     }
 
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.loop = true;
-      video.playsInline = true;
-      video.preload = "auto";
-      video.autoplay = false;
-      this.channelMuted[path] = options.muted === true;
-      const muted = this.channelMuted[path] || this.globalMuted;
-      video.muted = muted;
-      video.volume = muted ? 0 : this.globalVolume;
+    const existingPending = this.pendingLoads.get(path);
+    if (existingPending) {
+      return existingPending.promise;
+    }
 
-      // webkit-playsinline for iOS/Safari compatibility
-      video.setAttribute('webkit-playsinline', 'true');
+    const video = document.createElement('video');
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.autoplay = false;
+    this.channelMuted[path] = options.muted === true;
+    const muted = this.channelMuted[path] || this.globalMuted;
+    video.muted = muted;
+    video.volume = muted ? 0 : this.globalVolume;
 
-      // Append to DOM (hidden) — required for audio output
-      video.style.position = 'fixed';
-      video.style.top = '-9999px';
-      video.style.left = '-9999px';
-      video.style.width = '1px';
-      video.style.height = '1px';
-      video.style.opacity = '0';
-      video.style.pointerEvents = 'none';
-      document.body.appendChild(video);
+    // webkit-playsinline for iOS/Safari compatibility
+    video.setAttribute('webkit-playsinline', 'true');
 
-      const handleVideoError = () => {
-        console.error(`Video loading error for ${path}:`, video.error);
-        reject(new Error(`Failed to load video from URL: ${path}`));
-      };
-
-      let resolved = false;
-      const handleVideoCanPlay = () => {
-        // Guard against multiple fires (canplay + loadeddata both registered)
-        if (resolved) {
-          return;
-        }
-
-        // Check if video has valid dimensions
-        if (video.videoWidth === 0 || video.videoHeight === 0) {
-          console.warn(`Video ${path} has zero dimensions, waiting...`);
-          return; // Wait for dimensions to be available
-        }
-
-        resolved = true;
-        // Remove both listeners to prevent any further calls
-        video.removeEventListener('canplay', handleVideoCanPlay);
-        video.removeEventListener('loadeddata', handleVideoCanPlay);
-        video.removeEventListener('error', handleVideoError);
-
-        try {
-          const texture = this.createTextureFromVideo(video, options);
-          this.videoElements[path] = video;
-          this.videoTextures[path] = texture;
-
-          this.startVideoTextureUpdates(path, video, texture);
-
-          resolve(texture);
-        } catch (error) {
-          console.error(`Failed to create texture from video ${path}:`, error);
-          reject(error);
-        }
-      };
-
-      video.addEventListener('canplay', handleVideoCanPlay);
-      video.addEventListener('loadeddata', handleVideoCanPlay);
-      video.addEventListener('error', handleVideoError);
-
-      video.src = path;
+    let resolveLoad!: (texture: T) => void;
+    let rejectLoad!: (error: Error) => void;
+    const promise = new Promise<T>((resolve, reject) => {
+      resolveLoad = resolve;
+      rejectLoad = reject;
     });
+    const pending: PendingVideoLoad<T> = {
+      path,
+      video,
+      promise,
+      resolve: resolveLoad,
+      reject: rejectLoad,
+      handleCanPlay: () => {},
+      handleError: () => {},
+      settled: false,
+    };
+    pending.handleError = () => {
+      if (!this.isPendingLoadActive(pending)) {
+        return;
+      }
+      console.error(`Video loading error for ${path}:`, video.error);
+      this.failPendingLoad(pending, new Error(`Failed to load video from URL: ${path}`));
+    };
+    pending.handleCanPlay = () => {
+      if (!this.isPendingLoadActive(pending)) {
+        return;
+      }
+
+      // Check if video has valid dimensions
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        console.warn(`Video ${path} has zero dimensions, waiting...`);
+        return;
+      }
+
+      let texture: T;
+      try {
+        texture = this.createTextureFromVideo(video, options);
+      } catch (error) {
+        console.error(`Failed to create texture from video ${path}:`, error);
+        this.failPendingLoad(
+          pending,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        return;
+      }
+
+      // Texture creation is synchronous but may call user/browser hooks that
+      // dispose this manager re-entrantly. Never publish a handle from a load
+      // that lost ownership while createTextureFromImage was running.
+      if (!this.isPendingLoadActive(pending)) {
+        this.backend.destroyTexture(texture);
+        return;
+      }
+
+      pending.settled = true;
+      this.pendingLoads.delete(path);
+      this.detachPendingLoadListeners(pending);
+      this.videoElements[path] = video;
+      this.videoTextures[path] = texture;
+      this.startVideoTextureUpdates(path, video, texture);
+      pending.resolve(texture);
+    };
+
+    this.pendingLoads.set(path, pending);
+    video.addEventListener('canplay', pending.handleCanPlay);
+    video.addEventListener('loadeddata', pending.handleCanPlay);
+    video.addEventListener('error', pending.handleError);
+
+    // Append to DOM (hidden) — required for audio output
+    video.style.position = 'fixed';
+    video.style.top = '-9999px';
+    video.style.left = '-9999px';
+    video.style.width = '1px';
+    video.style.height = '1px';
+    video.style.opacity = '0';
+    video.style.pointerEvents = 'none';
+    try {
+      document.body.appendChild(video);
+      video.src = path;
+    } catch (error) {
+      this.failPendingLoad(
+        pending,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+    return promise;
   }
 
   public getVideoTexture(path: string): T | undefined {
@@ -120,9 +168,11 @@ export class VideoTextureManager<T> {
   }
 
   public removeVideoTexture(path: string): void {
+    this.cancelPendingLoad(path);
+
     // Stop animation frame updates
     const animationId = this.animationFrameIds[path];
-    if (animationId) {
+    if (animationId !== undefined) {
       cancelAnimationFrame(animationId);
       delete this.animationFrameIds[path];
     }
@@ -130,11 +180,7 @@ export class VideoTextureManager<T> {
     // Pause and remove video element
     const video = this.videoElements[path];
     if (video) {
-      video.pause();
-      video.src = '';
-      if (video.parentNode) {
-        video.parentNode.removeChild(video);
-      }
+      this.resetVideoElement(video);
       delete this.videoElements[path];
     }
 
@@ -146,6 +192,7 @@ export class VideoTextureManager<T> {
     }
 
     delete this.channelMuted[path];
+    this.userPaused.delete(path);
 
     if (this.pendingGestureUnmute.delete(path) && this.pendingGestureUnmute.size === 0) {
       this.disarmGestureListeners();
@@ -153,8 +200,11 @@ export class VideoTextureManager<T> {
   }
 
   public cleanup(): void {
-    // Clean up all video textures
-    const paths = Object.keys(this.videoTextures);
+    const paths = new Set([
+      ...this.pendingLoads.keys(),
+      ...Object.keys(this.videoElements),
+      ...Object.keys(this.videoTextures),
+    ]);
     for (const path of paths) {
       this.removeVideoTexture(path);
     }
@@ -281,10 +331,49 @@ export class VideoTextureManager<T> {
     return texture;
   }
 
+  private isPendingLoadActive(pending: PendingVideoLoad<T>): boolean {
+    return !pending.settled && this.pendingLoads.get(pending.path) === pending;
+  }
+
+  private detachPendingLoadListeners(pending: PendingVideoLoad<T>): void {
+    pending.video.removeEventListener('canplay', pending.handleCanPlay);
+    pending.video.removeEventListener('loadeddata', pending.handleCanPlay);
+    pending.video.removeEventListener('error', pending.handleError);
+  }
+
+  private failPendingLoad(pending: PendingVideoLoad<T>, error: Error): void {
+    if (!this.isPendingLoadActive(pending)) {
+      return;
+    }
+    pending.settled = true;
+    this.pendingLoads.delete(pending.path);
+    this.detachPendingLoadListeners(pending);
+    this.resetVideoElement(pending.video);
+    delete this.channelMuted[pending.path];
+    this.userPaused.delete(pending.path);
+    pending.reject(error);
+  }
+
+  private cancelPendingLoad(path: string): void {
+    const pending = this.pendingLoads.get(path);
+    if (!pending) {
+      return;
+    }
+    this.failPendingLoad(pending, new Error(`Video load cancelled: ${path}`));
+  }
+
+  private resetVideoElement(video: HTMLVideoElement): void {
+    video.pause();
+    video.src = '';
+    if (video.parentNode) {
+      video.parentNode.removeChild(video);
+    }
+  }
+
   private startVideoTextureUpdates(path: string, video: HTMLVideoElement, texture: T): void {
     // Cancel any existing rAF loop for this path to prevent duplicates
     const existingId = this.animationFrameIds[path];
-    if (existingId) {
+    if (existingId !== undefined) {
       cancelAnimationFrame(existingId);
       delete this.animationFrameIds[path];
     }

@@ -374,6 +374,110 @@ describe("VideoTextureManager", () => {
       expect(mockVideo2.pause).toHaveBeenCalled();
       expect(backend.destroyTexture).toHaveBeenCalledTimes(2);
     });
+
+    it("promptly rejects and fully removes an unresolved pending load", async () => {
+      const parentNode = { removeChild: vi.fn() };
+      mockVideo.parentNode = parentNode;
+      const loadPromise = videoManager.loadVideoTexture("pending.mp4");
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "canplay",
+      )?.[1];
+      const loadeddataHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "loadeddata",
+      )?.[1];
+      const errorHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "error",
+      )?.[1];
+      let rejection: unknown;
+      void loadPromise.catch((error) => {
+        rejection = error;
+      });
+
+      videoManager.cleanup();
+      await vi.waitFor(() => expect(rejection).toEqual(expect.objectContaining({
+        message: expect.stringMatching(/cancelled.*pending\.mp4/i),
+      })));
+      expect(mockVideo.removeEventListener).toHaveBeenCalledWith("canplay", canplayHandler);
+      expect(mockVideo.removeEventListener).toHaveBeenCalledWith("loadeddata", loadeddataHandler);
+      expect(mockVideo.removeEventListener).toHaveBeenCalledWith("error", errorHandler);
+      expect(mockVideo.pause).toHaveBeenCalledTimes(1);
+      expect(mockVideo.src).toBe("");
+      expect(parentNode.removeChild).toHaveBeenCalledWith(mockVideo);
+      expect(videoManager.getVideoElement("pending.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("pending.mp4")).toBeUndefined();
+
+      videoManager.cleanup();
+      expect(mockVideo.pause).toHaveBeenCalledTimes(1);
+      expect(parentNode.removeChild).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores late media events after pending-load cleanup", async () => {
+      const parentNode = { removeChild: vi.fn() };
+      mockVideo.parentNode = parentNode;
+      const loadPromise = videoManager.loadVideoTexture("late-event.mp4");
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "canplay",
+      )?.[1];
+      void loadPromise.catch(() => {});
+
+      videoManager.cleanup();
+      canplayHandler();
+      await Promise.resolve();
+
+      expect(backend.createTextureFromImage).not.toHaveBeenCalled();
+      expect(backend.destroyTexture).not.toHaveBeenCalled();
+      expect(videoManager.getVideoElement("late-event.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("late-event.mp4")).toBeUndefined();
+      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it("destroys a texture returned after re-entrant cleanup and never installs it", async () => {
+      const lateTexture: FakeTex = {
+        id: {},
+        width: 640,
+        height: 480,
+        format: "rgba8",
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      };
+      vi.mocked(backend.createTextureFromImage).mockImplementationOnce(() => {
+        videoManager.cleanup();
+        return lateTexture;
+      });
+      const loadPromise = videoManager.loadVideoTexture("reentrant.mp4");
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "canplay",
+      )?.[1];
+
+      canplayHandler();
+
+      await expect(loadPromise).rejects.toThrow(/cancelled.*reentrant\.mp4/i);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledWith(lateTexture);
+      expect(videoManager.getVideoElement("reentrant.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("reentrant.mp4")).toBeUndefined();
+      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it("keeps completed-load cleanup idempotent", async () => {
+      const parentNode = { removeChild: vi.fn() };
+      mockVideo.parentNode = parentNode;
+      const loadPromise = videoManager.loadVideoTexture("completed.mp4");
+      const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
+        (call: any[]) => call[0] === "canplay",
+      )?.[1];
+      canplayHandler();
+      const texture = await loadPromise;
+
+      videoManager.cleanup();
+      videoManager.cleanup();
+
+      expect(mockVideo.pause).toHaveBeenCalledTimes(1);
+      expect(parentNode.removeChild).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledWith(texture);
+    });
   });
 
   describe("pause and resume functionality", () => {

@@ -155,6 +155,25 @@ describe("ResourceManager", () => {
     resourceManager = new ResourceManager(mockBackend);
   });
 
+  describe("createIsolated", () => {
+    it("creates fresh resource state backed by the same texture backend", () => {
+      const isolated = resourceManager.createIsolated();
+      type ResourceInternals = {
+        backend: TextureBackend<PiTexture>;
+        textureCache: unknown;
+        videoTextureManager: unknown;
+      };
+      const originalInternals = resourceManager as unknown as ResourceInternals;
+      const isolatedInternals = isolated as unknown as ResourceInternals;
+
+      expect(isolated).not.toBe(resourceManager);
+      expect(isolatedInternals.backend).toBe(mockBackend);
+      expect(isolatedInternals.textureCache).not.toBe(originalInternals.textureCache);
+      expect(isolatedInternals.videoTextureManager)
+        .not.toBe(originalInternals.videoTextureManager);
+    });
+  });
+
   describe("loadImageTexture", () => {
     it("should load image texture successfully", async () => {
       const mockTexture = createMockTexture();

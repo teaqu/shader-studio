@@ -560,6 +560,61 @@ describe("SlangComputePipeline", () => {
     expect(device.createComputePipeline).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves the old descriptor, views, textures, and groups when the first resize allocation throws", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    compute.rebuildBindGroups([], new Map());
+    const originalGroup = compute.getBindGroup(0);
+    const originalView = compute.getCurrentOutputView() as unknown as FakeTextureView;
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+    device.createTexture.mockImplementationOnce(() => {
+      throw new Error("first compute resize allocation failed");
+    });
+
+    expect(() => compute.resize(640, 360)).toThrow("first compute resize allocation failed");
+
+    expect(compute.getBindGroup(0)).toBe(originalGroup);
+    expect((compute.getCurrentOutputView() as unknown as FakeTextureView).textureId)
+      .toBe(originalView.textureId);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    compute.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
+  it("destroys a partial resize allocation while preserving compute resources when the second allocation throws", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    compute.rebuildBindGroups([], new Map());
+    const originalGroup = compute.getBindGroup(0);
+    const originalView = compute.getCurrentOutputView() as unknown as FakeTextureView;
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+    const partialTexture: FakeTexture = {
+      id: 999,
+      descriptor: {} as GPUTextureDescriptor,
+      createView: vi.fn(() => ({ textureId: 999, descriptor: undefined })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second compute resize allocation failed");
+      });
+
+    expect(() => compute.resize(640, 360)).toThrow("second compute resize allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(compute.getBindGroup(0)).toBe(originalGroup);
+    expect((compute.getCurrentOutputView() as unknown as FakeTextureView).textureId)
+      .toBe(originalView.textureId);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    compute.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
   it("destroys old buffers and textures and resets groups on rebuild", async () => {
     const device = fakeDevice();
     const compute = new SlangComputePipeline(device, descriptor({ dispatchCount: 2 }));
