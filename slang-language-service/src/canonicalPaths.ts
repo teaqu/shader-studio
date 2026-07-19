@@ -47,10 +47,7 @@ function parsedFilePath(uri: string): string | undefined {
   if (parsed.protocol !== "file:") {
     return undefined;
   }
-  // Validate encoding here, but retain the encoded pathname until the relative
-  // path is normalized. This ensures URI pathnames are decoded exactly once.
-  decodePath(parsed.pathname);
-  return parsed.pathname.replaceAll("\\", "/").replace(/\/$/, "");
+  return decodePath(parsed.pathname).replaceAll("\\", "/").replace(/\/$/, "");
 }
 
 function isWindowsPath(path: string): boolean {
@@ -100,7 +97,7 @@ export class SlangPathMap {
       if (filePath === undefined) {
         throw new Error(`A relative path is required for non-file URI "${uri}"`);
       }
-      path = normalizeInternalPath(decodePath(relativeFilePath(this.rootFilePath, filePath)));
+      path = normalizeInternalPath(relativeFilePath(this.rootFilePath, filePath));
     }
 
     const mappedUri = this.pathToUri.get(path);

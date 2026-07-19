@@ -30,10 +30,28 @@ describe("SlangPathMap", () => {
     expect(paths.toUri("/workspace/lib code/palette.slang")).toBe(uri);
   });
 
+  it("uses decoded POSIX file paths for root containment", () => {
+    const paths = new SlangPathMap("file:///tmp/%72oot");
+
+    expect(paths.register("file:///tmp/root/a.slang")).toBe("/workspace/a.slang");
+  });
+
+  it("uses decoded path separators for file-root containment", () => {
+    const paths = new SlangPathMap("file:///tmp/a%2Fb");
+
+    expect(paths.register("file:///tmp/a/b/a.slang")).toBe("/workspace/a.slang");
+  });
+
   it("handles Windows file URIs case-insensitively", () => {
     const paths = new SlangPathMap("file:///C:/Work/Shader");
 
     expect(paths.register("file:///c:/work/shader/lib/math.slang")).toBe("/workspace/lib/math.slang");
+  });
+
+  it("uses decoded Windows file paths for case-insensitive root containment", () => {
+    const paths = new SlangPathMap("file:///C:/W%6Frk");
+
+    expect(paths.register("file:///c:/work/a.slang")).toBe("/workspace/a.slang");
   });
 
   it("handles Windows drive-root file URIs case-insensitively", () => {
