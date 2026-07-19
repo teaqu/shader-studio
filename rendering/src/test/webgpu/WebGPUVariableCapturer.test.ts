@@ -98,6 +98,14 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   };
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 const captures = [
   { varName: "uv", varType: "float2", captureShader: "shader-a", selectorIndex: 0 },
   { varName: "col", varType: "float3", captureShader: "shader-a", selectorIndex: 1 },
@@ -402,6 +410,130 @@ describe("WebGPUVariableCapturer", () => {
     capturer.setCompileContext({ commonCode: "b" });
     await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("abandons a deferred compile when its declaration context becomes stale", async () => {
+    const gpu = mockGpu();
+    const oldCompile = deferred<{ success: true; wgsl: string }>();
+    gpu.compiler.compile.mockImplementationOnce(() => oldCompile.promise);
+    const oldBuffer = { tag: "old-positions" } as unknown as GPUBuffer;
+    const newBuffer = { tag: "new-positions" } as unknown as GPUBuffer;
+    const newStorage: StorageBindingNode = {
+      ...storageA,
+      elementType: "uint4",
+    };
+    let channelSlot = 0;
+    const textureView = { tag: "texture-view" } as unknown as GPUTextureView;
+    const sampler = { tag: "sampler" } as unknown as GPUSampler;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      {
+        commonCode: "struct OldContext {};",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [storageA],
+        slangStorageBuffers: new Map([[storageA.name, oldBuffer]]),
+      },
+      () => [{ slot: channelSlot, textureView, sampler }],
+    );
+
+    const staleIssue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(gpu.compiler.compile).toHaveBeenCalledTimes(1));
+
+    channelSlot = 1;
+    capturer.setCompileContext({
+      commonCode: "struct NewContext {};",
+      slangChannels: [{ slot: 1, key: "iChannel1" }],
+      slangStorage: [newStorage],
+      slangStorageBuffers: new Map([[newStorage.name, newBuffer]]),
+    });
+    oldCompile.resolve({ success: true, wgsl: "// old context" });
+
+    expect(await staleIssue).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+    expect(gpu.device.createRenderPipeline).not.toHaveBeenCalled();
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect(gpu.compiler.compile).toHaveBeenLastCalledWith("shader-a", expect.objectContaining({
+      commonCode: "struct NewContext {};",
+      channels: [{ slot: 1, key: "iChannel1" }],
+      storage: [newStorage],
+    }));
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+  });
+
+  it("abandons a deferred pipeline when its declaration context becomes stale", async () => {
+    const gpu = mockGpu();
+    const oldPipeline = deferred<GPURenderPipeline>();
+    const createRenderPipelineAsync = vi.fn()
+      .mockImplementationOnce(() => oldPipeline.promise)
+      .mockResolvedValue({ tag: "new-pipeline" } as unknown as GPURenderPipeline);
+    Object.assign(gpu.device, { createRenderPipelineAsync });
+    const oldBuffer = { tag: "old-positions" } as unknown as GPUBuffer;
+    const newBuffer = { tag: "new-positions" } as unknown as GPUBuffer;
+    const newStorage: StorageBindingNode = {
+      ...storageA,
+      elementType: "uint4",
+    };
+    let channelSlot = 0;
+    const textureView = { tag: "texture-view" } as unknown as GPUTextureView;
+    const sampler = { tag: "sampler" } as unknown as GPUSampler;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      {
+        commonCode: "struct OldContext {};",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [storageA],
+        slangStorageBuffers: new Map([[storageA.name, oldBuffer]]),
+      },
+      () => [{ slot: channelSlot, textureView, sampler }],
+    );
+
+    const staleIssue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(createRenderPipelineAsync).toHaveBeenCalledTimes(1));
+
+    channelSlot = 1;
+    capturer.setCompileContext({
+      commonCode: "struct NewContext {};",
+      slangChannels: [{ slot: 1, key: "iChannel1" }],
+      slangStorage: [newStorage],
+      slangStorageBuffers: new Map([[newStorage.name, newBuffer]]),
+    });
+    oldPipeline.resolve({ tag: "old-pipeline" } as unknown as GPURenderPipeline);
+
+    expect(await staleIssue).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect(createRenderPipelineAsync).toHaveBeenCalledTimes(2);
+    expect(gpu.compiler.compile).toHaveBeenLastCalledWith("shader-a", expect.objectContaining({
+      commonCode: "struct NewContext {};",
+      channels: [{ slot: 1, key: "iChannel1" }],
+      storage: [newStorage],
+    }));
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+  });
+
+  it("does not publish a deferred pipeline after disposal", async () => {
+    const gpu = mockGpu();
+    const deferredPipeline = deferred<GPURenderPipeline>();
+    const createRenderPipelineAsync = vi.fn(() => deferredPipeline.promise);
+    Object.assign(gpu.device, { createRenderPipelineAsync });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
+
+    const issue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(createRenderPipelineAsync).toHaveBeenCalledTimes(1));
+    capturer.dispose();
+    deferredPipeline.resolve({ tag: "disposed-pipeline" } as unknown as GPURenderPipeline);
+
+    expect(await issue).toBe(0);
+    expect((capturer as unknown as { pipelineCache: Map<string, unknown> }).pipelineCache.size).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
   });
 
   it("stops issuing when shouldContinue flips false", async () => {

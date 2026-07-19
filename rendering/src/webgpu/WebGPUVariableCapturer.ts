@@ -51,6 +51,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
   private compileContext: CaptureCompileContext = {};
+  private compileContextGeneration = 0;
+  private compileContextKey: string;
   private lastError: string | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private captureUniformBuffer: GPUBuffer | null = null;
@@ -65,20 +67,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     private readonly getStorageBuffers?: () => Map<string, GPUBuffer>,
   ) {
     this.compileContext = compileContext;
+    this.compileContextKey = this.getDeclarationContextKey(compileContext);
   }
 
   setCompileContext(context: CaptureCompileContext): void {
-    const nextCommon = context.commonCode ?? "";
-    const nextChannels = JSON.stringify(context.slangChannels ?? []);
-    const nextStorage = JSON.stringify(context.slangStorage ?? []);
-    const currentCommon = this.compileContext.commonCode ?? "";
-    const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    const currentStorage = JSON.stringify(this.compileContext.slangStorage ?? []);
-    if (
-      nextCommon !== currentCommon ||
-      nextChannels !== currentChannels ||
-      nextStorage !== currentStorage
-    ) {
+    const nextContextKey = this.getDeclarationContextKey(context);
+    if (nextContextKey !== this.compileContextKey) {
+      this.compileContextGeneration++;
+      this.compileContextKey = nextContextKey;
       this.pipelineCache.clear();
       this.pipelineCacheOrder = [];
     }
@@ -180,6 +176,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   dispose(): void {
     this.disposed = true;
+    this.compileContextGeneration++;
     this.cancelPendingCaptures();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy?.(); captureCounters.gpuBuffersDestroyed++;
@@ -211,6 +208,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
     const channels = this.compileContext.slangChannels ?? [];
     const storage = this.compileContext.slangStorage ?? [];
+    const commonCode = this.compileContext.commonCode;
+    const compileContextGeneration = this.compileContextGeneration;
+    const compileContextKey = this.compileContextKey;
     const channelResources = channels.length > 0 ? this.getChannelResources?.() ?? null : [];
     if (channels.length > 0 && channelResources === null) {
       this.lastError = "Capture channels are not resolvable yet";
@@ -251,8 +251,18 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           break;
         }
 
-        const cached = await this.getOrCompilePipeline(capture.captureShader, channels, storage);
-        if (!shouldContinue() || this.disposed) {
+        const cached = await this.getOrCompilePipeline(
+          capture.captureShader,
+          commonCode,
+          channels,
+          storage,
+          compileContextGeneration,
+          compileContextKey,
+        );
+        if (
+          !shouldContinue() ||
+          !this.isCompileContextCurrent(compileContextGeneration, compileContextKey)
+        ) {
           break;
         }
         if (!cached) {
@@ -363,10 +373,17 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   private async getOrCompilePipeline(
     captureShader: string,
+    commonCode: string | undefined,
     channels: SlangChannelBinding[],
     storage: StorageBindingNode[],
+    compileContextGeneration: number,
+    compileContextKey: string,
   ): Promise<CachedPipeline | null> {
-    const existing = this.pipelineCache.get(captureShader);
+    if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
+      return null;
+    }
+    const pipelineCacheKey = JSON.stringify([compileContextKey, captureShader]);
+    const existing = this.pipelineCache.get(pipelineCacheKey);
     if (existing) {
       existing.lastUsed = performance.now();
       return existing;
@@ -375,13 +392,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureCounters.pipelineCompiles++;
     const compileResult = await this.compiler.compile(captureShader, {
       passName: "capture",
-      commonCode: this.compileContext.commonCode,
+      commonCode,
       channels,
       storage,
       passKind: "render",
       captureMode: true,
     });
-    if (this.disposed) {
+    if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
     if (!compileResult.success) {
@@ -410,7 +427,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         ? await this.device.createRenderPipelineAsync(descriptor)
         : this.device.createRenderPipeline(descriptor);
     } catch (error) {
+      if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
+        return null;
+      }
       this.lastError = error instanceof Error ? error.message : String(error);
+      return null;
+    }
+
+    if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
 
@@ -419,9 +443,26 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       this.pipelineCache.delete(oldest);
     }
     const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
-    this.pipelineCache.set(captureShader, cached);
-    this.pipelineCacheOrder.push(captureShader);
+    if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
+      return null;
+    }
+    this.pipelineCache.set(pipelineCacheKey, cached);
+    this.pipelineCacheOrder.push(pipelineCacheKey);
     return cached;
+  }
+
+  private getDeclarationContextKey(context: CaptureCompileContext): string {
+    return JSON.stringify([
+      context.commonCode ?? "",
+      context.slangChannels ?? [],
+      context.slangStorage ?? [],
+    ]);
+  }
+
+  private isCompileContextCurrent(generation: number, contextKey: string): boolean {
+    return !this.disposed &&
+      generation === this.compileContextGeneration &&
+      contextKey === this.compileContextKey;
   }
 
   /**
