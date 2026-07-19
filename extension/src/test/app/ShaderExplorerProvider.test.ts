@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
+import { decodeHTMLAttribute } from 'entities';
 import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter';
@@ -157,11 +158,12 @@ suite('ShaderExplorerProvider Test Suite', () => {
   function getCsp(html: string): string {
     const meta = (html.match(/<meta(?:\s[^>]*)?>/gi) ?? []).find(tag => {
       const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
-      return httpEquiv?.toLowerCase() === 'content-security-policy';
+      return httpEquiv !== undefined
+        && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
     });
     const content = meta?.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
     assert.ok(content, 'Expected a Content-Security-Policy meta tag');
-    return content;
+    return decodeHTMLAttribute(content);
   }
 
   function getDirective(csp: string, name: string): string | undefined {
@@ -180,7 +182,11 @@ suite('ShaderExplorerProvider Test Suite', () => {
   }
 
   function countCspMetas(html: string): number {
-    return (html.match(/<meta\b[^>]*\bhttp-equiv\s*=\s*["']Content-Security-Policy["'][^>]*>/gi) ?? []).length;
+    return (html.match(/<meta(?:\s[^>]*)?>/gi) ?? []).filter(tag => {
+      const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+      return httpEquiv !== undefined
+        && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
+    }).length;
   }
 
   function getHead(html: string): string {
@@ -436,6 +442,92 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const csp = getCsp(mockWebview.html);
       assert.strictEqual(countDirectives(csp, 'script-src'), 1);
       assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('recognizes an entity-encoded http-equiv without adding a second effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content="default-src 'none'; object-src 'none'" http-equiv="Content-Security-Polic&#x79;">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'object-src'), "object-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('decodes named colon and semicolon references before updating the effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'&semi; script-src https&colon;//assets.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes('https://assets.test'));
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+    });
+
+    test('decodes decimal and hexadecimal references before updating the effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;&#59; script-src https&#x3a;//numeric.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes('https://numeric.test'));
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+    });
+
+    test('decodes permitted semicolonless references using HTML attribute rules', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /&copy report-endpoint">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'report-uri'), 'report-uri /© report-endpoint');
+    });
+
+    test('uses HTML replacement behavior for invalid and out-of-range numeric references', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /null-&#0;/out-&#x110000;/surrogate-&#xD800;">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(
+        getDirective(csp, 'report-uri'),
+        'report-uri /null-�/out-�/surrogate-�',
+      );
+    });
+
+    test('does not recursively decode an ampersand-produced character reference', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /https&amp;colon;//literal.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'report-uri'), 'report-uri /https&colon');
+      assert.strictEqual(getDirective(csp, '//literal.test'), '//literal.test');
+      assert.ok(!csp.includes('https://literal.test'));
     });
 
     test('adds a Slang-compatible CSP and escaped asset metadata when the source has no CSP', () => {

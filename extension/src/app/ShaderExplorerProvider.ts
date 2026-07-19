@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { decodeHTMLAttribute } from "entities";
 import { Logger } from "./services/Logger";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
@@ -768,7 +769,7 @@ export class ShaderExplorerProvider {
       const rawContent = tag.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
       const content = rawContent === undefined
         ? undefined
-        : this.decodeHtmlAttribute(rawContent);
+        : decodeHTMLAttribute(rawContent);
       if (content !== undefined) {
         return { tag, content, index: headBounds.start + match.index };
       }
@@ -806,7 +807,8 @@ export class ShaderExplorerProvider {
 
   private isCspMeta(tag: string): boolean {
     const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
-    return httpEquiv?.toLowerCase() === 'content-security-policy';
+    return httpEquiv !== undefined
+      && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
   }
 
   private replaceCspDirective(csp: string, directive: string, replacement: string): string {
@@ -837,34 +839,6 @@ export class ShaderExplorerProvider {
 
   private getCspDirectiveName(directive: string): string {
     return directive.split(/\s+/, 1)[0].toLowerCase();
-  }
-
-  private decodeHtmlAttribute(value: string): string {
-    return value.replace(
-      /&(#(?:x[0-9a-f]+|\d+)|amp|quot|apos|lt|gt);/gi,
-      (entity, name: string) => {
-        const normalizedName = name.toLowerCase();
-        const namedEntities: Record<string, string> = {
-          amp: '&',
-          quot: '"',
-          apos: "'",
-          lt: '<',
-          gt: '>',
-        };
-        if (normalizedName in namedEntities) {
-          return namedEntities[normalizedName];
-        }
-
-        const radix = normalizedName.startsWith('#x') ? 16 : 10;
-        const digits = normalizedName.slice(radix === 16 ? 2 : 1);
-        const codePoint = Number.parseInt(digits, radix);
-        try {
-          return String.fromCodePoint(codePoint);
-        } catch {
-          return entity;
-        }
-      },
-    );
   }
 
   private escapeHtmlAttribute(value: string): string {
