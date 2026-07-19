@@ -99,6 +99,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
+  private shaderPath = "";
   private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
   /**
    * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
@@ -352,23 +353,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
     }
+    // Captured synchronously (before any await) so concurrent calls made in
+    // the same tick still get distinct, call-order-correct generations.
+    const generation = ++this.compileGeneration;
+    if (this.shaderPath !== "" && this.shaderPath !== path) {
+      this.beginShaderSession(path);
+    }
     // WebGL parity: the config is remembered even when invalid, but an
     // invalid one fails the compile before any Slang work starts.
     this.currentConfig = config;
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
-        return {
+        return this.failedCompilation(path, generation, {
           success: false,
           errors: [`Invalid shader configuration: ${validation.errors.join(", ")}`],
-        };
+        });
       }
     }
     const startedAt = this.now();
     let readyMs = 0;
-    // Captured synchronously (before any await) so concurrent calls made in
-    // the same tick still get distinct, call-order-correct generations.
-    const generation = ++this.compileGeneration;
     this.logSlangPerf("compile requested", {
       path,
       generation,
@@ -391,7 +395,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.initError || !this.device || !this.compiler) {
       const reason = this.initError ?? this.describeUnavailableInitState();
       this.logSlangPerf("compile unavailable", { path, generation, reason });
-      return { success: false, errors: [`WebGPU init failed: ${reason}`] };
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: [`WebGPU init failed: ${reason}`],
+      });
     }
 
     if (this.reloadOnNextApply) {
@@ -421,7 +428,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors: graph.errors,
       });
-      return { success: false, errors: graph.errors, warnings: graph.warnings };
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: graph.errors,
+        warnings: graph.warnings,
+      });
     }
     for (const pass of graph.passes) {
       const resolution = this.clampResolutionToTextureLimit(pass);
@@ -576,7 +587,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors,
       });
-      return { success: false, errors, warnings: graph.warnings };
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors,
+        warnings: graph.warnings,
+      });
     }
 
     if (generation !== this.compileGeneration || this.disposed) {
@@ -622,6 +637,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
+    this.shaderPath = path;
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
@@ -651,6 +667,65 @@ export class WebGPURenderingEngine implements RenderingEngine {
       errors,
     });
     return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+  }
+
+  private failedCompilation(
+    path: string,
+    generation: number,
+    result: CompilationResult,
+  ): CompilationResult {
+    if (generation !== this.compileGeneration || this.disposed) {
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+    }
+
+    // Editing the currently installed shader is atomic: a failed edit keeps
+    // its last good pipelines. A different path represents a shader switch,
+    // so retaining those pipelines would show output from the wrong file.
+    if (this.shaderPath === path) {
+      return result;
+    }
+
+    this.beginShaderSession(path);
+    return result;
+  }
+
+  private beginShaderSession(path: string): void {
+    const hadInstalledPipeline = this.passPipelines.size > 0;
+    for (const pipeline of this.passPipelines.values()) {
+      pipeline.dispose();
+    }
+    this.passPipelines.clear();
+    this.passKeys.clear();
+    this.passGraph = [];
+    if (hadInstalledPipeline) {
+      this.resourceManager?.cleanup();
+      this.timeManager.cleanup();
+    }
+    this.shaderPath = path;
+    this.clearCanvas();
+  }
+
+  private clearCanvas(): void {
+    if (!this.device || !this.context) {
+      return;
+    }
+
+    try {
+      const encoder = this.device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.context.getCurrentTexture().createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+      });
+      pass.end();
+      this.device.queue.submit([encoder.finish()]);
+    } catch {
+      // Preserve the original compilation error if the surface is unavailable
+      // while the renderer is already failing or being replaced.
+    }
   }
 
   private logCompileTiming(

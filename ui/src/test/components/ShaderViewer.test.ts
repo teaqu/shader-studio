@@ -327,7 +327,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
       }
     }
 
-    async handleShaderMessage(event: any): Promise<{ success: boolean }> {
+    async handleShaderMessage(event: any): Promise<{ success: boolean; errors?: string[] }> {
       mockPipelineHandleShaderMessage(event);
       if (event?.data?.type === 'shaderSource' && this._shaderDebugManager) {
         this._shaderDebugManager.setShaderContext(
@@ -346,8 +346,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
         }
         this._lastEvent = event;
       }
-      this._compilationState?.setResult({ success: true });
-      return { success: true };
+      const success = !event?.data?.code?.includes('SYNTAX_ERROR');
+      const result = success ? { success: true } : { success: false, errors: ['syntax error'] };
+      this._compilationState?.setResult(result);
+      return result;
     }
 
     getLastEvent(): any {
@@ -720,6 +722,48 @@ describe('ShaderViewer', () => {
     });
     expect(mockVCMFactory._instances[0].disposed).toBe(true);
     expect(mockVCMFactory._instances[1].disposed).toBe(false);
+  });
+
+  it('should replace the canvas for failed GLSL-to-Slang and Slang-to-GLSL switches', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    const initialGlslCanvas = container.querySelector('canvas');
+    expect(initialGlslCanvas).toBeTruthy();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/test/broken.slang',
+      code: 'SYNTAX_ERROR',
+      config: { passes: { Image: {} } },
+      pathMap: { Image: '/test/broken.slang' },
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('canvas')).not.toBe(initialGlslCanvas);
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/broken.slang' }),
+      }));
+    });
+    const slangCanvas = container.querySelector('canvas');
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'glsl',
+      path: '/test/broken.glsl',
+      code: 'SYNTAX_ERROR',
+      config: { passes: { Image: {} } },
+      pathMap: { Image: '/test/broken.glsl' },
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('canvas')).not.toBe(slangCanvas);
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/broken.glsl' }),
+      }));
+    });
   });
 
   it('should apply Image Config Resolution to the session stores on shader load', async () => {
