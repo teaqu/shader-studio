@@ -1363,6 +1363,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   resetTime(): void {
     this.timeManager.cleanup();
+    this.compileGeneration++;
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      this.discardPreparedStorage(prepared);
+    }
     this.recreateStorageBuffers();
   }
 
