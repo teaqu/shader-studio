@@ -1598,7 +1598,6 @@ canvas {
 }
 
 .dropdown-content {
-  display: none;
   position: absolute;
   top: 100%;
   left: 0;
@@ -1608,10 +1607,6 @@ canvas {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   min-width: 100px;
-}
-
-.add-tab-dropdown:hover .dropdown-content {
-  display: block;
 }
 
 .dropdown-item {

@@ -657,14 +657,16 @@ describe('ConfigPanel', () => {
       const { getByRole } = renderPanel('slang');
 
       await tick();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
 
-      expect(getByRole('button', { name: /add compute/i })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
     });
 
     it('hides the add-compute affordance for GLSL', async () => {
-      const { queryByRole } = renderPanel('glsl');
+      const { getByRole, queryByRole } = renderPanel('glsl');
 
       await tick();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
 
       expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
     });
@@ -683,18 +685,19 @@ describe('ConfigPanel', () => {
       const { getByRole, queryByRole, rerender } = render(ConfigPanel, props);
 
       await tick();
-      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
-      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
 
       await rerender({ ...props, language: 'slang' });
       await tick();
-      expect(getByRole('button', { name: /add compute/i })).toBeInTheDocument();
-      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
 
       await rerender(props);
       await tick();
-      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
-      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
     });
 
     it('adds, publishes, and selects a compute pass', async () => {
@@ -706,9 +709,16 @@ describe('ConfigPanel', () => {
         },
       };
       const mockManager = createMockConfigManager([]);
-      mockManager.addComputePass.mockReturnValue('ComputeA');
       mockManager.getConfig.mockReturnValue(updatedConfig);
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(
+        (_transport: Transport, handleConfigChange: (config: ShaderConfig) => void) => {
+          mockManager.addComputePass.mockImplementation(() => {
+            handleConfigChange(updatedConfig);
+            return 'ComputeA';
+          });
+          return mockManager;
+        },
+      );
       const onConfigChange = vi.fn();
 
       const { getByRole } = render(ConfigPanel, {
@@ -724,7 +734,8 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
       await tick();
 
       expect(mockManager.addComputePass).toHaveBeenCalledOnce();
@@ -752,7 +763,8 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
       await tick();
 
       expect(mockManager.addComputePass).toHaveBeenCalledOnce();
@@ -782,7 +794,8 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
       await tick();
 
       expect(mockManager.addComputePass).toHaveBeenCalledOnce();
@@ -791,6 +804,77 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).toHaveBeenCalledOnce();
       expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
       expect(getByRole('button', { name: 'Image' })).not.toHaveClass('active');
+    });
+  });
+
+  describe('add pass menu accessibility', () => {
+    function renderSlangPanel() {
+      return render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+        },
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+    }
+
+    it('opens with ArrowDown, navigates to Compute, and closes with Escape', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveAttribute('aria-controls', 'add-pass-menu');
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+
+      trigger.focus();
+      await fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(getByRole('menu')).toBeInTheDocument();
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      const computeItem = getByRole('menuitem', { name: /add compute/i });
+      expect(bufferItem).toHaveFocus();
+
+      await fireEvent.keyDown(bufferItem, { key: 'ArrowDown' });
+      expect(computeItem).toHaveFocus();
+
+      await fireEvent.keyDown(computeItem, { key: 'Escape' });
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
+
+    it('opens on hover and closes when the pointer leaves', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      await fireEvent.mouseEnter(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('closes when clicking outside', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.click(document.body);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
   });
 

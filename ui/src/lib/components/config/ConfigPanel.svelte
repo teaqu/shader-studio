@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from "svelte";
+  import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
@@ -53,6 +53,10 @@
 
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
+  let addMenuOpen = $state(false);
+  let addMenuContainer = $state<HTMLDivElement>();
+  let addMenuTrigger = $state<HTMLButtonElement>();
+  let addMenu = $state<HTMLDivElement>();
 
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
@@ -141,10 +145,72 @@
     const computePassName = configManager.addComputePass();
     if (computePassName) {
       config = configManager.getConfig();
-      if (config) {
-        onConfigChange(config);
-      }
       switchTab(computePassName);
+    }
+  }
+
+  function closeAddMenu() {
+    addMenuOpen = false;
+  }
+
+  async function closeAddMenuAndRestoreFocus() {
+    closeAddMenu();
+    await tick();
+    addMenuTrigger?.focus();
+  }
+
+  function runAddMenuAction(action: () => void) {
+    action();
+    closeAddMenu();
+  }
+
+  async function handleAddMenuKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && addMenuOpen) {
+      event.preventDefault();
+      await closeAddMenuAndRestoreFocus();
+      return;
+    }
+
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+
+    event.preventDefault();
+    if (!addMenuOpen) {
+      addMenuOpen = true;
+      await tick();
+    }
+
+    const items = Array.from(addMenu?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? []);
+    if (items.length === 0) {
+      return;
+    }
+
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = currentIndex === -1
+      ? (direction === 1 ? 0 : items.length - 1)
+      : (currentIndex + direction + items.length) % items.length;
+    items[nextIndex].focus();
+  }
+
+  function handleAddMenuMouseLeave() {
+    if (!addMenuContainer?.contains(document.activeElement)) {
+      closeAddMenu();
+    }
+  }
+
+  function handleAddMenuFocusOut(event: FocusEvent) {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node) || !addMenuContainer?.contains(nextTarget)) {
+      closeAddMenu();
+    }
+  }
+
+  function handleWindowClick(event: MouseEvent) {
+    const target = event.target;
+    if (addMenuOpen && target instanceof Node && !addMenuContainer?.contains(target)) {
+      closeAddMenu();
     }
   }
 
@@ -300,6 +366,8 @@
   });
 </script>
 
+<svelte:window onclick={handleWindowClick} />
+
 <div class="config-panel" class:visible={isVisible}>
   <div class="config-content">
     <!-- Tab Navigation - Always visible -->
@@ -334,24 +402,50 @@
         </button>
       {/each}
 
-      <div class="add-tab-dropdown">
-        <button class="add-tab-btn" title="Add new pass">+ New</button>
-        <div class="dropdown-content">
-          <button class="dropdown-item" onclick={() => addBuffer()}>Buffer</button>
-          {#if language === "slang"}
-            <button
-              class="dropdown-item"
-              aria-label="Add compute pass"
-              onclick={() => addComputePass()}
-            >+ Compute</button>
-          {/if}
-          {#if !config?.passes?.common}
-            <button class="dropdown-item" onclick={() => addCommonBuffer()}>Common</button>
-          {/if}
-          {#if !(config && config.script !== undefined)}
-            <button class="dropdown-item" onclick={() => addScript()}>Script</button>
-          {/if}
-        </div>
+      <div
+        class="add-tab-dropdown"
+        role="toolbar"
+        aria-label="Add pass"
+        tabindex="-1"
+        bind:this={addMenuContainer}
+        onmouseenter={() => addMenuOpen = true}
+        onmouseleave={handleAddMenuMouseLeave}
+        onfocusout={handleAddMenuFocusOut}
+        onkeydown={handleAddMenuKeydown}
+      >
+        <button
+          class="add-tab-btn"
+          title="Add new pass"
+          aria-haspopup="menu"
+          aria-expanded={addMenuOpen}
+          aria-controls="add-pass-menu"
+          bind:this={addMenuTrigger}
+          onclick={() => addMenuOpen = true}
+        >+ New</button>
+        {#if addMenuOpen}
+          <div
+            class="dropdown-content"
+            id="add-pass-menu"
+            role="menu"
+            bind:this={addMenu}
+          >
+            <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
+            {#if language === "slang"}
+              <button
+                class="dropdown-item"
+                role="menuitem"
+                aria-label="Add compute pass"
+                onclick={() => runAddMenuAction(addComputePass)}
+              >+ Compute</button>
+            {/if}
+            {#if !config?.passes?.common}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCommonBuffer)}>Common</button>
+            {/if}
+            {#if !(config && config.script !== undefined)}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addScript)}>Script</button>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
 
