@@ -49,6 +49,7 @@ function fakeDevice(
     linePos: number;
     message: string;
   }> = [],
+  getCompilationInfo?: ReturnType<typeof vi.fn>,
 ): FakeDevice {
   let bufferId = 0;
   let textureId = 0;
@@ -56,7 +57,7 @@ function fakeDevice(
   return {
     createShaderModule: vi.fn(() => ({
       label: "shader-module",
-      getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
+      getCompilationInfo: getCompilationInfo ?? vi.fn(async () => ({ messages: compilationMessages })),
     })),
     createComputePipeline: vi.fn(() => pipeline),
     createBindGroupLayout: vi.fn(() => ({ label: "bind-group-layout" })),
@@ -644,6 +645,71 @@ describe("SlangComputePipeline", () => {
     expect(compute.getUniformBuffer()).toBe(currentUniform);
     expect(device.createBuffer).toHaveBeenCalledTimes(2);
     expect(device.createTexture).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores stale diagnostics when a newer rebuild completes during compilation info", async () => {
+    const firstCompilationInfo = deferred<{
+      messages: Array<{ type: string; lineNum: number; linePos: number; message: string }>;
+    }>();
+    const getCompilationInfo = vi.fn()
+      .mockReturnValueOnce(firstCompilationInfo.promise)
+      .mockResolvedValueOnce({ messages: [] });
+    const device = fakeDevice([], getCompilationInfo);
+    const compute = new SlangComputePipeline(device, descriptor());
+
+    const firstRebuild = compute.rebuild("// first");
+    const secondRebuild = compute.rebuild("// second");
+    expect(await secondRebuild).toEqual([]);
+    const currentPipeline = compute.getPipeline();
+    const currentUniform = compute.getUniformBuffer();
+    const currentOutput = compute.getCurrentOutputView() as unknown as FakeTextureView;
+
+    firstCompilationInfo.resolve({
+      messages: [{
+        type: "error",
+        lineNum: 4,
+        linePos: 2,
+        message: "obsolete diagnostic",
+      }],
+    });
+
+    expect(await firstRebuild).toEqual([]);
+    expect(compute.getPipeline()).toBe(currentPipeline);
+    expect(compute.getUniformBuffer()).toBe(currentUniform);
+    expect((compute.getCurrentOutputView() as unknown as FakeTextureView).textureId)
+      .toBe(currentOutput.textureId);
+  });
+
+  it("ignores stale diagnostics when disposed during compilation info", async () => {
+    const compilationInfo = deferred<{
+      messages: Array<{ type: string; lineNum: number; linePos: number; message: string }>;
+    }>();
+    const device = fakeDevice([], vi.fn(() => compilationInfo.promise));
+    const compute = new SlangComputePipeline(device, descriptor());
+
+    const rebuilding = compute.rebuild("// pending diagnostics");
+    const buffers = device.createBuffer.mock.results.map((result) => result.value as FakeBuffer);
+    const textures = device.createTexture.mock.results.map((result) => result.value as FakeTexture);
+    compute.dispose();
+    compilationInfo.resolve({
+      messages: [{
+        type: "error",
+        lineNum: 6,
+        linePos: 3,
+        message: "disposed diagnostic",
+      }],
+    });
+
+    expect(await rebuilding).toEqual([]);
+    expect(compute.getPipeline()).toBeNull();
+    expect(compute.getUniformBuffer()).toBeNull();
+    expect(compute.getCurrentOutputView()).toBeNull();
+    for (const buffer of buffers) {
+      expect(buffer.destroy).toHaveBeenCalledTimes(1);
+    }
+    for (const texture of textures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("dispose is idempotent and clears every public resource getter", async () => {

@@ -94,6 +94,9 @@ export class SlangComputePipeline {
     }
 
     const info = await shaderModule.getCompilationInfo?.();
+    if (generation !== this.rebuildGeneration) {
+      return [];
+    }
     return (info?.messages ?? [])
       .filter((message) => message.type === "error")
       .map((message) => `${this.descriptor.name}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
