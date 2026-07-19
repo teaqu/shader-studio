@@ -683,6 +683,21 @@ describe("Slang compute passes", () => {
     expect(graph.passes.find(({ name }) => name === "ComputeLate")?.output).toBe("texture");
   });
 
+  it("keeps compute output disabled when its only raw reference is an ignored input", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { ignored: { type: "buffer", source: "ComputeSim" } } },
+        ComputeSim: { path: "compute.slang" },
+      },
+    };
+
+    const graph = build(config, { ComputeSim: imageCode });
+
+    expect(graph.warnings).toContain('Image: ignoring non-iChannel input "ignored"');
+    expect(graph.passes.find(({ name }) => name === "ComputeSim")?.output).toBe("none");
+  });
+
   it.each([
     [undefined, { mode: "texel" }, [8, 8, 1]],
     [{ count: 1024 }, { mode: "count", count: 1024 }, [64, 1, 1]],
@@ -708,6 +723,24 @@ describe("Slang compute passes", () => {
       dispatch: expectedDispatch,
       workgroupSize: expectedWorkgroupSize,
     });
+  });
+
+  it("rejects dispatch cover for an input ignored during channel resolution", () => {
+    const graph = build({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        ComputeMain: {
+          path: "compute.slang",
+          inputs: { foo: { type: "texture", path: "input.png" } },
+          dispatch: { cover: "foo" },
+        },
+      },
+    }, { ComputeMain: imageCode });
+
+    expect(graph.warnings).toContain('ComputeMain: ignoring non-iChannel input "foo"');
+    expect(graph.errors).toContain('ComputeMain: dispatch cover target "foo" was not found');
+    expect(graph.passes[0]).toMatchObject({ dispatch: { mode: "texel" }, channels: [] });
   });
 
   it("uses a valid workgroup override and propagates dispatch repeat settings", () => {
@@ -803,6 +836,21 @@ describe("Slang compute passes", () => {
 
     expect(graph.errors.some((error) => error.includes("dispatchOnce") && error.includes("dispatchCount"))).toBe(true);
     expect(graph.passes[0]).toMatchObject({ dispatchOnce: true, dispatchCount: 2 });
+  });
+
+  it.each([null, "true", 1])("reports invalid dispatchOnce %j and falls back to false", (dispatchOnce) => {
+    const config = {
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        ComputeMain: { path: "compute.slang", dispatchOnce },
+      },
+    } as unknown as ShaderConfig;
+
+    const graph = build(config, { ComputeMain: imageCode });
+
+    expect(graph.errors).toContain("ComputeMain: dispatchOnce must be a boolean");
+    expect(graph.passes[0].dispatchOnce).toBe(false);
   });
 
   it.each([0, 1.5, 9])("reports invalid outputLayers %s and falls back to one", (outputLayers) => {

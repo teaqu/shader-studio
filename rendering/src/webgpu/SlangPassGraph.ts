@@ -77,7 +77,6 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .filter(([name, passConfig]) => !SPECIAL_PASS_NAMES.has(name) && passConfig !== undefined)
       .map(([name]) => name),
   );
-  const sampledBufferSources = collectSampledBufferSources(passEntries);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors);
   const storage = resolveStorage(config.storage, warnings, errors);
   const storageNames = new Set(storage.map(({ name }) => name));
@@ -116,10 +115,10 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
 
     if (isComputePassName(name)) {
       const computeConfig = passConfig as ComputePass;
-      const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, new Set(Object.keys(inputs)), errors);
+      const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
       const dispatchCount = resolveDispatchCount(name, computeConfig.dispatchCount, errors);
-      const dispatchOnce = computeConfig.dispatchOnce === true;
+      const dispatchOnce = resolveDispatchOnce(name, computeConfig.dispatchOnce, errors);
       if (dispatchOnce && dispatchCount > 1) {
         errors.push(`${name}: dispatchOnce cannot be combined with dispatchCount greater than 1`);
       }
@@ -129,7 +128,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         source,
         path,
         kind: "compute",
-        output: sampledBufferSources.has(name) ? "texture" : "none",
+        output: "none",
         outputLayers: outputLayersByPass.get(name) ?? 1,
         dispatch,
         dispatchCount,
@@ -169,6 +168,12 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   });
   const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels);
   const passes = [...computePasses, ...renderPasses, imagePass];
+  const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
+    .filter((channel) => channel.kind === "buffer")
+    .map((channel) => channel.source)));
+  for (const pass of computePasses) {
+    pass.output = sampledBufferSources.has(pass.name) ? "texture" : "none";
+  }
   assignChannelReadTiming(passes);
 
   return { passes, storage, commonCode, warnings, errors };
@@ -193,20 +198,6 @@ function createImagePass(
     height,
     channels,
   };
-}
-
-function collectSampledBufferSources(
-  passEntries: [string, ShaderConfig["passes"][string]][],
-): Set<string> {
-  const sampledSources = new Set<string>();
-  for (const [, passConfig] of passEntries) {
-    for (const input of Object.values(passConfig?.inputs ?? {})) {
-      if (input?.type === "buffer") {
-        sampledSources.add(input.source);
-      }
-    }
-  }
-  return sampledSources;
 }
 
 function resolveOutputLayersByPass(
@@ -289,7 +280,7 @@ function resolveDispatch(
   passName: string,
   dispatch: unknown,
   storageNames: Set<string>,
-  channelKeys: Set<string>,
+  channels: RenderPassChannel[],
   errors: string[],
 ): DispatchSpec {
   if (dispatch === undefined) {
@@ -321,7 +312,7 @@ function resolveDispatch(
     if (typeof dispatch.cover === "string" && storageNames.has(dispatch.cover)) {
       return { mode: "cover-storage", name: dispatch.cover };
     }
-    if (typeof dispatch.cover === "string" && channelKeys.has(dispatch.cover)) {
+    if (typeof dispatch.cover === "string" && channels.some(({ key }) => key === dispatch.cover)) {
       return { mode: "cover-channel", key: dispatch.cover };
     }
     errors.push(`${passName}: dispatch cover target "${String(dispatch.cover)}" was not found`);
@@ -341,6 +332,17 @@ function resolveDispatchCount(passName: string, dispatchCount: unknown, errors: 
   }
   errors.push(`${passName}: dispatchCount must be a positive integer`);
   return 1;
+}
+
+function resolveDispatchOnce(passName: string, dispatchOnce: unknown, errors: string[]): boolean {
+  if (dispatchOnce === undefined) {
+    return false;
+  }
+  if (typeof dispatchOnce === "boolean") {
+    return dispatchOnce;
+  }
+  errors.push(`${passName}: dispatchOnce must be a boolean`);
+  return false;
 }
 
 function resolveWorkgroupSize(
