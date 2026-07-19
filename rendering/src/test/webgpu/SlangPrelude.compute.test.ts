@@ -4,6 +4,7 @@ import {
   DISPATCH_UNIFORM_SIZE,
   SLANG_ENTRY_COMPUTE,
   wrapSlangComputeSource,
+  wrapSlangImageSource,
 } from "../../webgpu/SlangPrelude";
 
 const builtinStorage: StorageBindingNode = {
@@ -60,7 +61,9 @@ describe("wrapSlangComputeSource", () => {
     expect(wrapped).toContain("[[vk::binding(4, 0)]]\nSamplerState iChannel2Sampler;");
     expect(wrapped).toContain("[[vk::binding(5, 0)]]\nRWStructuredBuffer<float4> positions;");
     expect(wrapped).toContain("[[vk::binding(6, 0)]]\nRWStructuredBuffer<Particle> particles;");
-    expect(wrapped).toContain("[[vk::binding(7, 0)]]\nRWTexture2D<float4> _outTex;");
+    expect(wrapped).toContain(
+      '[[vk::binding(7, 0)]]\n[[vk::image_format("rgba16f")]]\nWTexture2D<float4> _outTex;',
+    );
     expect(wrapped).toContain("[[vk::binding(8, 0)]]\nConstantBuffer<DispatchUniforms> _dsp;");
   });
 
@@ -73,7 +76,9 @@ describe("wrapSlangComputeSource", () => {
     });
 
     expect(wrapped).toContain("[[vk::binding(1, 0)]]\nRWStructuredBuffer<float4> positions;");
-    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nRWTexture2D<float4> _outTex;");
+    expect(wrapped).toContain(
+      '[[vk::binding(2, 0)]]\n[[vk::image_format("rgba16f")]]\nWTexture2D<float4> _outTex;',
+    );
     expect(wrapped).toContain("[[vk::binding(3, 0)]]\nConstantBuffer<DispatchUniforms> _dsp;");
   });
 
@@ -85,9 +90,10 @@ describe("wrapSlangComputeSource", () => {
     });
 
     expect(DISPATCH_UNIFORM_SIZE).toBe(16);
-    expect(wrapped).toContain("int dispatchIndex;");
-    expect(wrapped).toContain("int3 _dspPad;");
-    expect(wrapped).toContain("#define iDispatch (_dsp.dispatchIndex)");
+    expect(wrapped).toContain("int4 dispatch;");
+    expect(wrapped).toContain("#define iDispatch (_dsp.dispatch.x)");
+    expect(wrapped).not.toContain("int dispatchIndex;");
+    expect(wrapped).not.toContain("int3 _dspPad;");
   });
 
   it("does not declare writeOutput or an output texture when output is disabled", () => {
@@ -109,11 +115,14 @@ describe("wrapSlangComputeSource", () => {
       hasOutput: true,
     });
 
-    expect(wrapped).toContain("RWTexture2D<float4> _outTex;");
+    expect(wrapped).toContain('[[vk::image_format("rgba16f")]]');
+    expect(wrapped).toContain("WTexture2D<float4> _outTex;");
+    expect(wrapped).not.toContain("RWTexture2D");
     expect(wrapped).toContain("void writeOutput(uint2 coord, float4 color)");
     expect(wrapped).toContain("_outTex.GetDimensions(w, h);");
     expect(wrapped).toContain("if (coord.x >= w || coord.y >= h)");
-    expect(wrapped).toContain("_outTex[uint2(coord.x, h - 1 - coord.y)] = color;");
+    expect(wrapped).toContain("_outTex.Store(uint2(coord.x, h - 1 - coord.y), color);");
+    expect(wrapped).not.toContain("_outTex[uint2");
   });
 
   it("emits a Y-flipped, bounds-checked array output helper", () => {
@@ -123,11 +132,16 @@ describe("wrapSlangComputeSource", () => {
       hasOutput: true,
     });
 
-    expect(wrapped).toContain("RWTexture2DArray<float4> _outTex;");
+    expect(wrapped).toContain('[[vk::image_format("rgba16f")]]');
+    expect(wrapped).toContain("WTexture2DArray<float4> _outTex;");
+    expect(wrapped).not.toContain("RWTexture2DArray");
     expect(wrapped).toContain("void writeOutput(uint2 coord, uint layer, float4 color)");
     expect(wrapped).toContain("_outTex.GetDimensions(w, h, layers);");
     expect(wrapped).toContain("if (coord.x >= w || coord.y >= h || layer >= layers)");
-    expect(wrapped).toContain("_outTex[uint3(coord.x, h - 1 - coord.y, layer)] = color;");
+    expect(wrapped).toContain(
+      "_outTex.Store(uint3(coord.x, h - 1 - coord.y, layer), color);",
+    );
+    expect(wrapped).not.toContain("_outTex[uint3");
   });
 
   it("keeps built-in storage before common code and custom storage after it", () => {
@@ -145,6 +159,53 @@ describe("wrapSlangComputeSource", () => {
     expect(wrapped.indexOf("struct Particle")).toBeLessThan(
       wrapped.indexOf("RWStructuredBuffer<Particle> particles;"),
     );
+  });
+
+  it("uses explicit LOD for 2D texture and buffer channels in compute helpers", () => {
+    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+      channels: [
+        { slot: 1, key: "bufferChannel", kind: "buffer" },
+        { slot: 0, key: "textureChannel", kind: "texture" },
+      ],
+      workgroupSize: [1, 1, 1],
+      outputLayers: 0,
+      hasOutput: false,
+    });
+
+    expect(wrapped).toContain(
+      "textureChannel.SampleLevel(textureChannelSampler, float2(uv.x, 1.0 - uv.y), 0.0)",
+    );
+    expect(wrapped).toContain(
+      "bufferChannel.SampleLevel(bufferChannelSampler, float2(uv.x, 1.0 - uv.y), 0.0)",
+    );
+    expect(wrapped).not.toContain(".Sample(");
+  });
+
+  it("uses explicit LOD for cubemap channels in compute helpers", () => {
+    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+      channels: [{ slot: 0, key: "cubeChannel", kind: "cubemap" }],
+      workgroupSize: [1, 1, 1],
+      outputLayers: 0,
+      hasOutput: false,
+    });
+
+    expect(wrapped).toContain("cubeChannel.SampleLevel(cubeChannelSampler, dir, 0.0)");
+    expect(wrapped).not.toContain(".Sample(");
+  });
+
+  it("retains implicit sampling in fragment channel helpers", () => {
+    const wrapped = wrapSlangImageSource("float4 mainImage(float2 c) { return float4(0); }", {
+      channels: [
+        { slot: 0, key: "textureChannel", kind: "texture" },
+        { slot: 1, key: "cubeChannel", kind: "cubemap" },
+      ],
+    });
+
+    expect(wrapped).toContain(
+      "textureChannel.Sample(textureChannelSampler, float2(uv.x, 1.0 - uv.y))",
+    );
+    expect(wrapped).toContain("cubeChannel.Sample(cubeChannelSampler, dir)");
+    expect(wrapped).not.toContain(".SampleLevel(");
   });
 
   it("puts #line directly above user source and the entry point after it", () => {

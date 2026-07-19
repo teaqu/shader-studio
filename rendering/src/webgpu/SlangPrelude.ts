@@ -158,7 +158,10 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 }
 `;
 
-function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
+function buildChannelPrelude(
+  channels: SlangChannelBinding[] = [],
+  stage: "fragment" | "compute" = "fragment",
+): string {
   return [...channels]
     .sort((a, b) => a.slot - b.slot)
     .map((channel, index) => {
@@ -169,6 +172,8 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      const sampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
+      const explicitLod = stage === "compute" ? ", 0.0" : "";
       if (channel.kind === "cubemap") {
         return `[[vk::binding(${textureBinding}, 0)]]
 TextureCube<float4> ${channel.key};
@@ -176,7 +181,7 @@ TextureCube<float4> ${channel.key};
 SamplerState ${channel.key}Sampler;
 float4 ${helperName}(float3 dir)
 {
-    return ${channel.key}.Sample(${channel.key}Sampler, dir);
+    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, dir${explicitLod});
 }
 `;
       }
@@ -189,7 +194,7 @@ float4 ${helperName}(float2 uv)
     // uv comes from the Y-flipped fragCoord (bottom-left origin, GL-style),
     // but WebGPU textures put v=0 at the top row, so flip v back to sample
     // the texel the caller expects.
-    return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
+    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y)${explicitLod});
 }
 `;
     })
@@ -238,7 +243,8 @@ function buildOutputPrelude(binding: number, outputLayers: number): string {
   if (outputLayers > 1) {
     return `// ---- shader-studio Slang compute output (generated) ----
 [[vk::binding(${binding}, 0)]]
-RWTexture2DArray<float4> _outTex;
+[[vk::image_format("rgba16f")]]
+WTexture2DArray<float4> _outTex;
 
 void writeOutput(uint2 coord, uint layer, float4 color)
 {
@@ -250,14 +256,15 @@ void writeOutput(uint2 coord, uint layer, float4 color)
     {
         return;
     }
-    _outTex[uint3(coord.x, h - 1 - coord.y, layer)] = color;
+    _outTex.Store(uint3(coord.x, h - 1 - coord.y, layer), color);
 }
 `;
   }
 
   return `// ---- shader-studio Slang compute output (generated) ----
 [[vk::binding(${binding}, 0)]]
-RWTexture2D<float4> _outTex;
+[[vk::image_format("rgba16f")]]
+WTexture2D<float4> _outTex;
 
 void writeOutput(uint2 coord, float4 color)
 {
@@ -268,7 +275,7 @@ void writeOutput(uint2 coord, float4 color)
     {
         return;
     }
-    _outTex[uint2(coord.x, h - 1 - coord.y)] = color;
+    _outTex.Store(uint2(coord.x, h - 1 - coord.y), color);
 }
 `;
 }
@@ -276,14 +283,13 @@ void writeOutput(uint2 coord, float4 color)
 function buildDispatchPrelude(binding: number): string {
   return `struct DispatchUniforms
 {
-    int dispatchIndex;
-    int3 _dspPad;
+    int4 dispatch;
 };
 
 [[vk::binding(${binding}, 0)]]
 ConstantBuffer<DispatchUniforms> _dsp;
 
-#define iDispatch (_dsp.dispatchIndex)
+#define iDispatch (_dsp.dispatch.x)
 `;
 }
 
@@ -303,7 +309,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const channels = options.channels ?? [];
   const storage = options.storage ?? [];
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
-  const channelPrelude = buildChannelPrelude(channels);
+  const channelPrelude = buildChannelPrelude(channels, "compute");
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
   const outputBinding = 1 + channels.length * 2 + storage.length;
   const outputPrelude = options.hasOutput
