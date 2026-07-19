@@ -5,7 +5,11 @@ import type {
   SlangCompileTarget,
   SlangVectorLike,
 } from "../../webgpu/slangTypes";
-import { SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT } from "../../webgpu/SlangPrelude";
+import {
+  SLANG_ENTRY_VERTEX,
+  SLANG_ENTRY_FRAGMENT,
+  SLANG_ENTRY_COMPUTE,
+} from "../../webgpu/SlangPrelude";
 
 /** Build a fake slang module whose pieces can be selectively broken. */
 function makeFakeSlang(opts: {
@@ -19,6 +23,8 @@ function makeFakeSlang(opts: {
   wgsl?: string;
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
+  onFindEntryPoint?: (name: string) => void;
+  onComposite?: (components: unknown[]) => void;
 } = {}): SlangModuleApi {
   const wgsl = opts.wgsl ?? "// wgsl output";
   const linked = {
@@ -30,8 +36,10 @@ function makeFakeSlang(opts: {
     getTargetCode: () => wgsl,
   };
   const module = {
-    findEntryPointByName: (name: string) =>
-      opts.missingEntryPoint === name ? null : { name },
+    findEntryPointByName: (name: string) => {
+      opts.onFindEntryPoint?.(name);
+      return opts.missingEntryPoint === name ? null : { name };
+    },
     link: () => null,
     getTargetCode: () => "",
   };
@@ -40,7 +48,10 @@ function makeFakeSlang(opts: {
       opts.onLoad?.(source, name, path);
       return opts.moduleNull ? null : module;
     },
-    createCompositeComponentType: () => (opts.compositeNull ? null : composite),
+    createCompositeComponentType: (components: unknown[]) => {
+      opts.onComposite?.(components);
+      return opts.compositeNull ? null : composite;
+    },
   };
   const globalSession = {
     createSession: () => (opts.sessionNull ? null : session),
@@ -74,6 +85,109 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain(SLANG_ENTRY_VERTEX);
     expect(wrapped).toContain(SLANG_ENTRY_FRAGMENT);
     expect(wrapped).toContain("mainImage");
+  });
+
+  it("wraps compute source and links only the compute entry point", () => {
+    const onLoad = vi.fn();
+    const onFindEntryPoint = vi.fn();
+    const onComposite = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onLoad,
+      onFindEntryPoint,
+      onComposite,
+    }));
+
+    const result = compiler.compileImagePass(
+      "void computeMain(uint3 tid) { writeOutput(tid.xy, float4(1)); }",
+      {
+        passName: "ComputeSim",
+        passKind: "compute",
+        commonCode: "struct Particle { float4 position; };",
+        channels: [{ slot: 2, key: "iChannel2", kind: "buffer" }],
+        storage: [{
+          name: "particles",
+          binding: 0,
+          elementType: "Particle",
+          builtin: false,
+          count: 32,
+          stride: 16,
+        }],
+        workgroupSize: [4, 2, 1],
+        outputLayers: 3,
+        hasOutput: true,
+      },
+    );
+
+    expect(result).toEqual({ success: true, wgsl: "// wgsl output" });
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain(`[shader("compute")]`);
+    expect(wrapped).toContain(`[numthreads(4, 2, 1)]`);
+    expect(wrapped).toContain(`void ${SLANG_ENTRY_COMPUTE}`);
+    expect(wrapped).toContain("Texture2D<float4> iChannel2;");
+    expect(wrapped).toContain("RWStructuredBuffer<Particle> particles;");
+    expect(wrapped).toContain("WTexture2DArray<float4> _outTex;");
+    expect(wrapped).toContain("#define iDispatch");
+    expect(wrapped).not.toContain(SLANG_ENTRY_VERTEX);
+    expect(wrapped).not.toContain(SLANG_ENTRY_FRAGMENT);
+    expect(onFindEntryPoint).toHaveBeenCalledTimes(1);
+    expect(onFindEntryPoint).toHaveBeenCalledWith(SLANG_ENTRY_COMPUTE);
+    expect(onComposite.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it("uses compute wrapper defaults and emits no output when hasOutput is false", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("void computeMain(uint3 tid) {}", {
+      passKind: "compute",
+      hasOutput: false,
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[numthreads(8, 8, 1)]");
+    expect(wrapped).not.toContain("_outTex");
+  });
+
+  it("reports a compute-specific error when the compute entry point is missing", () => {
+    const compiler = new SlangCompiler(
+      makeFakeSlang({ missingEntryPoint: SLANG_ENTRY_COMPUTE }),
+    );
+
+    const result = compiler.compileImagePass("void computeMain(uint3 tid) {}", {
+      passKind: "compute",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Slang: compute entry point not found (is `computeMain` defined?)"],
+    });
+  });
+
+  it("passes storage to the render wrapper and retains vertex plus fragment entry points", () => {
+    const onLoad = vi.fn();
+    const onFindEntryPoint = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad, onFindEntryPoint }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return particles[0]; }", {
+      passKind: "render",
+      storage: [{
+        name: "particles",
+        binding: 0,
+        elementType: "float4",
+        builtin: true,
+        count: 1,
+        stride: 16,
+      }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("StructuredBuffer<float4> particles;");
+    expect(wrapped).toContain(SLANG_ENTRY_VERTEX);
+    expect(wrapped).toContain(SLANG_ENTRY_FRAGMENT);
+    expect(onFindEntryPoint.mock.calls.map(([name]) => name)).toEqual([
+      SLANG_ENTRY_VERTEX,
+      SLANG_ENTRY_FRAGMENT,
+    ]);
   });
 
   it("caches the global session across compiles", () => {

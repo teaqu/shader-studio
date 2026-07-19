@@ -1,23 +1,25 @@
 import {
   type SlangModuleApi,
   type SlangGlobalSession,
+  type SlangCompileOptions,
   slangVectorToArray,
 } from "./slangTypes";
 import {
+  wrapSlangComputeSource,
   wrapSlangImageSource,
+  SLANG_ENTRY_COMPUTE,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
-  type SlangWrapOptions,
 } from "./SlangPrelude";
 
 export type SlangCompileResult =
   | { success: true; wgsl: string }
   | { success: false; errors: string[] };
 
-export type SlangCompileOptions = SlangWrapOptions;
+export type { SlangCompileOptions } from "./slangTypes";
 
 /**
- * Compiles user `.slang` image-shader source to WGSL via slang-wasm.
+ * Compiles user `.slang` render or compute source to WGSL via slang-wasm.
  *
  * The expensive global session (loads the Slang stdlib) is created once and
  * cached. A fresh per-compile session avoids module-name collisions across
@@ -29,7 +31,7 @@ export class SlangCompiler {
 
   constructor(private slang: SlangModuleApi) {}
 
-  /** Compile a single image pass. Never throws — failures come back as errors. */
+  /** Compile one pass. Never throws — failures come back as errors. */
   public compileImagePass(
     userSource: string,
     options: SlangCompileOptions = {},
@@ -47,7 +49,25 @@ export class SlangCompiler {
       return { success: false, errors: [this.lastError("Slang: failed to create session")] };
     }
 
-    const wrapped = wrapSlangImageSource(userSource, options);
+    const isCompute = options.passKind === "compute";
+    const wrapped = isCompute
+      ? wrapSlangComputeSource(userSource, {
+        passName: options.passName,
+        commonCode: options.commonCode,
+        channels: options.channels,
+        storage: options.storage,
+        workgroupSize: options.workgroupSize ?? [8, 8, 1],
+        outputLayers: options.outputLayers ?? 1,
+        hasOutput: options.hasOutput === true,
+      })
+      : wrapSlangImageSource(userSource, {
+        passName: options.passName,
+        commonCode: options.commonCode,
+        channels: options.channels,
+        storage: options.storage,
+        passKind: options.passKind ?? "render",
+        captureMode: options.captureMode,
+      });
     // Name the module after the pass so Slang diagnostics cite the right
     // file (e.g. /buffera.slang) rather than always claiming /image.slang.
     const moduleName = (options.passName ?? "image").toLowerCase();
@@ -56,16 +76,20 @@ export class SlangCompiler {
       return { success: false, errors: [this.lastError("Slang: failed to compile module")] };
     }
 
-    const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
-    const fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
-    if (!vs || !fs) {
+    const entryPointNames = isCompute
+      ? [SLANG_ENTRY_COMPUTE]
+      : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
+    const entryPoints = entryPointNames.map((name) => module.findEntryPointByName(name));
+    if (entryPoints.some((entryPoint) => !entryPoint)) {
       return {
         success: false,
-        errors: ["Slang: entry points not found (is `mainImage` defined?)"],
+        errors: [isCompute
+          ? "Slang: compute entry point not found (is `computeMain` defined?)"
+          : "Slang: entry points not found (is `mainImage` defined?)"],
       };
     }
 
-    const composite = session.createCompositeComponentType([module, vs, fs]);
+    const composite = session.createCompositeComponentType([module, ...entryPoints]);
     if (!composite) {
       return { success: false, errors: [this.lastError("Slang: failed to compose program")] };
     }

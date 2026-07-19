@@ -21,6 +21,7 @@ import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
+import { SlangComputePipeline } from "./SlangComputePipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
@@ -60,7 +61,7 @@ interface PreparedStorageBuffers {
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
-const SLANG_WGSL_CACHE_KEY_VERSION = 1;
+const SLANG_WGSL_CACHE_KEY_VERSION = 2;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
@@ -111,6 +112,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
+  private computePipelines = new Map<string, SlangComputePipeline>();
+  private computeKeys = new Map<string, string>();
   private storageBuffers = new Map<string, GPUBuffer>();
   private storageKeys = new Map<string, string>();
   private storageLayouts = new Map<string, StorageBindingNode>();
@@ -534,21 +537,31 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       const nextPipelines = new Map<string, SlangPassPipeline>();
       const nextKeys = new Map<string, string>();
+      const nextComputePipelines = new Map<string, SlangComputePipeline>();
+      const nextComputeKeys = new Map<string, string>();
       const passTimings: PassTiming[] = [];
       const errors: string[] = [];
       for (const pass of graph.passes) {
-        if (pass.kind !== "render" || pass.output === "none") {
-          continue;
-        }
         const passStartedAt = this.now();
-        const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
-        const existing = this.passPipelines.get(pass.name);
-        if (existing && this.passKeys.get(pass.name) === key) {
+        const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode, graph.storage);
+        const isCompute = pass.kind === "compute";
+        const existing = isCompute
+          ? this.computePipelines.get(pass.name)
+          : this.passPipelines.get(pass.name);
+        const existingKey = isCompute
+          ? this.computeKeys.get(pass.name)
+          : this.passKeys.get(pass.name);
+        if (existing && existingKey === key) {
           // Unchanged pass: carry the live pipeline into the next generation.
           // Resize (if the canvas changed) is deferred to the success block so
           // this loop stays mutation-free while a later pass can still fail.
-          nextPipelines.set(pass.name, existing);
-          nextKeys.set(pass.name, key);
+          if (isCompute) {
+            nextComputePipelines.set(pass.name, existing as SlangComputePipeline);
+            nextComputeKeys.set(pass.name, key);
+          } else {
+            nextPipelines.set(pass.name, existing as SlangPassPipeline);
+            nextKeys.set(pass.name, key);
+          }
           passTimings.push({
             name: pass.name,
             cacheHit: true,
@@ -556,25 +569,34 @@ export class WebGPURenderingEngine implements RenderingEngine {
           });
           continue;
         }
-        let pipeline: SlangPassPipeline | undefined;
+        let pipeline: SlangPassPipeline | SlangComputePipeline | undefined;
         try {
           let wgsl = sharedSlangWgslCache.get(key);
           const wgslCacheHit = wgsl !== null;
           let slangMs = 0;
+          const channels = [...pass.channels]
+            .sort((a, b) => a.slot - b.slot)
+            .map((channel) => ({
+              slot: channel.slot,
+              key: channel.key,
+              kind: channel.kind,
+            }));
           if (!wgsl) {
             const slangStartedAt = this.now();
             const compiled = await this.compiler.compile(pass.source, {
               passName: pass.name,
               commonCode: graph.commonCode,
-              channels: pass.channels.map((channel) => ({
-                slot: channel.slot,
-                key: channel.key,
-                kind: channel.kind,
-              })),
+              channels,
+              storage: graph.storage,
+              passKind: pass.kind,
+              workgroupSize: pass.workgroupSize,
+              outputLayers: pass.outputLayers,
+              hasOutput: pass.output === "texture",
             });
             slangMs = this.now() - slangStartedAt;
             if (!compiled.success) {
-              errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+              errors.push(...compiled.errors.map((error) =>
+                WebGPURenderingEngine.prefixPassError(pass.name, error)));
               passTimings.push({
                 name: pass.name,
                 cacheHit: false,
@@ -588,17 +610,25 @@ export class WebGPURenderingEngine implements RenderingEngine {
             wgsl = compiled.wgsl;
             sharedSlangWgslCache.set(key, wgsl);
           }
-          pipeline = new SlangPassPipeline(this.device, this.format, {
-            name: pass.name,
-            width: pass.width,
-            height: pass.height,
-            output: pass.output,
-            channels: pass.channels.map((channel) => ({
-              slot: channel.slot,
-              key: channel.key,
-              kind: channel.kind,
-            })),
-          });
+          pipeline = isCompute
+            ? new SlangComputePipeline(this.device, {
+              name: pass.name,
+              width: pass.width,
+              height: pass.height,
+              hasOutput: pass.output === "texture",
+              outputLayers: pass.outputLayers,
+              workgroupSize: pass.workgroupSize,
+              dispatchCount: pass.dispatchCount,
+              channels,
+              storage: graph.storage,
+            })
+            : new SlangPassPipeline(this.device, this.format, {
+              name: pass.name,
+              width: pass.width,
+              height: pass.height,
+              output: pass.output === "canvas" ? "canvas" : "texture",
+              channels,
+            });
           const pipelineStartedAt = this.now();
           const wgslErrors = await pipeline.rebuild(wgsl);
           const pipelineMs = this.now() - pipelineStartedAt;
@@ -612,14 +642,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
             totalMs: this.ms(this.now() - passStartedAt),
             errorCount: wgslErrors.length,
           });
-          nextPipelines.set(pass.name, pipeline);
-          nextKeys.set(pass.name, key);
+          if (isCompute) {
+            nextComputePipelines.set(pass.name, pipeline as SlangComputePipeline);
+            nextComputeKeys.set(pass.name, key);
+          } else {
+            nextPipelines.set(pass.name, pipeline as SlangPassPipeline);
+            nextKeys.set(pass.name, key);
+          }
         } catch (error) {
           // rebuild() may throw mid-way through constructing GPU resources;
           // dispose whatever this pipeline managed to create before re-throwing
           // as a compile error.
           pipeline?.dispose();
-          errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
+          errors.push(WebGPURenderingEngine.prefixPassError(
+            pass.name,
+            error instanceof Error ? error.message : String(error),
+          ));
           passTimings.push({
             name: pass.name,
             cacheHit: false,
@@ -635,6 +673,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // must survive a failed recompile untouched.
         for (const [name, pipeline] of nextPipelines) {
           if (pipeline !== this.passPipelines.get(name)) {
+            pipeline.dispose();
+          }
+        }
+        for (const [name, pipeline] of nextComputePipelines) {
+          if (pipeline !== this.computePipelines.get(name)) {
             pipeline.dispose();
           }
         }
@@ -667,6 +710,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
             pipeline.dispose();
           }
         }
+        for (const [name, pipeline] of nextComputePipelines) {
+          if (pipeline !== this.computePipelines.get(name)) {
+            pipeline.dispose();
+          }
+        }
         this.logCompileTiming("superseded", {
           path,
           generation,
@@ -685,21 +733,37 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // wouldn't have recompiled them), then dispose replaced/removed
       // pipelines and swap in the new generation atomically.
       for (const pass of graph.passes) {
-        const pipeline = nextPipelines.get(pass.name);
-        if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
-          pipeline.resize(pass.width, pass.height);
+        if (pass.kind === "compute") {
+          const pipeline = nextComputePipelines.get(pass.name);
+          if (pipeline && pipeline === this.computePipelines.get(pass.name)) {
+            pipeline.resize(pass.width, pass.height);
+          }
+        } else {
+          const pipeline = nextPipelines.get(pass.name);
+          if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
+            pipeline.resize(pass.width, pass.height);
+          }
         }
       }
-      for (const [name, pipeline] of this.passPipelines) {
+      const previousPipelines = this.passPipelines;
+      const previousComputePipelines = this.computePipelines;
+      this.passGraph = graph.passes;
+      this.passPipelines = nextPipelines;
+      this.passKeys = nextKeys;
+      this.computePipelines = nextComputePipelines;
+      this.computeKeys = nextComputeKeys;
+      this.installPreparedStorage(preparedStorage);
+      this.shaderPath = path;
+      for (const [name, pipeline] of previousPipelines) {
         if (nextPipelines.get(name) !== pipeline) {
           pipeline.dispose();
         }
       }
-      this.passGraph = graph.passes;
-      this.passPipelines = nextPipelines;
-      this.passKeys = nextKeys;
-      this.installPreparedStorage(preparedStorage);
-      this.shaderPath = path;
+      for (const [name, pipeline] of previousComputePipelines) {
+        if (nextComputePipelines.get(name) !== pipeline) {
+          pipeline.dispose();
+        }
+      }
       // Correct any canvas resize that landed mid-compile immediately, rather
       // than leaving passes stale until the next resize/recompile.
       this.applyPassResolutions();
@@ -897,13 +961,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private beginShaderSession(path: string): void {
-    const hadInstalledPipeline = this.passPipelines.size > 0;
+    const hadInstalledPipeline = this.passPipelines.size > 0 || this.computePipelines.size > 0;
     const switchedShaderPath = this.shaderPath !== "" && this.shaderPath !== path;
     for (const pipeline of this.passPipelines.values()) {
       pipeline.dispose();
     }
+    for (const pipeline of this.computePipelines.values()) {
+      pipeline.dispose();
+    }
     this.passPipelines.clear();
     this.passKeys.clear();
+    this.computePipelines.clear();
+    this.computeKeys.clear();
     this.passGraph = [];
     this.resetStorageOnNextSync = this.resetStorageOnNextSync || (
       switchedShaderPath && this.storageLayouts.size > 0
@@ -1031,14 +1100,43 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   /**
-   * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key + kind).
-   * Width/height are texture concerns handled by resize() without recompiling,
-   * so they're deliberately excluded from the key.
+   * A pass's compiled WGSL and pipeline resources depend on its source and
+   * compile descriptor, including compute mode, channel/storage layouts,
+   * workgroup size, output shape, and repeated dispatch count. Width/height
+   * remain texture concerns handled by resize() without recompiling.
    */
-  private static passCacheKey(pass: RenderPassNode, commonCode: string): string {
-    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
-    return JSON.stringify([SLANG_WGSL_CACHE_KEY_VERSION, pass.name, pass.source, commonCode, channels]);
+  private static passCacheKey(
+    pass: RenderPassNode,
+    commonCode: string,
+    storage: StorageBindingNode[],
+  ): string {
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const storageLayout = storage.map((node) => [
+      node.name,
+      node.elementType,
+      node.count,
+      node.stride,
+    ]);
+    return JSON.stringify([
+      SLANG_WGSL_CACHE_KEY_VERSION,
+      pass.kind,
+      pass.name,
+      pass.source,
+      commonCode,
+      channels,
+      storageLayout,
+      pass.workgroupSize,
+      pass.outputLayers,
+      pass.dispatchCount,
+      pass.output,
+      pass.output === "texture",
+    ]);
+  }
+
+  private static prefixPassError(passName: string, error: string): string {
+    return error.startsWith(`${passName}:`) ? error : `${passName}: ${error}`;
   }
 
   private static storageCacheKey(node: StorageBindingNode): string {
@@ -1351,7 +1449,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
       pass.width = resolution.width;
       pass.height = resolution.height;
-      this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);
+      if (pass.kind === "compute") {
+        this.computePipelines.get(pass.name)?.resize(resolution.width, resolution.height);
+      } else {
+        this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);
+      }
     }
   }
 
@@ -1429,8 +1531,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
     for (const pipeline of this.passPipelines.values()) {
       pipeline.dispose();
     }
+    for (const pipeline of this.computePipelines.values()) {
+      pipeline.dispose();
+    }
     this.passPipelines.clear();
     this.passKeys.clear();
+    this.computePipelines.clear();
+    this.computeKeys.clear();
     this.passGraph = [];
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);

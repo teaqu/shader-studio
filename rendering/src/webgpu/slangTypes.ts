@@ -2,6 +2,27 @@
 // Keeping this narrow makes SlangCompiler trivially unit-testable with a fake
 // module and avoids depending on the full generated interface.d.ts.
 
+import type { StorageBindingNode } from "../types/PassGraph";
+
+export interface SlangCompileChannel {
+  slot: number;
+  key: string;
+  kind?: "texture" | "video" | "cubemap" | "buffer" | "keyboard";
+}
+
+/** Structured-clone-safe options shared by main-thread and worker compilers. */
+export interface SlangCompileOptions {
+  passName?: string;
+  commonCode?: string;
+  channels?: SlangCompileChannel[];
+  captureMode?: boolean;
+  passKind?: "render" | "compute";
+  storage?: StorageBindingNode[];
+  workgroupSize?: [number, number, number];
+  outputLayers?: number;
+  hasOutput?: boolean;
+}
+
 export interface SlangCompileTarget {
   name: string;
   value: number;

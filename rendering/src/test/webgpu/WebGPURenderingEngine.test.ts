@@ -496,11 +496,21 @@ describe("WebGPURenderingEngine", () => {
       passName: "BufferA",
       commonCode: "",
       channels: [],
+      storage: [],
+      passKind: "render",
+      workgroupSize: [8, 8, 1],
+      outputLayers: 1,
+      hasOutput: true,
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
       channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+      storage: [],
+      passKind: "render",
+      workgroupSize: [8, 8, 1],
+      outputLayers: 1,
+      hasOutput: false,
     });
   });
 

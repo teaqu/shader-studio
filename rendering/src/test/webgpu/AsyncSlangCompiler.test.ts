@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { MainThreadSlangCompiler, WorkerSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
+import type { SlangCompiler } from "../../webgpu/SlangCompiler";
 
 /** Fake Worker capturing posted messages; test drives responses via emit(). */
 function fakeWorker() {
@@ -18,12 +19,28 @@ function fakeWorker() {
 }
 
 describe("MainThreadSlangCompiler", () => {
-  it("delegates to the wrapped SlangCompiler", async () => {
+  it("delegates complete compute options to the wrapped SlangCompiler", async () => {
     const inner = { compileImagePass: vi.fn(() => ({ success: true as const, wgsl: "w" })) };
-    const compiler = new MainThreadSlangCompiler(inner as any);
-    const result = await compiler.compile("src", { passName: "Image" });
+    const compiler = new MainThreadSlangCompiler(inner as unknown as SlangCompiler);
+    const options = {
+      passName: "ComputeSim",
+      passKind: "compute" as const,
+      storage: [{
+        name: "particles",
+        binding: 0,
+        elementType: "float4",
+        builtin: true,
+        count: 64,
+        stride: 16,
+      }],
+      workgroupSize: [8, 4, 1] as [number, number, number],
+      outputLayers: 2,
+      hasOutput: true,
+    };
+
+    const result = await compiler.compile("src", options);
     expect(result).toEqual({ success: true, wgsl: "w" });
-    expect(inner.compileImagePass).toHaveBeenCalledWith("src", { passName: "Image" });
+    expect(inner.compileImagePass).toHaveBeenCalledWith("src", options);
   });
 });
 
@@ -37,6 +54,36 @@ describe("WorkerSlangCompiler", () => {
 
     const compilePromise = compiler.compile("src", { passName: "BufferA" });
     expect(worker.posted[1]).toMatchObject({ type: "compile", source: "src", options: { passName: "BufferA" } });
+    worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w" } });
+    await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w" });
+  });
+
+  it("forwards structured-clone-safe compute options intact", async () => {
+    const worker = fakeWorker();
+    const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
+    worker.emit({ id: worker.posted[0].id, ok: true });
+    const compiler = await createPromise;
+    const options = {
+      passName: "ComputeSim",
+      passKind: "compute" as const,
+      commonCode: "struct Particle { float4 p; };",
+      channels: [{ slot: 0, key: "iChannel0", kind: "buffer" as const }],
+      storage: [{
+        name: "particles",
+        binding: 0,
+        elementType: "Particle",
+        builtin: false,
+        count: 64,
+        stride: 16,
+      }],
+      workgroupSize: [4, 2, 1] as [number, number, number],
+      outputLayers: 2,
+      hasOutput: true,
+    };
+
+    const compilePromise = compiler.compile("src", options);
+
+    expect(structuredClone(worker.posted[1].options)).toEqual(options);
     worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w" } });
     await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w" });
   });
