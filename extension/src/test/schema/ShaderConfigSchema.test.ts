@@ -154,6 +154,19 @@ suite('Shader config JSON schema', () => {
     });
   });
 
+  test('accepts dispatchCount at the runtime maximum', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeSim: {
+          path: 'sim.slang',
+          dispatchCount: 1024
+        }
+      }
+    });
+  });
+
   test('rejects compute output layer counts outside one through eight', () => {
     for (const outputLayers of [0, 9]) {
       assertInvalid({
@@ -212,14 +225,18 @@ suite('Shader config JSON schema', () => {
       }
     }, "should have required property 'path'");
 
-    for (const dispatchCount of [0, 1.5]) {
+    for (const dispatchCount of [0, 1.5, 1025]) {
       assertInvalid({
         version: '1.0',
         passes: {
           Image: {},
           ComputeSim: { path: 'sim.slang', dispatchCount }
         }
-      }, dispatchCount === 0 ? 'should be >= 1' : 'should be integer');
+      }, dispatchCount === 0
+        ? 'should be >= 1'
+        : dispatchCount === 1025
+          ? 'should be <= 1024'
+          : 'should be integer');
     }
 
     assertInvalid({
@@ -229,6 +246,27 @@ suite('Shader config JSON schema', () => {
         ComputeSim: { path: 'sim.slang', unexpected: true }
       }
     }, 'should NOT have additional properties');
+  });
+
+  test('wraps described references so draft-07 retains field descriptions', () => {
+    const describedReferences = [
+      [schema.definitions.ComputePass.properties.dispatchCount, '#/definitions/DispatchCount'],
+      [schema.definitions.StorageBuffer.properties.count, '#/definitions/PositiveInteger'],
+      [schema.definitions.StorageBuffer.properties.stride, '#/definitions/PositiveInteger']
+    ];
+
+    for (const [field, expectedReference] of describedReferences) {
+      assert.strictEqual(typeof field.description, 'string');
+      assert.ok(field.description.length > 0);
+      assert.strictEqual('$ref' in field, false);
+      assert.deepStrictEqual(field.allOf, [{ $ref: expectedReference }]);
+    }
+
+    assert.deepStrictEqual(schema.definitions.DispatchCount, {
+      type: 'integer',
+      minimum: 1,
+      maximum: 1024
+    });
   });
 
   test('rejects missing or invalid storage fields', () => {

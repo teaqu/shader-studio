@@ -108,8 +108,12 @@
           "$ref": "#/definitions/ComputeDispatch"
         },
         "dispatchCount": {
-          "$ref": "#/definitions/PositiveInteger",
-          "description": "Number of times to encode the pass per frame"
+          "description": "Number of times to encode the pass per frame",
+          "allOf": [
+            {
+              "$ref": "#/definitions/DispatchCount"
+            }
+          ]
         },
         "dispatchOnce": {
           "type": "boolean",
@@ -182,12 +186,20 @@
       "required": ["count", "stride", "elementType"],
       "properties": {
         "count": {
-          "$ref": "#/definitions/PositiveInteger",
-          "description": "Number of elements"
+          "description": "Number of elements",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PositiveInteger"
+            }
+          ]
         },
         "stride": {
-          "$ref": "#/definitions/PositiveInteger",
-          "description": "Bytes per element"
+          "description": "Bytes per element",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PositiveInteger"
+            }
+          ]
         },
         "elementType": {
           "type": "string",
@@ -204,6 +216,11 @@
     "PositiveInteger": {
       "type": "integer",
       "minimum": 1
+    },
+    "DispatchCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024
     },
     "ImageResolution": {
       "type": "object",
