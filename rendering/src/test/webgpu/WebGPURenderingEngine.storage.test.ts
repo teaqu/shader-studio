@@ -173,6 +173,42 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(renderPass.draw).toHaveBeenCalledWith(3);
   });
 
+  it("clears a stale fragment bind group while configured storage is absent and recovers", async () => {
+    const { engine, device } = engineHarness();
+    const renderPass = enableRendering(engine, device);
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ positions: { count: 4, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+    const buffers = installedStorageBuffers(engine);
+    const firstBuffer = buffers.get("positions")!;
+    const pipeline = (engine as unknown as {
+      passPipelines: Map<string, { getBindGroup(): GPUBindGroup | null }>;
+    }).passPipelines.get("Image")!;
+
+    engine.render(1000);
+    expect(renderPass.draw).toHaveBeenCalledTimes(1);
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+
+    buffers.clear();
+    engine.render(1016);
+
+    expect(pipeline.getBindGroup()).toBeNull();
+    expect(renderPass.draw).toHaveBeenCalledTimes(1);
+
+    const recoveredBuffer = { label: "recovered-positions" } as unknown as GPUBuffer;
+    buffers.set("positions", recoveredBuffer);
+    engine.render(1032);
+
+    expect(renderPass.draw).toHaveBeenCalledTimes(2);
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: recoveredBuffer } });
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries)
+      .not.toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+  });
+
   it("reuses the exact storage buffer for an identical recompile", async () => {
     const { engine, device } = engineHarness();
     const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });

@@ -1904,7 +1904,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // Passes with channels or storage have no eager bind group: their
       // explicit layout requires live resources, so it must be (re)built
       // before the bind-group presence check.
-      if (channelResources.length > 0 || this.storageBuffers.size > 0) {
+      if (channelResources.length > 0 || this.storageLayouts.size > 0) {
         pipeline.rebuildBindGroup(channelResources, this.storageBuffers);
       }
       const bindGroup = pipeline.getBindGroup();
