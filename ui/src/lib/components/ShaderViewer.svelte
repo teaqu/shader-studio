@@ -45,7 +45,7 @@
   import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
-  import type { AspectRatioMode, ShaderConfig } from "@shader-studio/types";
+  import type { AspectRatioMode, ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
@@ -216,6 +216,7 @@
   let editorBufferName = $state('Image');
   let editorFilePath = $state('');
   let editorFileCode = $state('');
+  let slangWorkspace = $state<SlangWorkspaceSnapshot | undefined>();
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
 
@@ -861,6 +862,7 @@
       shaderPath = nextShaderPath;
       hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
+      slangWorkspace = event.data.language === 'slang' ? event.data.workspace : undefined;
       if (!hasShader) {
         setEditorOverlayVisible(false);
       }
@@ -1308,6 +1310,8 @@
           bottomInset={previewAlone && previewVisible ? 44 : 0}
           shaderCode={editorFileCode}
           shaderPath={editorFilePath}
+          shaderLanguage={engineLanguage}
+          {slangWorkspace}
           {transport}
           onCodeChange={handleEditorCodeChange}
           compileMode={$compileModeStore.mode}

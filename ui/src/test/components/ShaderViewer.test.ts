@@ -2397,9 +2397,9 @@ describe('ShaderViewer', () => {
 
     const createCalls = vi.mocked(monaco.editor.create).mock.calls;
     expect(createCalls.length).toBe(createCountBeforeSwitch + 1);
-    expect(createCalls.at(-1)?.[1]).toMatchObject({
-      value: 'second shader code',
-    });
+    const options = createCalls.at(-1)?.[1];
+    expect(options).not.toHaveProperty('value');
+    expect(options?.model?.getValue()).toBe('second shader code');
   });
 
   it('should send requestFileContents when shaderSource sets up the path context', async () => {
