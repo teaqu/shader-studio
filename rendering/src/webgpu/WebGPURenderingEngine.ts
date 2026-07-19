@@ -479,6 +479,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
     for (const pass of graph.passes) {
+      if (pass.kind !== "render" || pass.output === "none") {
+        continue;
+      }
       const passStartedAt = this.now();
       const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode);
       const existing = this.passPipelines.get(pass.name);

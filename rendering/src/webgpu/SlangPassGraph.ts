@@ -44,11 +44,17 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       passes: [{
         name: "Image",
         source: options.imageCode,
+        kind: "render",
         output: "canvas",
+        outputLayers: 1,
+        dispatchCount: 1,
+        dispatchOnce: false,
+        workgroupSize: [8, 8, 1],
         width: canvasWidth,
         height: canvasHeight,
         channels: [],
       }],
+      storage: [],
       commonCode: "",
       warnings,
       errors,
@@ -88,7 +94,12 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       name,
       source,
       path,
+      kind: "render",
       output: isImage ? "canvas" : "texture",
+      outputLayers: 1,
+      dispatchCount: 1,
+      dispatchOnce: false,
+      workgroupSize: [8, 8, 1],
       width: resolution.width,
       height: resolution.height,
       channels: resolveChannels({
@@ -105,14 +116,19 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     passes.push({
       name: "Image",
       source: options.imageCode,
+      kind: "render",
       output: "canvas",
+      outputLayers: 1,
+      dispatchCount: 1,
+      dispatchOnce: false,
+      workgroupSize: [8, 8, 1],
       width: canvasWidth,
       height: canvasHeight,
       channels: [],
     });
   }
 
-  return { passes, commonCode, warnings, errors };
+  return { passes, storage: [], commonCode, warnings, errors };
 }
 
 /**
