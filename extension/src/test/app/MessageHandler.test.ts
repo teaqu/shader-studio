@@ -205,6 +205,26 @@ suite('MessageHandler Test Suite', () => {
     sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
   });
 
+  test('forwards compile scope from successful compilation messages', () => {
+    const scopedErrorHandler = {
+      setShaderConfig: sandbox.stub(),
+      handleCompileSuccess: sandbox.stub(),
+    } as unknown as ErrorHandler;
+    const scopedMessageHandler = new MessageHandler(mockOutputChannel, scopedErrorHandler);
+    const rootUri = vscode.Uri.file('/project/image.slang').toString();
+    const compileScope = { rootUris: [rootUri], ownerId: 'panel:1', generationId: 7 };
+
+    scopedMessageHandler.handleMessage({
+      type: 'log', payload: ['Shader compiled and linked'], compileScope,
+    });
+
+    sinon.assert.calledOnceWithExactly(
+      scopedErrorHandler.handleCompileSuccess as sinon.SinonStub,
+      [],
+      compileScope,
+    );
+  });
+
   test('should show non-line-number errors at line 1', () => {
     // Mock active editor and document
     const mockDocument = {

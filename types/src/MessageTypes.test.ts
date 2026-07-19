@@ -1,6 +1,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type {
+  CompileDiagnosticScope,
+  ErrorMessage,
+  LogMessage,
   ShaderSourceMessage,
   SlangDiagnostic,
   SlangWorkspaceSnapshot,
@@ -25,5 +28,22 @@ describe("ShaderSourceMessage Slang workspace contract", () => {
       .toEqualTypeOf<SlangWorkspaceSnapshot>();
     expectTypeOf<NonNullable<ShaderSourceMessage["diagnostics"]>[number]>()
       .toEqualTypeOf<SlangDiagnostic>();
+  });
+});
+
+describe("compile diagnostic scope contract", () => {
+  it("is optional on success and error messages for legacy clients", () => {
+    const success: LogMessage = { type: "log", payload: ["compiled"] };
+    const failure: ErrorMessage = { type: "error", payload: ["failed"] };
+
+    expect(success.compileScope).toBeUndefined();
+    expect(failure.compileScope).toBeUndefined();
+  });
+
+  it("shares the same root, owner, and generation scope shape", () => {
+    expectTypeOf<NonNullable<LogMessage["compileScope"]>>()
+      .toEqualTypeOf<CompileDiagnosticScope>();
+    expectTypeOf<NonNullable<ErrorMessage["compileScope"]>>()
+      .toEqualTypeOf<CompileDiagnosticScope>();
   });
 });

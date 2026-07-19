@@ -6,10 +6,21 @@ export interface BaseMessage {
   type: string;
 }
 
+/** Identifies one independently replaceable stream of compiler diagnostics. */
+export interface CompileDiagnosticScope {
+  /** Canonical file URIs for the shader roots represented by this result. */
+  rootUris: string[];
+  /** Preview/editor owner when multiple consumers compile the same root. */
+  ownerId?: string;
+  /** Monotonic generation used to reject out-of-order results within the scope. */
+  generationId?: number;
+}
+
 export interface LogMessage extends BaseMessage {
   type: "log";
   payload: string[];
   diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface DebugMessage extends BaseMessage {
@@ -21,6 +32,7 @@ export interface ErrorMessage extends BaseMessage {
   type: "error";
   payload: string[];
   diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface WarningMessage extends BaseMessage {

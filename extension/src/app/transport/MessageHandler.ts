@@ -78,7 +78,7 @@ export class MessageHandler {
       logText.includes("Shader compiled and linked") ||
       logText.includes("updated and pipeline recompiled")
     ) {
-      this.errorHandler.handleCompileSuccess(message.diagnostics ?? []);
+      this.errorHandler.handleCompileSuccess(message.diagnostics ?? [], message.compileScope);
     }
   }
 
