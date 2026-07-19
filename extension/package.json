@@ -297,6 +297,7 @@
   "dependencies": {
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
+    "entities": "^6.0.1",
     "esbuild": "^0.24.0",
     "glsl-transpiler": "^3.0.3",
     "ws": "^8.18.3"

@@ -1,12 +1,15 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { decodeHTMLAttribute } from "entities";
 import { Logger } from "./services/Logger";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { ThumbnailCache } from "./ThumbnailCache";
 import { TabGroupResolver } from "./TabGroupResolver";
 import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
+import { loadSlangAssetPaths } from "./SlangAssetManifest";
+import { getShaderLanguage } from "./GlslFileTracker";
 
 interface ShaderExplorerFile {
   name: string;
@@ -95,6 +98,9 @@ export class ShaderExplorerProvider {
               this.context.extensionPath,
               "shader-explorer-dist",
             ),
+          ),
+          vscode.Uri.file(
+            path.join(this.context.extensionPath, "ui-dist"),
           ),
           ...workspaceFolders,
         ],
@@ -215,6 +221,7 @@ export class ShaderExplorerProvider {
       const message = {
         type: "shaderCode",
         path: shaderPath,
+        language: getShaderLanguage(shaderPath),
         code: code,
         config: config,
         buffers: buffers,
@@ -449,18 +456,18 @@ export class ShaderExplorerProvider {
     const shaders: ShaderExplorerFile[] = [];
 
     for (const folder of workspaceFolders) {
-      // Find all .glsl, .frag, .vert shader files
-      const glslFiles = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert}"),
+      // Find all supported shader files
+      const shaderFiles = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert,slang}"),
         "**/node_modules/**",
       );
-      const shaderPaths = glslFiles.map(file => file.fsPath);
+      const shaderPaths = shaderFiles.map(file => file.fsPath);
       const gitMetadataResult = await this.gitMetadataProvider.getMetadataForWorkspace(
         folder.uri.fsPath,
         shaderPaths,
       );
 
-      for (const file of glslFiles) {
+      for (const file of shaderFiles) {
         const relativePath = vscode.workspace.asRelativePath(file);
         const fileName = path.basename(file.fsPath);
         const repoRelativePath = gitMetadataResult
@@ -622,7 +629,7 @@ export class ShaderExplorerProvider {
     const rawHtml = fs.readFileSync(htmlPath, "utf-8");
     this.logger.debug(`Successfully loaded shader explorer HTML`);
 
-    const processedHtml = rawHtml.replace(
+    let processedHtml = rawHtml.replace(
       /(src|href)="\.?\/([^"]+)"/g,
       (_, attr, file) => {
         const filePath = path.join(
@@ -636,65 +643,210 @@ export class ShaderExplorerProvider {
       },
     );
 
+    processedHtml = this.ensureDocumentHead(processedHtml);
+    let hasSlangAssets = false;
+    try {
+      const slangAssetPaths = loadSlangAssetPaths(this.context.extensionPath);
+      const escapeAttribute = (value: string): string => value.replace(/[&"<>]/g, character => ({
+        '&': '&amp;',
+        '"': '&quot;',
+        '<': '&lt;',
+        '>': '&gt;',
+      })[character]!);
+      const assetMeta = [
+        ['shader-studio-slang-script-url', slangAssetPaths.scriptPath],
+        ['shader-studio-slang-wasm-url', slangAssetPaths.wasmPath],
+        ['shader-studio-slang-worker-url', slangAssetPaths.workerPath],
+      ].map(([name, assetPath]) => {
+        const assetUri = webview.asWebviewUri(vscode.Uri.file(assetPath)).toString();
+        return `<meta name="${name}" content="${escapeAttribute(assetUri)}">`;
+      }).join('');
+      processedHtml = processedHtml.replace(/<head(?:\s[^>]*)?>/i, headTag => `${headTag}${assetMeta}`);
+      hasSlangAssets = true;
+    } catch (error) {
+      this.logger.error(`Slang assets unavailable in Shader Explorer: ${error}`);
+    }
+
     // Inject or update CSP to allow loading from webview sources
-    const cspPattern = /<meta\s+http-equiv=["']Content-Security-Policy["']\s+content=["']([^"']+)["'][^>]*>/i;
-    const cspMatch = processedHtml.match(cspPattern);
+    processedHtml = this.removeCspMetasOutsideHead(processedHtml);
+    const cspMeta = this.findCspMeta(processedHtml);
         
-    if (cspMatch) {
+    if (cspMeta) {
       // Update existing CSP to include webview.cspSource
-      const existingCsp = cspMatch[1];
+      const existingCsp = cspMeta.content;
             
       // Use the actual webview.cspSource for scripts and styles
-      const scriptSrc = `script-src 'self' 'unsafe-inline' ${webview.cspSource}`;
       const styleSrc = `style-src 'self' 'unsafe-inline' ${webview.cspSource}`;
       const imgSrc = `img-src 'self' data: blob: ${webview.cspSource}`;
       const mediaSrc = `media-src 'self' blob: ${webview.cspSource}`;
             
       let updatedCsp = existingCsp;
-      updatedCsp = updatedCsp.includes('script-src') 
-        ? updatedCsp.replace(/script-src[^;]*/, scriptSrc)
-        : `${updatedCsp}; ${scriptSrc}`;
-      updatedCsp = updatedCsp.includes('style-src') 
-        ? updatedCsp.replace(/style-src[^;]*/, styleSrc)
-        : `${updatedCsp}; ${styleSrc}`;
-      updatedCsp = updatedCsp.includes('img-src') 
-        ? updatedCsp.replace(/img-src[^;]*/, imgSrc)
-        : `${updatedCsp}; ${imgSrc}`;
-      updatedCsp = updatedCsp.includes('media-src') 
-        ? updatedCsp.replace(/media-src[^;]*/, mediaSrc)
-        : `${updatedCsp}; ${mediaSrc}`;
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'self'");
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'unsafe-inline'");
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', webview.cspSource);
+      updatedCsp = this.replaceCspDirective(updatedCsp, 'style-src', styleSrc);
+      updatedCsp = this.replaceCspDirective(updatedCsp, 'img-src', imgSrc);
+      updatedCsp = this.replaceCspDirective(updatedCsp, 'media-src', mediaSrc);
+      if (hasSlangAssets) {
+        updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', 'blob:');
+        updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'wasm-unsafe-eval'");
+        updatedCsp = this.replaceCspDirective(
+          updatedCsp,
+          'worker-src',
+          `worker-src ${webview.cspSource} blob:`,
+        );
+        updatedCsp = this.replaceCspDirective(
+          updatedCsp,
+          'connect-src',
+          `connect-src ${webview.cspSource} blob:`,
+        );
+      }
+      updatedCsp = this.ensureCspToken(updatedCsp, 'script-src', "'unsafe-eval'");
             
-      const finalHtml = processedHtml.replace(
-        cspPattern,
-        `<meta http-equiv="Content-Security-Policy" content="${updatedCsp}">`
+      const updatedMeta = cspMeta.tag.replace(
+        /((?:^|\s)content\s*=\s*)(["'])(.*?)\2/i,
+        (_attribute, prefix) => `${prefix}"${this.escapeHtmlAttribute(updatedCsp)}"`,
       );
+      const finalHtml = processedHtml.slice(0, cspMeta.index) +
+        updatedMeta +
+        processedHtml.slice(cspMeta.index + cspMeta.tag.length);
       this.logger.debug("Updated existing CSP for webview support");
       return finalHtml;
     } else {
       // Add CSP inside <head> tag
-      const newCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' ${webview.cspSource}; style-src 'self' 'unsafe-inline' ${webview.cspSource}; img-src 'self' data: blob: ${webview.cspSource}; media-src 'self' blob: ${webview.cspSource}; font-src 'self'; connect-src 'self';">`;
-            
-      // Handle both <!doctype html> and <html> cases
-      const doctypeMatch = processedHtml.match(/<!doctype html>/i);
-      const htmlMatch = processedHtml.match(/<html[^>]*>/i);
-            
-      if (doctypeMatch && htmlMatch) {
-        // Insert after <head> tag
-        const headMatch = processedHtml.match(/<head[^>]*>/i);
-        if (headMatch) {
-          const headIndex = processedHtml.indexOf(headMatch[0]);
-          const afterHeadIndex = headIndex + headMatch[0].length;
-                    
-          const finalHtml = processedHtml.slice(0, afterHeadIndex) + 
-                                   `\n    ${newCsp}` + 
-                                   processedHtml.slice(afterHeadIndex);
-                    
-          return finalHtml;
-        }
+      let newCsp = `default-src 'self'; script-src 'self' 'unsafe-inline' ${webview.cspSource}; style-src 'self' 'unsafe-inline' ${webview.cspSource}; img-src 'self' data: blob: ${webview.cspSource}; media-src 'self' blob: ${webview.cspSource}; font-src 'self'; connect-src 'self'`;
+      if (hasSlangAssets) {
+        newCsp = this.ensureCspToken(newCsp, 'script-src', 'blob:');
+        newCsp = this.ensureCspToken(newCsp, 'script-src', "'wasm-unsafe-eval'");
+        newCsp = this.replaceCspDirective(
+          newCsp,
+          'worker-src',
+          `worker-src ${webview.cspSource} blob:`,
+        );
+        newCsp = this.replaceCspDirective(
+          newCsp,
+          'connect-src',
+          `connect-src ${webview.cspSource} blob:`,
+        );
       }
-            
-      // Fallback: return original HTML if CSP injection fails
-      return processedHtml;
+      newCsp = this.ensureCspToken(newCsp, 'script-src', "'unsafe-eval'");
+      const cspMetaTag = `<meta http-equiv="Content-Security-Policy" content="${this.escapeHtmlAttribute(newCsp)};">`;
+
+      return processedHtml.replace(
+        /<head(?:\s[^>]*)?>/i,
+        headTag => `${headTag}\n    ${cspMetaTag}`,
+      );
     }
+  }
+
+  private ensureDocumentHead(html: string): string {
+    if (/<head(?:\s[^>]*)?>/i.test(html)) {
+      return html;
+    }
+
+    const htmlTag = html.match(/<html(?:\s[^>]*)?>/i);
+    if (htmlTag) {
+      const afterHtmlIndex = html.indexOf(htmlTag[0]) + htmlTag[0].length;
+      return html.slice(0, afterHtmlIndex) + '<head></head>' + html.slice(afterHtmlIndex);
+    }
+
+    return `<head></head>${html}`;
+  }
+
+  private findCspMeta(html: string): { tag: string; content: string; index: number } | undefined {
+    const headBounds = this.getHeadContentBounds(html);
+    if (!headBounds) {
+      return undefined;
+    }
+
+    const headHtml = html.slice(headBounds.start, headBounds.end);
+    for (const match of headHtml.matchAll(/<meta(?:\s[^>]*)?>/gi)) {
+      const tag = match[0];
+      if (!this.isCspMeta(tag)) {
+        continue;
+      }
+
+      const rawContent = tag.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
+      const content = rawContent === undefined
+        ? undefined
+        : decodeHTMLAttribute(rawContent);
+      if (content !== undefined) {
+        return { tag, content, index: headBounds.start + match.index };
+      }
+    }
+
+    return undefined;
+  }
+
+  private removeCspMetasOutsideHead(html: string): string {
+    const headBounds = this.getHeadContentBounds(html);
+    if (!headBounds) {
+      return html;
+    }
+
+    return html.replace(/<meta(?:\s[^>]*)?>/gi, (tag, index: number) => {
+      const isInsideHead = index >= headBounds.start && index < headBounds.end;
+      return !isInsideHead && this.isCspMeta(tag) ? '' : tag;
+    });
+  }
+
+  private getHeadContentBounds(html: string): { start: number; end: number } | undefined {
+    const headTag = /<head(?:\s[^>]*)?>/i.exec(html);
+    if (!headTag) {
+      return undefined;
+    }
+
+    const start = headTag.index + headTag[0].length;
+    const closingHead = /<\/head\s*>/i.exec(html.slice(start));
+    if (!closingHead) {
+      return undefined;
+    }
+
+    return { start, end: start + closingHead.index };
+  }
+
+  private isCspMeta(tag: string): boolean {
+    const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+    return httpEquiv !== undefined
+      && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
+  }
+
+  private replaceCspDirective(csp: string, directive: string, replacement: string): string {
+    const directives = csp.split(';').map(value => value.trim()).filter(Boolean);
+    const directiveIndex = directives.findIndex(value => this.getCspDirectiveName(value) === directive.toLowerCase());
+    if (directiveIndex === -1) {
+      directives.push(replacement);
+    } else {
+      directives[directiveIndex] = replacement;
+    }
+    return directives.join('; ');
+  }
+
+  private ensureCspToken(csp: string, directive: string, token: string): string {
+    const directives = csp.split(';').map(value => value.trim()).filter(Boolean);
+    const directiveIndex = directives.findIndex(value => this.getCspDirectiveName(value) === directive.toLowerCase());
+    if (directiveIndex === -1) {
+      directives.push(`${directive} ${token}`);
+      return directives.join('; ');
+    }
+
+    const tokens = directives[directiveIndex].split(/\s+/);
+    if (!tokens.some(value => value.toLowerCase() === token.toLowerCase())) {
+      directives[directiveIndex] = `${directives[directiveIndex]} ${token}`;
+    }
+    return directives.join('; ');
+  }
+
+  private getCspDirectiveName(directive: string): string {
+    return directive.split(/\s+/, 1)[0].toLowerCase();
+  }
+
+  private escapeHtmlAttribute(value: string): string {
+    return value.replace(/[&"<>]/g, character => ({
+      '&': '&amp;',
+      '"': '&quot;',
+      '<': '&lt;',
+      '>': '&gt;',
+    })[character]!);
   }
 }

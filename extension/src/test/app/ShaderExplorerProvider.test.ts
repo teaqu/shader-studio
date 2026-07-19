@@ -1,6 +1,8 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
+import { decodeHTMLAttribute } from 'entities';
 import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter';
@@ -13,11 +15,15 @@ suite('ShaderExplorerProvider Test Suite', () => {
   let mockPanel: any;
   let mockWebview: any;
   let postMessageSpy: sinon.SinonSpy;
+  let existsSyncStub: sinon.SinonStub;
+  let readFileSyncStub: sinon.SinonStub;
+  let loggerErrorStub: sinon.SinonStub;
 
   setup(() => {
     sandbox = sinon.createSandbox();
         
     // Initialize Logger for tests with mock output channel
+    loggerErrorStub = sandbox.stub();
     const mockOutputChannel = {
       name: 'test',
       append: sandbox.stub(),
@@ -28,7 +34,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       dispose: sandbox.stub(),
       info: sandbox.stub(),
       warn: sandbox.stub(),
-      error: sandbox.stub(),
+      error: loggerErrorStub,
       debug: sandbox.stub(),
       trace: sandbox.stub()
     } as any;
@@ -36,7 +42,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
         
     // Mock filesystem operations to prevent ThumbnailCache from creating real directories
     const fs = require('fs');
-    sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {
+    existsSyncStub = sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {
       const path = args[0] as string;
       // Return false for HTML files to trigger error handling
       if (path.includes('index.html')) {
@@ -48,7 +54,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       // Mock implementation - do nothing
       return undefined;
     });
-    sandbox.stub(fs, 'readFileSync').callsFake((...args: any[]) => {
+    readFileSyncStub = sandbox.stub(fs, 'readFileSync').callsFake((...args: any[]) => {
       const path = args[0] as string;
       // Return mock HTML for HTML files
       if (path.includes('index.html')) {
@@ -61,7 +67,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
     postMessageSpy = sandbox.spy();
     mockWebview = {
       postMessage: postMessageSpy,
-      asWebviewUri: (uri: vscode.Uri) => uri,
+      asWebviewUri: sandbox.stub().callsFake((uri: vscode.Uri) => uri),
+      cspSource: 'vscode-webview://test-source',
       html: '',
       onDidReceiveMessage: sandbox.stub(),
     };
@@ -126,6 +133,68 @@ suite('ShaderExplorerProvider Test Suite', () => {
     return handler;
   }
 
+  function configureExplorerHtml(html: string): void {
+    existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html') || filePath.includes('shader-explorer-dist'));
+    readFileSyncStub.callsFake((filePath: string) => {
+      if (filePath.endsWith('slang-assets.json')) {
+        return JSON.stringify({
+          script: 'assets/slang.js',
+          wasm: 'assets/slang.wasm',
+          worker: 'assets/slang-worker.js',
+        });
+      }
+      if (filePath.includes('shader-explorer-dist') && filePath.endsWith('index.html')) {
+        return html;
+      }
+      return '<html><head></head><body></body></html>';
+    });
+  }
+
+  function showExplorer(): void {
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+    provider.show();
+  }
+
+  function getCsp(html: string): string {
+    const meta = (html.match(/<meta(?:\s[^>]*)?>/gi) ?? []).find(tag => {
+      const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+      return httpEquiv !== undefined
+        && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
+    });
+    const content = meta?.match(/(?:^|\s)content\s*=\s*(["'])(.*?)\1/i)?.[2];
+    assert.ok(content, 'Expected a Content-Security-Policy meta tag');
+    return decodeHTMLAttribute(content);
+  }
+
+  function getDirective(csp: string, name: string): string | undefined {
+    return csp
+      .split(';')
+      .map(directive => directive.trim())
+      .find(directive => directive.split(/\s+/, 1)[0].toLowerCase() === name.toLowerCase());
+  }
+
+  function countDirectives(csp: string, name: string): number {
+    return csp
+      .split(';')
+      .map(directive => directive.trim())
+      .filter(directive => directive.split(/\s+/, 1)[0].toLowerCase() === name.toLowerCase())
+      .length;
+  }
+
+  function countCspMetas(html: string): number {
+    return (html.match(/<meta(?:\s[^>]*)?>/gi) ?? []).filter(tag => {
+      const httpEquiv = tag.match(/(?:^|\s)http-equiv\s*=\s*(["'])(.*?)\1/i)?.[2];
+      return httpEquiv !== undefined
+        && decodeHTMLAttribute(httpEquiv).toLowerCase() === 'content-security-policy';
+    }).length;
+  }
+
+  function getHead(html: string): string {
+    const head = html.match(/<head(?:\s[^>]*)?>(.*?)<\/head>/is)?.[1];
+    assert.ok(head, 'Expected a real head element');
+    return head;
+  }
+
   suite('Command Registration', () => {
     test('should register shader explorer command', () => {
       const registerCommandStub = sandbox.stub(vscode.commands, 'registerCommand').returns({
@@ -178,7 +247,14 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(options.enableScripts, true);
       assert.strictEqual(options.retainContextWhenHidden, true);
       assert.ok(Array.isArray(options.localResourceRoots));
-      assert.ok(options.localResourceRoots.length > 0);
+      assert.deepStrictEqual(
+        options.localResourceRoots.map((root: vscode.Uri) => root.fsPath),
+        [
+          '/mock/extension/path/shader-explorer-dist',
+          '/mock/extension/path/ui-dist',
+          '/workspace',
+        ],
+      );
     });
 
     test('should reveal existing panel instead of creating new one', () => {
@@ -230,7 +306,324 @@ suite('ShaderExplorerProvider Test Suite', () => {
     });
   });
 
+  suite('Webview HTML', () => {
+    test('creates a real head with exact Slang metadata and CSP when HTML has no head', () => {
+      configureExplorerHtml('<html><body>Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => ({
+        toString: () => `mapped:${uri.fsPath}`,
+      }));
+
+      showExplorer();
+
+      const head = mockWebview.html.match(/<head>(.*?)<\/head>/s)?.[1];
+      assert.ok(head, 'Expected a real head element');
+      assert.ok(head.includes('<meta name="shader-studio-slang-script-url" content="mapped:/mock/extension/path/ui-dist/assets/slang.js">'));
+      assert.ok(head.includes('<meta name="shader-studio-slang-wasm-url" content="mapped:/mock/extension/path/ui-dist/assets/slang.wasm">'));
+      assert.ok(head.includes('<meta name="shader-studio-slang-worker-url" content="mapped:/mock/extension/path/ui-dist/assets/slang-worker.js">'));
+      assert.ok(head.includes('http-equiv="Content-Security-Policy"'));
+      assert.ok(mockWebview.html.indexOf('<head>') < mockWebview.html.indexOf('<body>'));
+    });
+
+    test('does not mistake a body header element for the document head', () => {
+      configureExplorerHtml('<html><body><header>Explorer title</header></body></html>');
+
+      showExplorer();
+
+      assert.match(mockWebview.html, /<html><head>.*<\/head><body><header>Explorer title<\/header>/s);
+      assert.strictEqual((mockWebview.html.match(/<head(?:\s[^>]*)?>/gi) ?? []).length, 1);
+      assert.strictEqual((mockWebview.html.match(/<header(?:\s[^>]*)?>/gi) ?? []).length, 1);
+    });
+
+    test('moves the effective policy into a generated head when the source CSP is in the body', () => {
+      configureExplorerHtml(`<html><body>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src body-source:">
+        Explorer
+      </body></html>`);
+
+      showExplorer();
+
+      const head = getHead(mockWebview.html);
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      assert.strictEqual(countCspMetas(head), 1);
+      assert.strictEqual((head.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+      assert.ok(getDirective(getCsp(head), 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('does not mistake htmlish for html when creating the document head', () => {
+      configureExplorerHtml('<htmlish><body>Explorer</body></htmlish>');
+
+      showExplorer();
+
+      const head = getHead(mockWebview.html);
+      assert.ok(mockWebview.html.startsWith('<head>'));
+      assert.ok(mockWebview.html.includes('<htmlish>'));
+      assert.strictEqual(countCspMetas(head), 1);
+      assert.strictEqual((head.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('adds Slang asset metadata and required directives to an existing CSP without duplicate tokens', () => {
+      configureExplorerHtml(`<!doctype html><html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; worker-src stale:; connect-src stale:">
+      </head><body><script src="./assets/explorer.js"></script></body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.match(csp, /script-src[^;]*vscode-webview:\/\/test-source/);
+      assert.match(csp, /script-src[^;]*blob:/);
+      assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
+      assert.match(csp, /script-src[^;]*'unsafe-eval'/);
+      assert.match(csp, /worker-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /connect-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /style-src 'self' 'unsafe-inline' vscode-webview:\/\/test-source/);
+      assert.match(csp, /img-src 'self' data: blob: vscode-webview:\/\/test-source/);
+      assert.match(csp, /media-src 'self' blob: vscode-webview:\/\/test-source/);
+      assert.match(csp, /font-src 'self'/);
+      const scriptDirective = csp.match(/script-src[^;]*/)?.[0] ?? '';
+      assert.strictEqual((scriptDirective.match(/blob:/g) ?? []).length, 1);
+      assert.strictEqual((scriptDirective.match(/'unsafe-eval'/g) ?? []).length, 1);
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('updates mixed-case CSP directives without adding case-variant duplicates', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; ScRiPt-SrC 'self'; StYlE-SrC 'self'; ImG-SrC 'self'; MeDiA-SrC 'self'; WoRkEr-SrC stale:; CoNnEcT-SrC stale:; FoNt-SrC 'self'">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      for (const directive of ['script-src', 'style-src', 'img-src', 'media-src', 'worker-src', 'connect-src']) {
+        assert.strictEqual(countDirectives(csp, directive), 1, `Expected one ${directive}`);
+      }
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+      assert.strictEqual(getDirective(csp, 'worker-src'), 'worker-src vscode-webview://test-source blob:');
+      assert.strictEqual(getDirective(csp, 'connect-src'), 'connect-src vscode-webview://test-source blob:');
+    });
+
+    test('adds exact script-src without modifying script-src-elem', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src-elem 'self'; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'script-src-elem'), "script-src-elem 'self'");
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'wasm-unsafe-eval'"));
+    });
+
+    test('recognizes a CSP meta with reversed and intervening attributes', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content="default-src 'self'; script-src 'self'" id="policy" HTTP-EQUIV="content-security-policy">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('safely rewrites an entity-encoded single-quoted CSP content attribute', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content='default-src &apos;self&apos;; script-src &apos;self&apos;' id="policy" http-equiv="Content-Security-Policy">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      assert.match(
+        mockWebview.html,
+        /<meta data-owner="explorer" content="default-src 'self'; script-src 'self'[^>]+" id="policy" http-equiv="Content-Security-Policy">/,
+      );
+      assert.ok(!mockWebview.html.includes('&amp;apos;'));
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('recognizes an entity-encoded http-equiv without adding a second effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta data-owner="explorer" content="default-src 'none'; object-src 'none'" http-equiv="Content-Security-Polic&#x79;">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'object-src'), "object-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes("'unsafe-eval'"));
+    });
+
+    test('decodes named colon and semicolon references before updating the effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'&semi; script-src https&colon;//assets.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes('https://assets.test'));
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+    });
+
+    test('decodes decimal and hexadecimal references before updating the effective CSP', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;&#59; script-src https&#x3a;//numeric.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.ok(getDirective(csp, 'script-src')?.includes('https://numeric.test'));
+      assert.strictEqual(countDirectives(csp, 'script-src'), 1);
+    });
+
+    test('decodes permitted semicolonless references using HTML attribute rules', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /&copy report-endpoint">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'report-uri'), 'report-uri /© report-endpoint');
+    });
+
+    test('uses HTML replacement behavior for invalid and out-of-range numeric references', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /null-&#0;/out-&#x110000;/surrogate-&#xD800;">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(
+        getDirective(csp, 'report-uri'),
+        'report-uri /null-�/out-�/surrogate-�',
+      );
+    });
+
+    test('does not recursively decode an ampersand-produced character reference', () => {
+      configureExplorerHtml(`<html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; report-uri /https&amp;colon;//literal.test">
+      </head><body>Explorer</body></html>`);
+
+      showExplorer();
+
+      assert.strictEqual(countCspMetas(mockWebview.html), 1);
+      const csp = getCsp(mockWebview.html);
+      assert.strictEqual(getDirective(csp, 'default-src'), "default-src 'none'");
+      assert.strictEqual(getDirective(csp, 'report-uri'), 'report-uri /https&colon');
+      assert.strictEqual(getDirective(csp, '//literal.test'), '//literal.test');
+      assert.ok(!csp.includes('https://literal.test'));
+    });
+
+    test('adds a Slang-compatible CSP and escaped asset metadata when the source has no CSP', () => {
+      configureExplorerHtml('<html><head></head><body>Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => ({
+        toString: () => `vscode-webview://assets/${path.basename(uri.fsPath)}?label=a&value=\"b\"<c>`,
+      }));
+
+      showExplorer();
+
+      const csp = getCsp(mockWebview.html);
+      assert.match(csp, /script-src[^;]*vscode-webview:\/\/test-source[^;]*blob:[^;]*'wasm-unsafe-eval'[^;]*'unsafe-eval'/);
+      assert.match(csp, /worker-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /connect-src vscode-webview:\/\/test-source blob:/);
+      assert.match(csp, /style-src[^;]*vscode-webview:\/\/test-source/);
+      assert.match(csp, /img-src[^;]*data:[^;]*blob:/);
+      assert.match(csp, /media-src[^;]*blob:/);
+      assert.match(csp, /font-src 'self'/);
+      assert.ok(mockWebview.html.includes('name="shader-studio-slang-script-url"'));
+      assert.ok(mockWebview.html.includes('a&amp;value=&quot;b&quot;&lt;c&gt;'));
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 3);
+    });
+
+    test('keeps GLSL Explorer HTML usable when the Slang asset manifest is invalid', () => {
+      configureExplorerHtml('<!doctype html><html><head></head><body><script src="./assets/explorer.js"></script></body></html>');
+      readFileSyncStub.withArgs('/mock/extension/path/ui-dist/slang-assets.json', 'utf8').throws(new Error('invalid manifest'));
+
+      showExplorer();
+
+      assert.ok(mockWebview.html.includes('Mock Shader Explorer') === false);
+      assert.ok(mockWebview.html.includes('explorer.js'));
+      assert.ok(getCsp(mockWebview.html).includes("script-src 'self' 'unsafe-inline'"));
+      assert.ok(!mockWebview.html.includes('shader-studio-slang-script-url'));
+      const csp = getCsp(mockWebview.html);
+      const scriptSrc = getDirective(csp, 'script-src') ?? '';
+      assert.ok(!scriptSrc.includes('blob:'));
+      assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
+      assert.ok(scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
+      assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
+      assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: invalid manifest'));
+    });
+
+    test('does not partially inject Slang metadata when asset URI conversion fails', () => {
+      configureExplorerHtml('<html><body>GLSL Explorer</body></html>');
+      mockWebview.asWebviewUri.callsFake((uri: vscode.Uri) => {
+        if (uri.fsPath.endsWith('slang.wasm')) {
+          throw new Error('WASM URI conversion failed');
+        }
+        return uri;
+      });
+
+      showExplorer();
+
+      assert.ok(mockWebview.html.includes('GLSL Explorer'));
+      assert.strictEqual((mockWebview.html.match(/name="shader-studio-slang-(?:script|wasm|worker)-url"/g) ?? []).length, 0);
+      const csp = getCsp(getHead(mockWebview.html));
+      const scriptSrc = getDirective(csp, 'script-src') ?? '';
+      assert.ok(!scriptSrc.includes('blob:'));
+      assert.ok(!scriptSrc.includes("'wasm-unsafe-eval'"));
+      assert.ok(scriptSrc.includes("'unsafe-eval'"));
+      assert.ok(!getDirective(csp, 'worker-src')?.includes('blob:'));
+      assert.ok(!getDirective(csp, 'connect-src')?.includes('blob:'));
+      assert.ok(loggerErrorStub.calledWithMatch('Slang assets unavailable in Shader Explorer: Error: WASM URI conversion failed'));
+    });
+  });
+
   suite('Message Handling - requestShaders', () => {
+    test('should discover Slang shaders with config metadata', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/example.slang');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const findFilesStub = sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      existsSyncStub.callsFake((filePath: string) =>
+        filePath === '/workspace/shaders/example.sha.json'
+        || !filePath.includes('index.html')
+      );
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 2_000, birthtimeMs: 1_000 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const pattern = findFilesStub.firstCall.args[0] as vscode.RelativePattern;
+      assert.strictEqual(pattern.pattern, '**/*.{glsl,frag,vert,slang}');
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.name, 'example.slang');
+      assert.strictEqual(shader.path, shaderUri.fsPath);
+      assert.strictEqual(shader.configPath, '/workspace/shaders/example.sha.json');
+      assert.strictEqual(shader.hasConfig, true);
+      assert.strictEqual(shader.modifiedTime, 2_000);
+      assert.strictEqual(shader.createdTime, 1_000);
+    });
+
     test('should handle requestShaders message type', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
@@ -578,6 +971,26 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(message.type, 'shaderCode');
       assert.strictEqual(message.path, '/test/shader.glsl');
       assert.strictEqual(message.code, 'void main() { gl_FragColor = vec4(1.0); }');
+      assert.strictEqual(message.language, 'glsl');
+    });
+
+    test('should send Slang language through config path conversion', async () => {
+      const mockDocument = {
+        getText: () => '[shader("fragment")] float4 fragmentMain() : SV_Target { return 1; }'
+      };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+      const processConfigPathsStub = sandbox
+        .stub(ConfigPathConverter, 'processConfigPaths')
+        .callsFake(async (message: any) => ({ ...message, converted: true }));
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.slang' });
+
+      assert.strictEqual(processConfigPathsStub.firstCall.args[0].language, 'slang');
+      assert.strictEqual(postMessageSpy.firstCall.args[0].language, 'slang');
+      assert.strictEqual(postMessageSpy.firstCall.args[0].converted, true);
     });
 
     test('should include config and buffers in shader code response', async () => {

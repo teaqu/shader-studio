@@ -1473,4 +1473,33 @@ describe("RenderingEngine", () => {
       expect(calls[calls.length - 1]).toBe(false);
     });
   });
+
+  describe("dispose()", () => {
+    it("continues input and pipeline teardown after an earlier stage throws", () => {
+      const stopError = new Error("stop failed");
+      const bufferManager = { dispose: vi.fn() };
+      const frameRenderer = { stopRenderLoop: vi.fn(() => {
+        throw stopError;
+      }) };
+      const cameraManager = { dispose: vi.fn() };
+      const mouseManager = { dispose: vi.fn() };
+      const keyboardManager = { dispose: vi.fn() };
+      const shaderPipeline = { dispose: vi.fn() };
+      Object.assign(renderingEngine as any, {
+        bufferManager,
+        frameRenderer,
+        cameraManager,
+        mouseManager,
+        keyboardManager,
+        shaderPipeline,
+      });
+
+      expect(() => renderingEngine.dispose()).toThrow(stopError);
+      expect(bufferManager.dispose).toHaveBeenCalledOnce();
+      expect(cameraManager.dispose).toHaveBeenCalledOnce();
+      expect(mouseManager.dispose).toHaveBeenCalledOnce();
+      expect(keyboardManager.dispose).toHaveBeenCalledOnce();
+      expect(shaderPipeline.dispose).toHaveBeenCalledOnce();
+    });
+  });
 });

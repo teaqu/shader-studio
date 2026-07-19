@@ -83,6 +83,46 @@ describe("ShaderPipeline", () => {
     vi.spyOn(console, "error").mockImplementation(() => { });
   });
 
+  it("cleans resources again and aborts when disposed during an awaited input load", async () => {
+    let resolveLoad!: (value: unknown) => void;
+    mockResourceManager.loadImageTexture.mockReturnValue(new Promise(resolve => {
+      resolveLoad = resolve;
+    }));
+    mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+    const compile = shaderPipeline.compileShaderPipeline(
+      "void mainImage() {}",
+      { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "late.png" } } } } },
+      "/image.glsl",
+    );
+    await vi.waitFor(() => expect(mockResourceManager.loadImageTexture).toHaveBeenCalledOnce());
+
+    shaderPipeline.dispose();
+    resolveLoad({});
+
+    await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+    expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not apply shaders that finish compiling after disposal", async () => {
+    let resolveShader!: (shader: PiShader) => void;
+    mockShaderCompiler.compileShaderAsync.mockReturnValue(new Promise(resolve => {
+      resolveShader = resolve;
+    }));
+    const compile = shaderPipeline.compileShaderPipeline(
+      "void mainImage() {}",
+      null,
+      "/image.glsl",
+    );
+    await vi.waitFor(() => expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledOnce());
+
+    shaderPipeline.dispose();
+    resolveShader(createMockShader());
+
+    await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+    expect(mockRenderer.DestroyShader).toHaveBeenCalledOnce();
+    expect(shaderPipeline.getPasses()).toEqual([]);
+  });
+
   describe("when compiling shader pipeline with different shader files", () => {
     it("should cleanup when shader path changes", async () => {
       const firstShaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";

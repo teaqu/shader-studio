@@ -627,14 +627,28 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   dispose(): void {
-    if (this.bufferManager) {
-      this.bufferManager.dispose();
-    }
-    if (this.frameRenderer) {
-      this.frameRenderer.stopRenderLoop();
-    }
-    if (this.cameraManager) {
-      this.cameraManager.dispose();
+    let firstError: unknown;
+    let hasError = false;
+    const attempt = (cleanup: () => void): void => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
+    };
+
+    attempt(() => this.bufferManager?.dispose());
+    attempt(() => this.frameRenderer?.stopRenderLoop());
+    attempt(() => this.cameraManager?.dispose());
+    attempt(() => this.mouseManager?.dispose());
+    attempt(() => this.keyboardManager?.dispose());
+    attempt(() => this.shaderPipeline?.dispose());
+
+    if (hasError) {
+      throw firstError;
     }
   }
 }

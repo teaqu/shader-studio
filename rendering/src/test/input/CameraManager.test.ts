@@ -402,6 +402,22 @@ describe("CameraManager", () => {
     it("should not throw if called without setupEventListeners", () => {
       expect(() => camera.dispose()).not.toThrow();
     });
+
+    it("removes the previous listener set before setup re-entry", () => {
+      const firstCanvas = {
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as HTMLCanvasElement;
+      const secondCanvas = {
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as HTMLCanvasElement;
+
+      camera.setupEventListeners(firstCanvas);
+      camera.setupEventListeners(secondCanvas);
+
+      expect(firstCanvas.removeEventListener).toHaveBeenCalledWith("mousedown", expect.any(Function));
+    });
   });
 
   describe("simultaneous key input", () => {

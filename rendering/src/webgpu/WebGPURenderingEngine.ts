@@ -70,12 +70,15 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   }
 
   dispose(): void {
-    this.inner.dispose();
-    this.revokeObjectUrls();
+    try {
+      this.inner.dispose();
+    } finally {
+      this.revokeObjectUrls();
+    }
   }
 
   private revokeObjectUrls(): void {
-    for (const url of this.objectUrls) {
+    for (const url of this.objectUrls.splice(0)) {
       URL.revokeObjectURL(url);
     }
   }
@@ -100,6 +103,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private maxTextureDimension2D = DEFAULT_MAX_TEXTURE_DIMENSION_2D;
 
   private compiler: AsyncSlangCompiler | null = null;
+  private compilerAbortController: AbortController | null = null;
   private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
 
   private passGraph: RenderPassNode[] = [];
@@ -168,6 +172,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   constructor(private slangAssets: SlangAssetUrls) {}
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
+    if (this.disposed) {
+      return;
+    }
+
     const initStartedAt = this.now();
     this.logSlangPerf("init start", {
       canvasWidth: glCanvas.width,
@@ -204,6 +212,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.logSlangPerf("adapter request start", {});
       const adapter = await navigator.gpu.requestAdapter();
       const adapterMs = this.now() - adapterStartedAt;
+      if (this.disposed) {
+        return;
+      }
       if (!adapter) {
         throw new Error("requestAdapter() returned null");
       }
@@ -214,6 +225,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         ? await adapter.requestDevice(deviceDescriptor)
         : await adapter.requestDevice();
       const deviceMs = this.now() - deviceStartedAt;
+      if (this.disposed) {
+        device.destroy?.();
+        return;
+      }
       this.device = device;
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
@@ -232,7 +247,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       const compilerStartedAt = this.now();
       this.logSlangPerf("compiler create start", {});
-      this.compiler = await this.createCompiler();
+      const compiler = await this.createCompiler();
+      if (this.disposed) {
+        compiler.dispose();
+        return;
+      }
+      this.compiler = compiler;
       this.logSlangPerf("init complete", {
         adapterMs: this.ms(adapterMs),
         deviceMs: this.ms(deviceMs),
@@ -240,6 +260,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         totalMs: this.ms(this.now() - initStartedAt),
       });
     } catch (e) {
+      if (this.disposed) {
+        return;
+      }
       this.initError = e instanceof Error ? e.message : String(e);
       this.logSlangPerf("init failed", {
         reason: this.initError,
@@ -297,64 +320,131 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   /** Prefer a worker-hosted compiler; fall back to main-thread slang-wasm. */
   private async createCompiler(): Promise<AsyncSlangCompiler> {
+    this.assertNotDisposed();
+    const abortController = new AbortController();
+    this.compilerAbortController = abortController;
     const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
     const startedAt = this.now();
-    if (workerUrl && typeof Worker !== "undefined") {
-      const objectUrls: string[] = [];
-      try {
-        this.logSlangPerf("worker fetch start", { workerUrl });
-        const workerScript = await this.createBlobAssetUrl(workerUrl, "text/javascript", "text");
-        objectUrls.push(workerScript.url);
-        const slangScript = await this.createBlobAssetUrl(scriptUrl, "text/javascript", "text");
-        objectUrls.push(slangScript.url);
-        const slangWasm = await this.createBlobAssetUrl(wasmUrl, "application/wasm", "binary");
-        objectUrls.push(slangWasm.url);
-        this.logSlangPerf("worker fetch complete", {
-          workerUrl,
-          fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
-          blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
-        });
-        const initStartedAt = this.now();
-        this.logSlangPerf("worker init start", { workerUrl });
-        const compiler = await WorkerSlangCompiler.create(
-          () => new Worker(workerScript.url, { type: "module" }),
-          slangScript.url,
-          slangWasm.url,
-          SLANG_WORKER_INIT_TIMEOUT_MS,
-          (status) => this.logSlangPerf("worker status", { workerUrl, ...status }),
-        );
-        this.logSlangPerf("worker setup", {
-          mode: "worker",
-          workerUrl,
-          initTimeoutMs: SLANG_WORKER_INIT_TIMEOUT_MS,
-          fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
-          blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
-          initMs: this.ms(this.now() - initStartedAt),
-          totalMs: this.ms(this.now() - startedAt),
-        });
-        return new RevokingAsyncSlangCompiler(compiler, objectUrls);
-      } catch (e) {
-        for (const url of objectUrls) {
-          URL.revokeObjectURL(url);
+    try {
+      if (workerUrl && typeof Worker !== "undefined") {
+        const objectUrls: string[] = [];
+        const revokeObjectUrls = () => {
+          for (const url of objectUrls.splice(0)) {
+            URL.revokeObjectURL(url);
+          }
+        };
+        try {
+          this.logSlangPerf("worker fetch start", { workerUrl });
+          const workerScript = await this.createBlobAssetUrl(
+            workerUrl,
+            "text/javascript",
+            "text",
+            abortController.signal,
+          );
+          objectUrls.push(workerScript.url);
+          this.assertNotDisposed();
+          const slangScript = await this.createBlobAssetUrl(
+            scriptUrl,
+            "text/javascript",
+            "text",
+            abortController.signal,
+          );
+          objectUrls.push(slangScript.url);
+          this.assertNotDisposed();
+          const slangWasm = await this.createBlobAssetUrl(
+            wasmUrl,
+            "application/wasm",
+            "binary",
+            abortController.signal,
+          );
+          objectUrls.push(slangWasm.url);
+          this.assertNotDisposed();
+          this.logSlangPerf("worker fetch complete", {
+            workerUrl,
+            fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
+            blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
+          });
+          const initStartedAt = this.now();
+          this.assertNotDisposed();
+          this.logSlangPerf("worker init start", { workerUrl });
+          const compiler = await WorkerSlangCompiler.create(
+            () => new Worker(workerScript.url, { type: "module" }),
+            slangScript.url,
+            slangWasm.url,
+            SLANG_WORKER_INIT_TIMEOUT_MS,
+            (status) => this.logSlangPerf("worker status", { workerUrl, ...status }),
+          );
+          if (this.disposed) {
+            this.disposeLateCompiler(compiler);
+          }
+          this.logSlangPerf("worker setup", {
+            mode: "worker",
+            workerUrl,
+            initTimeoutMs: SLANG_WORKER_INIT_TIMEOUT_MS,
+            fetchMs: this.ms(workerScript.fetchMs + slangScript.fetchMs + slangWasm.fetchMs),
+            blobMs: this.ms(workerScript.blobMs + slangScript.blobMs + slangWasm.blobMs),
+            initMs: this.ms(this.now() - initStartedAt),
+            totalMs: this.ms(this.now() - startedAt),
+          });
+          return new RevokingAsyncSlangCompiler(compiler, objectUrls);
+        } catch (e) {
+          revokeObjectUrls();
+          if (this.disposed) {
+            throw this.engineDisposedError();
+          }
+          console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
         }
-        console.warn("[Slang] worker compiler unavailable, compiling on main thread:", e);
+      }
+
+      this.assertNotDisposed();
+      const mainThreadStartedAt = this.now();
+      this.logSlangPerf("main-thread setup start", { workerUrl: workerUrl ?? null });
+      const slang = await loadSlangModule(scriptUrl, wasmUrl);
+      this.assertNotDisposed();
+      this.logSlangPerf("worker setup", {
+        mode: "main-thread",
+        workerUrl: workerUrl ?? null,
+        loadSlangMs: this.ms(this.now() - mainThreadStartedAt),
+        totalMs: this.ms(this.now() - startedAt),
+      });
+      const compiler = new MainThreadSlangCompiler(new SlangCompiler(slang));
+      if (this.disposed) {
+        this.disposeLateCompiler(compiler);
+      }
+      return compiler;
+    } finally {
+      if (this.compilerAbortController === abortController) {
+        this.compilerAbortController = null;
       }
     }
-    const mainThreadStartedAt = this.now();
-    this.logSlangPerf("main-thread setup start", { workerUrl: workerUrl ?? null });
-    const slang = await loadSlangModule(scriptUrl, wasmUrl);
-    this.logSlangPerf("worker setup", {
-      mode: "main-thread",
-      workerUrl: workerUrl ?? null,
-      loadSlangMs: this.ms(this.now() - mainThreadStartedAt),
-      totalMs: this.ms(this.now() - startedAt),
-    });
-    return new MainThreadSlangCompiler(new SlangCompiler(slang));
   }
 
-  private async createBlobAssetUrl(resourceUrl: string, mimeType: string, mode: "text" | "binary"): Promise<BlobAssetUrl> {
+  private assertNotDisposed(): void {
+    if (this.disposed) {
+      throw this.engineDisposedError();
+    }
+  }
+
+  private disposeLateCompiler(compiler: AsyncSlangCompiler): never {
+    try {
+      compiler.dispose();
+    } finally {
+      throw this.engineDisposedError();
+    }
+  }
+
+  private engineDisposedError(): Error {
+    return new Error("Engine disposed");
+  }
+
+  private async createBlobAssetUrl(
+    resourceUrl: string,
+    mimeType: string,
+    mode: "text" | "binary",
+    signal: AbortSignal,
+  ): Promise<BlobAssetUrl> {
     const fetchStartedAt = this.now();
-    const response = await fetch(resourceUrl);
+    const response = await fetch(resourceUrl, { signal });
     if (!response.ok) {
       throw new Error(`Failed to load Slang worker asset (${response.status})`);
     }
@@ -428,6 +518,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.logSlangPerf("compile init ready", { path, generation, readyMs: this.ms(readyMs) });
     }
 
+    if (generation !== this.compileGeneration || this.disposed) {
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+    }
+
     if (this.initError || !this.device || !this.compiler) {
       const reason = this.initError ?? this.describeUnavailableInitState();
       this.logSlangPerf("compile unavailable", { path, generation, reason });
@@ -479,45 +573,105 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
     // loaded (and awaited) as part of the compile; render then only does cache
     // lookups.
-    if (this.resourceManager) {
+    const resourceManager = this.resourceManager;
+    if (resourceManager) {
+      const interruptedResourceCompile = (): CompilationResult | null => {
+        if (this.disposed || this.resourceManager !== resourceManager) {
+          try {
+            resourceManager.cleanup();
+          } catch {
+            // Disposal already owns error reporting; keep the compile superseded.
+          }
+          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+        }
+        if (generation !== this.compileGeneration) {
+          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+        }
+        return null;
+      };
       for (const pass of graph.passes) {
         for (const channel of pass.channels) {
           if (channel.kind === "texture") {
-            await this.resourceManager.loadImageTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              grayscale: channel.grayscale,
-            });
+            try {
+              await resourceManager.loadImageTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                grayscale: channel.grayscale,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
           } else if (channel.kind === "video") {
-            const result = await this.resourceManager.loadVideoTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              muted: channel.muted,
-            });
+            let result;
+            try {
+              result = await resourceManager.loadVideoTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                muted: channel.muted,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
             if (result.warning) {
               graph.warnings.push(result.warning);
             }
           } else if (channel.kind === "cubemap") {
-            await this.resourceManager.loadCubemapTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-            });
+            try {
+              await resourceManager.loadCubemapTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
           } else if (channel.kind === "audio") {
             try {
-              await this.resourceManager.loadAudioSource(channel.path, {
+              await resourceManager.loadAudioSource(channel.path, {
                 muted: channel.muted,
                 startTime: channel.startTime,
                 endTime: channel.endTime,
               });
-              this.resourceManager.updateAudioLoopRegion(
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              resourceManager.updateAudioLoopRegion(
                 channel.path,
                 channel.startTime,
                 channel.endTime,
               );
             } catch {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
               graph.warnings.push(`Audio loading failed: ${channel.path}`);
             }
           }
@@ -1388,23 +1542,57 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
-    this.stopRenderLoop();
-    this.compiler?.dispose();
+
+    let firstError: unknown;
+    let hasError = false;
+    const attempt = (cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
+    };
+
+    const compilerAbortController = this.compilerAbortController;
+    this.compilerAbortController = null;
+    attempt(() => compilerAbortController?.abort());
+    attempt(() => this.stopRenderLoop());
+    attempt(() => this.mouseManager.dispose());
+    attempt(() => this.keyboardManager.dispose());
+    attempt(() => this.cameraManager.dispose());
+
+    const compiler = this.compiler;
     this.compiler = null;
-    this.inspectorReadbackBuffer?.destroy?.();
+    attempt(() => compiler?.dispose());
+
+    const inspectorReadbackBuffer = this.inspectorReadbackBuffer;
     this.inspectorReadbackBuffer = null;
     this.inspectorTarget = null;
     this.inspectorPixel = null;
-    for (const pipeline of this.passPipelines.values()) {
-      pipeline.dispose();
-    }
+    attempt(() => inspectorReadbackBuffer?.destroy?.());
+
+    const passPipelines = [...this.passPipelines.values()];
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
-    this.resourceManager?.cleanup();
-    this.cameraManager.dispose();
-    this.device?.destroy?.();
+    for (const pipeline of passPipelines) {
+      attempt(() => pipeline.dispose());
+    }
+
+    const resourceManager = this.resourceManager;
+    this.resourceManager = null;
+    attempt(() => resourceManager?.cleanup());
+
+    const device = this.device;
     this.device = null;
+    attempt(() => device?.destroy?.());
+
+    if (hasError) {
+      throw firstError;
+    }
   }
 
   /**
