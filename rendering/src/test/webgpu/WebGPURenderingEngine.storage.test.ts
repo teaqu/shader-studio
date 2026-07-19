@@ -235,6 +235,52 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(result?.errors?.join("\n")).toMatch(/9.*limit.*8/i);
   });
 
+  it.each([1, 2, 3])(
+    "rejects an effective storage byte size of %i before allocation or compilation",
+    async (byteSize) => {
+      const { engine, device, compiler } = engineHarness();
+      await engine.compileShaderPipeline(
+        IMAGE_SOURCE,
+        storageConfig({ installed: { count: 1, stride: 4, elementType: "uint" } }),
+        "/image.slang",
+      );
+      const installed = createdStorageBuffers(device)[0];
+      compiler.compile.mockClear();
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        storageConfig({ misaligned: { count: 1, stride: byteSize, elementType: "uint" } }),
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.errors?.join("\n")).toMatch(
+        new RegExp(`misaligned.*${byteSize}.*multiple of 4`, "i"),
+      );
+      expect(compiler.compile).not.toHaveBeenCalled();
+      expect(createdStorageBuffers(device)).toEqual([installed]);
+      expect(installedStorageBuffers(engine).get("installed")).toBe(installed);
+      expect(installed.destroy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts an effective storage byte size of exactly 4", async () => {
+    const { engine, device, compiler } = engineHarness();
+
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ boundary: { count: 1, stride: 4, elementType: "uint" } }),
+      "/image.slang",
+    );
+
+    expect(result?.success).toBe(true);
+    expect(storageCreateCalls(device)).toEqual([{
+      size: 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    }]);
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an individual buffer above the granted binding-size limit", async () => {
     const { engine, device, compiler } = engineHarness({
       maxStorageBuffersPerShaderStage: 8,
@@ -677,7 +723,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(failedBufferB.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps installed storage when a pending changed compile is superseded by a graph failure", async () => {
+  it("promptly discards pending changed storage when a newer graph failure is issued", async () => {
     const { engine, device, compiler } = engineHarness();
     const configA = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
     const configB = storageConfig({ a: { count: 8, stride: 16, elementType: "float4" } });
@@ -696,7 +742,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledTimes(2));
     const bufferB = createdStorageBuffers(device)[1];
 
-    const failedC = await engine.compileShaderPipeline(
+    const failedCPromise = engine.compileShaderPipeline(
       IMAGE_SOURCE,
       {
         version: "1",
@@ -708,6 +754,11 @@ describe("WebGPURenderingEngine storage buffers", () => {
       },
       "/image.slang",
     );
+    expect(bufferB.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
+    expect(bufferA.destroy).not.toHaveBeenCalled();
+
+    const failedC = await failedCPromise;
     resolveB({ success: true, wgsl: "// changed B" });
     const supersededB = await pendingB;
 
@@ -726,6 +777,44 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(createdStorageBuffers(device)).toHaveLength(2);
     expect(installedStorageBuffers(engine).get("a")).toBe(bufferA);
     expect(bufferA.destroy).not.toHaveBeenCalled();
+  });
+
+  it("does not stage storage when superseded while awaiting initialization", async () => {
+    const { engine, device, compiler } = engineHarness();
+    let resolveReady!: () => void;
+    (engine as unknown as { ready: Promise<void> }).ready = new Promise((resolve) => {
+      resolveReady = resolve;
+    });
+
+    const pendingB = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ stagedTooLate: { count: 4, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+    const pendingC = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "missing.slang", inputs: {} },
+        },
+      },
+      "/image.slang",
+    );
+
+    expect(storageCreateCalls(device)).toEqual([]);
+    resolveReady();
+    const [supersededB, failedC] = await Promise.all([pendingB, pendingC]);
+
+    expect(supersededB).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(failedC?.success).toBe(false);
+    expect(storageCreateCalls(device)).toEqual([]);
+    expect(compiler.compile).not.toHaveBeenCalled();
   });
 
   it("cleans installed and staged storage when disposed during a pending compile", async () => {

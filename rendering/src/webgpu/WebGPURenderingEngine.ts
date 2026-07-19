@@ -386,6 +386,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      if (prepared.generation < generation) {
+        this.discardPreparedStorage(prepared);
+      }
+    }
     if (this.shaderPath !== "" && this.shaderPath !== path) {
       this.beginShaderSession(path);
     }
@@ -471,6 +476,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors: storageErrors,
         warnings: graph.warnings,
       });
+    }
+    if (generation !== this.compileGeneration || this.disposed) {
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
     let preparedStorage: PreparedStorageBuffers;
     try {
@@ -751,6 +759,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     for (const node of storage) {
       const byteSize = node.count * node.stride;
+      if (byteSize % 4 !== 0) {
+        errors.push(
+          `Storage ${node.name} requires ${byteSize} bytes, but its byte size ` +
+          "must be a multiple of 4 for a WebGPU storage binding",
+        );
+      }
       if (byteSize > maxStorageBufferSize) {
         errors.push(
           `Storage ${node.name} requires ${byteSize} bytes, but the device ` +
