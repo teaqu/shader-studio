@@ -259,6 +259,31 @@ describe("SlangPassPipeline", () => {
     ]);
   });
 
+  it("keeps direct atomic storage bindings read-only in fragment pipelines", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [{
+        ...storageA,
+        name: "counters",
+        elementType: "Atomic<uint>",
+        stride: 4,
+      }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)).toEqual({
+      binding: 1,
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: "read-only-storage" },
+    });
+  });
+
   it("uses each storage node binding instead of its descriptor-array index", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

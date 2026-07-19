@@ -208,8 +208,20 @@ export function buildStorageDeclarations(
   passKind: "render" | "compute",
 ): { beforeCommon: string; afterCommon: string } {
   const bufferType = passKind === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
+  const renderElementType = (elementType: string): string => {
+    if (passKind === "compute") {
+      return elementType;
+    }
+    if (elementType === "Atomic<uint>") {
+      return "uint";
+    }
+    if (elementType === "Atomic<int>") {
+      return "int";
+    }
+    return elementType;
+  };
   const declaration = (node: StorageBindingNode) => `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
-${bufferType}<${node.elementType}> ${node.name};
+${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 `;
 
   return {

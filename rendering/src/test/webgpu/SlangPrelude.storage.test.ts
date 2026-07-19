@@ -20,6 +20,15 @@ const boids: StorageBindingNode = {
   stride: 32,
 };
 
+const atomicCounters: StorageBindingNode = {
+  name: "counters",
+  binding: 2,
+  elementType: "Atomic<uint>",
+  builtin: true,
+  count: 4,
+  stride: 4,
+};
+
 describe("SlangPrelude storage declarations", () => {
   it("splits compute storage declarations around common code with channel-offset RW bindings", () => {
     const declarations = buildStorageDeclarations([lanes, boids], 2, "compute");
@@ -37,6 +46,26 @@ describe("SlangPrelude storage declarations", () => {
 
     expect(declarations.beforeCommon).toContain("StructuredBuffer<float4> lanes;");
     expect(declarations.beforeCommon).not.toContain("RWStructuredBuffer");
+  });
+
+  it("exposes direct atomic elements as scalar reads only in render passes", () => {
+    const renderDeclarations = buildStorageDeclarations([
+      atomicCounters,
+      { ...atomicCounters, name: "signedCounters", binding: 3, elementType: "Atomic<int>" },
+    ], 0, "render");
+    const computeDeclarations = buildStorageDeclarations([atomicCounters], 0, "compute");
+
+    expect(renderDeclarations.beforeCommon).toContain("StructuredBuffer<uint> counters;");
+    expect(renderDeclarations.beforeCommon).toContain("StructuredBuffer<int> signedCounters;");
+    expect(renderDeclarations.beforeCommon).not.toContain("StructuredBuffer<Atomic");
+    expect(computeDeclarations.beforeCommon)
+      .toContain("RWStructuredBuffer<Atomic<uint>> counters;");
+  });
+
+  it("does not rewrite custom storage types that may contain atomic fields", () => {
+    const declarations = buildStorageDeclarations([boids], 0, "render");
+
+    expect(declarations.afterCommon).toContain("StructuredBuffer<Boid> boids;");
   });
 
   it("defaults storage declarations to read-only structured buffers", () => {
