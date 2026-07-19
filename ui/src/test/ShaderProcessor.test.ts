@@ -435,6 +435,33 @@ describe('ShaderProcessor', () => {
       );
     });
 
+    it('preserves structured Slang diagnostics in failed compilation results', async () => {
+      const diagnostic = {
+        uri: 'file:///project/helper.slang',
+        range: { start: { line: 2, character: 1 }, end: { line: 2, character: 3 } },
+        severity: 'error' as const,
+        message: 'bad helper',
+        source: 'slang-compile' as const,
+      };
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ['raw error'],
+        diagnostics: [diagnostic],
+      });
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        language: 'slang',
+        code: 'float4 mainImage(float2 c) { return helper(); }',
+        config: null,
+        path: '/project/image.slang',
+        buffers: {},
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message);
+
+      expect(result).toMatchObject({ success: false, diagnostics: [diagnostic] });
+    });
+
     it('passes a Slang workspace snapshot through to the rendering engine', async () => {
       const workspace = {
         rootUri: 'file:///project',

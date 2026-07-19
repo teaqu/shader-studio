@@ -13,7 +13,7 @@
   } from "@shader-studio/monaco";
   import { getBrowserSlangLanguageClient } from "../slangLanguageClient";
   import { acquireEditorModel, canonicalEditorUri, releaseEditorModel } from "../monacoModelRegistry";
-  import type { SlangWorkspaceSnapshot } from "@shader-studio/types";
+  import type { SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -31,6 +31,7 @@
     activeBufferName?: string;
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
+    diagnostics?: SlangDiagnostic[];
     compileMode?: CompileMode;
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
@@ -61,6 +62,7 @@
     activeBufferName = "Image",
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
+    diagnostics = [],
     compileMode = "hot",
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
@@ -94,6 +96,7 @@
     lifecycle: number;
   }> = [];
   const compileMarkerOwners = new WeakMap<monaco.editor.ITextModel, string>();
+  const structuredCompileModels = new Set<monaco.editor.ITextModel>();
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
@@ -124,6 +127,7 @@
       }
       try {
         await slangAdapter.setWorkspace(update.snapshot);
+        updateStructuredDiagnosticMarkers(diagnostics);
         lastWorkspaceError = "";
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -676,6 +680,10 @@
       editor.dispose();
       editor = null;
     }
+    for (const model of structuredCompileModels) {
+      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, []);
+    }
+    structuredCompileModels.clear();
     if (activeModel) {
       clearCompileMarkers(activeModel);
       releaseEditorModel(monaco, activeModel);
@@ -740,10 +748,52 @@
     const modelUri = activeModelUri;
     const language = activeModelLanguage;
     const currentErrors = errors;
+    const currentDiagnostics = diagnostics;
     if (editorReady && modelUri && activeModel) {
-      updateErrorMarkers(currentErrors, activeModel, language);
+      const structuredCount = updateStructuredDiagnosticMarkers(currentDiagnostics);
+      if (structuredCount === 0) {
+        updateErrorMarkers(currentErrors, activeModel, language);
+      }
     }
   });
+
+  function updateStructuredDiagnosticMarkers(items: SlangDiagnostic[]): number {
+    for (const model of structuredCompileModels) {
+      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, []);
+    }
+    structuredCompileModels.clear();
+    if (shaderLanguage !== "slang") {
+      return 0;
+    }
+    const grouped = new Map<monaco.editor.ITextModel, monaco.editor.IMarkerData[]>();
+    const compileItems = items.filter((item) => item.source !== "slang-language");
+    for (const diagnostic of compileItems) {
+      const model = monaco.editor.getModel(canonicalEditorUri(monaco, diagnostic.uri));
+      if (!model) {
+        continue;
+      }
+      const markers = grouped.get(model) ?? [];
+      markers.push({
+        severity: diagnostic.severity === "warning"
+          ? monaco.MarkerSeverity.Warning
+          : diagnostic.severity === "information" || diagnostic.severity === "hint"
+          ? monaco.MarkerSeverity.Info
+          : monaco.MarkerSeverity.Error,
+        startLineNumber: diagnostic.range.start.line + 1,
+        startColumn: diagnostic.range.start.character + 1,
+        endLineNumber: diagnostic.range.end.line + 1,
+        endColumn: Math.max(diagnostic.range.start.character + 2, diagnostic.range.end.character + 1),
+        message: diagnostic.passName ? `${diagnostic.passName}: ${diagnostic.message}` : diagnostic.message,
+        code: diagnostic.code,
+      });
+      grouped.set(model, markers);
+    }
+    for (const [model, markers] of grouped) {
+      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, markers);
+      structuredCompileModels.add(model);
+    }
+    return [...grouped.values()].reduce((count, markers) => count + markers.length, 0);
+  }
 
   function updateErrorMarkers(
     errs: string[],

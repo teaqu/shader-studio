@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ErrorMessage, WarningMessage } from "@shader-studio/types";
+import type { SlangDiagnostic } from "@shader-studio/types";
 
 export class ErrorHandler {
   private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
@@ -9,6 +10,7 @@ export class ErrorHandler {
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
   private lastChangedGlslUri: vscode.Uri | null = null;
+  private compileDiagnosticUris = new Set<string>();
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
@@ -48,6 +50,7 @@ export class ErrorHandler {
     // Clear all persistent errors when editor changes or a fresh shader load begins
     this.persistentErrors.clear();
     this.recentErrors.clear();
+    this.compileDiagnosticUris.clear();
     this.diagnosticCollection.clear();
   }
 
@@ -60,6 +63,16 @@ export class ErrorHandler {
 
     if (errors.length === 0) {
       return; // Skip empty messages
+    }
+
+    if (message.diagnostics && message.diagnostics.length > 0) {
+      for (const errorText of errors) {
+        if (errorText) {
+          this.outputChannel.error(errorText);
+        }
+      }
+      this.publishStructuredDiagnostics(message.diagnostics);
+      return;
     }
 
     const now = Date.now();
@@ -158,6 +171,43 @@ export class ErrorHandler {
     this.cleanupOldErrors(now);
   }
 
+  private publishStructuredDiagnostics(diagnostics: readonly SlangDiagnostic[]): void {
+    for (const uri of this.compileDiagnosticUris) {
+      this.diagnosticCollection.delete(vscode.Uri.parse(uri));
+    }
+    this.compileDiagnosticUris.clear();
+    const grouped = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
+    for (const item of diagnostics.filter((diagnostic) => diagnostic.source !== "slang-language")) {
+      const uri = vscode.Uri.parse(item.uri);
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(
+          item.range.start.line,
+          item.range.start.character,
+          item.range.end.line,
+          Math.max(item.range.start.character + 1, item.range.end.character),
+        ),
+        item.passName ? `${item.passName}: ${item.message}` : item.message,
+        item.severity === "warning"
+          ? vscode.DiagnosticSeverity.Warning
+          : item.severity === "information"
+            ? vscode.DiagnosticSeverity.Information
+            : item.severity === "hint"
+              ? vscode.DiagnosticSeverity.Hint
+              : vscode.DiagnosticSeverity.Error,
+      );
+      diagnostic.source = item.source;
+      diagnostic.code = item.code;
+      const key = uri.toString();
+      const group = grouped.get(key) ?? { uri, diagnostics: [] };
+      group.diagnostics.push(diagnostic);
+      grouped.set(key, group);
+    }
+    for (const [key, group] of grouped) {
+      this.diagnosticCollection.set(group.uri, group.diagnostics);
+      this.compileDiagnosticUris.add(key);
+    }
+  }
+
   public handlePersistentError(message: ErrorMessage | WarningMessage): void {
     if (!message || !message.payload) {
       return; // Skip invalid messages
@@ -210,6 +260,7 @@ export class ErrorHandler {
     // Clear only regular errors when shader compilation succeeds
     // Keep persistent errors (warnings) until editor change
     this.diagnosticCollection.clear();
+    this.compileDiagnosticUris.clear();
     this.restorePersistentErrors();
 
     // Also log the success message for debugging

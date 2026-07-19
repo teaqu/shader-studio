@@ -233,11 +233,18 @@ export class SlangDependencyGraph {
     return new Set(this.forward.get(canonicalUri(uri)) ?? []);
   }
 
-  affectedRoots(uri: string, activeRoots: ReadonlySet<string>): ReadonlySet<string> {
+  affectedRoots(
+    uri: string,
+    activeRoots: ReadonlySet<string>,
+    conservativeModuleInvalidation = true,
+  ): ReadonlySet<string> {
     const roots = new Set([...activeRoots].map(canonicalUri));
     const affected = new Set<string>();
     const visited = new Set<string>();
-    const pending = [canonicalUri(uri), ...this.ambiguousModuleOwners];
+    const pending = [
+      canonicalUri(uri),
+      ...(conservativeModuleInvalidation ? this.ambiguousModuleOwners : []),
+    ];
 
     while (pending.length > 0) {
       const current = pending.pop();

@@ -1,11 +1,12 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
-import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
+import type { ShaderSourceMessage, ShaderConfig, SlangDiagnostic } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
   errors?: string[];
   warnings?: string[];
+  diagnostics?: SlangDiagnostic[];
   superseded?: true;
 }
 
@@ -82,7 +83,8 @@ export class ShaderProcessor {
 
         return {
           success: false,
-          errors: result?.errors || ["Unknown compilation error"]
+          errors: result?.errors || ["Unknown compilation error"],
+          diagnostics: result?.diagnostics,
         };
       }
 
@@ -95,6 +97,7 @@ export class ShaderProcessor {
       return {
         success: true,
         warnings: warnings.length > 0 ? warnings : undefined,
+        diagnostics: result.diagnostics,
       };
     } catch (err) {
       console.error("ShaderProcessor: Error in processMainShaderCompilation:", err);
@@ -165,13 +168,15 @@ export class ShaderProcessor {
     if (!result?.success) {
       return {
         success: false,
-        errors: result?.errors || ["Unknown compilation error"]
+        errors: result?.errors || ["Unknown compilation error"],
+        diagnostics: result?.diagnostics,
       };
     }
 
     return {
       success: true,
-      warnings: result.warnings
+      warnings: result.warnings,
+      diagnostics: result.diagnostics,
     };
   }
 

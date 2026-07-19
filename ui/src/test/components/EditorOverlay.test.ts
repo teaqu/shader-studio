@@ -1611,6 +1611,60 @@ describe('EditorOverlay', () => {
       expect(adapter.setWorkspace).toHaveBeenCalledWith(workspace);
     });
 
+    it('routes structured compiler diagnostics to dependency models without replacing language markers', async () => {
+      const monaco = await import('monaco-editor');
+      const language = await import('@shader-studio/monaco');
+      const dependencyUri = monaco.Uri.parse('file:///project/helper.slang');
+      const dependency = monaco.editor.createModel('float f() {}', 'slang', dependencyUri);
+      const originalGetModel = vi.mocked(monaco.editor.getModel).getMockImplementation();
+      vi.mocked(monaco.editor.getModel).mockImplementation((uri: any) => (
+        uri.toString() === dependencyUri.toString()
+          ? dependency as never
+          : originalGetModel?.(uri) ?? null
+      ));
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/project/main.slang',
+          shaderLanguage: 'slang',
+          slangWorkspace: {
+            rootUri: 'file:///project',
+            files: [
+              { uri: 'file:///project/main.slang', path: '/workspace/main.slang', source: 'import helper;' },
+              { uri: 'file:///project/helper.slang', path: '/workspace/helper.slang', source: 'float f() {}' },
+            ],
+          },
+          diagnostics: [{
+            uri: 'file:///project/helper.slang',
+            range: { start: { line: 1, character: 2 }, end: { line: 1, character: 5 } },
+            severity: 'error',
+            message: 'bad helper',
+            source: 'slang-compile',
+            passName: 'Image',
+          }],
+        },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(language.setupMonacoSlang).toHaveBeenCalled();
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
+        dependency,
+        'slang-compile',
+        [expect.objectContaining({
+          startLineNumber: 2,
+          startColumn: 3,
+          message: 'Image: bad helper',
+        })],
+      );
+      expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(
+        dependency,
+        'slang-language',
+        expect.anything(),
+      );
+    });
+
     it('reuses an existing canonical model instead of creating a duplicate', async () => {
       const monaco = await import('monaco-editor');
       const existing = (monaco.editor.createModel as ReturnType<typeof vi.fn>)('', 'slang', monaco.Uri.parse('file:///project/main.slang'));

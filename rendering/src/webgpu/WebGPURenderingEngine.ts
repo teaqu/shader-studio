@@ -533,6 +533,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextKeys = new Map<string, string>();
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    const diagnostics: import("@shader-studio/types").SlangDiagnostic[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
       const options: SlangCompileOptions = {
@@ -576,6 +577,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         if (!wgsl) {
           const slangStartedAt = this.now();
           const compiled = await this.compiler.compile(compileRequest);
+          diagnostics.push(...(compiled.diagnostics ?? []));
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
             errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
@@ -659,6 +661,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         success: false,
         errors,
         warnings: graph.warnings,
+        diagnostics,
       });
     }
 
@@ -738,7 +741,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       graph,
       errors,
     });
-    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    return {
+      success: true,
+      warnings: graph.warnings.length > 0 ? graph.warnings : undefined,
+      diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
+    };
   }
 
   private failedCompilation(

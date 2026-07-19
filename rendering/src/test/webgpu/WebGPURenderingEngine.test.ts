@@ -675,6 +675,42 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.compile).toHaveBeenCalledTimes(2);
   });
 
+  it("returns structured dependency diagnostics from failed Slang compilation", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(),
+      createRenderPipeline: vi.fn(),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+    };
+    const diagnostic = {
+      uri: "file:///project/helper.slang",
+      range: { start: { line: 3, character: 2 }, end: { line: 3, character: 4 } },
+      severity: "error" as const,
+      message: "unknown name",
+      source: "slang-compile" as const,
+      passName: "Image",
+    };
+    const compiler = {
+      compile: vi.fn(async () => ({ success: false as const, errors: ["raw error"], diagnostics: [diagnostic] })),
+      dispose: vi.fn(),
+    };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return helper(); }",
+      null,
+      "/project/image.slang",
+    );
+
+    expect(result).toMatchObject({ success: false, diagnostics: [diagnostic] });
+  });
+
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {

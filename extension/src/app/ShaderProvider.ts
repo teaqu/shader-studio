@@ -11,6 +11,10 @@ import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import {
+  createSlangShaderWorkspaceHost,
+  SlangShaderWorkspaceCoordinator,
+} from "./SlangShaderWorkspaceCoordinator";
 import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
 
 export class ShaderProvider {
@@ -20,14 +24,18 @@ export class ShaderProvider {
   private getDebugModeEnabled: () => boolean;
   private scriptBundler = new ScriptBundler();
   private scriptEvaluator = new ScriptEvaluator();
+  private readonly slangWorkspaceCoordinator: SlangShaderWorkspaceCoordinator;
 
   constructor(
     private messenger: Messenger,
     getDebugModeEnabled?: () => boolean,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
+    slangWorkspaceCoordinator?: SlangShaderWorkspaceCoordinator,
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
+    this.slangWorkspaceCoordinator = slangWorkspaceCoordinator
+      ?? new SlangShaderWorkspaceCoordinator(createSlangShaderWorkspaceHost());
   }
 
   public async sendShaderFromEditor(
@@ -50,7 +58,7 @@ export class ShaderProvider {
     // after the file has been created.
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+    if (await this.trySendNonMainImageShader(shaderPath, code, options, () => (
       this.sendNonMainImageShaderFromEditor(shaderPath, code, editor, options)
     ))) {
       return;
@@ -91,7 +99,7 @@ export class ShaderProvider {
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
-      if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      if (await this.trySendNonMainImageShader(shaderPath, code, options, () => (
         this.sendNonMainImageShaderFromPath(shaderPath, code, options)
       ))) {
         return;
@@ -117,7 +125,7 @@ export class ShaderProvider {
 
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+    if (await this.trySendNonMainImageShader(shaderPath, code, options, () => (
       this.sendNonMainImageShaderFromDocument(shaderPath, code, document, options)
     ))) {
       return;
@@ -140,6 +148,16 @@ export class ShaderProvider {
     }
 
     await this.sendMainImageShader(shaderPath, code, options, cursorPosition, true);
+  }
+
+  public async sendAffectedSlangRoots(
+    filePath: string,
+    source?: string,
+    options?: { reload?: boolean },
+  ): Promise<void> {
+    for (const owner of this.slangWorkspaceCoordinator.owningRoots(filePath, source)) {
+      await this.sendSlangRoot(owner, options);
+    }
   }
 
   /**
@@ -368,10 +386,32 @@ export class ShaderProvider {
   private async trySendNonMainImageShader(
     shaderPath: string,
     code: string,
+    options: { reload?: boolean } | undefined,
     sendOwnedShader: () => Promise<void>,
   ): Promise<boolean> {
+    const slangOwners = getShaderLanguage(shaderPath) === "slang"
+      ? this.slangWorkspaceCoordinator.owningRoots(shaderPath, code)
+      : [];
+    if (slangOwners.some((owner) => owner !== shaderPath)) {
+      this.logger.debug(`Recompiling ${slangOwners.length} Slang root(s) affected by ${shaderPath}`);
+      for (const owner of slangOwners) {
+        await this.sendSlangRoot(owner, options);
+      }
+      return true;
+    }
+
     if (code.includes("mainImage")) {
       return false;
+    }
+
+    if (getShaderLanguage(shaderPath) === "slang") {
+      if (slangOwners.length > 0) {
+        this.logger.debug(`Recompiling ${slangOwners.length} Slang root(s) affected by ${shaderPath}`);
+        for (const owner of slangOwners) {
+          await this.sendSlangRoot(owner, options);
+        }
+        return true;
+      }
     }
 
     const ownerShaderPath = this.resolveOwningShaderPath(shaderPath);
@@ -398,6 +438,8 @@ export class ShaderProvider {
   ): Promise<void> {
     const buffers: Record<string, string> = {};
     const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+    const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
+    const language = getShaderLanguage(shaderPath);
 
     this.logger.debug(`Sending shader update for ${shaderPath}`);
     this.logger.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
@@ -408,12 +450,21 @@ export class ShaderProvider {
       config,
       path: shaderPath,
       buffers,
-      language: getShaderLanguage(shaderPath),
+      language,
       reload: options?.reload,
       pathMap: this.buildPathMap(config, shaderPath),
-      bufferPathMap: this.buildBufferPathMap(config, shaderPath),
+      bufferPathMap,
       cursorPosition,
     };
+
+    if (language === "slang") {
+      message.workspace = await this.slangWorkspaceCoordinator.registerRoot(
+        shaderPath,
+        Object.entries(bufferPathMap)
+          .filter(([passName]) => passName !== "Image")
+          .map(([, filePath]) => filePath),
+      );
+    }
 
     // Snapshot the RAW config file text (not the processed `config` above, which
     // injects resolved_path etc. and would make every diff look structural) so the
@@ -430,9 +481,34 @@ export class ShaderProvider {
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
 
-    if (trackActiveShader) {
+    if (trackActiveShader || language === "slang") {
       this.activeShaders.add(shaderPath);
     }
+  }
+
+  private async sendSlangRoot(
+    rootPath: string,
+    options?: { reload?: boolean },
+  ): Promise<void> {
+    const openDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.fsPath === rootPath,
+    );
+    if (openDocument) {
+      await this.sendMainImageShader(rootPath, openDocument.getText(), options, undefined, true);
+      return;
+    }
+    if (!fs.existsSync(rootPath)) {
+      this.activeShaders.delete(rootPath);
+      this.slangWorkspaceCoordinator.removeRoot(rootPath);
+      return;
+    }
+    await this.sendMainImageShader(
+      rootPath,
+      fs.readFileSync(rootPath, "utf-8"),
+      options,
+      undefined,
+      true,
+    );
   }
 
   private async sendNonMainImageShaderFromEditor(

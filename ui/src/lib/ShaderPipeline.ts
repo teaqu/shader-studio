@@ -180,7 +180,7 @@ export class ShaderPipeline {
     this.reportCompilationResult(result);
   }
 
-  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+  private reportCompilationResult(result: CompilationResult): void {
     if (result.success) {
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
@@ -192,7 +192,7 @@ export class ShaderPipeline {
       return;
     }
 
-    this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
+    this.sendErrorMessage(result.errors || ["Unknown compilation error"], result.diagnostics);
   }
 
   private syncStoredShaderContextForBufferUpdate(
@@ -224,10 +224,14 @@ export class ShaderPipeline {
     );
   }
 
-  private sendErrorMessage(errors: string[]): void {
+  private sendErrorMessage(
+    errors: string[],
+    diagnostics?: CompilationResult["diagnostics"],
+  ): void {
     const errorMessage: ErrorMessage = {
       type: "error",
       payload: errors,
+      ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
     };
     this.transport.postMessage(errorMessage);
   }

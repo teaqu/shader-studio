@@ -383,6 +383,13 @@ export class ShaderStudio {
       );
     });
 
+    const slangWatcher = vscode.workspace.createFileSystemWatcher("**/*.slang");
+    this.context.subscriptions.push(
+      slangWatcher,
+      slangWatcher.onDidCreate((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+      slangWatcher.onDidDelete((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+    );
+
     // Track cursor position in GLSL editors for debug mode
     this.context.subscriptions.push(
       vscode.window.onDidChangeTextEditorSelection((event) => {

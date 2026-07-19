@@ -6,6 +6,7 @@ import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { PathResolver } from '../../app/PathResolver';
 import { Logger } from '../../app/services/Logger';
 import { ConfigChangeClassifier } from '../../app/services/ConfigChangeClassifier';
+import type { SlangShaderWorkspaceCoordinator } from '../../app/SlangShaderWorkspaceCoordinator';
 
 suite('ShaderProvider Test Suite', () => {
   let provider: ShaderProvider;
@@ -736,6 +737,116 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledOnce(recordSpy);
       sinon.assert.calledWithExactly(recordSpy, configPath, null);
+    });
+  });
+
+  suite('Slang workspace reload', () => {
+    const snapshot = {
+      rootUri: 'file:///project',
+      files: [{
+        uri: 'file:///project/image.slang',
+        path: '/workspace/image.slang',
+        source: 'float4 mainImage(float2 uv) { return 1; }',
+      }],
+    };
+
+    test('attaches a workspace snapshot only to Slang root messages', async () => {
+      const coordinator = {
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns([]),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(
+        mockMessenger,
+        undefined,
+        new ConfigChangeClassifier(),
+        coordinator,
+      );
+      loadAndProcessConfigStub.returns(null);
+      const document = {
+        fileName: '/project/image.slang',
+        languageId: 'slang',
+        uri: vscode.Uri.file('/project/image.slang'),
+        getText: sandbox.stub().returns(snapshot.files[0].source),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: snapshot.files[0].source }),
+      } as any;
+
+      await slangProvider.sendShaderFromDocument(document);
+
+      assert.deepStrictEqual(sendSpy.lastCall.args[0].workspace, snapshot);
+      assert.strictEqual(sendSpy.lastCall.args[0].language, 'slang');
+    });
+
+    test('helper edits recompile every owning root and never emit Missing mainImage', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').callsFake((...args: unknown[]) => (
+        String(args[0]).endsWith('.sha.json')
+          ? (() => {
+            throw new Error('missing config');
+          })()
+          : 'float4 mainImage(float2 uv) { return 1; }'
+      ));
+      const coordinator = {
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns(['/project/a.slang', '/project/z.slang']),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(
+        mockMessenger,
+        undefined,
+        new ConfigChangeClassifier(),
+        coordinator,
+      );
+      loadAndProcessConfigStub.returns(null);
+      const helper = {
+        fileName: '/project/helper.slang',
+        languageId: 'slang',
+        uri: vscode.Uri.file('/project/helper.slang'),
+        getText: sandbox.stub().returns('float4 helper() { return 1; }'),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: 'float4 helper() { return 1; }' }),
+      } as any;
+
+      await slangProvider.sendShaderFromDocument(helper);
+
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), [
+        '/project/a.slang',
+        '/project/z.slang',
+      ]);
+      assert.ok(sendSpy.neverCalledWithMatch({ type: 'error', payload: ['Missing mainImage function'] }));
+    });
+
+    test('configured pass edits with their own mainImage still recompile the owning root', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      const coordinator = {
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns(['/project/image.slang']),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(
+        mockMessenger,
+        undefined,
+        new ConfigChangeClassifier(),
+        coordinator,
+      );
+      loadAndProcessConfigStub.returns(null);
+      const pass = {
+        fileName: '/project/pass.slang',
+        languageId: 'slang',
+        uri: vscode.Uri.file('/project/pass.slang'),
+        getText: sandbox.stub().returns('float4 mainImage(float2 uv) { return 0; }'),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: '' }),
+      } as any;
+
+      await slangProvider.sendShaderFromDocument(pass);
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, '/project/image.slang');
     });
   });
 });

@@ -19,6 +19,7 @@ export interface DebugMessage extends BaseMessage {
 export interface ErrorMessage extends BaseMessage {
   type: "error";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
 }
 
 export interface WarningMessage extends BaseMessage {

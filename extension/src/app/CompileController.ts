@@ -125,6 +125,13 @@ export class CompileController {
     this.messenger.send(errorMsg);
   }
 
+  public handleSlangFileCreatedOrDeleted(filePath: string): void {
+    if (this.compileMode !== "hot" || !this.messenger.hasActiveClients()) {
+      return;
+    }
+    void this.shaderProvider.sendAffectedSlangRoots(filePath, undefined, { reload: true });
+  }
+
   private getStoredCompileMode(): CompileMode {
     const stored = this.context.globalState.get<string>("shader-studio.compileMode");
     return stored === "save" || stored === "manual" ? stored : "hot";

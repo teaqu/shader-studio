@@ -487,4 +487,27 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     expect(compilationState.latest).toBeNull();
     expect(mocks.transport.postMessage).not.toHaveBeenCalled();
   });
+
+  it('posts structured compile diagnostics with the legacy error payload', async () => {
+    const diagnostic = {
+      uri: 'file:///project/helper.slang',
+      range: { start: { line: 1, character: 2 }, end: { line: 1, character: 4 } },
+      severity: 'error' as const,
+      message: 'bad helper',
+      source: 'slang-compile' as const,
+    };
+    mocks.compileShaderPipeline.mockResolvedValueOnce({
+      success: false,
+      errors: ['legacy error'],
+      diagnostics: [diagnostic],
+    } as any);
+
+    await pipeline.handleShaderMessage(makeShaderEvent('float4 mainImage(float2 uv) { return helper(); }', '/project/image.slang'));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['legacy error'],
+      diagnostics: [diagnostic],
+    });
+  });
 });

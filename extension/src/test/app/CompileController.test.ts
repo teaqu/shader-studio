@@ -54,6 +54,7 @@ suite('CompileController Test Suite', () => {
       sendShaderWithScriptContent: sandbox.stub().resolves(),
       getActiveConfig: sandbox.stub().returns(null),
       getScriptPath: sandbox.stub().returns(null),
+      sendAffectedSlangRoots: sandbox.stub().resolves(),
     };
 
     mockMessenger = {
@@ -221,5 +222,23 @@ suite('CompileController Test Suite', () => {
 
     assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/shader.glsl'));
     assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(document));
+  });
+
+  test('routes Slang create/delete events only in hot mode with an active client', () => {
+    mockMessenger.hasActiveClients.returns(true);
+
+    controller.handleSlangFileCreatedOrDeleted('/mock/path/helper.slang');
+
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.sendAffectedSlangRoots,
+      '/mock/path/helper.slang',
+      undefined,
+      { reload: true },
+    );
+
+    mockShaderProvider.sendAffectedSlangRoots.resetHistory();
+    controller.setMode('save');
+    controller.handleSlangFileCreatedOrDeleted('/mock/path/helper.slang');
+    sinon.assert.notCalled(mockShaderProvider.sendAffectedSlangRoots);
   });
 });

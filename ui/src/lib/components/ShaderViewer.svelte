@@ -45,7 +45,7 @@
   import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
-  import type { AspectRatioMode, ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
+  import type { AspectRatioMode, ShaderConfig, SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
@@ -135,6 +135,7 @@
   let isLocked = $state(false);
   let hasShader = $state(false);
   let errors = $state<string[]>([]);
+  let compileDiagnostics = $state<SlangDiagnostic[]>([]);
   let currentFPS = $state(0);
   let canvasWidth = $state(0);
   let canvasHeight = $state(0);
@@ -890,6 +891,7 @@
 
   function applyCompilationResult(result: CompilationResult) {
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+    compileDiagnostics = result.success ? [] : (result.diagnostics ?? []);
   }
 
   async function handleMessage(event: MessageEvent): Promise<void> {
@@ -898,6 +900,7 @@
     if (type === 'error') {
       const payload = event.data.payload;
       errors = Array.isArray(payload) ? payload : [payload];
+      compileDiagnostics = event.data.diagnostics ?? [];
       return;
     }
 
@@ -1321,6 +1324,7 @@
           onBufferSwitch={handleOverlayBufferSwitch}
           onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
           {errors}
+          diagnostics={compileDiagnostics}
         />
       {/key}
     {/if}

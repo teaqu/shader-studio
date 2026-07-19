@@ -358,4 +358,35 @@ suite('ErrorHandler Test Suite', () => {
     assert.ok(diagnosticUri, 'Should set a diagnostic URI');
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
   });
+
+  test('publishes structured compiler diagnostics at their canonical dependency URI and clears stale entries', () => {
+    const sets: Array<{ uri: vscode.Uri; diagnostics: readonly vscode.Diagnostic[] }> = [];
+    const deletes: vscode.Uri[] = [];
+    mockDiagnosticCollection.set = ((uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      sets.push({ uri, diagnostics: diagnostics ?? [] });
+    }) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.delete = ((uri: vscode.Uri) => {
+      deletes.push(uri);
+    }) as typeof mockDiagnosticCollection.delete;
+    const dependencyUri = vscode.Uri.file('/project/lib/helper.slang').toString();
+    const diagnostic = {
+      uri: dependencyUri,
+      range: { start: { line: 2, character: 4 }, end: { line: 2, character: 7 } },
+      severity: 'error' as const,
+      code: 'E123',
+      message: 'unknown symbol',
+      source: 'slang-compile' as const,
+      passName: 'BufferA',
+    };
+
+    errorHandler.handleError({ type: 'error', payload: ['legacy fallback'], diagnostics: [diagnostic] });
+    errorHandler.handleError({ type: 'error', payload: ['legacy fallback'], diagnostics: [diagnostic] });
+
+    assert.strictEqual(sets[0].uri.toString(), dependencyUri);
+    assert.strictEqual(sets[0].diagnostics[0].range.start.line, 2);
+    assert.strictEqual(sets[0].diagnostics[0].message, 'BufferA: unknown symbol');
+    assert.strictEqual(sets[0].diagnostics[0].source, 'slang-compile');
+    assert.strictEqual(sets[0].diagnostics[0].code, 'E123');
+    assert.strictEqual(deletes[0].toString(), dependencyUri);
+  });
 });
