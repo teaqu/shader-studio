@@ -265,7 +265,7 @@ describe('SlangMonacoAdapter', () => {
     expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(helper, 'slang-compile', []);
   });
 
-  it('preserves absent dirty and editor-owned dependency models', async () => {
+  it('removes absent unowned dirty models but preserves editor-owned dependency models', async () => {
     const monaco = createMonaco();
     const borrowed = createModel('file:///project/borrowed.slang', 'borrowed');
     monaco.models.set('file:///project/borrowed.slang', borrowed);
@@ -284,10 +284,11 @@ describe('SlangMonacoAdapter', () => {
     dirty.setValue('unsaved edit');
 
     await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
 
-    expect(adapter.getOrCreateModel('file:///project/lib/helper.slang', 'fallback')).toBe(dirty);
     expect(adapter.getOrCreateModel('file:///project/borrowed.slang', 'fallback')).toBe(editorOwned);
-    expect(client.closeDocument).not.toHaveBeenCalledWith('file:///project/lib/helper.slang', expect.any(Number));
+    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/lib/helper.slang', dirty.getVersionId());
+    expect(dirty.dispose).toHaveBeenCalledTimes(1);
     expect(borrowed.dispose).not.toHaveBeenCalled();
   });
 
@@ -431,6 +432,62 @@ describe('SlangMonacoAdapter', () => {
 
     releaseEditorModel(monaco as never, firstOwner);
     const replacementOwner = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+    await adapter.waitForOwnershipReconciliation();
+
+    expect(client.closeDocument).not.toHaveBeenCalled();
+    expect(helper.dispose).not.toHaveBeenCalled();
+    await expect(adapter.provideHover(
+      helper as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    )).resolves.toBeUndefined();
+    expect(client.hover).toHaveBeenCalled();
+    releaseEditorModel(monaco as never, replacementOwner);
+  });
+
+  it('cleans an absent dependency when its editor owner releases during deferred opening', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const opening = deferred<void>();
+    client.openDocument.mockImplementation(async () => opening.promise);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    const editorModel = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+
+    const removal = adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await vi.waitFor(() => expect(client.openDocument).toHaveBeenCalled());
+    releaseEditorModel(monaco as never, editorModel);
+    opening.resolve();
+    await removal;
+    await adapter.waitForOwnershipReconciliation();
+    await Promise.resolve();
+
+    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/lib/helper.slang', helper.getVersionId());
+    expect(helper.dispose).toHaveBeenCalledTimes(1);
+    await expect(adapter.provideHover(
+      helper as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    )).resolves.toBeUndefined();
+  });
+
+  it('retains an absent dependency when an editor owner reacquires during deferred opening', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const opening = deferred<void>();
+    client.openDocument.mockImplementation(async () => opening.promise);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    const firstOwner = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+
+    const removal = adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await vi.waitFor(() => expect(client.openDocument).toHaveBeenCalled());
+    releaseEditorModel(monaco as never, firstOwner);
+    const replacementOwner = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+    opening.resolve();
+    await removal;
     await adapter.waitForOwnershipReconciliation();
 
     expect(client.closeDocument).not.toHaveBeenCalled();

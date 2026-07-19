@@ -205,9 +205,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       const nextUris = new Set(canonicalSnapshot.files.map((file) => file.uri));
       for (const [uri, state] of [...this.models]) {
         const nextFile = canonicalSnapshot.files.find((file) => file.uri === uri);
-        const hasNonAdapterOwners = this.hasNonAdapterOwners(state);
+        let hasNonAdapterOwners = this.hasNonAdapterOwners(state);
         if (hasNonAdapterOwners) {
           await this.ensureDocumentReady(state);
+          hasNonAdapterOwners = this.hasNonAdapterOwners(state);
         }
         if (!nextUris.has(uri)) {
           if (state.dirty || hasNonAdapterOwners) {
@@ -215,9 +216,19 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
           }
           if (state.open) {
             await state.syncing;
+            if (this.hasNonAdapterOwners(state)) {
+              continue;
+            }
             await this.client.closeDocument(state.uri, state.model.getVersionId());
             state.open = false;
             state.syncedVersion = undefined;
+            if (this.hasNonAdapterOwners(state)) {
+              await this.ensureDocumentReady(state);
+              continue;
+            }
+          }
+          if (this.hasNonAdapterOwners(state)) {
+            continue;
           }
           this.releaseModelState(state);
           this.models.delete(uri);
@@ -235,8 +246,26 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
         }
         if (nextFile && state.model.getValue() !== nextFile.source) {
           if (state.open) {
+            await state.syncing;
+            if (this.hasNonAdapterOwners(state)) {
+              state.baselineSource = nextFile.source;
+              state.dirty = true;
+              continue;
+            }
             await this.client.closeDocument(state.uri, state.model.getVersionId());
             state.open = false;
+            state.syncedVersion = undefined;
+            if (this.hasNonAdapterOwners(state)) {
+              state.baselineSource = nextFile.source;
+              state.dirty = true;
+              await this.ensureDocumentReady(state);
+              continue;
+            }
+          }
+          if (this.hasNonAdapterOwners(state)) {
+            state.baselineSource = nextFile.source;
+            state.dirty = true;
+            continue;
           }
           state.applyingSnapshot = true;
           state.model.setValue(nextFile.source);
@@ -252,6 +281,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     for (const file of this.snapshot.files) {
       this.files.set(file.uri, file);
     }
+    await this.sweepAbsentStates();
     if (options.createDependencyModels !== false) {
       for (const file of this.snapshot.files) {
         this.getOrCreateModel(file.uri);
@@ -579,6 +609,14 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     }
     this.models.delete(uri);
     this.releaseModelState(state);
+  }
+
+  private async sweepAbsentStates(): Promise<void> {
+    for (const [uri, state] of [...this.models]) {
+      if (!this.files.has(uri) && !this.hasNonAdapterOwners(state)) {
+        await this.cleanupAbsentState(uri);
+      }
+    }
   }
 
   private ensureDocumentReady(state: ModelState): Promise<void> {
