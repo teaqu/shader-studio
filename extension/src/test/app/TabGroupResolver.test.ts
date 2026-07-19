@@ -30,13 +30,6 @@ suite('TabGroupResolver', () => {
       );
     });
 
-    test('detects tab by shader-studio.snippetLibrary viewType', () => {
-      assert.strictEqual(
-        TabGroupResolver.isExtensionTab(makeTab('anything', 'shader-studio.snippetLibrary')),
-        true,
-      );
-    });
-
     test('detects tab by "Shader Studio" label', () => {
       assert.strictEqual(
         TabGroupResolver.isExtensionTab(makeTab('Shader Studio')),
@@ -47,13 +40,6 @@ suite('TabGroupResolver', () => {
     test('detects tab by "Shader Explorer" label', () => {
       assert.strictEqual(
         TabGroupResolver.isExtensionTab(makeTab('Shader Explorer')),
-        true,
-      );
-    });
-
-    test('detects tab by "Snippet Library" label', () => {
-      assert.strictEqual(
-        TabGroupResolver.isExtensionTab(makeTab('Snippet Library')),
         true,
       );
     });
@@ -198,13 +184,6 @@ suite('TabGroupResolver', () => {
       assert.strictEqual(resolver.resolveColumn(groups, undefined), vscode.ViewColumn.One);
     });
 
-    test('excludes group with Snippet Library', () => {
-      const groups = [
-        makeGroup(vscode.ViewColumn.One, [makeTab('Snippet Library', 'shader-studio.snippetLibrary')]),
-        makeGroup(vscode.ViewColumn.Two, [makeTab('shader.glsl')]),
-      ];
-      assert.strictEqual(resolver.resolveColumn(groups, undefined), vscode.ViewColumn.Two);
-    });
   });
 
   suite('resolveExtensionTabColumn', () => {

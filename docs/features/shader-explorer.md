@@ -31,4 +31,4 @@ Click the **refresh button** to re-scan the workspace for shaders and regenerate
 
 ## Next
 
-[Snippet Library](snippet-library.md) — insert reusable GLSL code blocks
+[GLSL and Slang Code Snippets](code-snippets.md) — insert bundled shader code through native VS Code completion

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ShaderStudio } from "./app/ShaderStudio";
+import { applySnippetContributionSetting } from "./app/SnippetContributionSetting";
 
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
@@ -141,24 +142,7 @@ async function updateSnippetsContribution(): Promise<void> {
     const config = vscode.workspace.getConfiguration('shader-studio');
     const enabled = config.get<boolean>('enableSnippets', true);
 
-    if (enabled) {
-      if (!packageJson.contributes.snippets) {
-        packageJson.contributes.snippets = [
-          { language: "glsl", path: "./snippets/sdf-2d.code-snippets" },
-          { language: "glsl", path: "./snippets/sdf-3d.code-snippets" },
-          { language: "glsl", path: "./snippets/sdf-operations.code-snippets" },
-          { language: "glsl", path: "./snippets/transformations.code-snippets" },
-          { language: "glsl", path: "./snippets/ray-marching.code-snippets" },
-          { language: "glsl", path: "./snippets/noise.code-snippets" },
-          { language: "glsl", path: "./snippets/math.code-snippets" },
-          { language: "glsl", path: "./snippets/color.code-snippets" },
-          { language: "glsl", path: "./snippets/coordinates.code-snippets" },
-          { language: "glsl", path: "./snippets/templates.code-snippets" }
-        ];
-      }
-    } else {
-      delete packageJson.contributes.snippets;
-    }
+    applySnippetContributionSetting(packageJson, enabled);
 
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
   } catch (error) {

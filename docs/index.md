@@ -42,11 +42,17 @@ Take screenshots or record video and GIF animations directly from the preview. R
 
 See [Recording](features/recording.md).
 
-### Shader Explorer & Snippet Library
+### Shader Explorer
 
-Browse your shaders with the built-in Shader Explorer, and use the Snippet Library to insert common GLSL patterns — noise functions, SDF primitives, color utilities, and more.
+Browse, search, and preview the shaders in your workspace with the built-in Shader Explorer.
 
-See [Shader Explorer](features/shader-explorer.md) and [Snippet Library](features/snippet-library.md).
+See [Shader Explorer](features/shader-explorer.md).
+
+### GLSL and Slang Code Snippets
+
+Use native VS Code completion to insert bundled 2D SDF, 3D SDF, coordinate, and math snippets in either GLSL or Slang.
+
+See [GLSL and Slang Code Snippets](features/code-snippets.md).
 
 ### Editor Overlay
 
