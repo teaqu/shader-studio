@@ -15,6 +15,7 @@ import {
   StaleSlangResultError,
   SupersededSlangMutationError,
 } from '@shader-studio/slang-language-service';
+import { acquireEditorModel, releaseEditorModel } from '../modelRegistry';
 
 export const SLANG_LANGUAGE_MARKER_OWNER = 'slang-language';
 export const SLANG_COMPILE_MARKER_OWNER = 'slang-compile';
@@ -41,6 +42,30 @@ interface ModelState {
   path: string;
   version: number;
   changeDisposable: Monaco.IDisposable;
+}
+
+function relativeLanguageServicePath(path: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    throw new Error(`Slang workspace path "${path}" contains invalid percent encoding`);
+  }
+  const normalized = decoded.replaceAll('\\', '/');
+  const segments = normalized.split('/');
+  if (segments.includes('..')) {
+    throw new Error(`Slang workspace path "${path}" contains traversal`);
+  }
+  if (!normalized || normalized === '/workspace') {
+    throw new Error(`Slang workspace path "${path}" does not name a file`);
+  }
+  if (normalized.startsWith('/workspace/')) {
+    return normalized.slice('/workspace/'.length);
+  }
+  if (normalized.startsWith('/')) {
+    throw new Error(`Slang workspace path "${path}" is outside /workspace`);
+  }
+  return normalized;
 }
 
 interface CompletionMetadata {
@@ -133,7 +158,11 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
   async setWorkspace(snapshot: SlangWorkspaceSnapshot, options: SetWorkspaceOptions = {}): Promise<void> {
     const canonicalSnapshot = {
       ...snapshot,
-      files: snapshot.files.map((file) => ({ ...file, uri: canonicalModelUri(file.uri) })),
+      files: snapshot.files.map((file) => ({
+        ...file,
+        uri: canonicalModelUri(file.uri),
+        path: relativeLanguageServicePath(file.path),
+      })),
     };
     const changingRoot = this.snapshot !== undefined && this.snapshot.rootUri !== canonicalSnapshot.rootUri;
     if (changingRoot) {
@@ -142,9 +171,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       for (const state of previousStates) {
         state.changeDisposable.dispose();
         this.clearLanguageMarkers(state.model);
-        if (!state.model.isDisposed()) {
-          state.model.dispose();
-        }
+        releaseEditorModel(this.monaco, state.model);
       }
       this.models.clear();
     }
@@ -166,7 +193,14 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
   }
 
   async replaceWorkspace(snapshot: SlangWorkspaceSnapshot): Promise<void> {
-    this.snapshot = { ...snapshot, files: snapshot.files.map((file) => ({ ...file, uri: canonicalModelUri(file.uri) })) };
+    this.snapshot = {
+      ...snapshot,
+      files: snapshot.files.map((file) => ({
+        ...file,
+        uri: canonicalModelUri(file.uri),
+        path: relativeLanguageServicePath(file.path),
+      })),
+    };
     this.files.clear();
     for (const file of this.snapshot.files) {
       this.files.set(file.uri, file);
@@ -184,9 +218,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     if (!file && source === undefined) {
       return undefined;
     }
-    const parsed = this.monaco.Uri.parse(uri);
-    const existing = this.monaco.editor.getModel(parsed);
-    const model = existing ?? this.monaco.editor.createModel(source ?? file!.source, 'slang', parsed);
+    const model = acquireEditorModel(this.monaco, uri, source ?? file!.source, 'slang');
     const state: ModelState = {
       model,
       uri,
@@ -342,9 +374,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     for (const state of this.models.values()) {
       state.changeDisposable.dispose();
       this.clearLanguageMarkers(state.model);
-      if (!state.model.isDisposed()) {
-        state.model.dispose();
-      }
+      releaseEditorModel(this.monaco, state.model);
     }
     this.models.clear();
     this.disposables.splice(0).forEach((item) => item.dispose());

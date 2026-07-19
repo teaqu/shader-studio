@@ -371,7 +371,7 @@
       const name = parsed.pathname.split("/").at(-1) || "shader.slang";
       void adapter.setWorkspace(slangWorkspace ?? {
         rootUri: new URL(".", parsed).href,
-        files: [{ uri, path: `/workspace/${name}`, source: shaderCode, version: 1 }],
+        files: [{ uri, path: name, source: shaderCode, version: 1 }],
       });
     }
 

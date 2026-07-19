@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlangMonacoAdapter, canonicalModelUri } from '../slang/SlangMonacoAdapter';
 import type { SlangWorkspaceSnapshot } from '@shader-studio/slang-language-service';
-import { StaleSlangResultError } from '@shader-studio/slang-language-service';
+import { SlangPathMap, StaleSlangResultError } from '@shader-studio/slang-language-service';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -28,6 +28,7 @@ function createModel(uri: string, value = '', version = 1) {
     }),
     isDisposed: vi.fn(() => false),
     dispose: vi.fn(),
+    getLanguageId: vi.fn(() => 'slang'),
   };
 }
 
@@ -53,6 +54,7 @@ function createMonaco() {
         return model;
       }),
       setModelMarkers: vi.fn(),
+      setModelLanguage: vi.fn(),
     },
     languages: {
       CompletionItemKind: { Text: 0 },
@@ -108,6 +110,59 @@ describe('SlangMonacoAdapter', () => {
 
     expect(alias).toBe(first);
     expect(monaco.editor.createModel).toHaveBeenCalledTimes(2);
+  });
+
+  it('converts canonical transport paths to strict relative language-service paths', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    client.init.mockImplementation(async (value) => {
+      const strictPaths = new SlangPathMap(value.rootUri);
+      for (const file of value.files) {
+        strictPaths.register(file.uri, file.path);
+      }
+    });
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+
+    await adapter.setWorkspace(snapshot);
+
+    expect(client.init).toHaveBeenCalledWith(expect.objectContaining({
+      files: expect.arrayContaining([
+        expect.objectContaining({ path: 'main.slang' }),
+        expect.objectContaining({ path: 'lib/helper.slang' }),
+      ]),
+    }));
+  });
+
+  it('rejects transport paths containing traversal before initializing the worker', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+
+    await expect(adapter.setWorkspace({
+      rootUri: 'file:///project',
+      files: [{
+        uri: 'file:///project/evil.slang',
+        path: '/workspace/lib/../evil.slang',
+        source: '',
+      }],
+    })).rejects.toThrow(/traversal/i);
+    expect(client.init).not.toHaveBeenCalled();
+  });
+
+  it('rejects percent-encoded transport traversal before initializing the worker', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+
+    await expect(adapter.setWorkspace({
+      rootUri: 'file:///project',
+      files: [{
+        uri: 'file:///project/evil.slang',
+        path: '/workspace/lib/%2e%2e/evil.slang',
+        source: '',
+      }],
+    })).rejects.toThrow(/traversal/i);
+    expect(client.init).not.toHaveBeenCalled();
   });
 
   it('replaces files for the same root and closes documents before changing roots', async () => {
@@ -247,9 +302,47 @@ describe('SlangMonacoAdapter', () => {
 
     adapter.dispose();
     adapter.dispose();
+    await Promise.resolve();
 
     expect(provider.dispose).toHaveBeenCalledTimes(1);
     expect(client.dispose).toHaveBeenCalledTimes(1);
     expect([...monaco.models.values()].every((model) => model.dispose.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('does not dispose borrowed root or dependency models', async () => {
+    const monaco = createMonaco();
+    const borrowedRoot = createModel('file:///project/main.slang');
+    const borrowedDependency = createModel('file:///project/lib/helper.slang');
+    monaco.models.set('file:///project/main.slang', borrowedRoot);
+    monaco.models.set('file:///project/lib/helper.slang', borrowedDependency);
+    const adapter = new SlangMonacoAdapter(monaco as never, createClient());
+    await adapter.setWorkspace(snapshot);
+    await adapter.setWorkspace({
+      rootUri: 'file:///other',
+      files: [{ uri: 'file:///other/main.slang', path: '/workspace/main.slang', source: '' }],
+    });
+    await Promise.resolve();
+
+    adapter.dispose();
+
+    expect(borrowedRoot.dispose).not.toHaveBeenCalled();
+    expect(borrowedDependency.dispose).not.toHaveBeenCalled();
+  });
+
+  it('keeps a shared adapter-owned model alive until its final adapter owner releases it', async () => {
+    const monaco = createMonaco();
+    const first = new SlangMonacoAdapter(monaco as never, createClient());
+    const second = new SlangMonacoAdapter(monaco as never, createClient());
+    await first.setWorkspace(snapshot);
+    await second.setWorkspace(snapshot);
+    const shared = monaco.models.get('file:///project/lib/helper.slang')!;
+
+    first.dispose();
+    await Promise.resolve();
+    expect(shared.dispose).not.toHaveBeenCalled();
+
+    second.dispose();
+    await Promise.resolve();
+    expect(shared.dispose).toHaveBeenCalledTimes(1);
   });
 });

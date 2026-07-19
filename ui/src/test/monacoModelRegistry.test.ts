@@ -4,7 +4,7 @@ import {
   acquireEditorModel,
   canonicalEditorUri,
   releaseEditorModel,
-} from '../lib/monacoModelRegistry';
+} from '../../../monaco/src/modelRegistry';
 
 function createMonaco() {
   const models = new Map<string, ReturnType<typeof model>>();

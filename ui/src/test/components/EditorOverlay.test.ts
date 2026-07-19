@@ -1557,6 +1557,10 @@ describe('EditorOverlay', () => {
 
       expect(language.setupMonacoSlang).toHaveBeenCalled();
       expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'slang', expect.any(Object));
+      const adapter = vi.mocked(language.setupMonacoSlang).mock.results.at(-1)?.value;
+      expect(adapter.setWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+        files: [expect.objectContaining({ path: 'main.slang' })],
+      }));
       expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(expect.any(Object), 'slang-compile', expect.any(Array));
       expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(expect.anything(), 'glsl', expect.anything());
     });

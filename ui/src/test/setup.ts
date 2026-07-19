@@ -193,7 +193,7 @@ const monacoMock = {
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
     setModelMarkers: vi.fn(),
-    getModel: vi.fn(() => null),
+    getModel: vi.fn((_uri?: unknown) => null),
     createModel: vi.fn((value: string, language: string, uri: { toString(): string }) => ({
       uri,
       getValue: vi.fn(() => value),
@@ -235,6 +235,14 @@ vi.mock('@shader-studio/monaco', () => ({
   setupMonacoSlang: vi.fn(() => ({ setWorkspace: vi.fn(async () => undefined) })),
   canonicalModelUri: vi.fn((value: string) => value.replace('file://localhost/', 'file:///')),
   SLANG_COMPILE_MARKER_OWNER: 'slang-compile',
+  canonicalEditorUri: vi.fn((monaco: typeof monacoMock, value: string) => (
+    /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) ? monaco.Uri.parse(value.replace('file://localhost/', 'file:///')) : monaco.Uri.file(value)
+  )),
+  acquireEditorModel: vi.fn((monaco: typeof monacoMock, value: string, source: string, language: string) => {
+    const uri = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) ? monaco.Uri.parse(value) : monaco.Uri.file(value);
+    return monaco.editor.getModel(uri) ?? monaco.editor.createModel(source, language, uri);
+  }),
+  releaseEditorModel: vi.fn(),
   glslLanguageDefinition: {},
   shaderStudioTheme: {},
   shaderStudioTransparentTheme: {},

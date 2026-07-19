@@ -1,6 +1,7 @@
 export { glslLanguageDefinition } from './glsl-language';
 export { shaderStudioTheme, shaderStudioTransparentTheme } from './glsl-theme';
 export { setupMonacoGlsl } from './setup';
+export { acquireEditorModel, canonicalEditorUri, releaseEditorModel } from './modelRegistry';
 export { slangLanguageDefinition } from './slang-language';
 export {
   SlangMonacoAdapter,
