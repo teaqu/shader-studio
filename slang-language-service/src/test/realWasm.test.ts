@@ -46,9 +46,16 @@ describe("bundled Slang WASM language server", () => {
 
       try {
         expect(workspace.openDocument(rootUri, source, 1)).toBe(true);
-        expect(() => workspace.diagnostics(rootUri)).not.toThrow();
-        expect(() => workspace.completion(rootUri, { line: 3, character: 60 })).not.toThrow();
-        expect(() => workspace.definition(rootUri, { line: 3, character: 57 })).not.toThrow();
+        expect(workspace.diagnostics(rootUri)).toEqual([]);
+        expect(workspace.completion(rootUri, { line: 3, character: 57 })).toEqual(
+          expect.arrayContaining([expect.objectContaining({ label: "paletteColor" })]),
+        );
+        expect(workspace.definition(rootUri, { line: 3, character: 57 })).toEqual([
+          {
+            uri: "file:///smoke/palette.slang",
+            range: { start: { line: 2, character: 14 }, end: { line: 2, character: 26 } },
+          },
+        ]);
       } finally {
         workspace.dispose();
       }

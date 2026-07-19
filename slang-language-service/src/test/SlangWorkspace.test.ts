@@ -79,12 +79,12 @@ describe("SlangWorkspace document lifecycle", () => {
     expect(workspace.closeDocument("file:///project/root.slang", 2)).toBe(true);
 
     expect(calls).toEqual([
-      "open:/workspace/root.slang",
-      "change:/workspace/root.slang",
-      "close:/workspace/root.slang",
+      "open:file:///workspace/root.slang",
+      "change:file:///workspace/root.slang",
+      "close:file:///workspace/root.slang",
     ]);
     expect(server.didChangeTextDocument).toHaveBeenCalledWith(
-      "/workspace/root.slang",
+      "file:///workspace/root.slang",
       expect.objectContaining({ delete: edits.delete }),
     );
     expect(edits.delete).toHaveBeenCalledOnce();
@@ -98,7 +98,7 @@ describe("SlangWorkspace document lifecycle", () => {
     expect(workspace.changeDocument("file:///project/root.slang", "same", 3)).toBe(false);
     expect(workspace.closeDocument("file:///project/root.slang", 2)).toBe(false);
 
-    expect(calls).toEqual(["open:/workspace/root.slang"]);
+    expect(calls).toEqual(["open:file:///workspace/root.slang"]);
   });
 
   it("deletes a text-edit handle when didChange throws", () => {
@@ -118,7 +118,80 @@ describe("SlangWorkspace document lifecycle", () => {
 
     workspace.closeDocument("file:///project/root.slang", 1);
 
-    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/root.slang", "old\nsource");
+    expect(fs.writeFile).toHaveBeenCalledWith("/workspace/root.slang", "old\nsource");
+  });
+
+  it("is terminal and idempotent after disposal", () => {
+    const { server, workspace } = createFixture();
+
+    workspace.dispose();
+    workspace.dispose();
+
+    expect(server.delete).toHaveBeenCalledOnce();
+    expect(() => workspace.hover("file:///project/root.slang", { line: 0, character: 0 })).toThrow("disposed");
+    expect(() => workspace.openDocument("file:///project/root.slang", "source", 1)).toThrow("disposed");
+  });
+});
+
+describe("SlangWorkspace replacement", () => {
+  it("drops removed mappings and permits their paths to be reused", () => {
+    const { server, workspace } = createFixture();
+    server.hover.mockReturnValue(undefined);
+
+    workspace.replaceFiles({
+      rootUri: "file:///project",
+      files: [{ uri: "file:///project/replacement.slang", path: "lib/palette.slang", source: "replacement" }],
+    });
+
+    expect(() => workspace.hover("file:///project/lib/palette.slang", { line: 0, character: 0 })).toThrow("not mapped");
+    expect(() => workspace.hover("file:///project/root.slang", { line: 0, character: 0 })).toThrow("not mapped");
+    workspace.hover("file:///project/replacement.slang", { line: 0, character: 0 });
+    expect(server.hover).toHaveBeenLastCalledWith("file:///workspace/lib/palette.slang", { line: 0, character: 0 });
+  });
+
+  it("uses a changed path for the same URI", () => {
+    const { server, workspace } = createFixture();
+    server.hover.mockReturnValue(undefined);
+
+    workspace.replaceFiles({
+      rootUri: "file:///project",
+      files: [{ uri: "file:///project/root.slang", path: "moved/root.slang", source: "source" }],
+    });
+    workspace.hover("file:///project/root.slang", { line: 0, character: 0 });
+
+    expect(server.hover).toHaveBeenLastCalledWith("file:///workspace/moved/root.slang", { line: 0, character: 0 });
+  });
+
+  it("keeps a removed open document mapped until close, then removes its MEMFS file", () => {
+    const { fs, server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", "unsaved", 1);
+    server.hover.mockReturnValue(undefined);
+
+    workspace.replaceFiles({ rootUri: "file:///project", files: [] });
+    workspace.hover("file:///project/root.slang", { line: 0, character: 0 });
+    expect(server.hover).toHaveBeenLastCalledWith("file:///workspace/root.slang", { line: 0, character: 0 });
+    expect(workspace.closeDocument("file:///project/root.slang", 1)).toBe(true);
+    expect(fs.unlink).toHaveBeenCalledWith("/workspace/root.slang");
+    expect(() => workspace.hover("file:///project/root.slang", { line: 0, character: 0 })).toThrow("not mapped");
+  });
+
+  it("validates a replacement before mutating paths or MEMFS", () => {
+    const { fs, server, workspace } = createFixture();
+    const writesBefore = fs.writeFile.mock.calls.length;
+    server.hover.mockReturnValue(undefined);
+
+    expect(() =>
+      workspace.replaceFiles({
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/one.slang", path: "duplicate.slang", source: "one" },
+          { uri: "file:///project/two.slang", path: "duplicate.slang", source: "two" },
+        ],
+      }),
+    ).toThrow("already mapped");
+    expect(fs.writeFile).toHaveBeenCalledTimes(writesBefore);
+    workspace.hover("file:///project/root.slang", { line: 0, character: 0 });
+    expect(server.hover).toHaveBeenLastCalledWith("file:///workspace/root.slang", { line: 0, character: 0 });
   });
 });
 
@@ -142,7 +215,7 @@ describe("SlangWorkspace query copying", () => {
     const empty = fakeList([]);
     const locations = fakeList([
       {
-        uri: "/workspace/lib/palette.slang",
+        uri: "file:///workspace/lib/palette.slang",
         range: { start: { line: 0, character: 1 }, end: { line: 0, character: 4 } },
       },
     ]);
@@ -318,7 +391,7 @@ describe("SlangWorkspace query copying", () => {
   });
 
   it("deletes a result handle when copying throws", () => {
-    const broken = fakeList([{ uri: "/workspace/root.slang", range: {} }], 0);
+    const broken = fakeList([{ uri: "file:///workspace/root.slang", range: {} }], 0);
     const { server, workspace } = createFixture();
     server.gotoDefinition.mockReturnValue(broken);
 
