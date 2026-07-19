@@ -127,11 +127,6 @@
         "title": "Shader Studio: Manual Compile"
       },
       {
-        "command": "shader-studio.openSnippetLibrary",
-        "title": "Shader Studio: Open Snippet Library",
-        "icon": "$(code)"
-      },
-      {
         "command": "shader-studio.resetLayout",
         "title": "Shader Studio: Reset Panel Layout"
       }

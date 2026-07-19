@@ -100,7 +100,7 @@ export class TabGroupResolver {
     }
 
     // Fallback: check by known panel labels
-    const extensionLabels = ["Shader Studio", "Shader Explorer", "Snippet Library"];
+    const extensionLabels = ["Shader Studio", "Shader Explorer"];
     if (extensionLabels.includes(tab.label)) {
       return true;
     }
