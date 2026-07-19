@@ -78,22 +78,27 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
         (mip ? GPUTextureUsage.RENDER_ATTACHMENT : 0),
     });
-    if (desc.data) {
-      this.writeLevel0(texture, desc.height, 0, 0, desc.width, desc.height, desc.format, desc.data);
+    try {
+      if (desc.data) {
+        this.writeLevel0(texture, desc.height, 0, 0, desc.width, desc.height, desc.format, desc.data);
+      }
+      const handle: WebGPUTextureHandle = {
+        texture,
+        view: texture.createView(),
+        sampler: this.createSampler(desc.filter, desc.wrap),
+        width: desc.width,
+        height: desc.height,
+        format: desc.format,
+        vflip: false,
+      };
+      if (mip && desc.data) {
+        this.createMipmaps(handle);
+      }
+      return handle;
+    } catch (error) {
+      texture.destroy?.();
+      throw error;
     }
-    const handle: WebGPUTextureHandle = {
-      texture,
-      view: texture.createView(),
-      sampler: this.createSampler(desc.filter, desc.wrap),
-      width: desc.width,
-      height: desc.height,
-      format: desc.format,
-      vflip: false,
-    };
-    if (mip && desc.data) {
-      this.createMipmaps(handle);
-    }
-    return handle;
   }
 
   updateTexture(tex: WebGPUTextureHandle, x: number, y: number, width: number, height: number, data: Uint8Array): void {

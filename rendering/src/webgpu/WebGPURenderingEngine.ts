@@ -69,6 +69,13 @@ interface PendingPipelineCandidates {
   settled: boolean;
 }
 
+interface ShaderCompileSnapshot {
+  code: string;
+  config: ShaderConfig | null;
+  path: string;
+  buffers: Record<string, string>;
+}
+
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 2;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
@@ -130,12 +137,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
   private shaderPath = "";
-  private lastCompile: {
-    code: string;
-    config: ShaderConfig | null;
-    path: string;
-    buffers: Record<string, string>;
-  } | null = null;
+  private lastCompile: ShaderCompileSnapshot | null = null;
+  private installedCompile: ShaderCompileSnapshot | null = null;
   /**
    * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
    * serialized upstream (BufferUpdater is fire-and-forget, worker compiles
@@ -503,24 +506,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (generation !== this.compileGeneration || this.disposed) {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
-    let preparedStorage: PreparedStorageBuffers;
+    let preparedStorage: PreparedStorageBuffers | undefined;
+    let candidateResourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
+    let pipelineCandidates: PendingPipelineCandidates | undefined;
     try {
-      preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
-    } catch (error) {
-      return this.failedCompilation(path, generation, {
-        success: false,
-        errors: [`Storage allocation failed: ${error instanceof Error ? error.message : String(error)}`],
-        warnings: graph.warnings,
-      });
-    }
-    const candidateResourceManager = sessionChanged && this.resourceManager
-      ? new ResourceManager(new WebGPUTextureBackend(this.device))
-      : null;
-    candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
-    const compileResourceManager = candidateResourceManager ?? this.resourceManager;
-    const pipelineCandidates = this.preparePipelineCandidates(generation, candidateResourceManager);
+      try {
+        preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
+      } catch (error) {
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors: [`Storage allocation failed: ${error instanceof Error ? error.message : String(error)}`],
+          warnings: graph.warnings,
+        });
+      }
+      candidateResourceManager = sessionChanged && this.resourceManager
+        ? new ResourceManager(new WebGPUTextureBackend(this.device))
+        : null;
+      candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+      const compileResourceManager = candidateResourceManager ?? this.resourceManager;
+      pipelineCandidates = this.preparePipelineCandidates(generation, candidateResourceManager);
 
-    try {
       for (const pass of graph.passes) {
         const resolution = this.clampResolutionToTextureLimit(pass);
         pass.width = resolution.width;
@@ -776,6 +781,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.installPipelineCandidates(pipelineCandidates);
       this.shaderPath = path;
       this.currentConfig = config;
+      this.installedCompile = { code, config, path, buffers: { ...buffers } };
       for (const [name, pipeline] of previousPipelines) {
         if (nextPipelines.get(name) !== pipeline) {
           pipeline.dispose();
@@ -823,8 +829,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
       return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
     } finally {
-      this.discardPreparedStorage(preparedStorage);
-      this.discardPipelineCandidates(pipelineCandidates);
+      if (preparedStorage) {
+        this.discardPreparedStorage(preparedStorage);
+      }
+      if (pipelineCandidates) {
+        this.discardPipelineCandidates(pipelineCandidates);
+      } else {
+        candidateResourceManager?.dispose();
+      }
     }
   }
 
@@ -1607,6 +1619,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.computePipelines.clear();
     this.computeKeys.clear();
     this.passGraph = [];
+    this.installedCompile = null;
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
     }
@@ -1757,28 +1770,29 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext {
-    const graph = this.getVariableCapturePassGraph();
+    const snapshot = this.installedCompile ?? (this.disposed ? null : this.lastCompile);
+    const graph = this.getVariableCapturePassGraph(snapshot);
     const targetPass = (passName
       ? graph.find((pass) => pass.name === passName)
       : undefined) ?? (code
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
-    const commonCode = this.lastCompile?.buffers?.common ?? "";
+    const commonCode = snapshot?.buffers.common ?? "";
     return {
       commonCode,
       slangChannels: targetPass?.channels.map(({ slot, key }) => ({ slot, key })) ?? [],
     };
   }
 
-  private getVariableCapturePassGraph(): RenderPassNode[] {
-    if (this.passGraph.length > 0 || !this.lastCompile) {
+  private getVariableCapturePassGraph(snapshot: ShaderCompileSnapshot | null): RenderPassNode[] {
+    if (this.passGraph.length > 0 || !snapshot) {
       return this.passGraph;
     }
 
     return buildSlangPassGraph({
-      imageCode: this.lastCompile.code,
-      config: this.lastCompile.config,
-      buffers: this.lastCompile.buffers,
+      imageCode: snapshot.code,
+      config: snapshot.config,
+      buffers: snapshot.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
     }).passes;

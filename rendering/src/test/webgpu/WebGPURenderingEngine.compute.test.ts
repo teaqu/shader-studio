@@ -3,6 +3,7 @@ import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangComputePipeline } from "../../webgpu/SlangComputePipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
+import { ResourceManager } from "../../resources/ResourceManager";
 
 interface FakeBuffer {
   descriptor: GPUBufferDescriptor;
@@ -466,6 +467,93 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(cleanupResources).toHaveBeenCalledTimes(1);
     expect(cleanupTime).toHaveBeenCalledTimes(1);
     expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/b.slang");
+  });
+
+  it("releases staged storage when path-session resource construction throws", async () => {
+    const { engine, device, buffers, textures } = harness();
+    const installedConfig = computeConfig({
+      sampled: true,
+      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/a.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const installedStorage = storageBuffers(buffers)[0];
+    const installedPasses = engine.getPasses();
+    const installedTextureCount = textures.length;
+    const installedResourceManager = { dispose: vi.fn() };
+    (engine as unknown as { resourceManager: typeof installedResourceManager })
+      .resourceManager = installedResourceManager;
+    device.queue.writeTexture.mockImplementationOnce(() => {
+      throw new Error("default texture allocation failed");
+    });
+
+    const pending = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
+      }),
+      "/b.slang",
+      { ComputeSim: "compute B" },
+    );
+    const stagedStorage = storageBuffers(buffers)[1];
+
+    await expect(pending).rejects.toThrow("default texture allocation failed");
+    const partialCandidateTexture = textures[installedTextureCount];
+    expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
+    expect(partialCandidateTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorage.destroy).not.toHaveBeenCalled();
+    expect(installedResourceManager.dispose).not.toHaveBeenCalled();
+    expect(engine.getPasses()).toBe(installedPasses);
+    expect(textures.slice(0, installedTextureCount)
+      .every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+  });
+
+  it("releases staged storage and candidate resources when path-session media setup throws", async () => {
+    const { engine, buffers, textures } = harness();
+    const installedConfig = computeConfig({
+      sampled: true,
+      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/a.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const installedStorage = storageBuffers(buffers)[0];
+    const installedPasses = engine.getPasses();
+    const installedTextureCount = textures.length;
+    const installedResourceManager = { dispose: vi.fn() };
+    (engine as unknown as { resourceManager: typeof installedResourceManager })
+      .resourceManager = installedResourceManager;
+    const setupSpy = vi.spyOn(ResourceManager.prototype, "setGlobalAudioState")
+      .mockImplementationOnce(() => {
+        throw new Error("media setup failed");
+      });
+
+    try {
+      const pending = engine.compileShaderPipeline(
+        IMAGE_SOURCE,
+        computeConfig({
+          sampled: true,
+          storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
+        }),
+        "/b.slang",
+        { ComputeSim: "compute B" },
+      );
+      const stagedStorage = storageBuffers(buffers)[1];
+
+      await expect(pending).rejects.toThrow("media setup failed");
+      const candidateDefaultTexture = textures[installedTextureCount];
+      expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
+      expect(candidateDefaultTexture.destroy).toHaveBeenCalledTimes(1);
+      expect(installedStorage.destroy).not.toHaveBeenCalled();
+      expect(installedResourceManager.dispose).not.toHaveBeenCalled();
+      expect(engine.getPasses()).toBe(installedPasses);
+      expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+    } finally {
+      setupSpy.mockRestore();
+    }
   });
 
   it("preserves installed compute and storage state across compiler and WGSL failures", async () => {

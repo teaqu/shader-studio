@@ -2137,6 +2137,102 @@ describe("WebGPURenderingEngine", () => {
       );
     });
 
+    it("keeps capture context on the installed generation while a different path is pending or fails", async () => {
+      const { engine, compiler } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        common: "float commonA() { return 1.0; }",
+        BufferA: bufferSource,
+      });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferB" } } },
+          BufferB: { path: "buffer-b.slang", inputs: {} },
+        },
+      };
+      let rejectCandidate!: () => void;
+      const blockedCandidate = new Promise<{ success: false; errors: string[] }>((resolve) => {
+        rejectCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
+      });
+      compiler.compile.mockImplementation((source: string) => source === "buffer B"
+        ? blockedCandidate
+        : { success: true, wgsl: "// wgsl" });
+
+      const pending = engine.compileShaderPipeline(
+        "candidate image",
+        candidateConfig,
+        "/second.slang",
+        {
+          common: "float commonB() { return 2.0; }",
+          BufferB: "buffer B",
+        },
+      );
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+        "buffer B",
+        expect.objectContaining({ passName: "BufferB" }),
+      ));
+
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+      });
+
+      rejectCandidate();
+      expect((await pending)?.success).toBe(false);
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+      });
+
+      compiler.compile.mockReturnValue({ success: false, errors: ["same-path edit failed"] });
+      const failedSamePath = await engine.compileShaderPipeline(
+        "same-path candidate image",
+        lifecycleConfig,
+        "/first.slang",
+        {
+          common: "float commonC() { return 3.0; }",
+          BufferA: "same-path broken buffer",
+        },
+      );
+
+      expect(failedSamePath?.success).toBe(false);
+      expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+      });
+    });
+
+    it("publishes a successful path generation to capture context", async () => {
+      const { engine } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        common: "float commonA() { return 1.0; }",
+        BufferA: bufferSource,
+      });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferB" } } },
+          BufferB: { path: "buffer-b.slang", inputs: {} },
+        },
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "candidate image",
+        candidateConfig,
+        "/second.slang",
+        {
+          common: "float commonB() { return 2.0; }",
+          BufferB: "buffer B",
+        },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonB() { return 2.0; }",
+        slangChannels: [{ slot: 1, key: "iChannel1" }],
+      });
+    });
+
     it("preserves time and reusable pipelines when the same shader file recompiles", async () => {
       const { engine, resourceManager } = lifecycleEngine();
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
