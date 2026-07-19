@@ -158,8 +158,8 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(successEvent);
 
-    // Verify ALL errors were cleared
-    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+    // Compile-owned diagnostics are replaced without clearing unrelated collections.
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
   });
 
   test('should clear errors when buffer update succeeds', () => {
@@ -179,8 +179,30 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(bufferSuccessEvent);
 
-    // Verify errors were cleared
-    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
+  });
+
+  test('should publish structured diagnostics from a successful compilation', () => {
+    const uri = vscode.Uri.file('/project/helper.slang').toString();
+    const successEvent: LogMessage = {
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      diagnostics: [{
+        uri,
+        range: { start: { line: 1, character: 2 }, end: { line: 1, character: 3 } },
+        severity: 'warning',
+        message: 'implicit conversion',
+        source: 'slang-compile',
+      }],
+    };
+
+    messageHandler.handleMessage(successEvent);
+
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+    const [diagnosticUri, diagnostics] = (mockDiagnosticCollection.set as sinon.SinonStub).firstCall.args;
+    assert.strictEqual(diagnosticUri.toString(), uri);
+    assert.strictEqual(diagnostics[0].severity, vscode.DiagnosticSeverity.Warning);
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
   });
 
   test('should show non-line-number errors at line 1', () => {

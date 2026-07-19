@@ -766,6 +766,57 @@ describe('ShaderViewer', () => {
     });
   });
 
+  it('rejects stale shader requests before backend swaps or pipeline mutation', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 10,
+      language: 'slang',
+      path: '/test/current.slang',
+      code: 'float4 mainImage(float2 uv) { return 1; }',
+      config: { passes: { Image: {} } },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/current.slang' }),
+      }));
+    });
+    const currentCanvas = container.querySelector('canvas');
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 9,
+      language: 'glsl',
+      path: '/test/stale.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { passes: { Image: {} } },
+    });
+
+    expect(container.querySelector('canvas')).toBe(currentCanvas);
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
+  });
+
+  it('rejects stale same-backend requests before updating the pipeline', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource', requestId: 4, language: 'glsl', path: '/test/current.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }', config: { passes: { Image: {} } },
+    });
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource', requestId: 3, language: 'glsl', path: '/test/stale.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }', config: { passes: { Image: {} } },
+    });
+
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
+  });
+
   it('should apply Image Config Resolution to the session stores on shader load', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

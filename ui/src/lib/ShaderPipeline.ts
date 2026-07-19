@@ -330,7 +330,7 @@ export class ShaderPipeline {
         }
       }
 
-      this.sendSuccessMessage();
+      this.sendSuccessMessage(result.diagnostics);
       return;
     }
 
@@ -386,10 +386,11 @@ export class ShaderPipeline {
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessage(): void {
+  private sendSuccessMessage(diagnostics?: CompilationResult["diagnostics"]): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
+      ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
     };
     this.transport.postMessage(logMessage);
   }

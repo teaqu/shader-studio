@@ -604,6 +604,13 @@
     const currentShaderPath = pipeline.getLastEvent()?.data?.path;
     shaderLocker.toggleLock(currentShaderPath);
     isLocked = shaderLocker.isLocked();
+    transport.postMessage({
+      type: 'shaderLockChanged',
+      payload: {
+        locked: isLocked,
+        rootPath: currentShaderPath,
+      },
+    });
   }
 
   function handleOverlayBufferSelect(name: string) {
@@ -891,7 +898,7 @@
 
   function applyCompilationResult(result: CompilationResult) {
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
-    compileDiagnostics = result.success ? [] : (result.diagnostics ?? []);
+    compileDiagnostics = result.diagnostics ?? [];
   }
 
   async function handleMessage(event: MessageEvent): Promise<void> {
@@ -932,6 +939,15 @@
     }
 
     if (type === 'shaderSource') {
+      const lockedPath = shaderLocker?.isLocked() ? shaderLocker.getLockedShaderPath() : undefined;
+      const requestScope = lockedPath && event.data.path === lockedPath ? lockedPath : 'global';
+      if (!compilationState.acceptRequest(event.data, requestScope)) {
+        return;
+      }
+      if (lockedPath && event.data.path !== lockedPath) {
+        await pipeline?.handleShaderMessage(event);
+        return;
+      }
       // If the shader's language doesn't match the active engine, remount the
       // canvas with the right backend (WebGL vs WebGPU) and replay this message.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';

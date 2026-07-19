@@ -48,10 +48,16 @@ export class ErrorHandler {
 
   public clearPersistentErrors(): void {
     // Clear all persistent errors when editor changes or a fresh shader load begins
+    const ownedUris = new Set([
+      ...this.compileDiagnosticUris,
+      ...[...this.persistentErrors.values()].map(({ uri }) => uri.toString()),
+    ]);
     this.persistentErrors.clear();
     this.recentErrors.clear();
     this.compileDiagnosticUris.clear();
-    this.diagnosticCollection.clear();
+    for (const uri of ownedUris) {
+      this.replaceOwnedDiagnostics(vscode.Uri.parse(uri), []);
+    }
   }
 
   public handleError(message: ErrorMessage): void {
@@ -64,6 +70,8 @@ export class ErrorHandler {
     if (errors.length === 0) {
       return; // Skip empty messages
     }
+
+    this.clearCompileDiagnostics();
 
     if (message.diagnostics && message.diagnostics.length > 0) {
       for (const errorText of errors) {
@@ -90,15 +98,10 @@ export class ErrorHandler {
 
       // Check if this normalized error was recently shown (debounce)
       const lastShown = this.recentErrors.get(normalizedError);
-
-      if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
-        continue;
+      if (!lastShown || (now - lastShown) >= this.DEBOUNCE_MS) {
+        this.recentErrors.set(normalizedError, now);
+        this.outputChannel.error(errorText);
       }
-
-      // Record this normalized error as shown
-      this.recentErrors.set(normalizedError, now);
-
-      this.outputChannel.error(errorText);
 
       const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
       if (match) {
@@ -164,7 +167,8 @@ export class ErrorHandler {
 
     // Set all accumulated diagnostics at once per URI
     for (const { uri, diagnostics } of diagnosticsMap.values()) {
-      this.diagnosticCollection.set(uri, diagnostics);
+      this.replaceOwnedDiagnostics(uri, diagnostics);
+      this.compileDiagnosticUris.add(uri.toString());
     }
 
     // Clean up old errors from the map (prevent memory leak)
@@ -172,10 +176,6 @@ export class ErrorHandler {
   }
 
   private publishStructuredDiagnostics(diagnostics: readonly SlangDiagnostic[]): void {
-    for (const uri of this.compileDiagnosticUris) {
-      this.diagnosticCollection.delete(vscode.Uri.parse(uri));
-    }
-    this.compileDiagnosticUris.clear();
     const grouped = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
     for (const item of diagnostics.filter((diagnostic) => diagnostic.source !== "slang-language")) {
       const uri = vscode.Uri.parse(item.uri);
@@ -203,7 +203,7 @@ export class ErrorHandler {
       grouped.set(key, group);
     }
     for (const [key, group] of grouped) {
-      this.diagnosticCollection.set(group.uri, group.diagnostics);
+      this.replaceOwnedDiagnostics(group.uri, group.diagnostics);
       this.compileDiagnosticUris.add(key);
     }
   }
@@ -242,7 +242,7 @@ export class ErrorHandler {
         ...diagnosticInfo,
         lastSeen: now
       });
-      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
+      this.restorePersistentErrors(diagnosticInfo.uri);
     }
 
     // Clean up old errors from the map (prevent memory leak)
@@ -259,18 +259,58 @@ export class ErrorHandler {
   public clearErrors(): void {
     // Clear only regular errors when shader compilation succeeds
     // Keep persistent errors (warnings) until editor change
-    this.diagnosticCollection.clear();
-    this.compileDiagnosticUris.clear();
+    this.clearCompileDiagnostics();
     this.restorePersistentErrors();
 
     // Also log the success message for debugging
     this.outputChannel.debug("Shader compiled and linked");
   }
 
-  private restorePersistentErrors(): void {
-    // Restore all persistent errors to the diagnostic collection
-    for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {
-      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
+  public handleCompileSuccess(diagnostics: readonly SlangDiagnostic[] = []): void {
+    this.clearCompileDiagnostics();
+    if (diagnostics.length > 0) {
+      this.publishStructuredDiagnostics(diagnostics);
+    }
+    this.restorePersistentErrors();
+    this.outputChannel.debug("Shader compiled and linked");
+  }
+
+  private clearCompileDiagnostics(): void {
+    for (const uri of this.compileDiagnosticUris) {
+      this.replaceOwnedDiagnostics(vscode.Uri.parse(uri), []);
+    }
+    this.compileDiagnosticUris.clear();
+  }
+
+  private replaceOwnedDiagnostics(uri: vscode.Uri, diagnostics: readonly vscode.Diagnostic[]): void {
+    const languageDiagnostics = [...(this.diagnosticCollection.get(uri) ?? [])]
+      .filter((diagnostic) => diagnostic.source === "slang-language");
+    const next = [...languageDiagnostics, ...diagnostics];
+    if (next.length > 0) {
+      this.diagnosticCollection.set(uri, next);
+    } else {
+      this.diagnosticCollection.delete(uri);
+    }
+  }
+
+  private restorePersistentErrors(targetUri?: vscode.Uri): void {
+    const allPersistentDiagnostics = new Set(
+      [...this.persistentErrors.values()].map(({ diagnostic }) => diagnostic),
+    );
+    const grouped = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
+    for (const diagnosticInfo of this.persistentErrors.values()) {
+      if (targetUri && diagnosticInfo.uri.toString() !== targetUri.toString()) {
+        continue;
+      }
+      const key = diagnosticInfo.uri.toString();
+      const group = grouped.get(key) ?? { uri: diagnosticInfo.uri, diagnostics: [] };
+      group.diagnostics.push(diagnosticInfo.diagnostic);
+      grouped.set(key, group);
+    }
+    for (const group of grouped.values()) {
+      const nonPersistent = [...(this.diagnosticCollection.get(group.uri) ?? [])]
+        .filter((diagnostic) => !allPersistentDiagnostics.has(diagnostic));
+      this.diagnosticCollection.set(group.uri, [...nonPersistent, ...group.diagnostics]);
     }
   }
 

@@ -655,7 +655,14 @@ describe("WebGPURenderingEngine", () => {
       createBindGroup: vi.fn(() => ({})),
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
     };
-    const compiler = { compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl", diagnostics: [] })), dispose: vi.fn() };
+    const warning = {
+      uri: "file:///project/palette.slang",
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      severity: "warning" as const,
+      message: "implicit conversion",
+      source: "slang-compile" as const,
+    };
+    const compiler = { compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl", diagnostics: [warning] })), dispose: vi.fn() };
     (engine as any).canvas = { width: 320, height: 180 };
     (engine as any).device = device;
     (engine as any).compiler = compiler;
@@ -669,10 +676,11 @@ describe("WebGPURenderingEngine", () => {
       ],
     });
 
-    await engine.compileShaderPipeline(source, null, "/project/image.slang", {}, undefined, undefined, snapshot("module palette; float4 color() { return 1; }"));
+    const first = await engine.compileShaderPipeline(source, null, "/project/image.slang", {}, undefined, undefined, snapshot("module palette; float4 color() { return 1; }"));
     await engine.compileShaderPipeline(source, null, "/project/image.slang", {}, undefined, undefined, snapshot("module palette; float4 color() { return 0; }"));
 
     expect(compiler.compile).toHaveBeenCalledTimes(2);
+    expect(first).toMatchObject({ success: true, diagnostics: [warning] });
   });
 
   it("returns structured dependency diagnostics from failed Slang compilation", async () => {

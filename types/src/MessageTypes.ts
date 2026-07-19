@@ -9,6 +9,7 @@ export interface BaseMessage {
 export interface LogMessage extends BaseMessage {
   type: "log";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
 }
 
 export interface DebugMessage extends BaseMessage {
@@ -89,6 +90,8 @@ export interface ShaderCompileGeneration {
 
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
+  /** Monotonic extension request identifier used to discard stale async results. */
+  requestId?: number;
   code: string;
   config: any;
   path: string;

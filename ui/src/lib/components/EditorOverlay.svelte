@@ -96,7 +96,7 @@
     lifecycle: number;
   }> = [];
   const compileMarkerOwners = new WeakMap<monaco.editor.ITextModel, string>();
-  const structuredCompileModels = new Set<monaco.editor.ITextModel>();
+  const compileOwnedModels = new Set<monaco.editor.ITextModel>();
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
@@ -170,6 +170,7 @@
     }
     monaco.editor.setModelMarkers(model, owner, []);
     compileMarkerOwners.delete(model);
+    compileOwnedModels.delete(model);
   }
 
   function languageForModel(model: monaco.editor.ITextModel): "glsl" | "slang" {
@@ -680,10 +681,9 @@
       editor.dispose();
       editor = null;
     }
-    for (const model of structuredCompileModels) {
-      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, []);
+    for (const model of [...compileOwnedModels]) {
+      clearCompileMarkers(model);
     }
-    structuredCompileModels.clear();
     if (activeModel) {
       clearCompileMarkers(activeModel);
       releaseEditorModel(monaco, activeModel);
@@ -758,10 +758,9 @@
   });
 
   function updateStructuredDiagnosticMarkers(items: SlangDiagnostic[]): number {
-    for (const model of structuredCompileModels) {
-      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, []);
+    for (const model of [...compileOwnedModels]) {
+      clearCompileMarkers(model);
     }
-    structuredCompileModels.clear();
     if (shaderLanguage !== "slang") {
       return 0;
     }
@@ -776,7 +775,9 @@
       markers.push({
         severity: diagnostic.severity === "warning"
           ? monaco.MarkerSeverity.Warning
-          : diagnostic.severity === "information" || diagnostic.severity === "hint"
+          : diagnostic.severity === "hint"
+          ? monaco.MarkerSeverity.Hint
+          : diagnostic.severity === "information"
           ? monaco.MarkerSeverity.Info
           : monaco.MarkerSeverity.Error,
         startLineNumber: diagnostic.range.start.line + 1,
@@ -790,7 +791,8 @@
     }
     for (const [model, markers] of grouped) {
       monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, markers);
-      structuredCompileModels.add(model);
+      compileMarkerOwners.set(model, SLANG_COMPILE_MARKER_OWNER);
+      compileOwnedModels.add(model);
     }
     return [...grouped.values()].reduce((count, markers) => count + markers.length, 0);
   }
@@ -832,6 +834,7 @@
     }
     monaco.editor.setModelMarkers(model, owner, markers);
     compileMarkerOwners.set(model, owner);
+    compileOwnedModels.add(model);
   }
 
   $effect(() => {

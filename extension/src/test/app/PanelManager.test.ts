@@ -50,6 +50,7 @@ suite('PanelManager Test Suite', () => {
 
     mockShaderProvider = {
       sendShaderFromEditor: sandbox.stub(),
+      activateSlangRootOwner: sandbox.stub(),
       releaseSlangRootOwner: sandbox.stub(),
     } as any;
 
@@ -211,6 +212,52 @@ suite('PanelManager Test Suite', () => {
       mockShaderProvider.releaseSlangRootOwner as sinon.SinonStub,
       'active-editor',
     );
+  });
+
+  test('uses distinct lock owners for multiple panels and releases only the disposed panel', async () => {
+    const firstPanel = createMockWebviewPanel();
+    const secondPanel = createMockWebviewPanel();
+    sandbox.stub(vscode.window, 'createWebviewPanel')
+      .onFirstCall().returns(firstPanel as any)
+      .onSecondCall().returns(secondPanel as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({
+      all: [{ tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One }],
+    });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+      { uri: vscode.Uri.file('/mock/workspace') },
+    ]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    const editor = {
+      document: { uri: vscode.Uri.file('/mock/workspace/a.slang') },
+    } as vscode.TextEditor;
+    (panelManager as any).glslFileTracker.getActiveOrLastViewedGLSLEditor.returns(editor);
+
+    panelManager.createPanel();
+    panelManager.createPanel();
+    const firstMessage = firstPanel.webview.onDidReceiveMessage.lastCall.args[0] as (message: unknown) => Promise<void>;
+    const secondMessage = secondPanel.webview.onDidReceiveMessage.lastCall.args[0] as (message: unknown) => Promise<void>;
+    await firstMessage({ type: 'shaderLockChanged', payload: { locked: true, rootPath: '/mock/workspace/a.slang' } });
+    await secondMessage({ type: 'shaderLockChanged', payload: { locked: true, rootPath: '/mock/workspace/b.slang' } });
+
+    const activateOwner = (mockShaderProvider as any).activateSlangRootOwner as sinon.SinonStub;
+    const ownerCalls = activateOwner.getCalls();
+    assert.strictEqual(ownerCalls.length, 2);
+    assert.notStrictEqual(ownerCalls[0].args[0], ownerCalls[1].args[0]);
+    assert.match(ownerCalls[0].args[0], /^panel:/);
+    sinon.assert.calledWithExactly(
+      activateOwner,
+      ownerCalls[0].args[0],
+      '/mock/workspace/a.slang',
+    );
+
+    const disposeFirst = firstPanel.onDidDispose.lastCall.args[0] as () => void;
+    disposeFirst();
+    sinon.assert.calledWithExactly(
+      mockShaderProvider.releaseSlangRootOwner as unknown as sinon.SinonStub,
+      ownerCalls[0].args[0],
+    );
+    assert.ok(!(mockShaderProvider.releaseSlangRootOwner as unknown as sinon.SinonStub).calledWith(ownerCalls[1].args[0]));
   });
 
   test('createPanel uses empty tab group when available and locking is disabled', () => {

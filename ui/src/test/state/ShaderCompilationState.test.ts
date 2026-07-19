@@ -15,4 +15,21 @@ describe('ShaderCompilationState', () => {
 
     expect(state.latest).toBeNull();
   });
+
+  it('rejects stale requests while accepting sibling messages from one request', () => {
+    const state = new ShaderCompilationState();
+
+    expect(state.acceptRequest({ requestId: 8 })).toBe(true);
+    expect(state.acceptRequest({ requestId: 8 })).toBe(true);
+    expect(state.acceptRequest({ requestId: 7 })).toBe(false);
+    expect(state.acceptRequest({ requestId: 9 })).toBe(true);
+  });
+
+  it('tracks locked shader requests independently from the unlocked stream', () => {
+    const state = new ShaderCompilationState();
+
+    expect(state.acceptRequest({ requestId: 12 }, 'global')).toBe(true);
+    expect(state.acceptRequest({ requestId: 4 }, '/locked.slang')).toBe(true);
+    expect(state.acceptRequest({ requestId: 3 }, '/locked.slang')).toBe(false);
+  });
 });

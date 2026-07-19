@@ -7,8 +7,11 @@ import type { ErrorMessage } from "@shader-studio/types";
 export type CompileMode = "hot" | "save" | "manual";
 
 export class CompileController {
+  private static readonly SLANG_HOT_DEBOUNCE_MS = 40;
   private compileMode: CompileMode;
   private lastActiveGlslPath: string | null = null;
+  private pendingSlangHotChanges = new Map<string, vscode.TextDocument | null>();
+  private slangHotTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -58,7 +61,11 @@ export class CompileController {
     if (isShaderDocument(event.document)) {
       this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
       if (this.compileMode === "hot") {
-        this.performShaderDocumentUpdate(event.document);
+        if (event.document.fileName.endsWith(".slang")) {
+          this.queueSlangHotChange(event.document.uri.fsPath, event.document);
+        } else {
+          this.performShaderDocumentUpdate(event.document);
+        }
       }
       return;
     }
@@ -129,7 +136,15 @@ export class CompileController {
     if (this.compileMode !== "hot" || !this.messenger.hasActiveClients()) {
       return;
     }
-    void this.shaderProvider.sendAffectedSlangRoots(filePath, undefined, { reload: true });
+    this.queueSlangHotChange(filePath, null);
+  }
+
+  public dispose(): void {
+    if (this.slangHotTimer) {
+      clearTimeout(this.slangHotTimer);
+      this.slangHotTimer = null;
+    }
+    this.pendingSlangHotChanges.clear();
   }
 
   private getStoredCompileMode(): CompileMode {
@@ -147,6 +162,25 @@ export class CompileController {
     if (this.messenger.hasActiveClients()) {
       void this.shaderProvider.sendShaderFromDocument(document);
     }
+  }
+
+  private queueSlangHotChange(filePath: string, document: vscode.TextDocument | null): void {
+    this.pendingSlangHotChanges.set(filePath, document);
+    if (this.slangHotTimer) {
+      clearTimeout(this.slangHotTimer);
+    }
+    this.slangHotTimer = setTimeout(() => {
+      this.slangHotTimer = null;
+      const changes = [...this.pendingSlangHotChanges.entries()];
+      this.pendingSlangHotChanges.clear();
+      for (const [path, latestDocument] of changes) {
+        if (latestDocument) {
+          void this.shaderProvider.sendShaderFromDocument(latestDocument);
+        } else {
+          void this.shaderProvider.sendAffectedSlangRoots(path, undefined, { reload: true });
+        }
+      }
+    }, CompileController.SLANG_HOT_DEBOUNCE_MS);
   }
 
   private handleScriptDocumentChange(document: vscode.TextDocument): void {

@@ -71,6 +71,7 @@ suite('CompileController Test Suite', () => {
   });
 
   teardown(() => {
+    controller.dispose();
     sandbox.restore();
   });
 
@@ -246,10 +247,12 @@ suite('CompileController Test Suite', () => {
     assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(document));
   });
 
-  test('routes Slang create/delete events only in hot mode with an active client', () => {
+  test('routes Slang create/delete events only in hot mode with an active client', async () => {
+    const clock = sandbox.useFakeTimers();
     mockMessenger.hasActiveClients.returns(true);
 
     controller.handleSlangFileCreatedOrDeleted('/mock/path/helper.slang');
+    await clock.tickAsync(50);
 
     sinon.assert.calledOnceWithExactly(
       mockShaderProvider.sendAffectedSlangRoots,
@@ -264,16 +267,35 @@ suite('CompileController Test Suite', () => {
     sinon.assert.notCalled(mockShaderProvider.sendAffectedSlangRoots);
   });
 
-  test('does not compile a save event again after hot reload handled the document version', () => {
+  test('does not compile a save event again after hot reload handled the document version', async () => {
+    const clock = sandbox.useFakeTimers();
     const editor = createMockGLSLEditor('/mock/path/helper.slang');
     const document = editor.document as vscode.TextDocument;
     mockMessenger.hasActiveClients.returns(true);
     controller.setMode('hot');
 
     controller.handleTextDocumentChange({ document } as vscode.TextDocumentChangeEvent);
+    await clock.tickAsync(50);
     controller.handleTextDocumentSave(document, [editor]);
 
     sinon.assert.calledOnce(mockShaderProvider.sendShaderFromDocument);
     sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
+  });
+
+  test('coalesces rapid Slang hot edits to the latest document before workspace preparation', async () => {
+    const clock = sandbox.useFakeTimers();
+    const first = createMockGLSLEditor('/mock/path/helper.slang').document as vscode.TextDocument;
+    const second = createMockGLSLEditor('/mock/path/helper.slang').document as vscode.TextDocument;
+    const latest = createMockGLSLEditor('/mock/path/helper.slang').document as vscode.TextDocument;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('hot');
+
+    controller.handleTextDocumentChange({ document: first } as vscode.TextDocumentChangeEvent);
+    controller.handleTextDocumentChange({ document: second } as vscode.TextDocumentChangeEvent);
+    controller.handleTextDocumentChange({ document: latest } as vscode.TextDocumentChangeEvent);
+
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromDocument);
+    await clock.tickAsync(50);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.sendShaderFromDocument, latest);
   });
 });

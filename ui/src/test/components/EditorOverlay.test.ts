@@ -1623,7 +1623,7 @@ describe('EditorOverlay', () => {
           : originalGetModel?.(uri) ?? null
       ));
 
-      render(EditorOverlay, {
+      const { rerender } = render(EditorOverlay, {
         props: {
           ...defaultProps,
           shaderPath: '/project/main.slang',
@@ -1660,6 +1660,22 @@ describe('EditorOverlay', () => {
       );
       expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(
         dependency,
+        'slang-language',
+        expect.anything(),
+      );
+
+      vi.mocked(monaco.editor.setModelMarkers).mockClear();
+      await rerender({
+        ...defaultProps,
+        shaderPath: '/project/main.slang',
+        shaderLanguage: 'slang',
+        diagnostics: [],
+        errors: ['Image: ERROR: 0:1: legacy failure'],
+      });
+
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(dependency, 'slang-compile', []);
+      expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(
+        expect.anything(),
         'slang-language',
         expect.anything(),
       );

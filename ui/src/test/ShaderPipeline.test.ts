@@ -624,4 +624,26 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       diagnostics: [diagnostic],
     });
   });
+
+  it('posts successful structured diagnostics with the success log', async () => {
+    const diagnostic = {
+      uri: 'file:///project/helper.slang',
+      range: { start: { line: 1, character: 2 }, end: { line: 1, character: 4 } },
+      severity: 'warning' as const,
+      message: 'implicit conversion',
+      source: 'slang-compile' as const,
+    };
+    mocks.compileShaderPipeline.mockResolvedValueOnce({
+      success: true,
+      diagnostics: [diagnostic],
+    } as any);
+
+    await pipeline.handleShaderMessage(makeShaderEvent('float4 mainImage(float2 uv) { return 1; }', '/project/image.slang'));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      diagnostics: [diagnostic],
+    });
+  });
 });

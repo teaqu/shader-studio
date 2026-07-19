@@ -108,6 +108,8 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.compileController.dispose();
+    this.panelManager.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
