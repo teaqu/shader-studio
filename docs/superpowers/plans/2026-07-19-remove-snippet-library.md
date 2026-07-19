@@ -1,10 +1,10 @@
-# Remove the Snippet Library Implementation Plan
+# Remove the Snippet Library and Add Slang Snippets Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove the standalone Snippet Library and custom-snippet integration while retaining Shader Studio's bundled native VS Code snippets.
+**Goal:** Remove the standalone Snippet Library and custom-snippet integration while retaining the bundled GLSL snippets and adding full native Slang equivalents.
 
-**Architecture:** Delete the webview package and extension provider so VS Code's `contributes.snippets` mechanism is the only remaining snippet path. Remove all entry points and build-graph references, preserve the built-in snippet setting and files, and never access or mutate user-owned `.vscode/glsl-snippets.code-snippets` files.
+**Architecture:** Delete the webview package and extension provider so VS Code's `contributes.snippets` mechanism is the only remaining snippet path. Keep separate explicit GLSL and Slang assets with matching names and prefixes, centralize their eight manifest contributions for the runtime enable-setting update, and never access or mutate user-owned `.vscode/glsl-snippets.code-snippets` files.
 
 **Tech Stack:** Svelte 5, TypeScript, Vitest, VS Code extension API, npm workspaces, Turborepo, MkDocs
 
@@ -20,6 +20,10 @@
 - `extension/src/app/TabGroupResolver.ts` and its test: remove the obsolete label fallback while retaining the generic `shader-studio` view-type detection.
 - `extension/package.json`: remove the command and webview build script, but preserve the snippet configuration and contributions.
 - `extension/src/test/snippet-manifest.test.ts`: protect the remaining native snippet contract and absence of the removed command.
+- `extension/src/app/SnippetContributions.ts`: define the four GLSL and four Slang native contribution records used by configuration updates.
+- `extension/src/extension.ts`: restore both languages from the shared contribution list when snippets are enabled.
+- `extension/snippets/*.slang.code-snippets`: provide one-for-one Slang translations of every bundled GLSL snippet.
+- `extension/src/test/snippet-assets.test.ts`: enforce name, prefix, description, body-shape, dialect, and manifest parity.
 - `package.json`, `package-lock.json`, and `vitest.config.ts`: remove the deleted workspace and scripts from the monorepo graph.
 - `extension/src/test/snippet-build-metadata.test.ts`: protect the root and extension build graph from reintroducing the webview package.
 - `snippet-library/`: delete the complete standalone Svelte application and its tests.
@@ -220,7 +224,251 @@ git add -u extension/src/app/SnippetLibraryProvider.ts extension/src/test/app/Sn
 git commit -m "refactor(extension): remove snippet library provider"
 ```
 
-### Task 3: Remove the webview package from the build graph
+### Task 3: Add complete native Slang snippet parity
+
+**Files:**
+- Create: `extension/src/app/SnippetContributions.ts`
+- Create: `extension/src/test/snippet-assets.test.ts`
+- Create: `extension/snippets/sdf-2d.slang.code-snippets`
+- Create: `extension/snippets/sdf-3d.slang.code-snippets`
+- Create: `extension/snippets/coordinates.slang.code-snippets`
+- Create: `extension/snippets/math.slang.code-snippets`
+- Modify: `extension/src/extension.ts`
+- Modify: `extension/package.json`
+- Modify: `extension/src/test/snippet-manifest.test.ts`
+
+- [ ] **Step 1: Write failing asset-parity tests**
+
+Create `extension/src/test/snippet-assets.test.ts`:
+
+```ts
+import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface SnippetEntry {
+  prefix: string | string[];
+  body: string | string[];
+  description: string;
+  call?: string;
+  example?: string[];
+}
+
+type SnippetFile = Record<string, SnippetEntry>;
+
+const PAIRS = [
+  ['sdf-2d.code-snippets', 'sdf-2d.slang.code-snippets'],
+  ['sdf-3d.code-snippets', 'sdf-3d.slang.code-snippets'],
+  ['coordinates.code-snippets', 'coordinates.slang.code-snippets'],
+  ['math.code-snippets', 'math.slang.code-snippets'],
+] as const;
+
+function readSnippets(fileName: string): SnippetFile {
+  const filePath = path.resolve(__dirname, '../../snippets', fileName);
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as SnippetFile;
+}
+
+function allText(entry: SnippetEntry): string {
+  return [
+    ...(Array.isArray(entry.body) ? entry.body : [entry.body]),
+    ...(entry.call ? [entry.call] : []),
+    ...(entry.example ?? []),
+  ].join('\n');
+}
+
+suite('Bundled snippet assets', () => {
+  for (const [glslFile, slangFile] of PAIRS) {
+    test(`${slangFile} has exact metadata parity with ${glslFile}`, () => {
+      const glsl = readSnippets(glslFile);
+      const slang = readSnippets(slangFile);
+
+      assert.deepStrictEqual(Object.keys(slang), Object.keys(glsl));
+      for (const name of Object.keys(glsl)) {
+        assert.deepStrictEqual(slang[name].prefix, glsl[name].prefix);
+        assert.strictEqual(slang[name].description, glsl[name].description);
+        assert.ok(
+          typeof slang[name].body === 'string' || Array.isArray(slang[name].body),
+        );
+      }
+    });
+
+    test(`${slangFile} uses Slang rather than GLSL dialect syntax`, () => {
+      const slang = readSnippets(slangFile);
+      const source = Object.values(slang).map(allText).join('\n');
+
+      assert.doesNotMatch(source, /\b(?:[biu]?vec[234]|mat[234])\b/);
+      assert.doesNotMatch(source, /\bmix\s*\(/);
+      assert.doesNotMatch(source, /\bmod\s*\(/);
+      assert.doesNotMatch(source, /\batan\s*\(/);
+      assert.doesNotMatch(source, /void\s+mainImage\s*\(/);
+    });
+  }
+});
+```
+
+- [ ] **Step 2: Run the asset tests and verify RED**
+
+Run:
+
+```bash
+cd extension && npm run compile-tests && npx vscode-test --grep "Bundled snippet assets"
+```
+
+Expected: FAIL with `ENOENT` for `sdf-2d.slang.code-snippets`.
+
+- [ ] **Step 3: Add the four explicit Slang translations**
+
+For each pair in `PAIRS`, copy every top-level snippet entry and retain its key, `prefix`, and `description`. Translate `body`, `call`, and `example` using all of these rules:
+
+```text
+vec2 / vec3 / vec4 constructors and types -> float2 / float3 / float4
+mix(a, b, t)                           -> lerp(a, b, t)
+atan(y, x)                             -> atan2(y, x)
+void mainImage(out vec4 c, in vec2 p)  -> float4 mainImage(float2 p)
+c = float4(...) at example exit        -> return float4(...)
+```
+
+Do not translate GLSL `mod` to HLSL `fmod`, because their negative-input behavior differs. Preserve GLSL's `x - y * floor(x / y)` semantics explicitly at the three affected sites:
+
+```c
+// sdf2d-star
+float sourceAngle = atan2(p.x, p.y);
+float bn = sourceAngle - 2.0 * an * floor(sourceAngle / (2.0 * an)) - an;
+
+// sdf3d-plane example checker
+float checkerCoord = floor(p.x) + floor(p.z);
+float checker = checkerCoord - 2.0 * floor(checkerCoord / 2.0);
+
+// coord-pmod body and example
+a = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;
+```
+
+All other arithmetic, swizzles, tab stops, snippet names, prefixes, descriptions, calls, and examples remain behaviorally equivalent.
+
+- [ ] **Step 4: Verify the asset tests are GREEN**
+
+Run:
+
+```bash
+cd extension && npm run compile-tests && npx vscode-test --grep "Bundled snippet assets"
+```
+
+Expected: all eight parity/dialect tests pass.
+
+- [ ] **Step 5: Write the failing eight-contribution manifest assertion**
+
+Update the contribution assertion in `snippet-manifest.test.ts` to expect:
+
+```ts
+assert.deepStrictEqual(manifest.contributes.snippets, [
+  { language: 'glsl', path: './snippets/sdf-2d.code-snippets' },
+  { language: 'glsl', path: './snippets/sdf-3d.code-snippets' },
+  { language: 'glsl', path: './snippets/math.code-snippets' },
+  { language: 'glsl', path: './snippets/coordinates.code-snippets' },
+  { language: 'slang', path: './snippets/sdf-2d.slang.code-snippets' },
+  { language: 'slang', path: './snippets/sdf-3d.slang.code-snippets' },
+  { language: 'slang', path: './snippets/math.slang.code-snippets' },
+  { language: 'slang', path: './snippets/coordinates.slang.code-snippets' },
+]);
+```
+
+Run:
+
+```bash
+cd extension && npm run compile-tests && npx vscode-test --grep "retains bundled"
+```
+
+Expected: FAIL because the manifest still contains only the four GLSL contributions.
+
+- [ ] **Step 6: Centralize and register all real snippet contributions**
+
+Create `extension/src/app/SnippetContributions.ts`:
+
+```ts
+export interface SnippetContribution {
+  language: 'glsl' | 'slang';
+  path: string;
+}
+
+export const SNIPPET_CONTRIBUTIONS: readonly SnippetContribution[] = [
+  { language: 'glsl', path: './snippets/sdf-2d.code-snippets' },
+  { language: 'glsl', path: './snippets/sdf-3d.code-snippets' },
+  { language: 'glsl', path: './snippets/math.code-snippets' },
+  { language: 'glsl', path: './snippets/coordinates.code-snippets' },
+  { language: 'slang', path: './snippets/sdf-2d.slang.code-snippets' },
+  { language: 'slang', path: './snippets/sdf-3d.slang.code-snippets' },
+  { language: 'slang', path: './snippets/math.slang.code-snippets' },
+  { language: 'slang', path: './snippets/coordinates.slang.code-snippets' },
+];
+```
+
+Copy those same eight objects into `extension/package.json` under `contributes.snippets`.
+
+Import the constant in `extension/src/extension.ts`:
+
+```ts
+import { SNIPPET_CONTRIBUTIONS } from './app/SnippetContributions';
+```
+
+Replace the enabled branch in `updateSnippetsContribution` with:
+
+```ts
+if (enabled) {
+  packageJson.contributes.snippets = SNIPPET_CONTRIBUTIONS.map(
+    (contribution) => ({ ...contribution }),
+  );
+} else {
+  delete packageJson.contributes.snippets;
+}
+```
+
+This intentionally replaces a stale or partial list whenever the setting changes, ensuring an upgrade from the GLSL-only release restores both languages and eliminating references to nonexistent snippet files.
+
+- [ ] **Step 7: Assert manifest, runtime list, and on-disk paths agree**
+
+Extend `snippet-assets.test.ts`:
+
+```ts
+import { SNIPPET_CONTRIBUTIONS } from '../app/SnippetContributions';
+
+test('every shared contribution exists on disk', () => {
+  assert.strictEqual(SNIPPET_CONTRIBUTIONS.length, 8);
+  for (const contribution of SNIPPET_CONTRIBUTIONS) {
+    const relativePath = contribution.path.replace(/^\.\//, '');
+    assert.ok(fs.existsSync(path.resolve(__dirname, '../..', relativePath)));
+  }
+});
+```
+
+Also compare the manifest list to `SNIPPET_CONTRIBUTIONS` in `snippet-manifest.test.ts`:
+
+```ts
+import { SNIPPET_CONTRIBUTIONS } from '../app/SnippetContributions';
+
+assert.deepStrictEqual(
+  manifest.contributes.snippets,
+  SNIPPET_CONTRIBUTIONS,
+);
+```
+
+- [ ] **Step 8: Run the full snippet contract tests**
+
+Run:
+
+```bash
+cd extension && npm run compile-tests && npx vscode-test --grep "Snippet manifest|Bundled snippet assets"
+```
+
+Expected: all snippet manifest, parity, dialect, and path-existence tests pass.
+
+- [ ] **Step 9: Commit the native Slang slice**
+
+```bash
+git add extension/package.json extension/src/extension.ts extension/src/app/SnippetContributions.ts extension/src/test/snippet-manifest.test.ts extension/src/test/snippet-assets.test.ts extension/snippets/*.slang.code-snippets
+git commit -m "feat(extension): add native Slang snippets"
+```
+
+### Task 4: Remove the webview package from the build graph
 
 **Files:**
 - Create: `extension/src/test/snippet-build-metadata.test.ts`
@@ -327,7 +575,7 @@ git add -u snippet-library
 git commit -m "build: remove snippet library workspace"
 ```
 
-### Task 4: Replace current Snippet Library documentation with native snippet documentation
+### Task 5: Replace current Snippet Library documentation with native snippet documentation
 
 **Files:**
 - Create: `docs/features/code-snippets.md`
@@ -356,11 +604,11 @@ Expected: matches for the removed panel, command, custom CRUD, build target, and
 Create `docs/features/code-snippets.md` with this content:
 
 ```md
-# GLSL Code Snippets
+# GLSL and Slang Code Snippets
 
-Shader Studio contributes built-in GLSL snippets through VS Code's native completion system. In a GLSL editor, type a snippet prefix and select the matching completion or press `Tab` to insert it.
+Shader Studio contributes built-in GLSL and Slang snippets through VS Code's native completion system. In a `.glsl` or `.slang` editor, type a snippet prefix and select the matching completion or press `Tab` to insert it.
 
-The bundled categories are 2D signed-distance functions, 3D signed-distance functions, coordinate helpers, and math constants. The source definitions live in the extension's `snippets` directory.
+Both languages use the same prefixes, including `sdf2d-circle`, `sdf3d-sphere`, `coord-polar`, and `math-pi`. VS Code inserts the syntax appropriate for the active document's language. The bundled categories are 2D signed-distance functions, 3D signed-distance functions, coordinate helpers, and math constants.
 
 Shader Studio does not provide a custom snippet editor or manage workspace snippet files. To create personal snippets, use VS Code's standard user or workspace snippet support.
 
@@ -374,12 +622,12 @@ Delete `docs/features/snippet-library.md` and `docs/assets/images/snippet-librar
 Make these exact content changes:
 
 - Root `README.md`: remove `npm run build:snippet-library` from targeted build commands.
-- `extension/README.md`: rename the feature row to `GLSL Code Snippets`, link to `/features/code-snippets/`, and describe native completion insertion.
-- `docs/index.md`: split `Shader Explorer & Snippet Library` into a Shader Explorer section plus a short `GLSL Code Snippets` section linking to `features/code-snippets.md`.
+- `extension/README.md`: rename the feature row to `GLSL and Slang Code Snippets`, link to `/features/code-snippets/`, and describe native completion insertion.
+- `docs/index.md`: split `Shader Explorer & Snippet Library` into a Shader Explorer section plus a short `GLSL and Slang Code Snippets` section linking to `features/code-snippets.md`.
 - `docs/quick-start.md`: remove `snippet library` from the menu examples.
 - `docs/features/shader-explorer.md`: change the next link from Snippet Library to GLSL Code Snippets.
-- `docs/help/settings.md`: point `shader-studio.enableSnippets` to `../features/code-snippets.md` and describe only bundled GLSL code snippets.
-- `mkdocs.yml`: replace `Snippet Library: features/snippet-library.md` with `GLSL Code Snippets: features/code-snippets.md`.
+- `docs/help/settings.md`: point `shader-studio.enableSnippets` to `../features/code-snippets.md` and describe bundled GLSL and Slang code snippets.
+- `mkdocs.yml`: replace `Snippet Library: features/snippet-library.md` with `GLSL and Slang Code Snippets: features/code-snippets.md`.
 
 Do not rewrite the historical entries in `docs/release-notes.md` or `extension/CHANGELOG.md`.
 
@@ -411,7 +659,7 @@ git add -u docs/features/snippet-library.md docs/assets/images/snippet-library.p
 git commit -m "docs: replace snippet library with native snippets"
 ```
 
-### Task 5: Full verification and scope audit
+### Task 6: Full verification and scope audit
 
 **Files:**
 - Modify mechanically if needed: linted files in the preceding tasks
@@ -479,10 +727,10 @@ Expected: no matches.
 Run:
 
 ```bash
-test -d extension/snippets && rg -n '"snippets"|shader-studio.enableSnippets' extension/package.json
+test -d extension/snippets && rg -n '"snippets"|"language": "slang"|shader-studio.enableSnippets' extension/package.json
 ```
 
-Expected: the snippet directory exists, and both the built-in contribution and setting remain in the manifest.
+Expected: the snippet directory exists, four Slang contributions are present, and the shared enable setting remains in the manifest.
 
 - [ ] **Step 7: Confirm user files and unrelated work were not touched**
 
@@ -490,7 +738,7 @@ Run:
 
 ```bash
 git status --short
-git diff --name-only HEAD~4..HEAD
+git diff --name-only HEAD~5..HEAD
 ```
 
 Expected: implementation commits contain only the files listed in this plan. Pre-existing rendering changes remain uncommitted and unchanged. No `.vscode/glsl-snippets.code-snippets` path appears.
