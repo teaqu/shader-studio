@@ -244,6 +244,22 @@
       {
         "language": "glsl",
         "path": "./snippets/coordinates.code-snippets"
+      },
+      {
+        "language": "slang",
+        "path": "./snippets/sdf-2d.slang.code-snippets"
+      },
+      {
+        "language": "slang",
+        "path": "./snippets/sdf-3d.slang.code-snippets"
+      },
+      {
+        "language": "slang",
+        "path": "./snippets/math.slang.code-snippets"
+      },
+      {
+        "language": "slang",
+        "path": "./snippets/coordinates.slang.code-snippets"
       }
     ]
   },

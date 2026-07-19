@@ -1,0 +1,102 @@
+{
+  "Coord Polar": {
+    "prefix": "coord-polar",
+    "body": [
+      "// Cartesian to polar coordinates",
+      "float2 toPolar(float2 p) {",
+      "\treturn float2(length(p), atan2(p.y, p.x));",
+      "}"
+    ],
+    "description": "Convert cartesian to polar coordinates (radius, angle)",
+    "example": [
+      "float2 toPolar(float2 p) {",
+      "    return float2(length(p), atan2(p.y, p.x));",
+      "}",
+      "",
+      "float4 mainImage(float2 fragCoord) {",
+      "    float2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    float2 polar = toPolar(uv);",
+      "    float r = polar.x;",
+      "    float a = polar.y;",
+      "    float rings = abs(fract(r * 2.5 - iTime * 0.3) - 0.5);",
+      "    float spokes = abs(sin(a * 3.0));",
+      "    float d = smoothstep(0.05, 0.15, rings);",
+      "    float s = smoothstep(0.03, 0.10, spokes);",
+      "    float3 col = lerp(float3(0.55, 0.3, 0.85), float3(0.1, 0.05, 0.15), d * s);",
+      "    col *= smoothstep(1.2, 0.3, r);",
+      "    return float4(col, 1.0);",
+      "}"
+    ]
+  },
+  "Coord Polar Inverse": {
+    "prefix": "coord-polar-inv",
+    "body": [
+      "// Polar to cartesian coordinates",
+      "float2 fromPolar(float2 p) {",
+      "\treturn p.x * float2(cos(p.y), sin(p.y));",
+      "}"
+    ],
+    "description": "Convert polar to cartesian coordinates",
+    "example": [
+      "float2 fromPolar(float2 polar) {",
+      "    return polar.x * float2(cos(polar.y), sin(polar.y));",
+      "}",
+      "",
+      "float4 mainImage(float2 fragCoord) {",
+      "    float2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    float r = length(uv);",
+      "    float a = atan2(uv.y, uv.x);",
+      "    float wave = r + 0.15 * sin(a * 3.0 + iTime * 2.0);",
+      "    float2 warped = fromPolar(float2(wave, a));",
+      "    float d = abs(fract(length(warped) * 2.5) - 0.5);",
+      "    float rings = smoothstep(0.05, 0.15, d);",
+      "    float spokes = smoothstep(0.03, 0.10, abs(sin(a * 3.0 + iTime)));",
+      "    float3 col = lerp(float3(0.55, 0.3, 0.85), float3(0.1, 0.05, 0.15), rings * spokes);",
+      "    col *= smoothstep(1.2, 0.3, r);",
+      "    return float4(col, 1.0);",
+      "}"
+    ]
+  },
+  "Coord Pmod": {
+    "prefix": "coord-pmod",
+    "body": [
+      "// Polar modular repetition (radial symmetry)",
+      "// Derived from hg_sdf/Mercury library",
+      "float pmod(inout float2 p, float n) {",
+      "\tfloat angle = 3.14159265 / n;",
+      "\tfloat a = atan2(p.y, p.x) + angle;",
+      "\tfloat r = length(p);",
+      "\tfloat c = floor(a / (2.0 * angle));",
+      "\ta = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;",
+      "\tp = float2(cos(a), sin(a)) * r;",
+      "\tif (abs(c) >= n) c = abs(c);",
+      "\treturn c;",
+      "}"
+    ],
+    "description": "Polar modular repetition for radial symmetry (hg_sdf/Mercury)",
+    "example": [
+      "float pmod(inout float2 p, float n) {",
+      "    float angle = 3.14159265 / n;",
+      "    float a = atan2(p.y, p.x) + angle;",
+      "    float r = length(p);",
+      "    float c = floor(a / (2.0 * angle));",
+      "    a = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;",
+      "    p = float2(cos(a), sin(a)) * r;",
+      "    if (abs(c) >= n) c = abs(c);",
+      "    return c;",
+      "}",
+      "",
+      "float4 mainImage(float2 fragCoord) {",
+      "    float2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    float2 p = uv;",
+      "    float c = pmod(p, 6.0);",
+      "    float d = p.x - 0.4;",
+      "    float3 col = float3(0.12, 0.12, 0.18);",
+      "    float hue = c / 6.0;",
+      "    float3 segCol = 0.5 + 0.5 * cos(6.28 * (hue + float3(0.0, 0.33, 0.67)));",
+      "    col = lerp(col, segCol, smoothstep(0.01, 0.0, d));",
+      "    return float4(col, 1.0);",
+      "}"
+    ]
+  }
+}

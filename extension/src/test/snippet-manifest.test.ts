@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import { SNIPPET_CONTRIBUTIONS } from '../app/SnippetContributions';
 
 interface CommandContribution {
   command: string;
@@ -34,18 +35,16 @@ suite('Snippet manifest', () => {
     );
   });
 
-  test('retains bundled GLSL snippets and their enable setting', () => {
+  test('retains all bundled snippets and their enable setting', () => {
     assert.ok(
       Object.prototype.hasOwnProperty.call(
         manifest.contributes.configuration.properties,
         'shader-studio.enableSnippets',
       ),
     );
-    assert.deepStrictEqual(manifest.contributes.snippets, [
-      { language: 'glsl', path: './snippets/sdf-2d.code-snippets' },
-      { language: 'glsl', path: './snippets/sdf-3d.code-snippets' },
-      { language: 'glsl', path: './snippets/math.code-snippets' },
-      { language: 'glsl', path: './snippets/coordinates.code-snippets' },
-    ]);
+    assert.deepStrictEqual(
+      manifest.contributes.snippets,
+      SNIPPET_CONTRIBUTIONS,
+    );
   });
 });
