@@ -509,8 +509,13 @@ export class VideoTextureManager<T> {
       return;
     }
     this.gestureListenersArmed = false;
-    document.removeEventListener('pointerdown', this.onGestureUnmute);
-    document.removeEventListener('keydown', this.onGestureUnmute);
+    for (const type of ['pointerdown', 'keydown']) {
+      try {
+        document.removeEventListener(type, this.onGestureUnmute);
+      } catch (error) {
+        console.error(`Failed to remove video gesture listener ${type}:`, error);
+      }
+    }
   }
 
   private getFilterFromOptions(filter?: string): TextureFilter {

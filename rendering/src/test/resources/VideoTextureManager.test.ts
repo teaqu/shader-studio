@@ -566,6 +566,8 @@ describe("VideoTextureManager", () => {
         videoElements: Record<string, HTMLVideoElement>;
         videoTextures: Record<string, FakeTex>;
         animationFrameIds: Record<string, number>;
+        pendingGestureUnmute: Set<string>;
+        gestureListenersArmed: boolean;
       };
       state.videoElements["a.mp4"] = videoA as unknown as HTMLVideoElement;
       state.videoElements["b.mp4"] = videoB as unknown as HTMLVideoElement;
@@ -573,11 +575,17 @@ describe("VideoTextureManager", () => {
       state.videoTextures["b.mp4"] = textureB;
       state.animationFrameIds["a.mp4"] = 1;
       state.animationFrameIds["b.mp4"] = 2;
+      state.pendingGestureUnmute.add("a.mp4");
+      state.gestureListenersArmed = true;
       vi.mocked(window.cancelAnimationFrame).mockImplementationOnce(() => {
         throw new Error("cancel failed");
       });
       vi.mocked(backend.destroyTexture).mockImplementationOnce(() => {
         throw new Error("destroy failed");
+      });
+      const removeDocumentListener = vi.spyOn(document, "removeEventListener");
+      removeDocumentListener.mockImplementation(() => {
+        throw new Error("gesture listener removal failed");
       });
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -596,6 +604,8 @@ describe("VideoTextureManager", () => {
       expect(videoManager.getVideoTexture("a.mp4")).toBeUndefined();
       expect(videoManager.getVideoTexture("b.mp4")).toBeUndefined();
       expect(state.animationFrameIds).toEqual({});
+      expect(removeDocumentListener).toHaveBeenCalledTimes(2);
+      expect(state.gestureListenersArmed).toBe(false);
       expect(errorSpy).toHaveBeenCalled();
 
       videoManager.cleanup();
