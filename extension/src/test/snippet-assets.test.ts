@@ -35,6 +35,10 @@ function allText(entry: SnippetEntry): string {
     .join('\n');
 }
 
+function fieldText(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.join('\n') : (value ?? '');
+}
+
 suite('Bundled snippet assets', () => {
   test('all eight contributed snippet files exist', () => {
     assert.strictEqual(SNIPPET_CONTRIBUTIONS.length, 8);
@@ -65,6 +69,24 @@ suite('Bundled snippet assets', () => {
           typeof slang[key].body === 'string' || Array.isArray(slang[key].body),
           `${key} body must be a string or string array`,
         );
+        assert.strictEqual(
+          Array.isArray(slang[key].body),
+          Array.isArray(glsl[key].body),
+          `${key} body must preserve the GLSL string or string-array shape`,
+        );
+
+        if (
+          fieldText(glsl[key].example).includes(
+            'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+          )
+        ) {
+          assert.ok(
+            fieldText(slang[key].example).includes(
+              'float4 mainImage(float2 fragCoord) {',
+            ),
+            `${key} Slang example must use the return-style mainImage signature`,
+          );
+        }
       }
     });
 
@@ -75,8 +97,42 @@ suite('Bundled snippet assets', () => {
       assert.doesNotMatch(text, /\b(?:[biu]?vec[234]|mat[234](?:x[234])?)\b/);
       assert.doesNotMatch(text, /\bmix\s*\(/);
       assert.doesNotMatch(text, /\bmod\s*\(/);
+      assert.doesNotMatch(text, /\bfmod\s*\(/);
       assert.doesNotMatch(text, /\batan\s*\(/);
       assert.doesNotMatch(text, /\bvoid\s+mainImage\s*\(/);
     });
   }
+
+  test('preserves GLSL modulo semantics with floor-based translations', () => {
+    const sdf2d = readSnippets('sdf-2d.slang.code-snippets');
+    const sdf3d = readSnippets('sdf-3d.slang.code-snippets');
+    const coordinates = readSnippets('coordinates.slang.code-snippets');
+
+    const starBody = fieldText(sdf2d['SDF 2D Star'].body);
+    assert.ok(starBody.includes('float sourceAngle = atan2(p.x, p.y);'));
+    assert.ok(
+      starBody.includes(
+        'sourceAngle - 2.0 * an * floor(sourceAngle / (2.0 * an)) - an',
+      ),
+    );
+
+    const planeExample = fieldText(sdf3d['SDF 3D Plane'].example);
+    assert.ok(
+      planeExample.includes('float checkerCoord = floor(p.x) + floor(p.z);'),
+    );
+    assert.ok(
+      planeExample.includes(
+        'checkerCoord - 2.0 * floor(checkerCoord / 2.0)',
+      ),
+    );
+
+    const pmodTranslation =
+      'a = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;';
+    assert.ok(
+      fieldText(coordinates['Coord Pmod'].body).includes(pmodTranslation),
+    );
+    assert.ok(
+      fieldText(coordinates['Coord Pmod'].example).includes(pmodTranslation),
+    );
+  });
 });
