@@ -47,6 +47,38 @@ export interface ShowConfigMessage extends BaseMessage {
   };
 }
 
+export interface SlangPosition {
+  line: number;
+  character: number;
+}
+
+export interface SlangRange {
+  start: SlangPosition;
+  end: SlangPosition;
+}
+
+export interface SlangWorkspaceFile {
+  uri: string;
+  path: string;
+  source: string;
+  version?: number;
+}
+
+export interface SlangWorkspaceSnapshot {
+  rootUri: string;
+  files: SlangWorkspaceFile[];
+}
+
+export interface SlangDiagnostic {
+  uri: string;
+  range: SlangRange;
+  severity: "error" | "warning" | "information" | "hint";
+  code?: string;
+  message: string;
+  source: "slang-language" | "slang-compile" | "webgpu";
+  passName?: string;
+}
+
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
   code: string;
@@ -55,6 +87,10 @@ export interface ShaderSourceMessage extends BaseMessage {
   buffers: Record<string, string>;
   /** Shader source language. Defaults to "glsl" when absent. */
   language?: "glsl" | "slang";
+  /** Slang workspace files. Optional for GLSL and older clients. */
+  workspace?: SlangWorkspaceSnapshot;
+  /** Structured Slang/WebGPU diagnostics. Optional for older clients. */
+  diagnostics?: SlangDiagnostic[];
   reload?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
