@@ -7,6 +7,13 @@
   import { observeNearViewport } from '../shaderPreviewVisibility';
   import { createEngineForLanguage } from '../engineFactory';
 
+  interface RendererOwnership {
+    engine: RenderingEngine;
+    targetCanvas: HTMLCanvasElement;
+    dispose: () => void;
+    isDisposed: () => boolean;
+  }
+
   let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, onCompilationFailed }: {
     shader: ShaderFile;
     width?: number;
@@ -17,7 +24,7 @@
   } = $props();
 
   let canvas: HTMLCanvasElement = $state()!;
-  let renderingEngine: RenderingEngine | null = null;
+  let renderingOwnership: RendererOwnership | null = null;
   let capturedImage: string = $state('');
   let compilationFailed: boolean = $state(false);
   let shaderCode: string = '';
@@ -35,6 +42,9 @@
   let destroyed = false;
   let thumbnailGeneration = 0;
   let hoverGeneration = 0;
+
+  const getRenderingOwnership = () => renderingOwnership;
+  const getHoverOwnership = () => hoverOwnership;
 
   // Re-render when dimensions change (card size slider)
   $effect(() => {
@@ -83,7 +93,7 @@
   let isHovering: boolean = $state(false);
   let hoverVisible: boolean = $state(false); // only true after first render frame
   let hoverCanvas: HTMLCanvasElement | null = null;
-  let hoverRenderingEngine: RenderingEngine | null = null;
+  let hoverOwnership: RendererOwnership | null = null;
   let hoverCanvasWrapper: HTMLDivElement | null = null;
 
   onMount(async () => {
@@ -161,12 +171,25 @@
     targetCanvas: HTMLCanvasElement,
     renderSingleFrame: boolean,
     isCurrent: () => boolean,
+    publishOwnership: (ownership: RendererOwnership) => void,
   ) {
     const engine = createEngineForLanguage(shaderLanguage);
+    let disposed = false;
+    const ownership: RendererOwnership = {
+      engine,
+      targetCanvas,
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        cleanupRenderer(engine, targetCanvas);
+      },
+      isDisposed: () => disposed,
+    };
+    publishOwnership(ownership);
 
     try {
-      if (!isCurrent()) {
-        cleanupRenderer(engine, targetCanvas);
+      if (!isCurrent() || ownership.isDisposed()) {
+        ownership.dispose();
         return null;
       }
 
@@ -179,8 +202,8 @@
         shaderBuffers
       );
 
-      if (!isCurrent()) {
-        cleanupRenderer(engine, targetCanvas);
+      if (!isCurrent() || ownership.isDisposed()) {
+        ownership.dispose();
         return null;
       }
 
@@ -192,9 +215,9 @@
         }
       }
 
-      return { engine, result };
+      return { ownership, result };
     } catch (err) {
-      cleanupRenderer(engine, targetCanvas);
+      ownership.dispose();
       throw err;
     }
   }
@@ -244,25 +267,42 @@
     );
 
     // Clean up existing rendering engine if any
-    if (renderingEngine) {
-      cleanupRenderer(renderingEngine, targetCanvas);
-      renderingEngine = null;
+    if (renderingOwnership) {
+      renderingOwnership.dispose();
+      renderingOwnership = null;
     }
 
+    const ownershipSlot: { current: RendererOwnership | null } = { current: null };
     try {
-      const renderer = await createShaderRenderer(targetCanvas, true, isCurrent);
-      if (!renderer || !isCurrent()) return;
+      const renderer = await createShaderRenderer(
+        targetCanvas,
+        true,
+        isCurrent,
+        (ownership) => {
+          ownershipSlot.current = ownership;
+          if (isCurrent()) {
+            renderingOwnership = ownership;
+          } else {
+            ownership.dispose();
+          }
+        },
+      );
+      if (!renderer || !isCurrent()) {
+        if (getRenderingOwnership() === ownershipSlot.current) renderingOwnership = null;
+        return;
+      }
 
-      const { engine, result } = renderer;
-      renderingEngine = engine;
+      const { ownership, result } = renderer;
+      const { engine } = ownership;
 
       if (result?.success) {
         // Let next frame render to ensure it's fully initialized
         await new Promise((resolve) => setTimeout(resolve, 16));
-        if (!isCurrent() || renderingEngine !== engine) return;
+        if (!isCurrent() || getRenderingOwnership() !== ownership || ownership.isDisposed()) return;
         
         // Capture the rendered frame as an image
         try {
+          engine.renderForCapture();
           capturedImage = targetCanvas.toDataURL('image/png');
           compilationFailed = false;
           
@@ -281,9 +321,9 @@
         }
         
         // Clean up rendering resources
-        if (renderingEngine === engine) {
-          cleanupRenderer(engine, targetCanvas);
-          renderingEngine = null;
+        ownership.dispose();
+        if (getRenderingOwnership() === ownership) {
+          renderingOwnership = null;
         }
         
         // Keep shader code and buffers for hover rendering - don't clear them
@@ -292,18 +332,18 @@
         compilationFailed = true;
         onCompilationFailed?.();
         // Still clean up on failure
-        if (renderingEngine === engine) {
-          cleanupRenderer(engine, targetCanvas);
-          renderingEngine = null;
+        ownership.dispose();
+        if (getRenderingOwnership() === ownership) {
+          renderingOwnership = null;
         }
       }
     } catch (err) {
+      ownershipSlot.current?.dispose();
+      if (getRenderingOwnership() === ownershipSlot.current) {
+        renderingOwnership = null;
+      }
       if (!isCurrent()) return;
 
-      if (renderingEngine) {
-        cleanupRenderer(renderingEngine, targetCanvas);
-        renderingEngine = null;
-      }
       console.error('Failed to initialize rendering:', err);
       compilationFailed = true;
       onCompilationFailed?.();
@@ -346,20 +386,31 @@
 
     try {
       // Create a completely new rendering engine and pipeline, start the render loop
+      const ownershipSlot: { current: RendererOwnership | null } = { current: null };
       const renderer = await createShaderRenderer(
         targetCanvas,
         false,
         () => isCurrent() && hoverCanvas === targetCanvas,
+        (ownership) => {
+          ownershipSlot.current = ownership;
+          if (isCurrent() && hoverCanvas === targetCanvas) {
+            hoverOwnership = ownership;
+          } else {
+            ownership.dispose();
+          }
+        },
       );
-      if (!renderer || !isCurrent() || hoverCanvas !== targetCanvas) return;
+      if (!renderer || !isCurrent() || hoverCanvas !== targetCanvas) {
+        if (getHoverOwnership() === ownershipSlot.current) hoverOwnership = null;
+        return;
+      }
 
-      const { engine, result } = renderer;
-      hoverRenderingEngine = engine;
+      const { ownership, result } = renderer;
 
       if (result?.success) {
         // Wait for first rendered frame before revealing the canvas to avoid black flash
         await new Promise(r => requestAnimationFrame(r));
-        if (isCurrent() && hoverCanvas === targetCanvas && hoverRenderingEngine === engine) {
+        if (isCurrent() && hoverCanvas === targetCanvas && getHoverOwnership() === ownership) {
           hoverVisible = true;
         }
       } else {
@@ -385,8 +436,8 @@
     isHovering = false;
     hoverVisible = false;
     
-    cleanupRenderer(hoverRenderingEngine, hoverCanvas);
-    hoverRenderingEngine = null;
+    hoverOwnership?.dispose();
+    hoverOwnership = null;
     
     if (hoverCanvas) {
       // Remove canvas from DOM
@@ -407,7 +458,8 @@
       renderQueue.remove(queueId);
     }
     
-    cleanupRenderer(renderingEngine, canvas);
+    renderingOwnership?.dispose();
+    renderingOwnership = null;
     cleanupHoverRendering();
   });
 </script>
