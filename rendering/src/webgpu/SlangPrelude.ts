@@ -16,12 +16,14 @@ import type { StorageBindingNode } from "../types/PassGraph";
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
+export const SLANG_ENTRY_COMPUTE = "computeMainEntry";
 
 // Uniform buffer layout (WGSL std140 — every field is naturally aligned, so
 // there is no interior padding). Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Total size is a multiple of 16, as
 // required for the uniform address space.
 export const SHADERTOY_UNIFORM_SIZE = 48;
+export const DISPATCH_UNIFORM_SIZE = 16;
 export const UNIFORM_OFFSETS = {
   iResolution: 0, // float4 (xyz used)
   iMouse: 16, // float4
@@ -93,6 +95,16 @@ export interface SlangWrapOptions {
    * immutable, so the remap cannot be injected into the user body like GLSL.
    */
   captureMode?: boolean;
+}
+
+export interface SlangComputeWrapOptions {
+  passName?: string;
+  commonCode?: string;
+  channels?: SlangChannelBinding[];
+  storage?: StorageBindingNode[];
+  workgroupSize: [number, number, number];
+  outputLayers: number;
+  hasOutput: boolean;
 }
 
 // Capture uniform block layout (bytes): coordGrid float4 @0
@@ -220,4 +232,86 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
   return `${PRELUDE}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+}
+
+function buildOutputPrelude(binding: number, outputLayers: number): string {
+  if (outputLayers > 1) {
+    return `// ---- shader-studio Slang compute output (generated) ----
+[[vk::binding(${binding}, 0)]]
+RWTexture2DArray<float4> _outTex;
+
+void writeOutput(uint2 coord, uint layer, float4 color)
+{
+    uint w;
+    uint h;
+    uint layers;
+    _outTex.GetDimensions(w, h, layers);
+    if (coord.x >= w || coord.y >= h || layer >= layers)
+    {
+        return;
+    }
+    _outTex[uint3(coord.x, h - 1 - coord.y, layer)] = color;
+}
+`;
+  }
+
+  return `// ---- shader-studio Slang compute output (generated) ----
+[[vk::binding(${binding}, 0)]]
+RWTexture2D<float4> _outTex;
+
+void writeOutput(uint2 coord, float4 color)
+{
+    uint w;
+    uint h;
+    _outTex.GetDimensions(w, h);
+    if (coord.x >= w || coord.y >= h)
+    {
+        return;
+    }
+    _outTex[uint2(coord.x, h - 1 - coord.y)] = color;
+}
+`;
+}
+
+function buildDispatchPrelude(binding: number): string {
+  return `struct DispatchUniforms
+{
+    int dispatchIndex;
+    int3 _dspPad;
+};
+
+[[vk::binding(${binding}, 0)]]
+ConstantBuffer<DispatchUniforms> _dsp;
+
+#define iDispatch (_dsp.dispatchIndex)
+`;
+}
+
+function buildComputeEntryPoint(workgroupSize: [number, number, number]): string {
+  const [x, y, z] = workgroupSize;
+  return `[shader("compute")]
+[numthreads(${x}, ${y}, ${z})]
+void ${SLANG_ENTRY_COMPUTE}(uint3 tid : SV_DispatchThreadID)
+{
+    computeMain(tid);
+}
+`;
+}
+
+/** Wrap a user compute-shader source into a full, compilable Slang module. */
+export function wrapSlangComputeSource(userSource: string, options: SlangComputeWrapOptions): string {
+  const channels = options.channels ?? [];
+  const storage = options.storage ?? [];
+  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const channelPrelude = buildChannelPrelude(channels);
+  const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
+  const outputBinding = 1 + channels.length * 2 + storage.length;
+  const outputPrelude = options.hasOutput
+    ? buildOutputPrelude(outputBinding, options.outputLayers)
+    : "";
+  const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
+  const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
+  const entryPoint = buildComputeEntryPoint(options.workgroupSize);
+
+  return `${PRELUDE}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${userSource}\n${entryPoint}`;
 }
