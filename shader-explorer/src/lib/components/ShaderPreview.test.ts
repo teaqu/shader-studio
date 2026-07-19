@@ -390,8 +390,8 @@ describe('ShaderPreview - asynchronous renderer ownership', () => {
         expect(onCompilationFailed).toHaveBeenCalledOnce();
     });
 
-    it('disposes the engine when single-frame rendering throws', async () => {
-        mockEngine.render.mockImplementation(() => {
+    it('disposes the engine when capture rendering throws', async () => {
+        mockEngine.renderForCapture.mockImplementation(() => {
             throw new Error('render failed');
         });
         const onCompilationFailed = vi.fn();
@@ -401,6 +401,7 @@ describe('ShaderPreview - asynchronous renderer ownership', () => {
         });
 
         await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(toDataUrlMock).not.toHaveBeenCalled();
         expect(mockEngine.dispose).toHaveBeenCalledOnce();
         expect(onCompilationFailed).toHaveBeenCalledOnce();
     });
@@ -456,6 +457,7 @@ describe('ShaderPreview - thumbnail capture presentation', () => {
 
         await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledOnce());
 
+        expect(mockEngine.render).not.toHaveBeenCalled();
         expect(mockEngine.renderForCapture).toHaveBeenCalledOnce();
         expect(mockEngine.renderForCapture).toHaveBeenCalledBefore(toDataUrlMock);
         expect(toDataUrlMock).toHaveBeenCalledBefore(mockEngine.dispose);
@@ -474,23 +476,10 @@ describe('ShaderPreview - thumbnail capture presentation', () => {
         await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledOnce());
 
         expect(createEngineForLanguage).toHaveBeenCalledWith('slang');
+        expect(mockEngine.render).not.toHaveBeenCalled();
         expect(mockEngine.renderForCapture).toHaveBeenCalledBefore(toDataUrlMock);
         expect(toDataUrlMock).toHaveBeenCalledBefore(mockEngine.dispose);
         expect(getContextMock).not.toHaveBeenCalledWith('webgl2');
     });
 
-    it('shows failure and cleans up when rendering for capture throws', async () => {
-        mockEngine.renderForCapture.mockImplementation(() => {
-            throw new Error('capture presentation expired');
-        });
-
-        const { container } = render(ShaderPreview, {
-            props: { shader: makeShader(), vscodeApi: makeVscodeApi() },
-        });
-
-        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
-        expect(mockEngine.renderForCapture).toHaveBeenCalledOnce();
-        expect(toDataUrlMock).not.toHaveBeenCalled();
-        expect(mockEngine.dispose).toHaveBeenCalledOnce();
-    });
 });

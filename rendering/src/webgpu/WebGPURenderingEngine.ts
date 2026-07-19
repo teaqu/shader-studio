@@ -151,6 +151,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   constructor(private slangAssets: SlangAssetUrls) {}
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
+    if (this.disposed) {
+      return;
+    }
+
     const initStartedAt = this.now();
     this.logSlangPerf("init start", {
       canvasWidth: glCanvas.width,
@@ -186,6 +190,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.logSlangPerf("adapter request start", {});
       const adapter = await navigator.gpu.requestAdapter();
       const adapterMs = this.now() - adapterStartedAt;
+      if (this.disposed) {
+        return;
+      }
       if (!adapter) {
         throw new Error("requestAdapter() returned null");
       }
@@ -196,6 +203,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         ? await adapter.requestDevice(deviceDescriptor)
         : await adapter.requestDevice();
       const deviceMs = this.now() - deviceStartedAt;
+      if (this.disposed) {
+        device.destroy?.();
+        return;
+      }
       this.device = device;
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
@@ -214,7 +225,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       const compilerStartedAt = this.now();
       this.logSlangPerf("compiler create start", {});
-      this.compiler = await this.createCompiler();
+      const compiler = await this.createCompiler();
+      if (this.disposed) {
+        compiler.dispose();
+        return;
+      }
+      this.compiler = compiler;
       this.logSlangPerf("init complete", {
         adapterMs: this.ms(adapterMs),
         deviceMs: this.ms(deviceMs),
@@ -222,6 +238,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         totalMs: this.ms(this.now() - initStartedAt),
       });
     } catch (e) {
+      if (this.disposed) {
+        return;
+      }
       this.initError = e instanceof Error ? e.message : String(e);
       this.logSlangPerf("init failed", {
         reason: this.initError,
@@ -393,6 +412,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       await this.ready;
       readyMs = this.now() - readyStartedAt;
       this.logSlangPerf("compile init ready", { path, generation, readyMs: this.ms(readyMs) });
+    }
+
+    if (generation !== this.compileGeneration || this.disposed) {
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
     if (this.initError || !this.device || !this.compiler) {
@@ -1299,6 +1322,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passKeys.clear();
     this.passGraph = [];
     this.resourceManager?.cleanup();
+    this.resourceManager = null;
     this.device?.destroy?.();
     this.device = null;
   }

@@ -208,9 +208,7 @@
       }
 
       if (result?.success) {
-        if (renderSingleFrame) {
-          engine.render();
-        } else {
+        if (!renderSingleFrame) {
           engine.startRenderLoop();
         }
       }
@@ -318,6 +316,7 @@
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
           compilationFailed = true;
+          onCompilationFailed?.();
         }
         
         // Clean up rendering resources

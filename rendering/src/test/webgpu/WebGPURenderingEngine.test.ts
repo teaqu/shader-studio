@@ -20,6 +20,50 @@ function noWebGpuCanvas(): HTMLCanvasElement {
 
 const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
+interface EngineLifecycleInternals {
+  ready: Promise<void>;
+  device: GPUDevice | null;
+  compiler: unknown | null;
+  resourceManager: unknown | null;
+  compileGeneration: number;
+}
+
+function lifecycleInternals(engine: WebGPURenderingEngine): EngineLifecycleInternals {
+  return engine as unknown as EngineLifecycleInternals;
+}
+
+function webGpuCanvas(context: Pick<GPUCanvasContext, "configure">): HTMLCanvasElement {
+  return {
+    width: 800,
+    height: 600,
+    getContext: vi.fn(() => context),
+    addEventListener: vi.fn(),
+  } as unknown as HTMLCanvasElement;
+}
+
+function lifecycleDevice() {
+  const textures: Array<{ createView: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }> = [];
+  const device = {
+    createTexture: vi.fn(() => {
+      const texture = { createView: vi.fn(() => ({})), destroy: vi.fn() };
+      textures.push(texture);
+      return texture;
+    }),
+    createSampler: vi.fn(() => ({})),
+    queue: { writeTexture: vi.fn() },
+    destroy: vi.fn(),
+  };
+  return { device: device as unknown as GPUDevice, textures };
+}
+
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
@@ -150,6 +194,145 @@ describe("WebGPURenderingEngine", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  describe("asynchronous disposal during initialization", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("does not request a device when disposed while the adapter request is pending", async () => {
+      const adapterResult = deferred<GPUAdapter | null>();
+      const requestDevice = vi.fn();
+      const adapter = { requestDevice } as unknown as GPUAdapter;
+      const context = { configure: vi.fn() };
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: vi.fn(() => adapterResult.promise),
+          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+        },
+      });
+      const engine = new WebGPURenderingEngine(assets);
+
+      engine.initialize(webGpuCanvas(context));
+      engine.dispose();
+      adapterResult.resolve(adapter);
+      await lifecycleInternals(engine).ready;
+
+      expect(requestDevice).not.toHaveBeenCalled();
+      expect(context.configure).not.toHaveBeenCalled();
+      expect(lifecycleInternals(engine)).toMatchObject({
+        device: null,
+        compiler: null,
+        resourceManager: null,
+      });
+    });
+
+    it("destroys a device obtained after disposal without configuring or retaining it", async () => {
+      const deviceResult = deferred<GPUDevice>();
+      const requestDevice = vi.fn(() => deviceResult.promise);
+      const adapter = { requestDevice } as unknown as GPUAdapter;
+      const { device } = lifecycleDevice();
+      const context = { configure: vi.fn() };
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: vi.fn(async () => adapter),
+          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+        },
+      });
+      const engine = new WebGPURenderingEngine(assets);
+      const createCompiler = vi.spyOn(
+        engine as unknown as { createCompiler(): Promise<unknown> },
+        "createCompiler",
+      );
+
+      engine.initialize(webGpuCanvas(context));
+      await vi.waitFor(() => expect(requestDevice).toHaveBeenCalledOnce());
+      engine.dispose();
+      deviceResult.resolve(device);
+      await lifecycleInternals(engine).ready;
+
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(context.configure).not.toHaveBeenCalled();
+      expect(createCompiler).not.toHaveBeenCalled();
+      expect(lifecycleInternals(engine)).toMatchObject({
+        device: null,
+        compiler: null,
+        resourceManager: null,
+      });
+    });
+
+    it("disposes a compiler obtained after disposal and retains no initialized resources", async () => {
+      const compilerResult = deferred<{ compile: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>();
+      const compilerStarted = deferred<void>();
+      const compiler = { compile: vi.fn(), dispose: vi.fn() };
+      const { device } = lifecycleDevice();
+      const adapter = { requestDevice: vi.fn(async () => device) } as unknown as GPUAdapter;
+      const context = { configure: vi.fn() };
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: vi.fn(async () => adapter),
+          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+        },
+      });
+      const engine = new WebGPURenderingEngine(assets);
+      vi.spyOn(
+        engine as unknown as { createCompiler(): Promise<unknown> },
+        "createCompiler",
+      ).mockImplementation(() => {
+        compilerStarted.resolve();
+        return compilerResult.promise;
+      });
+
+      engine.initialize(webGpuCanvas(context));
+      await compilerStarted.promise;
+      engine.dispose();
+
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(lifecycleInternals(engine)).toMatchObject({
+        device: null,
+        compiler: null,
+        resourceManager: null,
+      });
+
+      compilerResult.resolve(compiler);
+      await lifecycleInternals(engine).ready;
+
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(lifecycleInternals(engine)).toMatchObject({
+        device: null,
+        compiler: null,
+        resourceManager: null,
+      });
+    });
+
+    it("drops a compile superseded while waiting for initialization before compiler work", async () => {
+      const ready = deferred<void>();
+      const compiler = { compile: vi.fn(), dispose: vi.fn() };
+      const { device } = lifecycleDevice();
+      const engine = new WebGPURenderingEngine(assets);
+      const internals = lifecycleInternals(engine);
+      internals.ready = ready.promise;
+      internals.device = device;
+      internals.compiler = compiler;
+
+      const compiling = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        null,
+        "/a.slang",
+        {},
+      );
+      internals.compileGeneration++;
+      ready.resolve();
+
+      const result = await compiling;
+      expect(result).toEqual({
+        success: false,
+        errors: ["Superseded by a newer compile"],
+        superseded: true,
+      });
+      expect(compiler.compile).not.toHaveBeenCalled();
+    });
   });
 
   it("render() is a safe no-op before a pipeline exists", () => {
