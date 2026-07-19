@@ -13,7 +13,8 @@ The CSP exception is only the first failure. Shader Explorer currently:
 - searches for `.glsl`, `.frag`, and `.vert` files, but not `.slang`;
 - returns shader source without an explicit language;
 - always constructs the WebGL `RenderingEngine` for thumbnails and hover previews; and
-- does not bundle the existing Slang JavaScript, WASM, and worker assets.
+- does not receive URLs for the extension's existing Slang JavaScript, WASM,
+  and worker assets.
 
 Relaxing the CSP alone would stop the startup exception but would not render Slang shaders.
 
@@ -24,7 +25,8 @@ This change will:
 - include `.slang` in Shader Explorer discovery and search;
 - identify requested shader source as `glsl` or `slang`;
 - use the existing WebGL engine for GLSL and the existing WebGPU engine for Slang;
-- bundle the same Slang JavaScript, WASM, and compile-worker assets used by the main UI;
+- reuse the Slang JavaScript, WASM, and compile-worker assets already packaged
+  for the main UI, without emitting a second WASM copy;
 - update Shader Explorer's webview CSP with the directives already required by the main shader viewer; and
 - preserve thumbnail capture, thumbnail caching, resizing, hover rendering, config loading, and buffer loading for both languages.
 
@@ -53,15 +55,33 @@ Shader Explorer will add a small local engine factory following the established 
 
 Shader preview code will depend on the shared `RenderingEngine` interface rather than the WebGL concrete class. The same factory will be used for one-frame thumbnails and animated hover previews. Cleanup will remain backend-agnostic: stop and dispose the selected engine, while WebGL context loss remains a best-effort WebGL-only cleanup.
 
-### Slang assets
+### Shared Slang assets
 
-Shader Explorer will expose a local asset resolver that imports:
+The main UI's build remains the canonical producer of:
 
-- `slang-wasm.js` as a URL;
-- `slang-wasm.wasm` as a URL; and
-- `slangCompileWorker.ts` as a worker URL.
+- `slang-wasm.js`;
+- `slang-wasm.wasm`; and
+- the compiled `slangCompileWorker` chunk.
 
-Vite will emit all three into `shader-explorer/dist`, allowing the existing extension URI rewriting and local resource root to serve them without adding workspace access.
+After the main UI build, a small build step will validate that exactly one of
+each required artifact exists and write their relative filenames to a Slang
+asset manifest in `ui-dist`. The manifest prevents runtime code from depending
+on Vite's content hashes.
+
+`ShaderExplorerProvider` will read that manifest, map each canonical asset
+through `webview.asWebviewUri()`, and inject the three URLs into the Explorer
+HTML as metadata. Its webview resource roots will include `ui-dist` in addition
+to `shader-explorer-dist` and the workspace.
+
+Shader Explorer's local asset resolver will read the injected URLs and pass
+them to `WebGPURenderingEngine`. It will not import the raw Slang assets, so its
+Vite build will not emit another JavaScript runtime, worker, or 21 MB WASM
+binary.
+
+VS Code webviews are isolated JavaScript realms, so the main viewer and Shader
+Explorer will still initialize separate Slang runtime instances. They will,
+however, load the same packaged files rather than storing duplicate bytes in
+the extension.
 
 ### Content Security Policy
 
@@ -80,7 +100,8 @@ Both the existing-CSP and no-CSP branches must produce these directives. `unsafe
 2. A visible card requests its shader source.
 3. The extension loads the existing source, config, and buffer files, converts resource paths, and returns `language: "slang"`.
 4. Shader Preview asks its engine factory for the language-specific engine.
-5. The factory creates `WebGPURenderingEngine` with Shader Explorer's emitted Slang asset URLs.
+5. The factory creates `WebGPURenderingEngine` with the canonical asset URLs
+   injected by the extension host.
 6. The existing Slang renderer compiles and renders the thumbnail or hover animation.
 7. Thumbnail capture and caching continue through the existing message path.
 
@@ -91,6 +112,10 @@ GLSL follows the same flow but continues to use the WebGL engine.
 Existing compilation-failure behavior remains authoritative: a failed Slang compile marks the card failed, invokes the existing callback, and cleans up the engine. Missing WebGPU support is surfaced through the existing WebGPU initialization error and follows the same card failure path.
 
 Asset or worker initialization errors use the renderer's existing fallback/error behavior. No silent fallback from Slang to GLSL will be added because compiling Slang as GLSL obscures the real failure.
+
+If the canonical asset manifest or a required artifact is missing, the host
+will log the packaging error and the Slang preview will follow the existing
+compilation-failure card path. GLSL previews must remain usable.
 
 ## Testing
 
@@ -106,9 +131,14 @@ Extension tests will cover:
 Shader Explorer tests will cover:
 
 - the factory selects WebGL for GLSL and WebGPU for Slang;
-- the WebGPU engine receives the emitted Slang asset URLs;
+- the canonical main-UI build produces a complete Slang asset manifest;
+- Shader Explorer receives the manifest's webview-mapped asset URLs;
+- the WebGPU engine receives those injected Slang asset URLs;
 - Shader Preview routes the response language through the factory for thumbnail rendering;
 - hover rendering uses the same selected engine; and
 - GLSL behavior remains unchanged.
 
-Verification will include Shader Explorer unit tests and type checks, extension tests, ESLint, the full UI type check required by `AGENTS.md`, and a production Shader Explorer build confirming the Slang JS, WASM, and worker assets are emitted.
+Verification will include Shader Explorer unit tests and type checks, extension
+tests, ESLint, the full UI type check required by `AGENTS.md`, and production
+builds confirming that the extension contains one Slang WASM binary and that
+Shader Explorer emits no duplicate Slang runtime assets.
