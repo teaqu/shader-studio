@@ -1052,5 +1052,107 @@ suite('ShaderProvider Test Suite', () => {
 
       assert.strictEqual(sendSpy.getCalls().filter((call) => call.args[0].type === 'shaderSource').length, 0);
     });
+
+    test('unions disjoint changed files into one root batch and one workspace preparation', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      const prepareRoots = sandbox.stub().callsFake(async (specs) => specs.map((spec: { rootPath: string }) => ({
+        rootPath: spec.rootPath,
+        rootFileUri: spec.rootPath,
+        snapshot,
+      })));
+      const owningRoots = sandbox.stub().callsFake((filePath: string) => (
+        filePath.endsWith('/a.slang') ? ['/project/root-a.slang'] : ['/project/root-b.slang']
+      ));
+      const coordinator = fakeCoordinator({ prepareRoots, owningRoots });
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+
+      await slangProvider.sendAffectedSlangChanges([
+        { filePath: '/project/a.slang', source: 'float a() { return 1; }' },
+        { filePath: '/project/b.slang', source: 'float b() { return 1; }' },
+      ], { reload: true });
+
+      sinon.assert.calledOnce(prepareRoots);
+      assert.deepStrictEqual(prepareRoots.firstCall.args[0].map((spec: { rootPath: string }) => spec.rootPath), [
+        '/project/root-a.slang',
+        '/project/root-b.slang',
+      ]);
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), [
+        '/project/root-a.slang',
+        '/project/root-b.slang',
+      ]);
+      const messages = sendSpy.getCalls().map((call) => call.args[0]);
+      assert.deepStrictEqual(messages.map((message) => message.compileScope), [
+        {
+          rootUris: [vscode.Uri.file('/project/root-a.slang').toString()],
+          generationId: messages[0].compileGeneration.id,
+        },
+        {
+          rootUris: [vscode.Uri.file('/project/root-b.slang').toString()],
+          generationId: messages[1].compileGeneration.id,
+        },
+      ]);
+    });
+
+    test('a newer disjoint root transaction does not cancel an older root', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      let releaseA: (() => void) | undefined;
+      const prepareRoots = sandbox.stub().callsFake(async (specs: Array<{ rootPath: string }>) => {
+        if (specs[0].rootPath.endsWith('root-a.slang')) {
+          await new Promise<void>((resolve) => {
+            releaseA = resolve;
+          });
+        }
+        return specs.map((spec) => ({ rootPath: spec.rootPath, rootFileUri: spec.rootPath, snapshot }));
+      });
+      const coordinator = fakeCoordinator({
+        prepareRoots,
+        owningRoots: sandbox.stub().callsFake((filePath: string) => (
+          filePath.endsWith('/a.slang') ? ['/project/root-a.slang'] : ['/project/root-b.slang']
+        )),
+      });
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+
+      const olderA = slangProvider.sendAffectedSlangChanges([{ filePath: '/project/a.slang', source: 'a' }]);
+      const newerB = slangProvider.sendAffectedSlangChanges([{ filePath: '/project/b.slang', source: 'b' }]);
+      await newerB;
+      releaseA?.();
+      await olderA;
+
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), [
+        '/project/root-b.slang',
+        '/project/root-a.slang',
+      ]);
+    });
+
+    test('a newer overlapping root transaction cancels the older root', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      let releaseOlder: (() => void) | undefined;
+      const prepareRoots = sandbox.stub().callsFake(async (specs: Array<{ rootPath: string }>) => {
+        if (prepareRoots.callCount === 1) {
+          await new Promise<void>((resolve) => {
+            releaseOlder = resolve;
+          });
+        }
+        return specs.map((spec) => ({ rootPath: spec.rootPath, rootFileUri: spec.rootPath, snapshot }));
+      });
+      const coordinator = fakeCoordinator({
+        prepareRoots,
+        owningRoots: sandbox.stub().returns(['/project/root.slang']),
+      });
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+
+      const older = slangProvider.sendAffectedSlangChanges([{ filePath: '/project/a.slang', source: 'a' }]);
+      await slangProvider.sendAffectedSlangChanges([{ filePath: '/project/b.slang', source: 'b' }]);
+      releaseOlder?.();
+      await older;
+
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), ['/project/root.slang']);
+    });
   });
 });

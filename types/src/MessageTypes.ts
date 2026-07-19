@@ -102,6 +102,8 @@ export interface ShaderCompileGeneration {
 
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
+  /** Scope used to replace only diagnostics produced by this compile stream. */
+  compileScope?: CompileDiagnosticScope;
   /** Monotonic extension request identifier used to discard stale async results. */
   requestId?: number;
   code: string;

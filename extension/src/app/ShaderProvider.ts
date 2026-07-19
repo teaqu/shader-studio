@@ -23,6 +23,11 @@ export interface ShaderSendOptions {
   ownerId?: string;
 }
 
+export interface SlangSourceChange {
+  filePath: string;
+  source?: string;
+}
+
 interface PreparedShaderSend {
   config: ShaderConfig | null;
   evaluator: ScriptEvaluator;
@@ -41,7 +46,7 @@ export class ShaderProvider {
   private scriptEvaluator = new ScriptEvaluator();
   private readonly slangWorkspaceCoordinator: SlangShaderWorkspaceCoordinator;
   private nextRequestId = 1;
-  private latestSlangBatchRequest = 0;
+  private latestSlangRootRequests = new Map<string, number>();
 
   constructor(
     private messenger: Messenger,
@@ -193,20 +198,29 @@ export class ShaderProvider {
     source?: string,
     options?: ShaderSendOptions,
   ): Promise<void> {
+    await this.sendAffectedSlangChanges([{ filePath, source }], options);
+  }
+
+  public async sendAffectedSlangChanges(
+    changes: readonly SlangSourceChange[],
+    options?: ShaderSendOptions,
+  ): Promise<void> {
     const requestId = this.nextRequestId++;
-    let currentSource = source;
-    if (currentSource === undefined && fs.existsSync(filePath)) {
-      try {
-        currentSource = fs.readFileSync(filePath, "utf-8");
-      } catch {
-        currentSource = undefined;
+    const roots = new Set<string>();
+    for (const change of changes) {
+      let currentSource = change.source;
+      if (currentSource === undefined && fs.existsSync(change.filePath)) {
+        try {
+          currentSource = fs.readFileSync(change.filePath, "utf-8");
+        } catch {
+          currentSource = undefined;
+        }
+      }
+      for (const root of this.slangWorkspaceCoordinator.owningRoots(change.filePath, currentSource)) {
+        roots.add(root);
       }
     }
-    await this.sendSlangRootBatch(
-      this.slangWorkspaceCoordinator.owningRoots(filePath, currentSource),
-      options,
-      requestId,
-    );
+    await this.sendSlangRootBatch([...roots].sort(), options, requestId);
   }
 
   public releaseSlangRootOwner(ownerId: string): void {
@@ -249,6 +263,7 @@ export class ShaderProvider {
       const message: ShaderSourceMessage = {
         type: "shaderSource",
         requestId,
+        compileScope: this.compileScope(shaderPath, requestId),
         code,
         config,
         path: shaderPath,
@@ -458,7 +473,7 @@ export class ShaderProvider {
     shaderPath: string,
     code: string,
     options: ShaderSendOptions | undefined,
-    requestId: number,
+    requestId: number = this.nextRequestId++,
     sendOwnedShader: () => Promise<void>,
   ): Promise<boolean> {
     const slangOwners = getShaderLanguage(shaderPath) === "slang"
@@ -508,6 +523,9 @@ export class ShaderProvider {
     compileGeneration?: ShaderSourceMessage["compileGeneration"],
   ): Promise<void> {
     const language = getShaderLanguage(shaderPath);
+    if (language === "slang") {
+      this.markSlangRootRequest(shaderPath, requestId);
+    }
     const ownerRequest = ownerId
       ? this.slangWorkspaceCoordinator.beginOwnerRequest(ownerId, shaderPath)
       : undefined;
@@ -536,13 +554,14 @@ export class ShaderProvider {
         ? compileGeneration ?? { id: requestId, rootIndex: 0, rootCount: 1, rootPath: shaderPath }
         : undefined,
       workspace: preparedRoot?.snapshot,
+      diagnosticOwnerId: ownerId,
     });
 
-    const current = ownerRequest
+    const current = (language !== "slang" || this.isSlangRootRequestCurrent(shaderPath, requestId)) && (ownerRequest
       ? language === "slang"
         ? this.slangWorkspaceCoordinator.commitOwnerRequest(ownerRequest, preparedRoot!)
         : this.slangWorkspaceCoordinator.commitOwnerRelease(ownerRequest)
-      : true;
+      : true);
     if (!current) {
       prepared.evaluator.dispose();
       return;
@@ -555,7 +574,6 @@ export class ShaderProvider {
     options?: ShaderSendOptions,
     requestId: number = this.nextRequestId++,
   ): Promise<void> {
-    this.latestSlangBatchRequest = Math.max(this.latestSlangBatchRequest, requestId);
     const roots = [...new Set(rootPaths)]
       .filter((rootPath) => {
         const canSend = fs.existsSync(rootPath) || vscode.workspace.textDocuments.some(
@@ -563,11 +581,15 @@ export class ShaderProvider {
         );
         if (!canSend) {
           this.activeShaders.delete(rootPath);
+          this.latestSlangRootRequests.delete(rootPath);
           this.slangWorkspaceCoordinator.removeRoot(rootPath);
         }
         return canSend;
       })
       .sort();
+    for (const rootPath of roots) {
+      this.markSlangRootRequest(rootPath, requestId);
+    }
     if (roots.length === 0) {
       return;
     }
@@ -593,17 +615,21 @@ export class ShaderProvider {
       preparedMessages.forEach((prepared) => prepared.evaluator.dispose());
       throw error;
     }
-    if (requestId !== this.latestSlangBatchRequest) {
-      preparedMessages.forEach((prepared) => prepared.evaluator.dispose());
-      return;
-    }
-
-    const stillAvailable = preparedMessages.filter((prepared) => this.rootIsAvailable(prepared.shaderPath));
-    const availablePaths = new Set(stillAvailable.map((prepared) => prepared.shaderPath));
+    const currentMessages = preparedMessages.filter((prepared) => (
+      this.isSlangRootRequestCurrent(prepared.shaderPath, requestId)
+    ));
     for (const prepared of preparedMessages) {
+      if (!currentMessages.includes(prepared)) {
+        prepared.evaluator.dispose();
+      }
+    }
+    const stillAvailable = currentMessages.filter((prepared) => this.rootIsAvailable(prepared.shaderPath));
+    const availablePaths = new Set(stillAvailable.map((prepared) => prepared.shaderPath));
+    for (const prepared of currentMessages) {
       if (!availablePaths.has(prepared.shaderPath)) {
         prepared.evaluator.dispose();
         this.activeShaders.delete(prepared.shaderPath);
+        this.latestSlangRootRequests.delete(prepared.shaderPath);
         this.slangWorkspaceCoordinator.removeRoot(prepared.shaderPath);
       }
     }
@@ -633,7 +659,7 @@ export class ShaderProvider {
     code: string,
     editor: vscode.TextEditor,
     options?: { reload?: boolean },
-    requestId?: number,
+    requestId: number = this.nextRequestId++,
   ): Promise<void> {
     const line = editor.selection.active.line;
     const message = this.buildNonMainImageShaderMessage(
@@ -658,7 +684,7 @@ export class ShaderProvider {
     filePath: string,
     code: string,
     options?: { reload?: boolean },
-    requestId?: number,
+    requestId: number = this.nextRequestId++,
   ): Promise<void> {
     const message = this.buildNonMainImageShaderMessage(
       filePath,
@@ -677,7 +703,7 @@ export class ShaderProvider {
     code: string,
     document: vscode.TextDocument,
     options?: { reload?: boolean },
-    requestId?: number,
+    requestId: number = this.nextRequestId++,
   ): Promise<void> {
     let cursorPosition: ShaderSourceMessage["cursorPosition"];
 
@@ -712,11 +738,12 @@ export class ShaderProvider {
     code: string,
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
-    requestId?: number,
+    requestId: number = this.nextRequestId++,
   ): ShaderSourceMessage {
     return {
       type: "shaderSource",
       requestId,
+      compileScope: this.compileScope(filePath, requestId),
       code,
       config: null,
       path: filePath,
@@ -790,6 +817,17 @@ export class ShaderProvider {
     );
   }
 
+  private markSlangRootRequest(rootPath: string, requestId: number): void {
+    this.latestSlangRootRequests.set(
+      rootPath,
+      Math.max(this.latestSlangRootRequests.get(rootPath) ?? 0, requestId),
+    );
+  }
+
+  private isSlangRootRequestCurrent(rootPath: string, requestId: number): boolean {
+    return this.latestSlangRootRequests.get(rootPath) === requestId;
+  }
+
   private async prepareShaderSend(args: {
     shaderPath: string;
     code: string;
@@ -803,11 +841,13 @@ export class ShaderProvider {
     requestId: number;
     compileGeneration?: ShaderSourceMessage["compileGeneration"];
     workspace?: ShaderSourceMessage["workspace"];
+    diagnosticOwnerId?: string;
   }): Promise<PreparedShaderSend> {
     const evaluator = new ScriptEvaluator();
     const message: ShaderSourceMessage = {
       type: "shaderSource",
       requestId: args.requestId,
+      compileScope: this.compileScope(args.shaderPath, args.requestId, args.diagnosticOwnerId),
       code: args.code,
       config: args.config,
       path: args.shaderPath,
@@ -850,6 +890,14 @@ export class ShaderProvider {
     if (prepared.trackActiveShader) {
       this.activeShaders.add(prepared.shaderPath);
     }
+  }
+
+  private compileScope(shaderPath: string, generationId: number, ownerId?: string) {
+    return {
+      rootUris: [vscode.Uri.file(shaderPath).toString()],
+      ...(ownerId ? { ownerId } : {}),
+      generationId,
+    };
   }
 
 }

@@ -173,13 +173,13 @@ export class CompileController {
       this.slangHotTimer = null;
       const changes = [...this.pendingSlangHotChanges.entries()];
       this.pendingSlangHotChanges.clear();
-      for (const [path, latestDocument] of changes) {
-        if (latestDocument) {
-          void this.shaderProvider.sendShaderFromDocument(latestDocument);
-        } else {
-          void this.shaderProvider.sendAffectedSlangRoots(path, undefined, { reload: true });
-        }
-      }
+      void this.shaderProvider.sendAffectedSlangChanges(
+        changes.map(([filePath, latestDocument]) => ({
+          filePath,
+          source: latestDocument?.getText(),
+        })),
+        { reload: true },
+      );
     }, CompileController.SLANG_HOT_DEBOUNCE_MS);
   }
 

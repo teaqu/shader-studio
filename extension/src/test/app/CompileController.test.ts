@@ -55,6 +55,7 @@ suite('CompileController Test Suite', () => {
       getActiveConfig: sandbox.stub().returns(null),
       getScriptPath: sandbox.stub().returns(null),
       sendAffectedSlangRoots: sandbox.stub().resolves(),
+      sendAffectedSlangChanges: sandbox.stub().resolves(),
     };
 
     mockMessenger = {
@@ -255,16 +256,15 @@ suite('CompileController Test Suite', () => {
     await clock.tickAsync(50);
 
     sinon.assert.calledOnceWithExactly(
-      mockShaderProvider.sendAffectedSlangRoots,
-      '/mock/path/helper.slang',
-      undefined,
+      mockShaderProvider.sendAffectedSlangChanges,
+      [{ filePath: '/mock/path/helper.slang', source: undefined }],
       { reload: true },
     );
 
-    mockShaderProvider.sendAffectedSlangRoots.resetHistory();
+    mockShaderProvider.sendAffectedSlangChanges.resetHistory();
     controller.setMode('save');
     controller.handleSlangFileCreatedOrDeleted('/mock/path/helper.slang');
-    sinon.assert.notCalled(mockShaderProvider.sendAffectedSlangRoots);
+    sinon.assert.notCalled(mockShaderProvider.sendAffectedSlangChanges);
   });
 
   test('does not compile a save event again after hot reload handled the document version', async () => {
@@ -278,7 +278,8 @@ suite('CompileController Test Suite', () => {
     await clock.tickAsync(50);
     controller.handleTextDocumentSave(document, [editor]);
 
-    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromDocument);
+    sinon.assert.calledOnce(mockShaderProvider.sendAffectedSlangChanges);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromDocument);
     sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
   });
 
@@ -294,8 +295,33 @@ suite('CompileController Test Suite', () => {
     controller.handleTextDocumentChange({ document: second } as vscode.TextDocumentChangeEvent);
     controller.handleTextDocumentChange({ document: latest } as vscode.TextDocumentChangeEvent);
 
-    sinon.assert.notCalled(mockShaderProvider.sendShaderFromDocument);
+    sinon.assert.notCalled(mockShaderProvider.sendAffectedSlangChanges);
     await clock.tickAsync(50);
-    sinon.assert.calledOnceWithExactly(mockShaderProvider.sendShaderFromDocument, latest);
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.sendAffectedSlangChanges,
+      [{ filePath: '/mock/path/helper.slang', source: '// shader' }],
+      { reload: true },
+    );
+  });
+
+  test('drains disjoint Slang edits as one change-set transaction', async () => {
+    const clock = sandbox.useFakeTimers();
+    const first = createMockGLSLEditor('/mock/path/a.slang').document as vscode.TextDocument;
+    const second = createMockGLSLEditor('/mock/path/b.slang').document as vscode.TextDocument;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('hot');
+
+    controller.handleTextDocumentChange({ document: first } as vscode.TextDocumentChangeEvent);
+    controller.handleTextDocumentChange({ document: second } as vscode.TextDocumentChangeEvent);
+    await clock.tickAsync(50);
+
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.sendAffectedSlangChanges,
+      [
+        { filePath: '/mock/path/a.slang', source: '// shader' },
+        { filePath: '/mock/path/b.slang', source: '// shader' },
+      ],
+      { reload: true },
+    );
   });
 });

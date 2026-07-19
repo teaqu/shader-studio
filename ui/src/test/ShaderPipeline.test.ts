@@ -557,6 +557,46 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     });
   });
 
+  it('does not report success for a generation root skipped by a locked panel', async () => {
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    const skipped = {
+      data: {
+        ...makeShaderEvent('code b', '/b.slang').data,
+        compileGeneration: { id: 20, rootIndex: 0, rootCount: 1, rootPath: '/b.slang' },
+        compileScope: { rootUris: ['file:///b.slang'], generationId: 20 },
+      },
+    } as MessageEvent;
+
+    await pipeline.handleShaderMessage(skipped);
+
+    expect(mocks.compileShaderPipeline).not.toHaveBeenCalled();
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('reports only the compiled locked root when sibling generation roots are skipped', async () => {
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    const event = (path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        compileGeneration: { id: 21, rootIndex: index, rootCount: 2, rootPath: path },
+        compileScope: { rootUris: [`file://${path}`], generationId: 21 },
+      },
+    } as MessageEvent);
+
+    await pipeline.handleShaderMessage(event('/a.slang', 0));
+    await pipeline.handleShaderMessage(event('/b.slang', 1));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: ['file:///a.slang'], generationId: 21 },
+    });
+  });
+
   it('updates compilation result state when a pending shader message finishes compiling', async () => {
     const compilationState = {
       latest: null as { success: boolean; errors?: string[] } | null,
