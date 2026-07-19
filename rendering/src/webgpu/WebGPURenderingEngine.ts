@@ -540,45 +540,105 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
     // loaded (and awaited) as part of the compile; render then only does cache
     // lookups.
-    if (this.resourceManager) {
+    const resourceManager = this.resourceManager;
+    if (resourceManager) {
+      const interruptedResourceCompile = (): CompilationResult | null => {
+        if (this.disposed || this.resourceManager !== resourceManager) {
+          try {
+            resourceManager.cleanup();
+          } catch {
+            // Disposal already owns error reporting; keep the compile superseded.
+          }
+          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+        }
+        if (generation !== this.compileGeneration) {
+          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+        }
+        return null;
+      };
       for (const pass of graph.passes) {
         for (const channel of pass.channels) {
           if (channel.kind === "texture") {
-            await this.resourceManager.loadImageTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              grayscale: channel.grayscale,
-            });
+            try {
+              await resourceManager.loadImageTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                grayscale: channel.grayscale,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
           } else if (channel.kind === "video") {
-            const result = await this.resourceManager.loadVideoTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-              muted: channel.muted,
-            });
+            let result;
+            try {
+              result = await resourceManager.loadVideoTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+                muted: channel.muted,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
             if (result.warning) {
               graph.warnings.push(result.warning);
             }
           } else if (channel.kind === "cubemap") {
-            await this.resourceManager.loadCubemapTexture(channel.path, {
-              filter: channel.filter,
-              wrap: channel.wrap,
-              vflip: channel.vflip,
-            });
+            try {
+              await resourceManager.loadCubemapTexture(channel.path, {
+                filter: channel.filter,
+                wrap: channel.wrap,
+                vflip: channel.vflip,
+              });
+            } catch (error) {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              throw error;
+            }
+            const interrupted = interruptedResourceCompile();
+            if (interrupted) {
+              return interrupted;
+            }
           } else if (channel.kind === "audio") {
             try {
-              await this.resourceManager.loadAudioSource(channel.path, {
+              await resourceManager.loadAudioSource(channel.path, {
                 muted: channel.muted,
                 startTime: channel.startTime,
                 endTime: channel.endTime,
               });
-              this.resourceManager.updateAudioLoopRegion(
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
+              resourceManager.updateAudioLoopRegion(
                 channel.path,
                 channel.startTime,
                 channel.endTime,
               );
             } catch {
+              const interrupted = interruptedResourceCompile();
+              if (interrupted) {
+                return interrupted;
+              }
               graph.warnings.push(`Audio loading failed: ${channel.path}`);
             }
           }
@@ -1397,6 +1457,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.compilerAbortController = null;
     attempt(() => compilerAbortController?.abort());
     attempt(() => this.stopRenderLoop());
+    attempt(() => this.mouseManager.dispose());
+    attempt(() => this.keyboardManager.dispose());
 
     const compiler = this.compiler;
     this.compiler = null;

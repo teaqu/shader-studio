@@ -22,10 +22,12 @@ const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 interface EngineLifecycleInternals {
@@ -3092,6 +3094,104 @@ describe("WebGPURenderingEngine", () => {
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
     });
 
+    it("disposes keyboard and mouse listeners", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const keyboardDispose = vi.spyOn((engine as any).keyboardManager, "dispose");
+      const mouseDispose = vi.spyOn((engine as any).mouseManager, "dispose");
+
+      engine.dispose();
+
+      expect(keyboardDispose).toHaveBeenCalledOnce();
+      expect(mouseDispose).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      ["texture", "loadImageTexture", {}],
+      ["video", "loadVideoTexture", { texture: {}, warning: undefined }],
+      ["cubemap", "loadCubemapTexture", {}],
+      ["audio", "loadAudioSource", {}],
+    ] as const)("cleans late %s resources and aborts compilation after dispose", async (type, loader, value) => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        [loader]: vi.fn(() => pending.promise),
+        updateAudioLoopRegion: vi.fn(),
+      };
+      (engine as any).resourceManager = resources;
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type, path: `input.${type}` } } } } } as ShaderConfig,
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources[loader]).toHaveBeenCalledOnce());
+
+      engine.dispose();
+      pending.resolve(value);
+
+      await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect((engine as any).passPipelines.size).toBe(0);
+    });
+
+    it("cleans late resources when a caught audio load rejects after dispose", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        loadAudioSource: vi.fn(() => pending.promise),
+        updateAudioLoopRegion: vi.fn(),
+      };
+      (engine as any).resourceManager = resources;
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type: "audio", path: "input.wav" } } } } },
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources.loadAudioSource).toHaveBeenCalledOnce());
+
+      engine.dispose();
+      pending.reject(new Error("late failure"));
+
+      await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect(resources.updateAudioLoopRegion).not.toHaveBeenCalled();
+    });
+
+    it("does not clean a still-current resource manager when only the compile generation is superseded", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        loadImageTexture: vi.fn(() => pending.promise),
+      };
+      (engine as any).resourceManager = resources;
+      const staleCompile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "late.png" } } } } },
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources.loadImageTexture).toHaveBeenCalledOnce());
+
+      const currentCompile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+      await expect(currentCompile).resolves.toMatchObject({ success: true });
+      pending.resolve({});
+
+      await expect(staleCompile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).not.toHaveBeenCalled();
+    });
+
     it("finishes teardown and clears retained state when compiler disposal throws", () => {
       const compilerError = new Error("compiler cleanup failed");
       const compiler = { dispose: vi.fn(() => {
@@ -3165,7 +3265,12 @@ describe("WebGPURenderingEngine", () => {
       const device = { destroy: vi.fn(() => {
         throw deviceError;
       }) };
+      const mouseManager = { dispose: vi.fn().mockImplementationOnce(() => {
+        throw new Error("mouse failed after stop");
+      }) };
+      const keyboardManager = { dispose: vi.fn() };
       const internals = disposableInternals(engine);
+      Object.assign(engine as any, { mouseManager, keyboardManager });
       internals.compiler = compiler;
       internals.inspectorReadbackBuffer = inspector;
       internals.passPipelines = new Map([
@@ -3180,6 +3285,8 @@ describe("WebGPURenderingEngine", () => {
       expect(() => engine.dispose()).toThrow(stopError);
 
       expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(mouseManager.dispose).toHaveBeenCalledOnce();
+      expect(keyboardManager.dispose).toHaveBeenCalledOnce();
       expect(inspector.destroy).toHaveBeenCalledOnce();
       expect(failedPipeline.dispose).toHaveBeenCalledOnce();
       expect(successfulPipeline.dispose).toHaveBeenCalledOnce();

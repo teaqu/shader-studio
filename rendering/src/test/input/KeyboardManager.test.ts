@@ -9,6 +9,7 @@ describe("KeyboardManager", () => {
   });
 
   afterEach(() => {
+    keyboardManager.dispose();
     vi.restoreAllMocks();
   });
 
@@ -42,6 +43,33 @@ describe("KeyboardManager", () => {
 
       expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
       expect(addSpy).toHaveBeenCalledWith("keyup", expect.any(Function));
+    });
+
+    it("removes the exact callbacks before installing them again", () => {
+      const addSpy = vi.spyOn(window, "addEventListener");
+      const removeSpy = vi.spyOn(window, "removeEventListener");
+
+      keyboardManager.setupEventListeners();
+      const firstCallbacks = new Map(addSpy.mock.calls.map(([type, callback]) => [type, callback]));
+      keyboardManager.setupEventListeners();
+
+      expect(removeSpy).toHaveBeenCalledWith("keydown", firstCallbacks.get("keydown"));
+      expect(removeSpy).toHaveBeenCalledWith("keyup", firstCallbacks.get("keyup"));
+      expect(removeSpy).toHaveBeenCalledWith("blur", firstCallbacks.get("blur"));
+    });
+  });
+
+  describe("dispose", () => {
+    it("removes its listeners once and ignores later keyboard events", () => {
+      const removeSpy = vi.spyOn(window, "removeEventListener");
+      keyboardManager.setupEventListeners();
+      keyboardManager.dispose();
+      keyboardManager.dispose();
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { keyCode: 65 } as any));
+
+      expect(keyboardManager.getKeyHeld()[65]).toBe(0);
+      expect(removeSpy).toHaveBeenCalledTimes(3);
     });
   });
 

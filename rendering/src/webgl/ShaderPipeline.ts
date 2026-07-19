@@ -22,6 +22,7 @@ export class ShaderPipeline {
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
   private customUniformManager: CustomUniformManager | null = null;
+  private disposed = false;
   // Which resources to reload when the next compiled pipeline is applied.
   // Deferred to the apply so cleanup never runs mid-recompile (black flash).
   // - "none":           reuse everything — the hot path for plain code recompiles.
@@ -85,9 +86,19 @@ export class ShaderPipeline {
     path: string,
     buffers: Record<string, string> = {},
   ): Promise<CompilationResult> {
+    if (this.disposed) {
+      return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
+    }
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
     const nextPasses = this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders(nextPasses);
+
+    if (this.disposed) {
+      if (compilation.passShaders) {
+        this.cleanupPartialShaders(compilation.passShaders);
+      }
+      return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
+    }
 
     if (!compilation.success) {
       if (pathChanged) {
@@ -112,6 +123,9 @@ export class ShaderPipeline {
 
     const compileWarnings = compilation.warnings || [];
     const resourceWarnings = await this.updateResources();
+    if (!resourceWarnings) {
+      return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
+    }
     const warnings = [...compileWarnings, ...resourceWarnings];
     return { success: true, warnings: warnings.length > 0 ? warnings : undefined };
   }
@@ -316,7 +330,7 @@ export class ShaderPipeline {
     this.passes = nextPasses;
   }
 
-  private async updateResources(): Promise<string[]> {
+  private async updateResources(): Promise<string[] | null> {
     const warnings: string[] = [];
     for (const pass of this.passes) {
       for (const key of Object.keys(pass.inputs)) {
@@ -329,6 +343,9 @@ export class ShaderPipeline {
             grayscale: input.grayscale
           };
           await this.resourceManager.loadImageTexture(input.resolved_path || input.path, textureOptions);
+          if (this.cleanupLateResources()) {
+            return null;
+          }
         } else if (input?.type === "video" && input.path) {
           const videoOptions = {
             filter: input.filter,
@@ -337,6 +354,9 @@ export class ShaderPipeline {
             muted: input.muted,
           };
           const result = await this.resourceManager.loadVideoTexture(input.resolved_path || input.path, videoOptions);
+          if (this.cleanupLateResources()) {
+            return null;
+          }
           if (result.warning) {
             warnings.push(result.warning);
           }
@@ -347,6 +367,9 @@ export class ShaderPipeline {
             vflip: input.vflip
           };
           await this.resourceManager.loadCubemapTexture(input.resolved_path || input.path, cubemapOptions);
+          if (this.cleanupLateResources()) {
+            return null;
+          }
         } else if (input?.type === "audio" && input.path) {
           try {
             const audioLoadOptions = {
@@ -356,9 +379,15 @@ export class ShaderPipeline {
             };
             const audioPath = input.resolved_path || input.path;
             await this.resourceManager.loadAudioSource(audioPath, audioLoadOptions);
+            if (this.cleanupLateResources()) {
+              return null;
+            }
             // Always update loop region (audio may already be loaded from previous compile)
             this.resourceManager.updateAudioLoopRegion(audioPath, input.startTime, input.endTime);
           } catch (error) {
+            if (this.cleanupLateResources()) {
+              return null;
+            }
             warnings.push(`Audio loading failed: ${input.path}`);
           }
         }
@@ -378,6 +407,47 @@ export class ShaderPipeline {
     this.cleanupShaders();
     this.bufferManager.dispose();
     this.timeManager.cleanup();
+  }
+
+  public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    let firstError: unknown;
+    let hasError = false;
+    const attempt = (cleanup: () => void): void => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
+    };
+    const shaders = this.passShaders;
+    this.passes = [];
+    this.passShaders = {};
+    attempt(() => this.resourceManager.cleanup());
+    attempt(() => this.cleanupShaders(shaders));
+    attempt(() => this.bufferManager.dispose());
+    attempt(() => this.timeManager.cleanup());
+    if (hasError) {
+      throw firstError;
+    }
+  }
+
+  private cleanupLateResources(): boolean {
+    if (!this.disposed) {
+      return false;
+    }
+    try {
+      this.resourceManager.cleanup();
+    } catch {
+      // The original dispose call owns teardown error reporting.
+    }
+    return true;
   }
 
   public resetTime(): void {

@@ -73,6 +73,7 @@ export class CameraManager {
   constructor(private keyboardManager: KeyboardManager) {}
 
   setupEventListeners(canvas: HTMLCanvasElement): void {
+    this.dispose();
     this.canvas = canvas;
 
     this.onMouseDown = (e: MouseEvent) => {
@@ -235,5 +236,9 @@ export class CameraManager {
       window.removeEventListener("mouseup", this.onMouseUp);
     }
     this.canvas = null;
+    this.onMouseDown = null;
+    this.onMouseMove = null;
+    this.onMouseUp = null;
+    this.isMouseDown = false;
   }
 }
