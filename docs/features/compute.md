@@ -116,7 +116,7 @@ uint previous = counters[0].add(1u);
 
 Storage declarations use two tiers because custom types must exist before a buffer can use them:
 
-- Built-in element types are declared before `common`. Code in `common` may read or write these buffers.
+- Built-in element types are declared before `common`, so shared helpers may read these buffers. `common` is compiled into every Slang pass, however, and fragment passes receive read-only `StructuredBuffer<T>` declarations. Keep all storage access in `common` read-only so the same code type-checks for fragment and compute passes. Put storage writes in the compute pass source file.
 - Custom element types are declared after `common`. Define the struct in `common`, then access that buffer from pass files. Code inside `common` cannot access a custom-typed buffer because its declaration comes later.
 
 The built-in tier includes scalar/vector `float`, `int`, and `uint` types; `Atomic<uint>` and `Atomic<int>`; and `float2x2`, `float3x3`, and `float4x4`. Anything else is treated as a custom type.
@@ -149,7 +149,7 @@ void computeMain(uint3 id)
 
 `workgroupSize: [x, y, z]` overrides the default for every mode. Each dimension must be a positive integer and their product cannot exceed 256. Per-texel, count, and cover modes ceil-divide their logical size by the workgroup size. The raw xyz mode does not: its values already are workgroup counts.
 
-Channel-cover dispatch is resolved from the texture at bind time, so it follows image loads and video size changes. The device may impose a lower maximum dispatch count per axis; Shader Studio reports that device limit instead of submitting invalid work.
+Channel-cover dispatch is resolved from the texture at bind time, so it follows image loads and video size changes. Invalid static workgroup settings and static dispatch counts above the device's per-axis limit are compilation errors. A `cover: "iChannelN"` size is dynamic and cannot be checked during compilation; if its live texture would exceed an axis limit, Shader Studio safely skips that dispatch at runtime. That runtime skip is currently silent.
 
 ## Repeated and One-Shot Dispatch
 
@@ -177,7 +177,7 @@ Repeated dispatches execute consecutively, and storage writes from one are visib
 
 ## Writing a Texture Output
 
-A compute output texture is allocated only when another pass has a buffer input whose `source` names that compute pass. In that case Shader Studio generates `writeOutput`:
+A compute output texture is allocated when any configured buffer input has a `source` that names that compute pass. This includes a self-reference: the output is allocated, and the pass samples its previous-frame texture while writing the current frame. When an output is allocated, Shader Studio generates `writeOutput`:
 
 ```slang
 void computeMain(uint3 id)
