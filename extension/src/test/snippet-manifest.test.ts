@@ -12,11 +12,15 @@ interface SnippetContribution {
   path: string;
 }
 
+interface ConfigurationProperty {
+  description: string;
+}
+
 interface ExtensionManifest {
   contributes: {
     commands: CommandContribution[];
     configuration: {
-      properties: Record<string, unknown>;
+      properties: Record<string, ConfigurationProperty>;
     };
     snippets: SnippetContribution[];
   };
@@ -41,6 +45,12 @@ suite('Snippet manifest', () => {
         manifest.contributes.configuration.properties,
         'shader-studio.enableSnippets',
       ),
+    );
+    assert.strictEqual(
+      manifest.contributes.configuration.properties[
+        'shader-studio.enableSnippets'
+      ].description,
+      'Enable bundled GLSL and Slang code snippets (requires restart)',
     );
     assert.deepStrictEqual(
       manifest.contributes.snippets,

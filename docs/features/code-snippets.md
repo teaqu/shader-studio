@@ -1,6 +1,6 @@
 # GLSL and Slang Code Snippets
 
-Shader Studio provides bundled code snippets through VS Code's native completion workflow. In a `.glsl` or `.slang` editor, type a snippet prefix, then select the matching completion or press `Tab` to insert it.
+Shader Studio provides bundled code snippets through VS Code's native completion workflow. In a `.glsl` or `.slang` editor, type a snippet prefix and select the matching IntelliSense completion. To insert an exact prefix with `Tab`, enable VS Code's `editor.tabCompletion` setting.
 
 The same prefixes work in either language. For example, type `sdf2d-circle`, `sdf3d-sphere`, `coord-polar`, or `math-pi`; VS Code inserts syntax for the active editor's GLSL or Slang language.
 
@@ -9,7 +9,7 @@ The same prefixes work in either language. For example, type `sdf2d-circle`, `sd
 - **2D SDF** — signed distance functions for circles, boxes, segments, and other 2D shapes
 - **3D SDF** — signed distance functions for spheres, boxes, toruses, and other 3D shapes
 - **Coordinate** — coordinate conversion and repetition utilities
-- **Math** — common mathematical constants and helpers
+- **Math** — the PI mathematical constant
 
 ## Custom Snippets
 

@@ -157,7 +157,7 @@
         "shader-studio.enableSnippets": {
           "type": "boolean",
           "default": true,
-          "description": "Enable GLSL code snippets for common Shadertoy patterns (requires restart)"
+          "description": "Enable bundled GLSL and Slang code snippets (requires restart)"
         },
         "shader-studio.defaultConfigView": {
           "type": "string",
