@@ -1342,23 +1342,35 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
-  private recreateStorageBuffers(): void {
+  private prepareResetStorageBuffers(): Map<string, GPUBuffer> | null {
     if (!this.device || this.storageLayouts.size === 0) {
-      return;
+      return null;
     }
     const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     const nextBuffers = new Map<string, GPUBuffer>();
-    for (const node of this.storageLayouts.values()) {
-      nextBuffers.set(node.name, this.device.createBuffer({
-        size: node.count * node.stride,
-        usage: STORAGE | COPY_DST,
-      }));
+    const stagedBuffers: GPUBuffer[] = [];
+    try {
+      for (const node of this.storageLayouts.values()) {
+        const buffer = this.device.createBuffer({
+          size: node.count * node.stride,
+          usage: STORAGE | COPY_DST,
+        });
+        stagedBuffers.push(buffer);
+        nextBuffers.set(node.name, buffer);
+      }
+    } catch (error) {
+      for (const buffer of stagedBuffers) {
+        try {
+          buffer.destroy();
+        } catch {
+          // Preserve the allocation failure and keep releasing the rest of
+          // this unpublished reset candidate.
+        }
+      }
+      throw error;
     }
-    for (const buffer of this.storageBuffers.values()) {
-      buffer.destroy();
-    }
-    this.storageBuffers = nextBuffers;
+    return nextBuffers;
   }
 
   private failedCompilation(
@@ -2235,6 +2247,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    // Allocate the complete replacement before invalidating any live reset or
+    // compile state. A failed allocation leaves the installed generation
+    // usable and makes resetTime safe to retry.
+    const resetStorageBuffers = this.prepareResetStorageBuffers();
     this.timeManager.cleanup();
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
@@ -2245,7 +2261,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
     for (const candidates of [...this.pendingPipelineCandidates]) {
       this.discardPipelineCandidates(candidates);
     }
-    this.recreateStorageBuffers();
+    if (resetStorageBuffers) {
+      const retiredStorageBuffers = this.storageBuffers;
+      this.storageBuffers = resetStorageBuffers;
+      for (const buffer of retiredStorageBuffers.values()) {
+        try {
+          buffer.destroy();
+        } catch {
+          // Reset has already published the complete replacement. Retirement
+          // is best effort and must not invalidate the new reset generation.
+        }
+      }
+    }
   }
 
   setInputEnabled(enabled: boolean): void {

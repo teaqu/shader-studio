@@ -525,6 +525,153 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(buffersAfterReset[1].destroy).not.toHaveBeenCalled();
   });
 
+  it("preserves the installed reset state when a later storage allocation fails", async () => {
+    const { engine, device } = engineHarness();
+    enableRendering(engine, device);
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({
+        a: { count: 4, stride: 16, elementType: "float4" },
+        b: { count: 8, stride: 4, elementType: "uint" },
+      }),
+      "/image.slang",
+    );
+    engine.render(1000);
+
+    const installedBuffers = installedStorageBuffers(engine);
+    const installedA = installedBuffers.get("a") as unknown as FakeBuffer;
+    const installedB = installedBuffers.get("b") as unknown as FakeBuffer;
+    const installedKeys = (engine as unknown as {
+      storageKeys: Map<string, string>;
+    }).storageKeys;
+    const installedLayouts = (engine as unknown as {
+      storageLayouts: Map<string, unknown>;
+    }).storageLayouts;
+    const resetState = engine as unknown as {
+      compileGeneration: number;
+      dispatchOnceRan: Set<string>;
+      hasSubmittedFrameForInstalledGeneration: boolean;
+    };
+    resetState.dispatchOnceRan.add("ComputeOnce");
+    const generationBeforeReset = resetState.compileGeneration;
+    const frameBeforeReset = engine.getTimeManager().getFrame();
+    const stagedA: FakeBuffer = {
+      id: 100,
+      descriptor: {
+        size: 64,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      },
+      destroy: vi.fn(),
+    };
+    const allocationFailure = new Error("second reset allocation failed");
+    device.createBuffer
+      .mockImplementationOnce(() => stagedA)
+      .mockImplementationOnce(() => {
+        throw allocationFailure;
+      });
+
+    expect(() => engine.resetTime()).toThrow(allocationFailure);
+
+    expect(stagedA.destroy).toHaveBeenCalledTimes(1);
+    expect(installedA.destroy).not.toHaveBeenCalled();
+    expect(installedB.destroy).not.toHaveBeenCalled();
+    expect(installedStorageBuffers(engine)).toBe(installedBuffers);
+    expect((engine as unknown as { storageKeys: Map<string, string> }).storageKeys)
+      .toBe(installedKeys);
+    expect((engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts)
+      .toBe(installedLayouts);
+    expect(resetState.compileGeneration).toBe(generationBeforeReset);
+    expect(resetState.dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
+    expect(resetState.hasSubmittedFrameForInstalledGeneration).toBe(true);
+    expect(engine.getTimeManager().getFrame()).toBe(frameBeforeReset);
+  });
+
+  it("keeps cleaning staged reset storage when destroy throws and preserves the allocation error", async () => {
+    const { engine, device } = engineHarness();
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({
+        a: { count: 1, stride: 4, elementType: "uint" },
+        b: { count: 1, stride: 4, elementType: "uint" },
+        c: { count: 1, stride: 4, elementType: "uint" },
+      }),
+      "/image.slang",
+    );
+    const installedBuffers = installedStorageBuffers(engine);
+    const firstDestroyFailure = new Error("first staged destroy failed");
+    const stagedA: FakeBuffer = {
+      id: 100,
+      descriptor: {
+        size: 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      },
+      destroy: vi.fn(() => {
+        throw firstDestroyFailure;
+      }),
+    };
+    const stagedB: FakeBuffer = {
+      id: 101,
+      descriptor: {
+        size: 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      },
+      destroy: vi.fn(),
+    };
+    const allocationFailure = new Error("third reset allocation failed");
+    device.createBuffer
+      .mockImplementationOnce(() => stagedA)
+      .mockImplementationOnce(() => stagedB)
+      .mockImplementationOnce(() => {
+        throw allocationFailure;
+      });
+
+    expect(() => engine.resetTime()).toThrow(allocationFailure);
+
+    expect(stagedA.destroy).toHaveBeenCalledTimes(1);
+    expect(stagedB.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorageBuffers(engine)).toBe(installedBuffers);
+    for (const buffer of installedBuffers.values()) {
+      expect((buffer as unknown as FakeBuffer).destroy).not.toHaveBeenCalled();
+    }
+  });
+
+  it("publishes a successful reset and continues retiring old storage when destroy throws", async () => {
+    const { engine, device } = engineHarness();
+    enableRendering(engine, device);
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({
+        a: { count: 4, stride: 16, elementType: "float4" },
+        b: { count: 8, stride: 4, elementType: "uint" },
+      }),
+      "/image.slang",
+    );
+    engine.render(1000);
+    const installedA = installedStorageBuffers(engine).get("a") as unknown as FakeBuffer;
+    const installedB = installedStorageBuffers(engine).get("b") as unknown as FakeBuffer;
+    const resetState = engine as unknown as {
+      dispatchOnceRan: Set<string>;
+      hasSubmittedFrameForInstalledGeneration: boolean;
+    };
+    resetState.dispatchOnceRan.add("ComputeOnce");
+    installedA.destroy.mockImplementationOnce(() => {
+      throw new Error("old buffer destroy failed");
+    });
+
+    expect(() => engine.resetTime()).not.toThrow();
+
+    const [resetA, resetB] = createdStorageBuffers(device).slice(-2);
+    expect(installedStorageBuffers(engine)).toEqual(new Map([
+      ["a", resetA as unknown as GPUBuffer],
+      ["b", resetB as unknown as GPUBuffer],
+    ]));
+    expect(installedA.destroy).toHaveBeenCalledTimes(1);
+    expect(installedB.destroy).toHaveBeenCalledTimes(1);
+    expect(resetState.dispatchOnceRan).toEqual(new Set());
+    expect(resetState.hasSubmittedFrameForInstalledGeneration).toBe(false);
+    expect(engine.getTimeManager().getFrame()).toBe(0);
+  });
+
   it("binds reset-created storage on the next fragment frame instead of the destroyed buffer", async () => {
     const { engine, device } = engineHarness();
     enableRendering(engine, device);
