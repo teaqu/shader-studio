@@ -31,6 +31,8 @@
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
   let shaderLanguage: ShaderLanguage = 'glsl';
+  let customUniformDeclarations: string | undefined;
+  let customUniformInfo: { name: string; type: string }[] | undefined;
   let queueId: string = '';
   let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
   let prevWidth: number = 0;
@@ -42,6 +44,7 @@
   let destroyed = false;
   let thumbnailGeneration = 0;
   let hoverGeneration = 0;
+  const pendingShaderRequests = new Set<AbortController>();
 
   const getRenderingOwnership = () => renderingOwnership;
   const getHoverOwnership = () => hoverOwnership;
@@ -147,23 +150,36 @@
   async function fetchShaderCode(isCurrent: () => boolean = () => !destroyed) {
     if (!vscodeApi || shaderCode || !isCurrent()) return;
 
+    const controller = new AbortController();
+    pendingShaderRequests.add(controller);
     try {
       const response = await requestShaderCode({
         vscodeApi,
         path: shader.path,
         target: window,
+        signal: controller.signal,
       });
 
       if (!isCurrent()) return;
+
+      if (response.scriptBundleError) {
+        throw new Error(response.scriptBundleError);
+      }
 
       shaderCode = response.code;
       shaderConfig = response.config || null;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
+      customUniformDeclarations = response.customUniformDeclarations;
+      customUniformInfo = response.customUniformInfo;
     } catch (err) {
       if (isCurrent()) {
         console.error('Failed to load shader code:', err);
+        compilationFailed = true;
+        onCompilationFailed?.();
       }
+    } finally {
+      pendingShaderRequests.delete(controller);
     }
   }
 
@@ -199,7 +215,9 @@
         shaderCode,
         shaderConfig,
         shader.path,
-        shaderBuffers
+        shaderBuffers,
+        customUniformDeclarations,
+        customUniformInfo,
       );
 
       if (!isCurrent() || ownership.isDisposed()) {
@@ -450,6 +468,10 @@
   onDestroy(() => {
     destroyed = true;
     thumbnailGeneration++;
+    for (const controller of pendingShaderRequests) {
+      controller.abort();
+    }
+    pendingShaderRequests.clear();
     stopVisibilityObserver?.();
 
     // Remove from queue if still waiting

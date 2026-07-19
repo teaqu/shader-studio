@@ -10,6 +10,10 @@ import { TabGroupResolver } from "./TabGroupResolver";
 import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
 import { loadSlangAssetPaths } from "./SlangAssetManifest";
 import { getShaderLanguage } from "./GlslFileTracker";
+import { PathResolver } from "./PathResolver";
+import { ScriptBundler } from "./ScriptBundler";
+import { ScriptEvaluator } from "./ScriptEvaluator";
+import type { ShaderConfig } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
   name: string;
@@ -120,7 +124,7 @@ export class ShaderExplorerProvider {
           break;
 
         case "requestShaderCode":
-          await this.sendShaderCode(message.path);
+          await this.sendShaderCode(message.path, message.requestId);
           break;
 
         case "searchShaders":
@@ -200,7 +204,7 @@ export class ShaderExplorerProvider {
     });
   }
 
-  private async sendShaderCode(shaderPath: string): Promise<void> {
+  private async sendShaderCode(shaderPath: string, requestId?: number): Promise<void> {
     if (!this.panel) {
       return;
     }
@@ -218,14 +222,28 @@ export class ShaderExplorerProvider {
       this.logger.debug(`Sending shader code for ${shaderPath} with ${Object.keys(buffers).length} buffer(s)`);
 
       // Process config paths to convert texture paths to webview URIs
-      const message = {
+      const message: {
+        type: "shaderCode";
+        requestId?: number;
+        path: string;
+        language: "glsl" | "slang";
+        code: string;
+        config: ShaderConfig | null;
+        buffers: Record<string, string>;
+        scriptBundleError?: string;
+        customUniformDeclarations?: string;
+        customUniformInfo?: { name: string; type: string }[];
+      } = {
         type: "shaderCode",
+        requestId,
         path: shaderPath,
         language: getShaderLanguage(shaderPath),
         code: code,
         config: config,
         buffers: buffers,
       };
+
+      await this.addCustomUniformMetadata(config, shaderPath, message);
 
       const processedMessage = await ConfigPathConverter.processConfigPaths(
                 message as any,
@@ -235,6 +253,60 @@ export class ShaderExplorerProvider {
       this.panel.webview.postMessage(processedMessage);
     } catch (error) {
       this.logger.error(`Failed to load shader code: ${error}`);
+    }
+  }
+
+  private async addCustomUniformMetadata(
+    config: ShaderConfig | null,
+    shaderPath: string,
+    message: {
+      scriptBundleError?: string;
+      customUniformDeclarations?: string;
+      customUniformInfo?: { name: string; type: string }[];
+    },
+  ): Promise<void> {
+    if (!config?.script) {
+      return;
+    }
+
+    if (!vscode.workspace.isTrusted) {
+      message.scriptBundleError = "Custom uniform scripts are disabled in untrusted workspaces";
+      return;
+    }
+
+    const scriptPath = PathResolver.resolvePath(shaderPath, config.script);
+    const shaderWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath));
+    const scriptWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(scriptPath));
+    if (!shaderWorkspace || scriptWorkspace?.uri.fsPath !== shaderWorkspace.uri.fsPath) {
+      message.scriptBundleError = "Custom uniform script must be inside the shader workspace";
+      return;
+    }
+
+    if (!fs.existsSync(scriptPath)) {
+      message.scriptBundleError = `Script file not found: ${config.script}`;
+      return;
+    }
+
+    const openScript = vscode.workspace.textDocuments.find(
+      document => document.uri.fsPath === scriptPath,
+    );
+    const bundleResult = await new ScriptBundler().bundle(scriptPath, openScript?.getText());
+    if (!bundleResult.success || !bundleResult.code) {
+      message.scriptBundleError = bundleResult.error || "Unknown bundling error";
+      return;
+    }
+
+    const evaluator = new ScriptEvaluator();
+    try {
+      const loadResult = evaluator.loadScript(bundleResult.code, scriptPath);
+      if (loadResult.error) {
+        message.scriptBundleError = loadResult.error;
+        return;
+      }
+      message.customUniformDeclarations = loadResult.declarations;
+      message.customUniformInfo = loadResult.uniforms;
+    } finally {
+      evaluator.dispose();
     }
   }
 

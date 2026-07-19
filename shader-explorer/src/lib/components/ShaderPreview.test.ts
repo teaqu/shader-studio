@@ -58,7 +58,7 @@ function makeVscodeApi(
             if (msg.type === 'requestShaderCode') {
                 setTimeout(() => {
                     window.dispatchEvent(new MessageEvent('message', {
-                        data: { type: 'shaderCode', path: msg.path, code, config: null, buffers: {}, language },
+                        data: { type: 'shaderCode', path: msg.path, requestId: msg.requestId, code, config: null, buffers: {}, language },
                     }));
                 }, 0);
             }
@@ -120,6 +120,39 @@ describe('ShaderPreview - loading state', () => {
         expect(img).not.toBeNull();
         expect(img?.getAttribute('src')).toBe('data:image/png;base64,abc');
         expect(container.querySelector('.loading-placeholder')).toBeNull();
+    });
+
+    it('shows a controlled failure when a custom uniform script cannot be loaded', async () => {
+        const onCompilationFailed = vi.fn();
+        const vscodeApi = {
+            postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
+                setTimeout(() => {
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'shaderCode',
+                            path: msg.path,
+                            requestId: msg.requestId,
+                            code: 'void mainImage(out vec4 color, vec2 coord) { color = vec4(uFloat); }',
+                            config: { script: './uniforms.ts' },
+                            buffers: {},
+                            scriptBundleError: 'bundle failed',
+                        },
+                    }));
+                }, 0);
+            }),
+        };
+
+        const { container } = render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi, onCompilationFailed },
+        });
+
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(mockEngine.compileShaderPipeline).not.toHaveBeenCalled();
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to load shader code:',
+            expect.objectContaining({ message: 'bundle failed' }),
+        );
     });
 });
 
@@ -210,7 +243,81 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
             null,
             '/test/shader.slang',
             {},
+            undefined,
+            undefined,
         );
+    });
+
+    it('passes custom uniform declarations and type metadata to the selected engine', async () => {
+        const vscodeApi = {
+            postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
+                if (msg.type !== 'requestShaderCode') return;
+                setTimeout(() => {
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'shaderCode',
+                            path: msg.path,
+                            requestId: msg.requestId,
+                            code: 'void mainImage(out vec4 color, vec2 coord) { color = vec4(uFloat); }',
+                            config: { script: './uniforms.ts' },
+                            buffers: {},
+                            language: 'glsl',
+                            customUniformDeclarations: 'uniform float uFloat;',
+                            customUniformInfo: [{ name: 'uFloat', type: 'float' }],
+                        },
+                    }));
+                }, 0);
+            }),
+        };
+
+        render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi },
+        });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledWith(
+            expect.stringContaining('uFloat'),
+            { script: './uniforms.ts' },
+            '/test/shader.glsl',
+            {},
+            'uniform float uFloat;',
+            [{ name: 'uFloat', type: 'float' }],
+        ));
+    });
+
+    it('passes custom uniform metadata to the Slang engine', async () => {
+        const shader = makeShader({ path: '/test/shader.slang', name: 'shader.slang' });
+        const vscodeApi = {
+            postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
+                if (msg.type !== 'requestShaderCode') return;
+                setTimeout(() => {
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'shaderCode',
+                            path: msg.path,
+                            requestId: msg.requestId,
+                            code: 'float4 mainImage(float2 coord) { return uColor; }',
+                            config: { script: './uniforms.ts' },
+                            buffers: {},
+                            language: 'slang',
+                            customUniformDeclarations: 'uniform vec4 uColor;',
+                            customUniformInfo: [{ name: 'uColor', type: 'vec4' }],
+                        },
+                    }));
+                }, 0);
+            }),
+        };
+
+        render(ShaderPreview, { props: { shader, vscodeApi } });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledWith(
+            expect.stringContaining('uColor'),
+            { script: './uniforms.ts' },
+            '/test/shader.slang',
+            {},
+            'uniform vec4 uColor;',
+            [{ name: 'uColor', type: 'vec4' }],
+        ));
+        expect(createEngineForLanguage).toHaveBeenCalledWith('slang');
     });
 
     it('selects the Slang engine again for a cached thumbnail hover preview', async () => {
@@ -305,6 +412,7 @@ describe('ShaderPreview - asynchronous renderer ownership', () => {
         await waitFor(() => expect(vscodeApi.postMessage).toHaveBeenCalledWith({
             type: 'requestShaderCode',
             path: shader.path,
+            requestId: expect.any(Number),
         }));
         await fireEvent.mouseLeave(preview);
 
@@ -312,6 +420,7 @@ describe('ShaderPreview - asynchronous renderer ownership', () => {
             data: {
                 type: 'shaderCode',
                 path: shader.path,
+                requestId: vscodeApi.postMessage.mock.calls[0][0].requestId,
                 code: 'float4 mainImage(float2 c) { return 1; }',
                 config: null,
                 buffers: {},

@@ -7,6 +7,8 @@ import { ShaderExplorerProvider } from '../../app/ShaderExplorerProvider';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { ConfigPathConverter } from '../../app/transport/ConfigPathConverter';
 import { Logger } from '../../app/services/Logger';
+import { ScriptBundler } from '../../app/ScriptBundler';
+import { ScriptEvaluator } from '../../app/ScriptEvaluator';
 
 suite('ShaderExplorerProvider Test Suite', () => {
   let provider: ShaderExplorerProvider;
@@ -39,6 +41,12 @@ suite('ShaderExplorerProvider Test Suite', () => {
       trace: sandbox.stub()
     } as any;
     Logger.initialize(mockOutputChannel);
+
+    sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((uri: vscode.Uri) => (
+      uri.fsPath.startsWith('/test/')
+        ? { uri: vscode.Uri.file('/test'), name: 'test', index: 0 } as vscode.WorkspaceFolder
+        : undefined
+    ));
         
     // Mock filesystem operations to prevent ThumbnailCache from creating real directories
     const fs = require('fs');
@@ -964,12 +972,13 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       const messageHandler = setupMessageHandler(mockPanel);
-      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl', requestId: 42 });
 
       assert.ok(postMessageSpy.calledOnce);
       const message = postMessageSpy.firstCall.args[0];
       assert.strictEqual(message.type, 'shaderCode');
       assert.strictEqual(message.path, '/test/shader.glsl');
+      assert.strictEqual(message.requestId, 42);
       assert.strictEqual(message.code, 'void main() { gl_FragColor = vec4(1.0); }');
       assert.strictEqual(message.language, 'glsl');
     });
@@ -1016,6 +1025,153 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const message = postMessageSpy.firstCall.args[0];
       assert.deepStrictEqual(message.config, mockConfig);
       assert.deepStrictEqual(message.buffers, mockBuffers);
+    });
+
+    test('should evaluate configured scripts in the extension host and send custom uniform metadata', async () => {
+      const mockDocument = {
+        getText: () => 'void mainImage(out vec4 color, vec2 coord) { color = vec4(uFloat); }'
+      };
+      const mockConfig = { script: './uniforms.ts' };
+
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(mockConfig as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle').resolves({
+        success: true,
+        code: 'bundled uniforms',
+      });
+      const loadScriptStub = sandbox.stub(ScriptEvaluator.prototype, 'loadScript').returns({
+        declarations: 'uniform float uFloat;',
+        uniforms: [{ name: 'uFloat', type: 'float' }],
+      });
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.ok(bundleStub.calledOnceWith('/test/uniforms.ts'));
+      assert.ok(loadScriptStub.calledOnceWith('bundled uniforms', '/test/uniforms.ts'));
+      const message = postMessageSpy.firstCall.args[0];
+      assert.strictEqual(message.customUniformDeclarations, 'uniform float uFloat;');
+      assert.deepStrictEqual(message.customUniformInfo, [{ name: 'uFloat', type: 'float' }]);
+    });
+
+    test('should return a script error without attempting to bundle a missing custom uniform script', async () => {
+      const mockDocument = { getText: () => 'void main() {}' };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        script: './missing.ts',
+      } as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      existsSyncStub.withArgs('/test/missing.ts').returns(false);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle');
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.strictEqual(
+        postMessageSpy.firstCall.args[0].scriptBundleError,
+        'Script file not found: ./missing.ts',
+      );
+      assert.ok(bundleStub.notCalled);
+    });
+
+    test('should not execute custom uniform scripts in an untrusted workspace', async () => {
+      const mockDocument = { getText: () => 'void main() {}' };
+      sandbox.stub(vscode.workspace, 'isTrusted').value(false);
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        script: './uniforms.ts',
+      } as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle');
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.strictEqual(
+        postMessageSpy.firstCall.args[0].scriptBundleError,
+        'Custom uniform scripts are disabled in untrusted workspaces',
+      );
+      assert.ok(bundleStub.notCalled);
+    });
+
+    test('should not execute a custom uniform script outside the shader workspace', async () => {
+      const mockDocument = { getText: () => 'void main() {}' };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        script: '../outside/uniforms.ts',
+      } as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle');
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.strictEqual(
+        postMessageSpy.firstCall.args[0].scriptBundleError,
+        'Custom uniform script must be inside the shader workspace',
+      );
+      assert.ok(bundleStub.notCalled);
+    });
+
+    test('should bundle unsaved custom uniform script content when its document is open', async () => {
+      const shaderDocument = { getText: () => 'void main() {}' };
+      const scriptDocument = {
+        uri: { fsPath: '/test/uniforms.ts' },
+        getText: () => 'export const uniforms = () => ({ uFloat: 0.75 });',
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([scriptDocument]);
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(shaderDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        script: './uniforms.ts',
+      } as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle').resolves({
+        success: true,
+        code: 'bundled uniforms',
+      });
+      sandbox.stub(ScriptEvaluator.prototype, 'loadScript').returns({
+        declarations: 'uniform float uFloat;',
+        uniforms: [{ name: 'uFloat', type: 'float' }],
+      });
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.ok(bundleStub.calledOnceWith(
+        '/test/uniforms.ts',
+        'export const uniforms = () => ({ uFloat: 0.75 });',
+      ));
+    });
+
+    test('should return script bundling and evaluation errors in the shader response', async () => {
+      const mockDocument = { getText: () => 'void main() {}' };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        script: './uniforms.ts',
+      } as any);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (msg: any) => msg);
+      const bundleStub = sandbox.stub(ScriptBundler.prototype, 'bundle');
+      bundleStub.onFirstCall().resolves({ success: false, error: 'bundle failed' });
+      bundleStub.onSecondCall().resolves({ success: true, code: 'invalid bundle' });
+      sandbox.stub(ScriptEvaluator.prototype, 'loadScript').returns({
+        declarations: '',
+        uniforms: [],
+        error: 'evaluation failed',
+      });
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.glsl' });
+
+      assert.strictEqual(postMessageSpy.firstCall.args[0].scriptBundleError, 'bundle failed');
+      assert.strictEqual(postMessageSpy.secondCall.args[0].scriptBundleError, 'evaluation failed');
     });
 
     test('should handle missing path parameter', async () => {
