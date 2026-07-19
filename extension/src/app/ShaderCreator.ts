@@ -20,9 +20,9 @@ const SLANG_RESERVED_MODULE_NAMES = new Set([
   "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
   "vector", "matrix", "Buffer", "ByteAddressBuffer", "ConstantBuffer", "ParameterBlock",
   "RaytracingAccelerationStructure", "RWBuffer", "RWByteAddressBuffer", "RWStructuredBuffer",
-  "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray", "RWTexture3D",
+  "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray", "RWTexture3D", "RWTexture3DArray",
   "SamplerComparisonState", "SamplerState", "StructuredBuffer", "Texture1D", "Texture1DArray",
-  "Texture2D", "Texture2DArray", "Texture3D", "TextureCube", "TextureCubeArray",
+  "Texture2D", "Texture2DArray", "Texture3D", "Texture3DArray", "TextureCube", "TextureCubeArray",
 ]);
 
 export class ShaderCreator {

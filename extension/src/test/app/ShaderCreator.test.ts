@@ -275,4 +275,36 @@ suite('ShaderCreator Test Suite', () => {
     assert.ok(fs.readFileSync(filePath, 'utf8').startsWith('#language slang 2026\nmodule _each;'));
   });
 
+  test('prefixes every concrete built-in type expansion from the Slang grammar', async () => {
+    const scalarTypes = ['bool', 'half', 'float', 'double', 'int', 'uint'];
+    const concreteTypes = [
+      'void',
+      ...scalarTypes.flatMap((type) => [type, `${type}2`, `${type}3`, `${type}4`]),
+      'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
+      'vector', 'matrix',
+      ...['1D', '2D', '3D', 'Cube'].flatMap((dimension) => [`Texture${dimension}`, `Texture${dimension}Array`]),
+      ...['1D', '2D', '3D'].flatMap((dimension) => [`RWTexture${dimension}`, `RWTexture${dimension}Array`]),
+      'SamplerState', 'SamplerComparisonState', 'Buffer', 'RWBuffer', 'StructuredBuffer',
+      'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer', 'ParameterBlock',
+      'ConstantBuffer', 'RaytracingAccelerationStructure',
+    ];
+    sandbox.stub(vscode.window, 'showSaveDialog').callsFake(async () => {
+      const type = concreteTypes.shift();
+      return type ? vscode.Uri.file(path.join(testDir, `${type}.slang`)) : undefined;
+    });
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    while (concreteTypes.length > 0) {
+      const type = concreteTypes[0];
+      await shaderCreator.create();
+      assert.ok(
+        fs.readFileSync(path.join(testDir, `${type}.slang`), 'utf8')
+          .startsWith(`#language slang 2026\nmodule _${type};`),
+        `${type} must be sanitized as a reserved module name`,
+      );
+    }
+  });
+
 });

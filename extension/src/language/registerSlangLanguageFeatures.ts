@@ -178,15 +178,20 @@ class SlangFeatureSession implements vscode.Disposable {
 
   private async initializeSafely(): Promise<void> {
     try {
-      await this.initialize();
+      this.snapshot = await this.buildSnapshot();
     } catch (error) {
       if (this.disposed) {
         return;
       }
-      if (!this.snapshot) {
-        this.initializationError = error instanceof Error ? error : new Error(String(error));
-        return;
-      }
+      this.initializationError = error instanceof Error ? error : new Error(String(error));
+      return;
+    }
+    if (this.disposed) {
+      return;
+    }
+    try {
+      await this.client.init(languageServiceSnapshot(this.snapshot));
+    } catch (_initializationError) {
       try {
         await this.client.ready();
         if (this.disposed) {
@@ -203,11 +208,15 @@ class SlangFeatureSession implements vscode.Disposable {
             ? recoveryError
             : new Error(String(recoveryError));
         }
+        return;
       }
+    }
+    if (!this.disposed) {
+      await this.openInitialDocuments();
     }
   }
 
-  private async initialize(): Promise<void> {
+  private async buildSnapshot(): Promise<SlangWorkspaceSnapshot> {
     const rootUri = this.workspaceFolder.uri.toString();
     const builder = new SlangWorkspaceSnapshotBuilder({
       findSlangFiles: async () => (await vscode.workspace.findFiles(
@@ -224,15 +233,7 @@ class SlangFeatureSession implements vscode.Disposable {
         .filter((document) => document.languageId === "slang" && this.isDocumentManaged(document))
         .map((document) => ({ uri: document.uri.toString(), source: document.getText(), version: document.version })),
     });
-    this.snapshot = await builder.build({ rootUri });
-    if (this.disposed) {
-      return;
-    }
-    await this.client.init(languageServiceSnapshot(this.snapshot));
-    if (this.disposed) {
-      return;
-    }
-    await this.openInitialDocuments();
+    return builder.build({ rootUri });
   }
 
   private async openInitialDocuments(): Promise<void> {
@@ -246,13 +247,22 @@ class SlangFeatureSession implements vscode.Disposable {
         this.snapshot.files.some((file) => file.uri === document.uri.toString())
       ) {
         if (this.openedVersions.get(document.uri.toString()) !== document.version) {
-          await this.client.openDocument(this.snapshotDocument(document));
-          if (this.disposed) {
-            return;
+          try {
+            await this.client.openDocument(this.snapshotDocument(document));
+            if (this.disposed) {
+              return;
+            }
+            this.openedVersions.set(document.uri.toString(), document.version);
+          } catch (error) {
+            ignoredStale(error);
+            continue;
           }
-          this.openedVersions.set(document.uri.toString(), document.version);
         }
-        await this.publishDiagnostics(document);
+        try {
+          await this.publishDiagnostics(document);
+        } catch (error) {
+          ignoredStale(error);
+        }
       }
     }
   }

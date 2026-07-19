@@ -337,6 +337,69 @@ suite("Slang language feature adapter", () => {
     }
   });
 
+  test("keeps the initialized session and opened document when initial diagnostics fail", async () => {
+    const sandbox = sinon.createSandbox();
+    let changeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
+    const root = vscode.Uri.file("/tmp/slang-diagnostics-recovery-test");
+    const document = {
+      uri: vscode.Uri.joinPath(root, "main.slang"), languageId: "slang", version: 1, getText: () => "module main;",
+    } as unknown as vscode.TextDocument;
+    const openDocuments = [document];
+    const client = {
+      init: sandbox.stub().resolves(), ready: sandbox.stub().resolves(),
+      replaceFiles: sandbox.stub().resolves(), openDocument: sandbox.stub().resolves(),
+      changeDocument: sandbox.stub().resolves(), closeDocument: sandbox.stub().resolves(),
+      hover: sandbox.stub().resolves(undefined), definition: sandbox.stub().resolves(undefined),
+      completion: sandbox.stub().resolves(undefined), completionResolve: sandbox.stub().resolves(undefined),
+      signatureHelp: sandbox.stub().resolves(undefined), documentSymbols: sandbox.stub().resolves(undefined),
+      diagnostics: sandbox.stub().onFirstCall().rejects(new Error("worker crashed during diagnostics")).onSecondCall().resolves([]),
+      dispose: sandbox.spy(),
+    } satisfies SlangLanguageClientContract;
+    const diagnosticSet = sandbox.spy();
+    const disposable = new vscode.Disposable(() => undefined);
+    try {
+      sandbox.stub(console, "error");
+      sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
+      sandbox.stub(vscode.workspace, "textDocuments").value(openDocuments);
+      sandbox.stub(vscode.workspace, "findFiles").resolves([document.uri]);
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeTextDocument").callsFake((listener) => {
+        changeListener = listener;
+        return disposable;
+      });
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
+      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({
+        set: diagnosticSet, clear() {}, dispose() {},
+      } as unknown as vscode.DiagnosticCollection);
+      sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerHoverProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerSignatureHelpProvider").returns(disposable);
+      sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable);
+      const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
+      const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
+      await waitUntil(() => client.diagnostics.calledOnce);
+
+      const changedDocument = {
+        ...document, version: 2, getText: () => "module main; float value;",
+      } as vscode.TextDocument;
+      openDocuments[0] = changedDocument;
+      changeListener?.({ document: changedDocument } as vscode.TextDocumentChangeEvent);
+      await waitUntil(() => client.changeDocument.calledOnce && client.diagnostics.calledTwice);
+
+      assert.strictEqual(client.init.callCount, 1, "post-init diagnostics failure must not trigger explicit re-init");
+      assert.strictEqual(client.ready.callCount, 0, "post-init diagnostics failure is not startup recovery");
+      assert.strictEqual(client.openDocument.callCount, 1, "the successfully opened document remains tracked");
+      assert.strictEqual(diagnosticSet.callCount, 1, "diagnostics recover on the later document change");
+      registration.dispose();
+    } finally {
+      sandbox.restore();
+    }
+  });
+
   test("keeps providers unusable when init RPC rejects without a worker crash", async () => {
     const sandbox = sinon.createSandbox();
     let hoverProvider: vscode.HoverProvider | undefined;
