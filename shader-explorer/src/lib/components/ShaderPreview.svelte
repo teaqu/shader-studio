@@ -32,6 +32,9 @@
   let previewContainer: HTMLDivElement;
   let hasStartedLoading = false;
   let stopVisibilityObserver: (() => void) | null = null;
+  let destroyed = false;
+  let thumbnailGeneration = 0;
+  let hoverGeneration = 0;
 
   // Re-render when dimensions change (card size slider)
   $effect(() => {
@@ -102,7 +105,7 @@
   });
 
   async function startLoading() {
-    if (hasStartedLoading) {
+    if (hasStartedLoading || destroyed) {
       return;
     }
 
@@ -110,22 +113,29 @@
     await loadShaderCode();
   }
 
-  async function loadShaderCode({ renderThumbnail = true }: { renderThumbnail?: boolean } = {}) {
-    if (!vscodeApi) return;
+  async function loadShaderCode({
+    renderThumbnail = true,
+    isCurrent = () => !destroyed,
+  }: {
+    renderThumbnail?: boolean;
+    isCurrent?: () => boolean;
+  } = {}) {
+    if (!vscodeApi || !isCurrent()) return;
 
     if (renderThumbnail && canvas) {
       await renderQueue.enqueue(queueId, async () => {
-        await fetchShaderCode();
+        await fetchShaderCode(isCurrent);
+        if (!isCurrent()) return;
         await initializeRendering();
       });
       return;
     }
 
-    await fetchShaderCode();
+    await fetchShaderCode(isCurrent);
   }
 
-  async function fetchShaderCode() {
-    if (!vscodeApi || shaderCode) return;
+  async function fetchShaderCode(isCurrent: () => boolean = () => !destroyed) {
+    if (!vscodeApi || shaderCode || !isCurrent()) return;
 
     try {
       const response = await requestShaderCode({
@@ -134,71 +144,126 @@
         target: window,
       });
 
+      if (!isCurrent()) return;
+
       shaderCode = response.code;
       shaderConfig = response.config || null;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
     } catch (err) {
-      console.error('Failed to load shader code:', err);
+      if (isCurrent()) {
+        console.error('Failed to load shader code:', err);
+      }
     }
   }
 
-  async function createShaderRenderer(targetCanvas: HTMLCanvasElement, renderSingleFrame: boolean) {
+  async function createShaderRenderer(
+    targetCanvas: HTMLCanvasElement,
+    renderSingleFrame: boolean,
+    isCurrent: () => boolean,
+  ) {
     const engine = createEngineForLanguage(shaderLanguage);
-    engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
-    
-    const result = await engine.compileShaderPipeline(
-      shaderCode,
-      shaderConfig,
-      shader.path,
-      shaderBuffers
-    );
-    
-    if (result?.success) {
-      if (renderSingleFrame) {
-        engine.render();
-      } else {
-        engine.startRenderLoop();
+
+    try {
+      if (!isCurrent()) {
+        cleanupRenderer(engine, targetCanvas);
+        return null;
       }
+
+      engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
+
+      const result = await engine.compileShaderPipeline(
+        shaderCode,
+        shaderConfig,
+        shader.path,
+        shaderBuffers
+      );
+
+      if (!isCurrent()) {
+        cleanupRenderer(engine, targetCanvas);
+        return null;
+      }
+
+      if (result?.success) {
+        if (renderSingleFrame) {
+          engine.render();
+        } else {
+          engine.startRenderLoop();
+        }
+      }
+
+      return { engine, result };
+    } catch (err) {
+      cleanupRenderer(engine, targetCanvas);
+      throw err;
     }
-    
-    return { engine, result };
   }
 
   function cleanupRenderer(engine: RenderingEngine | null, targetCanvas: HTMLCanvasElement | null) {
     if (!engine) return;
 
-    const language = engine.getShaderLanguage();
-    engine.stopRenderLoop();
-    engine.dispose();
+    let language: ShaderLanguage | null = null;
+    try {
+      language = engine.getShaderLanguage();
+    } catch (err) {
+      console.error('Failed to identify renderer during cleanup:', err);
+    }
+
+    try {
+      engine.stopRenderLoop();
+    } catch (err) {
+      console.error('Failed to stop renderer during cleanup:', err);
+    }
+
+    try {
+      engine.dispose();
+    } catch (err) {
+      console.error('Failed to dispose renderer:', err);
+    }
 
     if (language !== 'glsl' || !targetCanvas) return;
 
-    // Force WebGL context to be lost to free resources
-    const gl = targetCanvas.getContext('webgl2');
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    try {
+      // Force WebGL context to be lost to free resources
+      const gl = targetCanvas.getContext('webgl2');
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch (err) {
+      console.error('Failed to release WebGL context:', err);
+    }
   }
 
   async function initializeRendering() {
-    if (!shaderCode || !canvas) return;
+    if (!shaderCode || !canvas || destroyed) return;
+
+    const targetCanvas = canvas;
+    const generation = ++thumbnailGeneration;
+    const isCurrent = () => (
+      !destroyed
+      && generation === thumbnailGeneration
+      && canvas === targetCanvas
+    );
 
     // Clean up existing rendering engine if any
     if (renderingEngine) {
-      cleanupRenderer(renderingEngine, canvas);
+      cleanupRenderer(renderingEngine, targetCanvas);
       renderingEngine = null;
     }
 
     try {
-      const { engine, result } = await createShaderRenderer(canvas, true);
+      const renderer = await createShaderRenderer(targetCanvas, true, isCurrent);
+      if (!renderer || !isCurrent()) return;
+
+      const { engine, result } = renderer;
       renderingEngine = engine;
 
       if (result?.success) {
         // Let next frame render to ensure it's fully initialized
         await new Promise((resolve) => setTimeout(resolve, 16));
+        if (!isCurrent() || renderingEngine !== engine) return;
         
         // Capture the rendered frame as an image
         try {
-          capturedImage = canvas.toDataURL('image/png');
+          capturedImage = targetCanvas.toDataURL('image/png');
           compilationFailed = false;
           
           // Save thumbnail to cache on extension side
@@ -216,8 +281,10 @@
         }
         
         // Clean up rendering resources
-        cleanupRenderer(renderingEngine, canvas);
-        renderingEngine = null;
+        if (renderingEngine === engine) {
+          cleanupRenderer(engine, targetCanvas);
+          renderingEngine = null;
+        }
         
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
@@ -225,10 +292,18 @@
         compilationFailed = true;
         onCompilationFailed?.();
         // Still clean up on failure
-        cleanupRenderer(renderingEngine, canvas);
-        renderingEngine = null;
+        if (renderingEngine === engine) {
+          cleanupRenderer(engine, targetCanvas);
+          renderingEngine = null;
+        }
       }
     } catch (err) {
+      if (!isCurrent()) return;
+
+      if (renderingEngine) {
+        cleanupRenderer(renderingEngine, targetCanvas);
+        renderingEngine = null;
+      }
       console.error('Failed to initialize rendering:', err);
       compilationFailed = true;
       onCompilationFailed?.();
@@ -236,38 +311,55 @@
   }
 
   async function handleMouseEnter() {
-    if (isHovering || !hoverCanvasWrapper) return;
+    if (isHovering || !hoverCanvasWrapper || destroyed) return;
+
+    isHovering = true;
+    const generation = ++hoverGeneration;
+    const isCurrent = () => (
+      !destroyed
+      && isHovering
+      && generation === hoverGeneration
+    );
     
     // Load shader code if not already loaded (e.g., when using cached thumbnail)
     if (!shaderCode) {
-      await loadShaderCode({ renderThumbnail: false });
+      await loadShaderCode({ renderThumbnail: false, isCurrent });
+      if (!isCurrent()) return;
+
       // Wait for shader code to be loaded
       if (!shaderCode) {
         console.error('Failed to load shader code for hover');
+        cleanupHoverRendering();
         return;
       }
     }
-    
-    isHovering = true;
 
     // Create a completely new canvas for hover rendering
-    hoverCanvas = document.createElement('canvas');
-    hoverCanvas.width = width;
-    hoverCanvas.height = height;
-    hoverCanvas.className = 'shader-preview hover-canvas';
+    const targetCanvas = document.createElement('canvas');
+    targetCanvas.width = width;
+    targetCanvas.height = height;
+    targetCanvas.className = 'shader-preview hover-canvas';
+    hoverCanvas = targetCanvas;
 
     // Append the canvas to the wrapper
-    hoverCanvasWrapper.appendChild(hoverCanvas);
+    hoverCanvasWrapper.appendChild(targetCanvas);
 
     try {
       // Create a completely new rendering engine and pipeline, start the render loop
-      const { engine, result } = await createShaderRenderer(hoverCanvas, false);
+      const renderer = await createShaderRenderer(
+        targetCanvas,
+        false,
+        () => isCurrent() && hoverCanvas === targetCanvas,
+      );
+      if (!renderer || !isCurrent() || hoverCanvas !== targetCanvas) return;
+
+      const { engine, result } = renderer;
       hoverRenderingEngine = engine;
 
       if (result?.success) {
         // Wait for first rendered frame before revealing the canvas to avoid black flash
         await new Promise(r => requestAnimationFrame(r));
-        if (isHovering) {
+        if (isCurrent() && hoverCanvas === targetCanvas && hoverRenderingEngine === engine) {
           hoverVisible = true;
         }
       } else {
@@ -275,6 +367,8 @@
         cleanupHoverRendering();
       }
     } catch (err) {
+      if (!isCurrent()) return;
+
       console.error('Failed to initialize hover rendering:', err);
       cleanupHoverRendering();
     }
@@ -287,6 +381,7 @@
   }
   
   function cleanupHoverRendering() {
+    hoverGeneration++;
     isHovering = false;
     hoverVisible = false;
     
@@ -303,6 +398,8 @@
   }
 
   onDestroy(() => {
+    destroyed = true;
+    thumbnailGeneration++;
     stopVisibilityObserver?.();
 
     // Remove from queue if still waiting

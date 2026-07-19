@@ -33,6 +33,16 @@ const makeShader = (overrides: Partial<ShaderFile> = {}): ShaderFile => ({
     ...overrides,
 });
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((promiseResolve, promiseReject) => {
+        resolve = promiseResolve;
+        reject = promiseReject;
+    });
+    return { promise, resolve, reject };
+}
+
 // vscodeApi that auto-replies to requestShaderCode so loadShaderCode resolves
 function makeVscodeApi(
     code = 'void mainImage(out vec4 o,vec2 u){o=vec4(1);}',
@@ -54,9 +64,14 @@ function makeVscodeApi(
 beforeEach(() => {
     vi.clearAllMocks();
     getContextMock.mockReturnValue(null);
-    createEngineForLanguage.mockReturnValue(mockEngine);
-    mockEngine.compileShaderPipeline.mockResolvedValue({ success: true, errors: [] });
-    mockEngine.getShaderLanguage.mockReturnValue('glsl');
+    createEngineForLanguage.mockReset().mockReturnValue(mockEngine);
+    mockEngine.initialize.mockReset();
+    mockEngine.compileShaderPipeline.mockReset().mockResolvedValue({ success: true, errors: [] });
+    mockEngine.render.mockReset();
+    mockEngine.startRenderLoop.mockReset();
+    mockEngine.stopRenderLoop.mockReset();
+    mockEngine.dispose.mockReset();
+    mockEngine.getShaderLanguage.mockReset().mockReturnValue('glsl');
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,rendered');
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
@@ -266,5 +281,154 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
         expect(mockEngine.compileShaderPipeline).not.toHaveBeenCalled();
         expect(mockEngine.dispose).not.toHaveBeenCalled();
         expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+});
+
+describe('ShaderPreview - asynchronous renderer ownership', () => {
+    it('cancels a cached hover before its delayed shader response arrives', async () => {
+        const shader = makeShader({
+            path: '/test/shader.slang',
+            name: 'shader.slang',
+            cachedThumbnail: 'data:image/png;base64,abc',
+        });
+        const vscodeApi = { postMessage: vi.fn() };
+        const { container } = render(ShaderPreview, { props: { shader, vscodeApi } });
+        const preview = container.querySelector('.shader-preview-container')!;
+
+        await fireEvent.mouseEnter(preview);
+        await waitFor(() => expect(vscodeApi.postMessage).toHaveBeenCalledWith({
+            type: 'requestShaderCode',
+            path: shader.path,
+        }));
+        await fireEvent.mouseLeave(preview);
+
+        window.dispatchEvent(new MessageEvent('message', {
+            data: {
+                type: 'shaderCode',
+                path: shader.path,
+                code: 'float4 mainImage(float2 c) { return 1; }',
+                config: null,
+                buffers: {},
+                language: 'slang',
+            },
+        }));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        await tick();
+
+        expect(createEngineForLanguage).not.toHaveBeenCalled();
+        expect(container.querySelector('.hover-canvas-wrapper')?.childElementCount).toBe(0);
+    });
+
+    it('disposes a hover engine when mouseleave occurs during compilation', async () => {
+        const compilation = deferred<{ success: boolean; errors: string[] }>();
+        mockEngine.getShaderLanguage.mockReturnValue('slang');
+        mockEngine.compileShaderPipeline.mockReturnValue(compilation.promise);
+        const shader = makeShader({
+            path: '/test/shader.slang',
+            name: 'shader.slang',
+            cachedThumbnail: 'data:image/png;base64,abc',
+        });
+        const { container } = render(ShaderPreview, {
+            props: {
+                shader,
+                vscodeApi: makeVscodeApi('float4 mainImage(float2 c) { return 1; }', 'slang'),
+            },
+        });
+        const preview = container.querySelector('.shader-preview-container')!;
+
+        await fireEvent.mouseEnter(preview);
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        await fireEvent.mouseLeave(preview);
+        compilation.resolve({ success: true, errors: [] });
+
+        await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledOnce());
+        expect(mockEngine.startRenderLoop).not.toHaveBeenCalled();
+        expect(getContextMock).not.toHaveBeenCalledWith('webgl2');
+        expect(container.querySelector('.hover-canvas-wrapper')?.childElementCount).toBe(0);
+    });
+
+    it('disposes the engine when initialization throws', async () => {
+        mockEngine.initialize.mockImplementation(() => {
+            throw new Error('initialization failed');
+        });
+        mockEngine.stopRenderLoop.mockImplementation(() => {
+            throw new Error('renderer was not fully initialized');
+        });
+        const onCompilationFailed = vi.fn();
+
+        const { container } = render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi: makeVscodeApi(), onCompilationFailed },
+        });
+
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(mockEngine.compileShaderPipeline).not.toHaveBeenCalled();
+        expect(mockEngine.dispose).toHaveBeenCalledOnce();
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+
+    it('disposes the engine when compilation rejects', async () => {
+        mockEngine.compileShaderPipeline.mockRejectedValue(new Error('compilation rejected'));
+        const onCompilationFailed = vi.fn();
+
+        const { container } = render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi: makeVscodeApi(), onCompilationFailed },
+        });
+
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(mockEngine.dispose).toHaveBeenCalledOnce();
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+
+    it('disposes the engine when single-frame rendering throws', async () => {
+        mockEngine.render.mockImplementation(() => {
+            throw new Error('render failed');
+        });
+        const onCompilationFailed = vi.fn();
+
+        const { container } = render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi: makeVscodeApi(), onCompilationFailed },
+        });
+
+        await waitFor(() => expect(container.querySelector('.shader-error')).not.toBeNull());
+        expect(mockEngine.dispose).toHaveBeenCalledOnce();
+        expect(onCompilationFailed).toHaveBeenCalledOnce();
+    });
+
+    it('disposes the hover engine when starting its render loop throws', async () => {
+        mockEngine.startRenderLoop.mockImplementation(() => {
+            throw new Error('render loop failed');
+        });
+        const shader = makeShader({ cachedThumbnail: 'data:image/png;base64,abc' });
+        const { container } = render(ShaderPreview, {
+            props: { shader, vscodeApi: makeVscodeApi() },
+        });
+
+        await fireEvent.mouseEnter(container.querySelector('.shader-preview-container')!);
+
+        await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledOnce());
+        expect(container.querySelector('.hover-canvas-wrapper')?.classList.contains('visible')).toBe(false);
+        expect(container.querySelector('.hover-canvas-wrapper')?.childElementCount).toBe(0);
+    });
+
+    it('disposes an in-flight thumbnail without capture or save after unmount', async () => {
+        const compilation = deferred<{ success: boolean; errors: string[] }>();
+        mockEngine.getShaderLanguage.mockReturnValue('slang');
+        mockEngine.compileShaderPipeline.mockReturnValue(compilation.promise);
+        const shader = makeShader({ path: '/test/shader.slang', name: 'shader.slang' });
+        const vscodeApi = makeVscodeApi('float4 mainImage(float2 c) { return 1; }', 'slang');
+        const onCompilationFailed = vi.fn();
+        const { unmount } = render(ShaderPreview, {
+            props: { shader, vscodeApi, onCompilationFailed },
+        });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        unmount();
+        compilation.resolve({ success: true, errors: [] });
+
+        await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledOnce());
+        expect(HTMLCanvasElement.prototype.toDataURL).not.toHaveBeenCalled();
+        expect(vscodeApi.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'saveThumbnail' }));
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+        expect(getContextMock).not.toHaveBeenCalledWith('webgl2');
     });
 });
