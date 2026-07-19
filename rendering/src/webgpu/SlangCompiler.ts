@@ -41,10 +41,12 @@ export class SlangCompiler {
   private globalSession: SlangGlobalSession | null = null;
   private wgslTargetValue: number | null = null;
   private readonly mountedPaths = new Set<string>();
+  private readonly diagnosticAliases = new Map<string, string>();
 
   constructor(private slang: SlangModuleApi) {}
 
   public compile(request: SlangCompileRequest): SlangCompileResult {
+    this.diagnosticAliases.clear();
     try {
       syncWorkspaceToFileSystem(
         this.slang.FS,
@@ -52,6 +54,7 @@ export class SlangCompiler {
         new Map(),
         this.mountedPaths,
       );
+      this.mountWorkspaceRootCandidates(request);
     } catch (error) {
       return this.failure(errMessage(error), request);
     }
@@ -138,8 +141,43 @@ export class SlangCompiler {
     return {
       success: false,
       errors: [message],
-      diagnostics: parseSlangDiagnostics(message, request),
+      diagnostics: parseSlangDiagnostics(message, request, this.diagnosticAliases),
     };
+  }
+
+  private mountWorkspaceRootCandidates(request: SlangCompileRequest): void {
+    const sourcePath = normalizeInternalPath(request.sourcePath);
+    const sourceDirectory = parentPath(sourcePath);
+    if (sourceDirectory === "/workspace") {
+      return;
+    }
+
+    const files = request.workspace.files
+      .map((file) => ({ ...file, path: normalizeInternalPath(file.path) }))
+      .filter((file) => file.path.toLowerCase().endsWith(".slang"))
+      .sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    const actualPaths = new Set(files.map((file) => file.path));
+
+    // The generated WASM binding exposes GlobalSession.createSession(target)
+    // only; SessionDesc.searchPaths is not bound. Project workspace-root
+    // module candidates into the root source directory so Slang's native lazy
+    // loader sees the same local-first/root-second candidates as the graph.
+    // Real local files always win and every projection is tracked as owned so
+    // the next snapshot synchronization removes stale aliases.
+    for (const file of files) {
+      if (file.path.startsWith(`${sourceDirectory}/`)) {
+        continue;
+      }
+      const relativePath = file.path.slice("/workspace/".length);
+      const aliasPath = normalizeInternalPath(`${sourceDirectory}/${relativePath}`);
+      if (aliasPath === file.path || actualPaths.has(aliasPath)) {
+        continue;
+      }
+      this.mountedPaths.add(aliasPath);
+      this.slang.FS.mkdirTree(parentPath(aliasPath));
+      this.slang.FS.writeFile(aliasPath, file.source);
+      this.diagnosticAliases.set(aliasPath, file.uri);
+    }
   }
 }
 
@@ -150,6 +188,7 @@ const MODERN_DIAGNOSTIC_LOCATION = /^\s*-->\s+(.+):(\d+):(\d+)\s*$/;
 export function parseSlangDiagnostics(
   raw: string,
   request: Pick<SlangCompileRequest, "sourceUri" | "workspace" | "options">,
+  aliases: ReadonlyMap<string, string> = new Map(),
 ): SlangDiagnostic[] {
   const uriByPath = new Map<string, string>();
   for (const file of request.workspace.files) {
@@ -159,6 +198,9 @@ export function parseSlangDiagnostics(
       // A malformed snapshot is reported against the root request rather than
       // allowing diagnostic formatting itself to throw.
     }
+  }
+  for (const [path, uri] of aliases) {
+    uriByPath.set(path, uri);
   }
   const diagnostics: SlangDiagnostic[] = [];
   const lines = raw.split(/\r?\n/);
@@ -209,6 +251,11 @@ export function parseSlangDiagnostics(
     source: "slang-compile",
     ...(request.options.passName ? { passName: request.options.passName } : {}),
   }];
+}
+
+function parentPath(path: string): string {
+  const separator = path.lastIndexOf("/");
+  return separator <= 0 ? "/" : path.slice(0, separator);
 }
 
 function createDiagnostic(

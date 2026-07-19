@@ -30,8 +30,8 @@ describe("SlangCompiler with bundled WASM", () => {
         files: [
           { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source },
           {
-            uri: "file:///project/passes/palette.slang",
-            path: "/workspace/passes/palette.slang",
+            uri: "file:///project/palette.slang",
+            path: "/workspace/palette.slang",
             source: "#language slang 2026\nmodule palette;\npublic float3 paletteColor() { return float3(1, 0, 0); }",
           },
           {

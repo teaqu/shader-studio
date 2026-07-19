@@ -63,6 +63,7 @@ function makeFakeSlang(opts: {
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
   onWrite?: (path: string, source: string) => void;
+  onUnlink?: (path: string) => void;
 } = {}): SlangModuleApi {
   const files = new Set<string>();
   const wgsl = opts.wgsl ?? "// wgsl output";
@@ -98,7 +99,10 @@ function makeFakeSlang(opts: {
         files.add(path);
         opts.onWrite?.(path, source);
       }),
-      unlink: vi.fn((path: string) => files.delete(path)),
+      unlink: vi.fn((path: string) => {
+        files.delete(path);
+        opts.onUnlink?.(path);
+      }),
       analyzePath: vi.fn((path: string) => ({ exists: files.has(path) })),
     },
     createGlobalSession: () => (opts.globalSessionNull ? null : globalSession),
@@ -153,19 +157,89 @@ describe("SlangCompiler", () => {
       workspace: {
         rootUri: "file:///project",
         files: [
-          { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "module palette; public float4 paletteColor() { return 1; }" },
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "module palette; public float4 paletteColor() { return 1; }" },
           { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "stale root" },
         ],
       },
     }));
 
     expect(events).toEqual([
-      "write:/workspace/lib/palette.slang",
+      "write:/workspace/palette.slang",
       "write:/workspace/passes/image.slang",
+      "write:/workspace/passes/palette.slang",
       "load:/workspace/passes/image.slang",
     ]);
     expect(loadedSource).toContain("import palette;");
     expect(loadedSource).not.toContain("stale root");
+  });
+
+  it("keeps a real local module instead of overwriting it with a root projection", () => {
+    const writes: Array<[string, string]> = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onWrite: (path, source) => writes.push([path, source]) }));
+
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "root palette" },
+          { uri: "file:///project/passes/palette.slang", path: "/workspace/passes/palette.slang", source: "local palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(writes.filter(([path]) => path === "/workspace/passes/palette.slang"))
+      .toEqual([["/workspace/passes/palette.slang", "local palette"]]);
+  });
+
+  it("removes compiler-owned module projections before mounting the next snapshot", () => {
+    const unlinks: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onUnlink: (path) => unlinks.push(path) }));
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [{ uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" }],
+      },
+    }));
+
+    expect(unlinks).toContain("/workspace/passes/palette.slang");
+  });
+
+  it("maps diagnostics from a projected module back to its real workspace URI", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "error[E30015]: undefined identifier\n  --> /workspace/passes/palette.slang:2:4",
+    }));
+    const result = compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "bad palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics[0]?.uri).toBe("file:///project/palette.slang");
+    }
   });
 
   it("returns structured diagnostics with the real dependency URI", () => {
