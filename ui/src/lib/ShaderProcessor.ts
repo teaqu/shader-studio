@@ -244,14 +244,18 @@ export class ShaderProcessor {
     );
 
     // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
+    let result = await this.compile(
+      codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo, message.workspace,
+    );
 
     // If failed and modified code was used, try original
     if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
-      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo);
+      result = await this.compile(
+        this.imageShaderCode, config, path, buffers, cuDecl, cuInfo, message.workspace,
+      );
     }
 
     // Start render loop if compilation succeeded

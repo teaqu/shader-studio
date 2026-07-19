@@ -144,6 +144,7 @@ describe('VariableCaptureManager', () => {
   let manager: VariableCaptureManager;
   let onUpdate: ReturnType<typeof vi.fn>;
   let onError: ReturnType<typeof vi.fn>;
+  let onDiagnostics: ReturnType<typeof vi.fn>;
 
   let mockCollectResults: ReturnType<typeof vi.fn>;
   let mockIssueCaptureAtPixel: ReturnType<typeof vi.fn>;
@@ -208,6 +209,7 @@ describe('VariableCaptureManager', () => {
       setCompileContext: vi.fn(),
       clearLastError: vi.fn(),
       getLastError: vi.fn().mockReturnValue(null),
+      getLastDiagnostics: vi.fn().mockReturnValue([]),
     };
 
     mockCreateVariableCapturer = vi.fn().mockReturnValue(mockCapturer);
@@ -224,8 +226,10 @@ describe('VariableCaptureManager', () => {
 
     onUpdate = vi.fn();
     onError = vi.fn();
+    onDiagnostics = vi.fn();
     manager = new VariableCaptureManager(mockRenderingEngine, onUpdate);
     manager.setErrorCallback(onError);
+    manager.setDiagnosticCallback(onDiagnostics);
     (VariableCaptureBuilder.generateMultiCaptureShader as any).mockReturnValue('shader');
   });
 
@@ -429,6 +433,47 @@ describe('VariableCaptureManager', () => {
       expect(VariableCaptureBuilder.getAllInScopeVariables).not.toHaveBeenCalled();
       expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
       expect(onError).toHaveBeenCalledWith(expect.stringMatching(/imported Slang modules/i));
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        code: 'slang-cross-file-debug-unsupported',
+        uri: 'file:///project/helper.slang',
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: expect.any(Number) },
+        },
+        passName: 'Image',
+      })]);
+    });
+
+    it('returns the same structured unsupported diagnostic for configured common code', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        sourceUri: 'file:///project/image.slang',
+        sourcePath: '/workspace/image.slang',
+        slangPassName: 'Image',
+        workspace: {
+          rootUri: 'file:///project',
+          files: [
+            { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'root' },
+            { uri: 'file:///project/common.slang', path: '/workspace/common.slang', source: 'common' },
+          ],
+        },
+      });
+
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        activeBufferName: 'common',
+        filePath: '/project/common.slang',
+        debugLine: 4,
+      });
+      await flushRAF();
+
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        code: 'slang-cross-file-debug-unsupported',
+        uri: 'file:///project/common.slang',
+        range: expect.objectContaining({ start: { line: 4, character: 0 } }),
+        passName: 'common',
+      })]);
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
     });
   });
 
@@ -876,6 +921,15 @@ describe('VariableCaptureManager', () => {
         setCompileContext: vi.fn(),
         clearLastError: vi.fn(),
         getLastError: vi.fn().mockReturnValue('Shader compile failed: missing saturate'),
+        getLastDiagnostics: vi.fn().mockReturnValue([{
+          uri: 'file:///project/helper.slang',
+          range: { start: { line: 3, character: 2 }, end: { line: 3, character: 7 } },
+          severity: 'error',
+          code: 'E42',
+          message: 'missing saturate',
+          source: 'slang-compile',
+          passName: 'Image',
+        }]),
       });
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
@@ -883,6 +937,9 @@ describe('VariableCaptureManager', () => {
 
       expect(onError).toHaveBeenCalledWith('Failed to capture variables:\nShader compile failed: missing saturate');
       expect(onUpdate).toHaveBeenCalledWith([]);
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        uri: 'file:///project/helper.slang', code: 'E42', passName: 'Image',
+      })]);
       expect(setTimeoutSpy).not.toHaveBeenCalled();
     });
 

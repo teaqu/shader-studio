@@ -551,6 +551,7 @@ export class ShaderDebugManager {
       code: 'slang-cross-file-debug-unsupported' as const,
       severity: 'error' as const,
       message,
+      source: 'slang-compile' as const,
       sourceUri: selected.uri,
       passName,
       range: {

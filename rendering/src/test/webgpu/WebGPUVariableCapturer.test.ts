@@ -282,6 +282,29 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(issued).toBe(0);
     expect(capturer.getLastError()).toBe("boom");
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves structured compiler diagnostics and clears them with the legacy error", async () => {
+    const gpu = mockGpu();
+    const diagnostic = {
+      uri: "file:///project/helper.slang",
+      range: { start: { line: 2, character: 1 }, end: { line: 2, character: 4 } },
+      severity: "error" as const,
+      code: "E123",
+      message: "bad helper",
+      source: "slang-compile" as const,
+      passName: "Image",
+    };
+    gpu.compiler.compile.mockResolvedValue({ success: false, errors: ["boom"], diagnostics: [diagnostic] });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
+
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    expect(capturer.getLastDiagnostics()).toEqual([diagnostic]);
+    capturer.clearLastError();
+    expect(capturer.getLastError()).toBeNull();
+    expect(capturer.getLastDiagnostics()).toEqual([]);
   });
 
   it("collectResults returns only captures whose mapping resolved, with tight rows", async () => {
@@ -400,7 +423,7 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
   });
 
-  it("retains the last-good workspace pipeline when a newer dependency compile fails", async () => {
+  it("automatically uses the last-good compatible pipeline when a newer dependency compile fails", async () => {
     const gpu = mockGpu();
     const makeContext = (helperSource: string) => ({
       sourceUri: "file:///project/image.slang",
@@ -419,11 +442,12 @@ describe("WebGPUVariableCapturer", () => {
 
     gpu.compiler.compile.mockResolvedValueOnce({ success: false, errors: ["helper.slang: bad dependency"] });
     capturer.setCompileContext(makeContext("bad"));
-    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(0);
-
-    capturer.setCompileContext(good);
     expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
-    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+
+    gpu.compiler.compile.mockResolvedValueOnce({ success: true, wgsl: "// fixed", diagnostics: [] });
+    capturer.setCompileContext(makeContext("fixed"));
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(3);
   });
 
   it("stops issuing when shouldContinue flips false", async () => {

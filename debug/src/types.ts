@@ -11,6 +11,7 @@ export interface ShaderDebugDiagnostic {
   code: 'slang-cross-file-debug-unsupported';
   severity: 'error';
   message: string;
+  source: 'slang-compile';
   sourceUri: string;
   passName: string;
   range: {

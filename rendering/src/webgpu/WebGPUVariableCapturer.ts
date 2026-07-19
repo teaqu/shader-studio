@@ -8,6 +8,7 @@ import type {
   CaptureUniforms,
 } from "../capture/VariableCapturer";
 import type { ConfigInput } from "@shader-studio/types";
+import type { SlangDiagnostic } from "@shader-studio/types";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
 import { DBG_CAPTURE_UNIFORM_SIZE } from "./SlangPrelude";
@@ -22,6 +23,7 @@ const ROW_ALIGNMENT = 256;
 interface CachedPipeline {
   pipeline: GPURenderPipeline;
   bindGroupLayout: GPUBindGroupLayout;
+  compatibilityKey: string;
   lastUsed: number;
 }
 
@@ -47,10 +49,12 @@ interface PendingCapture {
  */
 export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCache = new Map<string, CachedPipeline>();
+  private compileFallbacks = new Map<string, CachedPipeline | null>();
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
   private compileContext: CaptureCompileContext = {};
   private lastError: string | null = null;
+  private lastDiagnostics: SlangDiagnostic[] = [];
   private uniformBuffer: GPUBuffer | null = null;
   private captureUniformBuffer: GPUBuffer | null = null;
   private sampler: GPUSampler | null = null;
@@ -69,6 +73,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   setCompileContext(context: CaptureCompileContext): void {
+    this.compileFallbacks.clear();
     this.compileContext = context;
   }
 
@@ -91,10 +96,21 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   clearLastError(): void {
     this.lastError = null;
+    this.lastDiagnostics = [];
   }
 
   getLastError(): string | null {
     return this.lastError;
+  }
+
+  getLastDiagnostics(): SlangDiagnostic[] {
+    return this.lastDiagnostics.map((diagnostic) => ({
+      ...diagnostic,
+      range: {
+        start: { ...diagnostic.range.start },
+        end: { ...diagnostic.range.end },
+      },
+    }));
   }
 
   async issueCaptureAtPixel(
@@ -187,6 +203,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
     this.pipelineCacheOrder = [];
+    this.compileFallbacks.clear();
   }
 
   private async issue(
@@ -363,6 +380,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       existing.lastUsed = performance.now();
       return existing;
     }
+    if (this.compileFallbacks.has(cacheKey)) {
+      const currentFallback = this.compileFallbacks.get(cacheKey) ?? null;
+      if (currentFallback) {
+        currentFallback.lastUsed = performance.now();
+      }
+      return currentFallback;
+    }
 
     captureCounters.pipelineCompiles++;
     const sourceUri = this.compileContext.sourceUri ?? "shader-studio://capture/capture.slang";
@@ -396,9 +420,18 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     if (this.disposed) {
       return null;
     }
+    this.lastDiagnostics = (compileResult.diagnostics ?? []).map((diagnostic) => ({
+      ...diagnostic,
+      range: {
+        start: { ...diagnostic.range.start },
+        end: { ...diagnostic.range.end },
+      },
+    }));
     if (!compileResult.success) {
       this.lastError = compileResult.errors.join("\n");
-      return null;
+      const fallback = this.findCompatiblePipeline(this.captureCompatibilityKey(captureShader));
+      this.compileFallbacks.set(cacheKey, fallback);
+      return fallback;
     }
 
     let pipeline: GPURenderPipeline;
@@ -430,7 +463,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       const oldest = this.pipelineCacheOrder.shift()!;
       this.pipelineCache.delete(oldest);
     }
-    const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
+    const cached: CachedPipeline = {
+      pipeline,
+      bindGroupLayout,
+      compatibilityKey: this.captureCompatibilityKey(captureShader),
+      lastUsed: performance.now(),
+    };
     this.pipelineCache.set(cacheKey, cached);
     this.pipelineCacheOrder.push(cacheKey);
     return cached;
@@ -447,6 +485,31 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       workspace: this.compileContext.workspace ?? null,
       customUniformShape: this.customUniforms.map(({ name, type }) => ({ name, type })),
     });
+  }
+
+  private captureCompatibilityKey(captureShader: string): string {
+    return JSON.stringify({
+      captureShader,
+      commonCode: this.compileContext.commonCode ?? "",
+      channels: this.compileContext.slangChannels ?? [],
+      passName: this.compileContext.slangPassName ?? "capture",
+      sourceUri: this.compileContext.sourceUri ?? "",
+      sourcePath: this.compileContext.sourcePath ?? "",
+      workspaceRootUri: this.compileContext.workspace?.rootUri ?? "",
+      workspaceFiles: this.compileContext.workspace?.files.map(({ uri, path }) => ({ uri, path })) ?? [],
+      customUniformShape: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    });
+  }
+
+  private findCompatiblePipeline(compatibilityKey: string): CachedPipeline | null {
+    for (let index = this.pipelineCacheOrder.length - 1; index >= 0; index -= 1) {
+      const cached = this.pipelineCache.get(this.pipelineCacheOrder[index]);
+      if (cached?.compatibilityKey === compatibilityKey) {
+        cached.lastUsed = performance.now();
+        return cached;
+      }
+    }
+    return null;
   }
 
   /**

@@ -2,7 +2,7 @@ import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
-import type { ConfigInput, SlangWorkspaceSnapshot } from '@shader-studio/types';
+import type { ConfigInput, SlangDiagnostic, SlangWorkspaceSnapshot } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 
 export interface CaptureUniforms {
@@ -77,6 +77,8 @@ export interface IVariableCapturer {
   setInputBindings(inputConfig: Record<string, ConfigInput>): void;
   clearLastError(): void;
   getLastError(): string | null;
+  /** Structured diagnostics from the most recent capture compile, when supported. */
+  getLastDiagnostics?(): SlangDiagnostic[];
   issueCaptureAtPixel(
     captures: CaptureRequest[],
     pixelX: number,

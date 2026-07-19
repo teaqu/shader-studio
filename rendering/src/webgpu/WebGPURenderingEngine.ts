@@ -407,9 +407,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       hasDevice: Boolean(this.device),
       hasCompiler: Boolean(this.compiler),
     });
-    // Remember the inputs so updateBufferAndRecompile can re-run this compile
-    // with a single buffer's content patched.
-    this.lastCompile = {
+    // Commit these only after the complete pipeline generation succeeds.
+    // Capture and incremental updates must never observe a failed workspace.
+    const nextCompile = {
       code,
       path,
       buffers: { ...buffers },
@@ -713,6 +713,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
     this.shaderPath = path;
+    this.lastCompile = nextCompile;
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
@@ -776,6 +777,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    this.lastCompile = null;
     if (hadInstalledPipeline) {
       this.resourceManager?.cleanup();
       this.timeManager.cleanup();

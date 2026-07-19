@@ -3117,6 +3117,33 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).passPipelines.get("BufferA")).toBe(firstBufferA);
     });
 
+    it("keeps the last successful capture compile context after a failed edit", async () => {
+      const { engine, compiler } = cachedSetup();
+      const goodWorkspace = {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "img" },
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "buf" },
+        ],
+      };
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf" }, undefined, undefined, goodWorkspace);
+      const successfulContext = engine.getVariableCaptureCompileContext("img", "Image");
+      const badWorkspace = {
+        ...goodWorkspace,
+        files: goodWorkspace.files.map((file) => file.path === "/workspace/a.slang"
+          ? { ...file, source: "buf broken" }
+          : file),
+      };
+      compiler.compile.mockImplementation((request: { source: string }) =>
+        request.source === "buf broken"
+          ? { success: false, errors: ["bad"], diagnostics: [] }
+          : { success: true, wgsl: "wgsl", diagnostics: [] });
+
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf broken" }, undefined, undefined, badWorkspace);
+
+      expect(engine.getVariableCaptureCompileContext("img", "Image")).toEqual(successfulContext);
+    });
+
     it("resizes reused pipelines to the new graph dimensions on success", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
