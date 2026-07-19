@@ -3031,6 +3031,20 @@ describe("WebGPURenderingEngine", () => {
   });
 
   describe("dispose()", () => {
+    interface DisposableEngineInternals {
+      compiler: { dispose(): void } | null;
+      inspectorReadbackBuffer: { destroy(): void } | null;
+      passPipelines: Map<string, { dispose(): void }>;
+      passKeys: Map<string, string>;
+      passGraph: Array<{ name: string }>;
+      resourceManager: { cleanup(): void } | null;
+      device: { destroy(): void } | null;
+    }
+
+    const disposableInternals = (engine: WebGPURenderingEngine) => (
+      engine as unknown as DisposableEngineInternals
+    );
+
     it("returns 'Engine disposed' for any compile attempted after dispose()", async () => {
       const engine = new WebGPURenderingEngine(assets);
       stubEngineInternals(engine);
@@ -3076,6 +3090,113 @@ describe("WebGPURenderingEngine", () => {
       engine.dispose();
 
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("finishes teardown and clears retained state when compiler disposal throws", () => {
+      const compilerError = new Error("compiler cleanup failed");
+      const compiler = { dispose: vi.fn(() => {
+        throw compilerError;
+      }) };
+      const inspector = { destroy: vi.fn() };
+      const firstPipeline = { dispose: vi.fn() };
+      const secondPipeline = { dispose: vi.fn() };
+      const resources = { cleanup: vi.fn() };
+      const device = { destroy: vi.fn() };
+      const engine = new WebGPURenderingEngine(assets);
+      const internals = disposableInternals(engine);
+      internals.compiler = compiler;
+      internals.inspectorReadbackBuffer = inspector;
+      internals.passPipelines = new Map([
+        ["BufferA", firstPipeline],
+        ["Image", secondPipeline],
+      ]);
+      internals.passKeys = new Map([["Image", "key"]]);
+      internals.passGraph = [{ name: "Image" }];
+      internals.resourceManager = resources;
+      internals.device = device;
+
+      expect(() => engine.dispose()).toThrow(compilerError);
+
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(inspector.destroy).toHaveBeenCalledOnce();
+      expect(firstPipeline.dispose).toHaveBeenCalledOnce();
+      expect(secondPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(internals.compiler).toBeNull();
+      expect(internals.inspectorReadbackBuffer).toBeNull();
+      expect(internals.passPipelines.size).toBe(0);
+      expect(internals.passKeys.size).toBe(0);
+      expect(internals.passGraph).toEqual([]);
+      expect(internals.resourceManager).toBeNull();
+      expect(internals.device).toBeNull();
+
+      expect(() => engine.dispose()).not.toThrow();
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(firstPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+    });
+
+    it("continues every cleanup stage while preserving the first thrown error", () => {
+      const stopError = new Error("stop failed first");
+      const compilerError = new Error("compiler failed second");
+      const inspectorError = new Error("inspector failed third");
+      const pipelineError = new Error("pipeline failed fourth");
+      const resourceError = new Error("resources failed fifth");
+      const deviceError = new Error("device failed sixth");
+      const engine = new WebGPURenderingEngine(assets);
+      const stopSpy = vi.spyOn(engine, "stopRenderLoop").mockImplementation(() => {
+        throw stopError;
+      });
+      const compiler = { dispose: vi.fn(() => {
+        throw compilerError;
+      }) };
+      const inspector = { destroy: vi.fn(() => {
+        throw inspectorError;
+      }) };
+      const failedPipeline = { dispose: vi.fn(() => {
+        throw pipelineError;
+      }) };
+      const successfulPipeline = { dispose: vi.fn() };
+      const resources = { cleanup: vi.fn(() => {
+        throw resourceError;
+      }) };
+      const device = { destroy: vi.fn(() => {
+        throw deviceError;
+      }) };
+      const internals = disposableInternals(engine);
+      internals.compiler = compiler;
+      internals.inspectorReadbackBuffer = inspector;
+      internals.passPipelines = new Map([
+        ["BufferA", failedPipeline],
+        ["Image", successfulPipeline],
+      ]);
+      internals.passKeys = new Map([["Image", "key"]]);
+      internals.passGraph = [{ name: "Image" }];
+      internals.resourceManager = resources;
+      internals.device = device;
+
+      expect(() => engine.dispose()).toThrow(stopError);
+
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(inspector.destroy).toHaveBeenCalledOnce();
+      expect(failedPipeline.dispose).toHaveBeenCalledOnce();
+      expect(successfulPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(internals).toMatchObject({
+        compiler: null,
+        inspectorReadbackBuffer: null,
+        resourceManager: null,
+        device: null,
+      });
+      expect(internals.passPipelines.size).toBe(0);
+      expect(internals.passKeys.size).toBe(0);
+      expect(internals.passGraph).toEqual([]);
+
+      stopSpy.mockRestore();
+      expect(() => engine.dispose()).not.toThrow();
     });
   });
 

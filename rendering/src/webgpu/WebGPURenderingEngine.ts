@@ -1379,25 +1379,54 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   dispose(): void {
     this.disposed = true;
-    this.compilerAbortController?.abort();
+
+    let firstError: unknown;
+    let hasError = false;
+    const attempt = (cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
+    };
+
+    const compilerAbortController = this.compilerAbortController;
     this.compilerAbortController = null;
-    this.stopRenderLoop();
-    this.compiler?.dispose();
+    attempt(() => compilerAbortController?.abort());
+    attempt(() => this.stopRenderLoop());
+
+    const compiler = this.compiler;
     this.compiler = null;
-    this.inspectorReadbackBuffer?.destroy?.();
+    attempt(() => compiler?.dispose());
+
+    const inspectorReadbackBuffer = this.inspectorReadbackBuffer;
     this.inspectorReadbackBuffer = null;
     this.inspectorTarget = null;
     this.inspectorPixel = null;
-    for (const pipeline of this.passPipelines.values()) {
-      pipeline.dispose();
-    }
+    attempt(() => inspectorReadbackBuffer?.destroy?.());
+
+    const passPipelines = [...this.passPipelines.values()];
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
-    this.resourceManager?.cleanup();
+    for (const pipeline of passPipelines) {
+      attempt(() => pipeline.dispose());
+    }
+
+    const resourceManager = this.resourceManager;
     this.resourceManager = null;
-    this.device?.destroy?.();
+    attempt(() => resourceManager?.cleanup());
+
+    const device = this.device;
     this.device = null;
+    attempt(() => device?.destroy?.());
+
+    if (hasError) {
+      throw firstError;
+    }
   }
 
   /**
