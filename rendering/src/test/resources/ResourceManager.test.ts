@@ -47,6 +47,7 @@ vi.mock("../../resources/TextureCache", () => ({
       cacheTexture: vi.fn(),
       loadTextureFromUrl: vi.fn(),
       cleanup: vi.fn(),
+      dispose: vi.fn(),
     };
   }),
 }));
@@ -537,6 +538,18 @@ describe("ResourceManager", () => {
       expect(textureCache.cleanup).toHaveBeenCalled();
       expect(keyboardInput.cleanup).toHaveBeenCalled();
       expect(cubemapManager.cleanup).toHaveBeenCalled();
+    });
+  });
+
+  describe("dispose", () => {
+    it("cleans all managers and fully disposes the texture cache", () => {
+      const textureCache = (resourceManager as any).textureCache;
+      const videoManager = (resourceManager as any).videoTextureManager;
+
+      (resourceManager as ResourceManager<PiTexture> & { dispose(): void }).dispose();
+
+      expect(videoManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(textureCache.dispose).toHaveBeenCalledTimes(1);
     });
   });
 

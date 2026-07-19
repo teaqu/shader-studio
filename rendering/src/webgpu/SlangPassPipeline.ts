@@ -31,6 +31,7 @@ export class SlangPassPipeline {
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
   private textureIndex = 0;
+  private rebuildGeneration = 0;
 
   constructor(
     private readonly device: GPUDevice,
@@ -39,40 +40,49 @@ export class SlangPassPipeline {
   ) {}
 
   async rebuild(wgsl: string): Promise<string[]> {
-    this.destroyTextures();
-    this.destroyUniformBuffer();
-    this.shaderModule = this.device.createShaderModule({ code: wgsl });
+    const generation = ++this.rebuildGeneration;
+    this.resetResources();
+    const shaderModule = this.device.createShaderModule({ code: wgsl });
     // An explicit layout (instead of layout:"auto") covers every DECLARED
     // channel binding. With "auto", a shader that declares a channel but
     // never statically uses it gets a layout without those bindings, and the
     // bind group we build (which always supplies them) fails validation,
     // silently dropping every draw.
-    this.bindGroupLayout = this.device.createBindGroupLayout({
+    const bindGroupLayout = this.device.createBindGroupLayout({
       entries: this.buildBindGroupLayoutEntries(),
     });
     const pipelineDescriptor: GPURenderPipelineDescriptor = {
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
-      vertex: { module: this.shaderModule, entryPoint: SLANG_ENTRY_VERTEX },
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      vertex: { module: shaderModule, entryPoint: SLANG_ENTRY_VERTEX },
       fragment: {
-        module: this.shaderModule,
+        module: shaderModule,
         entryPoint: SLANG_ENTRY_FRAGMENT,
         targets: [{ format: this.targetFormat() }],
       },
       primitive: { topology: "triangle-list" },
     };
+    let pipeline: GPURenderPipeline;
     if (this.device.createRenderPipelineAsync) {
       // WebGPU's off-thread pipeline compile (the KHR_parallel_shader_compile
       // analogue). A rejection is a validation failure — report it as a
       // compile error rather than letting it reject the whole compile.
       try {
-        this.pipeline = await this.device.createRenderPipelineAsync(pipelineDescriptor);
+        pipeline = await this.device.createRenderPipelineAsync(pipelineDescriptor);
       } catch (error) {
-        this.pipeline = null;
+        if (generation !== this.rebuildGeneration) {
+          return [];
+        }
         return [`${this.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`];
       }
     } else {
-      this.pipeline = this.device.createRenderPipeline(pipelineDescriptor);
+      pipeline = this.device.createRenderPipeline(pipelineDescriptor);
     }
+    if (generation !== this.rebuildGeneration) {
+      return [];
+    }
+    this.shaderModule = shaderModule;
+    this.bindGroupLayout = bindGroupLayout;
+    this.pipeline = pipeline;
     this.uniformBuffer = this.device.createBuffer({
       size: SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -91,7 +101,10 @@ export class SlangPassPipeline {
       });
     }
 
-    const info = await this.shaderModule.getCompilationInfo?.();
+    const info = await shaderModule.getCompilationInfo?.();
+    if (generation !== this.rebuildGeneration) {
+      return [];
+    }
     return (info?.messages ?? [])
       .filter((message) => message.type === "error")
       .map((message) => `${this.descriptor.name}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
@@ -165,8 +178,8 @@ export class SlangPassPipeline {
   }
 
   dispose(): void {
-    this.destroyTextures();
-    this.destroyUniformBuffer();
+    this.rebuildGeneration++;
+    this.resetResources();
   }
 
   /**
@@ -211,6 +224,16 @@ export class SlangPassPipeline {
       format: this.targetFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
+  }
+
+  private resetResources(): void {
+    this.destroyTextures();
+    this.destroyUniformBuffer();
+    this.shaderModule = null;
+    this.pipeline = null;
+    this.bindGroup = null;
+    this.bindGroupLayout = null;
+    this.sampler = null;
   }
 
   private destroyUniformBuffer(): void {

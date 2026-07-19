@@ -517,6 +517,8 @@ describe("SlangPassPipeline", () => {
 
     expect(uniformBuffer.destroy).toHaveBeenCalledTimes(1);
     expect(pass.getUniformBuffer()).toBeNull();
+    expect(pass.getPipeline()).toBeNull();
+    expect(pass.getBindGroup()).toBeNull();
   });
 
   it("destroys the old uniform buffer when rebuild replaces it", async () => {

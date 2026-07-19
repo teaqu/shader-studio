@@ -204,6 +204,11 @@ export class ResourceManager<T> {
     this.keyboardInput.cleanup();
   }
 
+  public dispose(): void {
+    this.cleanup();
+    this.textureCache.dispose();
+  }
+
   public cleanupAllExceptMedia(): void {
     if (!this.backend) {
       return;

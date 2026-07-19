@@ -152,6 +152,19 @@ describe("TextureCache", () => {
     });
   });
 
+  describe("dispose", () => {
+    it("destroys the persistent default texture exactly once", () => {
+      const defaultTexture = textureCache.getDefaultTexture();
+
+      (textureCache as TextureCache<FakeTex> & { dispose(): void }).dispose();
+      (textureCache as TextureCache<FakeTex> & { dispose(): void }).dispose();
+
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
+      expect(backend.destroyTexture).toHaveBeenCalledWith(defaultTexture);
+      expect(textureCache.getDefaultTexture()).toBeNull();
+    });
+  });
+
   describe("createTextureFromImage - grayscale option", () => {
     // Access private method through mock testing of loadTextureFromUrl
     // which internally calls createTextureFromImage

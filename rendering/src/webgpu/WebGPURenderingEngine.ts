@@ -60,6 +60,15 @@ interface PreparedStorageBuffers {
   settled: boolean;
 }
 
+interface PendingPipelineCandidates {
+  generation: number;
+  render: Set<SlangPassPipeline>;
+  compute: Set<SlangComputePipeline>;
+  resourceManager: ResourceManager<WebGPUTextureHandle> | null;
+  installed: boolean;
+  settled: boolean;
+}
+
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 2;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
@@ -118,9 +127,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private storageKeys = new Map<string, string>();
   private storageLayouts = new Map<string, StorageBindingNode>();
   private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
+  private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
   private shaderPath = "";
-  private lastCompile: { code: string; path: string; buffers: Record<string, string> } | null = null;
+  private lastCompile: {
+    code: string;
+    config: ShaderConfig | null;
+    path: string;
+    buffers: Record<string, string>;
+  } | null = null;
   /**
    * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
    * serialized upstream (BufferUpdater is fire-and-forget, worker compiles
@@ -133,6 +148,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private compileGeneration = 0;
   private disposed = false;
   private reloadOnNextApply = false;
+  private globalVolume = 1;
+  private globalMuted = false;
 
   // Pixel inspector readback. WebGPU readback is async, so readPixel()
   // records the wanted coordinate and returns the last resolved pixel;
@@ -217,6 +234,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
+      this.resourceManager.setGlobalAudioState(this.globalVolume, this.globalMuted);
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
       // COPY_SRC lets the pixel inspector read back from the canvas texture.
@@ -394,12 +412,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
         this.discardPreparedStorage(prepared);
       }
     }
-    if (this.shaderPath !== "" && this.shaderPath !== path) {
-      this.beginShaderSession(path);
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      if (candidates.generation < generation) {
+        this.discardPipelineCandidates(candidates);
+      }
     }
-    // WebGL parity: the config is remembered even when invalid, but an
-    // invalid one fails the compile before any Slang work starts.
-    this.currentConfig = config;
+    const sessionChanged = this.shaderPath !== "" && this.shaderPath !== path;
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
@@ -421,7 +439,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     });
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
-    this.lastCompile = { code, path, buffers: { ...buffers } };
+    this.lastCompile = { code, config, path, buffers: { ...buffers } };
     if (this.ready) {
       const readyStartedAt = this.now();
       this.logSlangPerf("compile waiting for init", { path, generation });
@@ -440,7 +458,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     if (this.reloadOnNextApply) {
-      this.resourceManager?.cleanup();
+      if (!sessionChanged) {
+        this.resourceManager?.cleanup();
+      }
       this.reloadOnNextApply = false;
     }
 
@@ -485,7 +505,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     let preparedStorage: PreparedStorageBuffers;
     try {
-      preparedStorage = this.prepareStorageBuffers(graph.storage, generation);
+      preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
     } catch (error) {
       return this.failedCompilation(path, generation, {
         success: false,
@@ -493,6 +513,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
         warnings: graph.warnings,
       });
     }
+    const candidateResourceManager = sessionChanged && this.resourceManager
+      ? new ResourceManager(new WebGPUTextureBackend(this.device))
+      : null;
+    candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+    const compileResourceManager = candidateResourceManager ?? this.resourceManager;
+    const pipelineCandidates = this.preparePipelineCandidates(generation, candidateResourceManager);
 
     try {
       for (const pass of graph.passes) {
@@ -504,18 +530,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
       // loaded (and awaited) as part of the compile; render then only does cache
       // lookups.
-      if (this.resourceManager) {
+      if (compileResourceManager) {
         for (const pass of graph.passes) {
           for (const channel of pass.channels) {
             if (channel.kind === "texture") {
-              await this.resourceManager.loadImageTexture(channel.path, {
+              await compileResourceManager.loadImageTexture(channel.path, {
                 filter: channel.filter,
                 wrap: channel.wrap,
                 vflip: channel.vflip,
                 grayscale: channel.grayscale,
               });
             } else if (channel.kind === "video") {
-              const result = await this.resourceManager.loadVideoTexture(channel.path, {
+              const result = await compileResourceManager.loadVideoTexture(channel.path, {
                 filter: channel.filter,
                 wrap: channel.wrap,
                 vflip: channel.vflip,
@@ -525,7 +551,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
                 graph.warnings.push(result.warning);
               }
             } else if (channel.kind === "cubemap") {
-              await this.resourceManager.loadCubemapTexture(channel.path, {
+              await compileResourceManager.loadCubemapTexture(channel.path, {
                 filter: channel.filter,
                 wrap: channel.wrap,
                 vflip: channel.vflip,
@@ -535,6 +561,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
       }
 
+      if (generation !== this.compileGeneration || this.disposed) {
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+
       const nextPipelines = new Map<string, SlangPassPipeline>();
       const nextKeys = new Map<string, string>();
       const nextComputePipelines = new Map<string, SlangComputePipeline>();
@@ -542,15 +572,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const passTimings: PassTiming[] = [];
       const errors: string[] = [];
       for (const pass of graph.passes) {
+        if (generation !== this.compileGeneration || this.disposed) {
+          break;
+        }
         const passStartedAt = this.now();
         const key = WebGPURenderingEngine.passCacheKey(pass, graph.commonCode, graph.storage);
         const isCompute = pass.kind === "compute";
-        const existing = isCompute
-          ? this.computePipelines.get(pass.name)
-          : this.passPipelines.get(pass.name);
-        const existingKey = isCompute
-          ? this.computeKeys.get(pass.name)
-          : this.passKeys.get(pass.name);
+        const existing = sessionChanged
+          ? undefined
+          : isCompute
+            ? this.computePipelines.get(pass.name)
+            : this.passPipelines.get(pass.name);
+        const existingKey = sessionChanged
+          ? undefined
+          : isCompute
+            ? this.computeKeys.get(pass.name)
+            : this.passKeys.get(pass.name);
         if (existing && existingKey === key) {
           // Unchanged pass: carry the live pipeline into the next generation.
           // Resize (if the canvas changed) is deferred to the success block so
@@ -594,6 +631,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               hasOutput: pass.output === "texture",
             });
             slangMs = this.now() - slangStartedAt;
+            if (generation !== this.compileGeneration || this.disposed) {
+              break;
+            }
             if (!compiled.success) {
               errors.push(...compiled.errors.map((error) =>
                 WebGPURenderingEngine.prefixPassError(pass.name, error)));
@@ -629,6 +669,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               output: pass.output === "canvas" ? "canvas" : "texture",
               channels,
             });
+          if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
+            break;
+          }
           const pipelineStartedAt = this.now();
           const wgslErrors = await pipeline.rebuild(wgsl);
           const pipelineMs = this.now() - pipelineStartedAt;
@@ -650,10 +693,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
             nextKeys.set(pass.name, key);
           }
         } catch (error) {
-          // rebuild() may throw mid-way through constructing GPU resources;
-          // dispose whatever this pipeline managed to create before re-throwing
-          // as a compile error.
-          pipeline?.dispose();
           errors.push(WebGPURenderingEngine.prefixPassError(
             pass.name,
             error instanceof Error ? error.message : String(error),
@@ -668,19 +707,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
 
       if (errors.length > 0) {
-        // Dispose only pipelines built THIS attempt; carried-over pipelines are
-        // still installed in this.passPipelines and actively rendering, so they
-        // must survive a failed recompile untouched.
-        for (const [name, pipeline] of nextPipelines) {
-          if (pipeline !== this.passPipelines.get(name)) {
-            pipeline.dispose();
-          }
-        }
-        for (const [name, pipeline] of nextComputePipelines) {
-          if (pipeline !== this.computePipelines.get(name)) {
-            pipeline.dispose();
-          }
-        }
         this.logCompileTiming("failed", {
           path,
           generation,
@@ -702,19 +728,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // A newer compileShaderPipeline call (or dispose()) already landed
         // while this attempt was awaiting the compiler/worker. Installing now
         // would clobber the newer, already-live pipelines with stale ones, so
-        // drop this attempt: dispose only the pipelines built THIS attempt
-        // (carried-over ones are — or were — still installed and must survive
-        // untouched).
-        for (const [name, pipeline] of nextPipelines) {
-          if (pipeline !== this.passPipelines.get(name)) {
-            pipeline.dispose();
-          }
-        }
-        for (const [name, pipeline] of nextComputePipelines) {
-          if (pipeline !== this.computePipelines.get(name)) {
-            pipeline.dispose();
-          }
-        }
+        // drop this attempt; its transaction owns only pipelines allocated by
+        // this generation, never reused installed predecessors.
         this.logCompileTiming("superseded", {
           path,
           generation,
@@ -747,13 +762,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       const previousPipelines = this.passPipelines;
       const previousComputePipelines = this.computePipelines;
+      const previousResourceManager = this.resourceManager;
+      const hadInstalledPipeline = previousPipelines.size > 0 || previousComputePipelines.size > 0;
       this.passGraph = graph.passes;
       this.passPipelines = nextPipelines;
       this.passKeys = nextKeys;
       this.computePipelines = nextComputePipelines;
       this.computeKeys = nextComputeKeys;
+      if (candidateResourceManager) {
+        this.resourceManager = candidateResourceManager;
+      }
       this.installPreparedStorage(preparedStorage);
+      this.installPipelineCandidates(pipelineCandidates);
       this.shaderPath = path;
+      this.currentConfig = config;
       for (const [name, pipeline] of previousPipelines) {
         if (nextPipelines.get(name) !== pipeline) {
           pipeline.dispose();
@@ -763,6 +785,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         if (nextComputePipelines.get(name) !== pipeline) {
           pipeline.dispose();
         }
+      }
+      if (sessionChanged) {
+        if (hadInstalledPipeline) {
+          previousResourceManager?.dispose();
+          this.timeManager.cleanup();
+        }
+        this.clearCanvas();
       }
       // Correct any canvas resize that landed mid-compile immediately, rather
       // than leaving passes stale until the next resize/recompile.
@@ -795,6 +824,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
     } finally {
       this.discardPreparedStorage(preparedStorage);
+      this.discardPipelineCandidates(pipelineCandidates);
     }
   }
 
@@ -847,6 +877,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private prepareStorageBuffers(
     storage: StorageBindingNode[],
     generation: number,
+    forceFresh = false,
   ): PreparedStorageBuffers {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while allocating storage buffers");
@@ -862,7 +893,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const key = WebGPURenderingEngine.storageCacheKey(node);
         const existing = this.storageBuffers.get(node.name);
         let buffer: GPUBuffer;
-        if (!this.resetStorageOnNextSync && existing && this.storageKeys.get(node.name) === key) {
+        if (
+          !forceFresh &&
+          !this.resetStorageOnNextSync &&
+          existing &&
+          this.storageKeys.get(node.name) === key
+        ) {
           buffer = existing;
         } else {
           buffer = this.device.createBuffer({
@@ -921,6 +957,68 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  private preparePipelineCandidates(
+    generation: number,
+    resourceManager: ResourceManager<WebGPUTextureHandle> | null,
+  ): PendingPipelineCandidates {
+    const candidates: PendingPipelineCandidates = {
+      generation,
+      render: new Set(),
+      compute: new Set(),
+      resourceManager,
+      installed: false,
+      settled: false,
+    };
+    this.pendingPipelineCandidates.add(candidates);
+    return candidates;
+  }
+
+  private registerPipelineCandidate(
+    candidates: PendingPipelineCandidates,
+    pipeline: SlangPassPipeline | SlangComputePipeline,
+  ): boolean {
+    if (candidates.settled) {
+      pipeline.dispose();
+      return false;
+    }
+    if (pipeline instanceof SlangComputePipeline) {
+      candidates.compute.add(pipeline);
+    } else {
+      candidates.render.add(pipeline);
+    }
+    return true;
+  }
+
+  private installPipelineCandidates(candidates: PendingPipelineCandidates): void {
+    candidates.installed = true;
+    candidates.settled = true;
+    candidates.render.clear();
+    candidates.compute.clear();
+    this.pendingPipelineCandidates.delete(candidates);
+  }
+
+  private discardPipelineCandidates(candidates: PendingPipelineCandidates): void {
+    if (candidates.installed) {
+      return;
+    }
+    if (!candidates.settled) {
+      candidates.settled = true;
+      this.pendingPipelineCandidates.delete(candidates);
+      for (const pipeline of candidates.render) {
+        pipeline.dispose();
+      }
+      for (const pipeline of candidates.compute) {
+        pipeline.dispose();
+      }
+      candidates.render.clear();
+      candidates.compute.clear();
+    }
+    // A resource load that was already awaiting when this transaction was
+    // canceled may finish after the first cleanup. Calling cleanup again from
+    // compile's finally block reclaims anything that completed late.
+    candidates.resourceManager?.dispose();
+  }
+
   private recreateStorageBuffers(): void {
     if (!this.device || this.storageLayouts.size === 0) {
       return;
@@ -949,40 +1047,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
-    // Editing the currently installed shader is atomic: a failed edit keeps
-    // its last good pipelines. A different path represents a shader switch,
-    // so retaining those pipelines would show output from the wrong file.
-    if (this.shaderPath === path) {
-      return result;
-    }
-
-    this.beginShaderSession(path);
     return result;
-  }
-
-  private beginShaderSession(path: string): void {
-    const hadInstalledPipeline = this.passPipelines.size > 0 || this.computePipelines.size > 0;
-    const switchedShaderPath = this.shaderPath !== "" && this.shaderPath !== path;
-    for (const pipeline of this.passPipelines.values()) {
-      pipeline.dispose();
-    }
-    for (const pipeline of this.computePipelines.values()) {
-      pipeline.dispose();
-    }
-    this.passPipelines.clear();
-    this.passKeys.clear();
-    this.computePipelines.clear();
-    this.computeKeys.clear();
-    this.passGraph = [];
-    this.resetStorageOnNextSync = this.resetStorageOnNextSync || (
-      switchedShaderPath && this.storageLayouts.size > 0
-    );
-    if (hadInstalledPipeline) {
-      this.resourceManager?.cleanup();
-      this.timeManager.cleanup();
-    }
-    this.shaderPath = path;
-    this.clearCanvas();
   }
 
   private clearCanvas(): void {
@@ -1483,6 +1548,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
     }
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      this.discardPipelineCandidates(candidates);
+    }
     this.recreateStorageBuffers();
   }
 
@@ -1542,6 +1610,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
     }
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      this.discardPipelineCandidates(candidates);
+    }
     for (const buffer of this.storageBuffers.values()) {
       buffer.destroy();
     }
@@ -1549,7 +1620,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.storageKeys.clear();
     this.storageLayouts.clear();
     this.resetStorageOnNextSync = false;
-    this.resourceManager?.cleanup();
+    this.resourceManager?.dispose();
     this.device?.destroy?.();
     this.device = null;
   }
@@ -1569,7 +1640,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
     return this.compileShaderPipeline(
       this.lastCompile.code,
-      this.currentConfig,
+      this.lastCompile.config,
       this.lastCompile.path,
       this.lastCompile.buffers,
     );
@@ -1706,7 +1777,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     return buildSlangPassGraph({
       imageCode: this.lastCompile.code,
-      config: this.currentConfig,
+      config: this.lastCompile.config,
       buffers: this.lastCompile.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
@@ -1746,7 +1817,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   releaseMediaResetHold(): void {}
   updateAudioLoopRegion(): void {}
   setGlobalVolume(volume: number, muted: boolean): void {
-    this.resourceManager?.setGlobalAudioState(volume, muted);
+    this.globalVolume = Math.max(0, Math.min(1, volume));
+    this.globalMuted = muted;
+    this.resourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
   }
   controlVideo(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {
     this.resourceManager?.controlVideo(path, action);

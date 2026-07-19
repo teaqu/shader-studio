@@ -324,7 +324,7 @@ float4 mainImage(float2 fragCoord) {
   return float4(sharp + glow, 1.0);
 }`;
     (engine as any).canvas = { width: 1340, height: 753 };
-    (engine as any).currentConfig = {
+    const config = {
       passes: {
         BufferA: {},
         BufferB: {},
@@ -336,8 +336,10 @@ float4 mainImage(float2 fragCoord) {
         },
       },
     };
+    (engine as any).currentConfig = config;
     (engine as any).lastCompile = {
       code: imageCode,
+      config,
       path: "/slang-multipass-test/flow.slang",
       buffers: {
         BufferA: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",

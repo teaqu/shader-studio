@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { SlangComputePipeline } from "../../webgpu/SlangComputePipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 
 interface FakeBuffer {
@@ -80,6 +81,8 @@ function harness() {
     }),
     queue: {
       writeBuffer: vi.fn(),
+      writeTexture: vi.fn(),
+      copyExternalImageToTexture: vi.fn(),
       submit: vi.fn(),
     },
   };
@@ -108,6 +111,11 @@ function storageBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
 
 function dispatchBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
   return buffers.filter(({ descriptor }) => descriptor.size === 16);
+}
+
+function uniformBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
+  const usage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
+  return buffers.filter(({ descriptor }) => descriptor.size === 48 && descriptor.usage === usage);
 }
 
 function deferred<T>() {
@@ -324,6 +332,140 @@ describe("WebGPURenderingEngine compute compilation", () => {
         stride: 16,
       }],
     }));
+  });
+
+  it("keeps the installed path live while a different-path compile is pending and after it fails", async () => {
+    const { engine, compiler, buffers, textures } = harness();
+    const config = computeConfig({
+      sampled: true,
+      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/a.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const installedTextures = [...textures];
+    const installedDispatch = dispatchBuffers(buffers)[0];
+    const installedStorage = storageBuffers(buffers)[0];
+    const blocked = deferred<CompileResult>();
+    compiler.compile.mockImplementationOnce(() => blocked.promise);
+
+    const pending = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
+      ComputeSim: "compute B",
+    });
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+      "compute B",
+      expect.objectContaining({ passName: "ComputeSim" }),
+    ));
+
+    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
+    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+    expect(installedDispatch.destroy).not.toHaveBeenCalled();
+    expect(installedStorage.destroy).not.toHaveBeenCalled();
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+
+    blocked.resolve({ success: false, errors: ["broken B"] });
+    const result = await pending;
+
+    expect(result).toMatchObject({ success: false, errors: ["ComputeSim: broken B"] });
+    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
+    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+    expect(installedDispatch.destroy).not.toHaveBeenCalled();
+    expect(installedStorage.destroy).not.toHaveBeenCalled();
+    expect(storageBuffers(buffers)[1].destroy).toHaveBeenCalledTimes(1);
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+  });
+
+  it("keeps the installed path live when a pending path switch is superseded by a failure", async () => {
+    const { engine, compiler, buffers, textures } = harness();
+    const config = computeConfig({
+      sampled: true,
+      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/a.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const installedTextures = [...textures];
+    const installedDispatch = dispatchBuffers(buffers)[0];
+    const installedStorage = storageBuffers(buffers)[0];
+    const blocked = deferred<CompileResult>();
+    compiler.compile.mockImplementationOnce(() => blocked.promise);
+
+    const pendingB = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
+      ComputeSim: "compute B",
+    });
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+      "compute B",
+      expect.objectContaining({ passName: "ComputeSim" }),
+    ));
+    const failedC = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      { version: "1" } as ShaderConfig,
+      "/c.slang",
+    );
+    blocked.resolve({ success: true, wgsl: "// stale B" });
+    const staleB = await pendingB;
+
+    expect(failedC?.success).toBe(false);
+    expect(staleB).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
+    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+    expect(installedDispatch.destroy).not.toHaveBeenCalled();
+    expect(installedStorage.destroy).not.toHaveBeenCalled();
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+  });
+
+  it("commits a successful path switch with fresh pipelines, storage, and session state", async () => {
+    const { engine, compiler, device, buffers, textures } = harness();
+    const config = computeConfig({
+      sampled: true,
+      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+    });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/a.slang", {
+      ComputeSim: COMPUTE_SOURCE,
+    });
+    const installedTextures = [...textures];
+    const installedDispatch = dispatchBuffers(buffers)[0];
+    const installedStorage = storageBuffers(buffers)[0];
+    const cleanupResources = vi.fn();
+    (engine as unknown as { resourceManager: { cleanup: typeof cleanupResources; dispose: typeof cleanupResources } })
+      .resourceManager = { cleanup: cleanupResources, dispose: cleanupResources };
+    const cleanupTime = vi.spyOn(engine.getTimeManager(), "cleanup");
+    const blocked = deferred<CompileResult>();
+    compiler.compile.mockImplementationOnce(() => blocked.promise);
+
+    const pending = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
+      ComputeSim: "compute B",
+    });
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+      "compute B",
+      expect.objectContaining({ passName: "ComputeSim" }),
+    ));
+    const stagedStorage = storageBuffers(buffers)[1];
+    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
+    expect(installedDispatch.destroy).not.toHaveBeenCalled();
+    expect(installedStorage.destroy).not.toHaveBeenCalled();
+    expect(stagedStorage).not.toBe(installedStorage);
+    expect(cleanupResources).not.toHaveBeenCalled();
+    expect(cleanupTime).not.toHaveBeenCalled();
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
+
+    blocked.resolve({ success: true, wgsl: "// compute B" });
+    const result = await pending;
+
+    expect(result?.success).toBe(true);
+    expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
+    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(installedDispatch.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorage.destroy).toHaveBeenCalledTimes(1);
+    expect(stagedStorage.destroy).not.toHaveBeenCalled();
+    expect(cleanupResources).toHaveBeenCalledTimes(1);
+    expect(cleanupTime).toHaveBeenCalledTimes(1);
+    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/b.slang");
   });
 
   it("preserves installed compute and storage state across compiler and WGSL failures", async () => {
@@ -571,6 +713,67 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(winnerStorage.destroy).not.toHaveBeenCalled();
   });
 
+  it("never disposes a reused predecessor from a stale generation after its replacement installs", async () => {
+    const { engine, compiler } = harness();
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeStable: { path: "stable.slang" },
+        ComputeBlocked: { path: "blocked.slang" },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeStable" } } },
+      },
+    };
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeStable: "stable baseline",
+      ComputeBlocked: "blocked baseline",
+    });
+    const installed = (engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines;
+    const predecessor = installed.get("ComputeStable")!;
+    const predecessorDispose = vi.spyOn(predecessor, "dispose");
+    const blockedA = deferred<CompileResult>();
+    compiler.compile.mockImplementation((source: string, options: { passName?: string }) => {
+      if (source === "blocked A") {
+        return blockedA.promise;
+      }
+      return Promise.resolve({ success: true, wgsl: `// ${options.passName ?? "pass"}` });
+    });
+
+    const pendingA = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeStable: "stable baseline",
+      ComputeBlocked: "blocked A",
+    });
+    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+      "blocked A",
+      expect.objectContaining({ passName: "ComputeBlocked" }),
+    ));
+    const resultB = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeStable: "stable B",
+      ComputeBlocked: "blocked B",
+    });
+    const winner = (engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeStable")!;
+    const winnerDispose = vi.spyOn(winner, "dispose");
+
+    expect(resultB?.success).toBe(true);
+    expect(winner).not.toBe(predecessor);
+    expect(predecessorDispose).toHaveBeenCalledTimes(1);
+    expect(winnerDispose).not.toHaveBeenCalled();
+
+    blockedA.resolve({ success: true, wgsl: "// blocked A" });
+    const staleA = await pendingA;
+
+    expect(staleA).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(predecessorDispose).toHaveBeenCalledTimes(1);
+    expect(winnerDispose).not.toHaveBeenCalled();
+  });
+
   it("discards a pending compute candidate and staged storage when resetTime supersedes it", async () => {
     const { engine, compiler, buffers, textures } = harness();
     const blocked = deferred<CompileResult>();
@@ -599,12 +802,180 @@ describe("WebGPURenderingEngine compute compilation", () => {
       superseded: true,
     });
     expect(engine.getPasses()).toEqual([]);
-    expect(textures).toHaveLength(2);
-    expect(textures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(textures).toEqual([]);
     expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it("disposes a compute candidate and staged storage when the engine is disposed mid-rebuild", async () => {
+  it("immediately disposes an allocated compute candidate when resetTime supersedes diagnostics", async () => {
+    const { engine, device, buffers, textures } = harness();
+    const diagnostics = deferred<{ messages: [] }>();
+    device.createShaderModule.mockImplementationOnce(() => ({
+      getCompilationInfo: vi.fn(() => diagnostics.promise),
+    }));
+
+    const pending = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+      }),
+      "/shader.slang",
+      { ComputeSim: "pending diagnostics" },
+    );
+    await vi.waitFor(() => expect(textures).toHaveLength(2));
+    const candidateTextures = [...textures];
+    const candidateDispatch = dispatchBuffers(buffers)[0];
+    const stagedStorage = storageBuffers(buffers)[0];
+
+    engine.resetTime();
+
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+    expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
+
+    diagnostics.resolve({ messages: [] });
+    const result = await pending;
+    expect(result).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("immediately disposes an allocated compute candidate when the engine is disposed", async () => {
+    const { engine, device, buffers, textures } = harness();
+    const diagnostics = deferred<{ messages: [] }>();
+    device.createShaderModule.mockImplementationOnce(() => ({
+      getCompilationInfo: vi.fn(() => diagnostics.promise),
+    }));
+
+    const pending = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
+      }),
+      "/shader.slang",
+      { ComputeSim: "pending diagnostics" },
+    );
+    await vi.waitFor(() => expect(textures).toHaveLength(2));
+    const candidateTextures = [...textures];
+    const candidateDispatch = dispatchBuffers(buffers)[0];
+    const stagedStorage = storageBuffers(buffers)[0];
+
+    engine.dispose();
+
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+    expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
+
+    diagnostics.resolve({ messages: [] });
+    const result = await pending;
+    expect(result).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("immediately disposes an allocated compute candidate when a newer generation starts", async () => {
+    const { engine, device, buffers, textures } = harness();
+    const diagnostics = deferred<{ messages: [] }>();
+    device.createShaderModule.mockImplementationOnce(() => ({
+      getCompilationInfo: vi.fn(() => diagnostics.promise),
+    }));
+
+    const pendingA = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true }),
+      "/shader.slang",
+      { ComputeSim: "pending diagnostics A" },
+    );
+    await vi.waitFor(() => expect(textures).toHaveLength(2));
+    const candidateTextures = [...textures];
+    const candidateDispatch = dispatchBuffers(buffers)[0];
+
+    const failedB = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      { version: "1" } as ShaderConfig,
+      "/shader.slang",
+    );
+
+    expect(failedB?.success).toBe(false);
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+
+    diagnostics.resolve({ messages: [] });
+    const staleA = await pendingA;
+    expect(staleA).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(candidateTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(candidateDispatch.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a disposed render candidate resurrect after async pipeline creation", async () => {
+    const { engine, device, buffers } = harness();
+    const pendingPipeline = deferred<GPURenderPipeline>();
+    const createRenderPipelineAsync = vi.fn(() => pendingPipeline.promise);
+    (device as unknown as { createRenderPipelineAsync: typeof createRenderPipelineAsync })
+      .createRenderPipelineAsync = createRenderPipelineAsync;
+
+    const pending = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      { version: "1", passes: { Image: { inputs: {} } } },
+      "/shader.slang",
+    );
+    await vi.waitFor(() => expect(createRenderPipelineAsync).toHaveBeenCalledTimes(1));
+
+    engine.resetTime();
+    pendingPipeline.resolve({ label: "late render pipeline" } as unknown as GPURenderPipeline);
+    const result = await pending;
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(uniformBuffers(buffers)).toEqual([]);
+  });
+
+  it("immediately disposes an allocated render candidate while diagnostics are pending", async () => {
+    const { engine, device, buffers } = harness();
+    const diagnostics = deferred<{ messages: [] }>();
+    device.createShaderModule.mockImplementationOnce(() => ({
+      getCompilationInfo: vi.fn(() => diagnostics.promise),
+    }));
+
+    const pending = engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      { version: "1", passes: { Image: { inputs: {} } } },
+      "/shader.slang",
+    );
+    await vi.waitFor(() => expect(uniformBuffers(buffers)).toHaveLength(1));
+    const candidateUniform = uniformBuffers(buffers)[0];
+
+    engine.resetTime();
+
+    expect(candidateUniform.destroy).toHaveBeenCalledTimes(1);
+    diagnostics.resolve({ messages: [] });
+    const result = await pending;
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Superseded by a newer compile"],
+      superseded: true,
+    });
+    expect(candidateUniform.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes staged storage without resurrecting compute resources when disposed mid-rebuild", async () => {
     const { engine, device, compiler, buffers, textures } = harness();
     const blockedPipeline = deferred<GPUComputePipeline>();
     const createComputePipelineAsync = vi.fn(() => blockedPipeline.promise);
@@ -634,9 +1005,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       errors: ["Superseded by a newer compile"],
       superseded: true,
     });
-    expect(textures).toHaveLength(2);
-    expect(textures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
-    expect(dispatchBuffers(buffers)[0].destroy).toHaveBeenCalledTimes(1);
+    expect(textures).toEqual([]);
+    expect(dispatchBuffers(buffers)).toEqual([]);
     expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
   });
 });
