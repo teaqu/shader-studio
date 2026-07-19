@@ -37,6 +37,25 @@ async function tick(): Promise<void> {
 }
 
 describe("WorkerClient", () => {
+  it("does not reset the recovery budget when crashing repeatedly before init", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    }, { maxConsecutiveRestarts: 1 });
+
+    workers[0].crash("pre-init crash");
+    await tick();
+    expect(workers).toHaveLength(2);
+    expect(workers[1].sent).toHaveLength(0);
+    workers[1].crash("pre-init recovery crash");
+    await tick();
+
+    expect(workers).toHaveLength(2);
+    await expect(client.ready()).rejects.toThrow("pre-init recovery crash");
+  });
+
   it("stops after one consecutive recovery attempt and rejects terminal work", async () => {
     const workers: FakeWorker[] = [];
     const client = new WorkerClient(() => {

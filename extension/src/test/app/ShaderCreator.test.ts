@@ -263,4 +263,16 @@ suite('ShaderCreator Test Suite', () => {
     assert.ok(fs.readFileSync(floatPath, 'utf8').startsWith('#language slang 2026\nmodule _float;'));
   });
 
+  test('prefixes less-common Slang declaration keywords in module names', async () => {
+    const filePath = path.join(testDir, 'each.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.ok(fs.readFileSync(filePath, 'utf8').startsWith('#language slang 2026\nmodule _each;'));
+  });
+
 });

@@ -189,9 +189,14 @@ class SlangFeatureSession implements vscode.Disposable {
       }
       try {
         await this.client.ready();
-        if (!this.disposed) {
-          await this.openInitialDocuments();
+        if (this.disposed) {
+          return;
         }
+        await this.client.init(languageServiceSnapshot(this.snapshot));
+        if (this.disposed) {
+          return;
+        }
+        await this.openInitialDocuments();
       } catch (recoveryError) {
         if (!this.disposed) {
           this.initializationError = recoveryError instanceof Error

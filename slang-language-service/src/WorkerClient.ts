@@ -388,20 +388,24 @@ export class WorkerClient {
     }
     this.consecutiveRestarts += 1;
     this.worker = this.startWorker();
-    this.recovery = this.replayState().then(() => {
-      this.consecutiveRestarts = 0;
+    this.recovery = this.replayState().then((initialized) => {
+      if (initialized) {
+        this.consecutiveRestarts = 0;
+      }
     });
     void this.recovery.catch(() => undefined);
   }
 
-  private async replayState(): Promise<void> {
-    if (this.latestSnapshot) {
-      await this.sendMutation({ method: "init", snapshot: this.latestSnapshot });
+  private async replayState(): Promise<boolean> {
+    if (!this.latestSnapshot) {
+      return false;
     }
+    await this.sendMutation({ method: "init", snapshot: this.latestSnapshot });
     for (const document of this.openDocuments.values()) {
       await this.sendMutation({ method: "openDocument", document });
       this.acknowledgedDocuments.set(document.uri, document);
     }
+    return true;
   }
 
   private rejectPending(error: Error): void {

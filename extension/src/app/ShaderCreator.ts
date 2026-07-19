@@ -6,11 +6,23 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { NEW_SLANG_FILE_LANGUAGE_VERSION } from "@shader-studio/slang-language-service";
 
 const SLANG_RESERVED_MODULE_NAMES = new Set([
+  // Keep this list aligned with the keywords, modifiers, and built-in type names in the Slang grammar.
   "associatedtype", "break", "case", "class", "const", "continue", "default", "discard", "do", "else",
-  "bool", "double", "enum", "extension", "extern", "false", "float", "for", "func", "generic", "half",
+  "each", "enum", "expand", "extension", "extern", "false", "for", "func", "generic",
   "if", "implementing", "import", "in", "inline", "inout", "int", "interface", "internal", "let", "module", "namespace", "none",
-  "null", "operator", "out", "private", "property", "public", "ref", "return", "static", "struct",
-  "switch", "this", "true", "typedef", "typealias", "uint", "uniform", "using", "var", "void", "where", "while",
+  "null", "operator", "out", "private", "property", "public", "ref", "return", "static", "struct", "switch",
+  "this", "This", "true", "typedef", "typealias", "uniform", "using", "var", "where", "while",
+  "centroid", "differentiable", "globallycoherent", "groupshared", "mutating", "no_diff", "nointerpolation",
+  "nonmutating", "precise", "sample", "linear", "volatile",
+  "bool", "double", "float", "half", "int", "uint", "void",
+  "bool2", "bool3", "bool4", "double2", "double3", "double4", "float2", "float3", "float4",
+  "half2", "half3", "half4", "int2", "int3", "int4", "uint2", "uint3", "uint4",
+  "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+  "vector", "matrix", "Buffer", "ByteAddressBuffer", "ConstantBuffer", "ParameterBlock",
+  "RaytracingAccelerationStructure", "RWBuffer", "RWByteAddressBuffer", "RWStructuredBuffer",
+  "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray", "RWTexture3D",
+  "SamplerComparisonState", "SamplerState", "StructuredBuffer", "Texture1D", "Texture1DArray",
+  "Texture2D", "Texture2DArray", "Texture3D", "TextureCube", "TextureCubeArray",
 ]);
 
 export class ShaderCreator {
