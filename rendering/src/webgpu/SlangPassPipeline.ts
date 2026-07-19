@@ -14,6 +14,9 @@ export interface SlangChannelResource {
   textureView: GPUTextureView;
   /** Channel-specific sampler (texture/keyboard inputs); shared linear when absent (buffer inputs). */
   sampler?: GPUSampler;
+  /** Current source texture dimensions, used by dynamic cover-channel compute dispatch. */
+  width?: number;
+  height?: number;
 }
 
 // Buffer (texture-output) passes render to float textures so feedback state
@@ -171,6 +174,10 @@ export class SlangPassPipeline {
 
   getUniformBuffer(): GPUBuffer | null {
     return this.uniformBuffer;
+  }
+
+  getOutputSize(): { width: number; height: number } {
+    return { width: this.descriptor.width, height: this.descriptor.height };
   }
 
   getCurrentOutputView(): GPUTextureView | null {

@@ -235,6 +235,7 @@ describe("SlangComputePipeline", () => {
     }));
 
     await compute.rebuild("// wgsl");
+    expect(compute.getOutputSize()).toEqual({ width: 320, height: 180 });
 
     expect(device.createBuffer).toHaveBeenCalledTimes(4);
     const dispatchBuffers = device.createBuffer.mock.results.slice(1).map((result) => result.value);
@@ -528,6 +529,7 @@ describe("SlangComputePipeline", () => {
     expect(device.createTexture).toHaveBeenCalledTimes(2);
 
     compute.resize(640, 360);
+    expect(compute.getOutputSize()).toEqual({ width: 640, height: 360 });
     expect(compute.getBindGroup(0)).toBeNull();
     for (const texture of originalTextures) {
       expect(texture.destroy).toHaveBeenCalledTimes(1);

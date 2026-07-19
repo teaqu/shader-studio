@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ShaderConfig, StorageBufferConfig } from "@shader-studio/types";
+import type {
+  BufferResolution,
+  ComputeDispatch,
+  ConfigInput,
+  ShaderConfig,
+  StorageBufferConfig,
+} from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangComputePipeline } from "../../webgpu/SlangComputePipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
@@ -27,7 +33,11 @@ function computeConfig(options: {
   sampled?: boolean;
   outputLayers?: number;
   workgroupSize?: [number, number, number];
+  dispatch?: ComputeDispatch;
   dispatchCount?: number;
+  dispatchOnce?: boolean;
+  resolution?: BufferResolution;
+  inputs?: Record<string, ConfigInput>;
   storage?: Record<string, StorageBufferConfig>;
   additionalPasses?: ShaderConfig["passes"];
 } = {}): ShaderConfig {
@@ -40,7 +50,11 @@ function computeConfig(options: {
         path: "compute.slang",
         outputLayers,
         workgroupSize: options.workgroupSize,
+        dispatch: options.dispatch,
         dispatchCount: options.dispatchCount,
+        dispatchOnce: options.dispatchOnce,
+        resolution: options.resolution,
+        inputs: options.inputs,
       },
       ...options.additionalPasses,
       Image: {
@@ -55,13 +69,16 @@ function computeConfig(options: {
 function harness() {
   const buffers: FakeBuffer[] = [];
   const textures: FakeTexture[] = [];
+  const commandEvents: Array<{ type: string; value?: unknown }> = [];
+  let bindGroupId = 0;
+  let computePipelineId = 0;
   const device = {
     limits: {},
     createShaderModule: vi.fn(() => ({
       getCompilationInfo: vi.fn(async () => ({ messages: [] })),
     })),
     createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
-    createComputePipeline: vi.fn(() => ({ label: "compute-pipeline" })),
+    createComputePipeline: vi.fn(() => ({ label: `compute-pipeline-${computePipelineId++}` })),
     createBindGroupLayout: vi.fn(() => ({})),
     createPipelineLayout: vi.fn(() => ({})),
     createBuffer: vi.fn((descriptor: GPUBufferDescriptor) => {
@@ -70,21 +87,65 @@ function harness() {
       return buffer;
     }),
     createSampler: vi.fn(() => ({})),
-    createBindGroup: vi.fn(() => ({})),
+    createBindGroup: vi.fn((descriptor: GPUBindGroupDescriptor) => ({
+      id: bindGroupId++,
+      descriptor,
+    })),
     createTexture: vi.fn((descriptor: GPUTextureDescriptor) => {
+      const textureId = textures.length;
       const texture = {
         descriptor,
-        createView: vi.fn(() => ({})),
+        createView: vi.fn((viewDescriptor?: GPUTextureViewDescriptor) => ({
+          textureId,
+          descriptor: viewDescriptor,
+        })),
         destroy: vi.fn(),
       };
       textures.push(texture);
       return texture;
     }),
+    createCommandEncoder: vi.fn(() => ({
+      beginComputePass: vi.fn(() => {
+        commandEvents.push({ type: "beginComputePass" });
+        return {
+          setPipeline: vi.fn((pipeline: GPUComputePipeline) => {
+            commandEvents.push({ type: "compute.setPipeline", value: pipeline });
+          }),
+          setBindGroup: vi.fn((_index: number, bindGroup: GPUBindGroup) => {
+            commandEvents.push({ type: "compute.setBindGroup", value: bindGroup });
+          }),
+          dispatchWorkgroups: vi.fn((x: number, y: number, z: number) => {
+            commandEvents.push({ type: "dispatchWorkgroups", value: [x, y, z] });
+          }),
+          end: vi.fn(() => commandEvents.push({ type: "endComputePass" })),
+        };
+      }),
+      beginRenderPass: vi.fn(() => {
+        commandEvents.push({ type: "beginRenderPass" });
+        return {
+          setPipeline: vi.fn((pipeline: GPURenderPipeline) => {
+            commandEvents.push({ type: "render.setPipeline", value: pipeline });
+          }),
+          setBindGroup: vi.fn((_index: number, bindGroup: GPUBindGroup) => {
+            commandEvents.push({ type: "render.setBindGroup", value: bindGroup });
+          }),
+          draw: vi.fn(() => commandEvents.push({ type: "draw" })),
+          end: vi.fn(() => commandEvents.push({ type: "endRenderPass" })),
+        };
+      }),
+      finish: vi.fn(() => {
+        const commandBuffer = { label: "frame-command-buffer" };
+        commandEvents.push({ type: "finish", value: commandBuffer });
+        return commandBuffer;
+      }),
+    })),
     queue: {
       writeBuffer: vi.fn(),
       writeTexture: vi.fn(),
       copyExternalImageToTexture: vi.fn(),
-      submit: vi.fn(),
+      submit: vi.fn((buffers: GPUCommandBuffer[]) => {
+        commandEvents.push({ type: "submit", value: buffers });
+      }),
     },
   };
   const compiler = {
@@ -102,7 +163,19 @@ function harness() {
   (engine as unknown as { device: GPUDevice }).device = device as unknown as GPUDevice;
   (engine as unknown as { compiler: typeof compiler }).compiler = compiler;
   (engine as unknown as { format: GPUTextureFormat }).format = "bgra8unorm";
-  return { engine, device, compiler, buffers, textures };
+  return { engine, device, compiler, buffers, textures, commandEvents };
+}
+
+function enableRendering(testHarness: ReturnType<typeof harness>): void {
+  (testHarness.engine as unknown as { context: GPUCanvasContext }).context = {
+    getCurrentTexture: vi.fn(() => ({
+      createView: vi.fn(() => ({ label: "canvas-view" })),
+    })),
+  } as unknown as GPUCanvasContext;
+  testHarness.commandEvents.length = 0;
+  testHarness.device.createCommandEncoder.mockClear();
+  testHarness.device.queue.writeBuffer.mockClear();
+  testHarness.device.queue.submit.mockClear();
 }
 
 function storageBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
@@ -219,6 +292,647 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(textures).toEqual([]);
     const computeLayout = device.createBindGroupLayout.mock.calls[0][0];
     expect(computeLayout.entries.some((entry: GPUBindGroupLayoutEntry) => entry.storageTexture)).toBe(false);
+  });
+
+  it("encodes texel compute work before rendering in one command submission", async () => {
+    const testHarness = harness();
+    const { engine, device, commandEvents } = testHarness;
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, resolution: { width: 100, height: 50 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    engine.render(1000);
+
+    expect(commandEvents.filter(({ type }) =>
+      type === "beginComputePass" || type === "dispatchWorkgroups" ||
+      type === "beginRenderPass" || type === "draw")).toEqual([
+      { type: "beginComputePass" },
+      { type: "dispatchWorkgroups", value: [13, 7, 1] },
+      { type: "beginRenderPass" },
+      { type: "draw" },
+    ]);
+    expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
+    expect(device.queue.submit).toHaveBeenCalledTimes(1);
+    expect(device.queue.submit).toHaveBeenCalledWith([{ label: "frame-command-buffer" }]);
+  });
+
+  it.each([
+    {
+      label: "rounds a one-dimensional count up by the x workgroup size",
+      dispatch: { count: 100 } as ComputeDispatch,
+      workgroupSize: [64, 1, 1] as [number, number, number],
+      expected: [2, 1, 1],
+    },
+    {
+      label: "uses explicit workgroup dimensions literally despite a workgroup-size override",
+      dispatch: { x: 2, y: 3, z: 4 } as ComputeDispatch,
+      workgroupSize: [7, 5, 3] as [number, number, number],
+      expected: [2, 3, 4],
+    },
+  ])("$label", async ({ dispatch, workgroupSize, expected }) => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatch, workgroupSize }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([{ type: "dispatchWorkgroups", value: expected }]);
+  });
+
+  it("covers an installed storage buffer using its element count", async () => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        dispatch: { cover: "particles" },
+        workgroupSize: [64, 1, 1],
+        storage: { particles: { count: 100, stride: 4, elementType: "float" } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([{ type: "dispatchWorkgroups", value: [2, 1, 1] }]);
+  });
+
+  it.each(["texture", "video"] as const)(
+    "re-resolves cover-channel %s dimensions from the live texture handle every frame",
+    async (kind) => {
+      const testHarness = harness();
+      const path = kind === "texture" ? "/source.png" : "/source.mp4";
+      const result = await testHarness.engine.compileShaderPipeline(
+        IMAGE_SOURCE,
+        computeConfig({
+          dispatch: { cover: "iChannel0" },
+          inputs: { iChannel0: { type: kind, path } },
+        }),
+        "/shader.slang",
+        { ComputeSim: COMPUTE_SOURCE },
+      );
+      expect(result?.success).toBe(true);
+      const handle = {
+        view: { label: `${kind}-view` },
+        sampler: { label: `${kind}-sampler` },
+        width: 77,
+        height: 45,
+      };
+      const resourceManager = {
+        getImageTextureCache: vi.fn(() => kind === "texture" ? { [path]: handle } : {}),
+        getVideoTexture: vi.fn(() => kind === "video" ? handle : null),
+        getDefaultTexture: vi.fn(() => null),
+      };
+      (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
+        .resourceManager = resourceManager;
+      enableRendering(testHarness);
+
+      testHarness.engine.render(1000);
+      handle.width = 129;
+      handle.height = 65;
+      testHarness.engine.render(1016);
+      handle.width = -9;
+      testHarness.engine.render(1032);
+
+      expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+        .toEqual([
+          { type: "dispatchWorkgroups", value: [10, 6, 1] },
+          { type: "dispatchWorkgroups", value: [17, 9, 1] },
+        ]);
+    },
+  );
+
+  it("samples the current compute layer in Image and swaps it to previous only after submit", async () => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        outputLayers: 2,
+        inputs: {
+          iChannel0: { type: "buffer", source: "ComputeSim", layer: 1 },
+        },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    const computePipeline = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const swap = vi.spyOn(computePipeline, "swap");
+    enableRendering(testHarness);
+    testHarness.device.createBindGroup.mockClear();
+
+    testHarness.engine.render(1000);
+    const firstComputeEntries = testHarness.device.createBindGroup.mock.calls[0][0].entries;
+    const firstImageEntries = testHarness.device.createBindGroup.mock.calls[1][0].entries;
+
+    expect(firstComputeEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: {
+          textureId: 1,
+          descriptor: { dimension: "2d", baseArrayLayer: 1, arrayLayerCount: 1 },
+        },
+      }),
+      expect.objectContaining({
+        binding: 3,
+        resource: {
+          textureId: 0,
+          descriptor: { dimension: "2d-array", baseArrayLayer: 0, arrayLayerCount: 2 },
+        },
+      }),
+    ]));
+    expect(firstImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: {
+          textureId: 0,
+          descriptor: { dimension: "2d", baseArrayLayer: 0, arrayLayerCount: 1 },
+        },
+      }),
+    ]));
+    expect(swap).toHaveBeenCalledTimes(1);
+    expect(testHarness.device.queue.submit.mock.invocationCallOrder[0])
+      .toBeLessThan(swap.mock.invocationCallOrder[0]);
+
+    testHarness.engine.render(1016);
+    const secondComputeEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
+    const secondImageEntries = testHarness.device.createBindGroup.mock.calls[3][0].entries;
+    expect(secondComputeEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: 1, resource: expect.objectContaining({ textureId: 0 }) }),
+      expect.objectContaining({ binding: 3, resource: expect.objectContaining({ textureId: 1 }) }),
+    ]));
+    expect(secondImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: 1, resource: expect.objectContaining({ textureId: 1 }) }),
+    ]));
+  });
+
+  it("runs dispatchOnce only after resetTime re-arms it", async () => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatchOnce: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+
+    testHarness.engine.resetTime();
+    testHarness.engine.render(2000);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
+  });
+
+  it("uses one compute scope and a distinct bind group for every subdispatch", async () => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatchCount: 3 }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    const computeEvents = testHarness.commandEvents.filter(({ type }) =>
+      type === "beginComputePass" || type === "compute.setBindGroup" ||
+      type === "dispatchWorkgroups" || type === "endComputePass");
+    expect(computeEvents.map(({ type }) => type)).toEqual([
+      "beginComputePass",
+      "compute.setBindGroup", "dispatchWorkgroups",
+      "compute.setBindGroup", "dispatchWorkgroups",
+      "compute.setBindGroup", "dispatchWorkgroups",
+      "endComputePass",
+    ]);
+    const bindGroups = computeEvents
+      .filter(({ type }) => type === "compute.setBindGroup")
+      .map(({ value }) => value);
+    expect(new Set(bindGroups)).toHaveLength(3);
+    const dispatchResources = bindGroups.map((bindGroup) => {
+      const descriptor = (bindGroup as { descriptor: GPUBindGroupDescriptor }).descriptor;
+      return descriptor.entries.at(-1)?.resource;
+    });
+    expect(new Set(dispatchResources)).toHaveLength(3);
+  });
+
+  it("re-arms dispatchOnce only when a compile successfully publishes", async () => {
+    const testHarness = harness();
+    const config = computeConfig({ dispatchOnce: true });
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.render(1000);
+
+    testHarness.compiler.compile.mockImplementationOnce(async () => ({
+      success: false,
+      errors: ["expected failure"],
+    }));
+    const failed = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: `${COMPUTE_SOURCE} // broken` },
+    );
+    expect(failed?.success).toBe(false);
+    testHarness.engine.render(1016);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+
+    const successful = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(successful?.success).toBe(true);
+    testHarness.engine.render(1032);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(2);
+  });
+
+  it("does not re-arm dispatchOnce when a pending compile is superseded", async () => {
+    const testHarness = harness();
+    const config = computeConfig({ dispatchOnce: true });
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.render(1000);
+    const blocked = deferred<CompileResult>();
+    testHarness.compiler.compile.mockImplementationOnce(() => blocked.promise);
+
+    const pending = testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: `${COMPUTE_SOURCE} // pending` },
+    );
+    await vi.waitFor(() => expect(testHarness.compiler.compile).toHaveBeenCalledWith(
+      `${COMPUTE_SOURCE} // pending`,
+      expect.objectContaining({ passName: "ComputeSim" }),
+    ));
+    const supersedingFailure = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      { version: "1" } as ShaderConfig,
+      "/shader.slang",
+    );
+    expect(supersedingFailure?.success).toBe(false);
+    blocked.resolve({ success: true, wgsl: "// stale compute" });
+    await expect(pending).resolves.toMatchObject({ success: false, superseded: true });
+
+    testHarness.engine.render(1016);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+  });
+
+  it("does not consume dispatchOnce when a required channel is unavailable", async () => {
+    const testHarness = harness();
+    const path = "/late.png";
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        dispatchOnce: true,
+        dispatch: { cover: "iChannel0" },
+        inputs: { iChannel0: { type: "texture", path } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(result?.success).toBe(true);
+    const handle = {
+      view: { label: "late-view" },
+      sampler: { label: "late-sampler" },
+      width: 32,
+      height: 16,
+    };
+    const resourceManager = {
+      getImageTextureCache: vi.fn(() => ({} as Record<string, typeof handle>)),
+      getDefaultTexture: vi.fn(() => null),
+    };
+    (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
+      .resourceManager = resourceManager;
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    expect(testHarness.commandEvents.some(({ type }) => type === "beginComputePass")).toBe(false);
+    expect(testHarness.commandEvents.some(({ type }) => type === "beginRenderPass")).toBe(true);
+
+    resourceManager.getImageTextureCache.mockReturnValue({ [path]: handle });
+    testHarness.engine.render(1016);
+    testHarness.engine.render(1032);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+  });
+
+  it("runs compute on frame zero but skips it and its swap after pausing", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const computePipeline = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const swap = vi.spyOn(computePipeline, "swap");
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.togglePause();
+    testHarness.engine.render(1016);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+    expect(swap).toHaveBeenCalledTimes(1);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "beginRenderPass"))
+      .toHaveLength(2);
+  });
+
+  it("runs compute once when the engine is initially paused at frame zero", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.engine.togglePause();
+
+    testHarness.engine.render(1000);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+  });
+
+  it.each([
+    ["render", {
+      version: "1",
+      passes: {
+        ComputeSim: {
+          path: "compute.slang",
+          inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+          dispatch: { cover: "iChannel0" },
+        },
+        BufferA: { path: "buffer.slang", resolution: { width: 65, height: 33 } },
+        Image: { inputs: {} },
+      },
+    } satisfies ShaderConfig, { ComputeSim: COMPUTE_SOURCE, BufferA: "buffer source" }],
+    ["compute", {
+      version: "1",
+      passes: {
+        ComputeProducer: { path: "producer.slang", resolution: { width: 65, height: 33 } },
+        ComputeSim: {
+          path: "compute.slang",
+          inputs: { iChannel0: { type: "buffer", source: "ComputeProducer" } },
+          dispatch: { cover: "iChannel0" },
+        },
+        Image: { inputs: {} },
+      },
+    } satisfies ShaderConfig, {
+      ComputeProducer: "producer source",
+      ComputeSim: COMPUTE_SOURCE,
+    }],
+  ] as const)("covers the actual dimensions of a %s buffer source", async (
+    _sourceKind,
+    config,
+    shaderBuffers,
+  ) => {
+    const testHarness = harness();
+    const result = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      shaderBuffers,
+    );
+    expect(result?.success).toBe(true);
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    const dispatches = testHarness.commandEvents
+      .filter(({ type }) => type === "dispatchWorkgroups")
+      .map(({ value }) => value);
+    expect(dispatches.at(-1)).toEqual([9, 5, 1]);
+  });
+
+  it("uploads compute uniforms at the pass resolution", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ resolution: { width: 123, height: 47 } }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    const payload = testHarness.device.queue.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(Array.from(new Float32Array(payload, 0, 2))).toEqual([123, 47]);
+  });
+
+  it("resizes compute output and uses the new texel dispatch without recompiling", async () => {
+    const testHarness = harness();
+    const config = computeConfig({ sampled: true, resolution: { scale: 0.5 } });
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const originalTextures = [...testHarness.textures];
+    const compileCount = testHarness.compiler.compile.mock.calls.length;
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.handleCanvasResize(640, 360);
+    testHarness.engine.render(1016);
+
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toEqual([
+        { type: "dispatchWorkgroups", value: [20, 12, 1] },
+        { type: "dispatchWorkgroups", value: [40, 23, 1] },
+      ]);
+    expect(originalTextures.every(({ destroy }) => destroy.mock.calls.length === 1)).toBe(true);
+    expect(testHarness.compiler.compile).toHaveBeenCalledTimes(compileCount);
+  });
+
+  it("encodes multiple compute nodes in graph order before buffer and Image draws", async () => {
+    const testHarness = harness();
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeFirst: { path: "first.slang" },
+        ComputeSecond: { path: "second.slang" },
+        BufferA: { path: "buffer.slang" },
+        Image: { inputs: {} },
+      },
+    };
+    await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeFirst: "first compute",
+      ComputeSecond: "second compute",
+      BufferA: "buffer render",
+    });
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    expect(testHarness.commandEvents.filter(({ type }) =>
+      type === "compute.setPipeline" || type === "beginRenderPass" || type === "draw"))
+      .toEqual([
+        { type: "compute.setPipeline", value: { label: "compute-pipeline-0" } },
+        { type: "compute.setPipeline", value: { label: "compute-pipeline-1" } },
+        { type: "beginRenderPass" },
+        { type: "draw" },
+        { type: "beginRenderPass" },
+        { type: "draw" },
+      ]);
+  });
+
+  it.each([
+    ["pipeline", "getPipeline"],
+    ["uniform buffer", "getUniformBuffer"],
+    ["bind group", "getBindGroup"],
+  ] as const)("skips compute safely when its %s is unavailable", async (_label, method) => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const computePipeline = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    vi.spyOn(computePipeline, method).mockReturnValue(null);
+    const swap = vi.spyOn(computePipeline, "swap");
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+
+    expect(testHarness.commandEvents.some(({ type }) => type === "beginComputePass")).toBe(false);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "beginRenderPass"))
+      .toHaveLength(1);
+    expect(testHarness.device.queue.submit).toHaveBeenCalledTimes(1);
+    expect(swap).not.toHaveBeenCalled();
+  });
+
+  it("uses the current view from an earlier compute source and previous view from a later source", async () => {
+    const earlierHarness = harness();
+    const earlierConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeFirst: { path: "first.slang", outputLayers: 2 },
+        ComputeSecond: {
+          path: "second.slang",
+          inputs: { iChannel0: { type: "buffer", source: "ComputeFirst", layer: 1 } },
+          outputLayers: 2,
+        },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeSecond", layer: 0 } } },
+      },
+    };
+    await earlierHarness.engine.compileShaderPipeline(IMAGE_SOURCE, earlierConfig, "/earlier.slang", {
+      ComputeFirst: "first compute",
+      ComputeSecond: "second compute",
+    });
+    enableRendering(earlierHarness);
+    earlierHarness.device.createBindGroup.mockClear();
+    earlierHarness.engine.render(1000);
+    const secondComputeEntries = earlierHarness.device.createBindGroup.mock.calls[1][0].entries;
+    expect(secondComputeEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: {
+          textureId: 0,
+          descriptor: { dimension: "2d", baseArrayLayer: 1, arrayLayerCount: 1 },
+        },
+      }),
+    ]));
+
+    const laterHarness = harness();
+    const laterConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeFirst: {
+          path: "first.slang",
+          inputs: { iChannel0: { type: "buffer", source: "ComputeSecond", layer: 1 } },
+        },
+        ComputeSecond: { path: "second.slang", outputLayers: 2 },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeFirst" } } },
+      },
+    };
+    await laterHarness.engine.compileShaderPipeline(IMAGE_SOURCE, laterConfig, "/later.slang", {
+      ComputeFirst: "first compute",
+      ComputeSecond: "second compute",
+    });
+    enableRendering(laterHarness);
+    laterHarness.device.createBindGroup.mockClear();
+    laterHarness.engine.render(1000);
+    const firstComputeEntries = laterHarness.device.createBindGroup.mock.calls[0][0].entries;
+    expect(firstComputeEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: {
+          textureId: 3,
+          descriptor: { dimension: "2d", baseArrayLayer: 1, arrayLayerCount: 1 },
+        },
+      }),
+    ]));
+  });
+
+  it("does not swap dispatchOnce output again on later skipped frames", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, dispatchOnce: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const computePipeline = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const swap = vi.spyOn(computePipeline, "swap");
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
+    testHarness.engine.render(1032);
+
+    expect(swap).toHaveBeenCalledTimes(1);
   });
 
   it.each([

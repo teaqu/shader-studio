@@ -44,6 +44,7 @@ describe("SlangPassPipeline", () => {
     });
 
     await pass.rebuild("// wgsl");
+    expect(pass.getOutputSize()).toEqual({ width: 800, height: 600 });
 
     expect(device.createRenderPipeline).toHaveBeenCalled();
     expect(device.createTexture).not.toHaveBeenCalled();
@@ -431,6 +432,7 @@ describe("SlangPassPipeline", () => {
     const firstTextures = device.createTexture.mock.results.map((r) => r.value);
 
     pass.resize(640, 360);
+    expect(pass.getOutputSize()).toEqual({ width: 640, height: 360 });
 
     for (const texture of firstTextures) {
       expect(texture.destroy).toHaveBeenCalledTimes(1);

@@ -85,6 +85,55 @@ const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
 
+type WorkgroupCounts = [number, number, number];
+
+function resolveWorkgroupCounts(
+  pass: RenderPassNode,
+  storageLayouts: Map<string, StorageBindingNode>,
+  channelResources: SlangChannelResource[],
+): WorkgroupCounts | null {
+  const dispatch = pass.dispatch ?? { mode: "texel" };
+  switch (dispatch.mode) {
+    case "texel":
+      return [
+        Math.ceil(pass.width / pass.workgroupSize[0]),
+        Math.ceil(pass.height / pass.workgroupSize[1]),
+        1,
+      ];
+    case "count":
+      return [Math.ceil(dispatch.count / pass.workgroupSize[0]), 1, 1];
+    case "workgroups":
+      return [dispatch.x, dispatch.y, dispatch.z];
+    case "cover-storage": {
+      const storage = storageLayouts.get(dispatch.name);
+      return storage
+        ? [Math.ceil(storage.count / pass.workgroupSize[0]), 1, 1]
+        : null;
+    }
+    case "cover-channel": {
+      const channel = pass.channels.find(({ key }) => key === dispatch.key);
+      const resource = channelResources.find(({ slot }) => slot === channel?.slot);
+      const width = resource?.width;
+      const height = resource?.height;
+      if (
+        typeof width !== "number" ||
+        typeof height !== "number" ||
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return null;
+      }
+      return [
+        Math.ceil(width / pass.workgroupSize[0]),
+        Math.ceil(height / pass.workgroupSize[1]),
+        1,
+      ];
+    }
+  }
+}
+
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
     private readonly inner: AsyncSlangCompiler,
@@ -136,6 +185,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private storageBuffers = new Map<string, GPUBuffer>();
   private storageKeys = new Map<string, string>();
   private storageLayouts = new Map<string, StorageBindingNode>();
+  private dispatchOnceRan = new Set<string>();
   private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
   private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
@@ -871,6 +921,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.passKeys = nextKeys;
       this.computePipelines = nextComputePipelines;
       this.computeKeys = nextComputeKeys;
+      this.dispatchOnceRan.clear();
       if (candidateResourceManager) {
         this.resourceManager = candidateResourceManager;
       }
@@ -1702,8 +1753,62 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     const encoder = this.device.createCommandEncoder();
     let canvasTexture: GPUTexture | null = null;
+    const encodedComputePipelines: SlangComputePipeline[] = [];
 
     for (const pass of this.passGraph) {
+      if (pass.kind !== "compute" || skipBufferPasses) {
+        continue;
+      }
+      if (pass.dispatchOnce && this.dispatchOnceRan.has(pass.name)) {
+        continue;
+      }
+      const pipeline = this.computePipelines.get(pass.name);
+      const gpuPipeline = pipeline?.getPipeline();
+      const uniformBuffer = pipeline?.getUniformBuffer();
+      if (!pipeline || !gpuPipeline || !uniformBuffer) {
+        continue;
+      }
+
+      const channelResources = this.getChannelResources(pass, isPaused);
+      const workgroupCounts = resolveWorkgroupCounts(
+        pass,
+        this.storageLayouts,
+        channelResources ?? [],
+      );
+      if (channelResources === null || workgroupCounts === null) {
+        continue;
+      }
+      pipeline.rebuildBindGroups(channelResources, this.storageBuffers);
+      const bindGroups = Array.from({ length: pass.dispatchCount }, (_, index) =>
+        pipeline.getBindGroup(index));
+      if (bindGroups.some((bindGroup) => bindGroup === null)) {
+        continue;
+      }
+
+      const data = packShaderToyUniforms({
+        width: pass.width,
+        height: pass.height,
+        ...frameInput,
+      });
+      this.device.queue.writeBuffer(uniformBuffer, 0, data);
+
+      const computePass = encoder.beginComputePass();
+      computePass.setPipeline(gpuPipeline);
+      for (const bindGroup of bindGroups) {
+        computePass.setBindGroup(0, bindGroup!);
+        computePass.dispatchWorkgroups(...workgroupCounts);
+      }
+      computePass.end();
+      if (pass.dispatchOnce) {
+        this.dispatchOnceRan.add(pass.name);
+      }
+      encodedComputePipelines.push(pipeline);
+    }
+
+    for (const pass of this.passGraph) {
+      if (pass.kind === "compute") {
+        continue;
+      }
       if (skipBufferPasses && pass.output === "texture") {
         continue;
       }
@@ -1762,6 +1867,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.encodeInspectorCopy(encoder, canvasTexture);
     this.device.queue.submit([encoder.finish()]);
     this.resolveInspectorReadback();
+
+    for (const pipeline of encodedComputePipelines) {
+      pipeline.swap();
+    }
 
     if (!skipBufferPasses) {
       for (const pass of this.passGraph) {
@@ -1832,40 +1941,71 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
       if (channel.kind === "buffer") {
-        const source = this.passPipelines.get(channel.source);
-        const textureView = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView()
-          : source?.getCurrentOutputView();
+        const renderSource = this.passPipelines.get(channel.source);
+        const computeSource = this.computePipelines.get(channel.source);
+        const layer = channel.layer ?? 0;
+        const textureView = computeSource
+          ? channel.readFrom === "previous-frame"
+            ? computeSource.getPreviousLayerOutputView(layer)
+            : computeSource.getLayerOutputView(layer)
+          : channel.readFrom === "previous-frame"
+            ? renderSource?.getPreviousOutputView()
+            : renderSource?.getCurrentOutputView();
         if (!textureView) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView });
+        const size = computeSource?.getOutputSize?.() ?? renderSource?.getOutputSize?.();
+        resources.push({ slot: channel.slot, textureView, ...size });
       } else if (channel.kind === "texture") {
         const handle = this.resourceManager?.getImageTextureCache()[channel.path]
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else if (channel.kind === "video") {
         const handle = this.resourceManager?.getVideoTexture(channel.path)
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else if (channel.kind === "cubemap") {
         const handle = this.resourceManager?.getCubemapTexture(channel.path);
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else {
         const handle = this.resolveKeyboardHandle(skipInputUpdates);
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       }
     }
     return resources;
@@ -1993,6 +2133,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   resetTime(): void {
     this.timeManager.cleanup();
+    this.dispatchOnceRan.clear();
     this.compileGeneration++;
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
@@ -2055,6 +2196,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passKeys.clear();
     this.computePipelines.clear();
     this.computeKeys.clear();
+    this.dispatchOnceRan.clear();
     this.passGraph = [];
     this.installedCompile = null;
     this.installedResourceKey = null;

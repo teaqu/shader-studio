@@ -210,6 +210,10 @@ export class SlangComputePipeline {
     return this.uniformBuffer;
   }
 
+  getOutputSize(): { width: number; height: number } {
+    return { width: this.descriptor.width, height: this.descriptor.height };
+  }
+
   getCurrentOutputView(): GPUTextureView | null {
     return this.createFullOutputView(this.textureIndex);
   }
