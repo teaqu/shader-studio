@@ -62,14 +62,15 @@ function isSupportedLanguage(language: string): language is SlangLanguageVersion
 }
 
 export function splitSlangRootHeader(source: string): SlangRootHeader {
+  const bom = source.startsWith("\uFEFF") ? "\uFEFF" : "";
   const directiveStart = skipTrivia(source, 0);
   DIRECTIVE_PATTERN.lastIndex = directiveStart;
   const directive = DIRECTIVE_PATTERN.exec(source);
 
   if (!directive) {
     return {
-      header: `#language slang legacy${newlineStyle(source)}`,
-      body: source,
+      header: `${bom}#language slang legacy${newlineStyle(source)}`,
+      body: source.slice(bom.length),
       language: "legacy",
       diagnostics: [],
     };
@@ -77,7 +78,7 @@ export function splitSlangRootHeader(source: string): SlangRootHeader {
 
   const language = directive[1];
   const extracted = [{ start: directiveStart, end: DIRECTIVE_PATTERN.lastIndex }];
-  let header = directive[0];
+  let header = bom + directive[0];
   const moduleStart = skipTrivia(source, DIRECTIVE_PATTERN.lastIndex);
   MODULE_PATTERN.lastIndex = moduleStart;
   const moduleDeclaration = MODULE_PATTERN.exec(source);
@@ -88,7 +89,7 @@ export function splitSlangRootHeader(source: string): SlangRootHeader {
   }
 
   let body = "";
-  let previousEnd = 0;
+  let previousEnd = bom.length;
   for (const span of extracted) {
     body += source.slice(previousEnd, span.start);
     body += onlyNewlines(source.slice(span.start, span.end));

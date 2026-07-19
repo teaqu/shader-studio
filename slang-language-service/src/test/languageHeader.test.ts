@@ -86,19 +86,30 @@ describe("splitSlangRootHeader", () => {
   it("treats one leading UTF-8 BOM as trivia before an explicit header", () => {
     const result = splitSlangRootHeader("\uFEFF#language slang 2026\nmodule image;\nfloat x;\n");
 
-    expect(result.header).toBe("#language slang 2026\nmodule image;\n");
-    expect(result.body).toBe("\uFEFF\n\nfloat x;\n");
+    expect(result.header).toBe("\uFEFF#language slang 2026\nmodule image;\n");
+    expect(result.body).toBe("\n\nfloat x;\n");
     expect(result.language).toBe("2026");
+    expect(result.body.split("\n").indexOf("float x;")).toBe(2);
+
+    const composed = `${result.header}// generated\n${result.body}`;
+    expect(composed.indexOf("\uFEFF")).toBe(0);
+    expect(composed.lastIndexOf("\uFEFF")).toBe(0);
   });
 
-  it("preserves a leading UTF-8 BOM when injecting the legacy header", () => {
+  it("moves a leading UTF-8 BOM to an injected legacy header", () => {
     const source = "\uFEFFfloat x;\n";
+    const result = splitSlangRootHeader(source);
 
-    expect(splitSlangRootHeader(source)).toEqual({
-      header: "#language slang legacy\n",
-      body: source,
+    expect(result).toEqual({
+      header: "\uFEFF#language slang legacy\n",
+      body: "float x;\n",
       language: "legacy",
       diagnostics: [],
     });
+    expect(result.body.split("\n").indexOf("float x;")).toBe(0);
+
+    const composed = result.header + result.body;
+    expect(composed.indexOf("\uFEFF")).toBe(0);
+    expect(composed.lastIndexOf("\uFEFF")).toBe(0);
   });
 });
