@@ -8,6 +8,7 @@ import type {
   CaptureUniforms,
 } from "../capture/VariableCapturer";
 import type { ConfigInput } from "@shader-studio/types";
+import type { StorageBindingNode } from "../types/PassGraph";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
 import { DBG_CAPTURE_UNIFORM_SIZE, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
@@ -61,6 +62,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     private readonly compiler: AsyncSlangCompiler,
     compileContext: CaptureCompileContext = {},
     private readonly getChannelResources?: () => Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }> | null,
+    private readonly getStorageBuffers?: () => Map<string, GPUBuffer>,
   ) {
     this.compileContext = compileContext;
   }
@@ -68,9 +70,15 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   setCompileContext(context: CaptureCompileContext): void {
     const nextCommon = context.commonCode ?? "";
     const nextChannels = JSON.stringify(context.slangChannels ?? []);
+    const nextStorage = JSON.stringify(context.slangStorage ?? []);
     const currentCommon = this.compileContext.commonCode ?? "";
     const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    if (nextCommon !== currentCommon || nextChannels !== currentChannels) {
+    const currentStorage = JSON.stringify(this.compileContext.slangStorage ?? []);
+    if (
+      nextCommon !== currentCommon ||
+      nextChannels !== currentChannels ||
+      nextStorage !== currentStorage
+    ) {
       this.pipelineCache.clear();
       this.pipelineCacheOrder = [];
     }
@@ -202,9 +210,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     const channels = this.compileContext.slangChannels ?? [];
+    const storage = this.compileContext.slangStorage ?? [];
     const channelResources = channels.length > 0 ? this.getChannelResources?.() ?? null : [];
     if (channels.length > 0 && channelResources === null) {
       this.lastError = "Capture channels are not resolvable yet";
+      return 0;
+    }
+    if (!this.resolveStorageBuffers(storage)) {
       return 0;
     }
 
@@ -239,7 +251,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           break;
         }
 
-        const cached = await this.getOrCompilePipeline(capture.captureShader, channels);
+        const cached = await this.getOrCompilePipeline(capture.captureShader, channels, storage);
         if (!shouldContinue() || this.disposed) {
           break;
         }
@@ -247,7 +259,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           continue;
         }
 
-        const bindGroup = this.buildBindGroup(cached.bindGroupLayout, channelResources ?? []);
+        const storageBuffers = this.resolveStorageBuffers(storage);
+        if (!storageBuffers) {
+          continue;
+        }
+        const bindGroup = this.buildBindGroup(
+          cached.bindGroupLayout,
+          channelResources ?? [],
+          storage,
+          storageBuffers,
+        );
         if (!bindGroup) {
           continue;
         }
@@ -343,6 +364,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private async getOrCompilePipeline(
     captureShader: string,
     channels: SlangChannelBinding[],
+    storage: StorageBindingNode[],
   ): Promise<CachedPipeline | null> {
     const existing = this.pipelineCache.get(captureShader);
     if (existing) {
@@ -355,6 +377,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       passName: "capture",
       commonCode: this.compileContext.commonCode,
       channels,
+      storage,
+      passKind: "render",
       captureMode: true,
     });
     if (this.disposed) {
@@ -370,7 +394,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     try {
       const shaderModule = this.device.createShaderModule({ code: compileResult.wgsl });
       bindGroupLayout = this.device.createBindGroupLayout({
-        entries: this.buildBindGroupLayoutEntries(channels),
+        entries: this.buildBindGroupLayoutEntries(channels, storage),
       });
       const descriptor: GPURenderPipelineDescriptor = {
         layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
@@ -402,10 +426,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   /**
    * Layout mirrors SlangPassPipeline (binding 0 = ShaderToy uniforms, then
-   * texture/sampler pairs over the slot-sorted channel array) with the
-   * capture uniform block appended right after the channels.
+   * texture/sampler pairs over the slot-sorted channel array), then storage,
+   * with the capture uniform block appended after every pass resource.
    */
-  private buildBindGroupLayoutEntries(channels: SlangChannelBinding[]): GPUBindGroupLayoutEntry[] {
+  private buildBindGroupLayoutEntries(
+    channels: SlangChannelBinding[],
+    storage: StorageBindingNode[],
+  ): GPUBindGroupLayoutEntry[] {
     const FRAGMENT = globalThis.GPUShaderStage?.FRAGMENT ?? 0x2;
     const VERTEX = globalThis.GPUShaderStage?.VERTEX ?? 0x1;
     const entries: GPUBindGroupLayoutEntry[] = [{
@@ -426,8 +453,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         sampler: { type: "filtering" },
       });
     }
+    const storageBaseBinding = 1 + sorted.length * 2;
+    for (const node of storage) {
+      entries.push({
+        binding: storageBaseBinding + node.binding,
+        visibility: FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      });
+    }
     entries.push({
-      binding: 1 + sorted.length * 2,
+      binding: storageBaseBinding + storage.length,
       visibility: FRAGMENT,
       buffer: { type: "uniform" },
     });
@@ -437,6 +472,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private buildBindGroup(
     layout: GPUBindGroupLayout,
     channelResources: Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }>,
+    storage: StorageBindingNode[],
+    storageBuffers: Map<string, GPUBuffer>,
   ): GPUBindGroup | null {
     if (!this.uniformBuffer || !this.captureUniformBuffer) {
       return null;
@@ -447,13 +484,35 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       entries.push({ binding: 1 + index * 2, resource: sorted[index].textureView });
       entries.push({ binding: 2 + index * 2, resource: sorted[index].sampler ?? this.sampler! });
     }
-    entries.push({ binding: 1 + sorted.length * 2, resource: { buffer: this.captureUniformBuffer } });
+    const storageBaseBinding = 1 + sorted.length * 2;
+    for (const node of storage) {
+      entries.push({
+        binding: storageBaseBinding + node.binding,
+        resource: { buffer: storageBuffers.get(node.name)! },
+      });
+    }
+    entries.push({
+      binding: storageBaseBinding + storage.length,
+      resource: { buffer: this.captureUniformBuffer },
+    });
     try {
       return this.device.createBindGroup({ layout, entries });
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       return null;
     }
+  }
+
+  private resolveStorageBuffers(storage: StorageBindingNode[]): Map<string, GPUBuffer> | null {
+    const buffers = this.getStorageBuffers?.() ??
+      this.compileContext.slangStorageBuffers ??
+      new Map<string, GPUBuffer>();
+    const missing = storage.find((node) => !buffers.has(node.name));
+    if (missing) {
+      this.lastError = `Capture storage buffer "${missing.name}" is not resolvable yet`;
+      return null;
+    }
+    return buffers;
   }
 
   private ensureUniformBuffers(): void {

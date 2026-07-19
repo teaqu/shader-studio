@@ -1,9 +1,11 @@
+/// <reference types="@webgpu/types" />
 import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler';
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
 import type { ConfigInput } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
+import type { StorageBindingNode } from '../types/PassGraph';
 
 export interface CaptureUniforms {
   time: number;
@@ -29,6 +31,10 @@ export interface CaptureCompileContext {
   channelTypes?: ChannelSamplerType[];
   /** Slang/WebGPU path: channel bindings of the captured pass. */
   slangChannels?: Array<{ slot: number; key: string }>;
+  /** Slang/WebGPU path: ordered storage declarations shared by fragment passes. */
+  slangStorage?: StorageBindingNode[];
+  /** Slang/WebGPU path: currently installed storage buffer resources. */
+  slangStorageBuffers?: Map<string, GPUBuffer>;
 }
 
 interface PendingCapture {

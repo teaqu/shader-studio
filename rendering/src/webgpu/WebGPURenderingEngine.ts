@@ -2451,6 +2451,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const pass = this.passGraph.find((p) => p.name === "Image") ?? this.passGraph[0];
         return pass ? this.getChannelResources(pass) : [];
       },
+      () => this.storageBuffers,
     );
   }
 
@@ -2458,29 +2459,37 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const snapshot = this.installedCompile ?? (this.disposed ? null : this.lastCompile);
     const graph = this.getVariableCapturePassGraph(snapshot);
     const targetPass = (passName
-      ? graph.find((pass) => pass.name === passName)
+      ? graph.passes.find((pass) => pass.name === passName)
       : undefined) ?? (code
-      ? graph.find((pass) => pass.source === code)
-      : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
+      ? graph.passes.find((pass) => pass.source === code)
+      : undefined) ?? graph.passes.find((pass) => pass.name === "Image") ?? graph.passes[0];
     const commonCode = snapshot?.buffers.common ?? "";
     return {
       commonCode,
       slangChannels: targetPass?.channels.map(({ slot, key }) => ({ slot, key })) ?? [],
+      slangStorage: graph.storage,
+      slangStorageBuffers: this.storageBuffers,
     };
   }
 
-  private getVariableCapturePassGraph(snapshot: ShaderCompileSnapshot | null): RenderPassNode[] {
+  private getVariableCapturePassGraph(
+    snapshot: ShaderCompileSnapshot | null,
+  ): { passes: RenderPassNode[]; storage: StorageBindingNode[] } {
     if (this.passGraph.length > 0 || !snapshot) {
-      return this.passGraph;
+      return {
+        passes: this.passGraph,
+        storage: [...this.storageLayouts.values()],
+      };
     }
 
-    return buildSlangPassGraph({
+    const graph = buildSlangPassGraph({
       imageCode: snapshot.code,
       config: snapshot.config,
       buffers: snapshot.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
-    }).passes;
+    });
+    return { passes: graph.passes, storage: graph.storage };
   }
 
   getShaderLanguage(): "glsl" | "slang" {

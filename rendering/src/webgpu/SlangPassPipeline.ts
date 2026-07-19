@@ -32,6 +32,7 @@ export class SlangPassPipeline {
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
+  private bindGroupResourceIdentities: unknown[] | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private sampler: GPUSampler | null = null;
   private textures: GPUTexture[] = [];
@@ -173,11 +174,31 @@ export class SlangPassPipeline {
       buffer: storageBuffers?.get(node.name),
     }));
     if (resolvedStorage.some(({ buffer }) => !buffer)) {
-      this.bindGroup = null;
+      this.invalidateBindGroup();
       return;
     }
-    const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
     const sorted = [...resources].sort((a, b) => a.slot - b.slot);
+    const resourceIdentities: unknown[] = [
+      this.pipeline,
+      this.uniformBuffer,
+      this.bindGroupLayout,
+    ];
+    for (const channel of sorted) {
+      resourceIdentities.push(
+        channel.slot,
+        channel.textureView,
+        channel.sampler ?? this.sampler,
+      );
+    }
+    for (const { node, buffer } of resolvedStorage) {
+      resourceIdentities.push(node.name, buffer);
+    }
+    if (this.bindGroup && this.sameResourceIdentities(resourceIdentities)) {
+      return;
+    }
+    this.invalidateBindGroup();
+
+    const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
     for (let index = 0; index < sorted.length; index++) {
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
@@ -195,6 +216,7 @@ export class SlangPassPipeline {
       layout: this.bindGroupLayout,
       entries,
     });
+    this.bindGroupResourceIdentities = resourceIdentities;
   }
 
   getPipeline(): GPURenderPipeline | null {
@@ -296,7 +318,7 @@ export class SlangPassPipeline {
     this.destroyUniformBuffer();
     this.shaderModule = null;
     this.pipeline = null;
-    this.bindGroup = null;
+    this.invalidateBindGroup();
     this.bindGroupLayout = null;
     this.sampler = null;
   }
@@ -304,6 +326,16 @@ export class SlangPassPipeline {
   private destroyUniformBuffer(): void {
     this.uniformBuffer?.destroy?.();
     this.uniformBuffer = null;
+  }
+
+  private invalidateBindGroup(): void {
+    this.bindGroup = null;
+    this.bindGroupResourceIdentities = null;
+  }
+
+  private sameResourceIdentities(next: unknown[]): boolean {
+    return this.bindGroupResourceIdentities?.length === next.length &&
+      next.every((resource, index) => resource === this.bindGroupResourceIdentities?.[index]);
   }
 
   private destroyTextures(): void {

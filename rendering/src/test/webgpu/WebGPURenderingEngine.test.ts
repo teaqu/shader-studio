@@ -2466,6 +2466,8 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext()).toEqual({
         commonCode: "",
         slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
       });
     });
 
@@ -2799,6 +2801,8 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
         slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
       });
 
       rejectCandidate();
@@ -2806,6 +2810,8 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
         slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
       });
 
       compiler.compile.mockReturnValue({ success: false, errors: ["same-path edit failed"] });
@@ -2823,6 +2829,8 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
         slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
       });
     });
 
@@ -2854,6 +2862,8 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonB() { return 2.0; }",
         slangChannels: [{ slot: 1, key: "iChannel1" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
       });
     });
 

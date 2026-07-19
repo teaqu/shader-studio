@@ -1380,15 +1380,12 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.render(1000);
     testHarness.engine.render(1016);
 
-    const firstImageEntries = testHarness.device.createBindGroup.mock.calls[1][0].entries;
-    const secondImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
-    expect(firstImageEntries).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        binding: 1,
-        resource: expect.objectContaining({ textureId: 0 }),
-      }),
-    ]));
-    expect(secondImageEntries).toEqual(expect.arrayContaining([
+    const imageBindGroups = testHarness.commandEvents
+      .filter(({ type }) => type === "render.setBindGroup")
+      .map(({ value }) => value as { descriptor: GPUBindGroupDescriptor });
+    expect(imageBindGroups).toHaveLength(2);
+    expect(imageBindGroups[1]).toBe(imageBindGroups[0]);
+    expect(imageBindGroups[0].descriptor.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: 1,
         resource: expect.objectContaining({ textureId: 0 }),
@@ -1589,8 +1586,12 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.togglePause();
     testHarness.engine.render(1016);
 
-    const pausedImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
-    expect(pausedImageEntries).toEqual(expect.arrayContaining([
+    const imageBindGroups = testHarness.commandEvents
+      .filter(({ type }) => type === "render.setBindGroup")
+      .map(({ value }) => value as { descriptor: GPUBindGroupDescriptor });
+    expect(imageBindGroups).toHaveLength(2);
+    expect(imageBindGroups[1]).toBe(imageBindGroups[0]);
+    expect(imageBindGroups[1].descriptor.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: 1,
         resource: expect.objectContaining({ textureId: 0 }),
@@ -1629,8 +1630,12 @@ describe("WebGPURenderingEngine compute compilation", () => {
     resourceManager.getImageTextureCache.mockReturnValue({});
     testHarness.engine.render(1016);
 
-    const secondImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
-    expect(secondImageEntries).toEqual(expect.arrayContaining([
+    const imageBindGroups = testHarness.commandEvents
+      .filter(({ type }) => type === "render.setBindGroup")
+      .map(({ value }) => value as { descriptor: GPUBindGroupDescriptor });
+    expect(imageBindGroups).toHaveLength(2);
+    expect(imageBindGroups[1]).toBe(imageBindGroups[0]);
+    expect(imageBindGroups[1].descriptor.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({
         binding: 1,
         resource: expect.objectContaining({ textureId: 0 }),

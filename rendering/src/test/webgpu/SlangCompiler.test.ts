@@ -190,6 +190,33 @@ describe("SlangCompiler", () => {
     ]);
   });
 
+  it("compiles capture storage as read-only before the shifted capture uniform", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return positions[0]; }", {
+      passKind: "render",
+      captureMode: true,
+      channels: [{ slot: 0, key: "iChannel0" }],
+      storage: [{
+        name: "positions",
+        binding: 0,
+        elementType: "float4",
+        builtin: true,
+        count: 1,
+        stride: 16,
+      }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(3, 0)]]\nStructuredBuffer<float4> positions;");
+    expect(wrapped).toContain("[[vk::binding(4, 0)]]\nConstantBuffer<DbgCaptureUniforms> _dbgCapU;");
+    expect(wrapped).not.toContain("RWStructuredBuffer");
+    expect(wrapped.indexOf("StructuredBuffer<float4> positions;")).toBeLessThan(
+      wrapped.indexOf("ConstantBuffer<DbgCaptureUniforms> _dbgCapU;"),
+    );
+  });
+
   it("caches the global session across compiles", () => {
     const slang = makeFakeSlang();
     const spy = vi.spyOn(slang, "createGlobalSession");

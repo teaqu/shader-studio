@@ -380,6 +380,38 @@ describe("SlangPassPipeline", () => {
     expect(device.createBindGroup).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses an unchanged bind group and rebuilds when a storage buffer identity changes", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA],
+    });
+    await pass.rebuild("// wgsl");
+    const firstBuffer = { label: "positions-1" } as unknown as GPUBuffer;
+    const firstResources = new Map([[storageA.name, firstBuffer]]);
+
+    pass.rebuildBindGroup([], firstResources);
+    const firstBindGroup = pass.getBindGroup();
+    pass.rebuildBindGroup([], firstResources);
+
+    expect(pass.getBindGroup()).toBe(firstBindGroup);
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    const replacement = { label: "positions-2" } as unknown as GPUBuffer;
+    pass.rebuildBindGroup([], new Map([[storageA.name, replacement]]));
+
+    expect(pass.getBindGroup()).not.toBe(firstBindGroup);
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries).toContainEqual({
+      binding: 1,
+      resource: { buffer: replacement },
+    });
+  });
+
   it("uses cube texture layout entries for cubemap channels", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
