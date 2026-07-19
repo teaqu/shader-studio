@@ -47,22 +47,37 @@ export function acquireEditorModel(
   source: string,
   language: 'glsl' | 'slang',
 ): Monaco.editor.ITextModel {
+  return acquireEditorModelReference(monaco, pathOrUri, source, language).model;
+}
+
+export interface EditorModelReference {
+  model: Monaco.editor.ITextModel;
+  hadOwners: boolean;
+}
+
+export function acquireEditorModelReference(
+  monaco: typeof Monaco,
+  pathOrUri: string,
+  source: string,
+  language: 'glsl' | 'slang',
+): EditorModelReference {
   const uri = canonicalEditorUri(monaco, pathOrUri);
   const key = uri.toString();
   const entries = registry(monaco);
   const tracked = entries.get(key);
   if (tracked && !tracked.model.isDisposed()) {
+    const hadOwners = tracked.references > 0;
     tracked.references += 1;
     tracked.disposalGeneration += 1;
     if (tracked.model.getLanguageId() !== language) {
       monaco.editor.setModelLanguage(tracked.model, language);
     }
-    return tracked.model;
+    return { model: tracked.model, hadOwners };
   }
   const existing = monaco.editor.getModel(uri);
   const model = existing ?? monaco.editor.createModel(source, language, uri);
   entries.set(key, { model, references: 1, owned: !existing, disposalGeneration: 0 });
-  return model;
+  return { model, hadOwners: existing !== null };
 }
 
 export function releaseEditorModel(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {

@@ -6,6 +6,7 @@ import {
   type SlangWorkerRequest,
   type SlangWorkerResponse,
 } from '@shader-studio/slang-language-service';
+import { createRetryableLoader } from './retryableLoader';
 
 interface SlangWorkerScope {
   onmessage: ((event: MessageEvent<SlangWorkerRequest>) => void) | null;
@@ -16,20 +17,17 @@ const scope = self as unknown as SlangWorkerScope;
 let workspace: SlangWorkspace | undefined;
 type SlangModule = Parameters<typeof createSlangApi>[0];
 type SlangModuleFactory = (options: { locateFile(file: string): string }) => Promise<SlangModule>;
-let modulePromise: Promise<SlangModule> | undefined;
-
-async function loadSlangModule(): Promise<SlangModule> {
+const loadSlangModule = createRetryableLoader(async (): Promise<SlangModule> => {
   // Native dynamic import works in a module worker and does not require CSP
   // unsafe-eval. Vite emits slangScriptUrl as a deterministic asset URL.
   const imported = await import(/* @vite-ignore */ slangScriptUrl) as { default: SlangModuleFactory };
   return imported.default({ locateFile: () => slangWasmUrl });
-}
+});
 
 async function dispatch(request: SlangWorkerRequest): Promise<unknown> {
   if (request.method === 'init') {
     workspace?.dispose();
-    modulePromise ??= loadSlangModule();
-    workspace = new SlangWorkspace(createSlangApi(await modulePromise), request.snapshot);
+    workspace = new SlangWorkspace(createSlangApi(await loadSlangModule()), request.snapshot);
     return true;
   }
   if (!workspace) {

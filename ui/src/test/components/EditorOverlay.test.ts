@@ -84,6 +84,16 @@ function createMockEditorWithCallbacks() {
   };
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('EditorOverlay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1617,6 +1627,83 @@ describe('EditorOverlay', () => {
 
       expect(mockEditor.setModel).toHaveBeenCalledWith(secondModel);
       expect(mockEditor.saveViewState).toHaveBeenCalled();
+    });
+
+    it('serializes reactive Slang workspace updates and applies the latest root in order', async () => {
+      const language = await import('@shader-studio/monaco');
+      const updates = [deferred(), deferred(), deferred()];
+      const adapter = { setWorkspace: vi.fn(() => updates[adapter.setWorkspace.mock.calls.length - 1].promise) };
+      vi.mocked(language.setupMonacoSlang).mockReturnValue(adapter as never);
+      const workspace = (root: string, source: string) => ({
+        rootUri: root,
+        files: [{ uri: `${root}/main.slang`, path: '/workspace/main.slang', source }],
+      });
+
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderLanguage: 'slang', slangWorkspace: workspace('file:///one', 'one') },
+      });
+      await rerender({ ...defaultProps, shaderLanguage: 'slang', slangWorkspace: workspace('file:///one', 'two') });
+      await rerender({ ...defaultProps, shaderLanguage: 'slang', slangWorkspace: workspace('file:///two', 'three') });
+      expect(adapter.setWorkspace).toHaveBeenCalledTimes(1);
+
+      updates[0].resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(adapter.setWorkspace).toHaveBeenCalledTimes(2);
+      updates[1].resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(adapter.setWorkspace).toHaveBeenCalledTimes(3);
+      expect(adapter.setWorkspace).toHaveBeenLastCalledWith(workspace('file:///two', 'three'));
+      updates[2].resolve();
+    });
+
+    it('handles workspace initialization rejection and retries on a later update', async () => {
+      const language = await import('@shader-studio/monaco');
+      const adapter = {
+        setWorkspace: vi.fn()
+          .mockRejectedValueOnce(new Error('worker init failed'))
+          .mockResolvedValueOnce(undefined),
+      };
+      vi.mocked(language.setupMonacoSlang).mockReturnValue(adapter as never);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const first = { rootUri: 'file:///one', files: [{ uri: 'file:///one/main.slang', path: '/workspace/main.slang', source: 'one' }] };
+      const second = { rootUri: 'file:///one', files: [{ uri: 'file:///one/main.slang', path: '/workspace/main.slang', source: 'two' }] };
+
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderLanguage: 'slang', slangWorkspace: first },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await rerender({ ...defaultProps, shaderLanguage: 'slang', slangWorkspace: second });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(adapter.setWorkspace).toHaveBeenCalledTimes(2);
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
+    });
+
+    it('clears the prior model owner and reapplies unchanged errors after model and language switches', async () => {
+      const monaco = await import('monaco-editor');
+      const language = await import('@shader-studio/monaco');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as never);
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/one.glsl', shaderLanguage: 'glsl', errors: ['ERROR: 0:1: bad'] },
+      });
+      const firstModel = vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.model!;
+
+      await rerender({ ...defaultProps, shaderPath: '/two.slang', shaderLanguage: 'slang', errors: ['ERROR: 0:1: bad'] });
+      const secondModel = mockEditor.setModel.mock.calls.at(-1)?.[0];
+
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(firstModel, 'glsl', []);
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(secondModel, 'slang-compile', expect.arrayContaining([
+        expect.objectContaining({ message: 'bad' }),
+      ]));
+      expect(language.setupMonacoSlang).toHaveBeenCalledTimes(1);
+      const adapter = vi.mocked(language.setupMonacoSlang).mock.results.at(-1)?.value;
+      expect(adapter.setWorkspace).toHaveBeenCalled();
     });
   });
 });

@@ -178,8 +178,8 @@ describe('SlangMonacoAdapter', () => {
 
     expect(client.init).toHaveBeenCalledTimes(2);
     expect(client.replaceFiles).toHaveBeenCalledTimes(1);
-    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/main.slang', 1);
-    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/lib/helper.slang', 1);
+    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/main.slang', 2);
+    expect(client.closeDocument).toHaveBeenCalledWith('file:///project/lib/helper.slang', 2);
   });
 
   it('converts Monaco one-based positions and Slang zero-based ranges exactly', async () => {
@@ -199,6 +199,114 @@ describe('SlangMonacoAdapter', () => {
     expect(result?.range).toEqual(expect.objectContaining({
       startLineNumber: 2, startColumn: 3, endLineNumber: 2, endColumn: 7,
     }));
+  });
+
+  it('returns no provider result while workspace initialization is pending', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const pending = deferred<void>();
+    client.init.mockReturnValue(pending.promise);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    const model = createModel('file:///project/main.slang');
+    monaco.models.set('file:///project/main.slang', model);
+    const initializing = adapter.setWorkspace(snapshot);
+
+    await expect(adapter.provideHover(
+      model as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    )).resolves.toBeUndefined();
+
+    pending.resolve();
+    await initializing;
+  });
+
+  it('allows initialization to retry after an RPC initialization failure', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    client.init.mockRejectedValueOnce(new Error('initialization failed')).mockResolvedValueOnce(undefined);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+
+    await expect(adapter.setWorkspace(snapshot)).rejects.toThrow('initialization failed');
+    await expect(adapter.setWorkspace(snapshot)).resolves.toBeUndefined();
+    expect(client.init).toHaveBeenCalledTimes(2);
+  });
+
+  it('updates clean snapshot dependency models when same-root source changes', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+
+    await adapter.setWorkspace({
+      ...snapshot,
+      files: snapshot.files.map((file) => file.uri.endsWith('helper.slang')
+        ? { ...file, source: 'float changed(){}' }
+        : file),
+    });
+
+    expect(helper.getValue()).toBe('float changed(){}');
+  });
+
+  it('removes absent clean dependency models and releases their markers and ownership', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
+
+    expect(helper.dispose).toHaveBeenCalledTimes(1);
+    expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(helper, 'slang-language', []);
+    expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(helper, 'slang-compile', []);
+  });
+
+  it('preserves absent dirty and editor-owned dependency models', async () => {
+    const monaco = createMonaco();
+    const borrowed = createModel('file:///project/borrowed.slang', 'borrowed');
+    monaco.models.set('file:///project/borrowed.slang', borrowed);
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    const withBorrowed = {
+      ...snapshot,
+      files: [
+        ...snapshot.files,
+        { uri: 'file:///project/borrowed.slang', path: '/workspace/borrowed.slang', source: 'borrowed' },
+      ],
+    };
+    await adapter.setWorkspace(withBorrowed);
+    const dirty = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    const editorOwned = adapter.getOrCreateModel('file:///project/borrowed.slang')!;
+    dirty.setValue('unsaved edit');
+
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+
+    expect(adapter.getOrCreateModel('file:///project/lib/helper.slang', 'fallback')).toBe(dirty);
+    expect(adapter.getOrCreateModel('file:///project/borrowed.slang', 'fallback')).toBe(editorOwned);
+    expect(client.closeDocument).not.toHaveBeenCalledWith('file:///project/lib/helper.slang', expect.any(Number));
+    expect(borrowed.dispose).not.toHaveBeenCalled();
+  });
+
+  it('preserves dirty dependency models across same-root snapshot replacement', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    helper.setValue('unsaved editor helper');
+    await Promise.resolve();
+
+    await adapter.setWorkspace({
+      ...snapshot,
+      files: snapshot.files.map((file) => file.uri.endsWith('helper.slang')
+        ? { ...file, source: 'disk helper changed' }
+        : file),
+    });
+
+    expect(helper.getValue()).toBe('unsaved editor helper');
   });
 
   it('opens an unopened dependency model for definition navigation without duplicates', async () => {

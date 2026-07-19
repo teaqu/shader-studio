@@ -15,7 +15,7 @@ import {
   StaleSlangResultError,
   SupersededSlangMutationError,
 } from '@shader-studio/slang-language-service';
-import { acquireEditorModel, releaseEditorModel } from '../modelRegistry';
+import { acquireEditorModelReference, releaseEditorModel } from '../modelRegistry';
 
 export const SLANG_LANGUAGE_MARKER_OWNER = 'slang-language';
 export const SLANG_COMPILE_MARKER_OWNER = 'slang-compile';
@@ -42,6 +42,10 @@ interface ModelState {
   path: string;
   version: number;
   changeDisposable: Monaco.IDisposable;
+  applyingSnapshot: boolean;
+  dirty: boolean;
+  editorOwned: boolean;
+  open: boolean;
 }
 
 function relativeLanguageServicePath(path: string): string {
@@ -169,15 +173,37 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       const previousStates = [...this.models.values()];
       await Promise.allSettled(previousStates.map((state) => this.client.closeDocument(state.uri, state.model.getVersionId())));
       for (const state of previousStates) {
-        state.changeDisposable.dispose();
-        this.clearLanguageMarkers(state.model);
-        releaseEditorModel(this.monaco, state.model);
+        this.releaseModelState(state);
       }
       this.models.clear();
     }
     if (this.snapshot === undefined || changingRoot) {
       await this.client.init(canonicalSnapshot);
     } else {
+      const nextUris = new Set(canonicalSnapshot.files.map((file) => file.uri));
+      for (const [uri, state] of [...this.models]) {
+        const nextFile = canonicalSnapshot.files.find((file) => file.uri === uri);
+        if (!nextUris.has(uri)) {
+          if (state.dirty || state.editorOwned) {
+            continue;
+          }
+          if (state.open) {
+            await this.client.closeDocument(state.uri, state.model.getVersionId());
+          }
+          this.releaseModelState(state);
+          this.models.delete(uri);
+          continue;
+        }
+        if (nextFile && !state.dirty && !state.editorOwned && state.model.getValue() !== nextFile.source) {
+          if (state.open) {
+            await this.client.closeDocument(state.uri, state.model.getVersionId());
+            state.open = false;
+          }
+          state.applyingSnapshot = true;
+          state.model.setValue(nextFile.source);
+          state.applyingSnapshot = false;
+        }
+      }
       await this.client.replaceFiles(canonicalSnapshot);
     }
     this.snapshot = canonicalSnapshot;
@@ -218,26 +244,41 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     if (!file && source === undefined) {
       return undefined;
     }
-    const model = acquireEditorModel(this.monaco, uri, source ?? file!.source, 'slang');
+    const acquired = acquireEditorModelReference(this.monaco, uri, source ?? file!.source, 'slang');
+    const model = acquired.model;
     const state: ModelState = {
       model,
       uri,
       path: file?.path ?? new URL(uri).pathname.split('/').at(-1) ?? 'shader.slang',
       version: model.getVersionId(),
       changeDisposable: { dispose() {} },
+      applyingSnapshot: false,
+      dirty: false,
+      editorOwned: acquired.hadOwners,
+      open: acquired.hadOwners,
     };
     state.changeDisposable = model.onDidChangeContent(() => {
+      if (state.applyingSnapshot) {
+        return;
+      }
       state.version = model.getVersionId();
-      void this.client.changeDocument(this.documentSnapshot(state)).then(
+      state.dirty = true;
+      const update = state.open
+        ? this.client.changeDocument(this.documentSnapshot(state))
+        : this.client.openDocument(this.documentSnapshot(state));
+      state.open = true;
+      void update.then(
         () => this.refreshDiagnostics(model),
         () => undefined,
       );
     });
     this.models.set(uri, state);
-    void this.client.openDocument(this.documentSnapshot(state)).then(
-      () => this.refreshDiagnostics(model),
-      () => undefined,
-    );
+    if (state.open) {
+      void this.client.openDocument(this.documentSnapshot(state)).then(
+        () => this.refreshDiagnostics(model),
+        () => undefined,
+      );
+    }
     return model;
   }
 
@@ -251,6 +292,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const state = this.stateFor(model);
+    if (!state) {
+      return undefined;
+    }
     const version = model.getVersionId();
     const values = await this.dropStale(this.client.completion(state.uri, toSlangPosition(position), version, {
       triggerKind: context.triggerKind ?? 1,
@@ -287,6 +331,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   async provideHover(model: Monaco.editor.ITextModel, position: Monaco.Position, token: Monaco.CancellationToken): Promise<Monaco.languages.Hover | undefined> {
     const state = this.stateFor(model);
+    if (!state) {
+      return undefined;
+    }
     const version = model.getVersionId();
     const value = await this.dropStale(this.client.hover(state.uri, toSlangPosition(position), version));
     if (!value || this.isDropped(model, version, token)) {
@@ -297,6 +344,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   async provideDefinition(model: Monaco.editor.ITextModel, position: Monaco.Position, token: Monaco.CancellationToken): Promise<Monaco.languages.Definition | undefined> {
     const state = this.stateFor(model);
+    if (!state) {
+      return undefined;
+    }
     const version = model.getVersionId();
     const values = await this.dropStale(this.client.definition(state.uri, toSlangPosition(position), version));
     if (this.isDropped(model, version, token)) {
@@ -311,6 +361,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   async provideSignatureHelp(model: Monaco.editor.ITextModel, position: Monaco.Position, token: Monaco.CancellationToken): Promise<Monaco.languages.SignatureHelpResult | undefined> {
     const state = this.stateFor(model);
+    if (!state) {
+      return undefined;
+    }
     const version = model.getVersionId();
     const value = await this.dropStale(this.client.signatureHelp(state.uri, toSlangPosition(position), version));
     if (!value || this.isDropped(model, version, token)) {
@@ -335,6 +388,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   async provideDocumentSymbols(model: Monaco.editor.ITextModel, token: Monaco.CancellationToken): Promise<Monaco.languages.DocumentSymbol[] | undefined> {
     const state = this.stateFor(model);
+    if (!state) {
+      return undefined;
+    }
     const version = model.getVersionId();
     const values = await this.dropStale(this.client.documentSymbols(state.uri, version));
     if (this.isDropped(model, version, token)) {
@@ -345,6 +401,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   async refreshDiagnostics(model: Monaco.editor.ITextModel): Promise<void> {
     const state = this.stateFor(model);
+    if (!state) {
+      return;
+    }
     const version = model.getVersionId();
     const values = await this.dropStale(this.client.diagnostics(state.uri, version));
     if (model.getVersionId() !== version || this.disposed) {
@@ -372,9 +431,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     }
     this.disposed = true;
     for (const state of this.models.values()) {
-      state.changeDisposable.dispose();
-      this.clearLanguageMarkers(state.model);
-      releaseEditorModel(this.monaco, state.model);
+      this.releaseModelState(state);
     }
     this.models.clear();
     this.disposables.splice(0).forEach((item) => item.dispose());
@@ -385,13 +442,16 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     return { uri: state.uri, path: state.path, source: state.model.getValue(), version: state.model.getVersionId() };
   }
 
-  private stateFor(model: Monaco.editor.ITextModel): ModelState {
+  private stateFor(model: Monaco.editor.ITextModel): ModelState | undefined {
     const uri = canonicalModelUri(model.uri.toString());
-    const state = this.models.get(uri);
-    if (!state) {
-      throw new Error(`Slang Monaco model "${uri}" is not managed`);
-    }
-    return state;
+    return this.models.get(uri);
+  }
+
+  private releaseModelState(state: ModelState): void {
+    state.changeDisposable.dispose();
+    this.clearLanguageMarkers(state.model);
+    this.monaco.editor.setModelMarkers(state.model, SLANG_COMPILE_MARKER_OWNER, []);
+    releaseEditorModel(this.monaco, state.model);
   }
 
   private isDropped(model: Monaco.editor.ITextModel, version: number, token: Monaco.CancellationToken): boolean {

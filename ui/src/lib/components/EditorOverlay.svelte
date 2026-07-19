@@ -9,6 +9,7 @@
     SLANG_COMPILE_MARKER_OWNER,
     setupMonacoGlsl,
     setupMonacoSlang,
+    type SlangMonacoAdapter,
   } from "@shader-studio/monaco";
   import { getBrowserSlangLanguageClient } from "../slangLanguageClient";
   import { acquireEditorModel, canonicalEditorUri, releaseEditorModel } from "../monacoModelRegistry";
@@ -75,12 +76,93 @@
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
+  let lastShaderLanguage: "glsl" | "slang" = "glsl";
   let activeModel: monaco.editor.ITextModel | null = null;
-  let activeModelUri = "";
+  let activeModelUri = $state("");
+  let slangAdapter: SlangMonacoAdapter | null = null;
+  let workspaceUpdateRunning = false;
+  let workspaceLifecycle = 0;
+  let lastQueuedWorkspaceFingerprint = "";
+  let lastWorkspaceError = "";
+  const workspaceUpdateQueue: Array<{
+    snapshot: SlangWorkspaceSnapshot;
+    fingerprint: string;
+    lifecycle: number;
+  }> = [];
+  const compileMarkerOwners = new WeakMap<monaco.editor.ITextModel, string>();
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
+
+  function currentSlangWorkspace(): SlangWorkspaceSnapshot {
+    if (slangWorkspace) {
+      return slangWorkspace;
+    }
+    const uri = canonicalEditorUri(monaco, shaderPath).toString();
+    const parsed = new URL(uri);
+    const name = parsed.pathname.split("/").at(-1) || "shader.slang";
+    return {
+      rootUri: new URL(".", parsed).href,
+      files: [{ uri, path: name, source: shaderCode, version: 1 }],
+    };
+  }
+
+  async function drainWorkspaceUpdates() {
+    if (workspaceUpdateRunning) {
+      return;
+    }
+    workspaceUpdateRunning = true;
+    while (workspaceUpdateQueue.length > 0) {
+      const update = workspaceUpdateQueue.shift()!;
+      if (update.lifecycle !== workspaceLifecycle || !slangAdapter) {
+        continue;
+      }
+      try {
+        await slangAdapter.setWorkspace(update.snapshot);
+        lastWorkspaceError = "";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message !== lastWorkspaceError) {
+          console.error("Failed to initialize Slang workspace:", error);
+          lastWorkspaceError = message;
+        }
+        if (lastQueuedWorkspaceFingerprint === update.fingerprint) {
+          lastQueuedWorkspaceFingerprint = "";
+        }
+      }
+    }
+    workspaceUpdateRunning = false;
+  }
+
+  function queueCurrentSlangWorkspace() {
+    if (shaderLanguage !== "slang") {
+      return;
+    }
+    if (!slangAdapter) {
+      if (!editor) {
+        return;
+      }
+      slangAdapter = setupMonacoSlang(monaco, getBrowserSlangLanguageClient());
+    }
+    const snapshot = currentSlangWorkspace();
+    const fingerprint = JSON.stringify(snapshot);
+    if (fingerprint === lastQueuedWorkspaceFingerprint) {
+      return;
+    }
+    lastQueuedWorkspaceFingerprint = fingerprint;
+    workspaceUpdateQueue.push({ snapshot, fingerprint, lifecycle: workspaceLifecycle });
+    void drainWorkspaceUpdates();
+  }
+
+  function clearCompileMarkers(model: monaco.editor.ITextModel) {
+    const owner = compileMarkerOwners.get(model);
+    if (!owner) {
+      return;
+    }
+    monaco.editor.setModelMarkers(model, owner, []);
+    compileMarkerOwners.delete(model);
+  }
 
   function focusMonacoTextInput() {
     if (!containerEl) {
@@ -365,14 +447,8 @@
 
     setupMonacoGlsl(monaco as any);
     if (shaderLanguage === "slang") {
-      const adapter = setupMonacoSlang(monaco, getBrowserSlangLanguageClient());
-      const uri = canonicalEditorUri(monaco, shaderPath).toString();
-      const parsed = new URL(uri);
-      const name = parsed.pathname.split("/").at(-1) || "shader.slang";
-      void adapter.setWorkspace(slangWorkspace ?? {
-        rootUri: new URL(".", parsed).href,
-        files: [{ uri, path: name, source: shaderCode, version: 1 }],
-      });
+      slangAdapter = setupMonacoSlang(monaco, getBrowserSlangLanguageClient());
+      queueCurrentSlangWorkspace();
     }
 
     activeModel = acquireEditorModel(monaco, shaderPath, shaderCode, shaderLanguage);
@@ -490,6 +566,7 @@
     });
 
     lastShaderPath = shaderPath;
+    lastShaderLanguage = shaderLanguage;
 
     if (vimMode) {
       enableVim();
@@ -545,11 +622,17 @@
       editor = null;
     }
     if (activeModel) {
+      clearCompileMarkers(activeModel);
       releaseEditorModel(monaco, activeModel);
       activeModel = null;
       activeModelUri = "";
     }
     editorReady = false;
+    workspaceLifecycle += 1;
+    workspaceUpdateQueue.length = 0;
+    slangAdapter = null;
+    lastQueuedWorkspaceFingerprint = "";
+    lastWorkspaceError = "";
     lastSentCode = null;
   }
 
@@ -598,19 +681,19 @@
   });
 
   $effect(() => {
-    if (editor) {
-      updateErrorMarkers(errors);
+    const modelUri = activeModelUri;
+    const language = shaderLanguage;
+    const currentErrors = errors;
+    if (editorReady && modelUri && activeModel) {
+      updateErrorMarkers(currentErrors, activeModel, language);
     }
   });
 
-  function updateErrorMarkers(errs: string[]) {
-    if (!editor) {
-      return;
-    }
-    const model = editor.getModel();
-    if (!model) {
-      return;
-    }
+  function updateErrorMarkers(
+    errs: string[],
+    model: monaco.editor.ITextModel,
+    language: "glsl" | "slang" = shaderLanguage,
+  ) {
 
     const activeBufferKey = activeBufferName.trim().toLowerCase();
     const markers: monaco.editor.IMarkerData[] = [];
@@ -636,16 +719,25 @@
       }
     }
 
-    monaco.editor.setModelMarkers(
-      model,
-      shaderLanguage === 'slang' ? SLANG_COMPILE_MARKER_OWNER : 'glsl',
-      markers,
-    );
+    const owner = language === 'slang' ? SLANG_COMPILE_MARKER_OWNER : 'glsl';
+    const previousOwner = compileMarkerOwners.get(model);
+    if (previousOwner && previousOwner !== owner) {
+      monaco.editor.setModelMarkers(model, previousOwner, []);
+    }
+    monaco.editor.setModelMarkers(model, owner, markers);
+    compileMarkerOwners.set(model, owner);
   }
 
   $effect(() => {
+    if (!editorReady) {
+      return;
+    }
+    queueCurrentSlangWorkspace();
+  });
+
+  $effect(() => {
     if (editor && shaderCode !== undefined) {
-      const fileChanged = shaderPath !== lastShaderPath;
+      const fileChanged = shaderPath !== lastShaderPath || shaderLanguage !== lastShaderLanguage;
       const currentValue = editor.getValue();
 
       if (fileChanged) {
@@ -659,9 +751,7 @@
         editor.setModel(nextModel);
         editor.setValue(shaderCode);
         if (previousModel) {
-          if (shaderLanguage === 'slang') {
-            monaco.editor.setModelMarkers(previousModel, SLANG_COMPILE_MARKER_OWNER, []);
-          }
+          clearCompileMarkers(previousModel);
           releaseEditorModel(monaco, previousModel);
         }
         const nextViewState = activeModelUri ? savedViewStates.get(activeModelUri) : null;
@@ -673,6 +763,8 @@
         }
         lastSentCode = null;
         lastShaderPath = shaderPath;
+        lastShaderLanguage = shaderLanguage;
+        updateErrorMarkers(errors, nextModel, shaderLanguage);
       } else if (currentValue === shaderCode) {
         lastSentCode = null;
       } else if (lastSentCode !== null && shaderCode === lastSentCode) {
