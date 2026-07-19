@@ -207,7 +207,11 @@
   }
 
   function handleAddMenuMouseLeave() {
-    if (!addMenuContainer?.contains(document.activeElement)) {
+    const activeElement = document.activeElement;
+    const menuItemHasFocus = activeElement instanceof HTMLElement
+      && activeElement.matches("[role='menuitem']")
+      && addMenu?.contains(activeElement);
+    if (!addMenuPinned && !menuItemHasFocus) {
       closeAddMenu();
     }
   }

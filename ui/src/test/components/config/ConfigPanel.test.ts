@@ -866,6 +866,51 @@ describe('ConfigPanel', () => {
       expect(queryByRole('menu')).not.toBeInTheDocument();
     });
 
+    it('closes an unpinned hover menu on mouseleave when the trigger was already focused', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      trigger.focus();
+      await fireEvent.mouseEnter(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('keeps a click-pinned menu open on mouseleave without relying on trigger focus', async () => {
+      const { getByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      expect(trigger).not.toHaveFocus();
+      await fireEvent.click(trigger);
+      expect(trigger).not.toHaveFocus();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('keeps an unpinned hover menu usable when a menuitem has keyboard focus', async () => {
+      const { getByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      await fireEvent.mouseEnter(dropdown);
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      bufferItem.focus();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+      expect(bufferItem).toHaveFocus();
+    });
+
     it('closes when clicking outside', async () => {
       const { getByRole, queryByRole } = renderSlangPanel();
       await tick();
