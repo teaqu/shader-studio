@@ -8,6 +8,7 @@ import { ThumbnailCache } from "./ThumbnailCache";
 import { TabGroupResolver } from "./TabGroupResolver";
 import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
 import { loadSlangAssetPaths } from "./SlangAssetManifest";
+import { getShaderLanguage } from "./GlslFileTracker";
 
 interface ShaderExplorerFile {
   name: string;
@@ -219,6 +220,7 @@ export class ShaderExplorerProvider {
       const message = {
         type: "shaderCode",
         path: shaderPath,
+        language: getShaderLanguage(shaderPath),
         code: code,
         config: config,
         buffers: buffers,
@@ -453,18 +455,18 @@ export class ShaderExplorerProvider {
     const shaders: ShaderExplorerFile[] = [];
 
     for (const folder of workspaceFolders) {
-      // Find all .glsl, .frag, .vert shader files
-      const glslFiles = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert}"),
+      // Find all supported shader files
+      const shaderFiles = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert,slang}"),
         "**/node_modules/**",
       );
-      const shaderPaths = glslFiles.map(file => file.fsPath);
+      const shaderPaths = shaderFiles.map(file => file.fsPath);
       const gitMetadataResult = await this.gitMetadataProvider.getMetadataForWorkspace(
         folder.uri.fsPath,
         shaderPaths,
       );
 
-      for (const file of glslFiles) {
+      for (const file of shaderFiles) {
         const relativePath = vscode.workspace.asRelativePath(file);
         const fileName = path.basename(file.fsPath);
         const repoRelativePath = gitMetadataResult

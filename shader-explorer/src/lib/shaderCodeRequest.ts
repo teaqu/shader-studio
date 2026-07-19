@@ -1,7 +1,10 @@
+export type ShaderLanguage = 'glsl' | 'slang';
+
 export interface ShaderCodeResponse {
   code: string;
   config: unknown;
   buffers: Record<string, string>;
+  language: ShaderLanguage;
 }
 
 interface ShaderCodeRequestApi {
@@ -58,6 +61,7 @@ export function requestShaderCode({
         code: message.code,
         config: message.config || null,
         buffers: message.buffers || {},
+        language: message.language === 'slang' ? 'slang' : 'glsl',
       };
       cleanup();
       onReceived?.(response, now() - startedAt);

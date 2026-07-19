@@ -486,6 +486,34 @@ suite('ShaderExplorerProvider Test Suite', () => {
   });
 
   suite('Message Handling - requestShaders', () => {
+    test('should discover Slang shaders with config metadata', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/example.slang');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const findFilesStub = sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      existsSyncStub.callsFake((filePath: string) =>
+        filePath === '/workspace/shaders/example.sha.json'
+        || !filePath.includes('index.html')
+      );
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 2_000, birthtimeMs: 1_000 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const pattern = findFilesStub.firstCall.args[0] as vscode.RelativePattern;
+      assert.strictEqual(pattern.pattern, '**/*.{glsl,frag,vert,slang}');
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.name, 'example.slang');
+      assert.strictEqual(shader.path, shaderUri.fsPath);
+      assert.strictEqual(shader.configPath, '/workspace/shaders/example.sha.json');
+      assert.strictEqual(shader.hasConfig, true);
+      assert.strictEqual(shader.modifiedTime, 2_000);
+      assert.strictEqual(shader.createdTime, 1_000);
+    });
+
     test('should handle requestShaders message type', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
@@ -833,6 +861,26 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(message.type, 'shaderCode');
       assert.strictEqual(message.path, '/test/shader.glsl');
       assert.strictEqual(message.code, 'void main() { gl_FragColor = vec4(1.0); }');
+      assert.strictEqual(message.language, 'glsl');
+    });
+
+    test('should send Slang language through config path conversion', async () => {
+      const mockDocument = {
+        getText: () => '[shader("fragment")] float4 fragmentMain() : SV_Target { return 1; }'
+      };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+      const processConfigPathsStub = sandbox
+        .stub(ConfigPathConverter, 'processConfigPaths')
+        .callsFake(async (message: any) => ({ ...message, converted: true }));
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/shader.slang' });
+
+      assert.strictEqual(processConfigPathsStub.firstCall.args[0].language, 'slang');
+      assert.strictEqual(postMessageSpy.firstCall.args[0].language, 'slang');
+      assert.strictEqual(postMessageSpy.firstCall.args[0].converted, true);
     });
 
     test('should include config and buffers in shader code response', async () => {
