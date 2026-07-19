@@ -1,4 +1,6 @@
 import { render, fireEvent } from '@testing-library/svelte';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { tick } from 'svelte';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
@@ -875,6 +877,45 @@ describe('ConfigPanel', () => {
       await fireEvent.click(document.body);
       expect(queryByRole('menu')).not.toBeInTheDocument();
       expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('toggles closed when the trigger is clicked again', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.click(trigger);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
+
+    it('restores focus to the trigger after activating a menu item', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      bufferItem.focus();
+      expect(bufferItem).toHaveFocus();
+
+      await fireEvent.click(bufferItem);
+      await tick();
+
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
+
+    it('uses the theme focus border for a visible keyboard focus indicator', () => {
+      const appStyles = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
+      const focusVisibleRule = appStyles.match(/\.add-tab-btn:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+
+      expect(focusVisibleRule).toMatch(/outline:\s*(?!none)/);
+      expect(focusVisibleRule).toContain('var(--vscode-focusBorder)');
     });
   });
 

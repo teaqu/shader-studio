@@ -54,6 +54,7 @@
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
   let addMenuOpen = $state(false);
+  let addMenuPinned = $state(false);
   let addMenuContainer = $state<HTMLDivElement>();
   let addMenuTrigger = $state<HTMLButtonElement>();
   let addMenu = $state<HTMLDivElement>();
@@ -151,6 +152,7 @@
 
   function closeAddMenu() {
     addMenuOpen = false;
+    addMenuPinned = false;
   }
 
   async function closeAddMenuAndRestoreFocus() {
@@ -159,9 +161,19 @@
     addMenuTrigger?.focus();
   }
 
-  function runAddMenuAction(action: () => void) {
+  async function runAddMenuAction(action: () => void) {
     action();
-    closeAddMenu();
+    await closeAddMenuAndRestoreFocus();
+  }
+
+  async function handleAddMenuTriggerClick() {
+    if (addMenuPinned) {
+      await closeAddMenuAndRestoreFocus();
+      return;
+    }
+
+    addMenuPinned = true;
+    addMenuOpen = true;
   }
 
   async function handleAddMenuKeydown(event: KeyboardEvent) {
@@ -420,7 +432,7 @@
           aria-expanded={addMenuOpen}
           aria-controls="add-pass-menu"
           bind:this={addMenuTrigger}
-          onclick={() => addMenuOpen = true}
+          onclick={handleAddMenuTriggerClick}
         >+ New</button>
         {#if addMenuOpen}
           <div
