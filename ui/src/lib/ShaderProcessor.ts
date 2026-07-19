@@ -50,14 +50,17 @@ export class ShaderProcessor {
       const debugState = this.shaderDebugManager.getState();
       const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(code, config ?? null);
       const buffersToCompile = this.getCompileBuffers(buffers, debugState.activeBufferName, codeToCompile, code);
-      const result = await this.renderEngine.compileShaderPipeline(
+      const compileArgs = [
         codeToCompile,
         configToCompile,
         path,
         buffersToCompile,
         message.customUniformDeclarations,
         message.customUniformInfo,
-      );
+      ] as const;
+      const result = message.workspace
+        ? await this.renderEngine.compileShaderPipeline(...compileArgs, message.workspace)
+        : await this.renderEngine.compileShaderPipeline(...compileArgs);
 
       // Handle compilation failure
       if (result?.superseded) {
@@ -70,7 +73,7 @@ export class ShaderProcessor {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
-          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo);
+          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo, message.workspace);
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
@@ -141,15 +144,19 @@ export class ShaderProcessor {
     buffers: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: ShaderSourceMessage["workspace"],
   ): Promise<CompilationResult> {
-    const result = await this.renderEngine.compileShaderPipeline(
+    const compileArgs = [
       code,
       config,
       path,
       buffers,
       customUniformDeclarations,
       customUniformInfo,
-    );
+    ] as const;
+    const result = workspace
+      ? await this.renderEngine.compileShaderPipeline(...compileArgs, workspace)
+      : await this.renderEngine.compileShaderPipeline(...compileArgs);
 
     if (result?.superseded) {
       return this.supersededResult(result.errors);

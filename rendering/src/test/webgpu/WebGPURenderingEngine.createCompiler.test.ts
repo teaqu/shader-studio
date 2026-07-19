@@ -65,7 +65,7 @@ describe("WebGPURenderingEngine.createCompiler", () => {
 
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm", workerUrl: "worker.js" });
     const compiler = await (engine as unknown as { createCompiler(): Promise<{
-      compile(source: string, options: unknown): Promise<unknown>;
+      compile(request: unknown): Promise<unknown>;
       dispose(): void;
     }> }).createCompiler();
 
@@ -85,8 +85,9 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     expect(worker).toBeInstanceOf(FakeWorker);
     expect(worker.url).toBe("blob:slang-worker");
     expect(worker.options).toEqual({ type: "module" });
-    await compiler.compile("source", {});
-    expect(fakeCompiler.compile).toHaveBeenCalledWith("source", {});
+    const request = { source: "source" };
+    await compiler.compile(request);
+    expect(fakeCompiler.compile).toHaveBeenCalledWith(request);
     compiler.dispose();
     expect(fakeCompiler.dispose).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:slang-worker");

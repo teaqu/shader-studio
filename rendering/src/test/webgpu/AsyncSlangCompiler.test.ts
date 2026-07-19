@@ -1,5 +1,29 @@
 import { describe, it, expect, vi } from "vitest";
 import { MainThreadSlangCompiler, WorkerSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
+import type { SlangCompileRequest } from "../../webgpu/SlangCompiler";
+
+const request: SlangCompileRequest = {
+  source: "src",
+  sourceUri: "file:///project/image.slang",
+  sourcePath: "/workspace/image.slang",
+  workspace: {
+    rootUri: "file:///project",
+    files: [{ uri: "file:///project/lib.slang", path: "/workspace/lib.slang", source: "dependency" }],
+  },
+  options: { passName: "Image" },
+};
+
+function compileRequest(source: string, options: SlangCompileRequest["options"] = {}): SlangCompileRequest {
+  return {
+    ...request,
+    source,
+    workspace: {
+      ...request.workspace,
+      files: [{ uri: request.sourceUri, path: request.sourcePath, source }],
+    },
+    options,
+  };
+}
 
 /** Fake Worker capturing posted messages; test drives responses via emit(). */
 function fakeWorker() {
@@ -18,16 +42,37 @@ function fakeWorker() {
 }
 
 describe("MainThreadSlangCompiler", () => {
-  it("delegates to the wrapped SlangCompiler", async () => {
-    const inner = { compileImagePass: vi.fn(() => ({ success: true as const, wgsl: "w" })) };
+  it("forwards the same serializable request used by the worker contract", async () => {
+    const inner = { compile: vi.fn(() => ({ success: true as const, wgsl: "w", diagnostics: [] })) };
     const compiler = new MainThreadSlangCompiler(inner as any);
-    const result = await compiler.compile("src", { passName: "Image" });
-    expect(result).toEqual({ success: true, wgsl: "w" });
-    expect(inner.compileImagePass).toHaveBeenCalledWith("src", { passName: "Image" });
+
+    await compiler.compile(request);
+
+    expect(inner.compile).toHaveBeenCalledWith(request);
+  });
+  it("delegates to the wrapped SlangCompiler", async () => {
+    const inner = { compile: vi.fn(() => ({ success: true as const, wgsl: "w", diagnostics: [] })) };
+    const compiler = new MainThreadSlangCompiler(inner as any);
+    const input = compileRequest("src", { passName: "Image" });
+    const result = await compiler.compile(input);
+    expect(result).toEqual({ success: true, wgsl: "w", diagnostics: [] });
+    expect(inner.compile).toHaveBeenCalledWith(input);
   });
 });
 
 describe("WorkerSlangCompiler", () => {
+  it("posts the complete compile request without reshaping its workspace", async () => {
+    const worker = fakeWorker();
+    const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
+    worker.emit({ id: worker.posted[0].id, ok: true });
+    const compiler = await createPromise;
+
+    const pending = compiler.compile(request);
+
+    expect(worker.posted[1]).toEqual({ id: 1, type: "compile", request });
+    worker.emit({ id: 1, ok: true, result: { success: true, wgsl: "w", diagnostics: [] } });
+    await pending;
+  });
   it("initializes the worker and round-trips a compile by id", async () => {
     const worker = fakeWorker();
     const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
@@ -35,10 +80,11 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const compilePromise = compiler.compile("src", { passName: "BufferA" });
-    expect(worker.posted[1]).toMatchObject({ type: "compile", source: "src", options: { passName: "BufferA" } });
-    worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w" } });
-    await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w" });
+    const input = compileRequest("src", { passName: "BufferA" });
+    const compilePromise = compiler.compile(input);
+    expect(worker.posted[1]).toMatchObject({ type: "compile", request: input });
+    worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w", diagnostics: [] } });
+    await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w", diagnostics: [] });
   });
 
   it("matches concurrent compiles to their own responses by id", async () => {
@@ -47,8 +93,8 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const a = compiler.compile("srcA", {});
-    const b = compiler.compile("srcB", {});
+    const a = compiler.compile(compileRequest("srcA"));
+    const b = compiler.compile(compileRequest("srcB"));
     // Answer B first, then A.
     worker.emit({ id: worker.posted[2].id, ok: true, result: { success: true, wgsl: "B" } });
     worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "A" } });
@@ -92,9 +138,9 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const compilePromise = compiler.compile("src", {});
+    const compilePromise = compiler.compile(compileRequest("src"));
     worker.emit({ id: worker.posted[1].id, ok: false, error: "worker exploded" });
-    await expect(compilePromise).resolves.toEqual({ success: false, errors: ["worker exploded"] });
+    await expect(compilePromise).resolves.toEqual({ success: false, errors: ["worker exploded"], diagnostics: [] });
   });
 
   it("dispose() terminates the worker and fails pending compiles", async () => {
@@ -103,10 +149,10 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const pending = compiler.compile("src", {});
+    const pending = compiler.compile(compileRequest("src"));
     compiler.dispose();
     expect(worker.terminate).toHaveBeenCalled();
-    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker unavailable"] });
+    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
   });
 
   it("fails pending compiles when the worker itself errors", async () => {
@@ -115,9 +161,9 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const pending = compiler.compile("src", {});
+    const pending = compiler.compile(compileRequest("src"));
     worker.onerror?.(new Event("error"));
-    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker crashed"] });
+    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker crashed"], diagnostics: [] });
   });
 
   it("marks the compiler unavailable after a crash so future compiles fail fast instead of hanging", async () => {
@@ -132,9 +178,9 @@ describe("WorkerSlangCompiler", () => {
     // A NEW compile() issued after the crash must resolve immediately as a
     // failure rather than posting into the dead worker and hanging forever
     // (which would otherwise wedge callers like ShaderProcessor.isProcessing).
-    const result = await compiler.compile("src", {});
+    const result = await compiler.compile(compileRequest("src"));
 
-    expect(result).toEqual({ success: false, errors: ["Slang worker unavailable"] });
+    expect(result).toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
     expect(worker.postMessage).toHaveBeenCalledTimes(postedBeforeNewCompile);
   });
 });

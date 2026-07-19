@@ -16,6 +16,7 @@
   ],
   "dependencies": {
     "@shader-studio/glsl-debug": "*",
+    "@shader-studio/slang-language-service": "*",
     "@shader-studio/types": "*"
   },
   "devDependencies": {

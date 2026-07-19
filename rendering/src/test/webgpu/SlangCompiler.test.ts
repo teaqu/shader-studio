@@ -1,11 +1,54 @@
 import { describe, it, expect, vi } from "vitest";
-import { SlangCompiler } from "../../webgpu/SlangCompiler";
+import {
+  SlangCompiler as WorkspaceSlangCompiler,
+  type SlangCompileOptions,
+  type SlangCompileResult,
+} from "../../webgpu/SlangCompiler";
 import type {
   SlangModuleApi,
   SlangCompileTarget,
   SlangVectorLike,
 } from "../../webgpu/slangTypes";
 import { SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT } from "../../webgpu/SlangPrelude";
+import type { SlangCompileRequest } from "../../webgpu/SlangCompiler";
+
+function compileRequest(overrides: Partial<SlangCompileRequest> = {}): SlangCompileRequest {
+  const source = overrides.source ?? "float4 mainImage(float2 c) { return float4(1); }";
+  return {
+    source,
+    sourceUri: "file:///project/image.slang",
+    sourcePath: "/workspace/image.slang",
+    workspace: {
+      rootUri: "file:///project",
+      files: [{
+        uri: "file:///project/image.slang",
+        path: "/workspace/image.slang",
+        source,
+      }],
+    },
+    options: {},
+    ...overrides,
+  };
+}
+
+/** Test-only adapter keeping older single-file cases concise. */
+class SlangCompiler extends WorkspaceSlangCompiler {
+  compileImagePass(source: string, options: SlangCompileOptions = {}): SlangCompileResult {
+    const moduleName = (options.passName ?? "image").toLowerCase();
+    const sourcePath = `/workspace/${moduleName}.slang`;
+    const sourceUri = `file:///${moduleName}.slang`;
+    return this.compile(compileRequest({
+      source,
+      sourceUri,
+      sourcePath,
+      workspace: {
+        rootUri: "file:///",
+        files: [{ uri: sourceUri, path: sourcePath, source }],
+      },
+      options,
+    }));
+  }
+}
 
 /** Build a fake slang module whose pieces can be selectively broken. */
 function makeFakeSlang(opts: {
@@ -19,7 +62,9 @@ function makeFakeSlang(opts: {
   wgsl?: string;
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
+  onWrite?: (path: string, source: string) => void;
 } = {}): SlangModuleApi {
+  const files = new Set<string>();
   const wgsl = opts.wgsl ?? "// wgsl output";
   const linked = {
     link: () => linked,
@@ -47,6 +92,15 @@ function makeFakeSlang(opts: {
   };
 
   return {
+    FS: {
+      mkdirTree: vi.fn(),
+      writeFile: vi.fn((path: string, source: string) => {
+        files.add(path);
+        opts.onWrite?.(path, source);
+      }),
+      unlink: vi.fn((path: string) => files.delete(path)),
+      analyzePath: vi.fn((path: string) => ({ exists: files.has(path) })),
+    },
     createGlobalSession: () => (opts.globalSessionNull ? null : globalSession),
     getCompileTargets: () =>
       opts.targets ?? [
@@ -59,10 +113,136 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("keeps an explicit language and module header before the generated prelude", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compile(compileRequest({
+      source: "\uFEFF#language slang 2026\nmodule image;\nfloat4 mainImage(float2 c) { return 1; }\n",
+    }));
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toMatch(/^\uFEFF#language slang 2026\nmodule image;\n\/\/ ---- shader-studio Slang prelude/);
+    expect(wrapped.match(/\uFEFF/g)).toHaveLength(1);
+  });
+
+  it("compiles directive-free roots under the explicit legacy policy", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compile(compileRequest({ source: "float4 mainImage(float2 c) { return 1; }" }));
+
+    expect(onLoad.mock.calls[0][0]).toMatch(/^#language slang legacy\n/);
+  });
+
+  it("mounts dependencies before loading the root from its real path", () => {
+    const events: string[] = [];
+    let loadedSource = "";
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onWrite: (path) => events.push(`write:${path}`),
+      onLoad: (source, _name, path) => {
+        loadedSource = source;
+        events.push(`load:${path}`);
+      },
+    }));
+
+    compiler.compile(compileRequest({
+      source: "import palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }",
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "module palette; public float4 paletteColor() { return 1; }" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "stale root" },
+        ],
+      },
+    }));
+
+    expect(events).toEqual([
+      "write:/workspace/lib/palette.slang",
+      "write:/workspace/passes/image.slang",
+      "load:/workspace/passes/image.slang",
+    ]);
+    expect(loadedSource).toContain("import palette;");
+    expect(loadedSource).not.toContain("stale root");
+  });
+
+  it("returns structured diagnostics with the real dependency URI", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "/workspace/lib/palette.slang(3,7): error 30001: unknown name",
+    }));
+
+    const result = compiler.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+          { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "bad" },
+        ],
+      },
+    }));
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["/workspace/lib/palette.slang(3,7): error 30001: unknown name"],
+      diagnostics: [{
+        uri: "file:///project/lib/palette.slang",
+        range: { start: { line: 2, character: 6 }, end: { line: 2, character: 6 } },
+        severity: "error",
+        code: "30001",
+        message: "unknown name",
+        source: "slang-compile",
+      }],
+    });
+  });
+
+  it("preserves an unrecognized diagnostic as a raw root diagnostic", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: "opaque compiler failure" }));
+    const result = compiler.compile(compileRequest());
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics[0]).toMatchObject({
+        uri: "file:///project/image.slang",
+        message: "opaque compiler failure",
+        source: "slang-compile",
+      });
+    }
+  });
+
+  it("parses the modern Slang diagnostic envelope without depending on source excerpts", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "error[E00001]: cannot open file 'palette.slang'\n  --> /workspace/lib/palette.slang:3:8\n   |\n 3 | import palette;",
+    }));
+    const result = compiler.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [{
+          uri: "file:///project/lib/palette.slang",
+          path: "/workspace/lib/palette.slang",
+          source: "bad",
+        }],
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics).toEqual([expect.objectContaining({
+        uri: "file:///project/lib/palette.slang",
+        range: { start: { line: 2, character: 7 }, end: { line: 2, character: 7 } },
+        severity: "error",
+        code: "E00001",
+        message: "cannot open file 'palette.slang'",
+      })]);
+    }
+  });
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
     const result = compiler.compileImagePass("float4 mainImage(float2 c) { return float4(1); }");
-    expect(result).toEqual({ success: true, wgsl: "FINAL_WGSL" });
+    expect(result).toEqual({ success: true, wgsl: "FINAL_WGSL", diagnostics: [] });
   });
 
   it("wraps user source with the prelude and entry points before compiling", () => {
@@ -434,7 +614,7 @@ describe("SlangCompiler", () => {
       passName: "BufferA",
     });
 
-    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/buffera.slang");
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/workspace/buffera.slang");
   });
 
   it("defaults the module name to image when no pass name is given", () => {
@@ -443,7 +623,7 @@ describe("SlangCompiler", () => {
 
     compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
 
-    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/image.slang");
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/workspace/image.slang");
   });
 
   it("does not mutate the caller's channels array", () => {

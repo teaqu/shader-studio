@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -15,6 +15,7 @@ import { KeyboardManager } from "../input/KeyboardManager";
 import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
+import type { SlangCompileRequest, SlangCompileOptions } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import {
@@ -26,7 +27,7 @@ import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniform
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
-import { sharedSlangWgslCache } from "./SlangWgslCache";
+import { createSlangWgslCacheKey, sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
 
@@ -56,7 +57,6 @@ interface PassTiming {
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
-const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
@@ -65,8 +65,8 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
     private readonly objectUrls: string[],
   ) {}
 
-  compile(source: string, options: Parameters<AsyncSlangCompiler["compile"]>[1]): Promise<ReturnType<AsyncSlangCompiler["compile"]> extends Promise<infer T> ? T : never> {
-    return this.inner.compile(source, options);
+  compile(request: Parameters<AsyncSlangCompiler["compile"]>[0]): ReturnType<AsyncSlangCompiler["compile"]> {
+    return this.inner.compile(request);
   }
 
   dispose(): void {
@@ -112,6 +112,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string>;
     customUniformDeclarations?: string;
     customUniformInfo?: { name: string; type: string }[];
+    workspace?: SlangWorkspaceSnapshot;
   } | null = null;
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
@@ -372,6 +373,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string> = {},
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
@@ -412,6 +414,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: { ...buffers },
       customUniformDeclarations,
       customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
+      workspace,
     };
     const nextCustomUniformManager = new CustomUniformManager();
     if (customUniformDeclarations && customUniformInfo) {
@@ -531,11 +534,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const errors: string[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
-      const key = WebGPURenderingEngine.passCacheKey(
+      const options: SlangCompileOptions = {
+        passName: pass.name,
+        commonCode: graph.commonCode,
+        channels: pass.channels.map((channel) => ({
+          slot: channel.slot,
+          key: channel.key,
+          kind: channel.kind,
+        })),
+        ...(nextCustomUniformManager.hasUniforms()
+          ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
+          : {}),
+      };
+      const compileRequest = WebGPURenderingEngine.createCompileRequest(
         pass,
-        graph.commonCode,
-        nextCustomUniformManager.getUniformInfo(),
+        path,
+        workspace,
+        config,
+        options,
       );
+      const key = createSlangWgslCacheKey(compileRequest);
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
         // Unchanged pass: carry the live pipeline into the next generation.
@@ -557,18 +575,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         let slangMs = 0;
         if (!wgsl) {
           const slangStartedAt = this.now();
-          const compiled = await this.compiler.compile(pass.source, {
-            passName: pass.name,
-            commonCode: graph.commonCode,
-            channels: pass.channels.map((channel) => ({
-              slot: channel.slot,
-              key: channel.key,
-              kind: channel.kind,
-            })),
-            ...(nextCustomUniformManager.hasUniforms()
-              ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
-              : {}),
-          });
+          const compiled = await this.compiler.compile(compileRequest);
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
             errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
@@ -884,26 +891,71 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ].join(" ");
   }
 
-  /**
-   * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key + kind).
-   * Width/height are texture concerns handled by resize() without recompiling,
-   * so they're deliberately excluded from the key.
-   */
-  private static passCacheKey(
+  private static createCompileRequest(
     pass: RenderPassNode,
-    commonCode: string,
-    customUniforms: { name: string; type: string }[] = [],
-  ): string {
-    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
-    return JSON.stringify([
-      SLANG_WGSL_CACHE_KEY_VERSION,
-      pass.name,
-      pass.source,
-      commonCode,
-      channels,
-      customUniforms,
-    ]);
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot | undefined,
+    config: ShaderConfig | null,
+    options: SlangCompileOptions,
+  ): SlangCompileRequest {
+    const sourceFile = WebGPURenderingEngine.findPassSourceFile(pass, shaderPath, workspace, config);
+    const generatedName = pass.name.toLowerCase();
+    const sourceUri = sourceFile?.uri ?? WebGPURenderingEngine.pathToFileUri(
+      pass.name === "Image" ? shaderPath : `/${generatedName}.slang`,
+    );
+    const sourcePath = sourceFile?.path ?? `/workspace/${generatedName}.slang`;
+    const snapshot = workspace ?? {
+      rootUri: WebGPURenderingEngine.parentUri(sourceUri),
+      files: [{ uri: sourceUri, path: sourcePath, source: pass.source }],
+    };
+    return { source: pass.source, sourceUri, sourcePath, workspace: snapshot, options };
+  }
+
+  private static findPassSourceFile(
+    pass: RenderPassNode,
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot | undefined,
+    config: ShaderConfig | null,
+  ): SlangWorkspaceSnapshot["files"][number] | undefined {
+    if (!workspace) {
+      return undefined;
+    }
+    if (pass.name === "Image") {
+      const shaderUri = WebGPURenderingEngine.pathToFileUri(shaderPath);
+      const exact = workspace.files.find((file) => file.uri === shaderUri);
+      if (exact) {
+        return exact;
+      }
+    }
+    const configuredPass = config?.passes?.[pass.name];
+    const configuredPath = configuredPass && "path" in configuredPass ? configuredPass.path : undefined;
+    if (configuredPath) {
+      const configuredUri = new URL(configuredPath, WebGPURenderingEngine.pathToFileUri(shaderPath)).href;
+      const configured = workspace.files.find((file) => file.uri === configuredUri);
+      if (configured) {
+        return configured;
+      }
+    }
+    const sourceMatches = workspace.files.filter((file) => file.source === pass.source);
+    if (sourceMatches.length <= 1) {
+      return sourceMatches[0];
+    }
+    const expected = pass.name.toLowerCase();
+    return sourceMatches.find((file) => file.path.toLowerCase().includes(expected)) ?? sourceMatches[0];
+  }
+
+  private static pathToFileUri(path: string): string {
+    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(path)) {
+      return new URL(path).href;
+    }
+    const normalized = path.replace(/\\/g, "/");
+    return new URL(`file://${normalized.startsWith("/") ? "" : "/"}${normalized}`).href;
+  }
+
+  private static parentUri(uri: string): string {
+    const parsed = new URL(uri);
+    parsed.pathname = parsed.pathname.slice(0, parsed.pathname.lastIndexOf("/") + 1);
+    return parsed.href.replace(/\/$/, "");
   }
 
   render(time: number = performance.now()): void {
@@ -1427,6 +1479,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.lastCompile.buffers,
       this.lastCompile.customUniformDeclarations,
       this.lastCompile.customUniformInfo,
+      this.lastCompile.workspace,
     );
   }
 

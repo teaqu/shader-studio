@@ -434,6 +434,38 @@ describe('ShaderProcessor', () => {
         undefined,
       );
     });
+
+    it('passes a Slang workspace snapshot through to the rendering engine', async () => {
+      const workspace = {
+        rootUri: 'file:///project',
+        files: [{
+          uri: 'file:///project/image.slang',
+          path: '/workspace/image.slang',
+          source: 'float4 mainImage(float2 c) { return 0; }',
+        }],
+      };
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        language: 'slang',
+        code: workspace.files[0].source,
+        config: {},
+        path: '/project/image.slang',
+        buffers: {},
+        workspace,
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        undefined,
+        undefined,
+        workspace,
+      );
+    });
   });
 
   describe('processCommonBufferUpdate', () => {

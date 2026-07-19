@@ -40,6 +40,12 @@ export interface SlangError {
 export type SlangVectorLike<T> = T[] | { size(): number; get(i: number): T };
 
 export interface SlangModuleApi {
+  FS: {
+    mkdirTree(path: string): void;
+    writeFile(path: string, source: string): void;
+    unlink(path: string): void;
+    analyzePath(path: string): { exists: boolean };
+  };
   createGlobalSession(): SlangGlobalSession | null;
   getCompileTargets(): SlangVectorLike<SlangCompileTarget>;
   getLastError(): SlangError;

@@ -1,7 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { SlangWgslCache } from "../../webgpu/SlangWgslCache";
+import { createSlangWgslCacheKey, SlangWgslCache } from "../../webgpu/SlangWgslCache";
+import type { SlangCompileRequest } from "../../webgpu/SlangCompiler";
 
 describe("SlangWgslCache", () => {
+  it("hashes a deterministically sorted workspace including dependency paths, source, and options", () => {
+    const base: SlangCompileRequest = {
+      source: "root",
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/b.slang", path: "/workspace/b.slang", source: "b" },
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "a" },
+        ],
+      },
+      options: { passName: "Image" },
+    };
+    const reversed = { ...base, workspace: { ...base.workspace, files: [...base.workspace.files].reverse() } };
+    const sourceChanged = { ...base, workspace: { ...base.workspace, files: base.workspace.files.map((file) => file.path.endsWith("a.slang") ? { ...file, source: "changed" } : file) } };
+    const pathChanged = { ...base, workspace: { ...base.workspace, files: base.workspace.files.map((file) => file.path.endsWith("a.slang") ? { ...file, path: "/workspace/lib/a.slang" } : file) } };
+    const optionsChanged = { ...base, options: { passName: "BufferA" } };
+
+    expect(createSlangWgslCacheKey(reversed)).toBe(createSlangWgslCacheKey(base));
+    expect(createSlangWgslCacheKey(sourceChanged)).not.toBe(createSlangWgslCacheKey(base));
+    expect(createSlangWgslCacheKey(pathChanged)).not.toBe(createSlangWgslCacheKey(base));
+    expect(createSlangWgslCacheKey(optionsChanged)).not.toBe(createSlangWgslCacheKey(base));
+  });
   it("stores and retrieves compiled WGSL by key", () => {
     const cache = new SlangWgslCache(2);
 
