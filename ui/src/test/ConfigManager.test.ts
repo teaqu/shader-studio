@@ -250,6 +250,54 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('addComputePass', () => {
+    it('should auto-name compute passes from ComputeA to ComputeB', () => {
+      configManager.setConfig(createTestConfig());
+
+      expect(configManager.addComputePass()).toBe('ComputeA');
+      expect(configManager.addComputePass()).toBe('ComputeB');
+      expect(configManager.getConfig()!.passes.ComputeA).toEqual({ path: '', inputs: {} });
+      expect(configManager.getConfig()!.passes.ComputeB).toEqual({ path: '', inputs: {} });
+    });
+
+    it('should fill an unoccupied alphabetic gap', () => {
+      const config = createTestConfig();
+      config.passes.ComputeA = { path: 'a.slang', inputs: {} };
+      config.passes.ComputeC = { path: 'c.slang', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('ComputeB');
+    });
+
+    it('should continue with Compute1 after ComputeZ', () => {
+      const config = createTestConfig();
+      for (let i = 0; i < 26; i++) {
+        config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          path: `${String.fromCharCode(97 + i)}.slang`,
+          inputs: {},
+        };
+      }
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('Compute1');
+    });
+
+    it('should skip occupied numeric compute names', () => {
+      const config = createTestConfig();
+      for (let i = 0; i < 26; i++) {
+        config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          path: `${String.fromCharCode(97 + i)}.slang`,
+          inputs: {},
+        };
+      }
+      config.passes.Compute1 = { path: 'one.slang', inputs: {} };
+      config.passes.Compute2 = { path: 'two.slang', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('Compute3');
+    });
+  });
+
   describe('addSpecificBuffer', () => {
     it('should create config when adding buffer with no existing config', () => {
       const result = configManager.addSpecificBuffer('BufferA');

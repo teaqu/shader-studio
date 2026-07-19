@@ -117,6 +117,29 @@ export class ConfigManager {
   }
 
   /**
+     * Get the next available compute pass name (ComputeA, ComputeB, etc.)
+     */
+  private getNextComputePassName(): string {
+    if (!this.config) {
+      return 'ComputeA';
+    }
+
+    const existingNames = new Set(Object.keys(this.config.passes));
+    for (let i = 0; i < 26; i++) {
+      const name = `Compute${String.fromCharCode(65 + i)}`;
+      if (!existingNames.has(name)) {
+        return name;
+      }
+    }
+    // Fallback beyond Z
+    let n = 1;
+    while (existingNames.has(`Compute${n}`)) {
+      n++;
+    }
+    return `Compute${n}`;
+  }
+
+  /**
      * Add a new buffer to the configuration
      */
   addBuffer(): string | null {
@@ -135,6 +158,27 @@ export class ConfigManager {
     };
     this.updateConfig(updatedConfig);
     return bufferName;
+  }
+
+  /**
+     * Add a new compute pass to the configuration
+     */
+  addComputePass(): string | null {
+    this.ensureConfig();
+
+    const computePassName = this.getNextComputePassName();
+    const updatedConfig = {
+      ...this.config!,
+      passes: {
+        ...this.config!.passes,
+        [computePassName]: {
+          path: '',
+          inputs: {}
+        }
+      }
+    };
+    this.updateConfig(updatedConfig);
+    return computePassName;
   }
 
   /**

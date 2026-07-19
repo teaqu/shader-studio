@@ -7,11 +7,13 @@
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
+  import type { ShaderLanguage } from "../../engineFactory";
 
   type ScriptInfoProp = { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null;
 
   interface Props {
     config?: ShaderConfig | null;
+    language?: ShaderLanguage;
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
     transport: Transport;
@@ -31,6 +33,7 @@
 
   let {
     config = $bindable(null),
+    language = "glsl",
     pathMap = {},
     bufferPathMap = {},
     transport,
@@ -128,6 +131,20 @@
         onConfigChange(config);
       }
       switchTab(bufferName);
+    }
+  }
+
+  function addComputePass() {
+    if (!configManager) {
+      return;
+    }
+    const computePassName = configManager.addComputePass();
+    if (computePassName) {
+      config = configManager.getConfig();
+      if (config) {
+        onConfigChange(config);
+      }
+      switchTab(computePassName);
     }
   }
 
@@ -321,6 +338,13 @@
         <button class="add-tab-btn" title="Add new pass">+ New</button>
         <div class="dropdown-content">
           <button class="dropdown-item" onclick={() => addBuffer()}>Buffer</button>
+          {#if language === "slang"}
+            <button
+              class="dropdown-item"
+              aria-label="Add compute pass"
+              onclick={() => addComputePass()}
+            >+ Compute</button>
+          {/if}
           {#if !config?.passes?.common}
             <button class="dropdown-item" onclick={() => addCommonBuffer()}>Common</button>
           {/if}

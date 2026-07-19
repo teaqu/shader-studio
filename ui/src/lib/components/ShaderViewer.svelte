@@ -1346,6 +1346,7 @@
     {#if $configPanelStore.isVisible}
       <ConfigPanel
         config={currentConfig}
+        language={engineLanguage}
         {pathMap}
         {bufferPathMap}
         {transport}

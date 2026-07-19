@@ -13,6 +13,7 @@ vi.mock('../../../lib/ConfigManager', () => ({
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue([]),
     addBuffer: vi.fn().mockReturnValue(null),
+    addComputePass: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
     getConfig: vi.fn().mockReturnValue(null),
@@ -37,6 +38,7 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue(getBufferListReturn),
     addBuffer: vi.fn().mockReturnValue(null),
+    addComputePass: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
     getConfig: vi.fn().mockReturnValue(null),
@@ -154,6 +156,67 @@ describe('ConfigPanel', () => {
   });
 
   describe('tab navigation', () => {
+    it('renders configured compute passes as tabs', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', inputs: {} },
+        },
+      };
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      expect(getByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
+    });
+
+    it('reacts when a compute pass is added to the config prop', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+      };
+      const props = {
+        config,
+        language: 'glsl' as const,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      };
+      const { queryByRole, rerender } = render(ConfigPanel, props);
+
+      await tick();
+      expect(queryByRole('button', { name: /^ComputeSim/ })).not.toBeInTheDocument();
+
+      await rerender({
+        ...props,
+        config: {
+          ...config,
+          passes: {
+            ...config.passes,
+            ComputeSim: { path: 'sim.slang', inputs: {} },
+          },
+        },
+      });
+      await tick();
+
+      expect(queryByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+    });
+
     it('should render tabs for buffers returned by getBufferList', async () => {
       const config: ShaderConfig = {
         version: '1.0',
@@ -568,6 +631,106 @@ describe('ConfigPanel', () => {
 
       expect(mockManager.addCommonBuffer).toHaveBeenCalled();
       expect(mockOnFileSelect).toHaveBeenCalledWith('common');
+    });
+  });
+
+  describe('add compute pass', () => {
+    const config: ShaderConfig = {
+      version: '1.0',
+      passes: { Image: { inputs: {} } },
+    };
+
+    function renderPanel(language: 'glsl' | 'slang') {
+      return render(ConfigPanel, {
+        config,
+        language,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: `/test/image.${language}`,
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+    }
+
+    it('shows the add-compute affordance for Slang', async () => {
+      const { getByRole } = renderPanel('slang');
+
+      await tick();
+
+      expect(getByRole('button', { name: /add compute/i })).toBeInTheDocument();
+    });
+
+    it('hides the add-compute affordance for GLSL', async () => {
+      const { queryByRole } = renderPanel('glsl');
+
+      await tick();
+
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+    });
+
+    it('reacts to active language changes without altering existing add options', async () => {
+      const props = {
+        config,
+        language: 'glsl' as 'glsl' | 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      };
+      const { getByRole, queryByRole, rerender } = render(ConfigPanel, props);
+
+      await tick();
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+
+      await rerender({ ...props, language: 'slang' });
+      await tick();
+      expect(getByRole('button', { name: /add compute/i })).toBeInTheDocument();
+      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+
+      await rerender(props);
+      await tick();
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('button', { name: 'Buffer' })).toBeInTheDocument();
+    });
+
+    it('adds, publishes, and selects a compute pass', async () => {
+      const updatedConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      };
+      const mockManager = createMockConfigManager([]);
+      mockManager.addComputePass.mockReturnValue('ComputeA');
+      mockManager.getConfig.mockReturnValue(updatedConfig);
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(onConfigChange).toHaveBeenCalledWith(updatedConfig);
+      expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
+      expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
     });
   });
 
