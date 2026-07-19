@@ -175,6 +175,11 @@ export class SlangDependencyGraph {
   private readonly forward = new Map<string, Set<string>>();
   private readonly reverse = new Map<string, Set<string>>();
   private readonly ambiguousModuleOwners = new Set<string>();
+  private readonly moduleImportsByOwner = new Map<string, Set<string>>();
+  private readonly moduleImporters = new Map<string, Set<string>>();
+  private readonly declaredModules = new Map<string, string>();
+  private readonly moduleInvalidationOwners = new Map<string, Set<string>>();
+  private readonly knownSources = new Set<string>();
   private readonly rootUri?: string;
 
   constructor(rootUri?: string) {
@@ -189,6 +194,11 @@ export class SlangDependencyGraph {
 
     const dependencies = new Set<string>();
     const references = extractReferences(source);
+    const moduleImports = new Set(
+      references
+        .filter((reference) => reference.kind === "module")
+        .map((reference) => reference.value.replaceAll("::", ".")),
+    );
     for (const reference of references) {
       if (reference.kind === "path") {
         dependencies.add(resolvePath(owner, reference.value, this.rootUri));
@@ -211,10 +221,38 @@ export class SlangDependencyGraph {
       }
     }
 
+    const declaration = maskCommentsAndStrings(source).match(
+      /\bmodule\s+([A-Za-z_]\w*(?:\s*(?:\.|::)\s*[A-Za-z_]\w*)*)\s*;/,
+    );
+    const declaredModule = declaration?.[1]
+      ?.replace(/\s+/g, "")
+      .replaceAll("::", ".");
+    const invalidationOwners = new Set<string>();
+    for (const moduleName of [this.declaredModules.get(owner), declaredModule]) {
+      if (moduleName) {
+        for (const importer of this.moduleImporters.get(moduleName) ?? []) {
+          invalidationOwners.add(importer);
+        }
+      }
+    }
+
     this.clearOutgoing(owner);
+    this.knownSources.add(owner);
     this.forward.set(owner, dependencies);
-    if (references.some((reference) => reference.kind === "module")) {
+    if (moduleImports.size > 0) {
       this.ambiguousModuleOwners.add(owner);
+    }
+    this.moduleImportsByOwner.set(owner, moduleImports);
+    for (const moduleName of moduleImports) {
+      const importers = this.moduleImporters.get(moduleName) ?? new Set<string>();
+      importers.add(owner);
+      this.moduleImporters.set(moduleName, importers);
+    }
+    this.moduleInvalidationOwners.set(owner, invalidationOwners);
+    if (declaredModule) {
+      this.declaredModules.set(owner, declaredModule);
+    } else {
+      this.declaredModules.delete(owner);
     }
     for (const dependency of dependencies) {
       const owners = this.reverse.get(dependency) ?? new Set<string>();
@@ -225,8 +263,17 @@ export class SlangDependencyGraph {
 
   remove(uri: string): void {
     const canonical = canonicalUri(uri);
+    const invalidationOwners = new Set<string>();
+    const declaredModule = this.declaredModules.get(canonical);
+    if (declaredModule) {
+      for (const importer of this.moduleImporters.get(declaredModule) ?? []) {
+        invalidationOwners.add(importer);
+      }
+    }
     this.clearOutgoing(canonical);
     this.forward.delete(canonical);
+    this.declaredModules.delete(canonical);
+    this.moduleInvalidationOwners.set(canonical, invalidationOwners);
   }
 
   directDependencies(uri: string): ReadonlySet<string> {
@@ -241,10 +288,14 @@ export class SlangDependencyGraph {
     const roots = new Set([...activeRoots].map(canonicalUri));
     const affected = new Set<string>();
     const visited = new Set<string>();
-    const pending = [
-      canonicalUri(uri),
-      ...(conservativeModuleInvalidation ? this.ambiguousModuleOwners : []),
-    ];
+    const changedUri = canonicalUri(uri);
+    const pending = [changedUri];
+    const moduleOwners = this.moduleInvalidationOwners.get(changedUri);
+    if (moduleOwners !== undefined) {
+      pending.push(...moduleOwners);
+    } else if (conservativeModuleInvalidation && !this.knownSources.has(changedUri)) {
+      pending.push(...this.ambiguousModuleOwners);
+    }
 
     while (pending.length > 0) {
       const current = pending.pop();
@@ -265,6 +316,14 @@ export class SlangDependencyGraph {
 
   private clearOutgoing(owner: string): void {
     this.ambiguousModuleOwners.delete(owner);
+    for (const moduleName of this.moduleImportsByOwner.get(owner) ?? []) {
+      const importers = this.moduleImporters.get(moduleName);
+      importers?.delete(owner);
+      if (importers?.size === 0) {
+        this.moduleImporters.delete(moduleName);
+      }
+    }
+    this.moduleImportsByOwner.delete(owner);
     for (const dependency of this.forward.get(owner) ?? []) {
       const owners = this.reverse.get(dependency);
       owners?.delete(owner);

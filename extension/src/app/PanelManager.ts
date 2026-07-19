@@ -128,8 +128,9 @@ export class PanelManager {
       : "glsl";
     this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
 
+    const shaderOwnerId = "active-editor";
     if (editor) {
-      void this.shaderProvider.sendShaderFromEditor(editor);
+      void this.shaderProvider.sendShaderFromEditor(editor, { ownerId: shaderOwnerId });
     }
 
     // Handle messages from webview
@@ -145,6 +146,9 @@ export class PanelManager {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
+      if (!this.messenger.hasActiveClients()) {
+        this.shaderProvider.releaseSlangRootOwner(shaderOwnerId);
+      }
     });
 
     this.logger.info("Webview panel created");

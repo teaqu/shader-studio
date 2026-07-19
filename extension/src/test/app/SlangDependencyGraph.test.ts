@@ -127,6 +127,34 @@ suite("SlangDependencyGraph", () => {
     ], [root]);
   });
 
+  test("matches declared module identity instead of invalidating every module importer", () => {
+    const graph = new SlangDependencyGraph("file:///workspace");
+    const palette = "file:///workspace/generated/colors.slang";
+    const unrelated = "file:///workspace/generated/noise.slang";
+    graph.update(root, "import palette;");
+    graph.update(palette, "module palette; float4 color();");
+    graph.update(unrelated, "module unrelated; float noise();");
+
+    assert.deepStrictEqual([...graph.affectedRoots(palette, new Set([root]))], [root]);
+    assert.deepStrictEqual([...graph.affectedRoots(unrelated, new Set([root]))], []);
+  });
+
+  test("invalidates importers when a module declaration is renamed or removed", () => {
+    const graph = new SlangDependencyGraph("file:///workspace");
+    const generated = "file:///workspace/generated/colors.slang";
+    graph.update(root, "import palette;");
+    graph.update(generated, "module palette; float4 color();");
+
+    graph.update(generated, "module renamed; float4 color();");
+
+    assert.deepStrictEqual([...graph.affectedRoots(generated, new Set([root]))], [root]);
+
+    graph.update(generated, "module palette; float4 color();");
+    graph.remove(generated);
+
+    assert.deepStrictEqual([...graph.affectedRoots(generated, new Set([root]))], [root]);
+  });
+
   test("keeps incoming ownership when a dependency is deleted", () => {
     const graph = new SlangDependencyGraph();
     const dependency = "file:///workspace/lib.slang";

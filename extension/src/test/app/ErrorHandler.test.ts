@@ -389,4 +389,27 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(sets[0].diagnostics[0].code, 'E123');
     assert.strictEqual(deletes[0].toString(), dependencyUri);
   });
+
+  test('clears structured compiler diagnostics after a successful generation', () => {
+    const dependencyUri = vscode.Uri.file('/project/lib/helper.slang').toString();
+    let clearCount = 0;
+    mockDiagnosticCollection.clear = (() => {
+      clearCount++;
+    }) as typeof mockDiagnosticCollection.clear;
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['failed generation'],
+      diagnostics: [{
+        uri: dependencyUri,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        severity: 'error',
+        message: 'unknown symbol',
+        source: 'slang-compile',
+      }],
+    });
+
+    errorHandler.clearErrors();
+
+    assert.strictEqual(clearCount, 1);
+  });
 });

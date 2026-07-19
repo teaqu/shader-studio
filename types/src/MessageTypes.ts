@@ -80,6 +80,13 @@ export interface SlangDiagnostic {
   passName?: string;
 }
 
+export interface ShaderCompileGeneration {
+  id: number;
+  rootIndex: number;
+  rootCount: number;
+  rootPath: string;
+}
+
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
   code: string;
@@ -92,6 +99,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   workspace?: SlangWorkspaceSnapshot;
   /** Structured Slang/WebGPU diagnostics. Optional for older clients. */
   diagnostics?: SlangDiagnostic[];
+  /** Groups dependency-driven root recompiles caused by one source event. */
+  compileGeneration?: ShaderCompileGeneration;
   reload?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;

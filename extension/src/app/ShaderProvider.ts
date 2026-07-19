@@ -17,6 +17,11 @@ import {
 } from "./SlangShaderWorkspaceCoordinator";
 import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
 
+export interface ShaderSendOptions {
+  reload?: boolean;
+  ownerId?: string;
+}
+
 export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
@@ -25,6 +30,7 @@ export class ShaderProvider {
   private scriptBundler = new ScriptBundler();
   private scriptEvaluator = new ScriptEvaluator();
   private readonly slangWorkspaceCoordinator: SlangShaderWorkspaceCoordinator;
+  private nextCompileGeneration = 1;
 
   constructor(
     private messenger: Messenger,
@@ -40,7 +46,7 @@ export class ShaderProvider {
 
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -78,12 +84,13 @@ export class ShaderProvider {
         }
         : undefined,
       true,
+      options?.ownerId ?? "active-editor",
     );
   }
 
   public async sendShaderFromPath(
     shaderPath: string,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
   ): Promise<void> {
     if (!this.messenger) {
       return;
@@ -105,7 +112,14 @@ export class ShaderProvider {
         return;
       }
 
-      await this.sendMainImageShader(shaderPath, code, options, undefined, false);
+      await this.sendMainImageShader(
+        shaderPath,
+        code,
+        options,
+        undefined,
+        false,
+        options?.ownerId ?? "active-editor",
+      );
     } catch {
       return;
     }
@@ -114,7 +128,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
@@ -147,17 +161,37 @@ export class ShaderProvider {
       }
     }
 
-    await this.sendMainImageShader(shaderPath, code, options, cursorPosition, true);
+    await this.sendMainImageShader(
+      shaderPath,
+      code,
+      options,
+      cursorPosition,
+      true,
+      options?.ownerId ?? "active-editor",
+    );
   }
 
   public async sendAffectedSlangRoots(
     filePath: string,
     source?: string,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
   ): Promise<void> {
-    for (const owner of this.slangWorkspaceCoordinator.owningRoots(filePath, source)) {
-      await this.sendSlangRoot(owner, options);
+    let currentSource = source;
+    if (currentSource === undefined && fs.existsSync(filePath)) {
+      try {
+        currentSource = fs.readFileSync(filePath, "utf-8");
+      } catch {
+        currentSource = undefined;
+      }
     }
+    await this.sendSlangRootBatch(
+      this.slangWorkspaceCoordinator.owningRoots(filePath, currentSource),
+      options,
+    );
+  }
+
+  public releaseSlangRootOwner(ownerId: string): void {
+    this.slangWorkspaceCoordinator.releaseOwner(ownerId);
   }
 
   /**
@@ -386,7 +420,7 @@ export class ShaderProvider {
   private async trySendNonMainImageShader(
     shaderPath: string,
     code: string,
-    options: { reload?: boolean } | undefined,
+    options: ShaderSendOptions | undefined,
     sendOwnedShader: () => Promise<void>,
   ): Promise<boolean> {
     const slangOwners = getShaderLanguage(shaderPath) === "slang"
@@ -394,9 +428,7 @@ export class ShaderProvider {
       : [];
     if (slangOwners.some((owner) => owner !== shaderPath)) {
       this.logger.debug(`Recompiling ${slangOwners.length} Slang root(s) affected by ${shaderPath}`);
-      for (const owner of slangOwners) {
-        await this.sendSlangRoot(owner, options);
-      }
+      await this.sendSlangRootBatch(slangOwners, options);
       return true;
     }
 
@@ -407,9 +439,7 @@ export class ShaderProvider {
     if (getShaderLanguage(shaderPath) === "slang") {
       if (slangOwners.length > 0) {
         this.logger.debug(`Recompiling ${slangOwners.length} Slang root(s) affected by ${shaderPath}`);
-        for (const owner of slangOwners) {
-          await this.sendSlangRoot(owner, options);
-        }
+        await this.sendSlangRootBatch(slangOwners, options);
         return true;
       }
     }
@@ -432,9 +462,11 @@ export class ShaderProvider {
   private async sendMainImageShader(
     shaderPath: string,
     code: string,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
+    ownerId?: string,
+    compileGeneration?: ShaderSourceMessage["compileGeneration"],
   ): Promise<void> {
     const buffers: Record<string, string> = {};
     const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
@@ -458,12 +490,23 @@ export class ShaderProvider {
     };
 
     if (language === "slang") {
+      if (ownerId) {
+        this.slangWorkspaceCoordinator.activateRoot(ownerId, shaderPath);
+      }
       message.workspace = await this.slangWorkspaceCoordinator.registerRoot(
         shaderPath,
         Object.entries(bufferPathMap)
           .filter(([passName]) => passName !== "Image")
           .map(([, filePath]) => filePath),
       );
+      message.compileGeneration = compileGeneration ?? {
+        id: this.nextCompileGeneration++,
+        rootIndex: 0,
+        rootCount: 1,
+        rootPath: shaderPath,
+      };
+    } else if (ownerId) {
+      this.slangWorkspaceCoordinator.releaseOwner(ownerId);
     }
 
     // Snapshot the RAW config file text (not the processed `config` above, which
@@ -488,13 +531,22 @@ export class ShaderProvider {
 
   private async sendSlangRoot(
     rootPath: string,
-    options?: { reload?: boolean },
+    options?: ShaderSendOptions,
+    compileGeneration?: ShaderSourceMessage["compileGeneration"],
   ): Promise<void> {
     const openDocument = vscode.workspace.textDocuments.find(
       (document) => document.uri.fsPath === rootPath,
     );
     if (openDocument) {
-      await this.sendMainImageShader(rootPath, openDocument.getText(), options, undefined, true);
+      await this.sendMainImageShader(
+        rootPath,
+        openDocument.getText(),
+        options,
+        undefined,
+        true,
+        undefined,
+        compileGeneration,
+      );
       return;
     }
     if (!fs.existsSync(rootPath)) {
@@ -508,7 +560,39 @@ export class ShaderProvider {
       options,
       undefined,
       true,
+      undefined,
+      compileGeneration,
     );
+  }
+
+  private async sendSlangRootBatch(
+    rootPaths: readonly string[],
+    options?: ShaderSendOptions,
+  ): Promise<void> {
+    const roots = [...new Set(rootPaths)]
+      .filter((rootPath) => {
+        const canSend = fs.existsSync(rootPath) || vscode.workspace.textDocuments.some(
+          (document) => document.uri.fsPath === rootPath,
+        );
+        if (!canSend) {
+          this.activeShaders.delete(rootPath);
+          this.slangWorkspaceCoordinator.removeRoot(rootPath);
+        }
+        return canSend;
+      })
+      .sort();
+    if (roots.length === 0) {
+      return;
+    }
+    const id = this.nextCompileGeneration++;
+    for (const [rootIndex, rootPath] of roots.entries()) {
+      await this.sendSlangRoot(rootPath, options, {
+        id,
+        rootIndex,
+        rootCount: roots.length,
+        rootPath,
+      });
+    }
   }
 
   private async sendNonMainImageShaderFromEditor(

@@ -26,10 +26,15 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
-  private pendingShaderEvent: {
+  private pendingShaderEvents: Array<{
     event: MessageEvent;
     resolve: (result: CompilationResult | undefined) => void;
-  } | null = null;
+  }> = [];
+  private readonly compilationGenerations = new Map<number, {
+    rootCount: number;
+    results: Map<string, { index: number; result: CompilationResult }>;
+  }>();
+  private latestCompileGenerationId = 0;
   private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
@@ -66,11 +71,43 @@ export class ShaderPipeline {
         return undefined;
       }
 
+      if (!this.acceptCompileGeneration(message)) {
+        return undefined;
+      }
+
       if (this.shaderProcessor.isCurrentlyProcessing()) {
-        this.pendingShaderEvent?.resolve(undefined);
         return await new Promise<CompilationResult | undefined>((resolve) => {
-          this.pendingShaderEvent = { event, resolve };
+          const currentGeneration = message.compileGeneration;
+          if (currentGeneration) {
+            const duplicate = this.pendingShaderEvents.some(({ event: pendingEvent }) => {
+              const pending = pendingEvent.data as ShaderSourceMessage;
+              const pendingGeneration = pending.compileGeneration;
+              return pendingGeneration?.id === currentGeneration.id
+                && pendingGeneration.rootPath === currentGeneration.rootPath;
+            });
+            if (duplicate || this.isGenerationRootCompleted(message)) {
+              resolve(undefined);
+              return;
+            }
+            this.pendingShaderEvents.push({ event, resolve });
+            return;
+          }
+
+          const legacyIndex = this.pendingShaderEvents.findIndex(({ event: pendingEvent }) => (
+            !(pendingEvent.data as ShaderSourceMessage).compileGeneration
+          ));
+          if (legacyIndex >= 0) {
+            this.pendingShaderEvents[legacyIndex].resolve(undefined);
+            this.pendingShaderEvents.splice(legacyIndex, 1, { event, resolve });
+          } else {
+            this.pendingShaderEvents.push({ event, resolve });
+          }
         });
+      }
+
+      if (this.isGenerationRootCompleted(message)) {
+        this.drainPendingShaderEvent();
+        return undefined;
       }
 
       // Update cursor position if provided. Don't notify capture here: the
@@ -93,6 +130,7 @@ export class ShaderPipeline {
         if (lockedPath === undefined || lockedPath !== path) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
+            this.completeSkippedGeneration(message);
             return undefined;
           }
 
@@ -104,12 +142,14 @@ export class ShaderPipeline {
           }
 
           if (!currentBufferName) {
+            this.completeSkippedGeneration(message);
             return undefined;
           }
 
           this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
           this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
+          this.completeSkippedGeneration(message);
           return undefined;
         }
       }
@@ -156,13 +196,9 @@ export class ShaderPipeline {
       message,
       message.reload || false,
     );
-    this.handleCompilationResult(result);
+    this.handleCompilationResult(result, message);
 
-    if (this.pendingShaderEvent) {
-      const pending = this.pendingShaderEvent;
-      this.pendingShaderEvent = null;
-      void this.handleShaderMessage(pending.event).then(pending.resolve);
-    }
+    this.drainPendingShaderEvent();
 
     if (result.superseded) {
       return undefined;
@@ -171,13 +207,119 @@ export class ShaderPipeline {
     return result;
   }
 
-  private handleCompilationResult(result: CompilationResult): void {
+  private handleCompilationResult(result: CompilationResult, message?: ShaderSourceMessage): void {
     if (result.superseded) {
       return;
     }
 
+    const generation = message?.compileGeneration;
+    if (generation) {
+      if (generation.id < this.latestCompileGenerationId) {
+        this.compilationGenerations.delete(generation.id);
+        return;
+      }
+      const state = this.compilationGenerations.get(generation.id) ?? {
+        rootCount: generation.rootCount,
+        results: new Map<string, { index: number; result: CompilationResult }>(),
+      };
+      state.rootCount = Math.max(state.rootCount, generation.rootCount);
+      state.results.set(generation.rootPath, { index: generation.rootIndex, result });
+      this.compilationGenerations.set(generation.id, state);
+      if (state.results.size < state.rootCount) {
+        return;
+      }
+
+      const ordered = [...state.results.values()]
+        .sort((left, right) => left.index - right.index)
+        .map(({ result: rootResult }) => rootResult);
+      this.compilationGenerations.delete(generation.id);
+      result = {
+        success: ordered.every((rootResult) => rootResult.success),
+        errors: this.combineResultItems(ordered, "errors"),
+        warnings: this.combineResultItems(ordered, "warnings"),
+        diagnostics: this.combineDiagnostics(ordered),
+      };
+    }
+
     this.compilationState?.setResult(result);
     this.reportCompilationResult(result);
+  }
+
+  private isGenerationRootCompleted(message: ShaderSourceMessage): boolean {
+    const generation = message.compileGeneration;
+    return generation !== undefined
+      && this.compilationGenerations.get(generation.id)?.results.has(generation.rootPath) === true;
+  }
+
+  private acceptCompileGeneration(message: ShaderSourceMessage): boolean {
+    const generation = message.compileGeneration;
+    if (!generation) {
+      return true;
+    }
+    if (generation.id < this.latestCompileGenerationId) {
+      return false;
+    }
+    if (generation.id === this.latestCompileGenerationId) {
+      return true;
+    }
+
+    this.latestCompileGenerationId = generation.id;
+    for (const id of this.compilationGenerations.keys()) {
+      if (id < generation.id) {
+        this.compilationGenerations.delete(id);
+      }
+    }
+    this.pendingShaderEvents = this.pendingShaderEvents.filter((pending) => {
+      const pendingGeneration = (pending.event.data as ShaderSourceMessage).compileGeneration;
+      if (pendingGeneration && pendingGeneration.id < generation.id) {
+        pending.resolve(undefined);
+        return false;
+      }
+      return true;
+    });
+    return true;
+  }
+
+  private drainPendingShaderEvent(): void {
+    if (this.shaderProcessor.isCurrentlyProcessing()) {
+      return;
+    }
+    const pending = this.pendingShaderEvents.shift();
+    if (!pending) {
+      return;
+    }
+    void this.handleShaderMessage(pending.event)
+      .then(pending.resolve)
+      .finally(() => this.drainPendingShaderEvent());
+  }
+
+  private completeSkippedGeneration(message: ShaderSourceMessage): void {
+    if (message.compileGeneration) {
+      this.handleCompilationResult({ success: true }, message);
+    }
+  }
+
+  private combineResultItems(
+    results: readonly CompilationResult[],
+    key: "errors" | "warnings",
+  ): string[] | undefined {
+    const items = results.flatMap((result) => result[key] ?? []);
+    return items.length > 0 ? items : undefined;
+  }
+
+  private combineDiagnostics(results: readonly CompilationResult[]): CompilationResult["diagnostics"] {
+    const seen = new Set<string>();
+    const diagnostics = results
+      .flatMap((result) => result.diagnostics ?? [])
+      .filter((diagnostic) => {
+        const key = JSON.stringify(diagnostic);
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+    return diagnostics.length > 0 ? diagnostics : undefined;
   }
 
   private reportCompilationResult(result: CompilationResult): void {

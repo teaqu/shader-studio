@@ -41,6 +41,7 @@ suite('PanelManager Test Suite', () => {
       send: sandbox.stub(),
       addTransport: sandbox.stub().returns(undefined),
       removeTransport: sandbox.stub().returns(undefined),
+      hasActiveClients: sandbox.stub().returns(false),
       getErrorHandler: sandbox.stub().returns({
         handleError: sandbox.stub(),
         handlePersistentError: sandbox.stub()
@@ -49,6 +50,7 @@ suite('PanelManager Test Suite', () => {
 
     mockShaderProvider = {
       sendShaderFromEditor: sandbox.stub(),
+      releaseSlangRootOwner: sandbox.stub(),
     } as any;
 
     const mockGlslFileTracker = {
@@ -174,7 +176,7 @@ suite('PanelManager Test Suite', () => {
     assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
   });
 
-  test('createPanel sends the active shader to the webview immediately when an editor exists', () => {
+  test('createPanel owns the active Slang root until its panel is disposed', () => {
     const mockWebviewPanel = createMockWebviewPanel();
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
     sandbox.stub(vscode.window, 'tabGroups').value({
@@ -197,7 +199,18 @@ suite('PanelManager Test Suite', () => {
     panelManager.createPanel();
 
     sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub);
-    sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub, mockEditor);
+    sinon.assert.calledWithExactly(
+      mockShaderProvider.sendShaderFromEditor as sinon.SinonStub,
+      mockEditor,
+      { ownerId: 'active-editor' },
+    );
+
+    const disposePanel = mockWebviewPanel.onDidDispose.lastCall.args[0] as () => void;
+    disposePanel();
+    sinon.assert.calledWithExactly(
+      mockShaderProvider.releaseSlangRootOwner as sinon.SinonStub,
+      'active-editor',
+    );
   });
 
   test('createPanel uses empty tab group when available and locking is disabled', () => {

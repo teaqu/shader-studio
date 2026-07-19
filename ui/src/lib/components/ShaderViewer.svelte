@@ -971,7 +971,12 @@
           resolutionController.handleShaderLoadSucceeded();
         }
         if (result) {
-          applyCompilationResult(result);
+          // Generation-tagged Slang roots publish one aggregate through
+          // compilationState; legacy single-shader messages still apply their
+          // direct result here (and tests/integrations may provide no state).
+          if (!event.data.compileGeneration) {
+            applyCompilationResult(result);
+          }
           if (result.success && scriptInfo) {
             scriptInfo = { ...scriptInfo, uniforms: renderingEngine.getCustomUniformInfo() };
           }

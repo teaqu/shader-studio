@@ -752,8 +752,10 @@ suite('ShaderProvider Test Suite', () => {
 
     test('attaches a workspace snapshot only to Slang root messages', async () => {
       const coordinator = {
+        activateRoot: sandbox.stub(),
         registerRoot: sandbox.stub().resolves(snapshot),
         owningRoots: sandbox.stub().returns([]),
+        releaseOwner: sandbox.stub(),
         removeRoot: sandbox.stub(),
       } as unknown as SlangShaderWorkspaceCoordinator;
       const slangProvider = new ShaderProvider(
@@ -789,8 +791,10 @@ suite('ShaderProvider Test Suite', () => {
           : 'float4 mainImage(float2 uv) { return 1; }'
       ));
       const coordinator = {
+        activateRoot: sandbox.stub(),
         registerRoot: sandbox.stub().resolves(snapshot),
         owningRoots: sandbox.stub().returns(['/project/a.slang', '/project/z.slang']),
+        releaseOwner: sandbox.stub(),
         removeRoot: sandbox.stub(),
       } as unknown as SlangShaderWorkspaceCoordinator;
       const slangProvider = new ShaderProvider(
@@ -823,8 +827,10 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(true);
       sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
       const coordinator = {
+        activateRoot: sandbox.stub(),
         registerRoot: sandbox.stub().resolves(snapshot),
         owningRoots: sandbox.stub().returns(['/project/image.slang']),
+        releaseOwner: sandbox.stub(),
         removeRoot: sandbox.stub(),
       } as unknown as SlangShaderWorkspaceCoordinator;
       const slangProvider = new ShaderProvider(
@@ -847,6 +853,144 @@ suite('ShaderProvider Test Suite', () => {
 
       sinon.assert.calledOnce(sendSpy);
       assert.strictEqual(sendSpy.firstCall.args[0].path, '/project/image.slang');
+    });
+
+    test('reports Missing mainImage for an ownerless native module', async () => {
+      const coordinator = {
+        activateRoot: sandbox.stub(),
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns([]),
+        releaseOwner: sandbox.stub(),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      const moduleDocument = {
+        fileName: '/project/unrelated.slang',
+        languageId: 'slang',
+        uri: vscode.Uri.file('/project/unrelated.slang'),
+        getText: sandbox.stub().returns('module unrelated; float value() { return 1; }'),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: '' }),
+      } as any;
+
+      await slangProvider.sendShaderFromDocument(moduleDocument);
+
+      sinon.assert.calledWithExactly(sendSpy, {
+        type: 'error',
+        payload: ['Missing mainImage function'],
+      });
+      sinon.assert.notCalled(coordinator.registerRoot as unknown as sinon.SinonStub);
+    });
+
+    test('deduplicates roots and labels every message in one compile generation', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      const coordinator = {
+        activateRoot: sandbox.stub(),
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns([
+          '/project/c.slang',
+          '/project/a.slang',
+          '/project/c.slang',
+          '/project/b.slang',
+        ]),
+        releaseOwner: sandbox.stub(),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      loadAndProcessConfigStub.returns(null);
+      const helper = {
+        fileName: '/project/helper.slang',
+        languageId: 'slang',
+        uri: vscode.Uri.file('/project/helper.slang'),
+        getText: sandbox.stub().returns('float helper() { return 1; }'),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: '' }),
+      } as any;
+
+      await slangProvider.sendShaderFromDocument(helper);
+
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), [
+        '/project/a.slang',
+        '/project/b.slang',
+        '/project/c.slang',
+      ]);
+      const generations = sendSpy.getCalls().map((call) => call.args[0].compileGeneration);
+      assert.deepStrictEqual(generations.map((generation) => generation.rootIndex), [0, 1, 2]);
+      assert.ok(generations.every((generation) => (
+        generation.id === generations[0].id && generation.rootCount === 3
+      )));
+    });
+
+    test('excludes deleted roots from the compile generation count', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => String(filePath) === '/project/a.slang');
+      sandbox.stub(fs, 'readFileSync').returns('float4 mainImage(float2 uv) { return 1; }');
+      const coordinator = {
+        activateRoot: sandbox.stub(),
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots: sandbox.stub().returns(['/project/missing.slang', '/project/a.slang']),
+        releaseOwner: sandbox.stub(),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+
+      await slangProvider.sendAffectedSlangRoots('/project/helper.slang', 'float helper() { return 1; }');
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, '/project/a.slang');
+      assert.strictEqual(sendSpy.firstCall.args[0].compileGeneration.rootCount, 1);
+      sinon.assert.calledWithExactly(
+        coordinator.removeRoot as unknown as sinon.SinonStub,
+        '/project/missing.slang',
+      );
+    });
+
+    test('reads a newly created module before resolving arbitrary-path imports', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('module palette; float4 color() { return 1; }');
+      const owningRoots = sandbox.stub().returns([]);
+      const coordinator = {
+        activateRoot: sandbox.stub(),
+        registerRoot: sandbox.stub().resolves(snapshot),
+        owningRoots,
+        releaseOwner: sandbox.stub(),
+        removeRoot: sandbox.stub(),
+      } as unknown as SlangShaderWorkspaceCoordinator;
+      const slangProvider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+
+      await slangProvider.sendAffectedSlangRoots('/project/generated/colors.slang');
+
+      sinon.assert.calledWithExactly(
+        owningRoots,
+        '/project/generated/colors.slang',
+        'module palette; float4 color() { return 1; }',
+      );
+    });
+
+    test('keeps GLSL buffers unchanged and omits Slang workspace metadata', async () => {
+      const shaderPath = '/project/image.glsl';
+      const code = 'void mainImage(out vec4 color, vec2 uv) {}';
+      loadAndProcessConfigStub.callsFake((_path, buffers) => {
+        buffers.BufferA = 'buffer bytes';
+        return { version: '1', passes: { Image: {}, BufferA: { path: 'a.glsl' } } };
+      });
+      const document = {
+        fileName: shaderPath,
+        languageId: 'glsl',
+        uri: vscode.Uri.file(shaderPath),
+        getText: sandbox.stub().returns(code),
+        lineCount: 1,
+        lineAt: sandbox.stub().returns({ text: code }),
+      } as any;
+
+      await provider.sendShaderFromDocument(document);
+
+      assert.deepStrictEqual(sendSpy.lastCall.args[0].buffers, { BufferA: 'buffer bytes' });
+      assert.strictEqual(sendSpy.lastCall.args[0].workspace, undefined);
+      assert.strictEqual(sendSpy.lastCall.args[0].compileGeneration, undefined);
     });
   });
 });

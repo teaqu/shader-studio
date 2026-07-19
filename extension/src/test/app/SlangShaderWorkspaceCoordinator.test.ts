@@ -114,5 +114,36 @@ suite("SlangShaderWorkspaceCoordinator", () => {
       coordinator.owningRoots("/workspace/project/ownerless.slang", files[uri("ownerless.slang")]),
       [],
     );
+    assert.deepStrictEqual(
+      coordinator.owningRoots(
+        "/workspace/project/unrelated.slang",
+        "module unrelated; float unrelatedValue() { return 1; }",
+      ),
+      [],
+    );
+  });
+
+  test("releases switched and disposed root owners", async () => {
+    const files = {
+      [uri("a.slang")]: '#include "shared.slang"\nfloat4 mainImage(float2 uv) { return shared(); }',
+      [uri("b.slang")]: '#include "shared.slang"\nfloat4 mainImage(float2 uv) { return shared(); }',
+      [uri("shared.slang")]: "float4 shared() { return 1; }",
+    };
+    const coordinator = new SlangShaderWorkspaceCoordinator(host(files));
+    (coordinator as any).activateRoot("panel", "/workspace/project/a.slang");
+    await coordinator.registerRoot("/workspace/project/a.slang", []);
+    (coordinator as any).activateRoot("panel", "/workspace/project/b.slang");
+    await coordinator.registerRoot("/workspace/project/b.slang", []);
+
+    assert.deepStrictEqual(
+      coordinator.owningRoots("/workspace/project/shared.slang", files[uri("shared.slang")]),
+      ["/workspace/project/b.slang"],
+    );
+
+    (coordinator as any).releaseOwner("panel");
+    assert.deepStrictEqual(
+      coordinator.owningRoots("/workspace/project/shared.slang", files[uri("shared.slang")]),
+      [],
+    );
   });
 });

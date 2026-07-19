@@ -59,8 +59,32 @@ export function createSlangShaderWorkspaceHost(): SlangShaderWorkspaceHost {
 /** Owns active preview roots and their reverse dependency information. */
 export class SlangShaderWorkspaceCoordinator {
   private readonly roots = new Map<string, ActiveRootState>();
+  private readonly ownerRoots = new Map<string, string>();
+  private readonly rootOwners = new Map<string, Set<string>>();
 
   constructor(private readonly host: SlangShaderWorkspaceHost) {}
+
+  activateRoot(ownerId: string, rootPath: string): void {
+    const rootUri = fileUri(rootPath);
+    const previous = this.ownerRoots.get(ownerId);
+    if (previous === rootUri) {
+      return;
+    }
+    if (previous !== undefined) {
+      this.releaseRootOwner(ownerId, previous);
+    }
+    this.ownerRoots.set(ownerId, rootUri);
+    const owners = this.rootOwners.get(rootUri) ?? new Set<string>();
+    owners.add(ownerId);
+    this.rootOwners.set(rootUri, owners);
+  }
+
+  releaseOwner(ownerId: string): void {
+    const rootUri = this.ownerRoots.get(ownerId);
+    if (rootUri !== undefined) {
+      this.releaseRootOwner(ownerId, rootUri);
+    }
+  }
 
   async registerRoot(rootPath: string, configuredFilePaths: readonly string[]): Promise<SlangWorkspaceSnapshot> {
     const rootFileUri = fileUri(rootPath);
@@ -77,6 +101,9 @@ export class SlangShaderWorkspaceCoordinator {
       graph.update(file.uri, file.source);
     }
     const entryUris = new Set([rootFileUri, ...configuredUris]);
+    if (!this.rootOwners.has(rootFileUri)) {
+      this.activateRoot(`implicit:${rootFileUri}`, rootPath);
+    }
     this.roots.set(rootFileUri, { entryUris, graph, rootPath, rootUri });
     return snapshot;
   }
@@ -93,8 +120,7 @@ export class SlangShaderWorkspaceCoordinator {
       } else {
         state.graph.update(uri, source);
       }
-      const conservativeModuleInvalidation = source === undefined || /\bmodule\s+[A-Za-z_]\w*/.test(source);
-      if (state.graph.affectedRoots(uri, state.entryUris, conservativeModuleInvalidation).size > 0) {
+      if (state.graph.affectedRoots(uri, state.entryUris).size > 0) {
         owners.push(state.rootPath);
       }
     }
@@ -102,6 +128,21 @@ export class SlangShaderWorkspaceCoordinator {
   }
 
   removeRoot(rootPath: string): void {
-    this.roots.delete(fileUri(rootPath));
+    const rootUri = fileUri(rootPath);
+    this.roots.delete(rootUri);
+    for (const owner of this.rootOwners.get(rootUri) ?? []) {
+      this.ownerRoots.delete(owner);
+    }
+    this.rootOwners.delete(rootUri);
+  }
+
+  private releaseRootOwner(ownerId: string, rootUri: string): void {
+    this.ownerRoots.delete(ownerId);
+    const owners = this.rootOwners.get(rootUri);
+    owners?.delete(ownerId);
+    if (owners?.size === 0) {
+      this.rootOwners.delete(rootUri);
+      this.roots.delete(rootUri);
+    }
   }
 }
