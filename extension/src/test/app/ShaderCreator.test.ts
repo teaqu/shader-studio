@@ -148,7 +148,10 @@ suite('ShaderCreator Test Suite', () => {
     await shaderCreator.create();
 
     const callArgs = showSaveDialogStub.firstCall.args[0]!;
-    assert.deepStrictEqual(callArgs.filters, { 'GLSL Shader': ['glsl'] });
+    assert.deepStrictEqual(callArgs.filters, {
+      'GLSL Shader': ['glsl'],
+      'Slang Shader': ['slang'],
+    });
     assert.strictEqual(callArgs.title, 'New Shader');
   });
 
@@ -205,6 +208,42 @@ suite('ShaderCreator Test Suite', () => {
     try {
       fs.unlinkSync(filePath); 
     } catch { }
+  });
+
+  test('keeps the existing GLSL template byte-for-byte unchanged', async () => {
+    const filePath = path.join(testDir, 'legacy.glsl');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.strictEqual(fs.readFileSync(filePath, 'utf8'), `void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // Normalized pixel coordinates (from 0 to 1)
+    vec2 uv = fragCoord/iResolution.xy;
+
+    // Time varying pixel color
+    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+
+    // Output to screen
+    fragColor = vec4(col,1.0);
+}`);
+  });
+
+  test('writes a modern Slang template with a sanitized module name', async () => {
+    const filePath = path.join(testDir, '2 cool-shader.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.ok(content.startsWith('#language slang 2026\nmodule _2_cool_shader;\n'));
+    assert.ok(content.includes('float4 mainImage(float2 fragCoord)'));
   });
 
 });

@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
+import { NEW_SLANG_FILE_LANGUAGE_VERSION } from "@shader-studio/slang-language-service";
 
 export class ShaderCreator {
   private logger: Logger;
@@ -13,7 +14,7 @@ export class ShaderCreator {
     this.glslFileTracker = glslFileTracker;
   }
 
-  private getShaderTemplate(): string {
+  private getGlslShaderTemplate(): string {
     return `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
     // Normalized pixel coordinates (from 0 to 1)
@@ -25,6 +26,23 @@ export class ShaderCreator {
     // Output to screen
     fragColor = vec4(col,1.0);
 }`;
+  }
+
+  private getShaderTemplate(filePath: string): string {
+    if (filePath.toLowerCase().endsWith(".slang")) {
+      const basename = path.basename(filePath, path.extname(filePath))
+        .replace(/[^a-zA-Z0-9_]/g, "_") || "shader";
+      const moduleName = /^[0-9]/.test(basename) ? `_${basename}` : basename;
+      return `#language slang ${NEW_SLANG_FILE_LANGUAGE_VERSION}
+module ${moduleName};
+
+float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    return float4(uv, 0.0, 1.0);
+}`;
+    }
+    return this.getGlslShaderTemplate();
   }
 
   private getDefaultUri(): vscode.Uri {
@@ -45,7 +63,10 @@ export class ShaderCreator {
     try {
       const uri = await vscode.window.showSaveDialog({
         defaultUri: this.getDefaultUri(),
-        filters: { "GLSL Shader": ["glsl"] },
+        filters: {
+          "GLSL Shader": ["glsl"],
+          "Slang Shader": ["slang"],
+        },
         title: "New Shader",
       });
 
@@ -57,7 +78,7 @@ export class ShaderCreator {
       const filePath = uri.fsPath;
 
       // Create a basic shader template
-      const shaderTemplate = this.getShaderTemplate();
+      const shaderTemplate = this.getShaderTemplate(filePath);
 
       // Write the shader file
       fs.writeFileSync(filePath, shaderTemplate);
