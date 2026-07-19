@@ -439,10 +439,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }];
     const sorted = [...channels].sort((a, b) => a.slot - b.slot);
     for (let index = 0; index < sorted.length; index++) {
+      const texture: GPUTextureBindingLayout = { sampleType: "float" };
+      if (sorted[index].kind === "cubemap") {
+        texture.viewDimension = "cube";
+      }
       entries.push({
         binding: 1 + index * 2,
         visibility: FRAGMENT,
-        texture: { sampleType: "float" },
+        texture,
       });
       entries.push({
         binding: 2 + index * 2,

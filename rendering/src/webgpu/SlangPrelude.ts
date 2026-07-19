@@ -197,8 +197,49 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 `;
 
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
-  return [...channels]
-    .sort((a, b) => a.slot - b.slot)
+  const sortedChannels = [...channels].sort((a, b) => a.slot - b.slot);
+  const objectChannels = sortedChannels.filter(({ slot }) => slot < 4);
+  const has2DObject = objectChannels.some(({ kind }) => kind !== "cubemap");
+  const hasCubeObject = objectChannels.some(({ kind }) => kind === "cubemap");
+  const objectTypes = `${has2DObject ? `struct ShaderToySampler2D
+{
+    Texture2D<float4> texture;
+    SamplerState state;
+
+    float4 Sample(float2 uv)
+    {
+        return texture.Sample(state, float2(uv.x, 1.0 - uv.y));
+    }
+};
+
+struct ShaderToyChannel2D
+{
+    ShaderToySampler2D sampler;
+    float3 size;
+    float time;
+    int loaded;
+};
+` : ""}${hasCubeObject ? `struct ShaderToySamplerCube
+{
+    TextureCube<float4> texture;
+    SamplerState state;
+
+    float4 Sample(float3 dir)
+    {
+        return texture.Sample(state, dir);
+    }
+};
+
+struct ShaderToyChannelCube
+{
+    ShaderToySamplerCube sampler;
+    float3 size;
+    float time;
+    int loaded;
+};
+` : ""}`;
+
+  const bindings = sortedChannels
     .map((channel, index) => {
       // Bindings are position-based over the slot-sorted array (not derived
       // from the slot number), so sparse slots pack densely from binding 1.
@@ -207,6 +248,21 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      const objectAccessor = channel.slot < 4
+        ? `
+ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
+{
+    ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} channel;
+    channel.sampler.texture = ${channel.key};
+    channel.sampler.state = ${channel.key}Sampler;
+    channel.size = _st.channelResolution[${channel.slot}];
+    channel.time = _st.channelTime[${channel.slot}];
+    channel.loaded = _st.channelLoaded[${channel.slot}] != 0.0 ? 1 : 0;
+    return channel;
+}
+#define iCh${channel.slot} (_getICh${channel.slot}())
+`
+        : "";
       if (channel.kind === "cubemap") {
         return `[[vk::binding(${textureBinding}, 0)]]
 TextureCube<float4> ${channel.key};
@@ -216,6 +272,7 @@ float4 ${helperName}(float3 dir)
 {
     return ${channel.key}.Sample(${channel.key}Sampler, dir);
 }
+${objectAccessor}
 `;
       }
       return `[[vk::binding(${textureBinding}, 0)]]
@@ -229,9 +286,12 @@ float4 ${helperName}(float2 uv)
     // the texel the caller expects.
     return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
 }
+${objectAccessor}
 `;
     })
     .join("\n");
+
+  return objectTypes + bindings;
 }
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */

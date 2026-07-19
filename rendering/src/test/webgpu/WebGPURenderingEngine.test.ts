@@ -1253,7 +1253,10 @@ describe("WebGPURenderingEngine", () => {
       const context = engine.getVariableCaptureCompileContext(undefined, "BufferA");
       capturer.setCompileContext(context);
 
-      expect(context).toMatchObject({ slangPassName: "BufferA" });
+      expect(context).toMatchObject({
+        slangPassName: "BufferA",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "texture" }],
+      });
       expect((capturer as any).getChannelResources(context)).toEqual([
         expect.objectContaining({ slot: 0, textureView: bufferHandle.view }),
       ]);

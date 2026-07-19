@@ -32,7 +32,11 @@ export interface CaptureCompileContext {
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
   /** Slang/WebGPU path: channel bindings of the captured pass. */
-  slangChannels?: Array<{ slot: number; key: string }>;
+  slangChannels?: Array<{
+    slot: number;
+    key: string;
+    kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
+  }>;
   /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
   slangPassName?: string;
 }

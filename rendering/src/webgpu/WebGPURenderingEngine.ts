@@ -1554,7 +1554,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return {
       commonCode,
       slangPassName: targetPass?.name,
-      slangChannels: targetPass?.channels.map(({ slot, key }) => ({ slot, key })) ?? [],
+      slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
     };
   }
 

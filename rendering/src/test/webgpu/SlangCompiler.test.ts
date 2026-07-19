@@ -162,6 +162,37 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
   });
 
+  it("exposes configured 2D and cubemap channels through iCh objects", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      `float4 mainImage(float2 c) {
+        return iCh0.sampler.Sample(c) + iCh2.sampler.Sample(float3(c, 1));
+      }`,
+      {
+        channels: [
+          { slot: 0, key: "iChannel0", kind: "texture" },
+          { slot: 2, key: "iChannel2", kind: "cubemap" },
+        ],
+      },
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("struct ShaderToySampler2D");
+    expect(wrapped).toContain("struct ShaderToySamplerCube");
+    expect(wrapped).toContain("struct ShaderToyChannel2D");
+    expect(wrapped).toContain("struct ShaderToyChannelCube");
+    expect(wrapped).toContain("ShaderToyChannel2D _getICh0()");
+    expect(wrapped).toContain("channel.sampler.texture = iChannel0;");
+    expect(wrapped).toContain("channel.size = _st.channelResolution[0];");
+    expect(wrapped).toContain("channel.time = _st.channelTime[0];");
+    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[0] != 0.0 ? 1 : 0;");
+    expect(wrapped).toContain("#define iCh0 (_getICh0())");
+    expect(wrapped).toContain("ShaderToyChannelCube _getICh2()");
+    expect(wrapped).toContain("#define iCh2 (_getICh2())");
+  });
+
   it("declares ShaderToy audio timing and loaded uniforms", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));

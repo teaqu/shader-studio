@@ -171,7 +171,7 @@ describe("WebGPUVariableCapturer", () => {
 
   it("passes the pass channels into the capture compile", async () => {
     const gpu = mockGpu();
-    const channels = [{ slot: 0, key: "iChannel0" }];
+    const channels = [{ slot: 0, key: "iChannel0", kind: "cubemap" as const }];
     const capturer = new WebGPUVariableCapturer(
       gpu.device,
       gpu.compiler,
@@ -184,6 +184,25 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
       channels,
     }));
+  });
+
+  it("declares cubemap capture channels with a cube texture view dimension", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { slangChannels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }] },
+      () => [{ slot: 0, textureView: {} as GPUTextureView }],
+    );
+
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    const createLayout = gpu.device.createBindGroupLayout as ReturnType<typeof vi.fn>;
+    expect(createLayout.mock.calls[0][0].entries).toContainEqual({
+      binding: 1,
+      visibility: 2,
+      texture: { sampleType: "float", viewDimension: "cube" },
+    });
   });
 
   it("binds a channel resource's own sampler when provided", async () => {
@@ -355,7 +374,9 @@ describe("WebGPURenderingEngine capture wiring", () => {
       { name: "BufferA", source: "a", output: "texture", width: 1, height: 1, channels: [] },
       {
         name: "Image", source: "i", output: "canvas", width: 1, height: 1,
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+        channels: [{
+          kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame",
+        }],
       },
     ];
     (engine as any).lastCompile = { code: "i", path: "/i.slang", buffers: { common: "float x;" } };
@@ -363,7 +384,7 @@ describe("WebGPURenderingEngine capture wiring", () => {
     const context = engine.getVariableCaptureCompileContext();
 
     expect(context.commonCode).toBe("float x;");
-    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0" }]);
+    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
   });
 
   it("derives Image pass capture channels from compile inputs before the live pass graph is installed", async () => {
@@ -402,8 +423,8 @@ float4 mainImage(float2 fragCoord) {
     const context = engine.getVariableCaptureCompileContext(imageCode, "Image");
 
     expect(context.slangChannels).toEqual([
-      { slot: 0, key: "iChannel0" },
-      { slot: 1, key: "iChannel1" },
+      { slot: 0, key: "iChannel0", kind: "buffer" },
+      { slot: 1, key: "iChannel1", kind: "buffer" },
     ]);
   });
 });
