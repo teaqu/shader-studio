@@ -139,6 +139,8 @@
   let hasShader = $state(false);
   let errors = $state<string[]>([]);
   let compileDiagnostics = $state<SlangDiagnostic[]>([]);
+  let captureDiagnostics = $state<SlangDiagnostic[]>([]);
+  const editorDiagnostics = $derived([...compileDiagnostics, ...captureDiagnostics]);
   let currentFPS = $state(0);
   let canvasWidth = $state(0);
   let canvasHeight = $state(0);
@@ -168,9 +170,26 @@
   let audioVideoController = $state<AudioVideoController | undefined>(undefined);
   const compilationState = new ShaderCompilationState();
   let lastAppliedVariablePreviewToken = 0;
+  let captureDiagnosticGeneration = 0;
   let pendingMessages: MessageEvent[] = [];
   let routerInitialized = false;
   let editorOverlayManager: EditorOverlayManager | undefined;
+
+  function wireCaptureDiagnostics(manager: VariableCaptureManager): void {
+    const generation = ++captureDiagnosticGeneration;
+    manager.setDiagnosticCallback((diagnostics) => {
+      if (generation === captureDiagnosticGeneration) {
+        captureDiagnostics = diagnostics;
+      }
+    });
+  }
+
+  function clearCaptureDiagnostics(invalidateManager = false): void {
+    if (invalidateManager) {
+      captureDiagnosticGeneration++;
+    }
+    captureDiagnostics = [];
+  }
 
   let debugState = $state<ShaderDebugState>({
     isEnabled: false,
@@ -474,6 +493,7 @@
       appInitialized,
     });
     const wasPaused = renderingEngine?.getTimeManager?.()?.isPaused?.() ?? null;
+    clearCaptureDiagnostics(true);
     variableCaptureManager?.dispose();
     variableCaptureManager = undefined;
     try {
@@ -508,6 +528,7 @@
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
+      wireCaptureDiagnostics(variableCaptureManager);
       // The fresh engine's managers start at globalMuted=false/volume=1;
       // re-push the current audioStore state so a swapped-in shader with
       // media respects an already-active master mute/volume.
@@ -860,6 +881,7 @@
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
     if (!locked || lockedPath === event.data.path) {
+      captureDiagnostics = [];
       const isFirstShader = !hasShader && event.data.path;
       if (isFirstShader) {
         restoreEditorOverlayFromStorage();
@@ -1104,6 +1126,7 @@
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
+      wireCaptureDiagnostics(variableCaptureManager);
 
       shaderDebugManager.setRecompileCallback(() => pipeline.triggerDebugRecompile());
       shaderDebugManager.setCaptureStateCallback(() => notifyVariableCaptureManager());
@@ -1293,6 +1316,7 @@
 
   onDestroy(() => {
     resetVariablePreview();
+    clearCaptureDiagnostics(true);
     if (transport?.getType() === 'websocket') {
       releaseWebLayoutSlot();
     }
@@ -1352,7 +1376,7 @@
           onBufferSwitch={handleOverlayBufferSwitch}
           onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
           {errors}
-          diagnostics={compileDiagnostics}
+          diagnostics={editorDiagnostics}
         />
       {/key}
     {/if}

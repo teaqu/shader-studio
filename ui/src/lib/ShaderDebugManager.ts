@@ -2,6 +2,7 @@ import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./ty
 import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import { cloneSlangWorkspace, resolveSlangWorkspaceFile } from './slangSourceIdentity';
 
 export interface DebugTarget {
   passName: string;
@@ -89,7 +90,7 @@ export class ShaderDebugManager {
       }
     }
     this.imagePassPath = imagePath && this.isBufferPath(imagePath) ? null : imagePath;
-    this.slangWorkspace = workspace;
+    this.slangWorkspace = workspace ? cloneSlangWorkspace(workspace) : undefined;
   }
 
   public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
@@ -538,12 +539,16 @@ export class ShaderDebugManager {
     if (this.language !== 'slang' || !this.slangWorkspace || !selectedFilePath) {
       return null;
     }
-    const selected = this.findWorkspaceFile(selectedFilePath);
+    const selectedResolution = resolveSlangWorkspaceFile(this.slangWorkspace, selectedFilePath);
     const targetSelector = passName === 'Image'
       ? this.imagePassPath
       : this.bufferPathMap[passName];
-    const target = targetSelector ? this.findWorkspaceFile(targetSelector) : undefined;
-    if (!selected || !target || (passName !== 'common' && selected.uri === target.uri)) {
+    const targetResolution = targetSelector
+      ? resolveSlangWorkspaceFile(this.slangWorkspace, targetSelector)
+      : { status: 'unmatched' as const };
+    const selected = selectedResolution.status === 'matched' ? selectedResolution.file : undefined;
+    const target = targetResolution.status === 'matched' ? targetResolution.file : undefined;
+    if (selected && target && passName !== 'common' && selected.uri === target.uri) {
       return null;
     }
     const message = 'Debugging inside imported Slang modules or configured common code is not supported yet; select a line in the active pass source.';
@@ -552,35 +557,13 @@ export class ShaderDebugManager {
       severity: 'error' as const,
       message,
       source: 'slang-compile' as const,
-      sourceUri: selected.uri,
+      sourceUri: selected?.uri ?? selectedFilePath,
       passName,
       range: {
         start: { line: selectedLine, character: 0 },
         end: { line: selectedLine, character: Math.max(0, this.state.lineContent?.length ?? 0) },
       },
     };
-  }
-
-  private findWorkspaceFile(selector: string): SlangWorkspaceSnapshot['files'][number] | undefined {
-    const normalize = (value: string): string => {
-      try {
-        return decodeURIComponent(new URL(value).pathname).replaceAll('\\', '/');
-      } catch {
-        return value.replaceAll('\\', '/');
-      }
-    };
-    const selectedPath = normalize(selector);
-    return this.slangWorkspace?.files.find((file) => {
-      const uriPath = normalize(file.uri);
-      const workspacePath = normalize(file.path).replace(/^\/workspace/, '');
-      const workspaceRelative = workspacePath.replace(/^\/+/, '');
-      const selectedRelative = selectedPath.replace(/^\/+/, '');
-      return selector === file.uri
-        || selectedPath === uriPath
-        || selectedPath === file.path
-        || selectedRelative === workspaceRelative
-        || selectedPath.endsWith(`/${workspaceRelative}`);
-    });
   }
 
   private getCodeForActiveBuffer(activeBufferName: string): string {

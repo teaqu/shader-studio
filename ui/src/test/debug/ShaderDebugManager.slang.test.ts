@@ -163,4 +163,52 @@ describe('ShaderDebugManager - Slang language mode', () => {
       passName: 'common',
     });
   });
+
+  it('canonicalizes Windows paths and escaped URI spaces before rejecting imported modules', () => {
+    const workspace = {
+      rootUri: 'file:///C:/Project',
+      files: [
+        { uri: 'file:///C:/Project/image.slang', path: '/workspace/image.slang', source: slangShader },
+        { uri: 'file:///C:/Project/Helper%20File.slang', path: '/workspace/Helper File.slang', source: 'float helper = 1;' },
+      ],
+    };
+    manager.setShaderContext(null, 'C:\\PROJECT\\image.slang', {}, workspace);
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float helper = 1;', 'c:\\project\\helper file.slang');
+
+    expect(manager.modifyShaderForDebugging(slangShader, 0)).toBeNull();
+    expect(manager.getState().debugDiagnostic?.sourceUri).toBe('file:///C:/Project/Helper%20File.slang');
+  });
+
+  it('fails safe when the selected Slang source cannot be resolved', () => {
+    manager.setShaderContext(null, '/project/image.slang', {}, {
+      rootUri: 'file:///project',
+      files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: slangShader }],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'unknown', '/outside/unknown.slang');
+
+    expect(manager.modifyShaderForDebugging(slangShader, 0)).toBeNull();
+    expect(manager.getState().debugDiagnostic).toMatchObject({
+      sourceUri: '/outside/unknown.slang',
+      code: 'slang-cross-file-debug-unsupported',
+    });
+  });
+
+  it('owns its workspace snapshot after shader context is set', () => {
+    const workspace = {
+      rootUri: 'file:///project',
+      files: [
+        { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: slangShader },
+        { uri: 'file:///project/helper.slang', path: '/workspace/helper.slang', source: 'float helper = 1;' },
+      ],
+    };
+    manager.setShaderContext(null, '/project/image.slang', {}, workspace);
+    workspace.files[1].uri = 'file:///project/mutated.slang';
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float helper = 1;', '/project/helper.slang');
+
+    expect(manager.modifyShaderForDebugging(slangShader, 0)).toBeNull();
+    expect(manager.getState().debugDiagnostic?.sourceUri).toBe('file:///project/helper.slang');
+  });
 });

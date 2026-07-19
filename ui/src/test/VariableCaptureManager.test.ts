@@ -470,8 +470,101 @@ describe('VariableCaptureManager', () => {
       expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
         code: 'slang-cross-file-debug-unsupported',
         uri: 'file:///project/common.slang',
-        range: expect.objectContaining({ start: { line: 4, character: 0 } }),
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 'common'.length },
+        },
         passName: 'common',
+      })]);
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+    });
+
+    it('canonicalizes Windows source identity and uses the selected source line range', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        sourceUri: 'file:///C:/Project/image.slang',
+        sourcePath: '/workspace/image.slang',
+        workspace: {
+          rootUri: 'file:///C:/Project',
+          files: [
+            { uri: 'file:///C:/Project/image.slang', path: '/workspace/image.slang', source: 'root' },
+            { uri: 'file:///C:/Project/Helper%20File.slang', path: '/workspace/Helper File.slang', source: 'short\nlong helper line' },
+          ],
+        },
+      });
+
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        filePath: 'c:\\project\\helper file.slang',
+        debugLine: 99,
+      });
+      await flushRAF();
+
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        uri: 'file:///C:/Project/Helper%20File.slang',
+        range: {
+          start: { line: 1, character: 0 },
+          end: { line: 1, character: 'long helper line'.length },
+        },
+      })]);
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+    });
+
+    it('allows a Windows root selected through different URI casing', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        sourceUri: 'file:///c:/project/IMAGE.slang',
+        sourcePath: '/workspace/IMAGE.slang',
+        workspace: {
+          rootUri: 'file:///C:/Project',
+          files: [{ uri: 'file:///C:/Project/image.slang', path: '/workspace/image.slang', source: 'root' }],
+        },
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS, filePath: 'C:\\PROJECT\\image.slang' });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.getAllInScopeVariables).toHaveBeenCalled();
+      expect(onDiagnostics).not.toHaveBeenCalledWith([expect.objectContaining({
+        code: 'slang-cross-file-debug-unsupported',
+      })]);
+    });
+
+    it('fails safe when the selected Slang source cannot be resolved', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        sourceUri: 'file:///project/image.slang',
+        sourcePath: '/workspace/image.slang',
+        workspace: {
+          rootUri: 'file:///project',
+          files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'root' }],
+        },
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS, filePath: '/outside/unknown.slang' });
+      await flushRAF();
+
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        uri: '/outside/unknown.slang',
+        code: 'slang-cross-file-debug-unsupported',
+      })]);
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+    });
+
+    it('fails safe when a workspace has no canonical target identity', async () => {
+      mockRenderingEngine.getShaderLanguage = vi.fn().mockReturnValue('slang');
+      mockRenderingEngine.getVariableCaptureCompileContext.mockReturnValue({
+        workspace: {
+          rootUri: 'file:///project',
+          files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'root' }],
+        },
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS, filePath: '/project/image.slang' });
+      await flushRAF();
+
+      expect(onDiagnostics).toHaveBeenCalledWith([expect.objectContaining({
+        code: 'slang-cross-file-debug-unsupported',
       })]);
       expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
     });

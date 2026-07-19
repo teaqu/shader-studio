@@ -415,7 +415,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: { ...buffers },
       customUniformDeclarations,
       customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
-      workspace,
+      workspace: workspace ? cloneWorkspaceSnapshot(workspace) : undefined,
     };
     const nextCustomUniformManager = new CustomUniformManager();
     if (customUniformDeclarations && customUniformInfo) {
@@ -1481,15 +1481,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.lastCompile) {
       return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
     }
-    this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
+    const previous = this.lastCompile;
+    const proposedBuffers = { ...previous.buffers, [bufferName]: bufferContent };
     return this.compileShaderPipeline(
-      this.lastCompile.code,
+      previous.code,
       this.currentConfig,
-      this.lastCompile.path,
-      this.lastCompile.buffers,
-      this.lastCompile.customUniformDeclarations,
-      this.lastCompile.customUniformInfo,
-      this.lastCompile.workspace,
+      previous.path,
+      proposedBuffers,
+      previous.customUniformDeclarations,
+      previous.customUniformInfo,
+      previous.workspace,
     );
   }
 
@@ -1623,7 +1624,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
       sourceUri: sourceFile?.uri,
       sourcePath: sourceFile?.path,
-      workspace: this.lastCompile?.workspace,
+      workspace: this.lastCompile?.workspace ? cloneWorkspaceSnapshot(this.lastCompile.workspace) : undefined,
     };
   }
 
@@ -1750,6 +1751,13 @@ function selectorToWorkspacePath(selector: string, windows: boolean): string | u
   } catch {
     return undefined;
   }
+}
+
+function cloneWorkspaceSnapshot(snapshot: SlangWorkspaceSnapshot): SlangWorkspaceSnapshot {
+  return {
+    rootUri: snapshot.rootUri,
+    files: snapshot.files.map((file) => ({ ...file })),
+  };
 }
 
 function comparableWorkspacePath(path: string, windows: boolean): string {

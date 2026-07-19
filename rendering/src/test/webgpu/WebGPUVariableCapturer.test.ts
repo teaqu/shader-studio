@@ -450,6 +450,43 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(3);
   });
 
+  it.each([
+    "createShaderModule",
+    "createBindGroupLayout",
+    "createPipelineLayout",
+    "createRenderPipeline",
+  ] as const)("uses the last-good compatible pipeline when %s rejects a rebuilt dependency", async (stage) => {
+    const gpu = mockGpu();
+    const makeContext = (helperSource: string) => ({
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      slangPassName: "Image",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+          { uri: "file:///project/helper.slang", path: "/workspace/helper.slang", source: helperSource },
+        ],
+      },
+    });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, makeContext("good"));
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    const failingStage = gpu.device[stage] as ReturnType<typeof vi.fn>;
+    failingStage.mockImplementationOnce(() => {
+      throw new Error(`${stage} failed`);
+    });
+    capturer.setCompileContext(makeContext("changed"));
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(capturer.getLastError()).toBe(`${stage} failed`);
+    expect(capturer.getLastDiagnostics()).toEqual([expect.objectContaining({
+      uri: "file:///project/image.slang",
+      source: "webgpu",
+      passName: "Image",
+      message: `${stage} failed`,
+    })]);
+  });
+
   it("stops issuing when shouldContinue flips false", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});

@@ -2451,6 +2451,17 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
+    it("keeps the last successful buffer snapshot when an incremental edit fails", async () => {
+      const { engine, compiler } = await compiledEngine();
+      const previous = (engine as any).lastCompile;
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      await engine.updateBufferAndRecompile("BufferA", "broken {");
+
+      expect((engine as any).lastCompile).toBe(previous);
+      expect((engine as any).lastCompile.buffers.BufferA).toContain("float4(1)");
+    });
+
     it("clears installed pipelines and the canvas when a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
       const installedPipelines = [...((engine as any).passPipelines as Map<string, SlangPassPipeline>).values()];
@@ -3142,6 +3153,25 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf broken" }, undefined, undefined, badWorkspace);
 
       expect(engine.getVariableCaptureCompileContext("img", "Image")).toEqual(successfulContext);
+    });
+
+    it("owns workspace snapshots across compile input and capture context mutations", async () => {
+      const { engine } = cachedSetup();
+      const workspace = {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "img" },
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "buf" },
+        ],
+      };
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf" }, undefined, undefined, workspace);
+
+      workspace.files[1].source = "mutated caller";
+      const first = engine.getVariableCaptureCompileContext("img", "Image");
+      expect(first.workspace?.files[1].source).toBe("buf");
+
+      first.workspace!.files[1].source = "mutated consumer";
+      expect(engine.getVariableCaptureCompileContext("img", "Image").workspace?.files[1].source).toBe("buf");
     });
 
     it("resizes reused pipelines to the new graph dimensions on success", async () => {

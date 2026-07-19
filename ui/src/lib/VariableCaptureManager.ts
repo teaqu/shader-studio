@@ -4,6 +4,7 @@ import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilde
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
 import type { ConfigInput, SlangDiagnostic } from '@shader-studio/types';
+import { resolveSlangWorkspaceFile } from './slangSourceIdentity';
 
 const CAPTURABLE_TYPES = new Set([
   'float', 'int', 'bool',
@@ -96,42 +97,35 @@ function unsupportedSlangCaptureDiagnostic(
   lineContentLength: number,
 ): SlangDiagnostic | null {
   const filePath = params.filePath;
-  if (!filePath || !context.workspace || !context.sourceUri || !context.sourcePath) {
+  if (!filePath || !context.workspace) {
     return null;
   }
-  const normalize = (value: string): string => {
-    try {
-      return decodeURIComponent(new URL(value).pathname).replaceAll('\\', '/');
-    } catch {
-      return value.replaceAll('\\', '/');
-    }
-  };
-  const selectedPath = normalize(filePath);
-  const selected = context.workspace.files.find((file) => {
-    const uriPath = normalize(file.uri);
-    const workspacePath = normalize(file.path).replace(/^\/workspace/, '');
-    const workspaceRelative = workspacePath.replace(/^\/+/, '');
-    const selectedRelative = selectedPath.replace(/^\/+/, '');
-    return filePath === file.uri
-      || selectedPath === uriPath
-      || selectedPath === file.path
-      || selectedRelative === workspaceRelative
-      || selectedPath.endsWith(`/${workspaceRelative}`);
-  });
+  const resolution = resolveSlangWorkspaceFile(context.workspace, filePath);
+  const selected = resolution.status === 'matched' ? resolution.file : undefined;
+  const sourceUriResolution = context.sourceUri
+    ? resolveSlangWorkspaceFile(context.workspace, context.sourceUri)
+    : { status: 'unmatched' as const };
+  const sourcePathResolution = context.sourcePath
+    ? resolveSlangWorkspaceFile(context.workspace, context.sourcePath)
+    : { status: 'unmatched' as const };
+  const target = sourceUriResolution.status === 'matched'
+    ? sourceUriResolution.file
+    : sourcePathResolution.status === 'matched'
+      ? sourcePathResolution.file
+      : undefined;
   const passName = params.activeBufferName ?? context.slangPassName ?? 'Image';
-  const unsupported = selected && (
-    passName === 'common'
-    || (selected.uri !== context.sourceUri && selected.path !== context.sourcePath)
-  );
-  if (!unsupported) {
+  if (selected && target && passName !== 'common' && selected.uri === target.uri) {
     return null;
   }
-  const line = params.debugLine ?? 0;
+  const source = selected?.source ?? '';
+  const lines = source.split('\n');
+  const requestedLine = params.debugLine ?? 0;
+  const line = Math.max(0, Math.min(requestedLine, Math.max(0, lines.length - 1)));
   return {
-    uri: selected.uri,
+    uri: selected?.uri ?? filePath,
     range: {
       start: { line, character: 0 },
-      end: { line, character: Math.max(0, lineContentLength) },
+      end: { line, character: selected ? lines[line].length : Math.max(0, lineContentLength) },
     },
     severity: 'error',
     code: 'slang-cross-file-debug-unsupported',
@@ -481,6 +475,7 @@ export class VariableCaptureManager {
     this.captureRequestId += 1;
     this.collectionRequestId = 0;
     this.lastParams = null;
+    this.emitDiagnostics([]);
     this.pendingResults = [];
     this.expectedCount = 0;
     this.emptyCollectFrames = 0;

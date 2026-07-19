@@ -392,7 +392,11 @@ const { mockVCMFactory } = vi.hoisted(() => {
     _sampleSettingsCallback: null as (() => void) | null,
     _lastNotifyParams: null as any,
     _notifyCalls: [] as any[],
-    _instances: [] as Array<{ disposed: boolean; notifyCalls: any[] }>,
+    _instances: [] as Array<{
+      disposed: boolean;
+      notifyCalls: any[];
+      diagnosticCallback: ((diagnostics: any[]) => void) | null;
+    }>,
     sampleSize: 32,
     refreshMode: 'polling',
     pollingMs: 500,
@@ -418,11 +422,15 @@ const { mockVCMFactory } = vi.hoisted(() => {
 
 vi.mock('../../lib/VariableCaptureManager', () => ({
   VariableCaptureManager: class {
-    private _instance: { disposed: boolean; notifyCalls: any[] };
+    private _instance: {
+      disposed: boolean;
+      notifyCalls: any[];
+      diagnosticCallback: ((diagnostics: any[]) => void) | null;
+    };
 
     constructor(_engine: any, cb: (vars: any[]) => void) {
       mockVCMFactory._callback = cb;
-      this._instance = { disposed: false, notifyCalls: [] };
+      this._instance = { disposed: false, notifyCalls: [], diagnosticCallback: null };
       mockVCMFactory._instances.push(this._instance);
     }
     get sampleSize() {
@@ -430,6 +438,9 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
     }
     setSampleSettingsCallback(cb: () => void) {
       mockVCMFactory._sampleSettingsCallback = cb; 
+    }
+    setDiagnosticCallback(cb: (diagnostics: any[]) => void) {
+      this._instance.diagnosticCallback = cb;
     }
     notifyStateChange(params: any) {
       mockVCMFactory._lastNotifyParams = params;
@@ -609,6 +620,18 @@ describe('ShaderViewer', () => {
     expect(shaderViewerSource).toContain('getInspectorState');
     expect(shaderViewerSource).toContain('setInspectorState');
     expect(shaderViewerSource).toContain('canvasElement={glCanvas}');
+  });
+
+  it('wires capture diagnostics separately and clears them when shader source changes', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    expect(mockVCMFactory._instances).toHaveLength(1);
+    expect(mockVCMFactory._instances[0].diagnosticCallback).toEqual(expect.any(Function));
+    expect(shaderViewerSource).toContain('let captureDiagnostics = $state<SlangDiagnostic[]>([])');
+    expect(shaderViewerSource).toContain('$derived([...compileDiagnostics, ...captureDiagnostics])');
+    expect(shaderViewerSource).toContain('diagnostics={editorDiagnostics}');
+    expect(shaderViewerSource).toMatch(/function handleShaderSource[\s\S]*?captureDiagnostics = \[\];/);
   });
 
   it('should update the active debugger size button after sample size changes', async () => {

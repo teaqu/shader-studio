@@ -429,9 +429,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }));
     if (!compileResult.success) {
       this.lastError = compileResult.errors.join("\n");
-      const fallback = this.findCompatiblePipeline(this.captureCompatibilityKey(captureShader));
-      this.compileFallbacks.set(cacheKey, fallback);
-      return fallback;
+      return this.cacheCompatibleFallback(cacheKey, captureShader);
     }
 
     let pipeline: GPURenderPipeline;
@@ -456,7 +454,21 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         : this.device.createRenderPipeline(descriptor);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
-      return null;
+      this.lastDiagnostics = [
+        ...this.lastDiagnostics,
+        {
+          uri: sourceUri,
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          },
+          severity: "error",
+          message: this.lastError,
+          source: "webgpu",
+          passName: this.compileContext.slangPassName ?? "capture",
+        },
+      ];
+      return this.cacheCompatibleFallback(cacheKey, captureShader);
     }
 
     if (this.pipelineCacheOrder.length >= SHADER_CACHE_MAX) {
@@ -510,6 +522,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       }
     }
     return null;
+  }
+
+  private cacheCompatibleFallback(cacheKey: string, captureShader: string): CachedPipeline | null {
+    const fallback = this.findCompatiblePipeline(this.captureCompatibilityKey(captureShader));
+    this.compileFallbacks.set(cacheKey, fallback);
+    return fallback;
   }
 
   /**
