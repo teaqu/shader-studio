@@ -284,7 +284,7 @@ function warnOnCustomStorageReferencesInCommon(
   commonCode: string,
   warnings: string[],
 ): void {
-  const identifiers = collectSlangIdentifiers(commonCode);
+  const identifiers = collectLikelyStorageAccesses(commonCode);
   for (const node of storage) {
     if (node.builtin || !identifiers.has(node.name)) {
       continue;
@@ -296,12 +296,104 @@ function warnOnCustomStorageReferencesInCommon(
   }
 }
 
-function collectSlangIdentifiers(source: string): Set<string> {
+interface SlangToken {
+  kind: "identifier" | "symbol";
+  text: string;
+}
+
+function collectLikelyStorageAccesses(source: string): Set<string> {
+  const tokens = collectSlangTokens(source);
+  const locallyDeclared = new Set<string>();
+  for (let index = 1; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.kind === "identifier" && hasLikelyDeclarationPrefix(tokens, index)) {
+      locallyDeclared.add(token.text);
+    }
+  }
+
   const identifiers = new Set<string>();
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (
+      token.kind !== "identifier" ||
+      locallyDeclared.has(token.text) ||
+      tokens[index + 1]?.text !== "["
+    ) {
+      continue;
+    }
+    const previous = tokens[index - 1];
+    if (previous?.text === "." || previous?.text === "->") {
+      continue;
+    }
+    if (hasLikelyDeclarationPrefix(tokens, index)) {
+      continue;
+    }
+    identifiers.add(token.text);
+  }
+  return identifiers;
+}
+
+function hasLikelyDeclarationPrefix(tokens: SlangToken[], index: number): boolean {
+  const previous = tokens[index - 1];
+  return (previous?.kind === "identifier" && previous.text !== "return") ||
+    previous?.text === ":" ||
+    previous?.text === ">" ||
+    previous?.text === "*" ||
+    previous?.text === "&";
+}
+
+/**
+ * This deliberately recognizes only indexed buffer access (`name[...]`).
+ * A declaration-like identifier pair suppresses that name for the whole scan
+ * instead of attempting scope analysis. This may miss unusual valid uses, but
+ * keeping this advisory quiet is more useful than warning on shadowed values,
+ * declarations, type names, or unrelated members.
+ */
+function collectSlangTokens(source: string): SlangToken[] {
+  const tokens: SlangToken[] = [];
   let index = 0;
+  let atLineStart = true;
+  let inactiveIfDepth = 0;
   while (index < source.length) {
+    if (atLineStart) {
+      let firstNonWhitespace = index;
+      while (source[firstNonWhitespace] === " " || source[firstNonWhitespace] === "\t") {
+        firstNonWhitespace++;
+      }
+      if (source[firstNonWhitespace] === "#") {
+        const firstLineEnd = source.indexOf("\n", firstNonWhitespace);
+        const directive = source.slice(
+          firstNonWhitespace,
+          firstLineEnd === -1 ? source.length : firstLineEnd,
+        );
+        const match = directive.match(/^#\s*([A-Za-z_][A-Za-z0-9_]*)(.*)$/);
+        const name = match?.[1];
+        const argument = match?.[2].trim() ?? "";
+        if (inactiveIfDepth > 0) {
+          if (name === "if" || name === "ifdef" || name === "ifndef") {
+            inactiveIfDepth++;
+          } else if (name === "endif") {
+            inactiveIfDepth--;
+          }
+        } else if (name === "if" && /^0(?:\s|$|\/\/|\/\*)/.test(argument)) {
+          inactiveIfDepth = 1;
+        }
+        index = endOfPreprocessorDirective(source, firstNonWhitespace);
+        continue;
+      }
+      index = firstNonWhitespace;
+      if (index >= source.length) {
+        break;
+      }
+    }
+
     const current = source[index];
     const next = source[index + 1];
+    if (current === "\n" || current === "\r") {
+      index++;
+      atLineStart = true;
+      continue;
+    }
     if (current === "/" && next === "/") {
       index += 2;
       while (index < source.length && source[index] !== "\n") {
@@ -310,14 +402,19 @@ function collectSlangIdentifiers(source: string): Set<string> {
       continue;
     }
     if (current === "/" && next === "*") {
+      const commentStart = index;
       index += 2;
       while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
         index++;
       }
       index = Math.min(source.length, index + 2);
+      if (source.slice(commentStart, index).includes("\n")) {
+        atLineStart = true;
+      }
       continue;
     }
     if (current === "\"" || current === "'") {
+      atLineStart = false;
       const quote = current;
       index++;
       while (index < source.length) {
@@ -333,16 +430,47 @@ function collectSlangIdentifiers(source: string): Set<string> {
       continue;
     }
     if (isIdentifierStart(current)) {
+      atLineStart = false;
       const start = index++;
       while (index < source.length && isIdentifierPart(source[index])) {
         index++;
       }
-      identifiers.add(source.slice(start, index));
+      if (inactiveIfDepth === 0) {
+        tokens.push({ kind: "identifier", text: source.slice(start, index) });
+      }
       continue;
+    }
+    if (current === "-" && next === ">") {
+      atLineStart = false;
+      if (inactiveIfDepth === 0) {
+        tokens.push({ kind: "symbol", text: "->" });
+      }
+      index += 2;
+      continue;
+    }
+    if (!/\s/.test(current)) {
+      atLineStart = false;
+      if (inactiveIfDepth === 0) {
+        tokens.push({ kind: "symbol", text: current });
+      }
     }
     index++;
   }
-  return identifiers;
+  return tokens;
+}
+
+function endOfPreprocessorDirective(source: string, directiveStart: number): number {
+  let lineStart = directiveStart;
+  while (lineStart < source.length) {
+    const newline = source.indexOf("\n", lineStart);
+    const lineEnd = newline === -1 ? source.length : newline;
+    const line = source.slice(lineStart, lineEnd).replace(/\r$/, "");
+    if (!line.endsWith("\\") || newline === -1) {
+      return newline === -1 ? source.length : newline + 1;
+    }
+    lineStart = newline + 1;
+  }
+  return source.length;
 }
 
 function isIdentifierStart(value: string): boolean {

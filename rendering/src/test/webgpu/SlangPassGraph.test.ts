@@ -1000,6 +1000,22 @@ float4 readParticle(uint index)
     ]);
   });
 
+  it("warns when trivia separates custom storage from indexed access", () => {
+    const graph = build({
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+float4 readParticle(uint index)
+{
+    return particles /* storage index follows */
+        [index].position;
+}
+`);
+
+    expect(graph.warnings).toEqual([
+      "Storage \"particles\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"particles\" into a pass source file",
+    ]);
+  });
+
   it("does not warn for builtin or unreferenced custom storage", () => {
     const graph = build({
       positions: { count: 2, stride: 16, elementType: "float4" },
@@ -1023,6 +1039,77 @@ float particles = 0;
 const char* label = "stringOnly and an escaped quote: \" particle \"";
 char letter = 'q';
 char quote = '\'';
+`);
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("ignores custom storage names in declarations, shadowing, and member access", () => {
+    const graph = build({
+      parameter: { count: 2, stride: 32, elementType: "Particle" },
+      local: { count: 2, stride: 32, elementType: "Particle" },
+      typeName: { count: 2, stride: 32, elementType: "Particle" },
+      field: { count: 2, stride: 32, elementType: "Particle" },
+      genericField: { count: 2, stride: 32, elementType: "Particle" },
+      pointerField: { count: 2, stride: 32, elementType: "Particle" },
+      externalType: { count: 2, stride: 32, elementType: "Particle" },
+      member: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+struct typeName { float4 value; };
+struct Holder
+{
+    float4 field[4];
+    Generic<float4> genericField[4];
+    float4 *pointerField[4];
+    var values : externalType[4];
+    float4 member[4];
+};
+float4 shadowed(float4 parameter)
+{
+    float4 local[4];
+    Holder x;
+    return parameter[0] + local[0] + x.member[0];
+}
+`);
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("ignores directive lines and nested code inside an inactive if-zero block", () => {
+    const graph = build({
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+      trails: { count: 2, stride: 16, elementType: "Trail" },
+    }, String.raw`
+#define READ_PARTICLE particles[0]
+#define READ_TRAIL \
+    trails[0]
+#if 0
+float4 inactive = particles[0].position;
+#if 1
+float4 nested = trails[0].color;
+#endif
+#endif
+#if 0// disabled
+float4 adjacentLineComment = particles[0].position;
+#endif
+#if 0/**/
+float4 adjacentBlockComment = trails[0].color;
+#endif
+`);
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("keeps endif text inside inactive multiline comments from ending the region", () => {
+    const graph = build({
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+#if 0
+/*
+#endif
+*/
+float4 stillInactive = particles[0].position;
+#endif
 `);
 
     expect(graph.warnings).toEqual([]);
