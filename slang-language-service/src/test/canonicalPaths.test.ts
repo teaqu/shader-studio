@@ -44,9 +44,11 @@ describe("SlangPathMap", () => {
 
   it("decodes each file URI pathname exactly once without colliding with nested paths", () => {
     const paths = new SlangPathMap("file:///tmp/root");
+    const literalPercentUri = "file:///tmp/root/a%252Fb.slang";
 
-    expect(paths.register("file:///tmp/root/a%252Fb.slang")).toBe("/workspace/a%2Fb.slang");
+    expect(paths.register(literalPercentUri)).toBe("/workspace/a%2Fb.slang");
     expect(paths.register("file:///tmp/root/a/b.slang")).toBe("/workspace/a/b.slang");
+    expect(paths.toUri("/workspace/a%2Fb.slang")).toBe(literalPercentUri);
   });
 
   it("rejects invalid percent encoding in a file URI", () => {
@@ -61,6 +63,13 @@ describe("SlangPathMap", () => {
 
     expect(paths.register("shader-studio://models/palette", "lib/palette.slang"))
       .toBe("/workspace/lib/palette.slang");
+  });
+
+  it("treats percent escapes in explicit relative paths as literal path text", () => {
+    const paths = new SlangPathMap("shader-studio://workspace/root");
+
+    expect(paths.register("shader-studio://models/literal", "lib/a%2Fb.slang"))
+      .toBe("/workspace/lib/a%2Fb.slang");
   });
 
   it("requires an explicit relative path for non-file editor URIs", () => {

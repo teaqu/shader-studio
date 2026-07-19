@@ -13,12 +13,12 @@ function decodePath(path: string): string {
 }
 
 export function normalizeInternalPath(input: string): string {
-  const decoded = decodePath(input.replaceAll("\\", "/"));
-  const absolute = decoded.startsWith("/");
-  if (absolute && decoded !== INTERNAL_ROOT && !decoded.startsWith(`${INTERNAL_ROOT}/`)) {
+  const path = input.replaceAll("\\", "/");
+  const absolute = path.startsWith("/");
+  if (absolute && path !== INTERNAL_ROOT && !path.startsWith(`${INTERNAL_ROOT}/`)) {
     throw outsideWorkspace(input);
   }
-  const segments = decoded.split("/");
+  const segments = path.split("/");
   const normalized: string[] = absolute ? [] : ["workspace"];
 
   for (const segment of segments) {
@@ -100,7 +100,7 @@ export class SlangPathMap {
       if (filePath === undefined) {
         throw new Error(`A relative path is required for non-file URI "${uri}"`);
       }
-      path = normalizeInternalPath(relativeFilePath(this.rootFilePath, filePath));
+      path = normalizeInternalPath(decodePath(relativeFilePath(this.rootFilePath, filePath)));
     }
 
     const mappedUri = this.pathToUri.get(path);

@@ -69,6 +69,21 @@ describe("syncWorkspaceToFileSystem", () => {
     ]))).toThrow("outside the Slang workspace");
   });
 
+  it("preserves literal percent escapes in canonical workspace paths", () => {
+    const fs = fakeFs();
+
+    syncWorkspaceToFileSystem(fs, snapshot([
+      {
+        uri: "file:///workspace/a%252Fb.slang",
+        path: "/workspace/a%2Fb.slang",
+        source: "literal percent",
+      },
+    ]));
+
+    expect(fs.writeFile).toHaveBeenCalledWith("/workspace/a%2Fb.slang", "literal percent");
+    expect(fs.writeFile).not.toHaveBeenCalledWith("/workspace/a/b.slang", expect.anything());
+  });
+
   it("never deletes an owned path outside /workspace", () => {
     const fs = fakeFs(["/tmp/user-file.slang"]);
     const state = new Set(["/tmp/user-file.slang"]);
