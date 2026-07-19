@@ -26,6 +26,8 @@ type CompileResult =
   | { success: true; wgsl: string }
   | { success: false; errors: string[] };
 
+type ComputeFailureMethod = "setPipeline" | "setBindGroup" | "dispatchWorkgroups" | "end";
+
 const IMAGE_SOURCE = "float4 mainImage(float2 c) { return float4(0); }";
 const COMPUTE_SOURCE = "void computeMain(uint3 tid) {}";
 
@@ -70,6 +72,23 @@ function harness() {
   const buffers: FakeBuffer[] = [];
   const textures: FakeTexture[] = [];
   const commandEvents: Array<{ type: string; value?: unknown }> = [];
+  const computePasses: Array<{
+    setPipeline: ReturnType<typeof vi.fn>;
+    setBindGroup: ReturnType<typeof vi.fn>;
+    dispatchWorkgroups: ReturnType<typeof vi.fn>;
+    end: ReturnType<typeof vi.fn>;
+  }> = [];
+  const computeFailure: {
+    method: ComputeFailureMethod | null;
+    call: number;
+    error: Error;
+    endError: Error | null;
+  } = {
+    method: null,
+    call: 1,
+    error: new Error("compute encoder operation failed"),
+    endError: null,
+  };
   let bindGroupId = 0;
   let computePipelineId = 0;
   const device = {
@@ -107,18 +126,44 @@ function harness() {
     createCommandEncoder: vi.fn(() => ({
       beginComputePass: vi.fn(() => {
         commandEvents.push({ type: "beginComputePass" });
-        return {
+        const calls: Record<ComputeFailureMethod, number> = {
+          setPipeline: 0,
+          setBindGroup: 0,
+          dispatchWorkgroups: 0,
+          end: 0,
+        };
+        const failIfConfigured = (method: ComputeFailureMethod) => {
+          calls[method]++;
+          if (computeFailure.method === method && computeFailure.call === calls[method]) {
+            computeFailure.method = null;
+            throw computeFailure.error;
+          }
+        };
+        const computePass = {
           setPipeline: vi.fn((pipeline: GPUComputePipeline) => {
             commandEvents.push({ type: "compute.setPipeline", value: pipeline });
+            failIfConfigured("setPipeline");
           }),
           setBindGroup: vi.fn((_index: number, bindGroup: GPUBindGroup) => {
             commandEvents.push({ type: "compute.setBindGroup", value: bindGroup });
+            failIfConfigured("setBindGroup");
           }),
           dispatchWorkgroups: vi.fn((x: number, y: number, z: number) => {
             commandEvents.push({ type: "dispatchWorkgroups", value: [x, y, z] });
+            failIfConfigured("dispatchWorkgroups");
           }),
-          end: vi.fn(() => commandEvents.push({ type: "endComputePass" })),
+          end: vi.fn(() => {
+            commandEvents.push({ type: "endComputePass" });
+            if (computeFailure.endError) {
+              const error = computeFailure.endError;
+              computeFailure.endError = null;
+              throw error;
+            }
+            failIfConfigured("end");
+          }),
         };
+        computePasses.push(computePass);
+        return computePass;
       }),
       beginRenderPass: vi.fn(() => {
         commandEvents.push({ type: "beginRenderPass" });
@@ -163,7 +208,16 @@ function harness() {
   (engine as unknown as { device: GPUDevice }).device = device as unknown as GPUDevice;
   (engine as unknown as { compiler: typeof compiler }).compiler = compiler;
   (engine as unknown as { format: GPUTextureFormat }).format = "bgra8unorm";
-  return { engine, device, compiler, buffers, textures, commandEvents };
+  return {
+    engine,
+    device,
+    compiler,
+    buffers,
+    textures,
+    commandEvents,
+    computePasses,
+    computeFailure,
+  };
 }
 
 function enableRendering(testHarness: ReturnType<typeof harness>): void {
@@ -933,6 +987,217 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.render(1032);
 
     expect(swap).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps sampling the completed dispatchOnce output when the source skips a later frame", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, dispatchOnce: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.device.createBindGroup.mockClear();
+
+    testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
+
+    const firstImageEntries = testHarness.device.createBindGroup.mock.calls[1][0].entries;
+    const secondImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
+    expect(firstImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: expect.objectContaining({ textureId: 0 }),
+      }),
+    ]));
+    expect(secondImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: expect.objectContaining({ textureId: 0 }),
+      }),
+    ]));
+  });
+
+  it("gives a compute consumer the completed output when an earlier dispatchOnce source skips", async () => {
+    const testHarness = harness();
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeSource: { path: "source.slang", dispatchOnce: true },
+        ComputeConsumer: {
+          path: "consumer.slang",
+          inputs: { iChannel0: { type: "buffer", source: "ComputeSource" } },
+        },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeConsumer" } } },
+      },
+    };
+    await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeSource: "source compute",
+      ComputeConsumer: "consumer compute",
+    });
+    const consumer = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeConsumer")!;
+    const rebuildBindGroups = vi.spyOn(consumer, "rebuildBindGroups");
+    enableRendering(testHarness);
+
+    testHarness.engine.render(1000);
+    testHarness.engine.render(1016);
+
+    expect(rebuildBindGroups.mock.calls[0][0][0].textureView)
+      .toEqual(expect.objectContaining({ textureId: 0 }));
+    expect(rebuildBindGroups.mock.calls[1][0][0].textureView)
+      .toEqual(expect.objectContaining({ textureId: 0 }));
+  });
+
+  it.each([
+    { method: "setPipeline", call: 1, dispatchCount: 1 },
+    { method: "setBindGroup", call: 1, dispatchCount: 1 },
+    { method: "setBindGroup", call: 2, dispatchCount: 2 },
+    { method: "dispatchWorkgroups", call: 1, dispatchCount: 1 },
+  ] as const)(
+    "ends a begun compute scope when $method call $call throws",
+    async ({ method, call, dispatchCount }) => {
+      const testHarness = harness();
+      await testHarness.engine.compileShaderPipeline(
+        IMAGE_SOURCE,
+        computeConfig({
+          sampled: true,
+          dispatchCount,
+          dispatchOnce: dispatchCount === 1,
+        }),
+        "/shader.slang",
+        { ComputeSim: COMPUTE_SOURCE },
+      );
+      const compute = (testHarness.engine as unknown as {
+        computePipelines: Map<string, SlangComputePipeline>;
+      }).computePipelines.get("ComputeSim")!;
+      const swap = vi.spyOn(compute, "swap");
+      enableRendering(testHarness);
+      testHarness.computeFailure.method = method;
+      testHarness.computeFailure.call = call;
+
+      expect(() => testHarness.engine.render(1000)).toThrow(testHarness.computeFailure.error);
+
+      expect(testHarness.computePasses[0].end).toHaveBeenCalledTimes(1);
+      expect(swap).not.toHaveBeenCalled();
+
+      expect(() => testHarness.engine.render(1016)).not.toThrow();
+      expect(testHarness.computePasses[1].end).toHaveBeenCalledTimes(1);
+      expect(swap).toHaveBeenCalledTimes(1);
+      if (dispatchCount === 1) {
+        testHarness.engine.render(1032);
+        expect(testHarness.computePasses).toHaveLength(2);
+        expect(swap).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
+  it("does not consume dispatchOnce or swap when ending its compute scope throws", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true, dispatchOnce: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const compute = (testHarness.engine as unknown as {
+      computePipelines: Map<string, SlangComputePipeline>;
+    }).computePipelines.get("ComputeSim")!;
+    const swap = vi.spyOn(compute, "swap");
+    enableRendering(testHarness);
+    testHarness.computeFailure.method = "end";
+
+    expect(() => testHarness.engine.render(1000)).toThrow(testHarness.computeFailure.error);
+    expect(testHarness.computePasses[0].end).toHaveBeenCalledTimes(1);
+    expect(swap).not.toHaveBeenCalled();
+
+    expect(() => testHarness.engine.render(1016)).not.toThrow();
+    expect(testHarness.computePasses[1].end).toHaveBeenCalledTimes(1);
+    expect(swap).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the encoder operation error when closing the failed scope also throws", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    const operationError = new Error("setPipeline failed");
+    testHarness.computeFailure.method = "setPipeline";
+    testHarness.computeFailure.error = operationError;
+    testHarness.computeFailure.endError = new Error("end failed too");
+
+    expect(() => testHarness.engine.render(1000)).toThrow(operationError);
+    expect(testHarness.computePasses[0].end).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps sampling the completed compute output while a paused frame skips the source", async () => {
+    const testHarness = harness();
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ sampled: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    enableRendering(testHarness);
+    testHarness.device.createBindGroup.mockClear();
+
+    testHarness.engine.render(1000);
+    testHarness.engine.togglePause();
+    testHarness.engine.render(1016);
+
+    const pausedImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
+    expect(pausedImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: expect.objectContaining({ textureId: 0 }),
+      }),
+    ]));
+  });
+
+  it("keeps sampling the completed output when a source channel becomes unavailable", async () => {
+    const testHarness = harness();
+    const path = "/transient.png";
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({
+        sampled: true,
+        inputs: { iChannel0: { type: "texture", path } },
+      }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const handle = {
+      view: { label: "transient-view" },
+      sampler: { label: "transient-sampler" },
+      width: 32,
+      height: 16,
+    };
+    const resourceManager = {
+      getImageTextureCache: vi.fn(() => ({ [path]: handle })),
+      getDefaultTexture: vi.fn(() => null),
+    };
+    (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
+      .resourceManager = resourceManager;
+    enableRendering(testHarness);
+    testHarness.device.createBindGroup.mockClear();
+
+    testHarness.engine.render(1000);
+    resourceManager.getImageTextureCache.mockReturnValue({});
+    testHarness.engine.render(1016);
+
+    const secondImageEntries = testHarness.device.createBindGroup.mock.calls[2][0].entries;
+    expect(secondImageEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: 1,
+        resource: expect.objectContaining({ textureId: 0 }),
+      }),
+    ]));
   });
 
   it.each([

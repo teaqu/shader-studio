@@ -1753,7 +1753,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     const encoder = this.device.createCommandEncoder();
     let canvasTexture: GPUTexture | null = null;
-    const encodedComputePipelines: SlangComputePipeline[] = [];
+    const encodedComputePasses = new Set<string>();
 
     for (const pass of this.passGraph) {
       if (pass.kind !== "compute" || skipBufferPasses) {
@@ -1769,7 +1769,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
-      const channelResources = this.getChannelResources(pass, isPaused);
+      const channelResources = this.getChannelResources(pass, isPaused, encodedComputePasses);
       const workgroupCounts = resolveWorkgroupCounts(
         pass,
         this.storageLayouts,
@@ -1793,16 +1793,29 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device.queue.writeBuffer(uniformBuffer, 0, data);
 
       const computePass = encoder.beginComputePass();
-      computePass.setPipeline(gpuPipeline);
-      for (const bindGroup of bindGroups) {
-        computePass.setBindGroup(0, bindGroup!);
-        computePass.dispatchWorkgroups(...workgroupCounts);
+      let operationFailed = false;
+      try {
+        computePass.setPipeline(gpuPipeline);
+        for (const bindGroup of bindGroups) {
+          computePass.setBindGroup(0, bindGroup!);
+          computePass.dispatchWorkgroups(...workgroupCounts);
+        }
+      } catch (error) {
+        operationFailed = true;
+        throw error;
+      } finally {
+        try {
+          computePass.end();
+        } catch (endError) {
+          if (!operationFailed) {
+            throw endError;
+          }
+        }
       }
-      computePass.end();
       if (pass.dispatchOnce) {
         this.dispatchOnceRan.add(pass.name);
       }
-      encodedComputePipelines.push(pipeline);
+      encodedComputePasses.add(pass.name);
     }
 
     for (const pass of this.passGraph) {
@@ -1820,7 +1833,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.getChannelResources(pass, isPaused);
+      const channelResources = this.getChannelResources(pass, isPaused, encodedComputePasses);
       if (channelResources === null) {
         continue;
       }
@@ -1868,8 +1881,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.device.queue.submit([encoder.finish()]);
     this.resolveInspectorReadback();
 
-    for (const pipeline of encodedComputePipelines) {
-      pipeline.swap();
+    for (const passName of encodedComputePasses) {
+      this.computePipelines.get(passName)?.swap();
     }
 
     if (!skipBufferPasses) {
@@ -1937,6 +1950,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private getChannelResources(
     pass: RenderPassNode,
     skipInputUpdates = false,
+    encodedComputePasses: ReadonlySet<string> = new Set(),
   ): SlangChannelResource[] | null {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
@@ -1945,7 +1959,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const computeSource = this.computePipelines.get(channel.source);
         const layer = channel.layer ?? 0;
         const textureView = computeSource
-          ? channel.readFrom === "previous-frame"
+          ? channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source)
             ? computeSource.getPreviousLayerOutputView(layer)
             : computeSource.getLayerOutputView(layer)
           : channel.readFrom === "previous-frame"
