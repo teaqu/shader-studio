@@ -746,6 +746,44 @@ describe('ConfigPanel', () => {
       expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
     });
 
+    it('routes Compute tab source creation through the Slang compute file workflow', async () => {
+      const computeConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      };
+      const mockManager = createMockConfigManager([]);
+      mockManager.generateBufferPath.mockReturnValue('image.computea.slang');
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText } = render(ConfigPanel, {
+        config: computeConfig,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'ComputeA',
+      });
+      await tick();
+
+      await fireEvent.click(getByText('Create'));
+
+      expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'createFile',
+        payload: {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
     it('does nothing when the manager cannot add a compute pass', async () => {
       const mockManager = createMockConfigManager([]);
       mockManager.addComputePass.mockReturnValue(null);

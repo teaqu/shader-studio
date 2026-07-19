@@ -1,6 +1,7 @@
 import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution } from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
+import type { ShaderLanguage } from './engineFactory';
 
 export class ConfigManager {
   private config: ShaderConfig | null = null;
@@ -65,7 +66,7 @@ export class ConfigManager {
      * Generate a buffer file path based on the current shader name
      * e.g., myshader.glsl → myshader.buffera.glsl
      */
-  public generateBufferPath(bufferName: string): string {
+  public generateBufferPath(bufferName: string, language: ShaderLanguage = 'glsl'): string {
     if (!this.shaderPath) {
       return '';
     }
@@ -73,10 +74,10 @@ export class ConfigManager {
     // Extract just the filename without path
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.glsl$/, '');
+    const baseName = filename.replace(/\.(?:glsl|slang)$/i, '');
 
     const suffix = bufferName.toLowerCase();
-    return `${baseName}.${suffix}.glsl`;
+    return `${baseName}.${suffix}.${language}`;
   }
 
   /**

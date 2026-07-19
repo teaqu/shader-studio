@@ -302,6 +302,10 @@
     return tabName === "Common" ? "common" : tabName;
   }
 
+  function isComputeTab(tabName: string): boolean {
+    return tabName.startsWith("Compute");
+  }
+
   function getWebviewUri(path: string): string | undefined {
     return configManager?.getWebviewUri(path);
   }
@@ -503,6 +507,8 @@
         <BufferConfig
           bufferName={getActualBufferName(activeTab)}
           config={activeTabConfig}
+          {language}
+          passKind={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
             configManager?.updateBuffer(
               bufferName,
@@ -510,7 +516,10 @@
             );
           }}
           {getWebviewUri}
-          suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
+          suggestedPath={configManager?.generateBufferPath(
+            getActualBufferName(activeTab),
+            isComputeTab(activeTab) && language === 'slang' ? 'slang' : 'glsl',
+          ) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}

@@ -1,5 +1,5 @@
 import type { Transport } from '../transport/MessageTransport';
-import type { ProfileIndex, ProfileData } from '@shader-studio/types';
+import type { BaseMessage, ProfileIndex, ProfileData } from '@shader-studio/types';
 
 export class FileProfileAdapter {
   private pending = new Map<string, (msg: Record<string, unknown>) => void>();
@@ -18,7 +18,7 @@ export class FileProfileAdapter {
   }
 
   private request<T extends Record<string, unknown>>(
-    message: Record<string, unknown>
+    message: BaseMessage & Record<string, unknown>
   ): Promise<T> {
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return new Promise((resolve) => {

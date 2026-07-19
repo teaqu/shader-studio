@@ -9,11 +9,14 @@
     ResolutionSettings,
     BufferResolution,
     AspectRatioMode,
+    CreateFileMessage,
+    SelectFileMessage,
   } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import PathInput from "./PathInput.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
+  import type { ShaderLanguage } from "../../engineFactory";
 
   type EditableConfig = BufferPass | ImagePass;
 
@@ -23,8 +26,10 @@
     onUpdate: (bufferName: string, config: EditableConfig) => void;
     getWebviewUri: (path: string) => string | undefined;
     isImagePass?: boolean;
+    language?: ShaderLanguage;
+    passKind?: 'render' | 'compute';
     suggestedPath?: string;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: SelectFileMessage | CreateFileMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
     shaderPath?: string;
     audioVideoController?: AudioVideoController;
@@ -38,6 +43,8 @@
     onUpdate,
     getWebviewUri,
     isImagePass = false,
+    language = "glsl",
+    passKind = "render",
     suggestedPath = "",
     postMessage = undefined,
     onMessage = undefined,
@@ -54,7 +61,13 @@
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
-  const fileType = $derived(bufferName === 'common' ? 'glsl-common' as const : 'glsl-buffer' as const);
+  const fileType = $derived(
+    bufferName === 'common'
+      ? 'glsl-common' as const
+      : passKind === 'compute' && language === 'slang'
+      ? 'slang-compute' as const
+      : 'glsl-buffer' as const,
+  );
   const validation = $derived(configModel.validate() || { isValid: true, errors: [] });
   const configuredInputs = $derived(config.inputs || {});
   const imageResolution = $derived(imageConfig?.resolution);
@@ -272,7 +285,11 @@
           onPathChange={handlePathChange}
           hasError={!validation.isValid}
           note="Relative, absolute, or @ for workspace root"
-          placeholder={suggestedPath || (bufferName === 'common' ? 'e.g., ./common.glsl' : 'e.g., ./buffer.glsl')}
+          placeholder={suggestedPath || (bufferName === 'common'
+            ? 'e.g., ./common.glsl'
+            : fileType === 'slang-compute'
+            ? 'e.g., ./compute.slang'
+            : 'e.g., ./buffer.glsl')}
           {fileType}
           {shaderPath}
           {suggestedPath}

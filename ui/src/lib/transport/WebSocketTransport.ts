@@ -1,4 +1,5 @@
-import type { Transport } from './MessageTransport';
+import type { BaseMessage } from '@shader-studio/types';
+import type { Transport, TransportMessage } from './MessageTransport';
 
 export class WebSocketTransport implements Transport {
   private ws: WebSocket | null = null;
@@ -100,7 +101,7 @@ export class WebSocketTransport implements Transport {
     });
   }
 
-  postMessage(message: any): void {
+  postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         const messageStr = JSON.stringify(message);

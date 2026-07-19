@@ -142,6 +142,81 @@ describe('BufferConfig', () => {
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
+    it('should request Slang compute files when selecting a compute pass source', async () => {
+      const config: BufferPass = { path: 'existing.slang', inputs: {} };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'ComputeA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language: 'slang',
+        passKind: 'compute',
+        shaderPath: '/shaders/image.slang',
+      });
+
+      await fireEvent.click(getByText('Select'));
+
+      expect(mockPostMessage).toHaveBeenCalledWith({
+        type: 'selectFile',
+        payload: {
+          shaderPath: '/shaders/image.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
+    it('should request the suggested Slang path when creating a compute pass source', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+
+      const { getByText, getByLabelText } = render(BufferConfig, {
+        bufferName: 'ComputeA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language: 'slang',
+        passKind: 'compute',
+        shaderPath: '/shaders/image.slang',
+        suggestedPath: 'image.computea.slang',
+      });
+
+      expect(getByLabelText('Path:')).toHaveAttribute('placeholder', 'image.computea.slang');
+      await fireEvent.click(getByText('Create'));
+
+      expect(mockPostMessage).toHaveBeenCalledWith({
+        type: 'createFile',
+        payload: {
+          shaderPath: '/shaders/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
+    it.each([
+      { language: 'glsl' as const, passKind: 'compute' as const },
+      { language: 'slang' as const, passKind: 'render' as const },
+    ])('should preserve GLSL buffer selection for $language $passKind passes', async ({ language, passKind }) => {
+      const config: BufferPass = { path: 'existing.glsl', inputs: {} };
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language,
+        passKind,
+      });
+
+      await fireEvent.click(getByText('Select'));
+
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
+    });
+
     it('should show path input instead of create button for common buffer with existing path', () => {
       const config: BufferPass = { path: 'myshader.common.glsl', inputs: {} };
 

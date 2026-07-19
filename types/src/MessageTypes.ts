@@ -184,6 +184,44 @@ export interface SaveFileResultMessage extends BaseMessage {
   };
 }
 
+export type FileDialogFileType =
+  | 'script'
+  | 'glsl'
+  | 'glsl-buffer'
+  | 'glsl-common'
+  | 'slang-compute'
+  | 'texture'
+  | 'video'
+  | 'audio'
+  | 'cubemap';
+
+export interface SelectFileMessage extends BaseMessage {
+  type: 'selectFile';
+  payload: {
+    shaderPath: string;
+    fileType: FileDialogFileType;
+    requestId: string;
+  };
+}
+
+export interface CreateFileMessage extends BaseMessage {
+  type: 'createFile';
+  payload: {
+    shaderPath: string;
+    suggestedPath: string;
+    fileType: FileDialogFileType;
+    requestId: string;
+  };
+}
+
+export interface FileSelectedMessage extends BaseMessage {
+  type: 'fileSelected';
+  payload: {
+    path: string;
+    requestId: string;
+  };
+}
+
 // Profile messages — UI → Extension (reads return responses with same requestId)
 export interface ProfileReadIndexMessage extends BaseMessage {
   type: 'profile:readIndex';
@@ -218,4 +256,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | CustomUniformValuesMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

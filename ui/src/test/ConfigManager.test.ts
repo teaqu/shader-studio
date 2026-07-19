@@ -509,6 +509,21 @@ describe('ConfigManager', () => {
       configManager.setShaderPath('/path/to/shader');
       expect(configManager.generateBufferPath('BufferA')).toBe('shader.buffera.glsl');
     });
+
+    it('should generate a Slang compute path without retaining the main shader suffix', () => {
+      configManager.setShaderPath('/path/to/image.slang');
+      expect(configManager.generateBufferPath('ComputeA', 'slang')).toBe('image.computea.slang');
+    });
+
+    it('should replace a GLSL main shader suffix when generating a Slang compute path', () => {
+      configManager.setShaderPath('/path/to/image.glsl');
+      expect(configManager.generateBufferPath('ComputeB', 'slang')).toBe('image.computeb.slang');
+    });
+
+    it('should generate a Slang compute path for extensionless Windows shader paths', () => {
+      configManager.setShaderPath('C:\\Shaders\\image');
+      expect(configManager.generateBufferPath('ComputeSim', 'slang')).toBe('image.computesim.slang');
+    });
   });
 
   describe('createBufferFile', () => {
