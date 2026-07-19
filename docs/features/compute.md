@@ -50,7 +50,7 @@ JSON does not allow comments; the annotations below use JSONC for explanation. R
 }
 ```
 
-Any pass whose name starts with `Compute` is a compute pass. The rest of the name is unrestricted, so names such as `ComputeSim`, `ComputeBlurHorizontal`, and `Compute_2` are valid.
+Pass names must be valid shader identifiers: the first character is a letter or underscore, and the remaining characters are letters, digits, or underscores. Any pass whose name starts with `Compute` is a compute pass, so its suffix may contain only letters, digits, or underscores (or be empty). `Compute`, `ComputeSim`, `ComputeBlurHorizontal`, and `Compute_2` are valid; `Compute-Blur` and `Compute Sim` are not. Non-compute fragment passes follow the same identifier rule, but they are not limited to a fixed `BufferA`–`BufferD` name set or to four passes.
 
 ## Writing a Compute Shader
 

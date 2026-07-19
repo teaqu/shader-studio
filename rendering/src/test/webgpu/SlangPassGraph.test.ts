@@ -906,11 +906,11 @@ describe("Slang compute passes", () => {
 });
 
 describe("Slang storage graph", () => {
-  function build(storage: ShaderConfig["storage"]) {
+  function build(storage: ShaderConfig["storage"], commonCode = "") {
     return buildSlangPassGraph({
       imageCode,
       config: { version: "1", storage, passes: { Image: { inputs: {} } } },
-      buffers: {},
+      buffers: commonCode === "" ? {} : { common: commonCode },
       canvasWidth: 64,
       canvasHeight: 64,
     });
@@ -979,6 +979,53 @@ describe("Slang storage graph", () => {
       && warning.includes("adapter support")
       && warning.includes("packing")
     )).toBe(true);
+  });
+
+  it("warns in config order when common references custom-typed storage", () => {
+    const graph = build({
+      trails: { count: 2, stride: 16, elementType: "Trail" },
+      positions: { count: 2, stride: 16, elementType: "float4" },
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+float4 readParticle(uint index)
+{
+    return particles[index].position + trails[index].color + positions[index];
+}
+`);
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.warnings).toEqual([
+      "Storage \"trails\" uses custom type \"Trail\" and is declared after common, so common cannot reference it; move helpers that access \"trails\" into a pass source file",
+      "Storage \"particles\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"particles\" into a pass source file",
+    ]);
+  });
+
+  it("does not warn for builtin or unreferenced custom storage", () => {
+    const graph = build({
+      positions: { count: 2, stride: 16, elementType: "float4" },
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+    }, "float4 readPosition(uint index) { return positions[index]; }");
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("matches exact identifier tokens and ignores comments, strings, chars, and escapes", () => {
+    const graph = build({
+      particle: { count: 2, stride: 32, elementType: "Particle" },
+      commentsOnly: { count: 2, stride: 32, elementType: "Particle" },
+      blockOnly: { count: 2, stride: 32, elementType: "Particle" },
+      stringOnly: { count: 2, stride: 32, elementType: "Particle" },
+      q: { count: 2, stride: 32, elementType: "Particle" },
+    }, String.raw`
+float particles = 0;
+// commentsOnly[0]
+/* blockOnly[0] */
+const char* label = "stringOnly and an escaped quote: \" particle \"";
+char letter = 'q';
+char quote = '\'';
+`);
+
+    expect(graph.warnings).toEqual([]);
   });
 
   it("reports total valid storage larger than 256 MiB", () => {

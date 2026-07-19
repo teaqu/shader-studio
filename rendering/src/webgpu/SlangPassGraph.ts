@@ -81,6 +81,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   );
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors);
   const storage = resolveStorage(config.storage, warnings, errors);
+  warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings);
   const storageNames = new Set(storage.map(({ name }) => name));
   const computePasses: RenderPassNode[] = [];
   const renderPasses: RenderPassNode[] = [];
@@ -276,6 +277,82 @@ function resolveStorage(
     errors.push("Total storage size exceeds 256 MiB");
   }
   return storage;
+}
+
+function warnOnCustomStorageReferencesInCommon(
+  storage: StorageBindingNode[],
+  commonCode: string,
+  warnings: string[],
+): void {
+  const identifiers = collectSlangIdentifiers(commonCode);
+  for (const node of storage) {
+    if (node.builtin || !identifiers.has(node.name)) {
+      continue;
+    }
+    warnings.push(
+      `Storage "${node.name}" uses custom type "${node.elementType}" and is declared after common, ` +
+      `so common cannot reference it; move helpers that access "${node.name}" into a pass source file`,
+    );
+  }
+}
+
+function collectSlangIdentifiers(source: string): Set<string> {
+  const identifiers = new Set<string>();
+  let index = 0;
+  while (index < source.length) {
+    const current = source[index];
+    const next = source[index + 1];
+    if (current === "/" && next === "/") {
+      index += 2;
+      while (index < source.length && source[index] !== "\n") {
+        index++;
+      }
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
+        index++;
+      }
+      index = Math.min(source.length, index + 2);
+      continue;
+    }
+    if (current === "\"" || current === "'") {
+      const quote = current;
+      index++;
+      while (index < source.length) {
+        if (source[index] === "\\") {
+          index += 2;
+        } else if (source[index] === quote) {
+          index++;
+          break;
+        } else {
+          index++;
+        }
+      }
+      continue;
+    }
+    if (isIdentifierStart(current)) {
+      const start = index++;
+      while (index < source.length && isIdentifierPart(source[index])) {
+        index++;
+      }
+      identifiers.add(source.slice(start, index));
+      continue;
+    }
+    index++;
+  }
+  return identifiers;
+}
+
+function isIdentifierStart(value: string): boolean {
+  return value === "_" ||
+    (value >= "a" && value <= "z") ||
+    (value >= "A" && value <= "Z");
+}
+
+function isIdentifierPart(value: string): boolean {
+  return isIdentifierStart(value) || (value >= "0" && value <= "9");
 }
 
 function resolveDispatch(
