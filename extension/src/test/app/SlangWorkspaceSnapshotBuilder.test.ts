@@ -52,6 +52,32 @@ suite("SlangWorkspaceSnapshotBuilder", () => {
     ]);
   });
 
+  test("case-folds Windows aliases while preserving the first URI and open document source", async () => {
+    const diskUri = "file:///C:/Work/A.slang";
+    const aliasUri = "file:///c:/work/a.slang";
+    const builder = new SlangWorkspaceSnapshotBuilder(host(
+      { [diskUri]: "disk" },
+      [diskUri, aliasUri],
+      [{ uri: aliasUri, source: "unsaved", version: 9 }],
+    ));
+
+    const snapshot = await builder.build({ rootUri: "file:///C:/Work" });
+    const reversedSnapshot = await new SlangWorkspaceSnapshotBuilder(host(
+      { [diskUri]: "disk" },
+      [aliasUri, diskUri],
+      [{ uri: aliasUri, source: "unsaved", version: 9 }],
+    )).build({ rootUri: "file:///C:/Work" });
+
+    const expected = [{
+      uri: diskUri,
+      path: "/workspace/A.slang",
+      source: "unsaved",
+      version: 9,
+    }];
+    assert.deepStrictEqual(snapshot.files, expected);
+    assert.deepStrictEqual(reversedSnapshot.files, expected);
+  });
+
   test("includes configured roots, passes, common code, and referenced non-Slang files", async () => {
     const image = "file:///workspace/image.slang";
     const buffer = "file:///workspace/passes/buffer.slang";
@@ -109,6 +135,52 @@ suite("SlangWorkspaceSnapshotBuilder", () => {
       () => builder.build({ rootUri, rootFiles: ["file:///workspace/missing.slang"] }),
       /Could not read required Slang workspace file/,
     );
+  });
+
+  test("reports a missing explicitly required dependency file", async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder(host({}));
+
+    await assert.rejects(
+      () => builder.build({
+        rootUri,
+        dependencyFiles: ["file:///workspace/include/missing.slang"],
+      }),
+      /Could not read required Slang workspace file/,
+    );
+  });
+
+  test("skips a discovered file deleted between scan and read", async () => {
+    const present = "file:///workspace/present.slang";
+    const deleted = "file:///workspace/deleted.slang";
+    const builder = new SlangWorkspaceSnapshotBuilder(host(
+      { [present]: "present" },
+      [deleted, present],
+    ));
+
+    const snapshot = await builder.build({ rootUri });
+
+    assert.deepStrictEqual(snapshot.files.map((file) => file.uri), [present]);
+  });
+
+  test("rejects encoded separators and encoded dot traversal", async () => {
+    const encodedSeparator = new SlangWorkspaceSnapshotBuilder(host({}, [
+      "file:///workspace/lib%2F..%2Fsecret.slang",
+    ]));
+    const encodedTraversal = new SlangWorkspaceSnapshotBuilder(host({}, [
+      "file:///workspace/lib/%2e%2e/secret.slang",
+    ]));
+
+    await assert.rejects(() => encodedSeparator.build({ rootUri }), /unsafe encoded path/);
+    await assert.rejects(() => encodedTraversal.build({ rootUri }), /unsafe encoded path/);
+  });
+
+  test("rejects percent-encoded aliases that collide with a canonical path", async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder(host({}, [
+      "file:///workspace/a.slang",
+      "file:///workspace/%61.slang",
+    ]));
+
+    await assert.rejects(() => builder.build({ rootUri }), /unsafe encoded path/);
   });
 
   test("propagates discovery failures", async () => {

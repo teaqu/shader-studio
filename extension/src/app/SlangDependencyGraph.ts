@@ -120,7 +120,16 @@ function quotedValue(source: string, start: number): { value: string; end: numbe
       return { value, end: index + 1 };
     }
     if (character === "\\" && opener !== "<" && index + 1 < source.length) {
-      value += source[index + 1];
+      const escaped = source[index + 1];
+      if (escaped === opener) {
+        value += escaped;
+      } else if (escaped === "\\") {
+        value += "\\";
+      } else {
+        // Slang accepts Windows-style paths in quoted dependency references.
+        // Preserve a non-escape backslash for resolvePath() to normalize.
+        value += `\\${escaped}`;
+      }
       index++;
     } else if (character === "\n" || character === "\r") {
       return undefined;

@@ -39,6 +39,21 @@ suite("SlangDependencyGraph", () => {
     ]);
   });
 
+  test("preserves Windows separators in quoted imports and include directives", () => {
+    const graph = new SlangDependencyGraph("file:///workspace");
+    graph.update(root, [
+      'import "lib\\math.slang";',
+      '#include "include\\color.slang"',
+      '__include("generated\\constants.slang")',
+    ].join("\n"));
+
+    assert.deepStrictEqual([...graph.directDependencies(root)].sort(), [
+      "file:///workspace/generated/constants.slang",
+      "file:///workspace/include/color.slang",
+      "file:///workspace/lib/math.slang",
+    ]);
+  });
+
   test("keeps both local and workspace-root candidates for ambiguous module imports", () => {
     const graph = new SlangDependencyGraph("file:///workspace");
     graph.update(nestedRoot, "import palette;");
