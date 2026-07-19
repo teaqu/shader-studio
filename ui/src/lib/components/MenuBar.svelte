@@ -980,16 +980,6 @@
       <i class="codicon codicon-book"></i>
       <span>Shader Explorer</span>
     </button>
-    <button
-      class="options-menu-item"
-      onclick={() => {
-        onExtensionCommand('openSnippetLibrary'); showOptionsMenu = false;
-      }}
-      aria-label="Snippet library"
-    >
-      <i class="codicon codicon-library"></i>
-      <span>Snippet Library</span>
-    </button>
     <div class="options-menu-divider"></div>
     <div class="options-menu-item compile-mode-menu-item">
       <span>Mode</span>
