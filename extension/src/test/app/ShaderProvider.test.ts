@@ -382,13 +382,14 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
     });
 
-    test('should map BufferA-D to resolved absolute paths', () => {
+    test('should map fragment and compute passes to resolved absolute paths', () => {
       const config = {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
           BufferA: { path: 'bufferA.glsl', inputs: {} },
           BufferB: { path: 'bufferB.glsl', inputs: {} },
+          ComputeSim: { path: 'sim.slang', inputs: {} },
         }
       };
 
@@ -396,6 +397,7 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
       assert.strictEqual(result.BufferA, '/resolved/bufferA.glsl');
       assert.strictEqual(result.BufferB, '/resolved/bufferB.glsl');
+      assert.strictEqual(result.ComputeSim, '/resolved/sim.slang');
     });
 
     test('should handle common buffer', () => {
@@ -429,6 +431,27 @@ suite('ShaderProvider Test Suite', () => {
       const result = (provider as any).buildBufferPathMap(null, '/path/to/shader.glsl');
       assert.deepStrictEqual(Object.keys(result), ['Image']);
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
+    });
+  });
+
+  suite('resolveOwningShaderPath', () => {
+    test('routes compute pass changes back to their owning shader', () => {
+      (provider as any).activeShaders.add('/path/to/shader.slang');
+      loadAndProcessConfigStub.returns({
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferFlow: { path: 'flow.slang', inputs: {} },
+          ComputeSim: { path: 'sim.slang', inputs: {} },
+        }
+      });
+      sandbox.stub(PathResolver, 'resolvePath').callsFake((_shaderPath: string, targetPath: string) => {
+        return `/resolved/${targetPath}`;
+      });
+
+      const owner = (provider as any).resolveOwningShaderPath('/resolved/sim.slang');
+
+      assert.strictEqual(owner, '/path/to/shader.slang');
     });
   });
 

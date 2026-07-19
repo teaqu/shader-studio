@@ -21,6 +21,9 @@
       "minimum": 1,
       "maximum": 120
     },
+    "storage": {
+      "$ref": "#/definitions/StorageBuffers"
+    },
     "passes": {
       "$ref": "#/definitions/ShaderPasses"
     }
@@ -40,7 +43,10 @@
         }
       },
       "patternProperties": {
-        "^(?!Image$|common$)[a-zA-Z_][a-zA-Z0-9_]*$": {
+        "^Compute[a-zA-Z0-9_]*$": {
+          "$ref": "#/definitions/ComputePass"
+        },
+        "^(?!Image$|common$|Compute)[a-zA-Z_][a-zA-Z0-9_]*$": {
           "$ref": "#/definitions/BufferPass"
         }
       },
@@ -77,9 +83,127 @@
       },
       "additionalProperties": false
     },
+    "ComputePass": {
+      "type": "object",
+      "description": "Slang compute pass configuration",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the compute Slang file (relative, absolute, or @ for workspace root)"
+        },
+        "inputs": {
+          "$ref": "#/definitions/PassInputs"
+        },
+        "resolution": {
+          "$ref": "#/definitions/BufferResolution"
+        },
+        "outputLayers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of texture-array layers in the optional compute output"
+        },
+        "dispatch": {
+          "$ref": "#/definitions/ComputeDispatch"
+        },
+        "dispatchCount": {
+          "$ref": "#/definitions/PositiveInteger",
+          "description": "Number of times to encode the pass per frame"
+        },
+        "dispatchOnce": {
+          "type": "boolean",
+          "description": "Encode only on the first frame after compile or reset"
+        },
+        "workgroupSize": {
+          "type": "array",
+          "description": "Compute workgroup dimensions",
+          "items": {
+            "$ref": "#/definitions/PositiveInteger"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "ComputeDispatch": {
+      "type": "object",
+      "description": "Compute dispatch mode",
+      "oneOf": [
+        {
+          "required": ["count"],
+          "properties": {
+            "count": {
+              "$ref": "#/definitions/PositiveInteger"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": {
+              "$ref": "#/definitions/PositiveInteger"
+            },
+            "y": {
+              "$ref": "#/definitions/PositiveInteger"
+            },
+            "z": {
+              "$ref": "#/definitions/PositiveInteger"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["cover"],
+          "properties": {
+            "cover": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "StorageBuffers": {
+      "type": "object",
+      "description": "Named GPU storage buffer layouts",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          "$ref": "#/definitions/StorageBuffer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "StorageBuffer": {
+      "type": "object",
+      "required": ["count", "stride", "elementType"],
+      "properties": {
+        "count": {
+          "$ref": "#/definitions/PositiveInteger",
+          "description": "Number of elements"
+        },
+        "stride": {
+          "$ref": "#/definitions/PositiveInteger",
+          "description": "Bytes per element"
+        },
+        "elementType": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "Slang element type"
+        }
+      },
+      "additionalProperties": false
+    },
     "PositiveNumber": {
       "type": "number",
       "exclusiveMinimum": 0
+    },
+    "PositiveInteger": {
+      "type": "integer",
+      "minimum": 1
     },
     "ImageResolution": {
       "type": "object",
@@ -173,6 +297,11 @@
               "type": "string",
               "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
               "description": "Source buffer name (any valid GLSL identifier)"
+            },
+            "layer": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Texture-array layer of a multi-layer compute output"
             }
           },
           "additionalProperties": false

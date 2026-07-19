@@ -96,6 +96,178 @@ suite('Shader config JSON schema', () => {
     });
   });
 
+  test('accepts storage and all compute pass configuration fields', () => {
+    assertValid({
+      version: '1.0',
+      storage: {
+        particles: { count: 4096, stride: 64, elementType: 'ParticleData' },
+        counters: { count: 4, stride: 4, elementType: 'Atomic<uint>' }
+      },
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'buffer', source: 'ComputeSim', layer: 2 }
+          }
+        },
+        ComputeInit: {
+          path: 'init.slang',
+          dispatch: { count: 4096 },
+          dispatchOnce: true,
+          workgroupSize: [64, 1, 1]
+        },
+        ComputeSim: {
+          path: 'sim.slang',
+          inputs: {
+            iChannel0: { type: 'texture', path: 'noise.png' }
+          },
+          resolution: { scale: 0.5 },
+          outputLayers: 3,
+          dispatch: { x: 4, y: 2, z: 1 },
+          dispatchCount: 6,
+          dispatchOnce: false,
+          workgroupSize: [8, 8, 1]
+        },
+        ComputePresent: {
+          path: 'present.slang',
+          inputs: {
+            iChannel0: { type: 'buffer', source: 'ComputeSim', layer: 1 }
+          },
+          resolution: { width: 320, height: 180 },
+          outputLayers: 1,
+          dispatch: { cover: 'iChannel0' }
+        }
+      }
+    });
+  });
+
+  test('accepts dispatchOnce with dispatchCount greater than one for graph validation', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeInit: {
+          path: 'init.slang',
+          dispatchOnce: true,
+          dispatchCount: 6
+        }
+      }
+    });
+  });
+
+  test('rejects compute output layer counts outside one through eight', () => {
+    for (const outputLayers of [0, 9]) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { path: 'sim.slang', outputLayers }
+        }
+      }, outputLayers === 0 ? 'should be >= 1' : 'should be <= 8');
+    }
+  });
+
+  test('rejects malformed compute workgroup sizes', () => {
+    for (const workgroupSize of [[8, 8], [8, 8, 1, 1], [8, 0, 1], [-1, 8, 1]]) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { path: 'sim.slang', workgroupSize }
+        }
+      }, workgroupSize.length === 3 ? 'should be >= 1' : 'should NOT have');
+    }
+  });
+
+  test('rejects malformed compute dispatch variants and additional fields', () => {
+    const dispatches = [
+      {},
+      { count: 0 },
+      { count: 1.5 },
+      { count: 4, cover: 'particles' },
+      { x: 1, y: 1 },
+      { x: 0, y: 1, z: 1 },
+      { x: 1, y: 1.5, z: 1 },
+      { x: 1, y: 1, z: 1, extra: true },
+      { cover: '' },
+      { cover: '   ' }
+    ];
+
+    for (const dispatch of dispatches) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { path: 'sim.slang', dispatch }
+        }
+      }, 'should');
+    }
+  });
+
+  test('rejects missing compute paths and invalid dispatch counts', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeSim: { dispatch: { count: 1 } }
+      }
+    }, "should have required property 'path'");
+
+    for (const dispatchCount of [0, 1.5]) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { path: 'sim.slang', dispatchCount }
+        }
+      }, dispatchCount === 0 ? 'should be >= 1' : 'should be integer');
+    }
+
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeSim: { path: 'sim.slang', unexpected: true }
+      }
+    }, 'should NOT have additional properties');
+  });
+
+  test('rejects missing or invalid storage fields', () => {
+    const storageEntries = [
+      { stride: 16, elementType: 'float4' },
+      { count: 4, elementType: 'float4' },
+      { count: 4, stride: 16 },
+      { count: 0, stride: 16, elementType: 'float4' },
+      { count: 1.5, stride: 16, elementType: 'float4' },
+      { count: 4, stride: 0, elementType: 'float4' },
+      { count: 4, stride: 1.5, elementType: 'float4' },
+      { count: 4, stride: 16, elementType: '' },
+      { count: 4, stride: 16, elementType: '   ' },
+      { count: 4, stride: 16, elementType: 'float4', extra: true }
+    ];
+
+    for (const entry of storageEntries) {
+      assertInvalid({
+        version: '1.0',
+        storage: { particles: entry },
+        passes: { Image: {} }
+      }, 'storage');
+    }
+  });
+
+  test('rejects negative buffer input layers', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'buffer', source: 'ComputeSim', layer: -1 }
+          }
+        },
+        ComputeSim: { path: 'sim.slang' }
+      }
+    }, 'should be >= 0');
+  });
+
   test('rejects non-boolean muted on media inputs', () => {
     assertInvalid({
       version: '1.0',
