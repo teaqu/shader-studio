@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { StaleSlangResultError, WorkerClient } from "../WorkerClient";
+import { StaleSlangResultError, SupersededSlangMutationError, WorkerClient } from "../WorkerClient";
 import type { SlangWorkerRequest, SlangWorkerResponse } from "../workerProtocol";
 
 class FakeWorker {
@@ -295,7 +295,104 @@ describe("WorkerClient", () => {
     await retryClose;
   });
 
-  it("does not let an older failed mutation roll back newer queued desired state", async () => {
+  it("re-opens the latest desired document when an in-flight open fails before a queued change", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    });
+    const init = client.init(snapshot);
+    await tick();
+    workers[0].respond(0, undefined);
+    await init;
+    const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const failedOpen = client.openDocument(first);
+    await tick();
+    expect(workers[0].sent[1]).toMatchObject({ method: "openDocument", document: first });
+    const newerChange = client.changeDocument({ ...first, source: "two", version: 2 });
+    workers[0].reject(1, "open rejected");
+    await expect(failedOpen).rejects.toThrow("open rejected");
+    await vi.waitFor(() =>
+      expect(workers[0].sent[2]).toMatchObject({
+        method: "openDocument",
+        document: expect.objectContaining({ source: "two", version: 2 }),
+      }),
+    );
+    workers[0].respond(2, undefined);
+    await newerChange;
+
+    workers[0].crash();
+    workers[1].respond(0, undefined);
+    await vi.waitFor(() =>
+      expect(workers[1].sent[1]).toMatchObject({
+        method: "openDocument",
+        document: expect.objectContaining({ source: "two", version: 2 }),
+      }),
+    );
+    workers[1].respond(1, undefined);
+    await client.ready();
+  });
+
+  it("does not replay an unacknowledged predecessor when both chained opens fail", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    });
+    const init = client.init(snapshot);
+    await tick();
+    workers[0].respond(0, undefined);
+    await init;
+    const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const failedFirst = client.openDocument(first);
+    await tick();
+    const second = { ...first, source: "two", version: 2 };
+    const failedSecond = client.changeDocument(second);
+    workers[0].respond(1, false);
+    await expect(failedFirst).rejects.toThrow("returned false");
+    await vi.waitFor(() => expect(workers[0].sent[2]).toMatchObject({ method: "openDocument", document: second }));
+    workers[0].respond(2, false);
+    await expect(failedSecond).rejects.toThrow("returned false");
+
+    workers[0].crash();
+    workers[1].respond(0, undefined);
+    await tick();
+    const replayedDocument = workers[1].sent[1];
+    if (replayedDocument) {
+      workers[1].respond(1, undefined);
+    }
+    await client.ready();
+    expect(replayedDocument).toBeUndefined();
+    const retry = client.openDocument(second);
+    await tick();
+    expect(workers[1].sent[1]).toMatchObject({ method: "openDocument", document: second });
+    workers[1].respond(1, undefined);
+    await expect(retry).resolves.toBeUndefined();
+  });
+
+  it("treats boolean false as a failed mutation and permits the same version to retry", async () => {
+    const worker = new FakeWorker();
+    const client = new WorkerClient(() => worker);
+    const init = client.init(snapshot);
+    await tick();
+    worker.respond(0, undefined);
+    await init;
+    const document = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const failed = client.openDocument(document);
+    await tick();
+    worker.respond(1, false);
+    await expect(failed).rejects.toThrow("returned false");
+
+    const retry = client.openDocument(document);
+    await tick();
+    expect(worker.sent[2]).toMatchObject({ method: "openDocument", document });
+    worker.respond(2, true);
+    await expect(retry).resolves.toBeUndefined();
+  });
+
+  it("rebases a queued newer change on acknowledged state after an earlier change returns false", async () => {
     const worker = new FakeWorker();
     const client = new WorkerClient(() => worker);
     const init = client.init(snapshot);
@@ -303,18 +400,91 @@ describe("WorkerClient", () => {
     worker.respond(0, undefined);
     await init;
     const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
-    const failedOpen = client.openDocument(first);
-    const newerChange = client.changeDocument({ ...first, source: "two", version: 2 });
+    const open = client.openDocument(first);
     await tick();
-    worker.reject(1, "open rejected");
-    await expect(failedOpen).rejects.toThrow("open rejected");
-    await vi.waitFor(() => expect(worker.sent[2]).toMatchObject({ method: "changeDocument" }));
-    worker.respond(2, undefined);
-    await newerChange;
-
-    const close = client.closeDocument(first.uri, 2);
+    worker.respond(1, undefined);
+    await open;
+    const second = { ...first, source: "two", version: 2 };
+    const third = { ...first, source: "three", version: 3 };
+    const failedChange = client.changeDocument(second);
     await tick();
+    const latestChange = client.changeDocument(third);
+    worker.respond(2, false);
+    await expect(failedChange).rejects.toThrow("returned false");
+    await vi.waitFor(() => expect(worker.sent[3]).toMatchObject({ method: "changeDocument", document: third }));
     worker.respond(3, undefined);
-    await expect(close).resolves.toBeUndefined();
+    await expect(latestChange).resolves.toBeUndefined();
+  });
+
+  it("replays the last acknowledged document when an in-flight change crashes", async () => {
+    const workers: FakeWorker[] = [];
+    const client = new WorkerClient(() => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    });
+    const init = client.init(snapshot);
+    await tick();
+    workers[0].respond(0, undefined);
+    await init;
+    const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const open = client.openDocument(first);
+    await tick();
+    workers[0].respond(1, undefined);
+    await open;
+    const change = client.changeDocument({ ...first, source: "two", version: 2 });
+    await tick();
+
+    workers[0].crash("change crashed");
+    await expect(change).rejects.toThrow("change crashed");
+    workers[1].respond(0, undefined);
+    await vi.waitFor(() => expect(workers[1].sent[1]).toMatchObject({ method: "openDocument", document: first }));
+    workers[1].respond(1, undefined);
+    await client.ready();
+  });
+
+  it("rebases a queued reopen to change when an earlier close returns false", async () => {
+    const worker = new FakeWorker();
+    const client = new WorkerClient(() => worker);
+    const init = client.init(snapshot);
+    await tick();
+    worker.respond(0, undefined);
+    await init;
+    const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const open = client.openDocument(first);
+    await tick();
+    worker.respond(1, undefined);
+    await open;
+    const close = client.closeDocument(first.uri, 1);
+    await tick();
+    const reopened = { ...first, source: "two", version: 2 };
+    const reopen = client.openDocument(reopened);
+    worker.respond(2, false);
+    await expect(close).rejects.toThrow("returned false");
+    await vi.waitFor(() => expect(worker.sent[3]).toMatchObject({ method: "changeDocument", document: reopened }));
+    worker.respond(3, undefined);
+    await expect(reopen).resolves.toBeUndefined();
+  });
+
+  it("rejects a mutation superseded before execution while the latest request reconciles", async () => {
+    const worker = new FakeWorker();
+    const client = new WorkerClient(() => worker);
+    const init = client.init(snapshot);
+    await tick();
+    worker.respond(0, undefined);
+    await init;
+    const first = { uri: "file:///project/root.slang", path: "root.slang", source: "one", version: 1 };
+    const superseded = client.openDocument(first);
+    const latest = client.changeDocument({ ...first, source: "two", version: 2 });
+
+    await expect(superseded).rejects.toBeInstanceOf(SupersededSlangMutationError);
+    await vi.waitFor(() =>
+      expect(worker.sent[1]).toMatchObject({
+        method: "openDocument",
+        document: expect.objectContaining({ source: "two", version: 2 }),
+      }),
+    );
+    worker.respond(1, undefined);
+    await expect(latest).resolves.toBeUndefined();
   });
 });

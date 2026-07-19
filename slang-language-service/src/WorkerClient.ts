@@ -24,10 +24,32 @@ interface PendingRequest {
   reject(error: Error): void;
 }
 
+function documentsEqual(
+  left: SlangDocumentSnapshot | undefined,
+  right: SlangDocumentSnapshot | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.uri === right.uri &&
+      left.path === right.path &&
+      left.source === right.source &&
+      left.version === right.version)
+  );
+}
+
 export class StaleSlangResultError extends Error {
   constructor(uri: string, expected: number, actual: number | undefined) {
     super(`Dropped stale Slang result for "${uri}": expected version ${expected}, received ${actual ?? "unknown"}`);
     this.name = "StaleSlangResultError";
+  }
+}
+
+export class SupersededSlangMutationError extends Error {
+  constructor(uri: string) {
+    super(`Slang document mutation for "${uri}" was superseded before execution`);
+    this.name = "SupersededSlangMutationError";
   }
 }
 
@@ -38,7 +60,10 @@ export class WorkerClient {
   private mutationTail: Promise<void> = Promise.resolve();
   private recovery: Promise<void> = Promise.resolve();
   private latestSnapshot: SlangWorkspaceSnapshot | undefined;
+  /** Latest editor state requested by callers, whether acknowledged or queued. */
   private readonly openDocuments = new Map<string, SlangDocumentSnapshot>();
+  /** Document state known to be open in the current worker instance. */
+  private readonly acknowledgedDocuments = new Map<string, SlangDocumentSnapshot>();
   private readonly documentVersions = new Map<string, number>();
   private readonly documentMutationGenerations = new Map<string, number>();
   private nextDocumentMutationGeneration = 1;
@@ -71,17 +96,20 @@ export class WorkerClient {
       return this.disposedPromise();
     }
     const current = this.openDocuments.get(document.uri);
-    if (current && document.version <= current.version) {
+    const acknowledged = this.acknowledgedDocuments.get(document.uri);
+    if (
+      current &&
+      (document.version < current.version ||
+        (document.version === current.version &&
+          (!documentsEqual(current, document) || documentsEqual(acknowledged, document))))
+    ) {
       return Promise.reject(new Error(`Document version ${document.version} is not newer than ${current.version}`));
     }
     const previousVersion = this.documentVersions.get(document.uri);
     const generation = this.advanceDocumentMutation(document.uri);
     this.openDocuments.set(document.uri, document);
     this.documentVersions.set(document.uri, document.version);
-    return this.mutate({ method: "openDocument", document }).catch((error: unknown) => {
-      this.rollbackDocumentMutation(document.uri, generation, current, previousVersion);
-      throw error;
-    });
+    return this.enqueueDocumentReconciliation(document.uri, generation, previousVersion);
   }
 
   changeDocument(document: SlangDocumentSnapshot): Promise<void> {
@@ -89,7 +117,13 @@ export class WorkerClient {
       return this.disposedPromise();
     }
     const current = this.openDocuments.get(document.uri);
-    if (!current || document.version <= current.version) {
+    const acknowledged = this.acknowledgedDocuments.get(document.uri);
+    if (
+      !current ||
+      document.version < current.version ||
+      (document.version === current.version &&
+        (!documentsEqual(current, document) || documentsEqual(acknowledged, document)))
+    ) {
       return Promise.reject(
         new Error(
           current
@@ -102,10 +136,7 @@ export class WorkerClient {
     const generation = this.advanceDocumentMutation(document.uri);
     this.openDocuments.set(document.uri, document);
     this.documentVersions.set(document.uri, document.version);
-    return this.mutate({ method: "changeDocument", document }).catch((error: unknown) => {
-      this.rollbackDocumentMutation(document.uri, generation, current, previousVersion);
-      throw error;
-    });
+    return this.enqueueDocumentReconciliation(document.uri, generation, previousVersion);
   }
 
   closeDocument(uri: string, documentVersion: number): Promise<void> {
@@ -113,16 +144,14 @@ export class WorkerClient {
       return this.disposedPromise();
     }
     const current = this.openDocuments.get(uri);
-    if (!current || current.version !== documentVersion) {
+    const acknowledged = this.acknowledgedDocuments.get(uri);
+    if ((!current && (!acknowledged || acknowledged.version !== documentVersion)) || (current && current.version !== documentVersion)) {
       return Promise.reject(new Error(`Cannot close "${uri}" at stale version ${documentVersion}`));
     }
     const previousVersion = this.documentVersions.get(uri);
     const generation = this.advanceDocumentMutation(uri);
     this.openDocuments.delete(uri);
-    return this.mutate({ method: "closeDocument", uri, documentVersion }).catch((error: unknown) => {
-      this.rollbackDocumentMutation(uri, generation, current, previousVersion);
-      throw error;
-    });
+    return this.enqueueDocumentReconciliation(uri, generation, previousVersion);
   }
 
   hover(uri: string, position: SlangPosition, documentVersion: number): Promise<HoverDto | undefined> {
@@ -196,16 +225,58 @@ export class WorkerClient {
   }
 
   private mutate(request: SlangWorkerRequestPayload): Promise<void> {
+    return this.enqueueMutation(async () => {
+      await this.sendMutation(request);
+    });
+  }
+
+  private enqueueMutation(run: () => Promise<void>): Promise<void> {
     const operation = this.mutationTail.then(async () => {
       await this.recovery;
       this.ensureActive();
-      await this.send(request);
+      await run();
     });
     this.mutationTail = operation.then(
       () => undefined,
       () => undefined,
     );
     return operation;
+  }
+
+  private enqueueDocumentReconciliation(
+    uri: string,
+    generation: number,
+    previousVersion: number | undefined,
+  ): Promise<void> {
+    return this.enqueueMutation(async () => {
+      // A request superseded before it reaches the worker rejects explicitly;
+      // the newer queued request owns reconciliation of the latest desired
+      // state. Once an RPC starts, its promise reports that RPC's own outcome.
+      if (this.documentMutationGenerations.get(uri) !== generation) {
+        throw new SupersededSlangMutationError(uri);
+      }
+      const desired = this.openDocuments.get(uri);
+      const acknowledged = this.acknowledgedDocuments.get(uri);
+      if (documentsEqual(desired, acknowledged)) {
+        return;
+      }
+
+      try {
+        if (desired && !acknowledged) {
+          await this.sendMutation({ method: "openDocument", document: desired });
+          this.acknowledgedDocuments.set(uri, desired);
+        } else if (desired && acknowledged) {
+          await this.sendMutation({ method: "changeDocument", document: desired });
+          this.acknowledgedDocuments.set(uri, desired);
+        } else if (acknowledged) {
+          await this.sendMutation({ method: "closeDocument", uri, documentVersion: acknowledged.version });
+          this.acknowledgedDocuments.delete(uri);
+        }
+      } catch (error) {
+        this.rollbackDocumentMutation(uri, generation, acknowledged, previousVersion);
+        throw error;
+      }
+    });
   }
 
   private async query<T>(
@@ -248,6 +319,13 @@ export class WorkerClient {
     });
   }
 
+  private async sendMutation(request: SlangWorkerRequestPayload): Promise<void> {
+    const response = await this.send(request);
+    if (response.result === false) {
+      throw new Error(`Slang worker mutation "${request.method}" returned false`);
+    }
+  }
+
   private startWorker(): SlangWorker {
     const worker = this.createWorker();
     worker.onmessage = (event) => this.handleMessage(event.data);
@@ -283,6 +361,7 @@ export class WorkerClient {
     this.worker.onerror = null;
     this.worker.terminate();
     this.rejectPending(error);
+    this.acknowledgedDocuments.clear();
     this.worker = this.startWorker();
     this.recovery = this.replayState();
     void this.recovery.catch(() => undefined);
@@ -290,10 +369,11 @@ export class WorkerClient {
 
   private async replayState(): Promise<void> {
     if (this.latestSnapshot) {
-      await this.send({ method: "init", snapshot: this.latestSnapshot });
+      await this.sendMutation({ method: "init", snapshot: this.latestSnapshot });
     }
     for (const document of this.openDocuments.values()) {
-      await this.send({ method: "openDocument", document });
+      await this.sendMutation({ method: "openDocument", document });
+      this.acknowledgedDocuments.set(document.uri, document);
     }
   }
 
@@ -322,18 +402,20 @@ export class WorkerClient {
   private rollbackDocumentMutation(
     uri: string,
     generation: number,
-    previousDocument: SlangDocumentSnapshot | undefined,
+    acknowledged: SlangDocumentSnapshot | undefined,
     previousVersion: number | undefined,
   ): void {
     if (this.documentMutationGenerations.get(uri) !== generation) {
       return;
     }
-    if (previousDocument) {
-      this.openDocuments.set(uri, previousDocument);
+    if (acknowledged) {
+      this.openDocuments.set(uri, acknowledged);
     } else {
       this.openDocuments.delete(uri);
     }
-    if (previousVersion !== undefined) {
+    if (acknowledged) {
+      this.documentVersions.set(uri, acknowledged.version);
+    } else if (previousVersion !== undefined) {
       this.documentVersions.set(uri, previousVersion);
     } else {
       this.documentVersions.delete(uri);
