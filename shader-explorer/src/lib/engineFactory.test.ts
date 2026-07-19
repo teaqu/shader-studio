@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SlangAssetUrls } from '../../../rendering/src/webgpu/WebGPURenderingEngine';
 
 const {
   mockWebGLEngine,
@@ -22,7 +23,7 @@ const {
     mockWebGPUEngine,
     mockSlangAssets,
     MockWebGLRenderingEngine: vi.fn(() => mockWebGLEngine),
-    MockWebGPURenderingEngine: vi.fn(() => mockWebGPUEngine),
+    MockWebGPURenderingEngine: vi.fn((_assets: SlangAssetUrls) => mockWebGPUEngine),
     mockGetSlangAssetUrls: vi.fn(() => mockSlangAssets),
   };
 });
