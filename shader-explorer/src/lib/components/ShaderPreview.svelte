@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
-  import { RenderingEngine } from '@shader-studio/rendering';
+  import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
   import { renderQueue } from '../stores/shaderStore';
-  import { requestShaderCode } from '../shaderCodeRequest';
+  import { requestShaderCode, type ShaderLanguage } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
+  import { createEngineForLanguage } from '../engineFactory';
 
   let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, onCompilationFailed }: {
     shader: ShaderFile;
@@ -22,6 +23,7 @@
   let shaderCode: string = '';
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
+  let shaderLanguage: ShaderLanguage = 'glsl';
   let queueId: string = '';
   let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
   let prevWidth: number = 0;
@@ -135,13 +137,14 @@
       shaderCode = response.code;
       shaderConfig = response.config || null;
       shaderBuffers = response.buffers;
+      shaderLanguage = response.language;
     } catch (err) {
       console.error('Failed to load shader code:', err);
     }
   }
 
   async function createShaderRenderer(targetCanvas: HTMLCanvasElement, renderSingleFrame: boolean) {
-    const engine = new RenderingEngine();
+    const engine = createEngineForLanguage(shaderLanguage);
     engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
     
     const result = await engine.compileShaderPipeline(
@@ -163,21 +166,17 @@
   }
 
   function cleanupRenderer(engine: RenderingEngine | null, targetCanvas: HTMLCanvasElement | null) {
-    if (engine) {
-      engine.stopRenderLoop();
-      engine.dispose();
-    }
-    
-    if (targetCanvas) {
-      // Force WebGL context to be lost to free resources
-      const gl = targetCanvas.getContext('webgl2');
-      if (gl) {
-        const loseContext = gl.getExtension('WEBGL_lose_context');
-        if (loseContext) {
-          loseContext.loseContext();
-        }
-      }
-    }
+    if (!engine) return;
+
+    const language = engine.getShaderLanguage();
+    engine.stopRenderLoop();
+    engine.dispose();
+
+    if (language !== 'glsl' || !targetCanvas) return;
+
+    // Force WebGL context to be lost to free resources
+    const gl = targetCanvas.getContext('webgl2');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 
   async function initializeRendering() {
