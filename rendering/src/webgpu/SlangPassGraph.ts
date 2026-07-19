@@ -62,7 +62,16 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   }
 
   const commonCode = options.buffers.common?.trim() ?? "";
-  const passEntries = Object.entries(config.passes);
+  const passEntries = Object.entries(config.passes).filter(([name, passConfig]) => {
+    if (SPECIAL_PASS_NAMES.has(name) || passConfig === undefined) {
+      return true;
+    }
+    if (!isRecord(passConfig) || Array.isArray(passConfig)) {
+      errors.push(`${name}: Pass configuration must be an object`);
+      return false;
+    }
+    return true;
+  });
   const configuredBufferNames = new Set(
     passEntries
       .filter(([name, passConfig]) => !SPECIAL_PASS_NAMES.has(name) && passConfig !== undefined)
@@ -502,7 +511,7 @@ function resolveChannels(options: {
     }
 
     const sourceLayers = options.outputLayersByPass.get(input.source) ?? 1;
-    const layer = input.layer ?? 0;
+    const layer = input.layer === undefined ? 0 : input.layer;
     if (!Number.isInteger(layer) || layer < 0 || layer >= sourceLayers) {
       options.errors.push(
         `${options.passName}: ${key} layer ${String(input.layer)} is invalid for source "${input.source}" with ${sourceLayers} layer(s)`,

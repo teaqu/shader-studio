@@ -340,6 +340,34 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
+  it.each([null, 42])("rejects malformed pass configuration %j without throwing", (passConfig) => {
+    const config = {
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        Flow: passConfig,
+      },
+    } as unknown as ShaderConfig;
+
+    expect(() => buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: { Flow: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    })).not.toThrow();
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: { Flow: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+    expect(graph.errors).toContain("Flow: Pass configuration must be an object");
+    expect(graph.passes.map(({ name }) => name)).toEqual(["Image"]);
+  });
+
   it("sorts channels by slot when inputs are declared out of order", () => {
     const config: ShaderConfig = {
       version: "1",
@@ -910,6 +938,22 @@ describe("Slang pass references", () => {
     const graph = build(config, { ComputeMain: imageCode });
 
     expect(graph.errors.some((error) => error.includes("layer") && error.includes("ComputeMain"))).toBe(true);
+    expect(graph.passes.find(({ name }) => name === "Image")?.channels).toEqual([]);
+  });
+
+  it("rejects an explicitly null buffer layer from runtime JSON", () => {
+    const config = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeMain", layer: null } } },
+        ComputeMain: { path: "compute.slang", outputLayers: 2 },
+      },
+    } as unknown as ShaderConfig;
+    const graph = build(config, { ComputeMain: imageCode });
+
+    expect(graph.errors).toContain(
+      'Image: iChannel0 layer null is invalid for source "ComputeMain" with 2 layer(s)',
+    );
     expect(graph.passes.find(({ name }) => name === "Image")?.channels).toEqual([]);
   });
 
