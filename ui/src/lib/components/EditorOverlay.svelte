@@ -74,11 +74,15 @@
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let modelChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
   let lastShaderLanguage: "glsl" | "slang" = "glsl";
   let activeModel: monaco.editor.ITextModel | null = null;
   let activeModelUri = $state("");
+  let activeModelPath = "";
+  let activeModelLanguage = $state<"glsl" | "slang">("glsl");
+  let settingEditorModel = false;
   let slangAdapter: SlangMonacoAdapter | null = null;
   let workspaceUpdateRunning = false;
   let workspaceLifecycle = 0;
@@ -162,6 +166,49 @@
     }
     monaco.editor.setModelMarkers(model, owner, []);
     compileMarkerOwners.delete(model);
+  }
+
+  function languageForModel(model: monaco.editor.ITextModel): "glsl" | "slang" {
+    return model.getLanguageId() === "slang" ? "slang" : "glsl";
+  }
+
+  function pathForModel(model: monaco.editor.ITextModel): string {
+    const uri = model.uri.toString();
+    try {
+      const parsed = new URL(uri);
+      return parsed.protocol === "file:" ? decodeURIComponent(parsed.pathname) : uri;
+    } catch {
+      return uri;
+    }
+  }
+
+  function handleEditorModelChange() {
+    if (!editor || settingEditorModel) {
+      return;
+    }
+    const navigatedModel = editor.getModel();
+    if (!navigatedModel || navigatedModel === activeModel) {
+      return;
+    }
+    const previousModel = activeModel;
+    const language = languageForModel(navigatedModel);
+    const nextModel = acquireEditorModel(
+      monaco,
+      navigatedModel.uri.toString(),
+      navigatedModel.getValue(),
+      language,
+    );
+    activeModel = nextModel;
+    activeModelUri = nextModel.uri.toString();
+    activeModelPath = pathForModel(nextModel);
+    activeModelLanguage = language;
+    lastSentCode = null;
+    if (previousModel) {
+      clearCompileMarkers(previousModel);
+      releaseEditorModel(monaco, previousModel);
+    }
+    updateErrorMarkers(errors, nextModel, language);
+    updateBlankLineDecorations();
   }
 
   function focusMonacoTextInput() {
@@ -453,6 +500,8 @@
 
     activeModel = acquireEditorModel(monaco, shaderPath, shaderCode, shaderLanguage);
     activeModelUri = activeModel.uri.toString();
+    activeModelPath = shaderPath;
+    activeModelLanguage = shaderLanguage;
 
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
       model: activeModel,
@@ -497,6 +546,7 @@
     };
 
     editor = monaco.editor.create(containerEl, editorOptions);
+    modelChangeDisposable = editor.onDidChangeModel?.(handleEditorModelChange) ?? null;
 
     if (activeModelUri && savedViewStates.has(activeModelUri)) {
       editor.restoreViewState(savedViewStates.get(activeModelUri) ?? null);
@@ -535,7 +585,8 @@
       }
       updateBlankLineDecorations();
       const code = editor.getValue();
-      if (code === undefined || !shaderPath) {
+      const path = activeModelPath;
+      if (code === undefined || !path) {
         return;
       }
 
@@ -552,13 +603,13 @@
         clearTimeout(persistTimer);
       }
       persistTimer = setTimeout(() => {
-        if (transport && shaderPath) {
+        if (transport && path) {
           lastSentCode = code;
           transport.postMessage({
             type: "updateShaderSource",
             payload: {
               code,
-              path: shaderPath,
+              path,
             },
           });
         }
@@ -610,6 +661,10 @@
       cursorChangeDisposable.dispose();
       cursorChangeDisposable = null;
     }
+    if (modelChangeDisposable) {
+      modelChangeDisposable.dispose();
+      modelChangeDisposable = null;
+    }
     disableVim();
     if (containerEl) {
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
@@ -626,6 +681,7 @@
       releaseEditorModel(monaco, activeModel);
       activeModel = null;
       activeModelUri = "";
+      activeModelPath = "";
     }
     editorReady = false;
     workspaceLifecycle += 1;
@@ -682,7 +738,7 @@
 
   $effect(() => {
     const modelUri = activeModelUri;
-    const language = shaderLanguage;
+    const language = activeModelLanguage;
     const currentErrors = errors;
     if (editorReady && modelUri && activeModel) {
       updateErrorMarkers(currentErrors, activeModel, language);
@@ -692,7 +748,7 @@
   function updateErrorMarkers(
     errs: string[],
     model: monaco.editor.ITextModel,
-    language: "glsl" | "slang" = shaderLanguage,
+    language: "glsl" | "slang" = activeModelLanguage,
   ) {
 
     const activeBufferKey = activeBufferName.trim().toLowerCase();
@@ -738,6 +794,11 @@
   $effect(() => {
     if (editor && shaderCode !== undefined) {
       const fileChanged = shaderPath !== lastShaderPath || shaderLanguage !== lastShaderLanguage;
+      const propModelUri = canonicalEditorUri(monaco, shaderPath).toString();
+      const navigationActive = !fileChanged && activeModelUri !== propModelUri;
+      if (navigationActive) {
+        return;
+      }
       const currentValue = editor.getValue();
 
       if (fileChanged) {
@@ -748,7 +809,14 @@
         const nextModel = acquireEditorModel(monaco, shaderPath, shaderCode, shaderLanguage);
         activeModel = nextModel;
         activeModelUri = nextModel.uri.toString();
-        editor.setModel(nextModel);
+        activeModelPath = shaderPath;
+        activeModelLanguage = shaderLanguage;
+        settingEditorModel = true;
+        try {
+          editor.setModel(nextModel);
+        } finally {
+          settingEditorModel = false;
+        }
         editor.setValue(shaderCode);
         if (previousModel) {
           clearCompileMarkers(previousModel);

@@ -51,6 +51,9 @@ interface ModelState {
   dirty: boolean;
   baselineSource: string;
   open: boolean;
+  opening?: Promise<void>;
+  syncing?: Promise<void>;
+  syncedVersion?: number;
 }
 
 function relativeLanguageServicePath(path: string): string {
@@ -189,12 +192,19 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       const nextUris = new Set(canonicalSnapshot.files.map((file) => file.uri));
       for (const [uri, state] of [...this.models]) {
         const nextFile = canonicalSnapshot.files.find((file) => file.uri === uri);
+        const hasNonAdapterOwners = this.hasNonAdapterOwners(state);
+        if (hasNonAdapterOwners) {
+          await this.ensureDocumentReady(state);
+        }
         if (!nextUris.has(uri)) {
-          if (state.dirty || this.hasNonAdapterOwners(state)) {
+          if (state.dirty || hasNonAdapterOwners) {
             continue;
           }
           if (state.open) {
+            await state.syncing;
             await this.client.closeDocument(state.uri, state.model.getVersionId());
+            state.open = false;
+            state.syncedVersion = undefined;
           }
           this.releaseModelState(state);
           this.models.delete(uri);
@@ -205,7 +215,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
           state.dirty = false;
           continue;
         }
-        if (nextFile && (state.dirty || this.hasNonAdapterOwners(state))) {
+        if (nextFile && (state.dirty || hasNonAdapterOwners)) {
           state.baselineSource = nextFile.source;
           state.dirty = true;
           continue;
@@ -274,7 +284,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       applyingSnapshot: false,
       dirty: model.getValue() !== baselineSource,
       baselineSource,
-      open: getEditorModelOwnerReferenceCount(this.monaco, model, { excludingKind: 'adapter' }) > 0,
+      open: false,
     };
     state.changeDisposable = model.onDidChangeContent(() => {
       if (state.applyingSnapshot) {
@@ -282,18 +292,14 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       }
       state.version = model.getVersionId();
       state.dirty = model.getValue() !== state.baselineSource;
-      const update = state.open
-        ? this.client.changeDocument(this.documentSnapshot(state))
-        : this.client.openDocument(this.documentSnapshot(state));
-      state.open = true;
-      void update.then(
+      void this.ensureDocumentReady(state).then(
         () => this.refreshDiagnostics(model),
         () => undefined,
       );
     });
     this.models.set(uri, state);
-    if (state.open) {
-      void this.client.openDocument(this.documentSnapshot(state)).then(
+    if (getEditorModelOwnerReferenceCount(this.monaco, model, { excludingKind: 'adapter' }) > 0) {
+      void this.ensureDocumentReady(state).then(
         () => this.refreshDiagnostics(model),
         () => undefined,
       );
@@ -315,6 +321,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, version, token)) {
+      return undefined;
+    }
     const values = await this.dropStale(this.client.completion(state.uri, toSlangPosition(position), version, {
       triggerKind: context.triggerKind ?? 1,
       triggerCharacter: context.triggerCharacter ?? '',
@@ -339,6 +349,14 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     if (!model || model.getVersionId() !== metadata.version) {
       return item;
     }
+    const state = this.models.get(metadata.uri);
+    if (!state) {
+      return item;
+    }
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, metadata.version, token)) {
+      return item;
+    }
     const value = await this.dropStale(this.client.completionResolve(metadata.uri, metadata.dto, metadata.version));
     if (!value || this.isDropped(model, metadata.version, token)) {
       return item;
@@ -354,6 +372,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, version, token)) {
+      return undefined;
+    }
     const value = await this.dropStale(this.client.hover(state.uri, toSlangPosition(position), version));
     if (!value || this.isDropped(model, version, token)) {
       return undefined;
@@ -367,6 +389,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, version, token)) {
+      return undefined;
+    }
     const values = await this.dropStale(this.client.definition(state.uri, toSlangPosition(position), version));
     if (this.isDropped(model, version, token)) {
       return undefined;
@@ -384,6 +410,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, version, token)) {
+      return undefined;
+    }
     const value = await this.dropStale(this.client.signatureHelp(state.uri, toSlangPosition(position), version));
     if (!value || this.isDropped(model, version, token)) {
       return undefined;
@@ -411,6 +441,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return undefined;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (this.isDropped(model, version, token)) {
+      return undefined;
+    }
     const values = await this.dropStale(this.client.documentSymbols(state.uri, version));
     if (this.isDropped(model, version, token)) {
       return undefined;
@@ -424,6 +458,10 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       return;
     }
     const version = model.getVersionId();
+    await this.ensureDocumentReady(state);
+    if (model.getVersionId() !== version || this.disposed) {
+      return;
+    }
     const values = await this.dropStale(this.client.diagnostics(state.uri, version));
     if (model.getVersionId() !== version || this.disposed) {
       return;
@@ -475,6 +513,36 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   private hasNonAdapterOwners(state: ModelState): boolean {
     return getEditorModelOwnerReferenceCount(this.monaco, state.model, { excludingKind: 'adapter' }) > 0;
+  }
+
+  private ensureDocumentReady(state: ModelState): Promise<void> {
+    const previous = state.syncing ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      if (!state.open) {
+        if (!state.opening) {
+          const document = this.documentSnapshot(state);
+          state.opening = this.client.openDocument(document).then(() => {
+            state.open = true;
+            state.syncedVersion = document.version;
+          }).finally(() => {
+            state.opening = undefined;
+          });
+        }
+        await state.opening;
+      }
+      const document = this.documentSnapshot(state);
+      if (state.syncedVersion !== document.version) {
+        await this.client.changeDocument(document);
+        state.syncedVersion = document.version;
+      }
+    });
+    const syncing = operation.finally(() => {
+      if (state.syncing === syncing) {
+        state.syncing = undefined;
+      }
+    });
+    state.syncing = syncing;
+    return syncing;
   }
 
   private isDropped(model: Monaco.editor.ITextModel, version: number, token: Monaco.CancellationToken): boolean {

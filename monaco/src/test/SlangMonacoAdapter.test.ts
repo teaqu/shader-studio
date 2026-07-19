@@ -329,6 +329,96 @@ describe('SlangMonacoAdapter', () => {
     expect(helper.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('opens a retained editor-owned dependency before replacement and keeps providers ready', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const available = new Set<string>();
+    const open = new Set<string>();
+    const order: string[] = [];
+    client.init.mockImplementation(async (value) => {
+      available.clear();
+      value.files.forEach((file) => available.add(file.uri));
+    });
+    client.openDocument.mockImplementation(async (document) => {
+      order.push(`open:${document.uri}`);
+      open.add(document.uri);
+    });
+    client.replaceFiles.mockImplementation(async (value) => {
+      order.push('replace');
+      available.clear();
+      value.files.forEach((file) => available.add(file.uri));
+    });
+    client.closeDocument.mockImplementation(async (uri) => {
+      order.push(`close:${uri}`);
+      open.delete(uri);
+    });
+    client.hover.mockImplementation(async (uri) => {
+      if (!available.has(uri) && !open.has(uri)) {
+        throw new Error(`Document "${uri}" is unavailable`);
+      }
+      return undefined;
+    });
+    client.definition.mockImplementation(async (uri) => {
+      if (!available.has(uri) && !open.has(uri)) {
+        throw new Error(`Document "${uri}" is unavailable`);
+      }
+      return [];
+    });
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    const editorModel = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+
+    order.length = 0;
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+
+    expect(order).toEqual(['open:file:///project/lib/helper.slang', 'replace']);
+    await expect(adapter.provideHover(
+      helper as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    )).resolves.toBeUndefined();
+    await expect(adapter.provideDefinition(
+      helper as never,
+      { lineNumber: 1, column: 1 },
+      { isCancellationRequested: false },
+    )).resolves.toEqual([]);
+    expect(client.openDocument).toHaveBeenCalledTimes(1);
+
+    releaseEditorModel(monaco as never, editorModel);
+    order.length = 0;
+    await adapter.setWorkspace({ ...snapshot, files: [snapshot.files[0]] });
+    await Promise.resolve();
+
+    expect(order).toEqual(['close:file:///project/lib/helper.slang', 'replace']);
+    expect(helper.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens an editor-acquired dependency once for concurrent provider queries without another workspace update', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+
+    await Promise.all([
+      adapter.provideHover(
+        helper as never,
+        { lineNumber: 1, column: 1 },
+        { isCancellationRequested: false },
+      ),
+      adapter.provideDefinition(
+        helper as never,
+        { lineNumber: 1, column: 1 },
+        { isCancellationRequested: false },
+      ),
+    ]);
+
+    expect(client.openDocument).toHaveBeenCalledTimes(1);
+    expect(client.changeDocument).not.toHaveBeenCalled();
+  });
+
   it('releases a clean model after its live editor owner releases it', async () => {
     const monaco = createMonaco();
     const editorModel = acquireEditorModel(

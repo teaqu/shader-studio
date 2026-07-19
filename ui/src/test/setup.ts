@@ -173,6 +173,7 @@ const monacoMock = {
       executeEdits: vi.fn(),
       hasTextFocus: vi.fn(() => false),
       onDidChangeModelContent: vi.fn(),
+      onDidChangeModel: vi.fn(() => ({ dispose: vi.fn() })),
       onDidScrollChange: vi.fn(),
       onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
       onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),

@@ -33,6 +33,7 @@ async function getLatestMockEditor() {
 /** Helper: create a custom mock editor with captured callbacks */
 function createMockEditorWithCallbacks() {
   let contentChangeCallback: (() => void) | null = null;
+  let modelChangeCallback: (() => void) | null = null;
   let scrollChangeCallback: (() => void) | null = null;
   let keyDownCallback: ((event: any) => void) | null = null;
   const model = {
@@ -40,6 +41,7 @@ function createMockEditorWithCallbacks() {
     getLineCount: vi.fn(() => 10),
     getLineContent: vi.fn(() => ''),
   };
+  let currentModel: any = model;
   const mockEditor = {
     dispose: vi.fn(),
     getValue: vi.fn(() => ''),
@@ -58,6 +60,10 @@ function createMockEditorWithCallbacks() {
     onDidChangeModelContent: vi.fn((cb: any) => {
       contentChangeCallback = cb; 
     }),
+    onDidChangeModel: vi.fn((cb: any) => {
+      modelChangeCallback = cb;
+      return { dispose: vi.fn() };
+    }),
     onDidScrollChange: vi.fn((cb: any) => {
       scrollChangeCallback = cb; 
     }),
@@ -68,8 +74,11 @@ function createMockEditorWithCallbacks() {
     onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
     onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
     getOption: vi.fn(() => 0),
-    getModel: vi.fn(() => model),
-    setModel: vi.fn(),
+    getModel: vi.fn(() => currentModel),
+    setModel: vi.fn((next: any) => {
+      currentModel = next;
+      modelChangeCallback?.();
+    }),
     deltaDecorations: vi.fn(() => []),
     getVisibleRanges: vi.fn(() => []),
     getAction: vi.fn(() => ({ run: vi.fn() })),
@@ -79,6 +88,10 @@ function createMockEditorWithCallbacks() {
     mockEditor,
     model,
     getContentChangeCallback: () => contentChangeCallback,
+    triggerModelChange: (next: any) => {
+      currentModel = next;
+      modelChangeCallback?.();
+    },
     getScrollChangeCallback: () => scrollChangeCallback,
     getKeyDownCallback: () => keyDownCallback,
   };
@@ -1704,6 +1717,68 @@ describe('EditorOverlay', () => {
       expect(language.setupMonacoSlang).toHaveBeenCalledTimes(1);
       const adapter = vi.mocked(language.setupMonacoSlang).mock.results.at(-1)?.value;
       expect(adapter.setWorkspace).toHaveBeenCalled();
+    });
+
+    it('transfers overlay ownership when navigation changes the Monaco model', async () => {
+      const monaco = await import('monaco-editor');
+      const language = await import('@shader-studio/monaco');
+      const { mockEditor, triggerModelChange, getContentChangeCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as never);
+      const { unmount } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/project/main.slang',
+          shaderCode: 'root',
+          shaderLanguage: 'slang',
+          errors: ['ERROR: 0:1: bad'],
+        },
+      });
+      const root = vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.model!;
+      const dependency = monaco.editor.createModel(
+        'dependency',
+        'slang',
+        monaco.Uri.parse('file:///project/helper.slang'),
+      );
+      vi.mocked(monaco.editor.getModel).mockImplementation((uri: any) => {
+        if (uri.toString() === dependency.uri.toString()) {
+          return dependency as never;
+        }
+        if (uri.toString() === root.uri.toString()) {
+          return root as never;
+        }
+        return null;
+      });
+      mockEditor.getValue.mockImplementation(() => mockEditor.getModel()?.getValue() ?? '');
+      vi.mocked(language.releaseEditorModel).mockClear();
+
+      triggerModelChange(dependency);
+
+      expect(language.acquireEditorModel).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'file:///project/helper.slang',
+        'dependency',
+        'slang',
+      );
+      expect(language.releaseEditorModel).toHaveBeenCalledWith(expect.anything(), root);
+      expect(dependency.dispose).not.toHaveBeenCalled();
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
+        dependency,
+        'slang-compile',
+        expect.arrayContaining([expect.objectContaining({ message: 'bad' })]),
+      );
+
+      vi.mocked(mockTransport.postMessage).mockClear();
+      getContentChangeCallback()!();
+      vi.advanceTimersByTime(15);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'updateShaderSource',
+        payload: { code: 'dependency', path: '/project/helper.slang' },
+      });
+
+      triggerModelChange(root);
+      expect(language.releaseEditorModel).toHaveBeenCalledWith(expect.anything(), dependency);
+      unmount();
+      expect(language.releaseEditorModel).toHaveBeenLastCalledWith(expect.anything(), root);
     });
   });
 });
