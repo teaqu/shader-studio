@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ShaderStudio } from "./app/ShaderStudio";
-import { SNIPPET_CONTRIBUTIONS } from "./app/SnippetContributions";
+import { applySnippetContributionSetting } from "./app/SnippetContributionSetting";
 
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
@@ -142,13 +142,7 @@ async function updateSnippetsContribution(): Promise<void> {
     const config = vscode.workspace.getConfiguration('shader-studio');
     const enabled = config.get<boolean>('enableSnippets', true);
 
-    if (enabled) {
-      packageJson.contributes.snippets = SNIPPET_CONTRIBUTIONS.map(
-        (contribution) => ({ ...contribution }),
-      );
-    } else {
-      delete packageJson.contributes.snippets;
-    }
+    applySnippetContributionSetting(packageJson, enabled);
 
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
   } catch (error) {

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { SNIPPET_CONTRIBUTIONS } from '../app/SnippetContributions';
 
 interface SnippetEntry {
-  prefix: string;
+  prefix: string | string[];
   body: string | string[];
   description: string;
   call?: string;
@@ -59,7 +59,7 @@ suite('Bundled snippet assets', () => {
       assert.deepStrictEqual(Object.keys(slang), Object.keys(glsl));
 
       for (const key of Object.keys(glsl)) {
-        assert.strictEqual(slang[key].prefix, glsl[key].prefix, `${key} prefix`);
+        assert.deepStrictEqual(slang[key].prefix, glsl[key].prefix, `${key} prefix`);
         assert.strictEqual(
           slang[key].description,
           glsl[key].description,
