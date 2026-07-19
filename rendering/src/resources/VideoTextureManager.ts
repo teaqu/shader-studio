@@ -121,7 +121,11 @@ export class VideoTextureManager<T> {
       // dispose this manager re-entrantly. Never publish a handle from a load
       // that lost ownership while createTextureFromImage was running.
       if (!this.isPendingLoadActive(pending)) {
-        this.backend.destroyTexture(texture);
+        try {
+          this.backend.destroyTexture(texture);
+        } catch (error) {
+          console.error(`Failed to destroy detached texture for video ${path}:`, error);
+        }
         return;
       }
 
@@ -168,27 +172,39 @@ export class VideoTextureManager<T> {
   }
 
   public removeVideoTexture(path: string): void {
-    this.cancelPendingLoad(path);
+    try {
+      this.cancelPendingLoad(path);
+    } catch (error) {
+      console.error(`Failed to cancel pending video load ${path}:`, error);
+    }
 
     // Stop animation frame updates
     const animationId = this.animationFrameIds[path];
     if (animationId !== undefined) {
-      cancelAnimationFrame(animationId);
       delete this.animationFrameIds[path];
+      try {
+        cancelAnimationFrame(animationId);
+      } catch (error) {
+        console.error(`Failed to cancel texture update for video ${path}:`, error);
+      }
     }
 
     // Pause and remove video element
     const video = this.videoElements[path];
     if (video) {
-      this.resetVideoElement(video);
       delete this.videoElements[path];
+      this.resetVideoElement(video, path);
     }
 
     // Destroy texture
     const texture = this.videoTextures[path];
     if (texture) {
-      this.backend.destroyTexture(texture);
       delete this.videoTextures[path];
+      try {
+        this.backend.destroyTexture(texture);
+      } catch (error) {
+        console.error(`Failed to destroy texture for video ${path}:`, error);
+      }
     }
 
     delete this.channelMuted[path];
@@ -336,9 +352,18 @@ export class VideoTextureManager<T> {
   }
 
   private detachPendingLoadListeners(pending: PendingVideoLoad<T>): void {
-    pending.video.removeEventListener('canplay', pending.handleCanPlay);
-    pending.video.removeEventListener('loadeddata', pending.handleCanPlay);
-    pending.video.removeEventListener('error', pending.handleError);
+    const listeners: Array<[string, () => void]> = [
+      ['canplay', pending.handleCanPlay],
+      ['loadeddata', pending.handleCanPlay],
+      ['error', pending.handleError],
+    ];
+    for (const [type, listener] of listeners) {
+      try {
+        pending.video.removeEventListener(type, listener);
+      } catch (error) {
+        console.error(`Failed to remove ${type} listener for video ${pending.path}:`, error);
+      }
+    }
   }
 
   private failPendingLoad(pending: PendingVideoLoad<T>, error: Error): void {
@@ -348,7 +373,7 @@ export class VideoTextureManager<T> {
     pending.settled = true;
     this.pendingLoads.delete(pending.path);
     this.detachPendingLoadListeners(pending);
-    this.resetVideoElement(pending.video);
+    this.resetVideoElement(pending.video, pending.path);
     delete this.channelMuted[pending.path];
     this.userPaused.delete(pending.path);
     pending.reject(error);
@@ -362,11 +387,24 @@ export class VideoTextureManager<T> {
     this.failPendingLoad(pending, new Error(`Video load cancelled: ${path}`));
   }
 
-  private resetVideoElement(video: HTMLVideoElement): void {
-    video.pause();
-    video.src = '';
-    if (video.parentNode) {
-      video.parentNode.removeChild(video);
+  private resetVideoElement(video: HTMLVideoElement, path: string): void {
+    try {
+      video.pause();
+    } catch (error) {
+      console.error(`Failed to pause video ${path} during cleanup:`, error);
+    }
+    try {
+      video.src = '';
+    } catch (error) {
+      console.error(`Failed to clear source for video ${path} during cleanup:`, error);
+    }
+    const parent = video.parentNode;
+    if (parent) {
+      try {
+        parent.removeChild(video);
+      } catch (error) {
+        console.error(`Failed to remove video element ${path} during cleanup:`, error);
+      }
     }
   }
 

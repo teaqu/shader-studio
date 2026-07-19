@@ -466,4 +466,45 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
     expect(handle.height).toBe(6);
     expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
   });
+
+  it("retries mipmap helper initialization after sampler creation fails during video resize", () => {
+    const video = fakeVideo(4, 4);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "mipmap", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    const mipState = backend as unknown as {
+      mipPipeline: GPURenderPipeline | null;
+      mipSampler: GPUSampler | null;
+    };
+    mipState.mipPipeline = null;
+    mipState.mipSampler = null;
+    device.createRenderPipeline.mockClear();
+    device.createSampler.mockClear();
+    const samplerFailure = new Error("mipmap sampler allocation failed");
+    device.createSampler.mockImplementationOnce(() => {
+      throw samplerFailure;
+    });
+    video.videoWidth = 8;
+    video.videoHeight = 8;
+
+    expect(() => backend.updateTextureFromImage(handle, video)).toThrow(samplerFailure);
+    const failedCandidate = device.createTexture.mock.results.at(-1)!.value as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    expect(failedCandidate.destroy).toHaveBeenCalledTimes(1);
+    expect(handle.texture).toBe(originalTexture);
+    expect(handle).toMatchObject({ width: 4, height: 4 });
+    expect(originalTexture.destroy).not.toHaveBeenCalled();
+
+    backend.updateTextureFromImage(handle, video);
+
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
+    expect(device.createSampler).toHaveBeenCalledTimes(2);
+    expect(handle).toMatchObject({ width: 8, height: 8 });
+    expect(handle.texture).not.toBe(originalTexture);
+    expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
+  });
 });

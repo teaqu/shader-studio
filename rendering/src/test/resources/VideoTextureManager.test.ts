@@ -411,6 +411,31 @@ describe("VideoTextureManager", () => {
       expect(parentNode.removeChild).toHaveBeenCalledTimes(1);
     });
 
+    it("settles and detaches a pending load when listener and video cleanup throw", async () => {
+      const parentNode = { removeChild: vi.fn(() => {
+        throw new Error("pending remove failed");
+      }) };
+      mockVideo.parentNode = parentNode;
+      mockVideo.removeEventListener.mockImplementationOnce(() => {
+        throw new Error("listener removal failed");
+      });
+      mockVideo.pause.mockImplementationOnce(() => {
+        throw new Error("pending pause failed");
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const loadPromise = videoManager.loadVideoTexture("pending-cleanup-errors.mp4");
+
+      expect(() => videoManager.cleanup()).not.toThrow();
+      await expect(loadPromise).rejects.toThrow(/cancelled.*pending-cleanup-errors\.mp4/i);
+
+      expect(videoManager.getVideoElement("pending-cleanup-errors.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("pending-cleanup-errors.mp4")).toBeUndefined();
+      expect(mockVideo.src).toBe("");
+      expect(parentNode.removeChild).toHaveBeenCalledWith(mockVideo);
+      expect(errorSpy).toHaveBeenCalled();
+      expect(() => videoManager.cleanup()).not.toThrow();
+    });
+
     it("ignores late media events after pending-load cleanup", async () => {
       const parentNode = { removeChild: vi.fn() };
       mockVideo.parentNode = parentNode;
@@ -460,6 +485,45 @@ describe("VideoTextureManager", () => {
       expect(window.requestAnimationFrame).not.toHaveBeenCalled();
     });
 
+    it("keeps re-entrant load cleanup settled when detached texture destruction throws", async () => {
+      const lateTexture: FakeTex = {
+        id: {},
+        width: 640,
+        height: 480,
+        format: "rgba8",
+        filter: "linear",
+        wrap: "clamp",
+        vflip: true,
+      };
+      vi.mocked(backend.createTextureFromImage).mockImplementationOnce(() => {
+        videoManager.cleanup();
+        return lateTexture;
+      });
+      const destroyFailure = new Error("detached texture destroy failed");
+      vi.mocked(backend.destroyTexture).mockImplementationOnce(() => {
+        throw destroyFailure;
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const loadPromise = videoManager.loadVideoTexture("reentrant-destroy-error.mp4");
+      const canplayHandler = mockVideo.addEventListener.mock.calls.find(
+        ([type]) => type === "canplay",
+      )?.[1] as (() => void) | undefined;
+      const rejected = expect(loadPromise).rejects
+        .toThrow(/cancelled.*reentrant-destroy-error\.mp4/i);
+
+      expect(() => canplayHandler?.()).not.toThrow();
+      await rejected;
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to destroy detached texture for video reentrant-destroy-error.mp4:",
+        destroyFailure,
+      );
+      expect(videoManager.getVideoTexture("reentrant-destroy-error.mp4")).toBeUndefined();
+
+      videoManager.cleanup();
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps completed-load cleanup idempotent", async () => {
       const parentNode = { removeChild: vi.fn() };
       mockVideo.parentNode = parentNode;
@@ -477,6 +541,66 @@ describe("VideoTextureManager", () => {
       expect(parentNode.removeChild).toHaveBeenCalledTimes(1);
       expect(backend.destroyTexture).toHaveBeenCalledTimes(1);
       expect(backend.destroyTexture).toHaveBeenCalledWith(texture);
+    });
+
+    it("detaches every loaded video and continues cleanup when cancellation, reset, and destroy throw", () => {
+      const parentA = { removeChild: vi.fn() };
+      const parentB = { removeChild: vi.fn() };
+      const videoA = createMockVideoElement();
+      const videoB = createMockVideoElement();
+      videoA.parentNode = parentA;
+      videoB.parentNode = parentB;
+      videoA.pause.mockImplementationOnce(() => {
+        throw new Error("pause failed");
+      });
+      parentB.removeChild.mockImplementationOnce(() => {
+        throw new Error("remove failed");
+      });
+      const textureA: FakeTex = {
+        id: {}, width: 4, height: 4, format: "rgba8", filter: "linear", wrap: "clamp", vflip: true,
+      };
+      const textureB: FakeTex = {
+        id: {}, width: 8, height: 8, format: "rgba8", filter: "linear", wrap: "clamp", vflip: true,
+      };
+      const state = videoManager as unknown as {
+        videoElements: Record<string, HTMLVideoElement>;
+        videoTextures: Record<string, FakeTex>;
+        animationFrameIds: Record<string, number>;
+      };
+      state.videoElements["a.mp4"] = videoA as unknown as HTMLVideoElement;
+      state.videoElements["b.mp4"] = videoB as unknown as HTMLVideoElement;
+      state.videoTextures["a.mp4"] = textureA;
+      state.videoTextures["b.mp4"] = textureB;
+      state.animationFrameIds["a.mp4"] = 1;
+      state.animationFrameIds["b.mp4"] = 2;
+      vi.mocked(window.cancelAnimationFrame).mockImplementationOnce(() => {
+        throw new Error("cancel failed");
+      });
+      vi.mocked(backend.destroyTexture).mockImplementationOnce(() => {
+        throw new Error("destroy failed");
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      expect(() => videoManager.cleanup()).not.toThrow();
+
+      expect(window.cancelAnimationFrame).toHaveBeenCalledTimes(2);
+      expect(videoA.pause).toHaveBeenCalledTimes(1);
+      expect(videoB.pause).toHaveBeenCalledTimes(1);
+      expect(videoA.src).toBe("");
+      expect(videoB.src).toBe("");
+      expect(parentA.removeChild).toHaveBeenCalledWith(videoA);
+      expect(parentB.removeChild).toHaveBeenCalledWith(videoB);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(2);
+      expect(videoManager.getVideoElement("a.mp4")).toBeUndefined();
+      expect(videoManager.getVideoElement("b.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("a.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("b.mp4")).toBeUndefined();
+      expect(state.animationFrameIds).toEqual({});
+      expect(errorSpy).toHaveBeenCalled();
+
+      videoManager.cleanup();
+      expect(window.cancelAnimationFrame).toHaveBeenCalledTimes(2);
+      expect(backend.destroyTexture).toHaveBeenCalledTimes(2);
     });
 
     it("destroys a replacement installed after re-entrant cleanup during a frame update", async () => {

@@ -336,15 +336,17 @@ struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
     if (levels <= 1) {
       return;
     }
-    if (!this.mipPipeline) {
+    if (!this.mipPipeline || !this.mipSampler) {
       const module = this.device.createShaderModule({ code: WebGPUTextureBackend.MIP_BLIT_WGSL });
-      this.mipPipeline = this.device.createRenderPipeline({
+      const pipeline = this.device.createRenderPipeline({
         layout: "auto",
         vertex: { module, entryPoint: "vs" },
         fragment: { module, entryPoint: "fs", targets: [{ format: "rgba8unorm" }] },
         primitive: { topology: "triangle-list" },
       });
-      this.mipSampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
+      const sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
+      this.mipPipeline = pipeline;
+      this.mipSampler = sampler;
     }
     const encoder = this.device.createCommandEncoder();
     for (let level = 1; level < levels; level++) {
