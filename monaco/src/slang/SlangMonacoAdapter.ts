@@ -20,6 +20,8 @@ import {
   createEditorModelOwner,
   getEditorModelOwnerReferenceCount,
   releaseEditorModel,
+  subscribeEditorModelOwnershipChanges,
+  type EditorModelOwnershipChange,
 } from '../modelRegistry';
 
 export const SLANG_LANGUAGE_MARKER_OWNER = 'slang-language';
@@ -149,7 +151,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
   private readonly models = new Map<string, ModelState>();
   private readonly completionMetadata = new WeakMap<object, CompletionMetadata>();
   private readonly modelOwner = createEditorModelOwner('adapter');
+  private readonly ownershipSubscription: Monaco.IDisposable;
   private readonly disposables: Monaco.IDisposable[];
+  private ownershipReconciliation: Promise<void> = Promise.resolve();
   private disposed = false;
 
   constructor(
@@ -158,6 +162,9 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     providerDisposables: Monaco.IDisposable[] = [],
   ) {
     this.disposables = [...providerDisposables];
+    this.ownershipSubscription = subscribeEditorModelOwnershipChanges(monaco, (change) => {
+      this.handleOwnershipChange(change);
+    });
   }
 
   addProviderDisposables(disposables: Monaco.IDisposable[]): void {
@@ -168,7 +175,13 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     this.disposables.push(...disposables);
   }
 
-  async setWorkspace(snapshot: SlangWorkspaceSnapshot, options: SetWorkspaceOptions = {}): Promise<void> {
+  setWorkspace(snapshot: SlangWorkspaceSnapshot, options: SetWorkspaceOptions = {}): Promise<void> {
+    const operation = this.ownershipReconciliation.then(() => this.applyWorkspace(snapshot, options));
+    this.ownershipReconciliation = operation.catch(() => undefined);
+    return operation;
+  }
+
+  private async applyWorkspace(snapshot: SlangWorkspaceSnapshot, options: SetWorkspaceOptions): Promise<void> {
     const canonicalSnapshot = {
       ...snapshot,
       files: snapshot.files.map((file) => ({
@@ -482,11 +495,22 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     this.monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, markers);
   }
 
+  async waitForOwnershipReconciliation(): Promise<void> {
+    while (true) {
+      const pending = this.ownershipReconciliation;
+      await pending;
+      if (pending === this.ownershipReconciliation) {
+        return;
+      }
+    }
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
     }
     this.disposed = true;
+    this.ownershipSubscription.dispose();
     for (const state of this.models.values()) {
       this.releaseModelState(state);
     }
@@ -513,6 +537,48 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
 
   private hasNonAdapterOwners(state: ModelState): boolean {
     return getEditorModelOwnerReferenceCount(this.monaco, state.model, { excludingKind: 'adapter' }) > 0;
+  }
+
+  private handleOwnershipChange(change: EditorModelOwnershipChange): void {
+    if (this.disposed || change.kind === 'adapter') {
+      return;
+    }
+    const uri = canonicalModelUri(change.uri);
+    const state = this.models.get(uri);
+    if (!state || state.model !== change.model || this.files.has(uri) || this.hasNonAdapterOwners(state)) {
+      return;
+    }
+    const cleanup = this.ownershipReconciliation.then(() => this.cleanupAbsentState(uri));
+    this.ownershipReconciliation = cleanup.catch(() => undefined);
+  }
+
+  private async cleanupAbsentState(uri: string): Promise<void> {
+    let state = this.models.get(uri);
+    if (this.disposed || !state || this.files.has(uri) || this.hasNonAdapterOwners(state)) {
+      return;
+    }
+    await state.syncing;
+    state = this.models.get(uri);
+    if (this.disposed || !state || this.files.has(uri) || this.hasNonAdapterOwners(state)) {
+      return;
+    }
+    if (state.open) {
+      await this.client.closeDocument(state.uri, state.model.getVersionId());
+      state.open = false;
+      state.syncedVersion = undefined;
+    }
+    if (this.disposed || this.files.has(uri)) {
+      return;
+    }
+    if (this.hasNonAdapterOwners(state)) {
+      await this.ensureDocumentReady(state);
+      return;
+    }
+    if (this.models.get(uri) !== state) {
+      return;
+    }
+    this.models.delete(uri);
+    this.releaseModelState(state);
   }
 
   private ensureDocumentReady(state: ModelState): Promise<void> {

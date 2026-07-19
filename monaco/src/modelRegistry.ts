@@ -21,10 +21,22 @@ export interface EditorModelOwnerQuery {
   excludingToken?: object;
 }
 
+export interface EditorModelOwnershipChange {
+  model: Monaco.editor.ITextModel;
+  uri: string;
+  kind: EditorModelOwnerKind;
+  ownerReferenceCount: number;
+  kindReferenceCount: number;
+  totalReferenceCount: number;
+}
+
+export type EditorModelOwnershipListener = (change: EditorModelOwnershipChange) => void;
+
 const defaultEditorOwner = createEditorModelOwner('editor');
 const inferredExternalOwner = createEditorModelOwner('external');
 
 const registries = new WeakMap<typeof Monaco, Map<string, ModelReference>>();
+const ownershipListeners = new WeakMap<typeof Monaco, Set<EditorModelOwnershipListener>>();
 
 function registry(monaco: typeof Monaco): Map<string, ModelReference> {
   let value = registries.get(monaco);
@@ -94,6 +106,7 @@ export function acquireEditorModelReference(
     if (tracked.model.getLanguageId() !== language) {
       monaco.editor.setModelLanguage(tracked.model, language);
     }
+    emitOwnershipChange(monaco, tracked, owner);
     return { model: tracked.model, hadOwners };
   }
   const existing = monaco.editor.getModel(uri);
@@ -109,7 +122,25 @@ export function acquireEditorModelReference(
   }
   addOwnerReference(reference, owner);
   entries.set(key, reference);
+  emitOwnershipChange(monaco, reference, owner);
   return { model, hadOwners: existing !== null };
+}
+
+export function subscribeEditorModelOwnershipChanges(
+  monaco: typeof Monaco,
+  listener: EditorModelOwnershipListener,
+): Monaco.IDisposable {
+  let listeners = ownershipListeners.get(monaco);
+  if (!listeners) {
+    listeners = new Set();
+    ownershipListeners.set(monaco, listeners);
+  }
+  listeners.add(listener);
+  return {
+    dispose() {
+      listeners?.delete(listener);
+    },
+  };
 }
 
 export function getEditorModelOwnerReferenceCount(
@@ -159,6 +190,7 @@ export function releaseEditorModel(
   if (ownerReference.references === 0) {
     tracked.owners.delete(owner.token);
   }
+  emitOwnershipChange(monaco, tracked, owner);
   const generation = ++tracked.disposalGeneration;
   queueMicrotask(() => {
     const current = entries.get(key);
@@ -190,4 +222,33 @@ function referenceCount(reference: ModelReference): number {
     total += owner.references;
   }
   return total;
+}
+
+function emitOwnershipChange(
+  monaco: typeof Monaco,
+  reference: ModelReference,
+  changedOwner: EditorModelOwner,
+): void {
+  const listeners = ownershipListeners.get(monaco);
+  if (!listeners?.size) {
+    return;
+  }
+  const ownerReferenceCount = reference.owners.get(changedOwner.token)?.references ?? 0;
+  let kindReferenceCount = 0;
+  for (const owner of reference.owners.values()) {
+    if (owner.kind === changedOwner.kind) {
+      kindReferenceCount += owner.references;
+    }
+  }
+  const change: EditorModelOwnershipChange = {
+    model: reference.model,
+    uri: reference.model.uri.toString(),
+    kind: changedOwner.kind,
+    ownerReferenceCount,
+    kindReferenceCount,
+    totalReferenceCount: referenceCount(reference),
+  };
+  for (const listener of [...listeners]) {
+    listener(change);
+  }
 }

@@ -8,9 +8,12 @@ export {
   createEditorModelOwner,
   getEditorModelOwnerReferenceCount,
   releaseEditorModel,
+  subscribeEditorModelOwnershipChanges,
   type EditorModelOwner,
   type EditorModelOwnerKind,
   type EditorModelOwnerQuery,
+  type EditorModelOwnershipChange,
+  type EditorModelOwnershipListener,
   type EditorModelReference,
 } from './modelRegistry';
 export { slangLanguageDefinition } from './slang-language';

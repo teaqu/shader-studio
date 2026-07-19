@@ -7,6 +7,7 @@ import {
   createEditorModelOwner,
   getEditorModelOwnerReferenceCount,
   releaseEditorModel,
+  subscribeEditorModelOwnershipChanges,
 } from '../../../monaco/src/modelRegistry';
 
 function createMonaco() {
@@ -83,5 +84,22 @@ describe('Monaco model registry', () => {
     releaseEditorModel(monaco as never, adapter.model, adapterOwner);
     await Promise.resolve();
     expect(adapter.model.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes owner-kind reference changes for a tracked model', () => {
+    const monaco = createMonaco();
+    const changes: Array<{ kind: string; kindReferenceCount: number; totalReferenceCount: number }> = [];
+    const subscription = subscribeEditorModelOwnershipChanges(monaco as never, (change) => {
+      changes.push(change);
+    });
+    const model = acquireEditorModel(monaco as never, '/project/main.slang', '', 'slang');
+
+    releaseEditorModel(monaco as never, model);
+    subscription.dispose();
+
+    expect(changes).toEqual([
+      expect.objectContaining({ kind: 'editor', kindReferenceCount: 1, totalReferenceCount: 1 }),
+      expect.objectContaining({ kind: 'editor', kindReferenceCount: 0, totalReferenceCount: 0 }),
+    ]);
   });
 });
