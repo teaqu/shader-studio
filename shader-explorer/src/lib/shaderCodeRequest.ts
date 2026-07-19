@@ -5,10 +5,13 @@ export interface ShaderCodeResponse {
   config: unknown;
   buffers: Record<string, string>;
   language: ShaderLanguage;
+  scriptBundleError?: string;
+  customUniformDeclarations?: string;
+  customUniformInfo?: { name: string; type: string }[];
 }
 
 interface ShaderCodeRequestApi {
-  postMessage(message: { type: 'requestShaderCode'; path: string }): void;
+  postMessage(message: { type: 'requestShaderCode'; path: string; requestId: number }): void;
 }
 
 interface RequestShaderCodeOptions {
@@ -20,7 +23,10 @@ interface RequestShaderCodeOptions {
   onSend?: () => void;
   onReceived?: (response: ShaderCodeResponse, elapsedMs: number) => void;
   onTimeout?: (elapsedMs: number) => void;
+  signal?: AbortSignal;
 }
+
+let nextRequestId = 0;
 
 export function requestShaderCode({
   vscodeApi,
@@ -31,14 +37,17 @@ export function requestShaderCode({
   onSend,
   onReceived,
   onTimeout,
+  signal,
 }: RequestShaderCodeOptions): Promise<ShaderCodeResponse> {
   const startedAt = now();
+  const requestId = ++nextRequestId;
 
   return new Promise<ShaderCodeResponse>((resolve, reject) => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
       target.removeEventListener('message', handleMessage);
+      signal?.removeEventListener('abort', handleAbort);
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
         timeoutId = null;
@@ -51,9 +60,14 @@ export function requestShaderCode({
       reject(new Error('Timeout loading shader code'));
     };
 
+    const handleAbort = () => {
+      cleanup();
+      reject(new Error('Shader code request cancelled'));
+    };
+
     function handleMessage(event: Event) {
       const message = (event as MessageEvent).data;
-      if (message?.type !== 'shaderCode' || message.path !== path) {
+      if (message?.type !== 'shaderCode' || message.path !== path || message.requestId !== requestId) {
         return;
       }
 
@@ -62,6 +76,9 @@ export function requestShaderCode({
         config: message.config || null,
         buffers: message.buffers || {},
         language: message.language === 'slang' ? 'slang' : 'glsl',
+        scriptBundleError: message.scriptBundleError,
+        customUniformDeclarations: message.customUniformDeclarations,
+        customUniformInfo: message.customUniformInfo,
       };
       cleanup();
       onReceived?.(response, now() - startedAt);
@@ -69,12 +86,18 @@ export function requestShaderCode({
     }
 
     target.addEventListener('message', handleMessage);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+    if (signal?.aborted) {
+      handleAbort();
+      return;
+    }
     timeoutId = setTimeout(failOnTimeout, timeoutMs);
 
     onSend?.();
     vscodeApi.postMessage({
       type: 'requestShaderCode',
       path,
+      requestId,
     });
   });
 }
