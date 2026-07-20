@@ -79,7 +79,14 @@ const decimalFloat = [
 const decimalInteger = `${separatedDigits}${integerSuffix}`;
 
 export const slangNumberPattern = new RegExp(
-  `(?<![\\w.])(?:${hexadecimal}|${binary}|${decimalFloat}|${decimalInteger})(?![\\w.])`,
+  `(?:${hexadecimal}|${binary}|${decimalFloat}|${decimalInteger})(?![\\w.])`,
+);
+const invalidMemberNumberPattern = new RegExp(
+  `${identifier}\\.${separatedDigits}(?:${exponent})?[fFhH]?(?![\\w.])`,
+);
+const invalidDottedNumberPattern = new RegExp(
+  `(?:${separatedDigits})?\\.(?:${separatedDigits})?\\.${separatedDigits}(?:\\.${separatedDigits})*`
+    + `(?:${exponent})?[fFhHuUlL]*(?![\\w.])`,
 );
 
 /** Slang Monarch definition. Kept separate from GLSL so both languages coexist. */
@@ -101,6 +108,8 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
     root: [
       [slangPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
+      [invalidMemberNumberPattern, 'invalid'],
+      [invalidDottedNumberPattern, 'invalid'],
       [/[a-zA-Z_]\w*/, {
         cases: {
           '@types': 'type',
