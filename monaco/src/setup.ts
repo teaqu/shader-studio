@@ -1,7 +1,9 @@
 import { glslLanguageDefinition } from './glsl-language';
 import { shaderStudioTheme, shaderStudioTransparentTheme } from './glsl-theme';
+import { slangLanguageDefinition } from './slang-language';
 
 let registered = false;
+let slangRegistered = false;
 
 /**
  * Register the GLSL language, themes, and worker stub for Monaco.
@@ -42,4 +44,16 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
   monaco.editor.defineTheme('shader-studio-transparent', shaderStudioTransparentTheme);
 
   registered = true;
+}
+
+/** Register the Slang Monarch tokenizer independently from GLSL. */
+export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
+  if (slangRegistered) return;
+
+  if (!monaco.languages.getLanguages().some((language) => language.id === 'slang')) {
+    monaco.languages.register({ id: 'slang' });
+    monaco.languages.setMonarchTokensProvider('slang', slangLanguageDefinition);
+  }
+
+  slangRegistered = true;
 }
