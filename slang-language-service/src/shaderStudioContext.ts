@@ -99,9 +99,44 @@ function blankPreprocessorLines(source: string): string {
   return result.join("");
 }
 
+function isDeclarationContext(source: string, candidateStart: number): boolean {
+  let parenthesisDepth = 0;
+  let attributeDepth = 0;
+  let segmentStart = 0;
+
+  for (let index = 0; index < candidateStart; index++) {
+    const character = source[index];
+    if (character === "(") {
+      parenthesisDepth++;
+    } else if (character === ")") {
+      parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+    } else if (character === "[") {
+      attributeDepth++;
+    } else if (character === "]") {
+      attributeDepth = Math.max(0, attributeDepth - 1);
+    } else if (
+      parenthesisDepth === 0
+      && attributeDepth === 0
+      && (character === ";" || character === "{" || character === "}")
+    ) {
+      segmentStart = index + 1;
+    }
+  }
+
+  if (parenthesisDepth !== 0 || attributeDepth !== 0) {
+    return false;
+  }
+
+  const prefix = source.slice(segmentStart, candidateStart);
+  return /^\s*(?:(?:\[[^\[\]]*\]\s*)|(?:(?:public|static|inline|extern)\s+))*$/.test(prefix);
+}
+
 export function isShaderStudioEntrySource(source: string): boolean {
   const lexicalSource = blankPreprocessorLines(blankCommentsAndStrings(source));
-  return /(?:^|[;{}])\s*(?:(?:public|static)\s+)*float4\s+mainImage\s*\(/.test(lexicalSource);
+  const entryPattern = /\bfloat4\s+mainImage\s*\(/g;
+  return [...lexicalSource.matchAll(entryPattern)].some(
+    (match) => isDeclarationContext(lexicalSource, match.index),
+  );
 }
 
 export function createShaderStudioAnalysisSource(source: string): string {

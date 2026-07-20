@@ -48,6 +48,8 @@ describe("Shader Studio language context", () => {
   it.each([
     "#define DECLARE_ENTRY \\\nfloat4 mainImage(float2 p)",
     "DECLARE(float4 mainImage(float2 p))",
+    "DECLARE({ float4 mainImage(float2 p); })",
+    "DECLARE(; float4 mainImage(float2 p); )",
   ])("leaves declaration-shaped macro source byte-identical: %j", (source) => {
     expect(isShaderStudioEntrySource(source)).toBe(false);
     expect(createShaderStudioAnalysisSource(source)).toBe(source);
@@ -56,6 +58,9 @@ describe("Shader Studio language context", () => {
   it.each([
     "public float4 mainImage(float2 p);",
     "static\nfloat4\nmainImage\n(float2 p);",
+    "inline float4 mainImage(float2 p);",
+    "extern float4 mainImage(float2 p);",
+    "[Differentiable] public inline float4 mainImage(float2 p);",
   ])("accepts declaration modifiers at a declaration boundary: %j", (source) => {
     expect(isShaderStudioEntrySource(source)).toBe(true);
   });
