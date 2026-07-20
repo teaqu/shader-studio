@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createShaderStudioAnalysisSource } from "../shaderStudioContext";
 import { SlangWorkspace } from "../SlangWorkspace";
 import type {
   SlangApi,
@@ -76,6 +77,51 @@ function createFixture(fs = createFakeFs()) {
 }
 
 describe("SlangWorkspace document lifecycle", () => {
+  it("opens entry documents with language context while keeping raw MEMFS bytes", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const { fs, server, workspace } = createFixture();
+
+    expect(workspace.openDocument("file:///project/root.slang", source, 1)).toBe(true);
+
+    expect(server.didOpenTextDocument).toHaveBeenCalledWith(
+      "file:///workspace/root.slang",
+      createShaderStudioAnalysisSource(source),
+    );
+    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/root.slang", source);
+  });
+
+  it("replaces the previous analysis overlay through its EOF while storing the next raw source", () => {
+    const first = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const second = "module helper;\nfloat helper() { return 1.0; }";
+    const firstAnalysis = createShaderStudioAnalysisSource(first);
+    const { fs, pushEdit, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", first, 1);
+
+    expect(workspace.changeDocument("file:///project/root.slang", second, 2)).toBe(true);
+
+    const analysisLines = firstAnalysis.split("\n");
+    expect(pushEdit).toHaveBeenCalledWith({
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: analysisLines.length - 1, character: analysisLines.at(-1)?.length ?? 0 },
+      },
+      text: second,
+    });
+    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/root.slang", second);
+  });
+
+  it("sends the next analysis source when a change turns a module into an entry document", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const { pushEdit, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", "module helper;", 1);
+
+    expect(workspace.changeDocument("file:///project/root.slang", source, 2)).toBe(true);
+
+    expect(pushEdit).toHaveBeenCalledWith(expect.objectContaining({
+      text: createShaderStudioAnalysisSource(source),
+    }));
+  });
+
   it("orders open, accepted change, and close with canonical paths", () => {
     const { calls, edits, server, workspace } = createFixture();
 
@@ -165,6 +211,25 @@ describe("SlangWorkspace document lifecycle", () => {
 });
 
 describe("SlangWorkspace replacement", () => {
+  it("reopens a remapped entry document with its analysis source while MEMFS stays raw", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const { fs, server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.didOpenTextDocument.mockClear();
+
+    workspace.replaceFiles({
+      rootUri: "file:///project",
+      files: [{ uri: "file:///project/root.slang", path: "moved/root.slang", source }],
+    });
+
+    expect(server.didCloseTextDocument).toHaveBeenCalledWith("file:///workspace/root.slang");
+    expect(server.didOpenTextDocument).toHaveBeenCalledWith(
+      "file:///workspace/moved/root.slang",
+      createShaderStudioAnalysisSource(source),
+    );
+    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/moved/root.slang", source);
+  });
+
   it("keeps an open overlay across a disk-baseline replacement and restores the new baseline on close", () => {
     const { fs, workspace } = createFixture();
     workspace.openDocument("file:///project/root.slang", "unsaved overlay", 1);
@@ -241,6 +306,118 @@ describe("SlangWorkspace replacement", () => {
 });
 
 describe("SlangWorkspace query copying", () => {
+  it("filters diagnostics beginning at or beyond the raw open-document EOF", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const rawEnd = { line: 0, character: source.length };
+    const diagnostics = fakeList([
+      {
+        code: "user",
+        severity: 1,
+        message: "user diagnostic",
+        range: { start: { line: 0, character: 7 }, end: { line: 0, character: 16 } },
+      },
+      {
+        code: "at-eof",
+        severity: 1,
+        message: "generated diagnostic at EOF",
+        range: { start: rawEnd, end: rawEnd },
+      },
+      {
+        code: "suffix",
+        severity: 1,
+        message: "generated diagnostic in suffix",
+        range: { start: { line: 1, character: 0 }, end: { line: 1, character: 6 } },
+      },
+    ]);
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.getDiagnostics.mockReturnValue(diagnostics);
+
+    expect(workspace.diagnostics("file:///project/root.slang")).toEqual([
+      expect.objectContaining({ code: "user" }),
+    ]);
+    expect(diagnostics.delete).toHaveBeenCalledOnce();
+  });
+
+  it("filters only same-document definitions beginning at or beyond raw EOF", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const locations = fakeList([
+      {
+        uri: "file:///workspace/root.slang",
+        range: { start: { line: 0, character: 7 }, end: { line: 0, character: 16 } },
+      },
+      {
+        uri: "file:///workspace/root.slang",
+        range: { start: { line: 1, character: 14 }, end: { line: 1, character: 25 } },
+      },
+      {
+        uri: "file:///workspace/lib/palette.slang",
+        range: { start: { line: 40, character: 0 }, end: { line: 40, character: 11 } },
+      },
+    ]);
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.gotoDefinition.mockReturnValue(locations);
+
+    expect(workspace.definition("file:///project/root.slang", { line: 0, character: 39 })).toEqual([
+      expect.objectContaining({ uri: "file:///project/root.slang", range: expect.objectContaining({ start: { line: 0, character: 7 } }) }),
+      expect.objectContaining({ uri: "file:///project/lib/palette.slang", range: expect.objectContaining({ start: { line: 40, character: 0 } }) }),
+    ]);
+    expect(locations.delete).toHaveBeenCalledOnce();
+  });
+
+  it("recursively removes generated document symbols while preserving valid user trees", () => {
+    const validChildren = fakeList<SlangDocumentSymbol>([
+      {
+        name: "field",
+        detail: "float",
+        kind: 13,
+        range: { start: { line: 0, character: 8 }, end: { line: 0, character: 13 } },
+        selectionRange: { start: { line: 0, character: 8 }, end: { line: 0, character: 13 } },
+        children: fakeList([]),
+      },
+      {
+        name: "iResolution",
+        detail: "float3",
+        kind: 13,
+        range: { start: { line: 1, character: 0 }, end: { line: 1, character: 26 } },
+        selectionRange: { start: { line: 1, character: 14 }, end: { line: 1, character: 25 } },
+        children: fakeList([]),
+      },
+    ]);
+    const roots = fakeList<SlangDocumentSymbol>([
+      {
+        name: "mainImage",
+        detail: "function",
+        kind: 12,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 55 } },
+        selectionRange: { start: { line: 0, character: 7 }, end: { line: 0, character: 16 } },
+        children: validChildren,
+      },
+      {
+        name: "iMouse",
+        detail: "float4",
+        kind: 13,
+        range: { start: { line: 2, character: 0 }, end: { line: 2, character: 21 } },
+        selectionRange: { start: { line: 2, character: 14 }, end: { line: 2, character: 20 } },
+        children: fakeList([]),
+      },
+    ]);
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.documentSymbol.mockReturnValue(roots);
+
+    expect(workspace.documentSymbols("file:///project/root.slang")).toEqual([
+      expect.objectContaining({
+        name: "mainImage",
+        children: [expect.objectContaining({ name: "field" })],
+      }),
+    ]);
+    expect(roots.delete).toHaveBeenCalledOnce();
+    expect(validChildren.delete).toHaveBeenCalledOnce();
+  });
+
   it("preserves zero-based hover coordinates and undefined results", () => {
     const { server, workspace } = createFixture();
     server.hover.mockReturnValueOnce(undefined).mockReturnValueOnce({

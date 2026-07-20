@@ -1,5 +1,6 @@
 import { normalizeInternalPath, SlangPathMap } from "./canonicalPaths";
 import { copyList, copyOptionalList } from "./embind";
+import { createShaderStudioAnalysisSource } from "./shaderStudioContext";
 import type {
   SlangApi,
   SlangCompletionContext,
@@ -10,7 +11,7 @@ import type {
   SlangParameterInformation,
   SlangSignatureInformation,
 } from "./slangApi";
-import type { SlangDocumentSnapshot, SlangPosition, SlangRange, SlangWorkspaceSnapshot } from "./types";
+import type { SlangPosition, SlangRange, SlangWorkspaceSnapshot } from "./types";
 import { releaseWorkspaceFileSystem, syncWorkspaceToFileSystem } from "./virtualFileSystem";
 
 export interface HoverDto {
@@ -69,6 +70,11 @@ export interface DiagnosticDto {
 function endPosition(source: string): SlangPosition {
   const lines = source.split("\n");
   return { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 };
+}
+
+function positionAtOrAfter(position: SlangPosition, boundary: SlangPosition): boolean {
+  return position.line > boundary.line
+    || (position.line === boundary.line && position.character >= boundary.character);
 }
 
 function copyMarkup(markup: SlangMarkupContent): SlangMarkupContent {
@@ -137,6 +143,12 @@ function copySymbol(symbol: SlangDocumentSymbol): DocumentSymbolDto {
   };
 }
 
+function filterSymbols(symbols: DocumentSymbolDto[], boundary: SlangPosition): DocumentSymbolDto[] {
+  return symbols
+    .filter((symbol) => !positionAtOrAfter(symbol.range.start, boundary))
+    .map((symbol) => ({ ...symbol, children: filterSymbols(symbol.children, boundary) }));
+}
+
 function copyDiagnostic(diagnostic: SlangDiagnosticResult): DiagnosticDto {
   return {
     code: String(diagnostic.code),
@@ -149,7 +161,10 @@ function copyDiagnostic(diagnostic: SlangDiagnosticResult): DiagnosticDto {
 export class SlangWorkspace {
   private pathMap: SlangPathMap;
   private readonly server;
-  private readonly openDocuments = new Map<string, { source: string; version: number }>();
+  private readonly openDocuments = new Map<
+    string,
+    { source: string; analysisSource: string; version: number }
+  >();
   private readonly ownedPaths = new Set<string>();
   private currentSnapshot: SlangWorkspaceSnapshot;
   private disposed = false;
@@ -174,7 +189,12 @@ export class SlangWorkspace {
     const nextPathMap = this.createPathMap(snapshot);
     const snapshotUris = new Set(snapshot.files.map((file) => file.uri));
     const effectiveFiles = [...snapshot.files];
-    const movedDocuments: Array<{ uri: string; oldPath: string; newPath: string; source: string }> = [];
+    const movedDocuments: Array<{
+      uri: string;
+      oldPath: string;
+      newPath: string;
+      analysisSource: string;
+    }> = [];
     for (const [uri, document] of this.openDocuments) {
       const oldPath = this.pathMap.toInternalPath(uri);
       if (!snapshotUris.has(uri)) {
@@ -183,7 +203,7 @@ export class SlangWorkspace {
       }
       const newPath = nextPathMap.toInternalPath(uri);
       if (oldPath !== newPath) {
-        movedDocuments.push({ uri, oldPath, newPath, source: document.source });
+        movedDocuments.push({ uri, oldPath, newPath, analysisSource: document.analysisSource });
       }
     }
     syncWorkspaceToFileSystem(
@@ -196,7 +216,7 @@ export class SlangWorkspace {
     this.currentSnapshot = snapshot;
     for (const document of movedDocuments) {
       this.server.didCloseTextDocument(toLanguageServerUri(document.oldPath));
-      this.server.didOpenTextDocument(toLanguageServerUri(document.newPath), document.source);
+      this.server.didOpenTextDocument(toLanguageServerUri(document.newPath), document.analysisSource);
     }
   }
 
@@ -211,9 +231,10 @@ export class SlangWorkspace {
     if (current) {
       return this.changeDocument(uri, source, version);
     }
-    this.server.didOpenTextDocument(toLanguageServerUri(path), source);
+    const analysisSource = createShaderStudioAnalysisSource(source);
+    this.server.didOpenTextDocument(toLanguageServerUri(path), analysisSource);
     this.api.FS.writeFile(path, source);
-    this.openDocuments.set(uri, { source, version });
+    this.openDocuments.set(uri, { source, analysisSource, version });
     return true;
   }
 
@@ -225,18 +246,19 @@ export class SlangWorkspace {
       return false;
     }
     const path = this.pathMap.toInternalPath(uri);
+    const analysisSource = createShaderStudioAnalysisSource(source);
     const edits = this.api.TextEditList();
     try {
       edits.push_back({
-        range: { start: { line: 0, character: 0 }, end: endPosition(current.source) },
-        text: source,
+        range: { start: { line: 0, character: 0 }, end: endPosition(current.analysisSource) },
+        text: analysisSource,
       });
       this.server.didChangeTextDocument(toLanguageServerUri(path), edits);
     } finally {
       edits.delete();
     }
     this.api.FS.writeFile(path, source);
-    this.openDocuments.set(uri, { source, version });
+    this.openDocuments.set(uri, { source, analysisSource, version });
     return true;
   }
 
@@ -268,12 +290,20 @@ export class SlangWorkspace {
   definition(uri: string, position: SlangPosition): LocationDto[] | undefined {
     this.ensureActive();
     this.ensureMounted();
-    return copyOptionalList(
+    const locations = copyOptionalList(
       this.server.gotoDefinition(toLanguageServerUri(this.pathMap.toInternalPath(uri)), position),
       (location) => ({
         uri: this.pathMap.toUri(fromLanguageServerUri(String(location.uri))),
         range: copyRange(location.range),
       }),
+    );
+    const document = this.openDocuments.get(uri);
+    if (!locations || !document) {
+      return locations;
+    }
+    const boundary = endPosition(document.source);
+    return locations.filter(
+      (location) => location.uri !== uri || !positionAtOrAfter(location.range.start, boundary),
     );
   }
 
@@ -331,19 +361,30 @@ export class SlangWorkspace {
   documentSymbols(uri: string): DocumentSymbolDto[] | undefined {
     this.ensureActive();
     this.ensureMounted();
-    return copyOptionalList(
+    const symbols = copyOptionalList(
       this.server.documentSymbol(toLanguageServerUri(this.pathMap.toInternalPath(uri))),
       copySymbol,
     );
+    const document = this.openDocuments.get(uri);
+    if (!symbols || !document) {
+      return symbols;
+    }
+    return filterSymbols(symbols, endPosition(document.source));
   }
 
   diagnostics(uri: string): DiagnosticDto[] | undefined {
     this.ensureActive();
     this.ensureMounted();
-    return copyOptionalList(
+    const diagnostics = copyOptionalList(
       this.server.getDiagnostics(toLanguageServerUri(this.pathMap.toInternalPath(uri))),
       copyDiagnostic,
     );
+    const document = this.openDocuments.get(uri);
+    if (!diagnostics || !document) {
+      return diagnostics;
+    }
+    const boundary = endPosition(document.source);
+    return diagnostics.filter((diagnostic) => !positionAtOrAfter(diagnostic.range.start, boundary));
   }
 
   dispose(): void {

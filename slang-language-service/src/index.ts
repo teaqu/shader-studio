@@ -1,6 +1,7 @@
 export * from "./canonicalPaths";
 export * from "./embind";
 export * from "./languageHeader";
+export * from "./shaderStudioContext";
 export * from "./slangApi";
 export * from "./SlangWorkspace";
 export * from "./types";
