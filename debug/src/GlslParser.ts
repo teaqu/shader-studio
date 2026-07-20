@@ -269,6 +269,43 @@ export class GlslParser {
     return varLines;
   }
 
+  static getDeclarationLines(lines: string[], cursorLine: number): Map<string, number> {
+    const document = GlslParser.getDocument(lines);
+    const functionInfo = GlslParser.findEnclosingFunction(lines, cursorLine);
+    const declarationLines = new Map<string, number>();
+
+    if (document.parsedSuccessfully && functionInfo.name && functionInfo.start >= 0) {
+      const visibleScopes = GlslParser.getVisibleScopes(document, functionInfo, cursorLine);
+      for (const scope of visibleScopes) {
+        for (const [bindingName, binding] of Object.entries(scope.bindings)) {
+          const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
+          if (declarationLine !== null && declarationLine <= cursorLine) {
+            declarationLines.set(bindingName, declarationLine);
+          }
+        }
+      }
+      return declarationLines;
+    }
+
+    const scanStart = functionInfo.start >= 0 ? functionInfo.start : 0;
+    if (functionInfo.name && functionInfo.start >= 0) {
+      for (const parameter of GlslParser.parseFunctionParametersLegacy(document.effectiveLines, functionInfo.start)) {
+        declarationLines.set(parameter.name, functionInfo.start);
+      }
+    }
+    for (let i = scanStart; i <= cursorLine && i < document.effectiveLines.length; i++) {
+      if (!functionInfo.name && GlslParser.isInsideFunction(document.functions, i)) {
+        continue;
+      }
+      for (const declaration of GlslParser.extractDeclarationsFromLine(document.effectiveLines[i])) {
+        if (!declarationLines.has(declaration.name)) {
+          declarationLines.set(declaration.name, i);
+        }
+      }
+    }
+    return declarationLines;
+  }
+
   static getGlobalVariables(lines: string[], upToLine?: number): ScopedVarInfo[] {
     const document = GlslParser.getDocument(lines);
     const globals: ScopedVarInfo[] = [];

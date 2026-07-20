@@ -741,4 +741,43 @@ describe("GlslParser", () => {
     });
   });
 
+  describe('getDeclarationLines', () => {
+    const lines = [
+      'float glow = 0.0;',
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+      '  vec2 uv = fragCoord;',
+      '  uv = uv * 2.0;',
+      '  float d = length(uv);',
+      '  fragColor = vec4(d);',
+      '}',
+    ];
+
+    it('maps a local to its declaration, not its latest assignment', () => {
+      const declarations = GlslParser.getDeclarationLines(lines, 5);
+      expect(declarations.get('uv')).toBe(2);
+      expect(declarations.get('d')).toBe(4);
+    });
+
+    it('includes function parameters', () => {
+      const declarations = GlslParser.getDeclarationLines(lines, 5);
+      expect(declarations.get('fragCoord')).toBe(1);
+    });
+
+    it('resolves declarations outside any function to globals', () => {
+      const declarations = GlslParser.getDeclarationLines(lines, 0);
+      expect(declarations.get('glow')).toBe(0);
+    });
+
+    it('falls back to line scanning when the parse fails', () => {
+      const broken = [
+        'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+        '  vec2 uv = fragCoord;',
+        '  float ( // broken',
+        '  uv = uv + 1.0;',
+        '}',
+      ];
+      expect(GlslParser.getDeclarationLines(broken, 3).get('uv')).toBe(1);
+    });
+  });
+
 });
