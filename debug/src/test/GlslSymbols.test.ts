@@ -34,9 +34,18 @@ describe('getSymbolTable', () => {
     expect(findSymbol(table, 'EPSILON')).toMatchObject({ line: 2 });
   });
 
-  it('findSymbol prefers functions over globals of the same name', () => {
-    const table = getSymbolTable(lines);
-    expect(findSymbol(table, 'sdSphere')).toMatchObject({ line: 4 });
+  it('findSymbol prefers functions over defines over globals with real collisions', () => {
+    const collision = [
+      '#define glow 1.0',
+      'float glow(vec3 p) { return 0.5; }',
+      '#define shade 2.0',
+      'const float shade = 0.3;',
+    ];
+    const table = getSymbolTable(collision);
+    // functions > defines: glow function on line 1 should win over define on line 0
+    expect(findSymbol(table, 'glow')).toMatchObject({ line: 1 });
+    // defines > globals: shade define on line 2 should win over global on line 3
+    expect(findSymbol(table, 'shade')).toMatchObject({ line: 2 });
   });
 
   it('still finds functions by regex when the parse fails', () => {
