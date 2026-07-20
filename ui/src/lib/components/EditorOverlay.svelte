@@ -5,7 +5,7 @@
   import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
   import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl } from "@shader-studio/monaco";
+  import { setupMonacoGlsl, setupMonacoSlang } from "@shader-studio/monaco";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -351,6 +351,7 @@
     }
 
     setupMonacoGlsl(monaco as any);
+    setupMonacoSlang(monaco as any);
 
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
       value: shaderCode,

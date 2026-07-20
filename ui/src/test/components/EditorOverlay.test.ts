@@ -3,6 +3,11 @@ import { render } from '@testing-library/svelte';
 import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
+vi.mock('@shader-studio/monaco', () => ({
+  setupMonacoGlsl: vi.fn(),
+  setupMonacoSlang: vi.fn(),
+}));
+
 const mockTransport = {
   postMessage: vi.fn(),
   onMessage: vi.fn(),
@@ -199,10 +204,16 @@ describe('EditorOverlay', () => {
       expect(monaco.editor.create).not.toHaveBeenCalled();
     });
 
-    it('should call setupMonacoGlsl to register language and themes', async () => {
-      const { setupMonacoGlsl } = await import('@shader-studio/monaco');
+    it('should initialize the GLSL and Slang Monaco tokenizers once', async () => {
+      const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+      const { setupMonacoGlsl, setupMonacoSlang } = await import('@shader-studio/monaco');
+
       render(EditorOverlay, { props: defaultProps });
-      expect(setupMonacoGlsl).toHaveBeenCalled();
+
+      expect(setupMonacoSlang).toHaveBeenCalledTimes(1);
+      expect(setupMonacoSlang).toHaveBeenNthCalledWith(1, monaco);
+      expect(setupMonacoGlsl).toHaveBeenCalledTimes(1);
+      expect(setupMonacoGlsl).toHaveBeenNthCalledWith(1, monaco);
     });
 
     it('should create the overlay editor with Monaco options suited to the overlay', async () => {
