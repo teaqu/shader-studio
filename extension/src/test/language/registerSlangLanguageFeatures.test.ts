@@ -62,6 +62,99 @@ suite("Slang language feature adapter", () => {
     assert.strictEqual(symbol.children.length, 1);
   });
 
+  test("forwards plain position DTOs to Slang language providers", async () => {
+    const sandbox = sinon.createSandbox();
+    let completionProvider: vscode.CompletionItemProvider | undefined;
+    let hoverProvider: vscode.HoverProvider | undefined;
+    let definitionProvider: vscode.DefinitionProvider | undefined;
+    let signatureHelpProvider: vscode.SignatureHelpProvider | undefined;
+    const root = vscode.Uri.file("/tmp/slang-position-dto-test");
+    const document = {
+      uri: vscode.Uri.joinPath(root, "main.slang"),
+      languageId: "slang",
+      version: 1,
+      getText: () => "module main;",
+    } as unknown as vscode.TextDocument;
+    const client = {
+      init: sandbox.stub().resolves(), ready: sandbox.stub().resolves(),
+      replaceFiles: sandbox.stub().resolves(), openDocument: sandbox.stub().resolves(),
+      changeDocument: sandbox.stub().resolves(), closeDocument: sandbox.stub().resolves(),
+      hover: sandbox.stub().resolves(undefined), definition: sandbox.stub().resolves(undefined),
+      completion: sandbox.stub().resolves(undefined), completionResolve: sandbox.stub().resolves(undefined),
+      signatureHelp: sandbox.stub().resolves(undefined), documentSymbols: sandbox.stub().resolves(undefined),
+      diagnostics: sandbox.stub().resolves([]), dispose: sandbox.spy(),
+    } satisfies SlangLanguageClientContract;
+    const disposable = new vscode.Disposable(() => undefined);
+    const tokenSource = new vscode.CancellationTokenSource();
+    try {
+      await vscode.workspace.fs.createDirectory(root);
+      await vscode.workspace.fs.writeFile(document.uri, new TextEncoder().encode(document.getText()));
+      sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
+      sandbox.stub(vscode.workspace, "textDocuments").value([document]);
+      sandbox.stub(vscode.workspace, "findFiles").resolves([document.uri]);
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidChangeTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
+      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({
+        set() {}, clear() {}, dispose() {},
+      } as unknown as vscode.DiagnosticCollection);
+      sandbox.stub(vscode.languages, "registerCompletionItemProvider").callsFake((_selector, provider) => {
+        completionProvider = provider;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "registerHoverProvider").callsFake((_selector, provider) => {
+        hoverProvider = provider;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "registerDefinitionProvider").callsFake((_selector, provider) => {
+        definitionProvider = provider;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "registerSignatureHelpProvider").callsFake((_selector, provider) => {
+        signatureHelpProvider = provider;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "registerDocumentSymbolProvider").returns(disposable);
+      const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
+      const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
+      for (const query of [client.completion, client.hover, client.definition, client.signatureHelp]) {
+        assert.strictEqual(query.callCount, 0, "provider query history starts clean");
+      }
+
+      const position = new vscode.Position(3, 7);
+      await completionProvider?.provideCompletionItems(document, position, tokenSource.token, {
+        triggerKind: vscode.CompletionTriggerKind.Invoke,
+        triggerCharacter: undefined,
+      });
+      await hoverProvider?.provideHover(document, position, tokenSource.token);
+      await definitionProvider?.provideDefinition(document, position, tokenSource.token);
+      await signatureHelpProvider?.provideSignatureHelp(document, position, tokenSource.token, {
+        isRetrigger: false,
+        triggerKind: vscode.SignatureHelpTriggerKind.Invoke,
+        triggerCharacter: undefined,
+        activeSignatureHelp: undefined,
+      });
+
+      assert.strictEqual(client.init.callCount, 1);
+      assert.strictEqual(client.openDocument.callCount, 1);
+      assert.strictEqual(client.diagnostics.callCount, 1);
+      for (const query of [client.completion, client.hover, client.definition, client.signatureHelp]) {
+        assert.strictEqual(query.callCount, 1);
+        const forwardedPosition = query.firstCall.args[1];
+        assert.deepStrictEqual(forwardedPosition, { line: 3, character: 7 });
+        assert.strictEqual(Object.getPrototypeOf(forwardedPosition), Object.prototype);
+      }
+      registration.dispose();
+    } finally {
+      tokenSource.dispose();
+      sandbox.restore();
+      await vscode.workspace.fs.delete(root, { recursive: true, useTrash: false });
+    }
+  });
+
   test("is idempotent and does not create providers, diagnostics, or a worker while disabled", () => {
     const sandbox = sinon.createSandbox();
     try {

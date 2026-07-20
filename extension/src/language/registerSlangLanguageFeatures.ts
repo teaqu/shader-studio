@@ -11,6 +11,7 @@ import {
   type SignatureHelpDto,
   type SlangDocumentSnapshot,
   type SlangMarkupContent,
+  type SlangPosition,
   type SlangRange,
   type SlangWorkspaceSnapshot,
 } from "@shader-studio/slang-language-service";
@@ -32,6 +33,10 @@ export interface RegisterSlangLanguageFeatureOptions {
 
 function toRange(range: SlangRange): vscode.Range {
   return new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character);
+}
+
+function toPosition(position: vscode.Position): SlangPosition {
+  return { line: position.line, character: position.character };
 }
 
 function toMarkdown(content: SlangMarkupContent): vscode.MarkdownString {
@@ -481,7 +486,7 @@ class SlangFeatureSession implements vscode.Disposable {
           return undefined;
         }
         const values = await ready(() => this.client.completion(
-          document.uri.toString(), position, document.version,
+          document.uri.toString(), toPosition(position), document.version,
           { triggerKind: context.triggerKind + 1, triggerCharacter: context.triggerCharacter ?? "" },
         ));
         return values?.map((dto) => {
@@ -503,12 +508,12 @@ class SlangFeatureSession implements vscode.Disposable {
       completions,
       vscode.languages.registerHoverProvider(SLANG_DOCUMENT_SELECTOR, {
         provideHover: async (document, position) => this.isDocumentManaged(document)
-          ? toHover(await ready(() => this.client.hover(document.uri.toString(), position, document.version)))
+          ? toHover(await ready(() => this.client.hover(document.uri.toString(), toPosition(position), document.version)))
           : undefined,
       }),
       vscode.languages.registerDefinitionProvider(SLANG_DOCUMENT_SELECTOR, {
         provideDefinition: async (document, position) => this.isDocumentManaged(document)
-          ? (await ready(() => this.client.definition(document.uri.toString(), position, document.version)))?.map(toLocation)
+          ? (await ready(() => this.client.definition(document.uri.toString(), toPosition(position), document.version)))?.map(toLocation)
           : undefined,
       }),
       vscode.languages.registerSignatureHelpProvider(SLANG_DOCUMENT_SELECTOR, {
@@ -516,7 +521,9 @@ class SlangFeatureSession implements vscode.Disposable {
           if (!this.isDocumentManaged(document)) {
             return undefined;
           }
-          const value = await ready(() => this.client.signatureHelp(document.uri.toString(), position, document.version));
+          const value = await ready(() => this.client.signatureHelp(
+            document.uri.toString(), toPosition(position), document.version,
+          ));
           return value ? toSignatureHelp(value) : undefined;
         },
       }, "(", ","),
