@@ -335,11 +335,71 @@ function collectLikelyStorageAccesses(source: string): Set<string> {
 
 function hasLikelyDeclarationPrefix(tokens: SlangToken[], index: number): boolean {
   const previous = tokens[index - 1];
+  if (previous?.text === ",") {
+    return isTopLevelDeclarationComma(tokens, index - 1);
+  }
+  return hasBasicDeclarationPrefix(tokens, index);
+}
+
+function hasBasicDeclarationPrefix(tokens: SlangToken[], index: number): boolean {
+  const previous = tokens[index - 1];
   return (previous?.kind === "identifier" && previous.text !== "return") ||
     previous?.text === ":" ||
     previous?.text === ">" ||
     previous?.text === "*" ||
     previous?.text === "&";
+}
+
+function isTopLevelDeclarationComma(tokens: SlangToken[], commaIndex: number): boolean {
+  let parenthesisDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  let statementStart = 0;
+  for (let index = commaIndex - 1; index >= 0; index--) {
+    const token = tokens[index];
+    if (token.text === ")") {
+      parenthesisDepth++;
+    } else if (token.text === "(") {
+      if (parenthesisDepth === 0) {
+        if (tokens[index - 1]?.text === "for") {
+          statementStart = index + 1;
+          break;
+        }
+        return false;
+      }
+      parenthesisDepth--;
+    } else if (token.text === "]") {
+      bracketDepth++;
+    } else if (token.text === "[") {
+      if (bracketDepth === 0) {
+        return false;
+      }
+      bracketDepth--;
+    } else if (token.text === "}") {
+      braceDepth++;
+    } else if (token.text === "{") {
+      if (braceDepth === 0) {
+        statementStart = index + 1;
+        break;
+      }
+      braceDepth--;
+    } else if (
+      token.text === ";" &&
+      parenthesisDepth === 0 &&
+      bracketDepth === 0 &&
+      braceDepth === 0
+    ) {
+      statementStart = index + 1;
+      break;
+    }
+  }
+
+  for (let index = statementStart; index < commaIndex; index++) {
+    if (tokens[index].kind === "identifier" && hasBasicDeclarationPrefix(tokens, index)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -348,12 +408,14 @@ function hasLikelyDeclarationPrefix(tokens: SlangToken[], index: number): boolea
  * instead of attempting scope analysis. This may miss unusual valid uses, but
  * keeping this advisory quiet is more useful than warning on shadowed values,
  * declarations, type names, or unrelated members.
+ * Preprocessor branches are followed only for literal `0` and `1`; unknown
+ * conditional groups are suppressed wholesale rather than guessing.
  */
 function collectSlangTokens(source: string): SlangToken[] {
   const tokens: SlangToken[] = [];
   let index = 0;
   let atLineStart = true;
-  let inactiveIfDepth = 0;
+  const conditionalStack: PreprocessorConditional[] = [];
   while (index < source.length) {
     if (atLineStart) {
       let firstNonWhitespace = index;
@@ -369,15 +431,7 @@ function collectSlangTokens(source: string): SlangToken[] {
         const match = directive.match(/^#\s*([A-Za-z_][A-Za-z0-9_]*)(.*)$/);
         const name = match?.[1];
         const argument = match?.[2].trim() ?? "";
-        if (inactiveIfDepth > 0) {
-          if (name === "if" || name === "ifdef" || name === "ifndef") {
-            inactiveIfDepth++;
-          } else if (name === "endif") {
-            inactiveIfDepth--;
-          }
-        } else if (name === "if" && /^0(?:\s|$|\/\/|\/\*)/.test(argument)) {
-          inactiveIfDepth = 1;
-        }
+        updatePreprocessorConditionals(conditionalStack, name, argument);
         index = endOfPreprocessorDirective(source, firstNonWhitespace);
         continue;
       }
@@ -435,14 +489,14 @@ function collectSlangTokens(source: string): SlangToken[] {
       while (index < source.length && isIdentifierPart(source[index])) {
         index++;
       }
-      if (inactiveIfDepth === 0) {
+      if (isPreprocessorActive(conditionalStack)) {
         tokens.push({ kind: "identifier", text: source.slice(start, index) });
       }
       continue;
     }
     if (current === "-" && next === ">") {
       atLineStart = false;
-      if (inactiveIfDepth === 0) {
+      if (isPreprocessorActive(conditionalStack)) {
         tokens.push({ kind: "symbol", text: "->" });
       }
       index += 2;
@@ -450,13 +504,75 @@ function collectSlangTokens(source: string): SlangToken[] {
     }
     if (!/\s/.test(current)) {
       atLineStart = false;
-      if (inactiveIfDepth === 0) {
+      if (isPreprocessorActive(conditionalStack)) {
         tokens.push({ kind: "symbol", text: current });
       }
     }
     index++;
   }
   return tokens;
+}
+
+interface PreprocessorConditional {
+  active: boolean;
+  branchTaken: boolean;
+  suppressEntireGroup: boolean;
+}
+
+function updatePreprocessorConditionals(
+  stack: PreprocessorConditional[],
+  directive: string | undefined,
+  argument: string,
+): void {
+  if (directive === "if") {
+    const condition = literalPreprocessorCondition(argument);
+    stack.push({
+      active: condition === true,
+      branchTaken: condition === true,
+      suppressEntireGroup: condition === undefined,
+    });
+    return;
+  }
+  if (directive === "ifdef" || directive === "ifndef") {
+    stack.push({ active: false, branchTaken: false, suppressEntireGroup: true });
+    return;
+  }
+  if (directive === "endif") {
+    stack.pop();
+    return;
+  }
+
+  const current = stack[stack.length - 1];
+  if (!current || (directive !== "else" && directive !== "elif")) {
+    return;
+  }
+  if (current.suppressEntireGroup || current.branchTaken) {
+    current.active = false;
+    return;
+  }
+  if (directive === "else") {
+    current.active = true;
+    current.branchTaken = true;
+    return;
+  }
+
+  const condition = literalPreprocessorCondition(argument);
+  if (condition === undefined) {
+    current.active = false;
+    current.suppressEntireGroup = true;
+  } else {
+    current.active = condition;
+    current.branchTaken = condition;
+  }
+}
+
+function literalPreprocessorCondition(argument: string): boolean | undefined {
+  const match = argument.match(/^([01])(?:\s|\/\/.*|\/\*.*?\*\/)*$/);
+  return match ? match[1] === "1" : undefined;
+}
+
+function isPreprocessorActive(stack: PreprocessorConditional[]): boolean {
+  return stack.every((conditional) => conditional.active);
 }
 
 function endOfPreprocessorDirective(source: string, directiveStart: number): number {

@@ -1075,6 +1075,67 @@ float4 shadowed(float4 parameter)
     expect(graph.warnings).toEqual([]);
   });
 
+  it("ignores shadowed storage in comma-separated declarations", () => {
+    const graph = build({
+      commaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      pointerCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      genericCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      parameterCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      initializerCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      inlineStructCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      forCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+float4 shadowed()
+{
+    float4 other[4], commaLocal[4];
+    float4 *otherPointer[4], pointerCommaLocal[4];
+    Generic<float4> otherGeneric[4], genericCommaLocal[4];
+    return commaLocal[0] + pointerCommaLocal[0] + genericCommaLocal[0];
+}
+float4 parameterShadow(float4 other[4], float4 parameterCommaLocal[4])
+{
+    return parameterCommaLocal[0];
+}
+float4 initializerShadow()
+{
+    float4 initialized = { 0, 0, 0, 0 }, initializerCommaLocal[4];
+    return initializerCommaLocal[0];
+}
+struct InlineHolder { float4 value; } holder, inlineStructCommaLocal[4];
+float4 inlineStructShadow()
+{
+    return inlineStructCommaLocal[0].value;
+}
+float4 forInitializerShadow()
+{
+    for (float4 other[4], forCommaLocal[4]; false;) {
+        return forCommaLocal[0];
+    }
+    return 0;
+}
+`);
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("warns for indexed storage used after a function argument comma", () => {
+    const graph = build({
+      particles: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+float4 readParticle(uint index)
+{
+    for (uint loopIndex = 0; loopIndex < 1; loopIndex++) {
+        return lerp(float4(0), particles[index].position, 0.5);
+    }
+    return 0;
+}
+`);
+
+    expect(graph.warnings).toEqual([
+      "Storage \"particles\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"particles\" into a pass source file",
+    ]);
+  });
+
   it("ignores directive lines and nested code inside an inactive if-zero block", () => {
     const graph = build({
       particles: { count: 2, stride: 32, elementType: "Particle" },
@@ -1109,6 +1170,96 @@ float4 adjacentBlockComment = trails[0].color;
 #endif
 */
 float4 stillInactive = particles[0].position;
+#endif
+`);
+
+    expect(graph.warnings).toEqual([]);
+  });
+
+  it("tracks literal else and elif branches, including nested conditionals", () => {
+    const graph = build({
+      activeElse: { count: 2, stride: 32, elementType: "Particle" },
+      inactiveIf: { count: 2, stride: 32, elementType: "Particle" },
+      activeIf: { count: 2, stride: 32, elementType: "Particle" },
+      inactiveElse: { count: 2, stride: 32, elementType: "Particle" },
+      activeElif: { count: 2, stride: 32, elementType: "Particle" },
+      activeFinalElse: { count: 2, stride: 32, elementType: "Particle" },
+      nestedActive: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+#if 0
+float4 a = inactiveIf[0].position;
+#else
+float4 b = activeElse[0].position;
+#endif
+#if 1
+float4 c = activeIf[0].position;
+#else
+float4 d = inactiveElse[0].position;
+#endif
+#if 0
+float4 e = inactiveIf[0].position;
+#elif 1
+float4 f = activeElif[0].position;
+#elif 1
+float4 g = inactiveIf[0].position;
+#endif
+#if 0
+#elif 0
+#else
+float4 h = activeFinalElse[0].position;
+#endif
+#if 0
+    #if 0
+    float4 i = inactiveIf[0].position;
+    #else
+    float4 j = inactiveIf[0].position;
+    #endif
+#else
+    #if 1
+    float4 k = nestedActive[0].position;
+    #endif
+#endif
+`);
+
+    expect(graph.warnings).toEqual([
+      "Storage \"activeElse\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"activeElse\" into a pass source file",
+      "Storage \"activeIf\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"activeIf\" into a pass source file",
+      "Storage \"activeElif\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"activeElif\" into a pass source file",
+      "Storage \"activeFinalElse\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"activeFinalElse\" into a pass source file",
+      "Storage \"nestedActive\" uses custom type \"Particle\" and is declared after common, so common cannot reference it; move helpers that access \"nestedActive\" into a pass source file",
+    ]);
+  });
+
+  it("suppresses every branch of conditionals with unknown expressions", () => {
+    const graph = build({
+      unknownIf: { count: 2, stride: 32, elementType: "Particle" },
+      unknownElse: { count: 2, stride: 32, elementType: "Particle" },
+      unknownIfdef: { count: 2, stride: 32, elementType: "Particle" },
+      unknownIfdefElse: { count: 2, stride: 32, elementType: "Particle" },
+      compoundIf: { count: 2, stride: 32, elementType: "Particle" },
+      compoundElse: { count: 2, stride: 32, elementType: "Particle" },
+      disjunctionIf: { count: 2, stride: 32, elementType: "Particle" },
+      disjunctionElse: { count: 2, stride: 32, elementType: "Particle" },
+    }, `
+#if FEATURE_FLAG
+float4 a = unknownIf[0].position;
+#else
+float4 b = unknownElse[0].position;
+#endif
+#ifdef OTHER_FLAG
+float4 c = unknownIfdef[0].position;
+#elif 1
+float4 d = unknownIfdefElse[0].position;
+#endif
+#if 1 && 0
+float4 e = compoundIf[0].position;
+#else
+float4 f = compoundElse[0].position;
+#endif
+#if 0 || 1
+float4 g = disjunctionIf[0].position;
+#else
+float4 h = disjunctionElse[0].position;
 #endif
 `);
 
