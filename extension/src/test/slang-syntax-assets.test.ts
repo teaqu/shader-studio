@@ -168,6 +168,7 @@ suite('Bundled Slang syntax assets', () => {
     assert.deepStrictEqual(
       numericPatterns?.map((pattern) => pattern.name),
       [
+        'invalid.illegal.numeric.leading-zero.slang',
         'constant.numeric.hex-float.slang',
         'constant.numeric.decimal.float.slang',
         'constant.numeric.hex-integer.slang',
@@ -316,6 +317,9 @@ float4 endValue;`);
       '42LLu',
       '42Uz',
       '42Zu',
+      '0',
+      '00',
+      '10',
       '0xFFu',
       '0b1010',
       '077',
@@ -351,6 +355,14 @@ float4 endValue;`);
       '2ulh',
       '3.0fu',
       '0xC.8',
+      '1.0hF',
+      '1.0fH',
+      '1.0lF',
+      '1.0fL',
+      '1#INFhF',
+      '0xC.8p0fH',
+      '09',
+      '018',
     ]) {
       const [invalidTokens] = tokenizeLines(invalidNumber);
       assert.ok(
@@ -359,6 +371,13 @@ float4 endValue;`);
         ),
         `${invalidNumber} must not contain a numeric token`,
       );
+      if (invalidNumber === '09' || invalidNumber === '018') {
+        const invalidToken = invalidTokens.find(
+          (token) => token.text === invalidNumber,
+        );
+        assert.ok(invalidToken, `${invalidNumber} must be consumed whole`);
+        assert.ok(hasScope(invalidToken, 'invalid.illegal.numeric'));
+      }
     }
 
     const [identifierTokens] = tokenizeLines('value1 texture2D');
@@ -374,6 +393,10 @@ float4 endValue;`);
       'float3x4',
       'half2x3',
       'int3x2',
+      'float16_t2x2',
+      'float32_t3x4',
+      'int64_t4x3',
+      'uint8_t2x4',
       'float16_t',
       'float32_t',
       'float64_t',
@@ -386,7 +409,9 @@ float4 endValue;`);
       assert.ok(hasScope(token, 'support.type'), `${type} must be a type`);
     }
 
-    const [invalidTokens] = tokenizeLines('float5x5 float4x5 afloat4x4');
+    const [invalidTokens] = tokenizeLines(
+      'float5x5 float4x5 float16_t5x2 afloat4x4 afloat16_t2x2',
+    );
     assert.ok(
       invalidTokens.every((token) => !hasScope(token, 'support.type')),
       'invalid dimensions and embedded type names must remain unscoped',
@@ -440,13 +465,29 @@ float4 endValue;`);
       '42Z',
       '123.0LF',
       '1#INFhf',
+      '1.0HF',
+      '1.0FH',
+      '1.0FL',
       '0xC.8p0',
+      '0',
+      '00',
+      '10',
       '-1.25',
     ]) {
       assert.match(literal, wholeWord, `${literal} must remain one word`);
     }
 
-    for (const invalidLiteral of ['1f', '2h', '0xC.8']) {
+    for (const invalidLiteral of [
+      '1f',
+      '2h',
+      '0xC.8',
+      '1.0hF',
+      '1.0fH',
+      '1.0lF',
+      '1.0fL',
+      '09',
+      '018',
+    ]) {
       assert.doesNotMatch(
         invalidLiteral,
         wholeWord,
