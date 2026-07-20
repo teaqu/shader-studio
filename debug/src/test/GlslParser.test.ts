@@ -718,4 +718,27 @@ describe("GlslParser", () => {
     });
   });
 
+  describe("getFunctions", () => {
+    it("returns all function definitions with line ranges", () => {
+      const lines = [
+        "float sdf(vec3 p) {",
+        "  return length(p) - 1.0;",
+        "}",
+        "",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(sdf(vec3(fragCoord, 0.0)));",
+        "}",
+      ];
+      const functions = GlslParser.getFunctions(lines);
+      expect(functions.map((f) => f.name)).toEqual(["sdf", "mainImage"]);
+      expect(functions[0].start).toBe(0);
+      expect(functions[0].end).toBe(2);
+      expect(functions[1].start).toBe(4);
+    });
+
+    it("returns empty array for unparseable source", () => {
+      expect(GlslParser.getFunctions(["float ("])).toEqual([]);
+    });
+  });
+
 });
