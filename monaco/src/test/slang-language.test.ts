@@ -104,6 +104,45 @@ function matchesWhole(pattern: RegExp, value: string): boolean {
   return new RegExp(`^(?:${pattern.source})$`).test(value);
 }
 
+interface TokenRange {
+  start: number;
+  end: number;
+}
+
+function regexRanges(pattern: RegExp, source: string): TokenRange[] {
+  const flags = `${pattern.flags.replaceAll('g', '')}g`;
+  return [...source.matchAll(new RegExp(pattern.source, flags))].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+function dottedNumberCorpus(): string[] {
+  const cases = new Set([
+    '1.2.3', '1.2.3f', '1.2.3UL', 'foo.5',
+    '1.2.', '.5.', 'foo.5.', '1.2f.', '.5h.',
+    '.5', '1.', '1.2', '1e3f', '0xFFu',
+  ]);
+  const segmentChains = [
+    ['0', '0'],
+    ['5', '6'],
+    ['0', '0', '0'],
+    ['5', '6', '0', '5'],
+  ];
+
+  for (const segments of segmentChains) {
+    for (const suffix of ['', 'f', 'UL']) {
+      for (const trailingDot of ['', '.']) {
+        const chain = `${segments.join('.')}${suffix}${trailingDot}`;
+        cases.add(`.${chain}`);
+        cases.add(`1.${chain}`);
+        for (const identifier of ['a', 'foo']) cases.add(`${identifier}.${chain}`);
+      }
+    }
+  }
+  return [...cases];
+}
+
 describe('Slang Monarch language', () => {
   it('defines the same concrete vocabulary families as the extension grammar', () => {
     expect(sorted(slangControlKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.control.slang')));
@@ -179,7 +218,7 @@ describe('Slang Monarch language', () => {
     }
   });
 
-  it('uses Monaco tokenization to reject combined invalid numbers without rejecting valid forms', async () => {
+  it('keeps actual Monaco number ranges aligned with full-source TextMate semantics', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,
       addEventListener: vi.fn(),
@@ -189,19 +228,66 @@ describe('Slang Monarch language', () => {
     const { setupMonacoSlang } = await import('../setup');
     setupMonacoSlang(monaco);
 
-    const tokenTypes = (source: string) => monaco.editor.tokenize(source, 'slang')[0]
-      .map((token) => token.type);
+    const textMateNumbers = grammar.repository.numbers.patterns!
+      .map((entry) => new RegExp(entry.match));
+    const standaloneDiscrepancies: Array<{
+      source: string;
+      expected: TokenRange[];
+      actual: TokenRange[];
+    }> = [];
+    const monacoDiscrepancies: Array<{
+      source: string;
+      expected: TokenRange[];
+      actual: TokenRange[];
+    }> = [];
+    const invalidChainDiscrepancies: Array<{
+      source: string;
+      actual: TokenRange[];
+    }> = [];
 
-    const invalidNumbers = [
-      '1.2.3', '1.2.3f', '1.2.3UL', 'foo.5',
-      '1.2.', '.5.', 'foo.5.', '1.2f.', '.5h.',
-    ];
-    for (const invalid of invalidNumbers) {
-      expect(tokenTypes(invalid), invalid).not.toContain('number.slang');
+    for (const source of dottedNumberCorpus()) {
+      const expected = regexRanges(slangNumberPattern, source);
+      const textMate = textMateNumbers.flatMap((pattern) => regexRanges(pattern, source))
+        .sort((a, b) => a.start - b.start);
+      if (JSON.stringify(expected) !== JSON.stringify(textMate)) {
+        standaloneDiscrepancies.push({ source, expected: textMate, actual: expected });
+      }
+
+      const tokens = monaco.editor.tokenize(source, 'slang')[0];
+      const actual = tokens.flatMap((token, index) => token.type === 'number.slang' ? [{
+        start: token.offset,
+        end: tokens[index + 1]?.offset ?? source.length,
+      }] : []);
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        monacoDiscrepancies.push({ source, expected, actual });
+      }
+      if (expected.length === 0) {
+        const invalidRanges = tokens.flatMap((token, index) => token.type === 'invalid.slang' ? [{
+          start: token.offset,
+          end: tokens[index + 1]?.offset ?? source.length,
+        }] : []);
+        if (JSON.stringify(invalidRanges) !== JSON.stringify([{ start: 0, end: source.length }])) {
+          invalidChainDiscrepancies.push({ source, actual: invalidRanges });
+        }
+      }
     }
-    for (const valid of ['.5', '1.', '42UL', '0xCA\'FEu', '1\'000.25e-2f']) {
-      expect(tokenTypes(valid), valid).toContain('number.slang');
+
+    for (const memberAccess of ['a.foo', 'foo.bar.baz']) {
+      const tokenTypes = monaco.editor.tokenize(memberAccess, 'slang')[0].map((token) => token.type);
+      expect(tokenTypes, memberAccess).not.toContain('invalid.slang');
     }
+
+    const discrepancyCount = standaloneDiscrepancies.length
+      + monacoDiscrepancies.length
+      + invalidChainDiscrepancies.length;
+    expect(
+      { standaloneDiscrepancies, monacoDiscrepancies, invalidChainDiscrepancies },
+      `${discrepancyCount} dotted-number range discrepancies`,
+    ).toEqual({
+      standaloneDiscrepancies: [],
+      monacoDiscrepancies: [],
+      invalidChainDiscrepancies: [],
+    });
   });
 });
 

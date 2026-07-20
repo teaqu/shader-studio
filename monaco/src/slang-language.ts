@@ -77,19 +77,22 @@ const decimalFloat = [
   `${separatedDigits}[fFhH]`,
 ].join('|');
 const decimalInteger = `${separatedDigits}${integerSuffix}`;
+const numberBody = `(?:${hexadecimal}|${binary}|${decimalFloat}|${decimalInteger})`;
 
 export const slangNumberPattern = new RegExp(
-  `(?:${hexadecimal}|${binary}|${decimalFloat}|${decimalInteger})(?![\\w.])`,
+  `(?<![\\w.])${numberBody}(?![\\w.])`,
 );
-const invalidTrailingDotNumberPattern = new RegExp(
-  `(?:${identifier}|${separatedDigits})?\\.${separatedDigits}(?:${exponent})?[fFhH]?\\.`,
+// Monarch matches each rule against the unconsumed line suffix, so it cannot
+// observe the preceding character. Consume malformed chains first, then use a
+// right-bounded valid matcher for the remaining standalone numeric forms.
+const slangMonarchNumberPattern = new RegExp(`${numberBody}(?![\\w.])`);
+const invalidNumberSuffix = '[fFhHuUlL]*';
+const invalidIdentifierNumberChainPattern = new RegExp(
+  `${identifier}(?:\\.${separatedDigits})+${invalidNumberSuffix}\\.?(?![\\w.])`,
 );
-const invalidMemberNumberPattern = new RegExp(
-  `${identifier}\\.${separatedDigits}(?:${exponent})?[fFhH]?(?![\\w.])`,
-);
-const invalidDottedNumberPattern = new RegExp(
-  `(?:${separatedDigits})?\\.(?:${separatedDigits})?\\.${separatedDigits}(?:\\.${separatedDigits})*`
-    + `(?:${exponent})?[fFhHuUlL]*(?![\\w.])`,
+const invalidDottedNumberChainPattern = new RegExp(
+  `(?:(?:${separatedDigits})?\\.${separatedDigits}(?:\\.${separatedDigits})+${invalidNumberSuffix}\\.?`
+    + `|(?:${separatedDigits})?\\.${separatedDigits}${invalidNumberSuffix}\\.)(?![\\w.])`,
 );
 
 /** Slang Monarch definition. Kept separate from GLSL so both languages coexist. */
@@ -111,9 +114,8 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
     root: [
       [slangPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
-      [invalidDottedNumberPattern, 'invalid'],
-      [invalidTrailingDotNumberPattern, 'invalid'],
-      [invalidMemberNumberPattern, 'invalid'],
+      [invalidIdentifierNumberChainPattern, 'invalid'],
+      [invalidDottedNumberChainPattern, 'invalid'],
       [/[a-zA-Z_]\w*/, {
         cases: {
           '@types': 'type',
@@ -129,7 +131,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [/'([^'\\]|\\.)*$/, 'string.invalid'],
       [/"/, 'string', '@stringDouble'],
       [/'/, 'string', '@stringSingle'],
-      [slangNumberPattern, 'number'],
+      [slangMonarchNumberPattern, 'number'],
       [/[{}()\[\]]/, '@brackets'],
       [/@symbols/, { cases: { '@operators': 'operator', '@default': '' } }],
       [/[;,.]/, 'delimiter'],
