@@ -248,6 +248,7 @@ describe('SlangMonacoAdapter', () => {
     });
 
     expect(helper.getValue()).toBe('float changed(){}');
+    expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(helper, 'slang-language', []);
   });
 
   it('removes absent clean dependency models and releases their markers and ownership', async () => {
@@ -608,6 +609,61 @@ describe('SlangMonacoAdapter', () => {
     expect(monaco.editor.createModel).toHaveBeenCalledTimes(2);
     expect(links?.[0].uri.toString()).toBe('file:///project/lib/helper.slang');
     expect(links?.[0].range).toEqual(expect.objectContaining({ startLineNumber: 5, startColumn: 2 }));
+  });
+
+  it('opens and diagnoses an adapter-created dependency when an editor acquires it', async () => {
+    const monaco = createMonaco();
+    const client = createClient();
+    client.diagnostics.mockResolvedValue([{
+      code: '30001', severity: 1, message: 'dependency error',
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } },
+    }]);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    const helper = adapter.getOrCreateModel('file:///project/lib/helper.slang')!;
+    expect(client.diagnostics).not.toHaveBeenCalled();
+
+    const editorModel = acquireEditorModel(monaco as never, helper.uri.toString(), helper.getValue(), 'slang');
+    await adapter.waitForOwnershipReconciliation();
+
+    expect(client.openDocument).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///project/lib/helper.slang' }));
+    expect(client.diagnostics).toHaveBeenCalledWith('file:///project/lib/helper.slang', helper.getVersionId());
+    expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
+      helper,
+      'slang-language',
+      [expect.objectContaining({ message: 'dependency error' })],
+    );
+    releaseEditorModel(monaco as never, editorModel);
+    adapter.dispose();
+  });
+
+  it('refreshes and clears diagnostics after replacing a snapshot for an editor-owned model', async () => {
+    const monaco = createMonaco();
+    const rootOwner = acquireEditorModel(monaco as never, snapshot.files[0].uri, snapshot.files[0].source, 'slang');
+    const client = createClient();
+    client.diagnostics
+      .mockResolvedValueOnce([{
+        code: '1', severity: 1, message: 'old error',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      }])
+      .mockResolvedValueOnce([]);
+    const adapter = new SlangMonacoAdapter(monaco as never, client);
+    await adapter.setWorkspace(snapshot);
+    await adapter.waitForOwnershipReconciliation();
+    monaco.editor.setModelMarkers.mockClear();
+
+    await adapter.setWorkspace({
+      ...snapshot,
+      files: snapshot.files.map((file) => file.uri.endsWith('main.slang')
+        ? { ...file, source: `${file.source} // fixed on disk` }
+        : file),
+    });
+
+    expect(client.replaceFiles).toHaveBeenCalledTimes(1);
+    expect(client.diagnostics).toHaveBeenCalledTimes(2);
+    expect(monaco.editor.setModelMarkers).toHaveBeenLastCalledWith(rootOwner, 'slang-language', []);
+    releaseEditorModel(monaco as never, rootOwner);
+    adapter.dispose();
   });
 
   it('drops cancelled and stale asynchronous results', async () => {

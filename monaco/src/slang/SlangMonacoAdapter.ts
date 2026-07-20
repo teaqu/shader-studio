@@ -154,6 +154,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
   private readonly ownershipSubscription: Monaco.IDisposable;
   private readonly disposables: Monaco.IDisposable[];
   private ownershipReconciliation: Promise<void> = Promise.resolve();
+  private creatingSnapshotModels = false;
   private disposed = false;
 
   constructor(
@@ -272,6 +273,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
           state.applyingSnapshot = false;
           state.baselineSource = nextFile.source;
           state.dirty = false;
+          this.clearLanguageMarkers(state.model);
         }
       }
       await this.client.replaceFiles(canonicalSnapshot);
@@ -283,10 +285,16 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     }
     await this.sweepAbsentStates();
     if (options.createDependencyModels !== false) {
-      for (const file of this.snapshot.files) {
-        this.getOrCreateModel(file.uri);
+      this.creatingSnapshotModels = true;
+      try {
+        for (const file of this.snapshot.files) {
+          this.getOrCreateModel(file.uri);
+        }
+      } finally {
+        this.creatingSnapshotModels = false;
       }
     }
+    await this.refreshOwnedModelDiagnostics();
   }
 
   async replaceWorkspace(snapshot: SlangWorkspaceSnapshot): Promise<void> {
@@ -303,6 +311,7 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       this.files.set(file.uri, file);
     }
     await this.client.replaceFiles(this.snapshot);
+    await this.refreshOwnedModelDiagnostics();
   }
 
   getOrCreateModel(inputUri: string, source?: string): Monaco.editor.ITextModel | undefined {
@@ -341,11 +350,8 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
       );
     });
     this.models.set(uri, state);
-    if (getEditorModelOwnerReferenceCount(this.monaco, model, { excludingKind: 'adapter' }) > 0) {
-      void this.ensureDocumentReady(state).then(
-        () => this.refreshDiagnostics(model),
-        () => undefined,
-      );
+    if (!this.creatingSnapshotModels && this.hasNonAdapterOwners(state)) {
+      this.enqueueOwnedModelDiagnostics(state);
     }
     return model;
   }
@@ -575,11 +581,38 @@ export class SlangMonacoAdapter implements Monaco.languages.CompletionItemProvid
     }
     const uri = canonicalModelUri(change.uri);
     const state = this.models.get(uri);
-    if (!state || state.model !== change.model || this.files.has(uri) || this.hasNonAdapterOwners(state)) {
+    if (!state || state.model !== change.model) {
+      return;
+    }
+    if (this.hasNonAdapterOwners(state)) {
+      this.enqueueOwnedModelDiagnostics(state);
+      return;
+    }
+    if (this.files.has(uri)) {
       return;
     }
     const cleanup = this.ownershipReconciliation.then(() => this.cleanupAbsentState(uri));
     this.ownershipReconciliation = cleanup.catch(() => undefined);
+  }
+
+  private enqueueOwnedModelDiagnostics(state: ModelState): void {
+    const refresh = this.ownershipReconciliation.then(async () => {
+      if (
+        this.disposed || this.models.get(state.uri) !== state ||
+        state.model.isDisposed() || !this.hasNonAdapterOwners(state)
+      ) {
+        return;
+      }
+      await this.refreshDiagnostics(state.model);
+    });
+    this.ownershipReconciliation = refresh.catch(() => undefined);
+  }
+
+  private async refreshOwnedModelDiagnostics(): Promise<void> {
+    const refreshes = [...this.models.values()]
+      .filter((state) => this.hasNonAdapterOwners(state))
+      .map((state) => this.refreshDiagnostics(state.model));
+    await Promise.allSettled(refreshes);
   }
 
   private async cleanupAbsentState(uri: string): Promise<void> {
