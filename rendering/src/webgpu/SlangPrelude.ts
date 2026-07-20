@@ -1,3 +1,5 @@
+import { splitSlangRootHeader } from "@shader-studio/slang-language-service";
+
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
 //
 // A user `.slang` image shader defines:
@@ -296,6 +298,7 @@ ${objectAccessor}
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
+  const { header, body } = splitSlangRootHeader(userSource);
   const prelude = buildPrelude(options.customUniforms);
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
@@ -303,10 +306,10 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     // Capture uniforms bind right after the channel texture/sampler pairs.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${header}${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${body}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${header}${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${body}\n${ENTRY_POINTS}`;
 }

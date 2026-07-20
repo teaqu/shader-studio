@@ -6,9 +6,21 @@ export interface BaseMessage {
   type: string;
 }
 
+/** Identifies one independently replaceable stream of compiler diagnostics. */
+export interface CompileDiagnosticScope {
+  /** Canonical file URIs for the shader roots represented by this result. */
+  rootUris: string[];
+  /** Preview/editor owner when multiple consumers compile the same root. */
+  ownerId?: string;
+  /** Monotonic generation used to reject out-of-order results within the scope. */
+  generationId?: number;
+}
+
 export interface LogMessage extends BaseMessage {
   type: "log";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface DebugMessage extends BaseMessage {
@@ -19,6 +31,8 @@ export interface DebugMessage extends BaseMessage {
 export interface ErrorMessage extends BaseMessage {
   type: "error";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface WarningMessage extends BaseMessage {
@@ -47,14 +61,63 @@ export interface ShowConfigMessage extends BaseMessage {
   };
 }
 
+export interface SlangPosition {
+  line: number;
+  character: number;
+}
+
+export interface SlangRange {
+  start: SlangPosition;
+  end: SlangPosition;
+}
+
+export interface SlangWorkspaceFile {
+  uri: string;
+  path: string;
+  source: string;
+  version?: number;
+}
+
+export interface SlangWorkspaceSnapshot {
+  rootUri: string;
+  files: SlangWorkspaceFile[];
+}
+
+export interface SlangDiagnostic {
+  uri: string;
+  range: SlangRange;
+  severity: "error" | "warning" | "information" | "hint";
+  code?: string;
+  message: string;
+  source: "slang-language" | "slang-compile" | "webgpu";
+  passName?: string;
+}
+
+export interface ShaderCompileGeneration {
+  id: number;
+  rootIndex: number;
+  rootCount: number;
+  rootPath: string;
+}
+
 export interface ShaderSourceMessage extends BaseMessage {
   type: "shaderSource";
+  /** Scope used to replace only diagnostics produced by this compile stream. */
+  compileScope?: CompileDiagnosticScope;
+  /** Monotonic extension request identifier used to discard stale async results. */
+  requestId?: number;
   code: string;
   config: any;
   path: string;
   buffers: Record<string, string>;
   /** Shader source language. Defaults to "glsl" when absent. */
   language?: "glsl" | "slang";
+  /** Slang workspace files. Optional for GLSL and older clients. */
+  workspace?: SlangWorkspaceSnapshot;
+  /** Structured Slang/WebGPU diagnostics. Optional for older clients. */
+  diagnostics?: SlangDiagnostic[];
+  /** Groups dependency-driven root recompiles caused by one source event. */
+  compileGeneration?: ShaderCompileGeneration;
   reload?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;

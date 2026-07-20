@@ -1,6 +1,18 @@
 import {
+  normalizeInternalPath,
+  releaseWorkspaceFileSystem,
+  syncWorkspaceToFileSystem,
+  type SlangDiagnostic,
+  type SlangWorkspaceSnapshot,
+} from "@shader-studio/slang-language-service";
+import {
   type SlangModuleApi,
+  type SlangClassHandle,
+  type SlangComponentType,
+  type SlangEntryPoint,
   type SlangGlobalSession,
+  type SlangModule,
+  type SlangSession,
   slangVectorToArray,
 } from "./slangTypes";
 import {
@@ -11,10 +23,18 @@ import {
 } from "./SlangPrelude";
 
 export type SlangCompileResult =
-  | { success: true; wgsl: string }
-  | { success: false; errors: string[] };
+  | { success: true; wgsl: string; diagnostics: SlangDiagnostic[] }
+  | { success: false; errors: string[]; diagnostics: SlangDiagnostic[] };
 
 export type SlangCompileOptions = SlangWrapOptions;
+
+export interface SlangCompileRequest {
+  source: string;
+  sourceUri: string;
+  sourcePath: string;
+  workspace: SlangWorkspaceSnapshot;
+  options: SlangCompileOptions;
+}
 
 /**
  * Compiles user `.slang` image-shader source to WGSL via slang-wasm.
@@ -26,61 +46,98 @@ export type SlangCompileOptions = SlangWrapOptions;
 export class SlangCompiler {
   private globalSession: SlangGlobalSession | null = null;
   private wgslTargetValue: number | null = null;
+  private readonly mountedPaths = new Set<string>();
+  private readonly diagnosticAliases = new Map<string, string>();
 
   constructor(private slang: SlangModuleApi) {}
 
-  /** Compile a single image pass. Never throws — failures come back as errors. */
-  public compileImagePass(
-    userSource: string,
-    options: SlangCompileOptions = {},
-  ): SlangCompileResult {
+  public compile(request: SlangCompileRequest): SlangCompileResult {
+    this.diagnosticAliases.clear();
+    try {
+      syncWorkspaceToFileSystem(
+        this.slang.FS,
+        request.workspace,
+        new Map(),
+        this.mountedPaths,
+      );
+      // Native Slang imports are separate translation units and therefore
+      // choose their own language mode (directive-free means legacy). Textual
+      // includes inherit their includer's mode. Preserve dependency bytes
+      // exactly; injecting a language header here would break that distinction.
+      this.mountWorkspaceRootCandidates(request);
+    } catch (error) {
+      return this.failure(errMessage(error), request);
+    }
+
     let globalSession: SlangGlobalSession;
     let target: number;
     try {
       ({ globalSession, target } = this.ensureGlobalSession());
-    } catch (e) {
-      return { success: false, errors: [errMessage(e)] };
+    } catch (error) {
+      return this.failure(errMessage(error), request);
     }
 
-    const session = globalSession.createSession(target);
-    if (!session) {
-      return { success: false, errors: [this.lastError("Slang: failed to create session")] };
-    }
+    let session: SlangSession | null = null;
+    let module: SlangModule | null = null;
+    let vs: SlangEntryPoint | null = null;
+    let fs: SlangEntryPoint | null = null;
+    let composite: SlangComponentType | null = null;
+    let linked: SlangComponentType | null = null;
+    try {
+      session = globalSession.createSession(target);
+      if (!session) {
+        return this.failure(this.lastError("Slang: failed to create session"), request);
+      }
 
-    const wrapped = wrapSlangImageSource(userSource, options);
-    // Name the module after the pass so Slang diagnostics cite the right
-    // file (e.g. /buffera.slang) rather than always claiming /image.slang.
-    const moduleName = (options.passName ?? "image").toLowerCase();
-    const module = session.loadModuleFromSource(wrapped, moduleName, `/${moduleName}.slang`);
-    if (!module) {
-      return { success: false, errors: [this.lastError("Slang: failed to compile module")] };
-    }
+      let sourcePath: string;
+      try {
+        sourcePath = normalizeInternalPath(request.sourcePath);
+      } catch (error) {
+        return this.failure(errMessage(error), request);
+      }
+      const wrapped = wrapSlangImageSource(request.source, request.options);
+      const moduleName = sourcePath.slice(sourcePath.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "") || "image";
+      module = session.loadModuleFromSource(wrapped, moduleName, sourcePath);
+      if (!module) {
+        return this.failure(this.lastError("Slang: failed to compile module"), request);
+      }
 
-    const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
-    const fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
-    if (!vs || !fs) {
-      return {
-        success: false,
-        errors: ["Slang: entry points not found (is `mainImage` defined?)"],
-      };
-    }
+      vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
+      fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
+      if (!vs || !fs) {
+        return this.failure("Slang: entry points not found (is `mainImage` defined?)", request);
+      }
 
-    const composite = session.createCompositeComponentType([module, vs, fs]);
-    if (!composite) {
-      return { success: false, errors: [this.lastError("Slang: failed to compose program")] };
-    }
+      composite = session.createCompositeComponentType([module, vs, fs]);
+      if (!composite) {
+        return this.failure(this.lastError("Slang: failed to compose program"), request);
+      }
 
-    const linked = composite.link();
-    if (!linked) {
-      return { success: false, errors: [this.lastError("Slang: failed to link program")] };
-    }
+      linked = composite.link();
+      if (!linked) {
+        return this.failure(this.lastError("Slang: failed to link program"), request);
+      }
 
-    const wgsl = linked.getTargetCode(0);
-    if (!wgsl) {
-      return { success: false, errors: [this.lastError("Slang: produced empty WGSL")] };
-    }
+      const wgsl = linked.getTargetCode(0);
+      if (!wgsl) {
+        return this.failure(this.lastError("Slang: produced empty WGSL"), request);
+      }
 
-    return { success: true, wgsl };
+      return { success: true, wgsl, diagnostics: [] };
+    } finally {
+      deleteDistinctHandles([linked, composite, fs, vs, module, session]);
+    }
+  }
+
+  public dispose(): void {
+    const globalSession = this.globalSession;
+    this.globalSession = null;
+    this.wgslTargetValue = null;
+    try {
+      globalSession?.delete();
+    } finally {
+      releaseWorkspaceFileSystem(this.slang.FS, this.mountedPaths);
+    }
   }
 
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
@@ -93,23 +150,209 @@ export class SlangCompiler {
       throw new Error("Slang: createGlobalSession returned null");
     }
 
-    const targets = slangVectorToArray(this.slang.getCompileTargets());
-    const wgsl = targets.find((t) => /wgsl/i.test(t.name));
-    if (!wgsl) {
-      throw new Error(
-        `Slang: no WGSL compile target (available: ${targets.map((t) => t.name).join(", ") || "none"})`,
-      );
-    }
+    try {
+      const targets = slangVectorToArray(this.slang.getCompileTargets());
+      const wgsl = targets.find((t) => /wgsl/i.test(t.name));
+      if (!wgsl) {
+        throw new Error(
+          `Slang: no WGSL compile target (available: ${targets.map((t) => t.name).join(", ") || "none"})`,
+        );
+      }
 
-    this.globalSession = globalSession;
-    this.wgslTargetValue = wgsl.value;
-    return { globalSession, target: wgsl.value };
+      this.globalSession = globalSession;
+      this.wgslTargetValue = wgsl.value;
+      return { globalSession, target: wgsl.value };
+    } catch (error) {
+      globalSession.delete();
+      throw error;
+    }
   }
 
   private lastError(fallback: string): string {
     const msg = this.slang.getLastError?.()?.message?.trim();
     return msg && msg.length > 0 ? msg : fallback;
   }
+
+  private failure(message: string, request: SlangCompileRequest): SlangCompileResult {
+    return {
+      success: false,
+      errors: [message],
+      diagnostics: parseSlangDiagnostics(message, request, this.diagnosticAliases),
+    };
+  }
+
+  private mountWorkspaceRootCandidates(request: SlangCompileRequest): void {
+    const sourcePath = normalizeInternalPath(request.sourcePath);
+    const sourceDirectory = parentPath(sourcePath);
+    if (sourceDirectory === "/workspace") {
+      return;
+    }
+
+    const files = request.workspace.files
+      .map((file) => ({ ...file, path: normalizeInternalPath(file.path) }))
+      .filter((file) => file.path.toLowerCase().endsWith(".slang"))
+      .sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    const actualPaths = new Set(files.map((file) => file.path));
+
+    // The generated WASM binding exposes GlobalSession.createSession(target)
+    // only; SessionDesc.searchPaths is not bound. Project workspace-root
+    // module candidates into the root source directory so Slang's native lazy
+    // loader sees the same local-first/root-second candidates as the graph.
+    // Real local files always win and every projection is tracked as owned so
+    // the next snapshot synchronization removes stale aliases.
+    for (const file of files) {
+      if (file.path.startsWith(`${sourceDirectory}/`)) {
+        continue;
+      }
+      const relativePath = file.path.slice("/workspace/".length);
+      const aliasPath = normalizeInternalPath(`${sourceDirectory}/${relativePath}`);
+      if (aliasPath === file.path || actualPaths.has(aliasPath)) {
+        continue;
+      }
+      this.mountedPaths.add(aliasPath);
+      this.slang.FS.mkdirTree(parentPath(aliasPath));
+      this.slang.FS.writeFile(aliasPath, file.source);
+      this.diagnosticAliases.set(aliasPath, file.uri);
+    }
+  }
+}
+
+function deleteDistinctHandles(handles: Array<SlangClassHandle | null>): void {
+  const distinct: SlangClassHandle[] = [];
+  for (const handle of handles) {
+    if (!handle || distinct.some((other) => handlesAlias(handle, other))) {
+      continue;
+    }
+    distinct.push(handle);
+  }
+  // Alias checks must happen while every Embind handle is still live: calling
+  // isAliasOf() with an already-deleted wrapper itself raises a binding error.
+  let firstError: unknown;
+  for (const handle of distinct) {
+    try {
+      handle.delete();
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+  if (firstError !== undefined) {
+    throw firstError;
+  }
+}
+
+function handlesAlias(left: SlangClassHandle, right: SlangClassHandle): boolean {
+  return left === right || left.isAliasOf(right) || right.isAliasOf(left);
+}
+
+const DIAGNOSTIC_ENVELOPE = /^(.*?)\((\d+),(\d+)\):\s*(error|warning|note|info)(?:\s+([A-Za-z]?\d+))?\s*:\s*(.*)$/;
+const MODERN_DIAGNOSTIC_HEADER = /^(error|warning|note|info)(?:\[([^\]]+)\])?:\s*(.*)$/;
+const MODERN_DIAGNOSTIC_LOCATION = /^\s*-->\s+(.+):(\d+):(\d+)\s*$/;
+
+export function parseSlangDiagnostics(
+  raw: string,
+  request: Pick<SlangCompileRequest, "sourceUri" | "workspace" | "options">,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): SlangDiagnostic[] {
+  const uriByPath = new Map<string, string>();
+  for (const file of request.workspace.files) {
+    try {
+      uriByPath.set(normalizeInternalPath(file.path), file.uri);
+    } catch {
+      // A malformed snapshot is reported against the root request rather than
+      // allowing diagnostic formatting itself to throw.
+    }
+  }
+  for (const [path, uri] of aliases) {
+    uriByPath.set(path, uri);
+  }
+  const diagnostics: SlangDiagnostic[] = [];
+  const lines = raw.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const modernHeader = MODERN_DIAGNOSTIC_HEADER.exec(line);
+    const modernLocation = modernHeader ? MODERN_DIAGNOSTIC_LOCATION.exec(lines[index + 1] ?? "") : null;
+    if (modernHeader && modernLocation) {
+      diagnostics.push(createDiagnostic(
+        modernLocation[1],
+        modernLocation[2],
+        modernLocation[3],
+        modernHeader[1],
+        modernHeader[2],
+        modernHeader[3],
+        uriByPath,
+        request,
+      ));
+      index += 1;
+      continue;
+    }
+    const match = DIAGNOSTIC_ENVELOPE.exec(line);
+    if (!match) {
+      continue;
+    }
+    diagnostics.push(createDiagnostic(
+      match[1],
+      match[2],
+      match[3],
+      match[4],
+      match[5],
+      match[6],
+      uriByPath,
+      request,
+    ));
+  }
+  if (diagnostics.length > 0) {
+    return diagnostics;
+  }
+  return [{
+    uri: request.sourceUri,
+    range: {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 0 },
+    },
+    severity: "error",
+    message: raw,
+    source: "slang-compile",
+    ...(request.options.passName ? { passName: request.options.passName } : {}),
+  }];
+}
+
+function parentPath(path: string): string {
+  const separator = path.lastIndexOf("/");
+  return separator <= 0 ? "/" : path.slice(0, separator);
+}
+
+function createDiagnostic(
+  rawPath: string,
+  rawLine: string,
+  rawCharacter: string,
+  rawSeverity: string,
+  code: string | undefined,
+  message: string,
+  uriByPath: ReadonlyMap<string, string>,
+  request: Pick<SlangCompileRequest, "sourceUri" | "options">,
+): SlangDiagnostic {
+  let path: string | undefined;
+  try {
+    path = normalizeInternalPath(rawPath);
+  } catch {
+    path = undefined;
+  }
+  const line = Math.max(0, Number(rawLine) - 1);
+  const character = Math.max(0, Number(rawCharacter) - 1);
+  const severity = rawSeverity === "warning"
+    ? "warning" as const
+    : rawSeverity === "note" || rawSeverity === "info"
+      ? "information" as const
+      : "error" as const;
+  return {
+    uri: path ? uriByPath.get(path) ?? request.sourceUri : request.sourceUri,
+    range: { start: { line, character }, end: { line, character } },
+    severity,
+    ...(code ? { code } : {}),
+    message,
+    source: "slang-compile",
+    ...(request.options.passName ? { passName: request.options.passName } : {}),
+  };
 }
 
 function errMessage(e: unknown): string {

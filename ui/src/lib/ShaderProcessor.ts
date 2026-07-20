@@ -1,11 +1,12 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
-import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
+import type { ShaderSourceMessage, ShaderConfig, SlangDiagnostic } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
   errors?: string[];
   warnings?: string[];
+  diagnostics?: SlangDiagnostic[];
   superseded?: true;
 }
 
@@ -50,14 +51,17 @@ export class ShaderProcessor {
       const debugState = this.shaderDebugManager.getState();
       const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(code, config ?? null);
       const buffersToCompile = this.getCompileBuffers(buffers, debugState.activeBufferName, codeToCompile, code);
-      const result = await this.renderEngine.compileShaderPipeline(
+      const compileArgs = [
         codeToCompile,
         configToCompile,
         path,
         buffersToCompile,
         message.customUniformDeclarations,
         message.customUniformInfo,
-      );
+      ] as const;
+      const result = message.workspace
+        ? await this.renderEngine.compileShaderPipeline(...compileArgs, message.workspace)
+        : await this.renderEngine.compileShaderPipeline(...compileArgs);
 
       // Handle compilation failure
       if (result?.superseded) {
@@ -70,7 +74,7 @@ export class ShaderProcessor {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
-          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo);
+          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo, message.workspace);
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
@@ -79,7 +83,8 @@ export class ShaderProcessor {
 
         return {
           success: false,
-          errors: result?.errors || ["Unknown compilation error"]
+          errors: result?.errors || ["Unknown compilation error"],
+          diagnostics: result?.diagnostics,
         };
       }
 
@@ -92,6 +97,7 @@ export class ShaderProcessor {
       return {
         success: true,
         warnings: warnings.length > 0 ? warnings : undefined,
+        diagnostics: result.diagnostics,
       };
     } catch (err) {
       console.error("ShaderProcessor: Error in processMainShaderCompilation:", err);
@@ -141,15 +147,19 @@ export class ShaderProcessor {
     buffers: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: ShaderSourceMessage["workspace"],
   ): Promise<CompilationResult> {
-    const result = await this.renderEngine.compileShaderPipeline(
+    const compileArgs = [
       code,
       config,
       path,
       buffers,
       customUniformDeclarations,
       customUniformInfo,
-    );
+    ] as const;
+    const result = workspace
+      ? await this.renderEngine.compileShaderPipeline(...compileArgs, workspace)
+      : await this.renderEngine.compileShaderPipeline(...compileArgs);
 
     if (result?.superseded) {
       return this.supersededResult(result.errors);
@@ -158,13 +168,15 @@ export class ShaderProcessor {
     if (!result?.success) {
       return {
         success: false,
-        errors: result?.errors || ["Unknown compilation error"]
+        errors: result?.errors || ["Unknown compilation error"],
+        diagnostics: result?.diagnostics,
       };
     }
 
     return {
       success: true,
-      warnings: result.warnings
+      warnings: result.warnings,
+      diagnostics: result.diagnostics,
     };
   }
 
@@ -232,14 +244,18 @@ export class ShaderProcessor {
     );
 
     // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
+    let result = await this.compile(
+      codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo, message.workspace,
+    );
 
     // If failed and modified code was used, try original
     if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
-      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo);
+      result = await this.compile(
+        this.imageShaderCode, config, path, buffers, cuDecl, cuInfo, message.workspace,
+      );
     }
 
     // Start render loop if compilation succeeded

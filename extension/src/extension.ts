@@ -5,6 +5,7 @@ import { applySnippetContributionSetting } from "./app/SnippetContributionSettin
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
 import { openSlangSpikePanel } from "./app/SlangSpikePanel";
+import { registerSlangLanguageFeatures } from "./language/registerSlangLanguageFeatures";
 
 let shaderExtension: ShaderStudio | undefined;
 
@@ -19,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
     "shader-studio",
   );
   context.subscriptions.push(diagnosticCollection);
+  registerSlangLanguageFeatures(context);
 
   // Listen for configuration changes that require restart
   context.subscriptions.push(

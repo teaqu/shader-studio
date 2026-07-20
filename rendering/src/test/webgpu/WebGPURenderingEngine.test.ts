@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
@@ -7,6 +7,7 @@ import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import type { RenderPassNode } from "../../types/PassGraph";
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
@@ -70,6 +71,82 @@ function lifecycleDevice() {
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
+  });
+
+  const findPassSourceFile = (
+    pass: RenderPassNode,
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot,
+  ) => (WebGPURenderingEngine as unknown as {
+    findPassSourceFile(
+      pass: RenderPassNode,
+      shaderPath: string,
+      workspace: SlangWorkspaceSnapshot,
+    ): SlangWorkspaceSnapshot["files"][number] | undefined;
+  }).findPassSourceFile(pass, shaderPath, workspace);
+
+  it("resolves Windows source paths case-insensitively from canonical snapshot identity", () => {
+    const file = {
+      uri: "file:///C:/Project/My%20Shader.slang",
+      path: "/workspace/My Shader.slang",
+      source: "snapshot source",
+    };
+    const workspace = { rootUri: "file:///C:/Project", files: [file] };
+    const pass: RenderPassNode = {
+      name: "Image", source: "edited source", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "c:\\project\\My Shader.slang", workspace)).toBe(file);
+  });
+
+  it("resolves @/ configured pass paths against the workspace root", () => {
+    const file = {
+      uri: "file:///project/passes/My%20Buffer.slang",
+      path: "/workspace/passes/My Buffer.slang",
+      source: "snapshot buffer source",
+    };
+    const workspace = { rootUri: "file:///project", files: [file] };
+    const pass: RenderPassNode = {
+      name: "BufferA", path: "@/passes/My Buffer.slang", source: "edited buffer source",
+      output: "texture", width: 1, height: 1, channels: [],
+    };
+    expect(findPassSourceFile(pass, "/project/image.slang", workspace)).toBe(file);
+  });
+
+  it("does not guess source identity from equal text or similar names", () => {
+    const workspace: SlangWorkspaceSnapshot = {
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/image-old.slang", path: "/workspace/image-old.slang", source: "duplicate" },
+        { uri: "file:///project/image-copy.slang", path: "/workspace/image-copy.slang", source: "duplicate" },
+      ],
+    };
+    const pass: RenderPassNode = {
+      name: "Image", source: "duplicate", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "/project/missing.slang", workspace)).toBeUndefined();
+  });
+
+  it("selects the exact encoded-space URI among duplicate-source files", () => {
+    const expected = {
+      uri: "file:///project/My%20Shader.slang",
+      path: "/workspace/My Shader.slang",
+      source: "snapshot source",
+    };
+    const workspace: SlangWorkspaceSnapshot = {
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/MyShader.slang", path: "/workspace/MyShader.slang", source: "duplicate" },
+        expected,
+      ],
+    };
+    const pass: RenderPassNode = {
+      name: "Image", source: "edited source", output: "canvas", width: 1, height: 1, channels: [],
+    };
+
+    expect(findPassSourceFile(pass, "/project/My Shader.slang", workspace)).toBe(expected);
+    expect(findPassSourceFile(pass, "file:///project/My%20Shader.slang", workspace)).toBe(expected);
   });
 
   it("initializes without throwing when WebGPU is unavailable", () => {
@@ -705,6 +782,14 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).compiler = compiler;
     (engine as any).format = "bgra8unorm";
 
+    const workspace: SlangWorkspaceSnapshot = {
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "float4 mainImage(float2 c) { return float4(0); }" },
+        { uri: "file:///project/buffer-a.slang", path: "/workspace/buffer-a.slang", source: "float4 mainImage(float2 c) { return float4(1); }" },
+        { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "module palette;" },
+      ],
+    };
     const result = await engine.compileShaderPipeline(
       "float4 mainImage(float2 c) { return float4(0); }",
       {
@@ -716,21 +801,108 @@ describe("WebGPURenderingEngine", () => {
       },
       "/image.slang",
       { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+      undefined,
+      undefined,
+      workspace,
     );
 
     expect(result?.success).toBe(true);
     expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
     expect(compiler.compile).toHaveBeenCalledTimes(2);
-    expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.stringContaining("float4(1)"), {
-      passName: "BufferA",
-      commonCode: "",
-      channels: [],
+    expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      source: expect.stringContaining("float4(1)"),
+      sourceUri: "file:///project/buffer-a.slang",
+      sourcePath: "/workspace/buffer-a.slang",
+      workspace,
+      options: { passName: "BufferA", commonCode: "", channels: [] },
+    }));
+    expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      source: expect.stringContaining("float4(0)"),
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace,
+      options: {
+        passName: "Image",
+        commonCode: "",
+        channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+      },
+    }));
+  });
+
+  it("recompiles unchanged root source when a workspace dependency changes", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+    };
+    const warning = {
+      uri: "file:///project/palette.slang",
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      severity: "warning" as const,
+      message: "implicit conversion",
+      source: "slang-compile" as const,
+    };
+    const compiler = { compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl", diagnostics: [warning] })), dispose: vi.fn() };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+    const source = "import palette; float4 mainImage(float2 c) { return color(); }";
+    const snapshot = (dependency: string): SlangWorkspaceSnapshot => ({
+      rootUri: "file:///project",
+      files: [
+        { uri: "file:///project/image.slang", path: "/workspace/image.slang", source },
+        { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: dependency },
+      ],
     });
-    expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
+
+    const first = await engine.compileShaderPipeline(source, null, "/project/image.slang", {}, undefined, undefined, snapshot("module palette; float4 color() { return 1; }"));
+    await engine.compileShaderPipeline(source, null, "/project/image.slang", {}, undefined, undefined, snapshot("module palette; float4 color() { return 0; }"));
+
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+    expect(first).toMatchObject({ success: true, diagnostics: [warning] });
+  });
+
+  it("returns structured dependency diagnostics from failed Slang compilation", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(),
+      createRenderPipeline: vi.fn(),
+      createBuffer: vi.fn(() => ({})),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
+    };
+    const diagnostic = {
+      uri: "file:///project/helper.slang",
+      range: { start: { line: 3, character: 2 }, end: { line: 3, character: 4 } },
+      severity: "error" as const,
+      message: "unknown name",
+      source: "slang-compile" as const,
       passName: "Image",
-      commonCode: "",
-      channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
-    });
+    };
+    const compiler = {
+      compile: vi.fn(async () => ({ success: false as const, errors: ["raw error"], diagnostics: [diagnostic] })),
+      dispose: vi.fn(),
+    };
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return helper(); }",
+      null,
+      "/project/image.slang",
+    );
+
+    expect(result).toMatchObject({ success: false, diagnostics: [diagnostic] });
   });
 
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
@@ -1241,8 +1413,8 @@ describe("WebGPURenderingEngine", () => {
       );
 
       expect(result?.success).toBe(true);
-      expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-        customUniforms: info,
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({ customUniforms: info }),
       }));
       expect(engine.getCustomUniformDeclarations()).toBe(declarations);
       expect(engine.getCustomUniformInfo()).toEqual(info);
@@ -1490,12 +1662,11 @@ describe("WebGPURenderingEngine", () => {
         wrap: "repeat",
         vflip: false,
       });
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({
           channels: [{ slot: 0, key: "iChannel0", kind: "video" }],
         }),
-      );
+      }));
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
         kind: "video",
         slot: 0,
@@ -1739,12 +1910,11 @@ describe("WebGPURenderingEngine", () => {
         "/audio/test.wav", 0.5, 2.5,
       );
       expect(resourceManager.controlAudio).not.toHaveBeenCalled();
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({
           channels: [{ slot: 1, key: "iChannel1", kind: "audio" }],
         }),
-      );
+      }));
     });
 
     it("keeps shader compilation successful when audio loading fails", async () => {
@@ -1979,12 +2149,11 @@ describe("WebGPURenderingEngine", () => {
         wrap: "clamp",
         vflip: true,
       });
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({
           channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
         }),
-      );
+      }));
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
         kind: "cubemap",
         slot: 0,
@@ -2445,8 +2614,10 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledTimes(1);
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("float4(9)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({
+          source: expect.stringContaining("float4(9)"),
+          options: expect.objectContaining({ passName: "BufferA" }),
+        }),
       );
       expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
     });
@@ -2464,6 +2635,17 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
       expect(device.createCommandEncoder).not.toHaveBeenCalled();
       expect(device.queue.submit).not.toHaveBeenCalled();
+    });
+
+    it("keeps the last successful buffer snapshot when an incremental edit fails", async () => {
+      const { engine, compiler } = await compiledEngine();
+      const previous = (engine as any).lastCompile;
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      await engine.updateBufferAndRecompile("BufferA", "broken {");
+
+      expect((engine as any).lastCompile).toBe(previous);
+      expect((engine as any).lastCompile.buffers.BufferA).toContain("float4(1)");
     });
 
     it("clears installed pipelines and the canvas when a different shader path fails", async () => {
@@ -2514,8 +2696,10 @@ describe("WebGPURenderingEngine", () => {
 
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("float4(8)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({
+          source: expect.stringContaining("float4(8)"),
+          options: expect.objectContaining({ passName: "BufferA" }),
+        }),
       );
     });
 
@@ -2964,8 +3148,8 @@ describe("WebGPURenderingEngine", () => {
     it("does not reuse a failed Slang compile across fresh engine instances", async () => {
       const first = cachedSetup();
       const second = cachedSetup();
-      first.compiler.compile.mockImplementation((source: string) =>
-        source === "buf cache failure"
+      first.compiler.compile.mockImplementation((request: { source: string }) =>
+        request.source === "buf cache failure"
           ? { success: false, errors: ["bad buffer"] }
           : { success: true, wgsl: "// wgsl" });
 
@@ -2984,8 +3168,9 @@ describe("WebGPURenderingEngine", () => {
 
       expect(failed?.success).toBe(false);
       expect(recovered?.success).toBe(true);
-      expect(second.compiler.compile).toHaveBeenCalledWith("buf cache failure", expect.objectContaining({
-        passName: "BufferA",
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        source: "buf cache failure",
+        options: expect.objectContaining({ passName: "BufferA" }),
       }));
     });
 
@@ -3024,9 +3209,12 @@ describe("WebGPURenderingEngine", () => {
       });
 
       expect(second.compiler.compile).toHaveBeenCalledTimes(1);
-      expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
-        passName: "Image",
-        channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }],
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        source: "img channel cache",
+        options: expect.objectContaining({
+          passName: "Image",
+          channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }],
+        }),
       }));
     });
 
@@ -3051,9 +3239,12 @@ describe("WebGPURenderingEngine", () => {
       await first.engine.compileShaderPipeline("img channel kind cache", textureConfig, "/channel-kind-cache.slang", {});
       await second.engine.compileShaderPipeline("img channel kind cache", cubemapConfig, "/channel-kind-cache.slang", {});
 
-      expect(second.compiler.compile).toHaveBeenCalledWith("img channel kind cache", expect.objectContaining({
-        passName: "Image",
-        channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+        source: "img channel kind cache",
+        options: expect.objectContaining({
+          passName: "Image",
+          channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+        }),
       }));
     });
 
@@ -3084,7 +3275,7 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
 
       expect(compiler.compile).toHaveBeenCalledTimes(1);
-      expect(compiler.compile.mock.calls[0][0]).toBe("buf v2");
+      expect(compiler.compile.mock.calls[0][0]).toMatchObject({ source: "buf v2" });
       expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
       expect(imageDispose).not.toHaveBeenCalled();
       expect(bufferDispose).toHaveBeenCalledTimes(1);
@@ -3111,14 +3302,62 @@ describe("WebGPURenderingEngine", () => {
       const firstBufferA = (engine as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
 
-      compiler.compile.mockImplementation((src: string) =>
-        src === "buf broken" ? { success: false, errors: ["bad"] } : { success: true, wgsl: "wgsl" });
+      compiler.compile.mockImplementation((request: { source: string }) =>
+        request.source === "buf broken"
+          ? { success: false, errors: ["bad"], diagnostics: [] }
+          : { success: true, wgsl: "wgsl", diagnostics: [] });
       const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf broken" });
 
       expect(result?.success).toBe(false);
       expect(imageDispose).not.toHaveBeenCalled();
       expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
       expect((engine as any).passPipelines.get("BufferA")).toBe(firstBufferA);
+    });
+
+    it("keeps the last successful capture compile context after a failed edit", async () => {
+      const { engine, compiler } = cachedSetup();
+      const goodWorkspace = {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "img" },
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "buf" },
+        ],
+      };
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf" }, undefined, undefined, goodWorkspace);
+      const successfulContext = engine.getVariableCaptureCompileContext("img", "Image");
+      const badWorkspace = {
+        ...goodWorkspace,
+        files: goodWorkspace.files.map((file) => file.path === "/workspace/a.slang"
+          ? { ...file, source: "buf broken" }
+          : file),
+      };
+      compiler.compile.mockImplementation((request: { source: string }) =>
+        request.source === "buf broken"
+          ? { success: false, errors: ["bad"], diagnostics: [] }
+          : { success: true, wgsl: "wgsl", diagnostics: [] });
+
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf broken" }, undefined, undefined, badWorkspace);
+
+      expect(engine.getVariableCaptureCompileContext("img", "Image")).toEqual(successfulContext);
+    });
+
+    it("owns workspace snapshots across compile input and capture context mutations", async () => {
+      const { engine } = cachedSetup();
+      const workspace = {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "img" },
+          { uri: "file:///project/a.slang", path: "/workspace/a.slang", source: "buf" },
+        ],
+      };
+      await engine.compileShaderPipeline("img", twoPassConfig, "/project/image.slang", { BufferA: "buf" }, undefined, undefined, workspace);
+
+      workspace.files[1].source = "mutated caller";
+      const first = engine.getVariableCaptureCompileContext("img", "Image");
+      expect(first.workspace?.files[1].source).toBe("buf");
+
+      first.workspace!.files[1].source = "mutated consumer";
+      expect(engine.getVariableCaptureCompileContext("img", "Image").workspace?.files[1].source).toBe("buf");
     });
 
     it("resizes reused pipelines to the new graph dimensions on success", async () => {

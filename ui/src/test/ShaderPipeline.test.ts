@@ -5,6 +5,7 @@ import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { CursorPositionMessage } from '@shader-studio/types';
+import { ShaderCompilationState } from '../lib/state/ShaderCompilationState.svelte';
 
 vi.mock('../lib/state/editorOverlayState.svelte', () => ({
   getEditorOverlayVisible: vi.fn(() => false),
@@ -357,6 +358,32 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     );
   });
 
+  it('rejects a delayed request after locking at the global watermark', async () => {
+    const compilationState = new ShaderCompilationState();
+    expect(compilationState.acceptRequest({ requestId: 10 })).toBe(true);
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+    const event = {
+      data: {
+        ...makeShaderEvent('delayed', '/a.slang').data,
+        requestId: 9,
+        language: 'slang',
+      },
+    } as MessageEvent;
+
+    await expect(pipeline.handleShaderMessage(event)).resolves.toBeUndefined();
+
+    expect(mocks.compileShaderPipeline).not.toHaveBeenCalled();
+    expect(mocks.shaderDebugManager.setShaderContext).not.toHaveBeenCalled();
+  });
+
   it('compiles the latest shader after a message arrives while a compile is in flight', async () => {
     const first = pipeline.handleShaderMessage(makeShaderEvent('void mainImage(out vec4 o, vec2 u) { o = vec4(1.0); }'));
 
@@ -413,6 +440,196 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     const codes = mocks.compileShaderPipeline.mock.calls.map((c: any[]) => c[0] as string);
     expect(codes.some((code) => code.includes('vec4(0.5)'))).toBe(false);
     expect(codes.some((code) => code.includes('vec4(0.0)'))).toBe(true);
+  });
+
+  it('queues all three roots from one compile generation in deterministic order', async () => {
+    const event = (path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        compileGeneration: { id: 7, rootIndex: index, rootCount: 3, rootPath: path },
+      },
+    } as MessageEvent);
+    const first = pipeline.handleShaderMessage(event('/a.slang', 0));
+    const second = pipeline.handleShaderMessage(event('/b.slang', 1));
+    const third = pipeline.handleShaderMessage(event('/c.slang', 2));
+
+    mocks.resolveCompile();
+    await first;
+    await vi.waitFor(() => expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2));
+    mocks.resolveCompile();
+    await second;
+    await vi.waitFor(() => expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(3));
+    mocks.resolveCompile();
+    await third;
+
+    expect(mocks.compileShaderPipeline.mock.calls.map((call: any[]) => call[2])).toEqual([
+      '/a.slang',
+      '/b.slang',
+      '/c.slang',
+    ]);
+  });
+
+  it('drains later roots after a duplicate of the currently compiling root', async () => {
+    const event = (path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        compileGeneration: { id: 9, rootIndex: index, rootCount: 2, rootPath: path },
+      },
+    } as MessageEvent);
+    const first = pipeline.handleShaderMessage(event('/a.slang', 0));
+    const duplicate = pipeline.handleShaderMessage(event('/a.slang', 0));
+    const second = pipeline.handleShaderMessage(event('/b.slang', 1));
+
+    mocks.resolveCompile();
+    await first;
+    await expect(duplicate).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2));
+    mocks.resolveCompile();
+    await second;
+
+    expect(mocks.compileShaderPipeline.mock.calls.map((call: any[]) => call[2])).toEqual([
+      '/a.slang',
+      '/b.slang',
+    ]);
+    expect(mocks.transport.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('supersedes queued roots and partial results from an older generation', async () => {
+    const event = (id: number, path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`generation ${id} ${path}`, path).data,
+        compileGeneration: { id, rootIndex: index, rootCount: 2, rootPath: path },
+      },
+    } as MessageEvent);
+    const oldFirst = pipeline.handleShaderMessage(event(10, '/a.slang', 0));
+    const oldQueued = pipeline.handleShaderMessage(event(10, '/b.slang', 1));
+    const currentFirst = pipeline.handleShaderMessage(event(11, '/a.slang', 0));
+    const currentSecond = pipeline.handleShaderMessage(event(11, '/b.slang', 1));
+
+    await expect(oldQueued).resolves.toBeUndefined();
+    mocks.resolveCompile();
+    await oldFirst;
+    await vi.waitFor(() => expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(2));
+    mocks.resolveCompile();
+    await currentFirst;
+    await vi.waitFor(() => expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(3));
+    mocks.resolveCompile();
+    await currentSecond;
+
+    expect(mocks.compileShaderPipeline.mock.calls.map((call: any[]) => call[2])).toEqual([
+      '/a.slang',
+      '/a.slang',
+      '/b.slang',
+    ]);
+    expect(mocks.transport.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('aggregates root diagnostics and reports only after the generation completes', async () => {
+    const diagnostic = {
+      uri: 'file:///project/helper.slang',
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      severity: 'error' as const,
+      message: 'bad helper',
+      source: 'slang-compile' as const,
+    };
+    mocks.compileShaderPipeline
+      .mockResolvedValueOnce({ success: false, errors: ['A failed'], diagnostics: [diagnostic] } as any)
+      .mockResolvedValueOnce({ success: true } as any)
+      .mockResolvedValueOnce({ success: false, errors: ['C failed'] } as any);
+    const event = (path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        compileGeneration: { id: 8, rootIndex: index, rootCount: 3, rootPath: path },
+      },
+    } as MessageEvent);
+
+    await pipeline.handleShaderMessage(event('/a.slang', 0));
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+    await pipeline.handleShaderMessage(event('/b.slang', 1));
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+    await pipeline.handleShaderMessage(event('/c.slang', 2));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['A failed', 'C failed'],
+      diagnostics: [diagnostic],
+    });
+  });
+
+  it('does not report success for a generation root skipped by a locked panel', async () => {
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    const skipped = {
+      data: {
+        ...makeShaderEvent('code b', '/b.slang').data,
+        compileGeneration: { id: 20, rootIndex: 0, rootCount: 1, rootPath: '/b.slang' },
+        compileScope: { rootUris: ['file:///b.slang'], generationId: 20 },
+      },
+    } as MessageEvent;
+
+    await pipeline.handleShaderMessage(skipped);
+
+    expect(mocks.compileShaderPipeline).not.toHaveBeenCalled();
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not let an irrelevant newer root make the locked root stale', async () => {
+    const compilationState = new ShaderCompilationState();
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+      compilationState,
+    );
+    const event = (id: number, path: string) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        requestId: id,
+        compileGeneration: { id, rootIndex: 0, rootCount: 1, rootPath: path },
+        compileScope: { rootUris: [`file://${path}`], generationId: id },
+      },
+    } as MessageEvent);
+
+    const slowA = pipeline.handleShaderMessage(event(10, '/a.slang'));
+    await pipeline.handleShaderMessage(event(11, '/b.slang'));
+    mocks.resolveCompile();
+    await expect(slowA).resolves.toEqual({ success: true, warnings: undefined });
+    await expect(pipeline.handleShaderMessage(event(9, '/a.slang'))).resolves.toBeUndefined();
+
+    expect(mocks.compileShaderPipeline).toHaveBeenCalledTimes(1);
+    expect((mocks.compileShaderPipeline.mock.calls[0] as any[])[2]).toBe('/a.slang');
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: ['file:///a.slang'], generationId: 10 },
+    });
+  });
+
+  it('reports only the compiled locked root when sibling generation roots are skipped', async () => {
+    vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/a.slang');
+    mocks.compileShaderPipeline.mockResolvedValue({ success: true });
+    const event = (path: string, index: number) => ({
+      data: {
+        ...makeShaderEvent(`code ${path}`, path).data,
+        compileGeneration: { id: 21, rootIndex: index, rootCount: 2, rootPath: path },
+        compileScope: { rootUris: [`file://${path}`], generationId: 21 },
+      },
+    } as MessageEvent);
+
+    await pipeline.handleShaderMessage(event('/a.slang', 0));
+    await pipeline.handleShaderMessage(event('/b.slang', 1));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: ['file:///a.slang'], generationId: 21 },
+    });
   });
 
   it('updates compilation result state when a pending shader message finishes compiling', async () => {
@@ -486,5 +703,50 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     expect(result).toBeUndefined();
     expect(compilationState.latest).toBeNull();
     expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('posts structured compile diagnostics with the legacy error payload', async () => {
+    const diagnostic = {
+      uri: 'file:///project/helper.slang',
+      range: { start: { line: 1, character: 2 }, end: { line: 1, character: 4 } },
+      severity: 'error' as const,
+      message: 'bad helper',
+      source: 'slang-compile' as const,
+    };
+    mocks.compileShaderPipeline.mockResolvedValueOnce({
+      success: false,
+      errors: ['legacy error'],
+      diagnostics: [diagnostic],
+    } as any);
+
+    await pipeline.handleShaderMessage(makeShaderEvent('float4 mainImage(float2 uv) { return helper(); }', '/project/image.slang'));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['legacy error'],
+      diagnostics: [diagnostic],
+    });
+  });
+
+  it('posts successful structured diagnostics with the success log', async () => {
+    const diagnostic = {
+      uri: 'file:///project/helper.slang',
+      range: { start: { line: 1, character: 2 }, end: { line: 1, character: 4 } },
+      severity: 'warning' as const,
+      message: 'implicit conversion',
+      source: 'slang-compile' as const,
+    };
+    mocks.compileShaderPipeline.mockResolvedValueOnce({
+      success: true,
+      diagnostics: [diagnostic],
+    } as any);
+
+    await pipeline.handleShaderMessage(makeShaderEvent('float4 mainImage(float2 uv) { return 1; }', '/project/image.slang'));
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      diagnostics: [diagnostic],
+    });
   });
 });

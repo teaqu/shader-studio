@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
 import { ErrorMessage, WarningMessage } from "@shader-studio/types";
+import type { CompileDiagnosticScope, SlangDiagnostic } from "@shader-studio/types";
+
+interface CompileRootDiagnostics {
+  generationId?: number;
+  diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>;
+}
 
 export class ErrorHandler {
   private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
@@ -9,6 +15,8 @@ export class ErrorHandler {
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
   private lastChangedGlslUri: vscode.Uri | null = null;
+  private compileDiagnosticsByRoot = new Map<string, CompileRootDiagnostics>();
+  private compileOwnedDiagnostics = new Set<vscode.Diagnostic>();
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
@@ -45,10 +53,24 @@ export class ErrorHandler {
   }
 
   public clearPersistentErrors(): void {
-    // Clear all persistent errors when editor changes or a fresh shader load begins
+    const persistentByUri = new Map<string, { uri: vscode.Uri; diagnostics: Set<vscode.Diagnostic> }>();
+    for (const { uri, diagnostic } of this.persistentErrors.values()) {
+      const key = uri.toString();
+      const group = persistentByUri.get(key) ?? { uri, diagnostics: new Set() };
+      group.diagnostics.add(diagnostic);
+      persistentByUri.set(key, group);
+    }
     this.persistentErrors.clear();
     this.recentErrors.clear();
-    this.diagnosticCollection.clear();
+    for (const { uri, diagnostics } of persistentByUri.values()) {
+      const remaining = [...(this.diagnosticCollection.get(uri) ?? [])]
+        .filter((diagnostic) => !diagnostics.has(diagnostic));
+      if (remaining.length > 0) {
+        this.diagnosticCollection.set(uri, remaining);
+      } else {
+        this.diagnosticCollection.delete(uri);
+      }
+    }
   }
 
   public handleError(message: ErrorMessage): void {
@@ -60,6 +82,16 @@ export class ErrorHandler {
 
     if (errors.length === 0) {
       return; // Skip empty messages
+    }
+
+    if (message.diagnostics && message.diagnostics.length > 0) {
+      for (const errorText of errors) {
+        if (errorText) {
+          this.outputChannel.error(errorText);
+        }
+      }
+      this.replaceCompileScope(message.compileScope, this.createStructuredDiagnostics(message.diagnostics));
+      return;
     }
 
     const now = Date.now();
@@ -77,15 +109,10 @@ export class ErrorHandler {
 
       // Check if this normalized error was recently shown (debounce)
       const lastShown = this.recentErrors.get(normalizedError);
-
-      if (lastShown && (now - lastShown) < this.DEBOUNCE_MS) {
-        continue;
+      if (!lastShown || (now - lastShown) >= this.DEBOUNCE_MS) {
+        this.recentErrors.set(normalizedError, now);
+        this.outputChannel.error(errorText);
       }
-
-      // Record this normalized error as shown
-      this.recentErrors.set(normalizedError, now);
-
-      this.outputChannel.error(errorText);
 
       const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
       if (match) {
@@ -119,8 +146,9 @@ export class ErrorHandler {
               errorText,
               vscode.DiagnosticSeverity.Error,
             );
+            diagnostic.source = "shader-studio-compile";
 
-            const key = targetUri.fsPath;
+            const key = targetUri.toString();
             if (!diagnosticsMap.has(key)) {
               diagnosticsMap.set(key, { uri: targetUri, diagnostics: [] });
             }
@@ -139,8 +167,9 @@ export class ErrorHandler {
             errorText,
             vscode.DiagnosticSeverity.Error,
           );
+          diagnostic.source = "shader-studio-compile";
 
-          const key = targetInfo.uri.fsPath;
+          const key = targetInfo.uri.toString();
           if (!diagnosticsMap.has(key)) {
             diagnosticsMap.set(key, { uri: targetInfo.uri, diagnostics: [] });
           }
@@ -149,13 +178,42 @@ export class ErrorHandler {
       }
     }
 
-    // Set all accumulated diagnostics at once per URI
-    for (const { uri, diagnostics } of diagnosticsMap.values()) {
-      this.diagnosticCollection.set(uri, diagnostics);
-    }
+    this.replaceCompileScope(message.compileScope, diagnosticsMap);
 
     // Clean up old errors from the map (prevent memory leak)
     this.cleanupOldErrors(now);
+  }
+
+  private createStructuredDiagnostics(
+    diagnostics: readonly SlangDiagnostic[],
+  ): Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }> {
+    const grouped = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
+    for (const item of diagnostics.filter((diagnostic) => diagnostic.source !== "slang-language")) {
+      const uri = vscode.Uri.parse(item.uri);
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(
+          item.range.start.line,
+          item.range.start.character,
+          item.range.end.line,
+          Math.max(item.range.start.character + 1, item.range.end.character),
+        ),
+        item.passName ? `${item.passName}: ${item.message}` : item.message,
+        item.severity === "warning"
+          ? vscode.DiagnosticSeverity.Warning
+          : item.severity === "information"
+            ? vscode.DiagnosticSeverity.Information
+            : item.severity === "hint"
+              ? vscode.DiagnosticSeverity.Hint
+              : vscode.DiagnosticSeverity.Error,
+      );
+      diagnostic.source = item.source;
+      diagnostic.code = item.code;
+      const key = uri.toString();
+      const group = grouped.get(key) ?? { uri, diagnostics: [] };
+      group.diagnostics.push(diagnostic);
+      grouped.set(key, group);
+    }
+    return grouped;
   }
 
   public handlePersistentError(message: ErrorMessage | WarningMessage): void {
@@ -192,7 +250,7 @@ export class ErrorHandler {
         ...diagnosticInfo,
         lastSeen: now
       });
-      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
+      this.restorePersistentErrors(diagnosticInfo.uri);
     }
 
     // Clean up old errors from the map (prevent memory leak)
@@ -209,17 +267,165 @@ export class ErrorHandler {
   public clearErrors(): void {
     // Clear only regular errors when shader compilation succeeds
     // Keep persistent errors (warnings) until editor change
-    this.diagnosticCollection.clear();
-    this.restorePersistentErrors();
+    this.replaceCompileScope(undefined, new Map());
 
     // Also log the success message for debugging
     this.outputChannel.debug("Shader compiled and linked");
   }
 
-  private restorePersistentErrors(): void {
-    // Restore all persistent errors to the diagnostic collection
-    for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {
-      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
+  public handleCompileSuccess(
+    diagnostics: readonly SlangDiagnostic[] = [],
+    compileScope?: CompileDiagnosticScope,
+  ): void {
+    this.replaceCompileScope(compileScope, this.createStructuredDiagnostics(diagnostics));
+    this.outputChannel.debug("Shader compiled and linked");
+  }
+
+  private replaceCompileScope(
+    compileScope: CompileDiagnosticScope | undefined,
+    diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>,
+  ): void {
+    const rootKeys = this.compileRootKeys(compileScope);
+    const diagnosticsByRoot = this.partitionDiagnosticsByRoot(rootKeys, diagnosticsByUri);
+    const previousOwnedDiagnostics = new Set(this.compileOwnedDiagnostics);
+    const affectedUris = new Map<string, vscode.Uri>();
+    let replacedRoot = false;
+
+    for (const rootKey of rootKeys) {
+      const previous = this.compileDiagnosticsByRoot.get(rootKey);
+      if (
+        previous?.generationId !== undefined
+        && compileScope?.generationId !== undefined
+        && compileScope.generationId < previous.generationId
+      ) {
+        continue;
+      }
+
+      for (const [uri, group] of previous?.diagnosticsByUri ?? []) {
+        affectedUris.set(uri, group.uri);
+      }
+      const nextDiagnostics = diagnosticsByRoot.get(rootKey) ?? new Map();
+      for (const [uri, group] of nextDiagnostics) {
+        affectedUris.set(uri, group.uri);
+      }
+      this.compileDiagnosticsByRoot.set(rootKey, {
+        generationId: compileScope?.generationId,
+        diagnosticsByUri: nextDiagnostics,
+      });
+      replacedRoot = true;
+    }
+
+    if (!replacedRoot) {
+      return;
+    }
+
+    this.compileOwnedDiagnostics = new Set(
+      [...this.compileDiagnosticsByRoot.values()]
+        .flatMap(({ diagnosticsByUri: byUri }) => [...byUri.values()])
+        .flatMap(({ diagnostics }) => diagnostics),
+    );
+    for (const uri of affectedUris.values()) {
+      this.rebuildUri(uri, previousOwnedDiagnostics);
+    }
+  }
+
+  private compileRootKeys(compileScope?: CompileDiagnosticScope): string[] {
+    if (!compileScope || compileScope.rootUris.length === 0) {
+      return ["legacy"];
+    }
+    return [...new Set(compileScope.rootUris.map((rootUri) => vscode.Uri.parse(rootUri).toString()))]
+      .sort()
+      .map((rootUri) => `root:${rootUri}`);
+  }
+
+  private partitionDiagnosticsByRoot(
+    rootKeys: readonly string[],
+    diagnosticsByUri: Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>,
+  ): Map<string, Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>> {
+    if (rootKeys.length === 1) {
+      return new Map([[rootKeys[0], diagnosticsByUri]]);
+    }
+
+    const result = new Map(
+      rootKeys.map((rootKey) => [
+        rootKey,
+        new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>(),
+      ]),
+    );
+    for (const [uri, group] of diagnosticsByUri) {
+      const matchingRoot = `root:${vscode.Uri.parse(uri).toString()}`;
+      const owners = result.has(matchingRoot) ? [matchingRoot] : rootKeys;
+      for (const owner of owners) {
+        result.get(owner)?.set(uri, group);
+      }
+    }
+    return result;
+  }
+
+  private rebuildUri(uri: vscode.Uri, previousOwnedDiagnostics = this.compileOwnedDiagnostics): void {
+    const existingDiagnostics = [...(this.diagnosticCollection.get(uri) ?? [])]
+      .filter((diagnostic) => !previousOwnedDiagnostics.has(diagnostic));
+    const languageDiagnostics = existingDiagnostics
+      .filter((diagnostic) => diagnostic.source === "slang-language");
+    const persistentDiagnostics = existingDiagnostics
+      .filter((diagnostic) => diagnostic.source !== "slang-language");
+    const compileDiagnostics = this.deduplicateDiagnostics(
+      [...this.compileDiagnosticsByRoot.values()]
+        .flatMap(({ diagnosticsByUri }) => diagnosticsByUri.get(uri.toString())?.diagnostics ?? []),
+    );
+    const next = [
+      ...languageDiagnostics,
+      ...compileDiagnostics,
+      ...persistentDiagnostics,
+    ];
+    if (next.length > 0) {
+      this.diagnosticCollection.set(uri, next);
+    } else {
+      this.diagnosticCollection.delete(uri);
+    }
+  }
+
+  private deduplicateDiagnostics(diagnostics: readonly vscode.Diagnostic[]): vscode.Diagnostic[] {
+    const seen = new Set<string>();
+    return diagnostics.filter((diagnostic) => {
+      const key = JSON.stringify({
+        range: [
+          diagnostic.range.start.line,
+          diagnostic.range.start.character,
+          diagnostic.range.end.line,
+          diagnostic.range.end.character,
+        ],
+        message: diagnostic.message,
+        severity: diagnostic.severity,
+        source: diagnostic.source,
+        code: diagnostic.code,
+      });
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private restorePersistentErrors(targetUri?: vscode.Uri): void {
+    const allPersistentDiagnostics = new Set(
+      [...this.persistentErrors.values()].map(({ diagnostic }) => diagnostic),
+    );
+    const grouped = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
+    for (const diagnosticInfo of this.persistentErrors.values()) {
+      if (targetUri && diagnosticInfo.uri.toString() !== targetUri.toString()) {
+        continue;
+      }
+      const key = diagnosticInfo.uri.toString();
+      const group = grouped.get(key) ?? { uri: diagnosticInfo.uri, diagnostics: [] };
+      group.diagnostics.push(diagnosticInfo.diagnostic);
+      grouped.set(key, group);
+    }
+    for (const group of grouped.values()) {
+      const nonPersistent = [...(this.diagnosticCollection.get(group.uri) ?? [])]
+        .filter((diagnostic) => !allPersistentDiagnostics.has(diagnostic));
+      this.diagnosticCollection.set(group.uri, [...nonPersistent, ...group.diagnostics]);
     }
   }
 

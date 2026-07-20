@@ -10,6 +10,7 @@ export default defineConfig({
       'utils/vitest.config.ts',
       'shader-explorer/vitest.config.ts',
       'monaco/vitest.config.ts',
+      'slang-language-service/vitest.config.ts',
     ],
   },
 });

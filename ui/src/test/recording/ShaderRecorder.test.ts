@@ -107,6 +107,7 @@ vi.mock('../../lib/slangAssets', () => ({
 import { ShaderRecorder, type RecordingConfig, type ShaderInfo, type ScreenshotConfig } from '../../lib/recording/ShaderRecorder';
 import { VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
 import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
+import type { SlangWorkspaceSnapshot } from '@shader-studio/types';
 
 const shaderInfo: ShaderInfo = {
   code: 'void mainImage(out vec4 o, in vec2 uv) { o = vec4(1.0); }',
@@ -121,6 +122,22 @@ const slangShaderInfo: ShaderInfo = {
   path: '/test/shader.slang',
   buffers: {},
   language: 'slang',
+};
+
+const slangWorkspace: SlangWorkspaceSnapshot = {
+  rootUri: 'file:///test',
+  files: [
+    {
+      uri: 'file:///test/shader.slang',
+      path: '/workspace/shader.slang',
+      source: 'import helpers;',
+    },
+    {
+      uri: 'file:///test/helpers.slang',
+      path: '/workspace/helpers.slang',
+      source: 'float helper() { return 1.0; }',
+    },
+  ],
 };
 
 describe('ShaderRecorder', () => {
@@ -176,7 +193,7 @@ describe('ShaderRecorder', () => {
     it('should use a WebGPU offscreen engine for Slang screenshots', async () => {
       const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
 
-      await recorder.captureScreenshot(config, slangShaderInfo);
+      await recorder.captureScreenshot(config, { ...slangShaderInfo, workspace: slangWorkspace });
 
       expect(mockGetSlangAssetUrls).toHaveBeenCalled();
       expect(mockInitialize).not.toHaveBeenCalled();
@@ -187,6 +204,9 @@ describe('ShaderRecorder', () => {
         slangShaderInfo.config,
         slangShaderInfo.path,
         slangShaderInfo.buffers,
+        undefined,
+        undefined,
+        slangWorkspace,
       );
       expect(mockWebGPURenderForCapture).toHaveBeenCalled();
     });
@@ -308,7 +328,7 @@ describe('ShaderRecorder', () => {
     });
 
     it('should use a WebGPU offscreen engine for Slang videos', async () => {
-      const p = recorder.record(baseConfig, slangShaderInfo);
+      const p = recorder.record(baseConfig, { ...slangShaderInfo, workspace: slangWorkspace });
       await vi.runAllTimersAsync();
       await p;
 
@@ -320,6 +340,9 @@ describe('ShaderRecorder', () => {
         slangShaderInfo.config,
         slangShaderInfo.path,
         slangShaderInfo.buffers,
+        undefined,
+        undefined,
+        slangWorkspace,
       );
       expect(mockWebGPURenderForCapture).toHaveBeenCalled();
       expect(mockWebGPUDispose).toHaveBeenCalled();

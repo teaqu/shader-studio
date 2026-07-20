@@ -148,7 +148,10 @@ suite('ShaderCreator Test Suite', () => {
     await shaderCreator.create();
 
     const callArgs = showSaveDialogStub.firstCall.args[0]!;
-    assert.deepStrictEqual(callArgs.filters, { 'GLSL Shader': ['glsl'] });
+    assert.deepStrictEqual(callArgs.filters, {
+      'GLSL Shader': ['glsl'],
+      'Slang Shader': ['slang'],
+    });
     assert.strictEqual(callArgs.title, 'New Shader');
   });
 
@@ -205,6 +208,103 @@ suite('ShaderCreator Test Suite', () => {
     try {
       fs.unlinkSync(filePath); 
     } catch { }
+  });
+
+  test('keeps the existing GLSL template byte-for-byte unchanged', async () => {
+    const filePath = path.join(testDir, 'legacy.glsl');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.strictEqual(fs.readFileSync(filePath, 'utf8'), `void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // Normalized pixel coordinates (from 0 to 1)
+    vec2 uv = fragCoord/iResolution.xy;
+
+    // Time varying pixel color
+    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+
+    // Output to screen
+    fragColor = vec4(col,1.0);
+}`);
+  });
+
+  test('writes a modern Slang template with a sanitized module name', async () => {
+    const filePath = path.join(testDir, '2 cool-shader.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.ok(content.startsWith('#language slang 2026\nmodule _2_cool_shader;\n'));
+    assert.ok(content.includes('float4 mainImage(float2 fragCoord)'));
+  });
+
+  test('prefixes Slang reserved words when deriving module names', async () => {
+    const modulePath = path.join(testDir, 'module.slang');
+    const floatPath = path.join(testDir, 'float.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog')
+      .onFirstCall().resolves(vscode.Uri.file(modulePath))
+      .onSecondCall().resolves(vscode.Uri.file(floatPath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+    await shaderCreator.create();
+
+    assert.ok(fs.readFileSync(modulePath, 'utf8').startsWith('#language slang 2026\nmodule _module;'));
+    assert.ok(fs.readFileSync(floatPath, 'utf8').startsWith('#language slang 2026\nmodule _float;'));
+  });
+
+  test('prefixes less-common Slang declaration keywords in module names', async () => {
+    const filePath = path.join(testDir, 'each.slang');
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(filePath));
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.ok(fs.readFileSync(filePath, 'utf8').startsWith('#language slang 2026\nmodule _each;'));
+  });
+
+  test('prefixes every concrete built-in type expansion from the Slang grammar', async () => {
+    const scalarTypes = ['bool', 'half', 'float', 'double', 'int', 'uint'];
+    const concreteTypes = [
+      'void',
+      ...scalarTypes.flatMap((type) => [type, `${type}2`, `${type}3`, `${type}4`]),
+      'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
+      'vector', 'matrix',
+      ...['1D', '2D', '3D', 'Cube'].flatMap((dimension) => [`Texture${dimension}`, `Texture${dimension}Array`]),
+      ...['1D', '2D', '3D'].flatMap((dimension) => [`RWTexture${dimension}`, `RWTexture${dimension}Array`]),
+      'SamplerState', 'SamplerComparisonState', 'Buffer', 'RWBuffer', 'StructuredBuffer',
+      'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer', 'ParameterBlock',
+      'ConstantBuffer', 'RaytracingAccelerationStructure',
+    ];
+    sandbox.stub(vscode.window, 'showSaveDialog').callsFake(async () => {
+      const type = concreteTypes.shift();
+      return type ? vscode.Uri.file(path.join(testDir, `${type}.slang`)) : undefined;
+    });
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    while (concreteTypes.length > 0) {
+      const type = concreteTypes[0];
+      await shaderCreator.create();
+      assert.ok(
+        fs.readFileSync(path.join(testDir, `${type}.slang`), 'utf8')
+          .startsWith(`#language slang 2026\nmodule _${type};`),
+        `${type} must be sanitized as a reserved module name`,
+      );
+    }
   });
 
 });

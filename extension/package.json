@@ -159,6 +159,11 @@
           "default": true,
           "description": "Enable bundled GLSL and Slang code snippets (requires restart)"
         },
+        "shader-studio.slangLanguageFeatures": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Slang hover, completion, navigation, symbols, signature help, and diagnostics."
+        },
         "shader-studio.defaultConfigView": {
           "type": "string",
           "enum": [
@@ -207,7 +212,7 @@
         "extensions": [
           ".slang"
         ],
-        "configuration": "./glsl-language-configuration.json"
+        "configuration": "./slang-language-configuration.json"
       }
     ],
     "grammars": [
@@ -218,8 +223,8 @@
       },
       {
         "language": "slang",
-        "scopeName": "source.glsl",
-        "path": "./syntaxes/glsl.tmLanguage.json"
+        "scopeName": "source.slang",
+        "path": "./syntaxes/slang.tmLanguage.json"
       }
     ],
     "jsonValidation": [
@@ -273,7 +278,7 @@
     "compile-tests": "npm run build:deps && rimraf out && tsc -p . --outDir out",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
-    "build:deps": "cd ../types && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build && cd ../utils && npm run build",
+    "build:deps": "cd ../types && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build && cd ../utils && npm run build && cd ../slang-language-service && npm run build",
     "build:force": "npm run package",
     "build": "npm run package",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
@@ -295,6 +300,7 @@
     "sinon": "^21.0.0"
   },
   "dependencies": {
+    "@shader-studio/slang-language-service": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
     "entities": "^6.0.1",

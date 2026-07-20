@@ -1,7 +1,10 @@
 import { glslLanguageDefinition } from './glsl-language';
 import { shaderStudioTheme, shaderStudioTransparentTheme } from './glsl-theme';
+import { slangLanguageDefinition } from './slang-language';
+import { SlangMonacoAdapter, type SlangMonacoClient } from './slang/SlangMonacoAdapter';
 
 let registered = false;
+const slangAdapters = new WeakMap<object, SlangMonacoAdapter>();
 
 /**
  * Register the GLSL language, themes, and worker stub for Monaco.
@@ -10,7 +13,9 @@ let registered = false;
  * @param monaco - The monaco-editor module instance
  */
 export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
-  if (registered) return;
+  if (registered) {
+    return;
+  }
 
   // Worker stub — CSP blocks blob workers in VS Code webviews.
   // Monaco requires getWorker to return a Worker-like object.
@@ -23,7 +28,9 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
           terminate() {},
           addEventListener() {},
           removeEventListener() {},
-          dispatchEvent() { return false; },
+          dispatchEvent() {
+            return false;
+          },
           onerror: null,
           onmessageerror: null,
         } as any;
@@ -42,4 +49,30 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
   monaco.editor.defineTheme('shader-studio-transparent', shaderStudioTransparentTheme);
 
   registered = true;
+}
+
+/** Register Slang independently from GLSL and bind its language-service client. */
+export function setupMonacoSlang(
+  monaco: typeof import('monaco-editor/esm/vs/editor/editor.api'),
+  client: SlangMonacoClient,
+): SlangMonacoAdapter {
+  const existing = slangAdapters.get(monaco);
+  if (existing) {
+    return existing;
+  }
+
+  if (!monaco.languages.getLanguages().some((language) => language.id === 'slang')) {
+    monaco.languages.register({ id: 'slang' });
+    monaco.languages.setMonarchTokensProvider('slang', slangLanguageDefinition);
+  }
+  const adapter = new SlangMonacoAdapter(monaco, client);
+  adapter.addProviderDisposables([
+    monaco.languages.registerCompletionItemProvider('slang', adapter),
+    monaco.languages.registerHoverProvider('slang', adapter),
+    monaco.languages.registerDefinitionProvider('slang', adapter),
+    monaco.languages.registerSignatureHelpProvider('slang', adapter),
+    monaco.languages.registerDocumentSymbolProvider('slang', adapter),
+  ]);
+  slangAdapters.set(monaco, adapter);
+  return adapter;
 }

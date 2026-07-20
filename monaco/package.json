@@ -15,6 +15,9 @@
   "devDependencies": {
     "vitest": "*"
   },
+  "dependencies": {
+    "@shader-studio/slang-language-service": "*"
+  },
   "peerDependencies": {
     "monaco-editor": ">=0.40.0"
   }

@@ -2,6 +2,7 @@ import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngi
 import type { ShaderLocker } from "./ShaderLocker";
 import type { Transport } from "./transport/MessageTransport";
 import type {
+  CompileDiagnosticScope,
   CursorPositionMessage,
   ErrorMessage,
   LogMessage,
@@ -14,7 +15,10 @@ import { BufferPathResolver } from './util/BufferPathResolver';
 import { ShaderDebugManager } from './ShaderDebugManager';
 import { ShaderProcessor, type CompilationResult } from './ShaderProcessor';
 import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
-import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
+import {
+  getShaderRequestScope,
+  type ShaderCompilationState,
+} from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
 export class ShaderPipeline {
@@ -26,11 +30,23 @@ export class ShaderPipeline {
   private shaderDebugManager: ShaderDebugManager;
   private shaderProcessor: ShaderProcessor;
   private lastEvent: MessageEvent | null = null;
-  private pendingShaderEvent: {
+  private pendingShaderEvents: Array<{
     event: MessageEvent;
     resolve: (result: CompilationResult | undefined) => void;
-  } | null = null;
-  private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
+  }> = [];
+  private readonly compilationGenerations = new Map<number, {
+    rootCount: number;
+    results: Map<string, {
+      compileScope?: CompileDiagnosticScope;
+      index: number;
+      result: CompilationResult | null;
+    }>;
+  }>();
+  private readonly latestCompileGenerationByRoot = new Map<string, number>();
+  private compilationState: (
+    Pick<ShaderCompilationState, 'setResult'>
+    & Partial<Pick<ShaderCompilationState, 'acceptRequest'>>
+  ) | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
 
@@ -39,7 +55,8 @@ export class ShaderPipeline {
     renderEngine: RenderingEngine,
     shaderLocker: ShaderLocker,
     shaderDebugManager: ShaderDebugManager,
-    compilationState?: Pick<ShaderCompilationState, 'setResult'>,
+    compilationState?: Pick<ShaderCompilationState, 'setResult'>
+      & Partial<Pick<ShaderCompilationState, 'acceptRequest'>>,
   ) {
     this.transport = transport;
     this.renderEngine = renderEngine;
@@ -51,7 +68,10 @@ export class ShaderPipeline {
     this.compilationState = compilationState ?? null;
   }
 
-  public setCompilationState(compilationState: Pick<ShaderCompilationState, 'setResult'> | null): void {
+  public setCompilationState(
+    compilationState: Pick<ShaderCompilationState, 'setResult'>
+      & Partial<Pick<ShaderCompilationState, 'acceptRequest'>> | null,
+  ): void {
     this.compilationState = compilationState;
   }
 
@@ -66,11 +86,54 @@ export class ShaderPipeline {
         return undefined;
       }
 
+      if (this.shouldSkipLockedMessage(message)) {
+        this.completeSkippedGeneration(message);
+        return undefined;
+      }
+
+      if (!this.acceptRequest(message)) {
+        this.completeSkippedGeneration(message);
+        return undefined;
+      }
+
+      if (!this.acceptCompileGeneration(message)) {
+        this.completeSkippedGeneration(message);
+        return undefined;
+      }
+
       if (this.shaderProcessor.isCurrentlyProcessing()) {
-        this.pendingShaderEvent?.resolve(undefined);
         return await new Promise<CompilationResult | undefined>((resolve) => {
-          this.pendingShaderEvent = { event, resolve };
+          const currentGeneration = message.compileGeneration;
+          if (currentGeneration) {
+            const duplicate = this.pendingShaderEvents.some(({ event: pendingEvent }) => {
+              const pending = pendingEvent.data as ShaderSourceMessage;
+              const pendingGeneration = pending.compileGeneration;
+              return pendingGeneration?.id === currentGeneration.id
+                && pendingGeneration.rootPath === currentGeneration.rootPath;
+            });
+            if (duplicate || this.isGenerationRootCompleted(message)) {
+              resolve(undefined);
+              return;
+            }
+            this.pendingShaderEvents.push({ event, resolve });
+            return;
+          }
+
+          const legacyIndex = this.pendingShaderEvents.findIndex(({ event: pendingEvent }) => (
+            !(pendingEvent.data as ShaderSourceMessage).compileGeneration
+          ));
+          if (legacyIndex >= 0) {
+            this.pendingShaderEvents[legacyIndex].resolve(undefined);
+            this.pendingShaderEvents.splice(legacyIndex, 1, { event, resolve });
+          } else {
+            this.pendingShaderEvents.push({ event, resolve });
+          }
         });
+      }
+
+      if (this.isGenerationRootCompleted(message)) {
+        this.drainPendingShaderEvent();
+        return undefined;
       }
 
       // Update cursor position if provided. Don't notify capture here: the
@@ -93,6 +156,7 @@ export class ShaderPipeline {
         if (lockedPath === undefined || lockedPath !== path) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
+            this.completeSkippedGeneration(message);
             return undefined;
           }
 
@@ -104,12 +168,14 @@ export class ShaderPipeline {
           }
 
           if (!currentBufferName) {
+            this.completeSkippedGeneration(message);
             return undefined;
           }
 
           this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
           this.bufferUpdater.updateBuffer(path, buffers, code);
           // BufferUpdater returns void (fire-and-forget), so we're done here
+          this.completeSkippedGeneration(message);
           return undefined;
         }
       }
@@ -127,6 +193,29 @@ export class ShaderPipeline {
 
   private isValidShaderMessage(type: string): boolean {
     return type === "shaderSource";
+  }
+
+  private acceptRequest(message: ShaderSourceMessage): boolean {
+    const lockedPath = this.shaderLocker.isLocked()
+      ? this.shaderLocker.getLockedShaderPath()
+      : undefined;
+    const rootUri = message.compileScope?.rootUris[0];
+    const scope = getShaderRequestScope(message.path, lockedPath, rootUri);
+    return this.compilationState?.acceptRequest?.(message, scope) ?? true;
+  }
+
+  private shouldSkipLockedMessage(message: ShaderSourceMessage): boolean {
+    if (!this.shaderLocker.isLocked()) {
+      return false;
+    }
+    const lockedPath = this.shaderLocker.getLockedShaderPath();
+    if (lockedPath !== undefined && lockedPath === message.path) {
+      return false;
+    }
+    const bufferName = message.path
+      ? this.bufferPathResolver.getBufferNameForFilePath(message.path)
+      : null;
+    return !this.hasBufferContent(message.buffers ?? {}, message.code) || !bufferName;
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
@@ -150,19 +239,16 @@ export class ShaderPipeline {
       message.config ?? null,
       message.path,
       message.buffers ?? {},
+      message.workspace,
     );
 
     const result = await this.shaderProcessor.processMainShaderCompilation(
       message,
       message.reload || false,
     );
-    this.handleCompilationResult(result);
+    this.handleCompilationResult(result, message);
 
-    if (this.pendingShaderEvent) {
-      const pending = this.pendingShaderEvent;
-      this.pendingShaderEvent = null;
-      void this.handleShaderMessage(pending.event).then(pending.resolve);
-    }
+    this.drainPendingShaderEvent();
 
     if (result.superseded) {
       return undefined;
@@ -171,16 +257,175 @@ export class ShaderPipeline {
     return result;
   }
 
-  private handleCompilationResult(result: CompilationResult): void {
-    if (result.superseded) {
+  private handleCompilationResult(result: CompilationResult | null, message?: ShaderSourceMessage): void {
+    if (result?.superseded) {
       return;
     }
 
+    let compileScope = message?.compileScope;
+    const generation = message?.compileGeneration;
+    if (generation) {
+      const rootScope = this.getCompileGenerationRootScope(message);
+      const latestRootGeneration = this.latestCompileGenerationByRoot.get(rootScope) ?? 0;
+      if (generation.id < latestRootGeneration) {
+        result = null;
+      }
+      const state = this.compilationGenerations.get(generation.id) ?? {
+        rootCount: generation.rootCount,
+        results: new Map<string, {
+          compileScope?: CompileDiagnosticScope;
+          index: number;
+          result: CompilationResult | null;
+        }>(),
+      };
+      state.rootCount = Math.max(state.rootCount, generation.rootCount);
+      state.results.set(generation.rootPath, {
+        compileScope,
+        index: generation.rootIndex,
+        result,
+      });
+      this.compilationGenerations.set(generation.id, state);
+      if (state.results.size < state.rootCount) {
+        return;
+      }
+
+      const completed = [...state.results.values()].sort((left, right) => left.index - right.index);
+      this.compilationGenerations.delete(generation.id);
+      const compiled = completed.filter((item): item is typeof item & { result: CompilationResult } => (
+        item.result !== null
+      ));
+      if (compiled.length === 0) {
+        return;
+      }
+      const ordered = compiled.map(({ result: rootResult }) => rootResult);
+      result = {
+        success: ordered.every((rootResult) => rootResult.success),
+        errors: this.combineResultItems(ordered, "errors"),
+        warnings: this.combineResultItems(ordered, "warnings"),
+        diagnostics: this.combineDiagnostics(ordered),
+      };
+      compileScope = this.combineCompileScopes(
+        compiled.map((compiledRoot) => compiledRoot.compileScope),
+        generation.id,
+      );
+    }
+
+    if (!result) {
+      return;
+    }
     this.compilationState?.setResult(result);
-    this.reportCompilationResult(result);
+    this.reportCompilationResult(result, compileScope);
   }
 
-  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+  private isGenerationRootCompleted(message: ShaderSourceMessage): boolean {
+    const generation = message.compileGeneration;
+    return generation !== undefined
+      && this.compilationGenerations.get(generation.id)?.results.has(generation.rootPath) === true;
+  }
+
+  private acceptCompileGeneration(message: ShaderSourceMessage): boolean {
+    const generation = message.compileGeneration;
+    if (!generation) {
+      return true;
+    }
+    const rootScope = this.getCompileGenerationRootScope(message);
+    const latest = this.latestCompileGenerationByRoot.get(rootScope) ?? 0;
+    if (generation.id < latest) {
+      return false;
+    }
+    if (generation.id === latest) {
+      return true;
+    }
+
+    this.latestCompileGenerationByRoot.set(rootScope, generation.id);
+    for (const [id, state] of this.compilationGenerations) {
+      if (id < generation.id) {
+        const previous = state.results.get(generation.rootPath);
+        if (previous) {
+          state.results.set(generation.rootPath, { ...previous, result: null });
+        }
+      }
+    }
+    this.pendingShaderEvents = this.pendingShaderEvents.filter((pending) => {
+      const pendingGeneration = (pending.event.data as ShaderSourceMessage).compileGeneration;
+      const pendingMessage = pending.event.data as ShaderSourceMessage;
+      if (pendingGeneration
+        && this.getCompileGenerationRootScope(pendingMessage) === rootScope
+        && pendingGeneration.id < generation.id) {
+        this.completeSkippedGeneration(pendingMessage);
+        pending.resolve(undefined);
+        return false;
+      }
+      return true;
+    });
+    return true;
+  }
+
+  private getCompileGenerationRootScope(message: ShaderSourceMessage): string {
+    return message.compileScope?.rootUris[0]
+      ?? message.compileGeneration?.rootPath
+      ?? message.path;
+  }
+
+  private drainPendingShaderEvent(): void {
+    if (this.shaderProcessor.isCurrentlyProcessing()) {
+      return;
+    }
+    const pending = this.pendingShaderEvents.shift();
+    if (!pending) {
+      return;
+    }
+    void this.handleShaderMessage(pending.event)
+      .then(pending.resolve)
+      .finally(() => this.drainPendingShaderEvent());
+  }
+
+  private completeSkippedGeneration(message: ShaderSourceMessage): void {
+    if (message.compileGeneration) {
+      this.handleCompilationResult(null, message);
+    }
+  }
+
+  private combineResultItems(
+    results: readonly CompilationResult[],
+    key: "errors" | "warnings",
+  ): string[] | undefined {
+    const items = results.flatMap((result) => result[key] ?? []);
+    return items.length > 0 ? items : undefined;
+  }
+
+  private combineDiagnostics(results: readonly CompilationResult[]): CompilationResult["diagnostics"] {
+    const seen = new Set<string>();
+    const diagnostics = results
+      .flatMap((result) => result.diagnostics ?? [])
+      .filter((diagnostic) => {
+        const key = JSON.stringify(diagnostic);
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+    return diagnostics.length > 0 ? diagnostics : undefined;
+  }
+
+  private combineCompileScopes(
+    scopes: readonly (CompileDiagnosticScope | undefined)[],
+    generationId: number,
+  ): CompileDiagnosticScope | undefined {
+    const present = scopes.filter((scope): scope is CompileDiagnosticScope => scope !== undefined);
+    if (present.length === 0) {
+      return undefined;
+    }
+    const ownerIds = new Set(present.map((scope) => scope.ownerId).filter(Boolean));
+    return {
+      rootUris: [...new Set(present.flatMap((scope) => scope.rootUris))].sort(),
+      ...(ownerIds.size === 1 ? { ownerId: [...ownerIds][0] } : {}),
+      generationId,
+    };
+  }
+
+  private reportCompilationResult(result: CompilationResult, compileScope?: CompileDiagnosticScope): void {
     if (result.success) {
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
@@ -188,11 +433,11 @@ export class ShaderPipeline {
         }
       }
 
-      this.sendSuccessMessage();
+      this.sendSuccessMessage(result.diagnostics, compileScope);
       return;
     }
 
-    this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
+    this.sendErrorMessage(result.errors || ["Unknown compilation error"], result.diagnostics, compileScope);
   }
 
   private syncStoredShaderContextForBufferUpdate(
@@ -221,13 +466,20 @@ export class ShaderPipeline {
       nextMessage.config ?? null,
       nextMessage.path,
       nextMessage.buffers ?? {},
+      nextMessage.workspace,
     );
   }
 
-  private sendErrorMessage(errors: string[]): void {
+  private sendErrorMessage(
+    errors: string[],
+    diagnostics?: CompilationResult["diagnostics"],
+    compileScope?: CompileDiagnosticScope,
+  ): void {
     const errorMessage: ErrorMessage = {
       type: "error",
       payload: errors,
+      ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
+      ...(compileScope ? { compileScope } : {}),
     };
     this.transport.postMessage(errorMessage);
   }
@@ -240,10 +492,15 @@ export class ShaderPipeline {
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessage(): void {
+  private sendSuccessMessage(
+    diagnostics?: CompilationResult["diagnostics"],
+    compileScope?: CompileDiagnosticScope,
+  ): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
+      ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
+      ...(compileScope ? { compileScope } : {}),
     };
     this.transport.postMessage(logMessage);
   }
@@ -261,6 +518,9 @@ export class ShaderPipeline {
       const errorMessage: ErrorMessage = {
         type: "error",
         payload: [`Fatal shader processing error: ${err}`],
+        ...((event.data as ShaderSourceMessage).compileScope
+          ? { compileScope: (event.data as ShaderSourceMessage).compileScope }
+          : {}),
       };
       this.transport.postMessage(errorMessage);
     } catch (transportErr) {
@@ -369,6 +629,7 @@ export class ShaderPipeline {
       config,
       nextMessage.path,
       nextMessage.buffers ?? {},
+      nextMessage.workspace,
     );
   }
 

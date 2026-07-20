@@ -8,6 +8,7 @@ import type {
   CaptureUniforms,
 } from "../capture/VariableCapturer";
 import type { ConfigInput } from "@shader-studio/types";
+import type { SlangDiagnostic } from "@shader-studio/types";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
 import { DBG_CAPTURE_UNIFORM_SIZE } from "./SlangPrelude";
@@ -22,6 +23,7 @@ const ROW_ALIGNMENT = 256;
 interface CachedPipeline {
   pipeline: GPURenderPipeline;
   bindGroupLayout: GPUBindGroupLayout;
+  compatibilityKey: string;
   lastUsed: number;
 }
 
@@ -47,10 +49,12 @@ interface PendingCapture {
  */
 export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCache = new Map<string, CachedPipeline>();
+  private compileFallbacks = new Map<string, CachedPipeline | null>();
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
   private compileContext: CaptureCompileContext = {};
   private lastError: string | null = null;
+  private lastDiagnostics: SlangDiagnostic[] = [];
   private uniformBuffer: GPUBuffer | null = null;
   private captureUniformBuffer: GPUBuffer | null = null;
   private sampler: GPUSampler | null = null;
@@ -69,14 +73,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   setCompileContext(context: CaptureCompileContext): void {
-    const nextCommon = context.commonCode ?? "";
-    const nextChannels = JSON.stringify(context.slangChannels ?? []);
-    const currentCommon = this.compileContext.commonCode ?? "";
-    const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    if (nextCommon !== currentCommon || nextChannels !== currentChannels) {
-      this.pipelineCache.clear();
-      this.pipelineCacheOrder = [];
-    }
+    this.compileFallbacks.clear();
     this.compileContext = context;
   }
 
@@ -88,8 +85,6 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
     }));
     if (previousShape !== nextShape) {
-      this.pipelineCache.clear();
-      this.pipelineCacheOrder = [];
       this.uniformBuffer?.destroy?.();
       this.uniformBuffer = null;
     }
@@ -101,10 +96,21 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   clearLastError(): void {
     this.lastError = null;
+    this.lastDiagnostics = [];
   }
 
   getLastError(): string | null {
     return this.lastError;
+  }
+
+  getLastDiagnostics(): SlangDiagnostic[] {
+    return this.lastDiagnostics.map((diagnostic) => ({
+      ...diagnostic,
+      range: {
+        start: { ...diagnostic.range.start },
+        end: { ...diagnostic.range.end },
+      },
+    }));
   }
 
   async issueCaptureAtPixel(
@@ -197,6 +203,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
     this.pipelineCacheOrder = [];
+    this.compileFallbacks.clear();
   }
 
   private async issue(
@@ -367,26 +374,62 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureShader: string,
     channels: SlangChannelBinding[],
   ): Promise<CachedPipeline | null> {
-    const existing = this.pipelineCache.get(captureShader);
+    const cacheKey = this.capturePipelineKey(captureShader);
+    const existing = this.pipelineCache.get(cacheKey);
     if (existing) {
       existing.lastUsed = performance.now();
       return existing;
     }
+    if (this.compileFallbacks.has(cacheKey)) {
+      const currentFallback = this.compileFallbacks.get(cacheKey) ?? null;
+      if (currentFallback) {
+        currentFallback.lastUsed = performance.now();
+      }
+      return currentFallback;
+    }
 
     captureCounters.pipelineCompiles++;
-    const compileResult = await this.compiler.compile(captureShader, {
-      passName: "capture",
-      commonCode: this.compileContext.commonCode,
-      channels,
-      captureMode: true,
-      customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    const sourceUri = this.compileContext.sourceUri ?? "shader-studio://capture/capture.slang";
+    const sourcePath = this.compileContext.sourcePath ?? "/workspace/capture.slang";
+    const workspace = this.compileContext.workspace
+      ? {
+        ...this.compileContext.workspace,
+        files: this.compileContext.workspace.files.map((file) =>
+          file.uri === sourceUri || file.path === sourcePath
+            ? { ...file, source: captureShader }
+            : file,
+        ),
+      }
+      : {
+        rootUri: "shader-studio://capture",
+        files: [{ uri: sourceUri, path: sourcePath, source: captureShader }],
+      };
+    const compileResult = await this.compiler.compile({
+      source: captureShader,
+      sourceUri,
+      sourcePath,
+      workspace,
+      options: {
+        passName: this.compileContext.slangPassName ?? "capture",
+        commonCode: this.compileContext.commonCode,
+        channels,
+        captureMode: true,
+        customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+      },
     });
     if (this.disposed) {
       return null;
     }
+    this.lastDiagnostics = (compileResult.diagnostics ?? []).map((diagnostic) => ({
+      ...diagnostic,
+      range: {
+        start: { ...diagnostic.range.start },
+        end: { ...diagnostic.range.end },
+      },
+    }));
     if (!compileResult.success) {
       this.lastError = compileResult.errors.join("\n");
-      return null;
+      return this.cacheCompatibleFallback(cacheKey, captureShader);
     }
 
     let pipeline: GPURenderPipeline;
@@ -411,17 +454,80 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         : this.device.createRenderPipeline(descriptor);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
-      return null;
+      this.lastDiagnostics = [
+        ...this.lastDiagnostics,
+        {
+          uri: sourceUri,
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          },
+          severity: "error",
+          message: this.lastError,
+          source: "webgpu",
+          passName: this.compileContext.slangPassName ?? "capture",
+        },
+      ];
+      return this.cacheCompatibleFallback(cacheKey, captureShader);
     }
 
     if (this.pipelineCacheOrder.length >= SHADER_CACHE_MAX) {
       const oldest = this.pipelineCacheOrder.shift()!;
       this.pipelineCache.delete(oldest);
     }
-    const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
-    this.pipelineCache.set(captureShader, cached);
-    this.pipelineCacheOrder.push(captureShader);
+    const cached: CachedPipeline = {
+      pipeline,
+      bindGroupLayout,
+      compatibilityKey: this.captureCompatibilityKey(captureShader),
+      lastUsed: performance.now(),
+    };
+    this.pipelineCache.set(cacheKey, cached);
+    this.pipelineCacheOrder.push(cacheKey);
     return cached;
+  }
+
+  private capturePipelineKey(captureShader: string): string {
+    return JSON.stringify({
+      captureShader,
+      commonCode: this.compileContext.commonCode ?? "",
+      channels: this.compileContext.slangChannels ?? [],
+      passName: this.compileContext.slangPassName ?? "capture",
+      sourceUri: this.compileContext.sourceUri ?? "",
+      sourcePath: this.compileContext.sourcePath ?? "",
+      workspace: this.compileContext.workspace ?? null,
+      customUniformShape: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    });
+  }
+
+  private captureCompatibilityKey(captureShader: string): string {
+    return JSON.stringify({
+      captureShader,
+      commonCode: this.compileContext.commonCode ?? "",
+      channels: this.compileContext.slangChannels ?? [],
+      passName: this.compileContext.slangPassName ?? "capture",
+      sourceUri: this.compileContext.sourceUri ?? "",
+      sourcePath: this.compileContext.sourcePath ?? "",
+      workspaceRootUri: this.compileContext.workspace?.rootUri ?? "",
+      workspaceFiles: this.compileContext.workspace?.files.map(({ uri, path }) => ({ uri, path })) ?? [],
+      customUniformShape: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    });
+  }
+
+  private findCompatiblePipeline(compatibilityKey: string): CachedPipeline | null {
+    for (let index = this.pipelineCacheOrder.length - 1; index >= 0; index -= 1) {
+      const cached = this.pipelineCache.get(this.pipelineCacheOrder[index]);
+      if (cached?.compatibilityKey === compatibilityKey) {
+        cached.lastUsed = performance.now();
+        return cached;
+      }
+    }
+    return null;
+  }
+
+  private cacheCompatibleFallback(cacheKey: string, captureShader: string): CachedPipeline | null {
+    const fallback = this.findCompatiblePipeline(this.captureCompatibilityKey(captureShader));
+    this.compileFallbacks.set(cacheKey, fallback);
+    return fallback;
   }
 
   /**

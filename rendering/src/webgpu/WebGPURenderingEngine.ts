@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import { normalizeInternalPath } from "@shader-studio/slang-language-service";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -15,6 +16,7 @@ import { KeyboardManager } from "../input/KeyboardManager";
 import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { SlangCompiler } from "./SlangCompiler";
+import type { SlangCompileRequest, SlangCompileOptions } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import {
@@ -26,7 +28,7 @@ import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniform
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
-import { sharedSlangWgslCache } from "./SlangWgslCache";
+import { createSlangWgslCacheKey, sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
 
@@ -56,7 +58,6 @@ interface PassTiming {
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
-const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
@@ -65,8 +66,8 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
     private readonly objectUrls: string[],
   ) {}
 
-  compile(source: string, options: Parameters<AsyncSlangCompiler["compile"]>[1]): Promise<ReturnType<AsyncSlangCompiler["compile"]> extends Promise<infer T> ? T : never> {
-    return this.inner.compile(source, options);
+  compile(request: Parameters<AsyncSlangCompiler["compile"]>[0]): ReturnType<AsyncSlangCompiler["compile"]> {
+    return this.inner.compile(request);
   }
 
   dispose(): void {
@@ -116,6 +117,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string>;
     customUniformDeclarations?: string;
     customUniformInfo?: { name: string; type: string }[];
+    workspace?: SlangWorkspaceSnapshot;
   } | null = null;
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
@@ -462,6 +464,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string> = {},
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
@@ -494,14 +497,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       hasDevice: Boolean(this.device),
       hasCompiler: Boolean(this.compiler),
     });
-    // Remember the inputs so updateBufferAndRecompile can re-run this compile
-    // with a single buffer's content patched.
-    this.lastCompile = {
+    // Commit these only after the complete pipeline generation succeeds.
+    // Capture and incremental updates must never observe a failed workspace.
+    const nextCompile = {
       code,
       path,
       buffers: { ...buffers },
       customUniformDeclarations,
       customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
+      workspace: workspace ? cloneWorkspaceSnapshot(workspace) : undefined,
     };
     const nextCustomUniformManager = new CustomUniformManager();
     if (customUniformDeclarations && customUniformInfo) {
@@ -683,13 +687,28 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextKeys = new Map<string, string>();
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    const diagnostics: import("@shader-studio/types").SlangDiagnostic[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
-      const key = WebGPURenderingEngine.passCacheKey(
+      const options: SlangCompileOptions = {
+        passName: pass.name,
+        commonCode: graph.commonCode,
+        channels: pass.channels.map((channel) => ({
+          slot: channel.slot,
+          key: channel.key,
+          kind: channel.kind,
+        })),
+        ...(nextCustomUniformManager.hasUniforms()
+          ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
+          : {}),
+      };
+      const compileRequest = WebGPURenderingEngine.createCompileRequest(
         pass,
-        graph.commonCode,
-        nextCustomUniformManager.getUniformInfo(),
+        path,
+        workspace,
+        options,
       );
+      const key = createSlangWgslCacheKey(compileRequest);
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
         // Unchanged pass: carry the live pipeline into the next generation.
@@ -711,18 +730,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         let slangMs = 0;
         if (!wgsl) {
           const slangStartedAt = this.now();
-          const compiled = await this.compiler.compile(pass.source, {
-            passName: pass.name,
-            commonCode: graph.commonCode,
-            channels: pass.channels.map((channel) => ({
-              slot: channel.slot,
-              key: channel.key,
-              kind: channel.kind,
-            })),
-            ...(nextCustomUniformManager.hasUniforms()
-              ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
-              : {}),
-          });
+          const compiled = await this.compiler.compile(compileRequest);
+          diagnostics.push(...(compiled.diagnostics ?? []));
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
             errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
@@ -806,6 +815,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         success: false,
         errors,
         warnings: graph.warnings,
+        diagnostics,
       });
     }
 
@@ -857,6 +867,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
     this.shaderPath = path;
+    this.lastCompile = nextCompile;
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
@@ -885,7 +896,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       graph,
       errors,
     });
-    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    return {
+      success: true,
+      warnings: graph.warnings.length > 0 ? graph.warnings : undefined,
+      diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
+    };
   }
 
   private failedCompilation(
@@ -916,6 +931,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passPipelines.clear();
     this.passKeys.clear();
     this.passGraph = [];
+    this.lastCompile = null;
     if (hadInstalledPipeline) {
       this.resourceManager?.cleanup();
       this.timeManager.cleanup();
@@ -1038,26 +1054,72 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ].join(" ");
   }
 
-  /**
-   * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key + kind).
-   * Width/height are texture concerns handled by resize() without recompiling,
-   * so they're deliberately excluded from the key.
-   */
-  private static passCacheKey(
+  private static createCompileRequest(
     pass: RenderPassNode,
-    commonCode: string,
-    customUniforms: { name: string; type: string }[] = [],
-  ): string {
-    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
-    return JSON.stringify([
-      SLANG_WGSL_CACHE_KEY_VERSION,
-      pass.name,
-      pass.source,
-      commonCode,
-      channels,
-      customUniforms,
-    ]);
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot | undefined,
+    options: SlangCompileOptions,
+  ): SlangCompileRequest {
+    const sourceFile = WebGPURenderingEngine.findPassSourceFile(pass, shaderPath, workspace);
+    const generatedName = pass.name.toLowerCase();
+    const sourceUri = sourceFile?.uri ?? WebGPURenderingEngine.pathToFileUri(
+      pass.name === "Image" ? shaderPath : `/${generatedName}.slang`,
+    );
+    // If the caller's selector has no exact canonical snapshot identity, use
+    // an explicitly synthetic namespace. Never attach the pass to a file just
+    // because its text or name resembles the in-memory buffer.
+    const sourcePath = sourceFile?.path ?? `/workspace/__shader_studio_generated__/${generatedName}.slang`;
+    const snapshot = workspace ?? {
+      rootUri: WebGPURenderingEngine.parentUri(sourceUri),
+      files: [{ uri: sourceUri, path: sourcePath, source: pass.source }],
+    };
+    return { source: pass.source, sourceUri, sourcePath, workspace: snapshot, options };
+  }
+
+  private static findPassSourceFile(
+    pass: RenderPassNode,
+    shaderPath: string,
+    workspace: SlangWorkspaceSnapshot | undefined,
+  ): SlangWorkspaceSnapshot["files"][number] | undefined {
+    if (!workspace) {
+      return undefined;
+    }
+    const selector = pass.name === "Image" ? shaderPath : pass.path;
+    if (!selector) {
+      return undefined;
+    }
+    const windowsWorkspace = isWindowsFileUri(workspace.rootUri);
+    const workspacePath = selectorToWorkspacePath(selector, windowsWorkspace);
+    if (workspacePath) {
+      return workspace.files.find((file) => comparableWorkspacePath(file.path, windowsWorkspace) === workspacePath);
+    }
+    for (const uri of selectorToFileUris(selector, shaderPath, workspace.rootUri)) {
+      const uriKey = comparableFileUri(uri, windowsWorkspace);
+      const file = workspace.files.find((candidate) => comparableFileUri(candidate.uri, windowsWorkspace) === uriKey);
+      if (file) {
+        return file;
+      }
+    }
+    // Historical callers may pass `/image.slang` as a workspace-root path
+    // rather than an absolute host path. Only use that interpretation after
+    // exact URI resolution failed, and still require an exact snapshot path.
+    if (selector.startsWith("/") && !selector.startsWith("/workspace/")) {
+      const rootPath = selectorToWorkspacePath(`@${selector}`, windowsWorkspace);
+      if (rootPath) {
+        return workspace.files.find((file) => comparableWorkspacePath(file.path, windowsWorkspace) === rootPath);
+      }
+    }
+    return undefined;
+  }
+
+  private static pathToFileUri(path: string): string {
+    return pathToFileUri(path);
+  }
+
+  private static parentUri(uri: string): string {
+    const parsed = new URL(uri);
+    parsed.pathname = parsed.pathname.slice(0, parsed.pathname.lastIndexOf("/") + 1);
+    return parsed.href.replace(/\/$/, "");
   }
 
   render(time: number = performance.now()): void {
@@ -1607,14 +1669,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.lastCompile) {
       return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
     }
-    this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
+    const previous = this.lastCompile;
+    const proposedBuffers = { ...previous.buffers, [bufferName]: bufferContent };
     return this.compileShaderPipeline(
-      this.lastCompile.code,
+      previous.code,
       this.currentConfig,
-      this.lastCompile.path,
-      this.lastCompile.buffers,
-      this.lastCompile.customUniformDeclarations,
-      this.lastCompile.customUniformInfo,
+      previous.path,
+      proposedBuffers,
+      previous.customUniformDeclarations,
+      previous.customUniformInfo,
+      previous.workspace,
     );
   }
 
@@ -1738,11 +1802,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
     const commonCode = this.lastCompile?.buffers?.common ?? "";
+    const sourceFile = targetPass && this.lastCompile
+      ? WebGPURenderingEngine.findPassSourceFile(targetPass, this.lastCompile.path, this.lastCompile.workspace)
+      : undefined;
     this.capturePassName = targetPass?.name ?? null;
     return {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      sourceUri: sourceFile?.uri,
+      sourcePath: sourceFile?.path,
+      workspace: this.lastCompile?.workspace ? cloneWorkspaceSnapshot(this.lastCompile.workspace) : undefined,
     };
   }
 
@@ -1853,4 +1923,87 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.customUniformManager.updateValues(changed);
     this.pendingCustomUniformValues = this.customUniformManager.getCurrentValues();
   }
+}
+
+function selectorToWorkspacePath(selector: string, windows: boolean): string | undefined {
+  let path: string;
+  if (selector.startsWith("@/")) {
+    path = `/workspace/${decodePath(selector.slice(2))}`;
+  } else if (selector === "/workspace" || selector.startsWith("/workspace/")) {
+    path = decodePath(selector);
+  } else {
+    return undefined;
+  }
+  try {
+    return comparableWorkspacePath(normalizeInternalPath(path), windows);
+  } catch {
+    return undefined;
+  }
+}
+
+function cloneWorkspaceSnapshot(snapshot: SlangWorkspaceSnapshot): SlangWorkspaceSnapshot {
+  return {
+    rootUri: snapshot.rootUri,
+    files: snapshot.files.map((file) => ({ ...file })),
+  };
+}
+
+function comparableWorkspacePath(path: string, windows: boolean): string {
+  const normalized = normalizeInternalPath(path);
+  return windows ? normalized.toLowerCase() : normalized;
+}
+
+function selectorToFileUris(selector: string, shaderPath: string, rootUri: string): string[] {
+  try {
+    if (/^[A-Za-z]:[\\/]/.test(selector) || selector.startsWith("/")) {
+      return [pathToFileUri(selector)];
+    }
+    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(selector)) {
+      return [new URL(selector).href];
+    }
+    const normalized = selector.replace(/\\/g, "/");
+    const shaderRelative = new URL(normalized, pathToFileUri(shaderPath)).href;
+    const rootRelative = new URL(normalized, `${rootUri.replace(/\/$/, "")}/`).href;
+    return shaderRelative === rootRelative ? [shaderRelative] : [shaderRelative, rootRelative];
+  } catch {
+    return [];
+  }
+}
+
+function comparableFileUri(uri: string, windows: boolean): string | undefined {
+  try {
+    const parsed = new URL(uri);
+    parsed.hash = "";
+    parsed.search = "";
+    const authority = parsed.hostname.toLowerCase();
+    const path = decodePath(parsed.pathname);
+    const key = `${parsed.protocol.toLowerCase()}//${authority}${path}`;
+    return windows ? key.toLowerCase() : key;
+  } catch {
+    return undefined;
+  }
+}
+
+function isWindowsFileUri(uri: string): boolean {
+  try {
+    return /^\/[A-Za-z]:(?:\/|$)/.test(new URL(uri).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+function pathToFileUri(path: string): string {
+  if (!/^[A-Za-z]:[\\/]/.test(path) && /^[A-Za-z][A-Za-z\d+.-]*:/.test(path)) {
+    return new URL(path).href;
+  }
+  const normalized = path.replace(/\\/g, "/");
+  return new URL(`file://${normalized.startsWith("/") ? "" : "/"}${normalized}`).href;
 }

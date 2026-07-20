@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, recordingManagerContext } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -56,8 +56,22 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // Tracks when the mocked ShaderPipeline's handleShaderMessage (the replay
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage };
+  const recordingManagerContext: { getShaderContext?: () => unknown } = {};
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, recordingManagerContext };
 });
+
+vi.mock('../../lib/RecordingManager', () => ({
+  RecordingManager: class {
+    constructor(getShaderContext: () => unknown) {
+      recordingManagerContext.getShaderContext = getShaderContext;
+    }
+
+    screenshot() {}
+    record() {}
+    cancel() {}
+    dispose() {}
+  },
+}));
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
@@ -392,7 +406,11 @@ const { mockVCMFactory } = vi.hoisted(() => {
     _sampleSettingsCallback: null as (() => void) | null,
     _lastNotifyParams: null as any,
     _notifyCalls: [] as any[],
-    _instances: [] as Array<{ disposed: boolean; notifyCalls: any[] }>,
+    _instances: [] as Array<{
+      disposed: boolean;
+      notifyCalls: any[];
+      diagnosticCallback: ((diagnostics: any[]) => void) | null;
+    }>,
     sampleSize: 32,
     refreshMode: 'polling',
     pollingMs: 500,
@@ -418,11 +436,15 @@ const { mockVCMFactory } = vi.hoisted(() => {
 
 vi.mock('../../lib/VariableCaptureManager', () => ({
   VariableCaptureManager: class {
-    private _instance: { disposed: boolean; notifyCalls: any[] };
+    private _instance: {
+      disposed: boolean;
+      notifyCalls: any[];
+      diagnosticCallback: ((diagnostics: any[]) => void) | null;
+    };
 
     constructor(_engine: any, cb: (vars: any[]) => void) {
       mockVCMFactory._callback = cb;
-      this._instance = { disposed: false, notifyCalls: [] };
+      this._instance = { disposed: false, notifyCalls: [], diagnosticCallback: null };
       mockVCMFactory._instances.push(this._instance);
     }
     get sampleSize() {
@@ -430,6 +452,9 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
     }
     setSampleSettingsCallback(cb: () => void) {
       mockVCMFactory._sampleSettingsCallback = cb; 
+    }
+    setDiagnosticCallback(cb: (diagnostics: any[]) => void) {
+      this._instance.diagnosticCallback = cb;
     }
     notifyStateChange(params: any) {
       mockVCMFactory._lastNotifyParams = params;
@@ -510,6 +535,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    recordingManagerContext.getShaderContext = undefined;
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
     resolutionStore.reset();
@@ -535,6 +561,60 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('retains a cloned Slang workspace for recording after the caller mutates the shader message', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    const workspace = {
+      rootUri: 'file:///test',
+      files: [
+        {
+          uri: 'file:///test/shader.slang',
+          path: '/workspace/shader.slang',
+          source: 'import helpers;',
+        },
+        {
+          uri: 'file:///test/helpers.slang',
+          path: '/workspace/helpers.slang',
+          source: 'float helper() { return 1.0; }',
+        },
+      ],
+    };
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/test/shader.slang',
+      code: workspace.files[0].source,
+      config: null,
+      buffers: {},
+      workspace,
+    });
+
+    const shaderInfo = recordingManagerContext.getShaderContext?.() as { workspace?: typeof workspace };
+    expect(shaderInfo.workspace).toEqual(workspace);
+    expect(shaderInfo.workspace).not.toBe(workspace);
+    expect(shaderInfo.workspace?.files[1]).not.toBe(workspace.files[1]);
+
+    workspace.files[1].source = 'mutated by caller';
+    expect(shaderInfo.workspace?.files[1].source).toBe('float helper() { return 1.0; }');
+  });
+
+  it('leaves the recording workspace undefined for GLSL shader messages', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'glsl',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 color, vec2 uv) { color = vec4(1.0); }',
+      config: null,
+      buffers: {},
+    });
+
+    expect(recordingManagerContext.getShaderContext?.()).toMatchObject({ workspace: undefined });
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {
@@ -609,6 +689,18 @@ describe('ShaderViewer', () => {
     expect(shaderViewerSource).toContain('getInspectorState');
     expect(shaderViewerSource).toContain('setInspectorState');
     expect(shaderViewerSource).toContain('canvasElement={glCanvas}');
+  });
+
+  it('wires capture diagnostics separately and clears them when shader source changes', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    expect(mockVCMFactory._instances).toHaveLength(1);
+    expect(mockVCMFactory._instances[0].diagnosticCallback).toEqual(expect.any(Function));
+    expect(shaderViewerSource).toContain('let captureDiagnostics = $state<SlangDiagnostic[]>([])');
+    expect(shaderViewerSource).toContain('$derived([...compileDiagnostics, ...captureDiagnostics])');
+    expect(shaderViewerSource).toContain('diagnostics={editorDiagnostics}');
+    expect(shaderViewerSource).toMatch(/function handleShaderSource[\s\S]*?captureDiagnostics = \[\];/);
   });
 
   it('should update the active debugger size button after sample size changes', async () => {
@@ -764,6 +856,94 @@ describe('ShaderViewer', () => {
         data: expect.objectContaining({ path: '/test/broken.glsl' }),
       }));
     });
+  });
+
+  it('rejects stale shader requests before backend swaps or pipeline mutation', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 10,
+      language: 'slang',
+      path: '/test/current.slang',
+      code: 'float4 mainImage(float2 uv) { return 1; }',
+      config: { passes: { Image: {} } },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/current.slang' }),
+      }));
+    });
+    const currentCanvas = container.querySelector('canvas');
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 9,
+      language: 'glsl',
+      path: '/test/current.slang',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { passes: { Image: {} } },
+    });
+
+    expect(container.querySelector('canvas')).toBe(currentCanvas);
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
+  });
+
+  it('rejects stale same-backend requests before updating the pipeline', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource', requestId: 4, language: 'glsl', path: '/test/current.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }', config: { passes: { Image: {} } },
+    });
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource', requestId: 3, language: 'glsl', path: '/test/current.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }', config: { passes: { Image: {} } },
+    });
+
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
+  });
+
+  it('keeps the global request watermark when locking the current shader', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 10,
+      language: 'slang',
+      path: '/test/a.slang',
+      code: 'float4 mainImage(float2 uv) { return 1; }',
+      config: { passes: { Image: {} } },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: '/test/a.slang', requestId: 10 }),
+      }));
+    });
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    await tick();
+    const currentCanvas = container.querySelector('canvas');
+    const callsBeforeStale = mockPipelineHandleShaderMessage.mock.calls.length;
+
+    await sendMessage({
+      type: 'shaderSource',
+      requestId: 9,
+      language: 'glsl',
+      path: '/test/a.slang',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(0.0); }',
+      config: { passes: { Image: {} } },
+    });
+    await tick();
+
+    expect(container.querySelector('canvas')).toBe(currentCanvas);
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(callsBeforeStale);
   });
 
   it('should apply Image Config Resolution to the session stores on shader load', async () => {
@@ -2397,9 +2577,9 @@ describe('ShaderViewer', () => {
 
     const createCalls = vi.mocked(monaco.editor.create).mock.calls;
     expect(createCalls.length).toBe(createCountBeforeSwitch + 1);
-    expect(createCalls.at(-1)?.[1]).toMatchObject({
-      value: 'second shader code',
-    });
+    const options = createCalls.at(-1)?.[1];
+    expect(options).not.toHaveProperty('value');
+    expect(options?.model?.getValue()).toBe('second shader code');
   });
 
   it('should send requestFileContents when shaderSource sets up the path context', async () => {

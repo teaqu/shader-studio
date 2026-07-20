@@ -434,6 +434,65 @@ describe('ShaderProcessor', () => {
         undefined,
       );
     });
+
+    it('preserves structured Slang diagnostics in failed compilation results', async () => {
+      const diagnostic = {
+        uri: 'file:///project/helper.slang',
+        range: { start: { line: 2, character: 1 }, end: { line: 2, character: 3 } },
+        severity: 'error' as const,
+        message: 'bad helper',
+        source: 'slang-compile' as const,
+      };
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ['raw error'],
+        diagnostics: [diagnostic],
+      });
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        language: 'slang',
+        code: 'float4 mainImage(float2 c) { return helper(); }',
+        config: null,
+        path: '/project/image.slang',
+        buffers: {},
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message);
+
+      expect(result).toMatchObject({ success: false, diagnostics: [diagnostic] });
+    });
+
+    it('passes a Slang workspace snapshot through to the rendering engine', async () => {
+      const workspace = {
+        rootUri: 'file:///project',
+        files: [{
+          uri: 'file:///project/image.slang',
+          path: '/workspace/image.slang',
+          source: 'float4 mainImage(float2 c) { return 0; }',
+        }],
+      };
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        language: 'slang',
+        code: workspace.files[0].source,
+        config: {},
+        path: '/project/image.slang',
+        buffers: {},
+        workspace,
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        undefined,
+        undefined,
+        workspace,
+      );
+    });
   });
 
   describe('processCommonBufferUpdate', () => {
@@ -594,6 +653,72 @@ describe('ShaderProcessor', () => {
         undefined,
       );
       expect(result.success).toBe(true);
+    });
+
+    it('passes the exact Slang workspace through an active debug recompile', async () => {
+      const imageShaderCode = 'float4 mainImage(float2 c) { return helper(c); }';
+      const modifiedCode = 'float4 mainImage(float2 c) { return float4(c, 0, 1); }';
+      const workspace = {
+        rootUri: 'file:///project',
+        files: [
+          { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: imageShaderCode },
+          { uri: 'file:///project/helper.slang', path: '/workspace/helper.slang', source: 'module helper;' },
+        ],
+      };
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource', language: 'slang', code: imageShaderCode, config: {},
+        path: '/project/image.slang', buffers: {}, workspace,
+      };
+      await shaderProcessor.processMainShaderCompilation(message, false);
+      vi.clearAllMocks();
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true, isActive: true, currentLine: 0, lineContent: imageShaderCode,
+        filePath: '/project/image.slang', activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
+
+      await shaderProcessor.debugCompile(message);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        modifiedCode, message.config, message.path, message.buffers, undefined, undefined, workspace,
+      );
+      expect(workspace.files[0].source).toBe(imageShaderCode);
+      expect(workspace.files[1].source).toBe('module helper;');
+    });
+
+    it('passes the exact Slang workspace through debug failure fallback', async () => {
+      const imageShaderCode = 'float4 mainImage(float2 c) { return helper(c); }';
+      const modifiedCode = 'broken debug source';
+      const workspace = {
+        rootUri: 'file:///project',
+        files: [
+          { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: imageShaderCode },
+          { uri: 'file:///project/helper.slang', path: '/workspace/helper.slang', source: 'module helper;' },
+        ],
+      };
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource', language: 'slang', code: imageShaderCode, config: {},
+        path: '/project/image.slang', buffers: {}, workspace,
+      };
+      await shaderProcessor.processMainShaderCompilation(message, false);
+      vi.clearAllMocks();
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true, isActive: true, currentLine: 0, lineContent: imageShaderCode,
+        filePath: '/project/image.slang', activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
+      (mockRenderEngine.compileShaderPipeline as any)
+        .mockResolvedValueOnce({ success: false, errors: ['bad debug'] })
+        .mockResolvedValueOnce({ success: true });
+
+      await shaderProcessor.debugCompile(message);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(
+        1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined, workspace,
+      );
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(
+        2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined, workspace,
+      );
     });
 
     it('should fallback to original code if modification fails', async () => {

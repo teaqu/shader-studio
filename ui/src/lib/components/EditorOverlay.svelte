@@ -5,7 +5,15 @@
   import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
   import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl } from "@shader-studio/monaco";
+  import {
+    SLANG_COMPILE_MARKER_OWNER,
+    setupMonacoGlsl,
+    setupMonacoSlang,
+    type SlangMonacoAdapter,
+  } from "@shader-studio/monaco";
+  import { getBrowserSlangLanguageClient } from "../slangLanguageClient";
+  import { acquireEditorModel, canonicalEditorUri, releaseEditorModel } from "../monacoModelRegistry";
+  import type { SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -13,6 +21,8 @@
     isVisible?: boolean;
     shaderCode?: string;
     shaderPath?: string;
+    shaderLanguage?: "glsl" | "slang";
+    slangWorkspace?: SlangWorkspaceSnapshot;
     transport: Transport;
     onCodeChange?: (code: string) => void;
     vimMode?: boolean;
@@ -21,6 +31,7 @@
     activeBufferName?: string;
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
+    diagnostics?: SlangDiagnostic[];
     compileMode?: CompileMode;
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
@@ -41,6 +52,8 @@
     isVisible = false,
     shaderCode = "",
     shaderPath = "",
+    shaderLanguage = "glsl",
+    slangWorkspace,
     transport,
     onCodeChange = () => {},
     vimMode = false,
@@ -49,6 +62,7 @@
     activeBufferName = "Image",
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
+    diagnostics = [],
     compileMode = "hot",
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
@@ -62,12 +76,145 @@
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let modelChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShaderPath: string = "";
+  let lastShaderLanguage: "glsl" | "slang" = "glsl";
+  let activeModel: monaco.editor.ITextModel | null = null;
+  let activeModelUri = $state("");
+  let activeModelPath = "";
+  let activeModelLanguage = $state<"glsl" | "slang">("glsl");
+  let settingEditorModel = false;
+  let slangAdapter: SlangMonacoAdapter | null = null;
+  let workspaceUpdateRunning = false;
+  let workspaceLifecycle = 0;
+  let lastQueuedWorkspaceFingerprint = "";
+  let lastWorkspaceError = "";
+  const workspaceUpdateQueue: Array<{
+    snapshot: SlangWorkspaceSnapshot;
+    fingerprint: string;
+    lifecycle: number;
+  }> = [];
+  const compileMarkerOwners = new WeakMap<monaco.editor.ITextModel, string>();
+  const compileOwnedModels = new Set<monaco.editor.ITextModel>();
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
+
+  function currentSlangWorkspace(): SlangWorkspaceSnapshot {
+    if (slangWorkspace) {
+      return slangWorkspace;
+    }
+    const uri = canonicalEditorUri(monaco, shaderPath).toString();
+    const parsed = new URL(uri);
+    const name = parsed.pathname.split("/").at(-1) || "shader.slang";
+    return {
+      rootUri: new URL(".", parsed).href,
+      files: [{ uri, path: name, source: shaderCode, version: 1 }],
+    };
+  }
+
+  async function drainWorkspaceUpdates() {
+    if (workspaceUpdateRunning) {
+      return;
+    }
+    workspaceUpdateRunning = true;
+    while (workspaceUpdateQueue.length > 0) {
+      const update = workspaceUpdateQueue.shift()!;
+      if (update.lifecycle !== workspaceLifecycle || !slangAdapter) {
+        continue;
+      }
+      try {
+        await slangAdapter.setWorkspace(update.snapshot);
+        updateStructuredDiagnosticMarkers(diagnostics);
+        lastWorkspaceError = "";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message !== lastWorkspaceError) {
+          console.error("Failed to initialize Slang workspace:", error);
+          lastWorkspaceError = message;
+        }
+        if (lastQueuedWorkspaceFingerprint === update.fingerprint) {
+          lastQueuedWorkspaceFingerprint = "";
+        }
+      }
+    }
+    workspaceUpdateRunning = false;
+  }
+
+  function queueCurrentSlangWorkspace() {
+    if (shaderLanguage !== "slang") {
+      return;
+    }
+    if (!slangAdapter) {
+      if (!editor) {
+        return;
+      }
+      slangAdapter = setupMonacoSlang(monaco, getBrowserSlangLanguageClient());
+    }
+    const snapshot = currentSlangWorkspace();
+    const fingerprint = JSON.stringify(snapshot);
+    if (fingerprint === lastQueuedWorkspaceFingerprint) {
+      return;
+    }
+    lastQueuedWorkspaceFingerprint = fingerprint;
+    workspaceUpdateQueue.push({ snapshot, fingerprint, lifecycle: workspaceLifecycle });
+    void drainWorkspaceUpdates();
+  }
+
+  function clearCompileMarkers(model: monaco.editor.ITextModel) {
+    const owner = compileMarkerOwners.get(model);
+    if (!owner) {
+      return;
+    }
+    monaco.editor.setModelMarkers(model, owner, []);
+    compileMarkerOwners.delete(model);
+    compileOwnedModels.delete(model);
+  }
+
+  function languageForModel(model: monaco.editor.ITextModel): "glsl" | "slang" {
+    return model.getLanguageId() === "slang" ? "slang" : "glsl";
+  }
+
+  function pathForModel(model: monaco.editor.ITextModel): string {
+    const uri = model.uri.toString();
+    try {
+      const parsed = new URL(uri);
+      return parsed.protocol === "file:" ? decodeURIComponent(parsed.pathname) : uri;
+    } catch {
+      return uri;
+    }
+  }
+
+  function handleEditorModelChange() {
+    if (!editor || settingEditorModel) {
+      return;
+    }
+    const navigatedModel = editor.getModel();
+    if (!navigatedModel || navigatedModel === activeModel) {
+      return;
+    }
+    const previousModel = activeModel;
+    const language = languageForModel(navigatedModel);
+    const nextModel = acquireEditorModel(
+      monaco,
+      navigatedModel.uri.toString(),
+      navigatedModel.getValue(),
+      language,
+    );
+    activeModel = nextModel;
+    activeModelUri = nextModel.uri.toString();
+    activeModelPath = pathForModel(nextModel);
+    activeModelLanguage = language;
+    lastSentCode = null;
+    if (previousModel) {
+      clearCompileMarkers(previousModel);
+      releaseEditorModel(monaco, previousModel);
+    }
+    updateErrorMarkers(errors, nextModel, language);
+    updateBlankLineDecorations();
+  }
 
   function focusMonacoTextInput() {
     if (!containerEl) {
@@ -351,10 +498,18 @@
     }
 
     setupMonacoGlsl(monaco as any);
+    if (shaderLanguage === "slang") {
+      slangAdapter = setupMonacoSlang(monaco, getBrowserSlangLanguageClient());
+      queueCurrentSlangWorkspace();
+    }
+
+    activeModel = acquireEditorModel(monaco, shaderPath, shaderCode, shaderLanguage);
+    activeModelUri = activeModel.uri.toString();
+    activeModelPath = shaderPath;
+    activeModelLanguage = shaderLanguage;
 
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
-      value: shaderCode,
-      language: "glsl",
+      model: activeModel,
       theme: "shader-studio-transparent",
       minimap: { enabled: false },
       scrollbar: {
@@ -396,9 +551,10 @@
     };
 
     editor = monaco.editor.create(containerEl, editorOptions);
+    modelChangeDisposable = editor.onDidChangeModel?.(handleEditorModelChange) ?? null;
 
-    if (shaderPath && savedViewStates.has(shaderPath)) {
-      editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
+    if (activeModelUri && savedViewStates.has(activeModelUri)) {
+      editor.restoreViewState(savedViewStates.get(activeModelUri) ?? null);
     }
 
     editor.onKeyDown?.((event: OverlayKeyEvent) => {
@@ -434,7 +590,8 @@
       }
       updateBlankLineDecorations();
       const code = editor.getValue();
-      if (code === undefined || !shaderPath) {
+      const path = activeModelPath;
+      if (code === undefined || !path) {
         return;
       }
 
@@ -451,13 +608,13 @@
         clearTimeout(persistTimer);
       }
       persistTimer = setTimeout(() => {
-        if (transport && shaderPath) {
+        if (transport && path) {
           lastSentCode = code;
           transport.postMessage({
             type: "updateShaderSource",
             payload: {
               code,
-              path: shaderPath,
+              path,
             },
           });
         }
@@ -465,6 +622,7 @@
     });
 
     lastShaderPath = shaderPath;
+    lastShaderLanguage = shaderLanguage;
 
     if (vimMode) {
       enableVim();
@@ -508,18 +666,37 @@
       cursorChangeDisposable.dispose();
       cursorChangeDisposable = null;
     }
+    if (modelChangeDisposable) {
+      modelChangeDisposable.dispose();
+      modelChangeDisposable = null;
+    }
     disableVim();
     if (containerEl) {
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
     }
     if (editor) {
-      if (shaderPath) {
-        savedViewStates.set(shaderPath, editor.saveViewState());
+      if (activeModelUri) {
+        savedViewStates.set(activeModelUri, editor.saveViewState());
       }
       editor.dispose();
       editor = null;
     }
+    for (const model of [...compileOwnedModels]) {
+      clearCompileMarkers(model);
+    }
+    if (activeModel) {
+      clearCompileMarkers(activeModel);
+      releaseEditorModel(monaco, activeModel);
+      activeModel = null;
+      activeModelUri = "";
+      activeModelPath = "";
+    }
     editorReady = false;
+    workspaceLifecycle += 1;
+    workspaceUpdateQueue.length = 0;
+    slangAdapter = null;
+    lastQueuedWorkspaceFingerprint = "";
+    lastWorkspaceError = "";
     lastSentCode = null;
   }
 
@@ -568,19 +745,63 @@
   });
 
   $effect(() => {
-    if (editor) {
-      updateErrorMarkers(errors);
+    const modelUri = activeModelUri;
+    const language = activeModelLanguage;
+    const currentErrors = errors;
+    const currentDiagnostics = diagnostics;
+    if (editorReady && modelUri && activeModel) {
+      const structuredCount = updateStructuredDiagnosticMarkers(currentDiagnostics);
+      if (structuredCount === 0) {
+        updateErrorMarkers(currentErrors, activeModel, language);
+      }
     }
   });
 
-  function updateErrorMarkers(errs: string[]) {
-    if (!editor) {
-      return;
+  function updateStructuredDiagnosticMarkers(items: SlangDiagnostic[]): number {
+    for (const model of [...compileOwnedModels]) {
+      clearCompileMarkers(model);
     }
-    const model = editor.getModel();
-    if (!model) {
-      return;
+    if (shaderLanguage !== "slang") {
+      return 0;
     }
+    const grouped = new Map<monaco.editor.ITextModel, monaco.editor.IMarkerData[]>();
+    const compileItems = items.filter((item) => item.source !== "slang-language");
+    for (const diagnostic of compileItems) {
+      const model = monaco.editor.getModel(canonicalEditorUri(monaco, diagnostic.uri));
+      if (!model) {
+        continue;
+      }
+      const markers = grouped.get(model) ?? [];
+      markers.push({
+        severity: diagnostic.severity === "warning"
+          ? monaco.MarkerSeverity.Warning
+          : diagnostic.severity === "hint"
+          ? monaco.MarkerSeverity.Hint
+          : diagnostic.severity === "information"
+          ? monaco.MarkerSeverity.Info
+          : monaco.MarkerSeverity.Error,
+        startLineNumber: diagnostic.range.start.line + 1,
+        startColumn: diagnostic.range.start.character + 1,
+        endLineNumber: diagnostic.range.end.line + 1,
+        endColumn: Math.max(diagnostic.range.start.character + 2, diagnostic.range.end.character + 1),
+        message: diagnostic.passName ? `${diagnostic.passName}: ${diagnostic.message}` : diagnostic.message,
+        code: diagnostic.code,
+      });
+      grouped.set(model, markers);
+    }
+    for (const [model, markers] of grouped) {
+      monaco.editor.setModelMarkers(model, SLANG_COMPILE_MARKER_OWNER, markers);
+      compileMarkerOwners.set(model, SLANG_COMPILE_MARKER_OWNER);
+      compileOwnedModels.add(model);
+    }
+    return [...grouped.values()].reduce((count, markers) => count + markers.length, 0);
+  }
+
+  function updateErrorMarkers(
+    errs: string[],
+    model: monaco.editor.ITextModel,
+    language: "glsl" | "slang" = activeModelLanguage,
+  ) {
 
     const activeBufferKey = activeBufferName.trim().toLowerCase();
     const markers: monaco.editor.IMarkerData[] = [];
@@ -606,20 +827,55 @@
       }
     }
 
-    monaco.editor.setModelMarkers(model, 'glsl', markers);
+    const owner = language === 'slang' ? SLANG_COMPILE_MARKER_OWNER : 'glsl';
+    const previousOwner = compileMarkerOwners.get(model);
+    if (previousOwner && previousOwner !== owner) {
+      monaco.editor.setModelMarkers(model, previousOwner, []);
+    }
+    monaco.editor.setModelMarkers(model, owner, markers);
+    compileMarkerOwners.set(model, owner);
+    compileOwnedModels.add(model);
   }
 
   $effect(() => {
+    if (!editorReady) {
+      return;
+    }
+    queueCurrentSlangWorkspace();
+  });
+
+  $effect(() => {
     if (editor && shaderCode !== undefined) {
-      const fileChanged = shaderPath !== lastShaderPath;
+      const fileChanged = shaderPath !== lastShaderPath || shaderLanguage !== lastShaderLanguage;
+      const propModelUri = canonicalEditorUri(monaco, shaderPath).toString();
+      const navigationActive = !fileChanged && activeModelUri !== propModelUri;
+      if (navigationActive) {
+        return;
+      }
       const currentValue = editor.getValue();
 
       if (fileChanged) {
-        if (lastShaderPath) {
-          savedViewStates.set(lastShaderPath, editor.saveViewState());
+        if (activeModelUri) {
+          savedViewStates.set(activeModelUri, editor.saveViewState());
+        }
+        const previousModel = activeModel;
+        const nextModel = acquireEditorModel(monaco, shaderPath, shaderCode, shaderLanguage);
+        activeModel = nextModel;
+        activeModelUri = nextModel.uri.toString();
+        activeModelPath = shaderPath;
+        activeModelLanguage = shaderLanguage;
+        settingEditorModel = true;
+        try {
+          editor.setModel(nextModel);
+        } finally {
+          settingEditorModel = false;
         }
         editor.setValue(shaderCode);
-        const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
+        if (previousModel) {
+          clearCompileMarkers(previousModel);
+          releaseEditorModel(monaco, previousModel);
+        }
+        const nextViewState = activeModelUri ? savedViewStates.get(activeModelUri) : null;
         if (nextViewState) {
           editor.restoreViewState(nextViewState);
         } else {
@@ -628,6 +884,8 @@
         }
         lastSentCode = null;
         lastShaderPath = shaderPath;
+        lastShaderLanguage = shaderLanguage;
+        updateErrorMarkers(errors, nextModel, shaderLanguage);
       } else if (currentValue === shaderCode) {
         lastSentCode = null;
       } else if (lastSentCode !== null && shaderCode === lastSentCode) {

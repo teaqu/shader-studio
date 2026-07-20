@@ -1,11 +1,54 @@
 import { describe, it, expect, vi } from "vitest";
-import { SlangCompiler } from "../../webgpu/SlangCompiler";
+import {
+  SlangCompiler as WorkspaceSlangCompiler,
+  type SlangCompileOptions,
+  type SlangCompileResult,
+} from "../../webgpu/SlangCompiler";
 import type {
   SlangModuleApi,
   SlangCompileTarget,
   SlangVectorLike,
 } from "../../webgpu/slangTypes";
 import { SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT } from "../../webgpu/SlangPrelude";
+import type { SlangCompileRequest } from "../../webgpu/SlangCompiler";
+
+function compileRequest(overrides: Partial<SlangCompileRequest> = {}): SlangCompileRequest {
+  const source = overrides.source ?? "float4 mainImage(float2 c) { return float4(1); }";
+  return {
+    source,
+    sourceUri: "file:///project/image.slang",
+    sourcePath: "/workspace/image.slang",
+    workspace: {
+      rootUri: "file:///project",
+      files: [{
+        uri: "file:///project/image.slang",
+        path: "/workspace/image.slang",
+        source,
+      }],
+    },
+    options: {},
+    ...overrides,
+  };
+}
+
+/** Test-only adapter keeping older single-file cases concise. */
+class SlangCompiler extends WorkspaceSlangCompiler {
+  compileImagePass(source: string, options: SlangCompileOptions = {}): SlangCompileResult {
+    const moduleName = (options.passName ?? "image").toLowerCase();
+    const sourcePath = `/workspace/${moduleName}.slang`;
+    const sourceUri = `file:///${moduleName}.slang`;
+    return this.compile(compileRequest({
+      source,
+      sourceUri,
+      sourcePath,
+      workspace: {
+        rootUri: "file:///",
+        files: [{ uri: sourceUri, path: sourcePath, source }],
+      },
+      options,
+    }));
+  }
+}
 
 /** Build a fake slang module whose pieces can be selectively broken. */
 function makeFakeSlang(opts: {
@@ -19,34 +62,117 @@ function makeFakeSlang(opts: {
   wgsl?: string;
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
+  onWrite?: (path: string, source: string) => void;
+  onUnlink?: (path: string) => void;
+  onDelete?: (handle: string) => void;
+  throwAt?: "load" | "entry" | "composite" | "link" | "code";
+  aliasLinkedToComposite?: boolean;
+  throwDeleteAt?: string;
 } = {}): SlangModuleApi {
+  const files = new Set<string>();
   const wgsl = opts.wgsl ?? "// wgsl output";
+  let linkedDeleted = false;
+  let compositeDeleted = false;
   const linked = {
+    delete: () => {
+      linkedDeleted = true;
+      opts.onDelete?.("linked");
+      if (opts.throwDeleteAt === "linked") {
+        throw new Error("linked delete threw");
+      }
+    },
+    isAliasOf: (other: unknown) => {
+      if (linkedDeleted || compositeDeleted) {
+        throw new Error("alias check used deleted handle");
+      }
+      return opts.aliasLinkedToComposite && other === composite;
+    },
     link: () => linked,
-    getTargetCode: () => wgsl,
+    getTargetCode: () => {
+      if (opts.throwAt === "code") {
+        throw new Error("code threw");
+      }
+      return wgsl;
+    },
   };
   const composite = {
-    link: () => (opts.linkNull ? null : linked),
+    delete: () => {
+      compositeDeleted = true;
+      opts.onDelete?.("composite");
+      if (opts.throwDeleteAt === "composite") {
+        throw new Error("composite delete threw");
+      }
+    },
+    isAliasOf: (other: unknown) => {
+      if (linkedDeleted || compositeDeleted) {
+        throw new Error("alias check used deleted handle");
+      }
+      return opts.aliasLinkedToComposite && other === linked;
+    },
+    link: () => {
+      if (opts.throwAt === "link") {
+        throw new Error("link threw");
+      }
+      return opts.linkNull ? null : linked;
+    },
     getTargetCode: () => wgsl,
   };
   const module = {
-    findEntryPointByName: (name: string) =>
-      opts.missingEntryPoint === name ? null : { name },
+    delete: () => opts.onDelete?.("module"),
+    isAliasOf: () => false,
+    findEntryPointByName: (name: string) => {
+      if (opts.throwAt === "entry") {
+        throw new Error("entry threw");
+      }
+      return opts.missingEntryPoint === name ? null : {
+        name,
+        delete: () => opts.onDelete?.(name),
+        isAliasOf: () => false,
+      };
+    },
     link: () => null,
     getTargetCode: () => "",
   };
   const session = {
+    delete: () => opts.onDelete?.("session"),
+    isAliasOf: () => false,
     loadModuleFromSource: (source: string, name?: string, path?: string) => {
+      if (opts.throwAt === "load") {
+        throw new Error("load threw");
+      }
       opts.onLoad?.(source, name, path);
       return opts.moduleNull ? null : module;
     },
-    createCompositeComponentType: () => (opts.compositeNull ? null : composite),
+    createCompositeComponentType: () => {
+      if (opts.throwAt === "composite") {
+        throw new Error("composite threw");
+      }
+      return opts.compositeNull ? null : composite;
+    },
   };
   const globalSession = {
-    createSession: () => (opts.sessionNull ? null : session),
+    delete: () => opts.onDelete?.("global"),
+    isAliasOf: () => false,
+    createSession: () => {
+      linkedDeleted = false;
+      compositeDeleted = false;
+      return opts.sessionNull ? null : session;
+    },
   };
 
   return {
+    FS: {
+      mkdirTree: vi.fn(),
+      writeFile: vi.fn((path: string, source: string) => {
+        files.add(path);
+        opts.onWrite?.(path, source);
+      }),
+      unlink: vi.fn((path: string) => {
+        files.delete(path);
+        opts.onUnlink?.(path);
+      }),
+      analyzePath: vi.fn((path: string) => ({ exists: files.has(path) })),
+    },
     createGlobalSession: () => (opts.globalSessionNull ? null : globalSession),
     getCompileTargets: () =>
       opts.targets ?? [
@@ -59,10 +185,335 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("deletes transient Embind handles in reverse ownership order after success", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete: (handle) => deleted.push(handle) }));
+
+    expect(compiler.compile(compileRequest()).success).toBe(true);
+
+    expect(deleted).toEqual([
+      "linked",
+      "composite",
+      SLANG_ENTRY_FRAGMENT,
+      SLANG_ENTRY_VERTEX,
+      "module",
+      "session",
+    ]);
+  });
+
+  it.each([
+    ["load", ["session"]],
+    ["entry", ["module", "session"]],
+    ["composite", [SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+    ["link", ["composite", SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+    ["code", ["linked", "composite", SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, "module", "session"]],
+  ] as const)("deletes every acquired handle when %s throws", (throwAt, expected) => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      throwAt,
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(() => compiler.compile(compileRequest())).toThrow(`${throwAt} threw`);
+    expect(deleted).toEqual(expected);
+  });
+
+  it("does not double-delete aliased composite and linked handles", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      aliasLinkedToComposite: true,
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    compiler.compile(compileRequest());
+
+    expect(deleted.filter((handle) => handle === "linked" || handle === "composite")).toHaveLength(1);
+  });
+
+  it("continues deleting remaining handles if one native deletion throws", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      throwDeleteAt: "linked",
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(() => compiler.compile(compileRequest())).toThrow("linked delete threw");
+    expect(deleted).toEqual([
+      "linked",
+      "composite",
+      SLANG_ENTRY_FRAGMENT,
+      SLANG_ENTRY_VERTEX,
+      "module",
+      "session",
+    ]);
+  });
+
+  it("idempotently deletes the cached global session on dispose", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete: (handle) => deleted.push(handle) }));
+    compiler.compile(compileRequest());
+
+    compiler.dispose();
+    compiler.dispose();
+
+    expect(deleted.filter((handle) => handle === "global")).toEqual(["global"]);
+  });
+
+  it("coordinates MEMFS handoff and disposal across compilers sharing one Slang module", () => {
+    const unlinks: string[] = [];
+    const slang = makeFakeSlang({ onUnlink: (path) => unlinks.push(path) });
+    const first = new SlangCompiler(slang);
+    const second = new SlangCompiler(slang);
+
+    first.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+          { uri: "file:///project/stale.slang", path: "/workspace/stale.slang", source: "stale" },
+        ],
+      },
+    }));
+    second.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(unlinks).toEqual(expect.arrayContaining([
+      "/workspace/image.slang",
+      "/workspace/stale.slang",
+    ]));
+    unlinks.length = 0;
+
+    first.dispose();
+    expect(unlinks).toEqual([]);
+
+    second.dispose();
+    expect(unlinks).toEqual(expect.arrayContaining([
+      "/workspace/palette.slang",
+      "/workspace/passes/image.slang",
+      "/workspace/passes/palette.slang",
+    ]));
+  });
+
+  it("deletes an uncacheable global session when WGSL is unavailable", () => {
+    const deleted: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      targets: [{ name: "GLSL", value: 1 }],
+      onDelete: (handle) => deleted.push(handle),
+    }));
+
+    expect(compiler.compile(compileRequest()).success).toBe(false);
+
+    expect(deleted).toEqual(["global"]);
+  });
+  it("keeps an explicit language and module header before the generated prelude", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compile(compileRequest({
+      source: "\uFEFF#language slang 2026\nmodule image;\nfloat4 mainImage(float2 c) { return 1; }\n",
+    }));
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toMatch(/^\uFEFF#language slang 2026\nmodule image;\n\/\/ ---- shader-studio Slang prelude/);
+    expect(wrapped.match(/\uFEFF/g)).toHaveLength(1);
+  });
+
+  it("compiles directive-free roots under the explicit legacy policy", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compile(compileRequest({ source: "float4 mainImage(float2 c) { return 1; }" }));
+
+    expect(onLoad.mock.calls[0][0]).toMatch(/^#language slang legacy\n/);
+  });
+
+  it("mounts dependencies before loading the root from its real path", () => {
+    const events: string[] = [];
+    let loadedSource = "";
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onWrite: (path) => events.push(`write:${path}`),
+      onLoad: (source, _name, path) => {
+        loadedSource = source;
+        events.push(`load:${path}`);
+      },
+    }));
+
+    compiler.compile(compileRequest({
+      source: "import palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }",
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "module palette; public float4 paletteColor() { return 1; }" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "stale root" },
+        ],
+      },
+    }));
+
+    expect(events).toEqual([
+      "write:/workspace/palette.slang",
+      "write:/workspace/passes/image.slang",
+      "write:/workspace/passes/palette.slang",
+      "load:/workspace/passes/image.slang",
+    ]);
+    expect(loadedSource).toContain("import palette;");
+    expect(loadedSource).not.toContain("stale root");
+  });
+
+  it("keeps a real local module instead of overwriting it with a root projection", () => {
+    const writes: Array<[string, string]> = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onWrite: (path, source) => writes.push([path, source]) }));
+
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "root palette" },
+          { uri: "file:///project/passes/palette.slang", path: "/workspace/passes/palette.slang", source: "local palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(writes.filter(([path]) => path === "/workspace/passes/palette.slang"))
+      .toEqual([["/workspace/passes/palette.slang", "local palette"]]);
+  });
+
+  it("removes compiler-owned module projections before mounting the next snapshot", () => {
+    const unlinks: string[] = [];
+    const compiler = new SlangCompiler(makeFakeSlang({ onUnlink: (path) => unlinks.push(path) }));
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [{ uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" }],
+      },
+    }));
+
+    expect(unlinks).toContain("/workspace/passes/palette.slang");
+  });
+
+  it("maps diagnostics from a projected module back to its real workspace URI", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "error[E30015]: undefined identifier\n  --> /workspace/passes/palette.slang:2:4",
+    }));
+    const result = compiler.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "bad palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics[0]?.uri).toBe("file:///project/palette.slang");
+    }
+  });
+
+  it("returns structured diagnostics with the real dependency URI", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "/workspace/lib/palette.slang(3,7): error 30001: unknown name",
+    }));
+
+    const result = compiler.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+          { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "bad" },
+        ],
+      },
+    }));
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["/workspace/lib/palette.slang(3,7): error 30001: unknown name"],
+      diagnostics: [{
+        uri: "file:///project/lib/palette.slang",
+        range: { start: { line: 2, character: 6 }, end: { line: 2, character: 6 } },
+        severity: "error",
+        code: "30001",
+        message: "unknown name",
+        source: "slang-compile",
+      }],
+    });
+  });
+
+  it("preserves an unrecognized diagnostic as a raw root diagnostic", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: "opaque compiler failure" }));
+    const result = compiler.compile(compileRequest());
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics[0]).toMatchObject({
+        uri: "file:///project/image.slang",
+        message: "opaque compiler failure",
+        source: "slang-compile",
+      });
+    }
+  });
+
+  it("parses the modern Slang diagnostic envelope without depending on source excerpts", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "error[E00001]: cannot open file 'palette.slang'\n  --> /workspace/lib/palette.slang:3:8\n   |\n 3 | import palette;",
+    }));
+    const result = compiler.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [{
+          uri: "file:///project/lib/palette.slang",
+          path: "/workspace/lib/palette.slang",
+          source: "bad",
+        }],
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.diagnostics).toEqual([expect.objectContaining({
+        uri: "file:///project/lib/palette.slang",
+        range: { start: { line: 2, character: 7 }, end: { line: 2, character: 7 } },
+        severity: "error",
+        code: "E00001",
+        message: "cannot open file 'palette.slang'",
+      })]);
+    }
+  });
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
     const result = compiler.compileImagePass("float4 mainImage(float2 c) { return float4(1); }");
-    expect(result).toEqual({ success: true, wgsl: "FINAL_WGSL" });
+    expect(result).toEqual({ success: true, wgsl: "FINAL_WGSL", diagnostics: [] });
   });
 
   it("wraps user source with the prelude and entry points before compiling", () => {
@@ -434,7 +885,7 @@ describe("SlangCompiler", () => {
       passName: "BufferA",
     });
 
-    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/buffera.slang");
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/workspace/buffera.slang");
   });
 
   it("defaults the module name to image when no pass name is given", () => {
@@ -443,7 +894,7 @@ describe("SlangCompiler", () => {
 
     compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
 
-    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/image.slang");
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/workspace/image.slang");
   });
 
   it("does not mutate the caller's channels array", () => {

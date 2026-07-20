@@ -1,9 +1,10 @@
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
-import type { IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
+import type { CaptureCompileContext, IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
-import type { ConfigInput } from '@shader-studio/types';
+import type { ConfigInput, SlangDiagnostic } from '@shader-studio/types';
+import { resolveSlangWorkspaceFile } from './slangSourceIdentity';
 
 const CAPTURABLE_TYPES = new Set([
   'float', 'int', 'bool',
@@ -88,6 +89,50 @@ function writeSessionSettings(settings: CaptureSessionSettings): void {
   } catch {
     // Best effort only; capture controls still work with instance-local state.
   }
+}
+
+function unsupportedSlangCaptureDiagnostic(
+  context: CaptureCompileContext,
+  params: Pick<CaptureParams, 'filePath' | 'debugLine' | 'activeBufferName'>,
+  lineContentLength: number,
+): SlangDiagnostic | null {
+  const filePath = params.filePath;
+  if (!filePath || !context.workspace) {
+    return null;
+  }
+  const resolution = resolveSlangWorkspaceFile(context.workspace, filePath);
+  const selected = resolution.status === 'matched' ? resolution.file : undefined;
+  const sourceUriResolution = context.sourceUri
+    ? resolveSlangWorkspaceFile(context.workspace, context.sourceUri)
+    : { status: 'unmatched' as const };
+  const sourcePathResolution = context.sourcePath
+    ? resolveSlangWorkspaceFile(context.workspace, context.sourcePath)
+    : { status: 'unmatched' as const };
+  const target = sourceUriResolution.status === 'matched'
+    ? sourceUriResolution.file
+    : sourcePathResolution.status === 'matched'
+      ? sourcePathResolution.file
+      : undefined;
+  const passName = params.activeBufferName ?? context.slangPassName ?? 'Image';
+  if (selected && target && passName !== 'common' && selected.uri === target.uri) {
+    return null;
+  }
+  const source = selected?.source ?? '';
+  const lines = source.split('\n');
+  const requestedLine = params.debugLine ?? 0;
+  const line = Math.max(0, Math.min(requestedLine, Math.max(0, lines.length - 1)));
+  return {
+    uri: selected?.uri ?? filePath,
+    range: {
+      start: { line, character: 0 },
+      end: { line, character: selected ? lines[line].length : Math.max(0, lineContentLength) },
+    },
+    severity: 'error',
+    code: 'slang-cross-file-debug-unsupported',
+    message: 'Capturing variables inside imported Slang modules or configured common code is not supported yet; select a line in the active pass source.',
+    source: 'slang-compile',
+    passName,
+  };
 }
 
 export interface CapturedVariable {
@@ -277,6 +322,7 @@ export class VariableCaptureManager {
   private onSampleSettingsChanged: (() => void) | null = null;
   private onLoadingStateChanged: ((isLoading: boolean) => void) | null = null;
   private onErrorChanged: ((error: string | null) => void) | null = null;
+  private onDiagnosticsChanged: ((diagnostics: SlangDiagnostic[]) => void) | null = null;
 
   constructor(
     private renderingEngine: RenderingEngine,
@@ -327,6 +373,10 @@ export class VariableCaptureManager {
 
   setErrorCallback(callback: (error: string | null) => void): void {
     this.onErrorChanged = callback;
+  }
+
+  setDiagnosticCallback(callback: (diagnostics: SlangDiagnostic[]) => void): void {
+    this.onDiagnosticsChanged = callback;
   }
 
   changeSampleSize(size: number): void {
@@ -425,6 +475,7 @@ export class VariableCaptureManager {
     this.captureRequestId += 1;
     this.collectionRequestId = 0;
     this.lastParams = null;
+    this.emitDiagnostics([]);
     this.pendingResults = [];
     this.expectedCount = 0;
     this.emptyCollectFrames = 0;
@@ -580,11 +631,21 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
-    this.capturer.setCompileContext(
-      this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName),
-    );
+    const compileContext = this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName);
+    this.capturer.setCompileContext(compileContext);
     this.capturer.clearLastError();
     this.emitErrorState(null);
+    this.emitDiagnostics([]);
+
+    const unsupportedDiagnostic = this.renderingEngine.getShaderLanguage?.() === 'slang'
+      ? unsupportedSlangCaptureDiagnostic(compileContext, params, params.code.split('\n')[params.debugLine ?? 0]?.length ?? 0)
+      : null;
+    if (unsupportedDiagnostic) {
+      this.emitErrorState(unsupportedDiagnostic.message);
+      this.emitDiagnostics([unsupportedDiagnostic]);
+      this.finishCollection([]);
+      return;
+    }
 
     const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
 
@@ -726,6 +787,8 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
+
+    this.emitDiagnostics(this.capturer.getLastDiagnostics?.() ?? []);
 
     if (issued === 0) {
       const captureError = this.capturer.getLastError();
@@ -901,5 +964,15 @@ export class VariableCaptureManager {
 
   private emitErrorState(error: string | null): void {
     this.onErrorChanged?.(error);
+  }
+
+  private emitDiagnostics(diagnostics: SlangDiagnostic[]): void {
+    this.onDiagnosticsChanged?.(diagnostics.map((diagnostic) => ({
+      ...diagnostic,
+      range: {
+        start: { ...diagnostic.range.start },
+        end: { ...diagnostic.range.end },
+      },
+    })));
   }
 }

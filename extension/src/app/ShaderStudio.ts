@@ -108,6 +108,8 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.compileController.dispose();
+    this.panelManager.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
@@ -382,6 +384,13 @@ export class ShaderStudio {
         vscode.window.visibleTextEditors,
       );
     });
+
+    const slangWatcher = vscode.workspace.createFileSystemWatcher("**/*.slang");
+    this.context.subscriptions.push(
+      slangWatcher,
+      slangWatcher.onDidCreate((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+      slangWatcher.onDidDelete((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+    );
 
     // Track cursor position in GLSL editors for debug mode
     this.context.subscriptions.push(

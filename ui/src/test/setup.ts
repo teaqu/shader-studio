@@ -152,6 +152,10 @@ const monacoMock = {
       this.endColumn = endColumn;
     }
   },
+  Uri: {
+    parse: vi.fn((value: string) => ({ toString: () => value })),
+    file: vi.fn((value: string) => ({ toString: () => `file://${value.startsWith('/') ? '' : '/'}${value}` })),
+  },
   editor: {
     create: vi.fn(() => ({
       dispose: vi.fn(),
@@ -169,6 +173,7 @@ const monacoMock = {
       executeEdits: vi.fn(),
       hasTextFocus: vi.fn(() => false),
       onDidChangeModelContent: vi.fn(),
+      onDidChangeModel: vi.fn(() => ({ dispose: vi.fn() })),
       onDidScrollChange: vi.fn(),
       onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
       onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
@@ -189,6 +194,21 @@ const monacoMock = {
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
     setModelMarkers: vi.fn(),
+    getModel: vi.fn((_uri?: unknown) => null),
+    createModel: vi.fn((value: string, language: string, uri: { toString(): string }) => ({
+      uri,
+      getValue: vi.fn(() => value),
+      setValue: vi.fn(),
+      getVersionId: vi.fn(() => 1),
+      getLineMaxColumn: vi.fn(() => 80),
+      getLineCount: vi.fn(() => 0),
+      getLineContent: vi.fn(() => ''),
+      onDidChangeContent: vi.fn(() => ({ dispose: vi.fn() })),
+      isDisposed: vi.fn(() => false),
+      dispose: vi.fn(),
+      getLanguageId: vi.fn(() => language),
+    })),
+    setModelLanguage: vi.fn(),
   },
   languages: {
     register: vi.fn(),
@@ -213,9 +233,24 @@ vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', (
 // Mock @shader-studio/monaco — delegates to mocked monaco-editor above
 vi.mock('@shader-studio/monaco', () => ({
   setupMonacoGlsl: vi.fn(),
+  setupMonacoSlang: vi.fn(() => ({ setWorkspace: vi.fn(async () => undefined) })),
+  canonicalModelUri: vi.fn((value: string) => value.replace('file://localhost/', 'file:///')),
+  SLANG_COMPILE_MARKER_OWNER: 'slang-compile',
+  canonicalEditorUri: vi.fn((monaco: typeof monacoMock, value: string) => (
+    /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) ? monaco.Uri.parse(value.replace('file://localhost/', 'file:///')) : monaco.Uri.file(value)
+  )),
+  acquireEditorModel: vi.fn((monaco: typeof monacoMock, value: string, source: string, language: string) => {
+    const uri = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) ? monaco.Uri.parse(value) : monaco.Uri.file(value);
+    return monaco.editor.getModel(uri) ?? monaco.editor.createModel(source, language, uri);
+  }),
+  releaseEditorModel: vi.fn(),
   glslLanguageDefinition: {},
   shaderStudioTheme: {},
   shaderStudioTransparentTheme: {},
+}));
+
+vi.mock('../lib/slangLanguageClient', () => ({
+  getBrowserSlangLanguageClient: vi.fn(() => ({})),
 }));
 
 // Mock monaco-vim — requires browser APIs not available in jsdom
