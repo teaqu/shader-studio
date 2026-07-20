@@ -164,6 +164,11 @@
           "default": true,
           "description": "Enable Slang hover, completion, navigation, symbols, signature help, and diagnostics."
         },
+        "shader-studio.glslLanguageFeatures": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GLSL go-to-definition."
+        },
         "shader-studio.defaultConfigView": {
           "type": "string",
           "enum": [
@@ -300,6 +305,7 @@
     "sinon": "^21.0.0"
   },
   "dependencies": {
+    "@shader-studio/glsl-debug": "*",
     "@shader-studio/slang-language-service": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
