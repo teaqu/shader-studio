@@ -306,7 +306,7 @@ describe("SlangWorkspace replacement", () => {
 });
 
 describe("SlangWorkspace query copying", () => {
-  it("filters diagnostics beginning at or beyond the raw open-document EOF", () => {
+  it("keeps augmented diagnostics at raw EOF while filtering diagnostics after it", () => {
     const source = "float4 mainImage(float2 p) { return iResolution.x; }";
     const rawEnd = { line: 0, character: source.length };
     const diagnostics = fakeList([
@@ -319,7 +319,7 @@ describe("SlangWorkspace query copying", () => {
       {
         code: "at-eof",
         severity: 1,
-        message: "generated diagnostic at EOF",
+        message: "user diagnostic at EOF",
         range: { start: rawEnd, end: rawEnd },
       },
       {
@@ -335,16 +335,43 @@ describe("SlangWorkspace query copying", () => {
 
     expect(workspace.diagnostics("file:///project/root.slang")).toEqual([
       expect.objectContaining({ code: "user" }),
+      expect.objectContaining({ code: "at-eof" }),
     ]);
     expect(diagnostics.delete).toHaveBeenCalledOnce();
   });
 
-  it("filters only same-document definitions beginning at or beyond raw EOF", () => {
+  it("does not filter an unaugmented diagnostic exactly at raw EOF", () => {
+    const source = "module helper;";
+    const diagnostic = {
+      code: "eof",
+      severity: 1,
+      message: "unexpected EOF",
+      range: {
+        start: { line: 0, character: source.length },
+        end: { line: 0, character: source.length },
+      },
+    };
+    const diagnostics = fakeList([diagnostic]);
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.getDiagnostics.mockReturnValue(diagnostics);
+
+    expect(workspace.diagnostics("file:///project/root.slang")).toEqual([diagnostic]);
+  });
+
+  it("filters only same-document definitions beginning after raw EOF", () => {
     const source = "float4 mainImage(float2 p) { return iResolution.x; }";
     const locations = fakeList([
       {
         uri: "file:///workspace/root.slang",
         range: { start: { line: 0, character: 7 }, end: { line: 0, character: 16 } },
+      },
+      {
+        uri: "file:///workspace/root.slang",
+        range: {
+          start: { line: 0, character: source.length },
+          end: { line: 0, character: source.length },
+        },
       },
       {
         uri: "file:///workspace/root.slang",
@@ -361,12 +388,30 @@ describe("SlangWorkspace query copying", () => {
 
     expect(workspace.definition("file:///project/root.slang", { line: 0, character: 39 })).toEqual([
       expect.objectContaining({ uri: "file:///project/root.slang", range: expect.objectContaining({ start: { line: 0, character: 7 } }) }),
+      expect.objectContaining({ uri: "file:///project/root.slang", range: expect.objectContaining({ start: { line: 0, character: source.length } }) }),
       expect.objectContaining({ uri: "file:///project/lib/palette.slang", range: expect.objectContaining({ start: { line: 40, character: 0 } }) }),
     ]);
     expect(locations.delete).toHaveBeenCalledOnce();
   });
 
+  it("does not filter same-document definition locations in an unaugmented document", () => {
+    const source = "module helper;";
+    const locations = fakeList([{
+      uri: "file:///workspace/root.slang",
+      range: { start: { line: 4, character: 0 }, end: { line: 4, character: 6 } },
+    }]);
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.gotoDefinition.mockReturnValue(locations);
+
+    expect(workspace.definition("file:///project/root.slang", { line: 0, character: 0 })).toEqual([{
+      uri: "file:///project/root.slang",
+      range: { start: { line: 4, character: 0 }, end: { line: 4, character: 6 } },
+    }]);
+  });
+
   it("recursively removes generated document symbols while preserving valid user trees", () => {
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
     const validChildren = fakeList<SlangDocumentSymbol>([
       {
         name: "field",
@@ -395,6 +440,14 @@ describe("SlangWorkspace query copying", () => {
         children: validChildren,
       },
       {
+        name: "eof-marker",
+        detail: "user EOF symbol",
+        kind: 13,
+        range: { start: { line: 0, character: source.length }, end: { line: 0, character: source.length } },
+        selectionRange: { start: { line: 0, character: source.length }, end: { line: 0, character: source.length } },
+        children: fakeList([]),
+      },
+      {
         name: "iMouse",
         detail: "float4",
         kind: 13,
@@ -403,7 +456,6 @@ describe("SlangWorkspace query copying", () => {
         children: fakeList([]),
       },
     ]);
-    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
     const { server, workspace } = createFixture();
     workspace.openDocument("file:///project/root.slang", source, 1);
     server.documentSymbol.mockReturnValue(roots);
@@ -413,9 +465,28 @@ describe("SlangWorkspace query copying", () => {
         name: "mainImage",
         children: [expect.objectContaining({ name: "field" })],
       }),
+      expect.objectContaining({ name: "eof-marker" }),
     ]);
     expect(roots.delete).toHaveBeenCalledOnce();
     expect(validChildren.delete).toHaveBeenCalledOnce();
+  });
+
+  it("does not filter document symbols in an unaugmented document", () => {
+    const roots = fakeList<SlangDocumentSymbol>([{
+      name: "external-symbol",
+      detail: "unchanged",
+      kind: 13,
+      range: { start: { line: 4, character: 0 }, end: { line: 4, character: 15 } },
+      selectionRange: { start: { line: 4, character: 0 }, end: { line: 4, character: 15 } },
+      children: fakeList([]),
+    }]);
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", "module helper;", 1);
+    server.documentSymbol.mockReturnValue(roots);
+
+    expect(workspace.documentSymbols("file:///project/root.slang")).toEqual([
+      expect.objectContaining({ name: "external-symbol" }),
+    ]);
   });
 
   it("promotes valid user symbols nested beneath a generated parent", () => {

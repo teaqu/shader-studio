@@ -153,27 +153,105 @@ describe("bundled Slang WASM language server", () => {
     }
   });
 
-  it.each(["legacy", "2025", "2026", "latest"])(
-    "keeps the generated context valid under the %s language version",
-    (version) => {
-      const rootUri = `file:///versions/${version}.slang`;
+  it("keeps a genuine non-entry diagnostic located exactly at raw EOF", () => {
+    const rootUri = "file:///eof/helper.slang";
+    const source = [
+      "#language slang 2026",
+      "module helper;",
+      "float helper(",
+    ].join("\n");
+    const rawEof = { line: 2, character: "float helper(".length };
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///eof",
+      files: [{ uri: rootUri, path: "helper.slang", source }],
+    });
+
+    try {
+      workspace.openDocument(rootUri, source, 1);
+      expect(workspace.diagnostics(rootUri)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ range: expect.objectContaining({ start: rawEof }) }),
+      ]));
+    } finally {
+      workspace.dispose();
+    }
+  });
+
+  it("protects entry built-ins from trailing continued line comments", () => {
+    const cases = [false, true].map((finalNewline) => {
+      const entryLine = "float4 mainImage(float2 p) { return float4(iResolution, 1.0); } // trailing \\";
+      const source = [
+        "#language slang 2026",
+        "module image;",
+        entryLine,
+      ].join("\n") + (finalNewline ? "\n" : "");
+      const name = finalNewline ? "newline" : "eof";
+      return { entryLine, source, name, uri: `file:///continued/${name}.slang` };
+    });
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///continued",
+      files: cases.map(({ name, source, uri }) => ({ uri, path: `${name}.slang`, source })),
+    });
+
+    try {
+      for (const { entryLine, source, uri } of cases) {
+        workspace.openDocument(uri, source, 1);
+        expect(workspace.diagnostics(uri)).toEqual([]);
+        expect(workspace.hover(uri, {
+          line: 2,
+          character: entryLine.indexOf("iResolution") + 1,
+        })?.contents.value).toContain("float3 iResolution");
+      }
+    } finally {
+      workspace.dispose();
+    }
+  });
+
+  it("does not grant built-ins to a strict module with only an inactive entry declaration", () => {
+    const rootUri = "file:///inactive/helper.slang";
+    const source = [
+      "#language slang 2026",
+      "module helper;",
+      "#if 0",
+      "float4 mainImage(float2 p) { return 0.0; }",
+      "#endif",
+      "float helper() { return iResolution.x; }",
+    ].join("\n");
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///inactive",
+      files: [{ uri: rootUri, path: "helper.slang", source }],
+    });
+
+    try {
+      workspace.openDocument(rootUri, source, 1);
+      expect(workspace.diagnostics(rootUri)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "30015" }),
+      ]));
+    } finally {
+      workspace.dispose();
+    }
+  });
+
+  it("keeps the generated context valid under every supported language version", () => {
+    const cases = ["legacy", "2025", "2026", "latest"].map((version) => {
       const source = [
         `#language slang ${version}`,
         `module image_${version};`,
         "float4 mainImage(float2 p) { return float4(iResolution, 1.0); }",
       ].join("\n");
-      const workspace = new SlangWorkspace(api, {
-        rootUri: "file:///versions",
-        files: [{ uri: rootUri, path: `${version}.slang`, source }],
-      });
+      return { source, version, uri: `file:///versions/${version}.slang` };
+    });
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///versions",
+      files: cases.map(({ source, version, uri }) => ({ uri, path: `${version}.slang`, source })),
+    });
 
-      try {
-        workspace.openDocument(rootUri, source, 1);
-        expect(workspace.diagnostics(rootUri)).toEqual([]);
-      } finally {
-        workspace.dispose();
+    try {
+      for (const { source, uri } of cases) {
+        workspace.openDocument(uri, source, 1);
+        expect(workspace.diagnostics(uri)).toEqual([]);
       }
-    },
-    30_000,
-  );
+    } finally {
+      workspace.dispose();
+    }
+  }, 30_000);
 });

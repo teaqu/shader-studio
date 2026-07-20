@@ -65,6 +65,29 @@ describe("Shader Studio language context", () => {
     expect(isShaderStudioEntrySource(source)).toBe(true);
   });
 
+  it.each([
+    "namespace hidden { float4 mainImage(float2 p); }",
+    "struct Hidden { float4 mainImage(float2 p); };",
+    "interface IHidden { float4 mainImage(float2 p); }",
+    "float4 helper() { float4 mainImage(float2 p); return 0.0; }",
+    "#if 0\nfloat4 mainImage(float2 p);\n#endif",
+    "#if FEATURE_FLAG\nfloat4 mainImage(float2 p);\n#endif",
+    "#if FEATURE_FLAG\nfloat4 hidden(float2 p);\n#else\nfloat4 mainImage(float2 p);\n#endif",
+    "#if 0\nfloat4 hidden(float2 p);\n#elif 0\nfloat4 mainImage(float2 p);\n#endif",
+  ])("leaves non-global or inactive declarations byte-identical: %j", (source) => {
+    expect(isShaderStudioEntrySource(source)).toBe(false);
+    expect(createShaderStudioAnalysisSource(source)).toBe(source);
+  });
+
+  it.each([
+    "#if 1\nfloat4 mainImage(float2 p);\n#endif",
+    "#if 0\nfloat4 hidden(float2 p);\n#else\nfloat4 mainImage(float2 p);\n#endif",
+    "#if 0\nfloat4 hidden(float2 p);\n#elif 1\nfloat4 mainImage(float2 p);\n#endif",
+    "#if 1\n#if 0\nfloat4 hidden(float2 p);\n#else\nfloat4 mainImage(float2 p);\n#endif\n#endif",
+  ])("recognizes declarations in known active conditional branches: %j", (source) => {
+    expect(isShaderStudioEntrySource(source)).toBe(true);
+  });
+
   it("handles EOF line comments without hiding preceding declarations", () => {
     expect(isShaderStudioEntrySource("float4 mainImage(float2 p); // trailing")).toBe(true);
     expect(isShaderStudioEntrySource("// float4 mainImage(float2 p)")).toBe(false);
@@ -79,14 +102,22 @@ describe("Shader Studio language context", () => {
     const source = "float4 mainImage(float2 p) { return 0; }";
     const analysisSource = createShaderStudioAnalysisSource(source);
 
-    expect(analysisSource).toBe(`${source}\n${suffix}`);
+    expect(analysisSource).toBe(`${source}\n\n${suffix}`);
     expect(analysisSource.startsWith(source)).toBe(true);
   });
 
-  it("does not insert an extra newline when the source already ends with one", () => {
+  it("adds a blank separator line when the source already ends with a newline", () => {
     const source = "float4 mainImage(float2 p) { return 0; }\n";
 
-    expect(createShaderStudioAnalysisSource(source)).toBe(`${source}${suffix}`);
+    expect(createShaderStudioAnalysisSource(source)).toBe(`${source}\n${suffix}`);
+  });
+
+  it.each([
+    "float4 mainImage(float2 p) { return iResolution.x; } // trailing \\",
+    "float4 mainImage(float2 p) { return iResolution.x; } // trailing \\\n",
+  ])("protects the suffix from a trailing continued line comment: %j", (source) => {
+    const expectedSeparator = source.endsWith("\n") ? "\n" : "\n\n";
+    expect(createShaderStudioAnalysisSource(source)).toBe(`${source}${expectedSeparator}${suffix}`);
   });
 
   it("returns non-entry sources byte-for-byte unchanged", () => {

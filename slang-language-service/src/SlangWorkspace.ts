@@ -72,9 +72,9 @@ function endPosition(source: string): SlangPosition {
   return { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 };
 }
 
-function positionAtOrAfter(position: SlangPosition, boundary: SlangPosition): boolean {
+function positionAfter(position: SlangPosition, boundary: SlangPosition): boolean {
   return position.line > boundary.line
-    || (position.line === boundary.line && position.character >= boundary.character);
+    || (position.line === boundary.line && position.character > boundary.character);
 }
 
 function copyMarkup(markup: SlangMarkupContent): SlangMarkupContent {
@@ -146,7 +146,7 @@ function copySymbol(symbol: SlangDocumentSymbol): DocumentSymbolDto {
 function filterSymbols(symbols: DocumentSymbolDto[], boundary: SlangPosition): DocumentSymbolDto[] {
   return symbols.flatMap((symbol) => {
     const children = filterSymbols(symbol.children, boundary);
-    if (positionAtOrAfter(symbol.range.start, boundary)) {
+    if (positionAfter(symbol.range.start, boundary)) {
       return children;
     }
     return [{ ...symbol, children }];
@@ -302,12 +302,12 @@ export class SlangWorkspace {
       }),
     );
     const document = this.openDocuments.get(uri);
-    if (!locations || !document) {
+    if (!locations || !document || document.analysisSource === document.source) {
       return locations;
     }
     const boundary = endPosition(document.source);
     return locations.filter(
-      (location) => location.uri !== uri || !positionAtOrAfter(location.range.start, boundary),
+      (location) => location.uri !== uri || !positionAfter(location.range.start, boundary),
     );
   }
 
@@ -370,7 +370,7 @@ export class SlangWorkspace {
       copySymbol,
     );
     const document = this.openDocuments.get(uri);
-    if (!symbols || !document) {
+    if (!symbols || !document || document.analysisSource === document.source) {
       return symbols;
     }
     return filterSymbols(symbols, endPosition(document.source));
@@ -384,11 +384,11 @@ export class SlangWorkspace {
       copyDiagnostic,
     );
     const document = this.openDocuments.get(uri);
-    if (!diagnostics || !document) {
+    if (!diagnostics || !document || document.analysisSource === document.source) {
       return diagnostics;
     }
     const boundary = endPosition(document.source);
-    return diagnostics.filter((diagnostic) => !positionAtOrAfter(diagnostic.range.start, boundary));
+    return diagnostics.filter((diagnostic) => !positionAfter(diagnostic.range.start, boundary));
   }
 
   dispose(): void {
