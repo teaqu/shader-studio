@@ -134,6 +134,7 @@ describe('setupMonacoSlang', () => {
 
     expect(monaco.languages.register).toHaveBeenCalledTimes(1);
     expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
+    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', slangLanguageDefinition);
     for (const register of Object.values(registrations)) {
       expect(register).not.toHaveBeenCalled();

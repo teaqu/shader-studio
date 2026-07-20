@@ -46,9 +46,19 @@ suite("Slang language assets", () => {
     );
   });
 
-  test("does not bundle a Slang language worker", () => {
-    const esbuild = fs.readFileSync(path.join(extensionRoot, "esbuild.js"), "utf8");
+  test("does not retain a Slang language worker source", () => {
+    const workerSource = path.join(extensionRoot, "src", "language", "slangLanguageWorker.ts");
 
-    assert.ok(!esbuild.includes("slangLanguageWorker.ts"));
+    assert.strictEqual(fs.existsSync(workerSource), false);
+  });
+
+  test("does not bundle Slang language worker build or output machinery", () => {
+    const esbuild = fs.readFileSync(path.join(extensionRoot, "esbuild.js"), "utf8");
+    const workerBuildTokens = ["slangOutDir", "slangWorkerContext", "buildSlang", "slangLanguageWorker"];
+
+    assert.deepStrictEqual(
+      workerBuildTokens.filter((token) => esbuild.includes(token)),
+      [],
+    );
   });
 });

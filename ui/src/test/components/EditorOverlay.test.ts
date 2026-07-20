@@ -1568,22 +1568,36 @@ describe('EditorOverlay', () => {
     it('uses compile marker ownership for Slang compiler diagnostics without language markers', async () => {
       const monaco = await import('monaco-editor');
       const language = await import('@shader-studio/monaco');
+      const rootUri = monaco.Uri.file('/project/main.slang');
+      const root = monaco.editor.createModel('', 'slang', rootUri);
+      vi.mocked(monaco.editor.getModel).mockImplementation((uri: any) => (
+        uri.toString() === rootUri.toString() ? root as never : null
+      ));
 
       render(EditorOverlay, {
         props: {
           ...defaultProps,
           shaderPath: '/project/main.slang',
           shaderLanguage: 'slang',
-          errors: ['ERROR: 0:1: bad compile'],
+          diagnostics: [{
+            uri: rootUri.toString(),
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+            severity: 'error',
+            message: 'bad compile',
+            source: 'slang-compile',
+            passName: 'Image',
+          }],
         },
       });
 
-      expect(language.setupMonacoSlang).toHaveBeenCalled();
-      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'slang', expect.any(Object));
+      expect(language.setupMonacoSlang).toHaveBeenCalledTimes(1);
+      const setupCall = vi.mocked(language.setupMonacoSlang).mock.calls[0];
+      expect(setupCall).toHaveLength(1);
+      expect(setupCall[0]).toBe(monaco);
       expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
-        expect.any(Object),
+        root,
         'slang-compile',
-        [expect.objectContaining({ message: 'bad compile' })],
+        [expect.objectContaining({ message: 'Image: bad compile' })],
       );
       expect(vi.mocked(monaco.editor.setModelMarkers).mock.calls.every(([, owner]) => owner !== 'slang-language')).toBe(true);
       expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(expect.anything(), 'glsl', expect.anything());
