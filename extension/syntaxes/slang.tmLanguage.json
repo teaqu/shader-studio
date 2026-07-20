@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Slang",
+  "scopeName": "source.slang",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#preprocessor" },
+    { "include": "#attributes" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.slang", "match": "//.*$" },
+        { "name": "comment.block.slang", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.slang", "begin": "\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.slang", "match": "\\\\." }] },
+        { "name": "string.quoted.single.slang", "begin": "'", "end": "'", "patterns": [{ "name": "constant.character.escape.slang", "match": "\\\\." }] }
+      ]
+    },
+    "preprocessor": {
+      "name": "meta.preprocessor.slang",
+      "match": "^\\s*#\\s*(language|define|undef|if|ifdef|ifndef|elif|else|endif|include|line|pragma|error|warning)\\b.*$"
+    },
+    "attributes": {
+      "patterns": [
+        { "name": "storage.modifier.attribute.slang", "match": "\\[(?:shader|numthreads|entryPoint|earlydepthstencil|branch|flatten|loop|unroll|fastopt|forcecase|call|maximallyReconverges|quadDerivatives)\\b[^\\]]*\\]" },
+        { "name": "storage.modifier.attribute.slang", "match": "\\b(__include|__generic|__intrinsic_op|__target_intrinsic)\\b" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "name": "keyword.control.slang", "match": "\\b(if|else|switch|case|default|for|while|do|break|continue|return|discard)\\b" },
+        { "name": "keyword.declaration.slang", "match": "\\b(module|import|implementing|interface|extension|struct|class|enum|typedef|typealias|associatedtype|property|namespace|using|generic|where|each|expand|let|var|func|this|This|operator)\\b" },
+        { "name": "storage.modifier.slang", "match": "\\b(public|private|internal|static|const|uniform|in|out|inout|ref|groupshared|precise|nointerpolation|linear|centroid|sample|globallycoherent|volatile|extern|inline|mutating|nonmutating|differentiable|no_diff)\\b" },
+        { "name": "constant.language.slang", "match": "\\b(true|false|null|none)\\b" }
+      ]
+    },
+    "types": {
+      "name": "support.type.slang",
+      "match": "\\b(?:void|bool|bool2|bool3|bool4|half|half2|half3|half4|float|float2|float3|float4|double|double2|double3|double4|int|int2|int3|int4|uint|uint2|uint3|uint4|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix|Texture(?:1D|2D|3D|Cube)(?:Array)?|RWTexture(?:1D|2D|3D)(?:Array)?|SamplerState|SamplerComparisonState|Buffer|RWBuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer|ParameterBlock|ConstantBuffer|RaytracingAccelerationStructure)\\b"
+    },
+    "numbers": {
+      "name": "constant.numeric.slang",
+      "match": "(?<![\\w.])(?:0[xX][0-9a-fA-F](?:'?[0-9a-fA-F])*|0[bB][01](?:'?[01])*|(?:\\d(?:'?\\d)*)?\\.\\d(?:'?\\d)*(?:[eE][+-]?\\d+)?|\\d(?:'?\\d)*(?:[eE][+-]?\\d+)?)(?:[fFhHuUlL]*)\\b"
+    }
+  }
+}

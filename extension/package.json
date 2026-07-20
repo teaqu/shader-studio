@@ -207,7 +207,7 @@
         "extensions": [
           ".slang"
         ],
-        "configuration": "./glsl-language-configuration.json"
+        "configuration": "./slang-language-configuration.json"
       }
     ],
     "grammars": [
@@ -218,8 +218,8 @@
       },
       {
         "language": "slang",
-        "scopeName": "source.glsl",
-        "path": "./syntaxes/glsl.tmLanguage.json"
+        "scopeName": "source.slang",
+        "path": "./syntaxes/slang.tmLanguage.json"
       }
     ],
     "jsonValidation": [
