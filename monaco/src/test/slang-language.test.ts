@@ -162,7 +162,10 @@ describe('Slang Monarch language', () => {
       '0xCA\'FEu', '0X1LL', '0b1010\'0011', '0B1ul',
       '1\'000.25e-2f', '1.', '.5h', '4e+2', '42UL', '0',
     ];
-    const invalid = ['value42', '42value', '0x', '0b102', '1.2.3', '.5foo', '0xFF.bar'];
+    const invalid = [
+      'value42', '42value', '0x', '0b102', '1.2.3', '.5foo', '0xFF.bar',
+      '1.2.', '.5.', 'foo.5.', '1.2f.', '.5h.',
+    ];
 
     for (const value of valid) {
       const acceptedByTextMate = textMateNumbers.some((pattern) => matchesWhole(pattern, value));
@@ -189,7 +192,11 @@ describe('Slang Monarch language', () => {
     const tokenTypes = (source: string) => monaco.editor.tokenize(source, 'slang')[0]
       .map((token) => token.type);
 
-    for (const invalid of ['1.2.3', '1.2.3f', '1.2.3UL', 'foo.5']) {
+    const invalidNumbers = [
+      '1.2.3', '1.2.3f', '1.2.3UL', 'foo.5',
+      '1.2.', '.5.', 'foo.5.', '1.2f.', '.5h.',
+    ];
+    for (const invalid of invalidNumbers) {
       expect(tokenTypes(invalid), invalid).not.toContain('number.slang');
     }
     for (const valid of ['.5', '1.', '42UL', '0xCA\'FEu', '1\'000.25e-2f']) {

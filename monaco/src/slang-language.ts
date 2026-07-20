@@ -81,6 +81,9 @@ const decimalInteger = `${separatedDigits}${integerSuffix}`;
 export const slangNumberPattern = new RegExp(
   `(?:${hexadecimal}|${binary}|${decimalFloat}|${decimalInteger})(?![\\w.])`,
 );
+const invalidTrailingDotNumberPattern = new RegExp(
+  `(?:${identifier}|${separatedDigits})?\\.${separatedDigits}(?:${exponent})?[fFhH]?\\.`,
+);
 const invalidMemberNumberPattern = new RegExp(
   `${identifier}\\.${separatedDigits}(?:${exponent})?[fFhH]?(?![\\w.])`,
 );
@@ -108,8 +111,9 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
     root: [
       [slangPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
-      [invalidMemberNumberPattern, 'invalid'],
       [invalidDottedNumberPattern, 'invalid'],
+      [invalidTrailingDotNumberPattern, 'invalid'],
+      [invalidMemberNumberPattern, 'invalid'],
       [/[a-zA-Z_]\w*/, {
         cases: {
           '@types': 'type',
