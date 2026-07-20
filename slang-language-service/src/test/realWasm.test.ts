@@ -96,22 +96,7 @@ describe("bundled Slang WASM language server", () => {
         (symbol) => [symbol.name, ...symbolNames(symbol.children)],
       );
       const names = symbolNames(workspace.documentSymbols(rootUri) ?? []);
-      expect(names).toContain("mainImage");
-      expect(names).not.toEqual(expect.arrayContaining([
-        "iResolution",
-        "iMouse",
-        "iTime",
-        "iTimeDelta",
-        "iFrameRate",
-        "iFrame",
-        "iChannelTime",
-        "iChannelLoaded",
-        "iSampleRate",
-        "iDate",
-        "iChannelResolution",
-        "iCameraPos",
-        "iCameraDir",
-      ]));
+      expect(names).toEqual(["mainImage"]);
       expect(workspace.definition(rootUri, { line: 3, character: 17 }) ?? []).toEqual([]);
     } finally {
       workspace.dispose();
@@ -135,6 +120,36 @@ describe("bundled Slang WASM language server", () => {
       ]);
     } finally {
       helperWorkspace.dispose();
+    }
+  });
+
+  it("keeps user-area reserved built-in conflicts visible while hiding suffix diagnostics", () => {
+    const rootUri = "file:///redeclaration/image.slang";
+    const source = [
+      "#language slang 2026",
+      "module image;",
+      "float3 iResolution;",
+      "float4 mainImage(float2 p) { return float4(iResolution, 1.0); }",
+    ].join("\n");
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///redeclaration",
+      files: [{ uri: rootUri, path: "image.slang", source }],
+    });
+
+    try {
+      workspace.openDocument(rootUri, source, 1);
+      const diagnostics = workspace.diagnostics(rootUri) ?? [];
+      const rawEof = { line: 3, character: source.split("\n").at(-1)?.length ?? 0 };
+
+      expect(diagnostics.length).toBeGreaterThan(0);
+      expect(diagnostics.every(({ range }) => (
+        range.start.line < rawEof.line
+        || (range.start.line === rawEof.line && range.start.character < rawEof.character)
+      ))).toBe(true);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]?.message).toMatch(/ambiguous reference to 'iResolution'/i);
+    } finally {
+      workspace.dispose();
     }
   });
 

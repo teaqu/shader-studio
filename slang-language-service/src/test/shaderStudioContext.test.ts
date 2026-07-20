@@ -45,6 +45,21 @@ describe("Shader Studio language context", () => {
     expect(isShaderStudioEntrySource(source)).toBe(false);
   });
 
+  it.each([
+    "#define DECLARE_ENTRY \\\nfloat4 mainImage(float2 p)",
+    "DECLARE(float4 mainImage(float2 p))",
+  ])("leaves declaration-shaped macro source byte-identical: %j", (source) => {
+    expect(isShaderStudioEntrySource(source)).toBe(false);
+    expect(createShaderStudioAnalysisSource(source)).toBe(source);
+  });
+
+  it.each([
+    "public float4 mainImage(float2 p);",
+    "static\nfloat4\nmainImage\n(float2 p);",
+  ])("accepts declaration modifiers at a declaration boundary: %j", (source) => {
+    expect(isShaderStudioEntrySource(source)).toBe(true);
+  });
+
   it("handles EOF line comments without hiding preceding declarations", () => {
     expect(isShaderStudioEntrySource("float4 mainImage(float2 p); // trailing")).toBe(true);
     expect(isShaderStudioEntrySource("// float4 mainImage(float2 p)")).toBe(false);

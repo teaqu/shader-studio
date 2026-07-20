@@ -144,9 +144,13 @@ function copySymbol(symbol: SlangDocumentSymbol): DocumentSymbolDto {
 }
 
 function filterSymbols(symbols: DocumentSymbolDto[], boundary: SlangPosition): DocumentSymbolDto[] {
-  return symbols
-    .filter((symbol) => !positionAtOrAfter(symbol.range.start, boundary))
-    .map((symbol) => ({ ...symbol, children: filterSymbols(symbol.children, boundary) }));
+  return symbols.flatMap((symbol) => {
+    const children = filterSymbols(symbol.children, boundary);
+    if (positionAtOrAfter(symbol.range.start, boundary)) {
+      return children;
+    }
+    return [{ ...symbol, children }];
+  });
 }
 
 function copyDiagnostic(diagnostic: SlangDiagnosticResult): DiagnosticDto {

@@ -72,16 +72,36 @@ function blankCommentsAndStrings(source: string): string {
   return result.join("");
 }
 
-export function isShaderStudioEntrySource(source: string): boolean {
-  const lexicalSource = blankCommentsAndStrings(source);
-  const entryPattern = /\bfloat4\s+mainImage\s*\(/g;
-  for (const match of lexicalSource.matchAll(entryPattern)) {
-    const lineStart = lexicalSource.lastIndexOf("\n", match.index) + 1;
-    if (!/^\s*#/.test(lexicalSource.slice(lineStart, match.index))) {
-      return true;
+function blankPreprocessorLines(source: string): string {
+  const result = source.split("");
+  let lineStart = 0;
+  let continuingDirective: boolean = false;
+
+  while (lineStart < source.length) {
+    const newline = source.indexOf("\n", lineStart);
+    const lineEnd = newline === -1 ? source.length : newline;
+    const line = source.slice(lineStart, lineEnd).replace(/\r$/, "");
+    const isDirective: boolean = continuingDirective || /^[\t ]*#/.test(line);
+
+    if (isDirective) {
+      for (let index = lineStart; index < lineEnd; index++) {
+        result[index] = " ";
+      }
     }
+
+    continuingDirective = isDirective && /\\[\t ]*$/.test(line);
+    if (newline === -1) {
+      break;
+    }
+    lineStart = newline + 1;
   }
-  return false;
+
+  return result.join("");
+}
+
+export function isShaderStudioEntrySource(source: string): boolean {
+  const lexicalSource = blankPreprocessorLines(blankCommentsAndStrings(source));
+  return /(?:^|[;{}])\s*(?:(?:public|static)\s+)*float4\s+mainImage\s*\(/.test(lexicalSource);
 }
 
 export function createShaderStudioAnalysisSource(source: string): string {

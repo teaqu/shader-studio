@@ -418,6 +418,39 @@ describe("SlangWorkspace query copying", () => {
     expect(validChildren.delete).toHaveBeenCalledOnce();
   });
 
+  it("promotes valid user symbols nested beneath a generated parent", () => {
+    const userChildren = fakeList<SlangDocumentSymbol>([
+      {
+        name: "mainImage",
+        detail: "function",
+        kind: 12,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 52 } },
+        selectionRange: { start: { line: 0, character: 7 }, end: { line: 0, character: 16 } },
+        children: fakeList([]),
+      },
+    ]);
+    const roots = fakeList<SlangDocumentSymbol>([
+      {
+        name: "generated-container",
+        detail: "generated",
+        kind: 2,
+        range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } },
+        selectionRange: { start: { line: 1, character: 0 }, end: { line: 1, character: 19 } },
+        children: userChildren,
+      },
+    ]);
+    const source = "float4 mainImage(float2 p) { return iResolution.x; }";
+    const { server, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", source, 1);
+    server.documentSymbol.mockReturnValue(roots);
+
+    expect(workspace.documentSymbols("file:///project/root.slang")).toEqual([
+      expect.objectContaining({ name: "mainImage", children: [] }),
+    ]);
+    expect(roots.delete).toHaveBeenCalledOnce();
+    expect(userChildren.delete).toHaveBeenCalledOnce();
+  });
+
   it("preserves zero-based hover coordinates and undefined results", () => {
     const { server, workspace } = createFixture();
     server.hover.mockReturnValueOnce(undefined).mockReturnValueOnce({
