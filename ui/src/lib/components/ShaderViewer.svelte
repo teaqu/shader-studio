@@ -54,6 +54,7 @@
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
+  import { cloneSlangWorkspace } from "../slangSourceIdentity";
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -1105,6 +1106,9 @@
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
             language: engineLanguage,
+            workspace: lastEvent?.data?.workspace
+              ? cloneSlangWorkspace(lastEvent.data.workspace)
+              : undefined,
           };
         },
         (blob, defaultName, filters) => {

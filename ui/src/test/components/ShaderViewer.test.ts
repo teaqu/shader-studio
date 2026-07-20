@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, recordingManagerContext } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -56,8 +56,22 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // Tracks when the mocked ShaderPipeline's handleShaderMessage (the replay
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage };
+  const recordingManagerContext: { getShaderContext?: () => unknown } = {};
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, recordingManagerContext };
 });
+
+vi.mock('../../lib/RecordingManager', () => ({
+  RecordingManager: class {
+    constructor(getShaderContext: () => unknown) {
+      recordingManagerContext.getShaderContext = getShaderContext;
+    }
+
+    screenshot() {}
+    record() {}
+    cancel() {}
+    dispose() {}
+  },
+}));
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
   const MockRenderingEngine = class {
@@ -521,6 +535,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    recordingManagerContext.getShaderContext = undefined;
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
     resolutionStore.reset();
@@ -546,6 +561,60 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('retains a cloned Slang workspace for recording after the caller mutates the shader message', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    const workspace = {
+      rootUri: 'file:///test',
+      files: [
+        {
+          uri: 'file:///test/shader.slang',
+          path: '/workspace/shader.slang',
+          source: 'import helpers;',
+        },
+        {
+          uri: 'file:///test/helpers.slang',
+          path: '/workspace/helpers.slang',
+          source: 'float helper() { return 1.0; }',
+        },
+      ],
+    };
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/test/shader.slang',
+      code: workspace.files[0].source,
+      config: null,
+      buffers: {},
+      workspace,
+    });
+
+    const shaderInfo = recordingManagerContext.getShaderContext?.() as { workspace?: typeof workspace };
+    expect(shaderInfo.workspace).toEqual(workspace);
+    expect(shaderInfo.workspace).not.toBe(workspace);
+    expect(shaderInfo.workspace?.files[1]).not.toBe(workspace.files[1]);
+
+    workspace.files[1].source = 'mutated by caller';
+    expect(shaderInfo.workspace?.files[1].source).toBe('float helper() { return 1.0; }');
+  });
+
+  it('leaves the recording workspace undefined for GLSL shader messages', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'glsl',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 color, vec2 uv) { color = vec4(1.0); }',
+      config: null,
+      buffers: {},
+    });
+
+    expect(recordingManagerContext.getShaderContext?.()).toMatchObject({ workspace: undefined });
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {

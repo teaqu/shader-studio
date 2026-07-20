@@ -155,6 +155,10 @@ normal rendering. Phase 1 supports active image and buffer roots plus code broug
 in through textual includes. A dependency compilation error preserves the last-good
 render and capture.
 
+Screenshots and GIF/video recordings also compile their offscreen Slang renderer
+from the active workspace snapshot, so imported modules and includes match the live
+preview.
+
 Selecting an expression inside an imported translation unit or a configured
 `common` source is not supported yet. Shader Studio returns a structured
 `slang-cross-file-debug-unsupported` diagnostic on the selected source instead of

@@ -1,4 +1,4 @@
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
 
 export interface ScreenshotConfig {
   format: "png" | "jpeg";
@@ -25,6 +25,7 @@ export interface ShaderInfo {
   path: string;
   buffers: Record<string, string>;
   language?: "glsl" | "slang";
+  workspace?: SlangWorkspaceSnapshot;
 }
 
 export type OnScreenshot = (config: ScreenshotConfig) => void;

@@ -43,12 +43,15 @@ export class ShaderRecorder {
     const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, shaderInfo.language);
 
     try {
-      const result = await engine.compileShaderPipeline(
+      const compileArgs = [
         shaderInfo.code,
         shaderInfo.config,
         shaderInfo.path,
         shaderInfo.buffers,
-      );
+      ] as const;
+      const result = shaderInfo.workspace
+        ? await engine.compileShaderPipeline(...compileArgs, undefined, undefined, shaderInfo.workspace)
+        : await engine.compileShaderPipeline(...compileArgs);
       if (result && !result.success) {
         throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
       }
@@ -97,12 +100,15 @@ export class ShaderRecorder {
     this.offscreenEngine = engine;
 
     try {
-      const result = await engine.compileShaderPipeline(
+      const compileArgs = [
         shaderInfo.code,
         shaderInfo.config,
         shaderInfo.path,
         shaderInfo.buffers,
-      );
+      ] as const;
+      const result = shaderInfo.workspace
+        ? await engine.compileShaderPipeline(...compileArgs, undefined, undefined, shaderInfo.workspace)
+        : await engine.compileShaderPipeline(...compileArgs);
       if (result && !result.success) {
         throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
       }
