@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
+
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,34 +20,85 @@ import {
   slangTypes,
 } from '../slang-language';
 
-const grammar = JSON.parse(readFileSync(
-  resolve(process.cwd(), '../extension/syntaxes/slang.tmLanguage.json'),
-  'utf8',
-)) as {
-  repository: Record<string, { match?: string; patterns?: Array<{ match: string }> }>;
+interface GrammarPattern {
+  name: string;
+  match: string;
+}
+
+const grammarRelativePath = '../../../extension/syntaxes/slang.tmLanguage.json';
+const grammarPath = fileURLToPath(new URL(grammarRelativePath, import.meta.url));
+const grammar = JSON.parse(readFileSync(grammarPath, 'utf8')) as {
+  repository: Record<string, { match?: string; patterns?: GrammarPattern[] }>;
 };
 
-const expected = {
-  control: ['if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'discard'],
-  declarations: ['module', 'import', 'implementing', 'interface', 'extension', 'struct', 'class', 'enum', 'typedef', 'typealias', 'associatedtype', 'property', 'namespace', 'using', 'generic', 'where', 'each', 'expand', 'let', 'var', 'func', 'this', 'This', 'operator'],
-  modifiers: ['public', 'private', 'internal', 'static', 'const', 'uniform', 'in', 'out', 'inout', 'ref', 'groupshared', 'precise', 'nointerpolation', 'linear', 'centroid', 'sample', 'globallycoherent', 'volatile', 'extern', 'inline', 'mutating', 'nonmutating', 'differentiable', 'no_diff'],
-  constants: ['true', 'false', 'null', 'none'],
-  internalAttributes: ['__include', '__generic', '__intrinsic_op', '__target_intrinsic'],
-  attributeKeywords: ['shader', 'numthreads', 'entryPoint', 'earlydepthstencil', 'branch', 'flatten', 'loop', 'unroll', 'fastopt', 'forcecase', 'call', 'maximallyReconverges', 'quadDerivatives'],
-  preprocessor: ['language', 'define', 'undef', 'if', 'ifdef', 'ifndef', 'elif', 'else', 'endif', 'include', 'line', 'pragma', 'error', 'warning'],
-  types: [
-    'void', 'bool', 'bool2', 'bool3', 'bool4', 'half', 'half2', 'half3', 'half4',
-    'float', 'float2', 'float3', 'float4', 'double', 'double2', 'double3', 'double4',
-    'int', 'int2', 'int3', 'int4', 'uint', 'uint2', 'uint3', 'uint4',
-    'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
-    'vector', 'matrix', 'Texture1D', 'Texture2D', 'Texture3D', 'TextureCube',
-    'Texture1DArray', 'Texture2DArray', 'Texture3DArray', 'TextureCubeArray',
-    'RWTexture1D', 'RWTexture2D', 'RWTexture3D', 'RWTexture1DArray', 'RWTexture2DArray', 'RWTexture3DArray',
-    'SamplerState', 'SamplerComparisonState', 'Buffer', 'RWBuffer', 'StructuredBuffer',
-    'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer', 'ParameterBlock',
-    'ConstantBuffer', 'RaytracingAccelerationStructure',
-  ],
-};
+function findPattern(repositoryKey: string, scope: string): string {
+  const pattern = grammar.repository[repositoryKey].patterns?.find((entry) => entry.name === scope);
+  if (!pattern) throw new Error(`Missing ${scope} pattern`);
+  return pattern.match;
+}
+
+function firstGroup(pattern: string): string {
+  const start = pattern.indexOf('(');
+  if (start < 0) throw new Error(`Pattern has no group: ${pattern}`);
+  const contentStart = pattern.startsWith('(?:', start) ? start + 3 : start + 1;
+  let depth = 1;
+
+  for (let index = contentStart; index < pattern.length; index += 1) {
+    if (pattern[index] === '\\') {
+      index += 1;
+    } else if (pattern[index] === '(') {
+      depth += 1;
+    } else if (pattern[index] === ')' && --depth === 0) {
+      return pattern.slice(contentStart, index);
+    }
+  }
+  throw new Error(`Pattern has an unterminated group: ${pattern}`);
+}
+
+function expandVocabulary(source: string): string[] {
+  let position = 0;
+
+  function expression(): string[] {
+    const alternatives: string[] = [];
+    let sequences = [''];
+    while (position < source.length && source[position] !== ')') {
+      if (source[position] === '|') {
+        alternatives.push(...sequences);
+        sequences = [''];
+        position += 1;
+        continue;
+      }
+
+      let atoms: string[];
+      if (source[position] === '(') {
+        position += source.startsWith('?:', position + 1) ? 3 : 1;
+        atoms = expression();
+        if (source[position] !== ')') throw new Error(`Unterminated vocabulary group: ${source}`);
+        position += 1;
+      } else {
+        atoms = [source[position]];
+        position += 1;
+      }
+
+      if (source[position] === '?') {
+        atoms = ['', ...atoms];
+        position += 1;
+      }
+      sequences = sequences.flatMap((prefix) => atoms.map((atom) => prefix + atom));
+    }
+    return [...alternatives, ...sequences];
+  }
+
+  return expression();
+}
+
+function vocabulary(pattern: string): string[] {
+  return expandVocabulary(firstGroup(pattern)).sort();
+}
+
+function sorted(values: string[]): string[] {
+  return [...values].sort();
+}
 
 function matchesWhole(pattern: RegExp, value: string): boolean {
   return new RegExp(`^(?:${pattern.source})$`).test(value);
@@ -53,28 +106,20 @@ function matchesWhole(pattern: RegExp, value: string): boolean {
 
 describe('Slang Monarch language', () => {
   it('defines the same concrete vocabulary families as the extension grammar', () => {
-    expect(slangControlKeywords).toEqual(expected.control);
-    expect(slangDeclarationKeywords).toEqual(expected.declarations);
-    expect(slangModifiers).toEqual(expected.modifiers);
-    expect(slangConstants).toEqual(expected.constants);
-    expect(slangInternalAttributes).toEqual(expected.internalAttributes);
-    expect(slangAttributeKeywords).toEqual(expected.attributeKeywords);
-    expect(slangPreprocessorDirectives).toEqual(expected.preprocessor);
-    expect(slangTypes).toEqual(expected.types);
-
-    const keywordPatterns = grammar.repository.keywords.patterns!.map((entry) => new RegExp(entry.match));
-    const attributePatterns = grammar.repository.attributes.patterns!.map((entry) => new RegExp(entry.match));
-    const typePatterns = grammar.repository.types.patterns!.map((entry) => new RegExp(entry.match));
-
-    for (const word of [...expected.control, ...expected.declarations, ...expected.modifiers, ...expected.constants]) {
-      expect(keywordPatterns.some((pattern) => matchesWhole(pattern, word)), word).toBe(true);
-    }
-    for (const word of [...expected.internalAttributes, ...expected.attributeKeywords.map((word) => `[${word}]`)]) {
-      expect(attributePatterns.some((pattern) => matchesWhole(pattern, word)), word).toBe(true);
-    }
-    for (const word of expected.types) {
-      expect(typePatterns.some((pattern) => matchesWhole(pattern, word)), word).toBe(true);
-    }
+    expect(sorted(slangControlKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.control.slang')));
+    expect(sorted(slangDeclarationKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.declaration.slang')));
+    expect(sorted(slangModifiers)).toEqual(vocabulary(findPattern('keywords', 'storage.modifier.slang')));
+    expect(sorted(slangConstants)).toEqual(vocabulary(findPattern('keywords', 'constant.language.slang')));
+    expect(sorted(slangInternalAttributes)).toEqual(vocabulary(
+      grammar.repository.attributes.patterns!.find((entry) => entry.match.includes('__include'))!.match,
+    ));
+    expect(sorted(slangAttributeKeywords)).toEqual(vocabulary(
+      grammar.repository.attributes.patterns!.find((entry) => entry.match.includes('shader'))!.match,
+    ));
+    expect(sorted(slangPreprocessorDirectives)).toEqual(vocabulary(grammar.repository.preprocessor.match!));
+    expect(sorted(slangTypes)).toEqual(grammar.repository.types.patterns!
+      .flatMap((entry) => vocabulary(entry.match))
+      .sort());
   });
 
   it('represents comments, strings, types, keywords, and both quote styles', () => {
@@ -130,6 +175,27 @@ describe('Slang Monarch language', () => {
       expect(matchesWhole(slangNumberPattern, value), `Monaco: ${value}`).toBe(false);
     }
   });
+
+  it('uses Monaco tokenization to reject combined invalid numbers without rejecting valid forms', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const tokenTypes = (source: string) => monaco.editor.tokenize(source, 'slang')[0]
+      .map((token) => token.type);
+
+    for (const invalid of ['1.2.3', '1.2.3f', '1.2.3UL', 'foo.5']) {
+      expect(tokenTypes(invalid), invalid).not.toContain('number.slang');
+    }
+    for (const valid of ['.5', '1.', '42UL', '0xCA\'FEu', '1\'000.25e-2f']) {
+      expect(tokenTypes(valid), valid).toContain('number.slang');
+    }
+  });
 });
 
 describe('setupMonacoSlang', () => {
@@ -138,7 +204,51 @@ describe('setupMonacoSlang', () => {
     delete (self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment;
   });
 
-  it('registers only the Slang Monarch tokenizer exactly once', async () => {
+  function createMockMonaco(initialLanguages: { id: string }[] = []) {
+    const languages = [...initialLanguages];
+    return {
+      languages: {
+        getLanguages: vi.fn(() => languages),
+        register: vi.fn((language: { id: string }) => languages.push(language)),
+        setMonarchTokensProvider: vi.fn(),
+      },
+    };
+  }
+
+  it('registers only the Slang Monarch tokenizer once per Monaco instance', async () => {
+    const monacoA = createMockMonaco();
+    const monacoB = createMockMonaco();
+    const { setupMonacoSlang } = await import('../setup');
+    const { slangLanguageDefinition: definition } = await import('../slang-language');
+
+    expect(setupMonacoSlang).toHaveLength(1);
+    expect(setupMonacoSlang(monacoA as never)).toBeUndefined();
+    expect(setupMonacoSlang(monacoA as never)).toBeUndefined();
+    expect(setupMonacoSlang(monacoB as never)).toBeUndefined();
+
+    for (const monaco of [monacoA, monacoB]) {
+      expect(monaco.languages.register).toHaveBeenCalledTimes(1);
+      expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
+      expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
+      expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
+    }
+    expect((self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment).toBeUndefined();
+  });
+
+  it('installs the tokenizer when Slang is already registered', async () => {
+    const monaco = createMockMonaco([{ id: 'slang' }]);
+    const { setupMonacoSlang } = await import('../setup');
+    const { slangLanguageDefinition: definition } = await import('../slang-language');
+
+    setupMonacoSlang(monaco as never);
+    setupMonacoSlang(monaco as never);
+
+    expect(monaco.languages.register).not.toHaveBeenCalled();
+    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
+    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
+  });
+
+  it('registers only the Slang Monarch tokenizer API', async () => {
     const languages: { id: string }[] = [];
     const monaco = {
       languages: {
@@ -148,15 +258,15 @@ describe('setupMonacoSlang', () => {
       },
     };
     const { setupMonacoSlang } = await import('../setup');
+    const { slangLanguageDefinition: definition } = await import('../slang-language');
 
-    expect(setupMonacoSlang).toHaveLength(1);
     expect(setupMonacoSlang(monaco as never)).toBeUndefined();
     expect(setupMonacoSlang(monaco as never)).toBeUndefined();
 
     expect(monaco.languages.register).toHaveBeenCalledTimes(1);
     expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
-    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', slangLanguageDefinition);
+    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
     expect((self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment).toBeUndefined();
   });
 });
@@ -164,8 +274,9 @@ describe('setupMonacoSlang', () => {
 describe('Slang package exports', () => {
   it('exports the language definition and setup function from the public entry point', async () => {
     const exports = await import('../index');
+    const { slangLanguageDefinition: definition } = await import('../slang-language');
 
-    expect(exports.slangLanguageDefinition).toStrictEqual(slangLanguageDefinition);
+    expect(exports.slangLanguageDefinition).toBe(definition);
     expect(exports.setupMonacoSlang).toEqual(expect.any(Function));
   });
 });
