@@ -32,6 +32,12 @@ interface ExtensionManifest {
 interface SlangGrammar {
   scopeName: string;
   patterns: Array<{ include?: string }>;
+  repository: Record<
+    string,
+    {
+      patterns?: Array<{ name?: string; match?: string }>;
+    }
+  >;
 }
 
 interface TextMateToken {
@@ -142,6 +148,30 @@ suite('Bundled Slang syntax assets', () => {
         '#numbers',
       ],
     );
+  });
+
+  test('groups type and numeric patterns by responsibility', () => {
+    const rawGrammar = readJson<SlangGrammar>(
+      'syntaxes/slang.tmLanguage.json',
+    );
+    const typePatterns = rawGrammar.repository.types.patterns;
+    const numericPatterns = rawGrammar.repository.numbers.patterns;
+
+    assert.deepStrictEqual(
+      typePatterns?.map((pattern) => pattern.name),
+      ['support.type.scalar-vector.slang', 'support.type.resource.slang'],
+    );
+    assert.deepStrictEqual(
+      numericPatterns?.map((pattern) => pattern.name),
+      [
+        'constant.numeric.hex.slang',
+        'constant.numeric.binary.slang',
+        'constant.numeric.decimal.float.slang',
+        'constant.numeric.decimal.integer.slang',
+      ],
+    );
+    assert.ok(typePatterns?.every((pattern) => pattern.match));
+    assert.ok(numericPatterns?.every((pattern) => pattern.match));
   });
 
   test('tokenizes representative Slang with native TextMate scopes', () => {
@@ -278,5 +308,31 @@ float4 shade(Texture2D texture) { return 1.; }
       (match) => match[0],
     );
     assert.deepStrictEqual(words, ['foo', 'bar', 'a', 'b', '-1.25']);
+  });
+
+  test('keeps supported numeric literals whole in editor word selection', () => {
+    const configuration = readJson<{ wordPattern?: string }>(
+      'slang-language-configuration.json',
+    );
+    assert.ok(configuration.wordPattern);
+
+    const wholeWord = new RegExp(`^(?:${configuration.wordPattern})$`);
+    for (const literal of [
+      '.5',
+      '1.0f',
+      '1f',
+      '0xFFu',
+      '0b1010',
+      '1e3f',
+      '-1.25',
+    ]) {
+      assert.match(literal, wholeWord, `${literal} must remain one word`);
+    }
+
+    const words = Array.from(
+      'foo-bar'.matchAll(new RegExp(configuration.wordPattern, 'g')),
+      (match) => match[0],
+    );
+    assert.deepStrictEqual(words, ['foo', 'bar']);
   });
 });

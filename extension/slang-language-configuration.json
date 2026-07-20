@@ -33,5 +33,5 @@
     "increaseIndentPattern": "^.*\\{[^}\"']*$",
     "decreaseIndentPattern": "^\\s*\\}"
   },
-  "wordPattern": "(-?\\d+(?:\\.\\d*)?(?:[eE][+-]?\\d+)?)|([A-Za-z_]\\w*)"
+  "wordPattern": "(?:0[xX][0-9a-fA-F]+(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?|0[bB][01]+(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?|-?(?:(?:\\d+\\.\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?[fFhH]?|\\d+[eE][+-]?\\d+[fFhH]?|\\d+[fFhH]|\\d+(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?))|(?:[A-Za-z_]\\w*)"
 }
