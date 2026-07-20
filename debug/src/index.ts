@@ -6,3 +6,5 @@ export { VariableCaptureBuilder } from './VariableCaptureBuilder';
 export { getDebugDialect } from './dialects';
 export type { DebugDialectAdapter } from './dialects';
 export type { ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext, CaptureVarInfo, ShaderDialect, ShaderDebugDiagnostic } from './types';
+export { getSymbolTable, findSymbol } from './GlslSymbols';
+export type { GlslSymbolTable, GlslSymbolLocation, GlslFunctionSymbol } from './GlslSymbols';
