@@ -165,6 +165,20 @@ describe("SlangWorkspace document lifecycle", () => {
 });
 
 describe("SlangWorkspace replacement", () => {
+  it("keeps an open overlay across a disk-baseline replacement and restores the new baseline on close", () => {
+    const { fs, workspace } = createFixture();
+    workspace.openDocument("file:///project/root.slang", "unsaved overlay", 1);
+
+    workspace.replaceFiles({
+      rootUri: "file:///project",
+      files: [{ uri: "file:///project/root.slang", path: "root.slang", source: "saved disk baseline" }],
+    });
+    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/root.slang", "unsaved overlay");
+
+    expect(workspace.closeDocument("file:///project/root.slang", 1)).toBe(true);
+    expect(fs.writeFile).toHaveBeenLastCalledWith("/workspace/root.slang", "saved disk baseline");
+  });
+
   it("drops removed mappings and permits their paths to be reused", () => {
     const { server, workspace } = createFixture();
     server.hover.mockReturnValue(undefined);

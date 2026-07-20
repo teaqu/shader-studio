@@ -358,6 +358,8 @@ suite("Slang language feature adapter", () => {
     const diagnosticSet = sandbox.spy();
     const disposable = new vscode.Disposable(() => undefined);
     try {
+      await vscode.workspace.fs.createDirectory(root);
+      await vscode.workspace.fs.writeFile(document.uri, new TextEncoder().encode("module main;"));
       sandbox.stub(console, "error");
       sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
       sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
@@ -397,6 +399,7 @@ suite("Slang language feature adapter", () => {
       registration.dispose();
     } finally {
       sandbox.restore();
+      await vscode.workspace.fs.delete(root, { recursive: true, useTrash: false });
     }
   });
 
@@ -508,19 +511,27 @@ suite("Slang language feature adapter", () => {
     const root = vscode.Uri.file("/tmp/slang-watcher-test");
     const mainUri = vscode.Uri.joinPath(root, "main.slang");
     const dependencyUri = vscode.Uri.joinPath(root, "palette.slang");
+    const helperUri = vscode.Uri.joinPath(root, "helper.slang");
     const mainDocument = {
       uri: mainUri, languageId: "slang", version: 3,
       getText: () => "module main; import palette; // unsaved",
     } as unknown as vscode.TextDocument;
     let discovered = [mainUri];
+    let delayedScan: Promise<vscode.Uri[]> | undefined;
     let createListener: ((uri: vscode.Uri) => void) | undefined;
+    let changeFileListener: ((uri: vscode.Uri) => void) | undefined;
     let deleteListener: ((uri: vscode.Uri) => void) | undefined;
+    let openListener: ((document: vscode.TextDocument) => void) | undefined;
+    let closeListener: ((document: vscode.TextDocument) => void) | undefined;
+    const openDocuments = [mainDocument];
+    const order: string[] = [];
     const watcherDisposal = sandbox.spy();
     const watcher = {
       onDidCreate(listener: (uri: vscode.Uri) => void) {
         createListener = listener; return new vscode.Disposable(() => undefined);
       },
-      onDidChange() {
+      onDidChange(listener: (uri: vscode.Uri) => void) {
+        changeFileListener = listener;
         return new vscode.Disposable(() => undefined);
       },
       onDidDelete(listener: (uri: vscode.Uri) => void) {
@@ -530,8 +541,16 @@ suite("Slang language feature adapter", () => {
     } as unknown as vscode.FileSystemWatcher;
     const client = {
       init: sandbox.stub().resolves(), ready: sandbox.stub().resolves(),
-      replaceFiles: sandbox.stub().resolves(), openDocument: sandbox.stub().resolves(),
-      changeDocument: sandbox.stub().resolves(), closeDocument: sandbox.stub().resolves(),
+      replaceFiles: sandbox.stub().callsFake(async () => {
+        order.push("replace");
+      }),
+      openDocument: sandbox.stub().callsFake(async (document) => {
+        order.push(`open:${document.source}`);
+      }),
+      changeDocument: sandbox.stub().resolves(),
+      closeDocument: sandbox.stub().callsFake(async () => {
+        order.push("close");
+      }),
       hover: sandbox.stub().resolves(undefined), definition: sandbox.stub().resolves(undefined),
       completion: sandbox.stub().resolves(undefined), completionResolve: sandbox.stub().resolves(undefined),
       signatureHelp: sandbox.stub().resolves(undefined), documentSymbols: sandbox.stub().resolves(undefined),
@@ -539,20 +558,28 @@ suite("Slang language feature adapter", () => {
     } satisfies SlangLanguageClientContract;
     const disposable = new vscode.Disposable(() => undefined);
     try {
+      const consoleError = sandbox.stub(console, "error");
       await vscode.workspace.fs.createDirectory(root);
       await vscode.workspace.fs.writeFile(mainUri, new TextEncoder().encode("module main; import palette; // disk"));
       await vscode.workspace.fs.writeFile(dependencyUri, new TextEncoder().encode("module palette;"));
+      await vscode.workspace.fs.writeFile(helperUri, new TextEncoder().encode("module helper; float value = 1; // disk"));
       sandbox.stub(vscode.workspace, "getConfiguration").returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
       sandbox.stub(vscode.workspace, "workspaceFolders").value([{ uri: root, name: "root", index: 0 }]);
-      sandbox.stub(vscode.workspace, "textDocuments").value([mainDocument]);
-      sandbox.stub(vscode.workspace, "findFiles").callsFake(async () => discovered);
+      sandbox.stub(vscode.workspace, "textDocuments").value(openDocuments);
+      const findFiles = sandbox.stub(vscode.workspace, "findFiles").callsFake(async () => delayedScan ?? discovered);
       const createWatcher = sandbox.stub(vscode.workspace, "createFileSystemWatcher").returns(watcher);
       sandbox.stub(vscode.workspace, "onDidChangeConfiguration").returns(disposable);
       sandbox.stub(vscode.workspace, "onDidChangeWorkspaceFolders").returns(disposable);
-      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").returns(disposable);
+      sandbox.stub(vscode.workspace, "onDidOpenTextDocument").callsFake((listener) => {
+        openListener = listener;
+        return disposable;
+      });
       sandbox.stub(vscode.workspace, "onDidChangeTextDocument").returns(disposable);
-      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").returns(disposable);
-      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({ set() {}, clear() {}, dispose() {} } as unknown as vscode.DiagnosticCollection);
+      sandbox.stub(vscode.workspace, "onDidCloseTextDocument").callsFake((listener) => {
+        closeListener = listener;
+        return disposable;
+      });
+      sandbox.stub(vscode.languages, "createDiagnosticCollection").returns({ set() {}, delete() {}, clear() {}, dispose() {} } as unknown as vscode.DiagnosticCollection);
       sandbox.stub(vscode.languages, "registerCompletionItemProvider").returns(disposable);
       sandbox.stub(vscode.languages, "registerHoverProvider").returns(disposable);
       sandbox.stub(vscode.languages, "registerDefinitionProvider").returns(disposable);
@@ -561,6 +588,9 @@ suite("Slang language feature adapter", () => {
       const context = { extensionPath: "/extension", subscriptions: [] } as unknown as vscode.ExtensionContext;
       const registration = registerSlangLanguageFeatures(context, { createClient: () => client });
       await waitUntil(() => client.init.calledOnce && client.openDocument.calledOnce);
+      const initialized = client.init.firstCall.args[0] as SlangWorkspaceSnapshot;
+      assert.strictEqual(initialized.files[0]?.source, "module main; import palette; // disk");
+      assert.strictEqual(client.openDocument.firstCall.args[0].source, mainDocument.getText());
 
       const pattern = createWatcher.firstCall.args[0] as vscode.RelativePattern;
       assert.ok(pattern instanceof vscode.RelativePattern);
@@ -576,7 +606,7 @@ suite("Slang language feature adapter", () => {
       await waitUntil(() => client.replaceFiles.calledOnce);
       const created = client.replaceFiles.firstCall.args[0] as SlangWorkspaceSnapshot;
       assert.deepStrictEqual(created.files.map((file) => file.path), ["main.slang", "palette.slang"]);
-      assert.strictEqual(created.files[0]?.source, mainDocument.getText(), "open buffer must override disk during rebuild");
+      assert.strictEqual(created.files[0]?.source, "module main; import palette; // disk", "worker snapshots remain disk baselines");
       assert.ok(client.diagnostics.callCount >= 2, "open document diagnostics refresh after replacement");
 
       discovered = [mainUri];
@@ -587,11 +617,42 @@ suite("Slang language feature adapter", () => {
       assert.deepStrictEqual(deleted.files.map((file) => file.path), ["main.slang"]);
       assert.strictEqual(client.replaceFiles.callCount, 2, "create/delete events each produce one serialized rebuild");
 
+      const helperDocument = {
+        uri: helperUri, languageId: "slang", version: 4,
+        getText: () => "module helper; float value = 2; // unsaved",
+      } as unknown as vscode.TextDocument;
+      openDocuments.push(helperDocument);
+      openListener?.(helperDocument);
+      await waitUntil(() => client.openDocument.callCount === 2 && client.replaceFiles.callCount === 3);
+      const openedBaseline = client.replaceFiles.lastCall.args[0] as SlangWorkspaceSnapshot;
+      assert.strictEqual(openedBaseline.files.find((file) => file.uri === helperUri.toString())?.source, "module helper; float value = 1; // disk");
+      assert.strictEqual(client.openDocument.lastCall.args[0].source, helperDocument.getText());
+      assert.deepStrictEqual(order.slice(-2), ["replace", `open:${helperDocument.getText()}`]);
+
+      let finishDelayedScan: ((uris: vscode.Uri[]) => void) | undefined;
+      delayedScan = new Promise((resolve) => {
+        finishDelayedScan = resolve;
+      });
+      changeFileListener?.(helperUri);
+      await waitUntil(() => findFiles.callCount === 4);
+      const diagnosticsBeforeClose = client.diagnostics.callCount;
+      openDocuments.splice(openDocuments.indexOf(helperDocument), 1);
+      closeListener?.(helperDocument);
+      await waitUntil(() => client.closeDocument.calledOnce);
+      finishDelayedScan?.([mainUri, helperUri]);
+      delayedScan = undefined;
+      await waitUntil(() => client.replaceFiles.callCount === 4);
+      const rebuiltAfterClose = client.replaceFiles.lastCall.args[0] as SlangWorkspaceSnapshot;
+      assert.strictEqual(rebuiltAfterClose.files.find((file) => file.uri === helperUri.toString())?.source, "module helper; float value = 1; // disk");
+      assert.ok(order.lastIndexOf("close") < order.lastIndexOf("replace"), "close overlay is removed before delayed baseline replacement");
+      assert.ok(client.diagnostics.callCount > diagnosticsBeforeClose, "remaining open roots refresh after the delayed replacement");
+      assert.strictEqual(consoleError.callCount, 0, "watcher and close races do not leak unhandled errors");
+
       registration.dispose();
       assert.strictEqual(watcherDisposal.callCount, 1);
       createListener?.(dependencyUri);
       await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.strictEqual(client.replaceFiles.callCount, 2, "disposed watcher callbacks cannot rebuild the snapshot");
+      assert.strictEqual(client.replaceFiles.callCount, 4, "disposed watcher callbacks cannot rebuild the snapshot");
     } finally {
       sandbox.restore();
       await vscode.workspace.fs.delete(root, { recursive: true, useTrash: false });

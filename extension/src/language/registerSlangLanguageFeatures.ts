@@ -148,6 +148,7 @@ class SlangFeatureSession implements vscode.Disposable {
   private snapshotRevision = 0;
   private rebuildPending = false;
   private rebuildRunning = false;
+  private readonly transientRegistrations = new Set<string>();
 
   constructor(
     private readonly client: SlangLanguageClientContract,
@@ -245,9 +246,9 @@ class SlangFeatureSession implements vscode.Disposable {
           return undefined;
         }
       },
-      openDocuments: vscode.workspace.textDocuments
-        .filter((document) => document.languageId === "slang" && this.isDocumentManaged(document))
-        .map((document) => ({ uri: document.uri.toString(), source: document.getText(), version: document.version })),
+      // The workspace snapshot is the saved disk baseline. Unsaved editor
+      // contents live only in WorkerClient's open/change document overlay.
+      openDocuments: [],
     });
     return builder.build({ rootUri });
   }
@@ -378,13 +379,20 @@ class SlangFeatureSession implements vscode.Disposable {
     if (!relativePath) {
       return false;
     }
+    let diskSource: string | undefined;
+    try {
+      diskSource = new TextDecoder().decode(await vscode.workspace.fs.readFile(document.uri));
+    } catch {
+      // A newly created, unsaved file still needs a path registration before
+      // openDocument can establish its overlay. It is removed on close.
+      this.transientRegistrations.add(document.uri.toString());
+    }
     this.snapshot = {
       ...this.snapshot,
       files: [...this.snapshot.files, {
         uri: document.uri.toString(),
         path: `/workspace/${relativePath}`,
-        source: document.getText(),
-        version: document.version,
+        source: diskSource ?? "",
       }].sort((left, right) => left.path.localeCompare(right.path)),
     };
     await this.client.replaceFiles(languageServiceSnapshot(this.snapshot));
@@ -439,6 +447,9 @@ class SlangFeatureSession implements vscode.Disposable {
       await this.client.closeDocument(document.uri.toString(), document.version);
       this.openedVersions.delete(document.uri.toString());
       this.diagnostics.delete(document.uri);
+      if (this.transientRegistrations.delete(document.uri.toString())) {
+        this.scheduleSnapshotRebuild(document.uri);
+      }
     } catch (error) {
       ignoredStale(error);
     }
